@@ -1,0 +1,20 @@
+[package]
+name = "marty"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+egui = "0.17"
+egui_wgpu_backend = "0.17"
+egui-winit = { version = "0.17", default-features = false, features = ["links"] }
+env_logger = "0.9"
+log = "0.4"
+pixels = "0.9.0"
+winit = "0.26"
+winit_input_helper = "0.12"
+rand = "0.8.5"
+regex = "1.5.5"
+lazy_static = "1.4.0"
+md5 = "0.7.0"

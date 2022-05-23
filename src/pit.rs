@@ -1,0 +1,438 @@
+use log;
+
+use crate::io::{IoBusInterface, IoDevice};
+use crate::cpu::CPU_MHZ;
+use crate::pic;
+
+const PIT_CHANNEL_PORT_BASE: u16 = 0x40;
+pub const PIT_CHANNEL_0_DATA_PORT: u16 = 0x40;
+pub const PIT_CHANNEL_1_DATA_PORT: u16 = 0x41;
+pub const PIT_CHANNEL_2_DATA_PORT: u16 = 0x42;
+pub const PIT_COMMAND_REGISTER: u16 = 0x43;
+
+const PIT_CHANNEL_SELECT_MASK: u8 = 0b1100_0000;
+const PIT_ACCESS_MODE_MASK: u8    = 0b0011_0000;
+const PIT_OPERATING_MODE_MASK: u8 = 0b0000_1110;
+const PIT_BCD_MODE_MASK: u8       = 0b0000_0001;
+
+pub const PIT_MHZ: f64 = 1.193182;
+pub const PIT_DIVISOR: f64 = 0.25;
+
+#[derive(Debug)]
+enum ChannelMode {
+    InterruptOnTerminalCount,
+    HardwareRetriggerableOneShot,
+    RateGenerator,
+    SquareWaveGenerator,
+    SoftwareTriggeredStrobe,
+    HardwareTriggeredStrobe
+}
+
+#[derive(Debug)]
+enum AccessMode {
+    LatchCountValue,
+    LoByteOnly,
+    HiByteOnly,
+    LoByteHiByte
+}
+
+pub struct PitChannel {
+    channel_mode: ChannelMode,
+    access_mode: AccessMode,
+    reload_value: u16,
+    waiting_for_reload: bool,
+    waiting_for_lobyte: bool,
+    waiting_for_hibyte: bool,
+    current_count: u16,
+    read_in_progress: bool,
+    normal_lobyte_read: bool,    
+    count_is_latched: bool,
+    output_is_high: bool,
+    latched_lobyte_read: bool,
+    latch_count: u16,
+    bcd_mode: bool
+}
+
+pub struct ProgrammableIntervalTimer {
+
+    enabled: bool,
+    cycle_accumulator: f64,
+    last_command_byte: u8,
+    channel_selected: u32,
+    channels: Vec<PitChannel>,
+}
+pub type Pit = ProgrammableIntervalTimer;
+
+#[derive(Default, Debug, Clone)]
+pub struct PitStringState {
+    pub c0_value: String,
+    pub c0_reload_value: String,
+    pub c0_access_mode: String,
+    pub c0_channel_mode: String,
+    pub c1_value: String,
+    pub c1_reload_value: String,
+    pub c1_access_mode: String,
+    pub c1_channel_mode: String,
+    pub c2_value: String,
+    pub c2_reload_value: String,
+    pub c2_access_mode: String,
+    pub c2_channel_mode: String,
+}
+
+impl IoDevice for ProgrammableIntervalTimer {
+    fn read_u8(&mut self, port: u16) -> u8 {
+        match port {
+            PIT_COMMAND_REGISTER => 0,
+            PIT_CHANNEL_0_DATA_PORT => self.handle_data_read(0),
+            PIT_CHANNEL_1_DATA_PORT => self.handle_data_read(1),
+            PIT_CHANNEL_2_DATA_PORT => self.handle_data_read(2),
+            _ => panic!("PIT: Bad port #")
+        }
+    }
+    fn write_u8(&mut self, port: u16, data: u8) {
+        match port {
+            PIT_COMMAND_REGISTER => self.handle_command_register(data),
+            PIT_CHANNEL_0_DATA_PORT => self.handle_data_write(0, data),
+            PIT_CHANNEL_1_DATA_PORT => self.handle_data_write(1, data),
+            PIT_CHANNEL_2_DATA_PORT => self.handle_data_write(2, data),
+            _ => panic!("PIT: Bad port #")
+        }
+    }
+    fn read_u16(&mut self, port: u16) -> u16 {
+        log::error!("Invalid 16-bit read from PIT");
+        0   
+    }
+    fn write_u16(&mut self, port: u16, data: u16) {
+        log::error!("Invalid 16-bit write to PIT");
+    }
+}
+
+impl ProgrammableIntervalTimer {
+    pub fn new() -> Self {
+        let mut vec = Vec::<PitChannel>::new();
+        for i in 0..=3 {
+            let pit = PitChannel {
+                channel_mode: ChannelMode::InterruptOnTerminalCount,
+                access_mode: AccessMode::HiByteOnly,
+                reload_value: 0,
+                waiting_for_reload: false,
+                waiting_for_lobyte: false,
+                waiting_for_hibyte: false,
+                current_count: 0,
+                read_in_progress: false,
+                normal_lobyte_read: false,
+                count_is_latched: false,
+                output_is_high: false,
+                latched_lobyte_read: false,
+                latch_count: 0,
+                bcd_mode: false,
+            };
+            vec.push(pit);
+        }
+        Self {
+            enabled: true,
+            cycle_accumulator: 0.0,
+            last_command_byte: 0,
+            channel_selected: 0,
+            channels: vec
+        }
+    }
+
+    fn is_latch_command(command_byte: u8) -> bool {
+        command_byte & PIT_ACCESS_MODE_MASK == 0
+    }
+    fn get_pit_cycles(cpu_cycles: u32) -> f64 {
+        cpu_cycles as f64 * PIT_DIVISOR
+    }
+
+
+
+    fn read_command_register(&mut self, command_byte: u8) -> (u32, AccessMode, ChannelMode, bool) {
+
+        let channel_select: u32 = (command_byte >> 6) as u32;
+
+        let access_mode = match (command_byte & PIT_ACCESS_MODE_MASK) >> 4 {
+            0b00 => AccessMode::LatchCountValue,
+            0b01 => AccessMode::LoByteOnly,
+            0b10 => AccessMode::HiByteOnly,
+            0b11 => AccessMode::LoByteHiByte,
+            _ => unreachable!("Bad PIT Access mode")
+        };
+
+        let channel_mode = match (command_byte & PIT_OPERATING_MODE_MASK) >> 1 {
+            0b000 => ChannelMode::InterruptOnTerminalCount,
+            0b001 => ChannelMode::HardwareRetriggerableOneShot,
+            0b010 => ChannelMode::RateGenerator,
+            0b011 => ChannelMode::SquareWaveGenerator,
+            0b100 => ChannelMode::SoftwareTriggeredStrobe,
+            0b101 => ChannelMode::HardwareTriggeredStrobe,
+            0b110 => ChannelMode::RateGenerator,
+            0b111 => ChannelMode::SquareWaveGenerator,
+            _ => unreachable!("Bad PIT Operating mode")
+        };
+
+        let bcd_enable = command_byte & PIT_BCD_MODE_MASK == 0x01;
+
+        (channel_select, access_mode, channel_mode, bcd_enable)
+    }
+
+    fn handle_command_register(&mut self, command_byte: u8) {
+
+        let (channel_select, access_mode, channel_mode, bcd_enable) = self.read_command_register(command_byte);
+
+        if let AccessMode::LatchCountValue = access_mode {
+            // All 0's access mode indicates a Latch Count Value command
+            // Not an access mode itself, we now latch the current value of the channel until it is read
+            // or a command byte is received
+            self.channels[channel_select as usize].latch_count = self.channels[channel_select as usize].current_count;
+            self.channels[channel_select as usize].count_is_latched = true;
+            self.channels[channel_select as usize].latched_lobyte_read = false;
+        }
+        else {
+            log::debug!("PIT: Channel {} selected, access mode {:?}, channel_mode {:?}", channel_select, access_mode, channel_mode );
+
+            let channel = &mut self.channels[channel_select as usize];
+            channel.channel_mode = channel_mode;
+
+            match channel.channel_mode {
+                ChannelMode::InterruptOnTerminalCount => {
+                    channel.waiting_for_reload = true;
+                }
+                ChannelMode::HardwareRetriggerableOneShot => {
+                    channel.waiting_for_reload = true;
+                }
+                ChannelMode::RateGenerator => {
+                    channel.waiting_for_reload = true;
+                },
+                ChannelMode::SquareWaveGenerator => {
+                    channel.waiting_for_reload = true;
+                },
+                ChannelMode::SoftwareTriggeredStrobe => {},
+                ChannelMode::HardwareTriggeredStrobe => {}
+            }
+            
+            channel.reload_value = 0;
+            channel.access_mode = access_mode;
+            channel.bcd_mode = bcd_enable;
+        }        
+
+    }
+
+    pub fn handle_data_write(&mut self, port: usize, data: u8) {
+        
+
+        match self.channels[port].access_mode {
+            AccessMode::LoByteOnly => {
+                self.channels[port].reload_value = data as u16;
+                self.channels[port].waiting_for_reload = false;
+                log::debug!("Channel {} reloaded with value {} in LSB mode.", port, self.channels[port].reload_value);
+                self.channels[port].current_count =  self.channels[port].reload_value;
+            }
+            AccessMode::HiByteOnly => {
+                self.channels[port].reload_value = (data as u16) << 8;
+                self.channels[port].waiting_for_reload = false;
+                log::debug!("Channel {} reloaded with value {} in HSB mode.", port, self.channels[port].reload_value);
+                self.channels[port].current_count =  self.channels[port].reload_value;
+            }
+            AccessMode::LoByteHiByte => {
+                // Expect lo byte first, hi byte second
+
+                if self.channels[port].waiting_for_hibyte {
+                    self.channels[port].reload_value |= (data as u16) << 8;
+                    self.channels[port].waiting_for_hibyte = false;
+                    self.channels[port].waiting_for_reload = false;
+                }
+                else if self.channels[port].waiting_for_lobyte {
+                    self.channels[port].reload_value = data as u16;
+                    self.channels[port].waiting_for_lobyte = false;
+                    self.channels[port].waiting_for_hibyte = true;
+                }
+                log::debug!("Channel {} reloaded with value {} in WORD mode.", port, self.channels[port].reload_value);
+                self.channels[port].current_count =  self.channels[port].reload_value;
+            }
+            AccessMode::LatchCountValue => {
+                // Shouldn't reach here
+            }
+        }
+
+
+    }
+
+    pub fn handle_data_read(&mut self, port: usize) -> u8 {
+        let mut port = &mut self.channels[port];
+        if port.count_is_latched {
+            match port.access_mode {
+                AccessMode::LoByteOnly => {
+                    return (port.latch_count & 0xFF) as u8;
+                }
+                AccessMode::HiByteOnly => {
+                    return (port.latch_count >> 8) as u8;
+                }
+                AccessMode::LoByteHiByte => {
+                    if port.latched_lobyte_read {
+                        // Return hi byte and unlatch output
+                        port.count_is_latched = false;
+                        port.latched_lobyte_read = false;
+                        return (port.latch_count >> 8) as u8;
+                    }
+                    else {
+                        // Return lo byte
+                        return (port.latch_count & 0xFF) as u8;
+                    }
+                }
+                _ => unreachable!()
+            }
+        }
+        else {
+            match port.access_mode {
+                AccessMode::LoByteOnly => {
+                    return (port.current_count & 0xFF) as u8;
+                }
+                AccessMode::HiByteOnly => {
+                    return (port.current_count >> 8) as u8;
+                }
+                AccessMode::LoByteHiByte => {
+                    // Output lo byte of counter, then on next read output hi byte
+                    if port.read_in_progress {
+                        // Return hi byte and unlatch output
+                        port.read_in_progress = false;
+                        return (port.latch_count >> 8) as u8;
+                    }
+                    else {
+                        // Return lo byte and set read in progress flag
+                        port.read_in_progress = true;
+                        return (port.latch_count & 0xFF) as u8;
+                    }
+                }
+                _ => unreachable!()
+            }            
+        }
+    }
+
+    pub fn run(&mut self, io_bus: &mut IoBusInterface, cpu_cycles: u32, pic: &mut pic::Pic) {
+
+        let mut pit_cycles = Pit::get_pit_cycles(cpu_cycles);
+        let pit_cycles_remainder = pit_cycles.fract();
+
+        // Add up fractional cycles until we can make a whole one. 
+        // Attempts to compensate for clock drift because of unaccounted fractional cycles
+        self.cycle_accumulator += pit_cycles_remainder;
+        
+        // If we have enough cycles, drain them out of accumulator into cycle count
+        while self.cycle_accumulator > 1.0 {
+            pit_cycles += 1.0;
+            self.cycle_accumulator -= 1.0;
+        }
+
+        let pit_cycles_int = pit_cycles as u32;
+        
+        for _ in 0..pit_cycles_int {
+            self.tick(pic);
+        }
+    }
+
+    pub fn tick(&mut self, pic: &mut pic::Pic) {
+
+        for t in &mut self.channels {
+            match t.channel_mode {
+                ChannelMode::InterruptOnTerminalCount => {
+                    if t.waiting_for_reload {
+                        // Don't count while waiting for reload value
+                    }
+                    else {
+                        if t.current_count == 0 {
+                            if t.reload_value == 0 {
+                                // 0 functions as a reload value of 65536
+                                t.current_count = u16::MAX;
+                            }
+                            else {
+                                t.current_count = t.reload_value;                            
+                            }
+                        }
+                        else {
+                            t.current_count -= 1;
+                            if t.current_count == 1 {
+                                t.output_is_high = true;
+                                //log::trace!("Would trigger IRQ0")
+                                pic.request_interrupt(0);
+                            }
+                        }
+                    }
+
+                },
+                ChannelMode::HardwareRetriggerableOneShot => {},
+                ChannelMode::RateGenerator => {
+                    if t.waiting_for_reload {
+                        // Don't count while waiting for reload value
+                    }
+                    else {
+                        if t.current_count == 0 {
+                            if t.reload_value == 0 {
+                                // 0 functions as a reload value of 65536
+                                t.current_count = u16::MAX;
+                            }
+                            else {
+                                t.current_count = t.reload_value;                            
+                            }
+                        }
+                        else {
+                            t.current_count -= 1;
+                            if t.current_count == 1 {
+                                // Output would go low here
+                            }
+                        }
+                    }
+                },
+                ChannelMode::SquareWaveGenerator => {
+                    if t.waiting_for_reload {
+                        // Don't count while waiting for reload value
+                    }
+                    else {
+                        if t.current_count == 0 {
+
+                            if t.reload_value == 0 {
+                                t.current_count = u16::MAX;
+                            }
+                            else {
+                                // For even reload values, use reload value
+                                // For odd reload values, use reload value - 1
+                                if t.reload_value & 0x01 == 0 {
+                                    t.current_count = t.reload_value;                            
+                                }
+                                else {
+                                    t.current_count = t.reload_value - 1;
+                                }
+                            }
+                        }
+                        else {
+                            t.current_count -= 2;
+                            if t.current_count == 0 {
+                                // Change flipflop state
+                                t.output_is_high = !t.output_is_high;
+                            }
+                        }
+                    }
+                },
+                ChannelMode::SoftwareTriggeredStrobe => {},
+                ChannelMode::HardwareTriggeredStrobe => {},
+            }
+        }
+    }
+
+    pub fn get_string_repr(&self) -> PitStringState {
+        PitStringState {
+            c0_value: format!("{:06}", self.channels[0].current_count),
+            c0_reload_value: format!("{:06}", self.channels[0].reload_value),
+            c0_access_mode: format!("{:?}", self.channels[0].access_mode),
+            c0_channel_mode: format!("{:?}", self.channels[0].channel_mode),
+            c1_value: format!("{:06}", self.channels[1].current_count),
+            c1_reload_value: format!("{:06}", self.channels[0].reload_value),
+            c1_access_mode: format!("{:?}", self.channels[1].access_mode),
+            c1_channel_mode: format!("{:?}", self.channels[1].channel_mode),
+            c2_value: format!("{:06}", self.channels[2].current_count),
+            c2_reload_value: format!("{:06}", self.channels[2].reload_value),
+            c2_access_mode: format!("{:?}", self.channels[2].access_mode),
+            c2_channel_mode: format!("{:?}", self.channels[2].channel_mode),
+        }
+    }
+}
