@@ -93,4 +93,10 @@ impl Cpu {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_add(2);
     }
+
+    pub fn release(&mut self, disp: u16) {
+
+        // TODO: Stack exceptions?
+        self.sp = self.sp.wrapping_add(disp);
+    }
 }

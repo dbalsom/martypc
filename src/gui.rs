@@ -2,7 +2,13 @@ use egui::{ClippedMesh, Context, TexturesDelta};
 use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use winit::window::Window;
-use crate::{cpu::{CpuStringState}, pit::PitStringState};
+use crate::{
+    cpu::CpuStringState, 
+    pit::PitStringState, 
+    pic::PicStringState,
+    ppi::PpiStringState};
+
+//use crate::syntax_highlighting::code_view_ui;
 
 /// Manages all state required for rendering egui over `Pixels`.
 pub(crate) struct Framework {
@@ -26,8 +32,11 @@ pub(crate) struct Gui {
     cpu_control_dialog_open: bool,
     memory_viewer_open: bool,
     register_viewer_open: bool,
+    trace_viewer_open: bool,
     disassembly_viewer_open: bool,
     pit_viewer_open: bool,
+    pic_viewer_open: bool,
+    ppi_viewer_open: bool,
 
     cpu_single_step: bool,
     cpu_step_flag: bool,
@@ -37,9 +46,12 @@ pub(crate) struct Gui {
     pub cpu_state: CpuStringState,
     pub breakpoint: String,
     pub pit_state: PitStringState,
+    pub pic_state: PicStringState,
+    pub ppi_state: PpiStringState,
     memory_viewer_dump: String,
     disassembly_viewer_string: String,
-    disassembly_viewer_address: String
+    disassembly_viewer_address: String,
+    trace_string: String
 }
 
 impl Framework {
@@ -66,6 +78,13 @@ impl Framework {
             paint_jobs: Vec::new(),
             textures,
             gui,
+        }
+    }
+
+    pub(crate) fn has_focus(&self) -> bool {
+        match self.egui_ctx.memory().focus() {
+            Some(_) => true,
+            None => false
         }
     }
 
@@ -140,11 +159,14 @@ impl Gui {
         Self { 
             window_open: false, 
             error_dialog_open: false,
-            cpu_control_dialog_open: false,
+            cpu_control_dialog_open: true,
             memory_viewer_open: false,
             register_viewer_open: true,
-            disassembly_viewer_open: false,
+            disassembly_viewer_open: true,
+            trace_viewer_open: false,
             pit_viewer_open: false,
+            pic_viewer_open: false,
+            ppi_viewer_open: false,
 
             cpu_single_step: true,
             cpu_step_flag: false,
@@ -155,8 +177,12 @@ impl Gui {
             cpu_state: Default::default(),
             breakpoint: String::new(),
             pit_state: Default::default(),
+            pic_state: Default::default(),
+            ppi_state: Default::default(),
             disassembly_viewer_string: String::new(),
-            disassembly_viewer_address: "cs:ip".to_string()
+            disassembly_viewer_address: "cs:ip".to_string(),
+            trace_string: String::new(),
+
         }
     }
 
@@ -203,6 +229,10 @@ impl Gui {
         self.cpu_state = state.clone();
     }
 
+    pub fn update_pic_state(&mut self, state: PicStringState) {
+        self.pic_state = state;
+    }
+
     pub fn get_breakpoint(&mut self) -> &str {
         &self.breakpoint
     }
@@ -211,6 +241,13 @@ impl Gui {
         self.pit_state = state.clone();
     }
 
+    pub fn update_trace_state(&mut self, trace_string: String) {
+        self.trace_string = trace_string;
+    }
+
+    pub fn update_ppi_state(&mut self, state: PpiStringState) {
+        self.ppi_state = state;
+    }
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
@@ -221,7 +258,7 @@ impl Gui {
                         ui.close_menu();
                     }
                 });
-                ui.menu_button("View", |ui| {
+                ui.menu_button("Debug", |ui| {
                     if ui.button("CPU Control...").clicked() {
                         self.cpu_control_dialog_open = true;
                         ui.close_menu();
@@ -234,14 +271,27 @@ impl Gui {
                         self.register_viewer_open = true;
                         ui.close_menu();
                     }
+                    if ui.button("Instruction Trace...").clicked() {
+                        self.trace_viewer_open = true;
+                        ui.close_menu();
+                    }
                     if ui.button("Disassembly...").clicked() {
                         self.disassembly_viewer_open = true;
                         ui.close_menu();
                     }
+                    if ui.button("PIC...").clicked() {
+                        self.pic_viewer_open = true;
+                        ui.close_menu();
+                    }    
                     if ui.button("PIT...").clicked() {
                         self.pit_viewer_open = true;
                         ui.close_menu();
                     }
+                    if ui.button("PPI...").clicked() {
+                        self.ppi_viewer_open = true;
+                        ui.close_menu();
+                    }    
+                
                 });
             });
         });
@@ -311,6 +361,20 @@ impl Gui {
                     ui.end_row()
                 });
             });
+
+        egui::Window::new("Trace View")
+            .open(&mut self.trace_viewer_open)
+            .resizable(true)
+            .default_width(540.0)
+            .show(ctx, |ui| {
+
+                ui.horizontal(|ui| {
+                    ui.add_sized(ui.available_size(), 
+                        egui::TextEdit::multiline(&mut self.trace_string)
+                            .font(egui::TextStyle::Monospace));
+                    ui.end_row()
+                });
+            });       
 
         egui::Window::new("Disassembly View")
             .open(&mut self.disassembly_viewer_open)
@@ -500,7 +564,7 @@ impl Gui {
             .resizable(true)
             .default_width(600.0)
             .show(ctx, |ui| {
-                egui::Grid::new("reg_general")
+                egui::Grid::new("pit_view")
                     .striped(true)
                     .min_col_width(300.0)
                     .show(ui, |ui| {
@@ -569,5 +633,93 @@ impl Gui {
                     ui.end_row();                       
                 });
             });               
+
+            egui::Window::new("PIC View")
+            .open(&mut self.pic_viewer_open)
+            .resizable(true)
+            .default_width(600.0)
+            .show(ctx, |ui| {
+                egui::Grid::new("pic_view")
+                    .striped(true)
+                    .min_col_width(300.0)
+                    .show(ui, |ui| {
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("IMR Register: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.imr).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("IRR Register: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.irr).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("ISR Register: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.isr).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+
+                    for i in 0..self.pic_state.interrupt_stats.len() {
+                        ui.horizontal(|ui| {
+                            let label_str = format!("IRQ {} IMR Masked: ", i );
+                            ui.label(egui::RichText::new(label_str).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut self.pic_state.interrupt_stats[i].0).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            let label_str = format!("IRQ {} ISR Masked: ", i );
+                            ui.label(egui::RichText::new(label_str).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut self.pic_state.interrupt_stats[i].1).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            let label_str = format!("IRQ {} Serviced:   ", i );
+                            ui.label(egui::RichText::new(label_str).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut self.pic_state.interrupt_stats[i].2).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();                                                
+                    }
+                      
+                });
+            });           
+            
+            egui::Window::new("PPI View")
+            .open(&mut self.ppi_viewer_open)
+            .resizable(true)
+            .default_width(600.0)
+            .show(ctx, |ui| {
+                egui::Grid::new("ppi_view")
+                    .striped(true)
+                    .min_col_width(300.0)
+                    .show(ui, |ui| {
+
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Port A Mode:  ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_mode).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_bin).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Port C Mode:  ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_mode).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Port C Value: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_value).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                });
+            });           
     }
 }

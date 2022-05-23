@@ -4,7 +4,7 @@
 
 */
 
-use crate::io::{IoBusInterface, IoDevice};
+use crate::io::{IoDevice};
 
 
 pub const PIC_INTERRUPT_OFFSET: u8 = 8;
@@ -23,16 +23,40 @@ const ICW4_AEOI_MODE: u8        = 0b0000_0010; // Bit on if Auto EOI is enabled
 const ICW4_BUFFERED:  u8        = 0b0000_1000; // Bit on if Buffered mode
 const ICW4_NESTED: u8           = 0b0001_0000; // Bit on if Fully Nested mode
 
-const OCW1_IS_OCW1: u8          = 0b1000_0000; // Bit determines if input is OCW1
+const OCW_IS_OCW3: u8           = 0b0000_1000; // Bit on if OCW is OCW3
+
+const OCW2_NONSPECIFIC_EOI: u8  = 0b0010_0000;
+const OCW3_POLL_COMMAND: u8     = 0b0000_0100;
+const OCW3_RR_COMMAND: u8       = 0b0000_0011;
 
 pub enum InitializationState {
     Normal,             // Normal operation, can receive an ICW1 at any point
     ExpectingICW2,      // In initialization sequence, expecting ICW2
     ExpectingICW4       // In initialization sequence, expecting ICW4
 }
+
+#[derive(Copy, Clone)]
 pub enum ReadSelect {
     ISR,
     IRR
+}
+
+#[derive(Copy, Clone)]
+pub struct InterruptStats {
+    imr_masked_count: u64,
+    isr_masked_count: u64,
+    serviced_count: u64
+}
+
+
+impl InterruptStats {
+    pub fn new() -> Self {
+        Self {
+            imr_masked_count: 0,
+            isr_masked_count: 0,
+            serviced_count: 0
+        }
+    }
 }
 
 pub type PicRequestFn = fn (&mut Pic, interrupt: u8);
@@ -55,6 +79,18 @@ pub struct Pic {
     expecting_icw2: bool,
     expecting_icw4: bool,    // ICW3 not supported in Single mode operation
     error: bool,             // We encountered an invalid condition or request
+
+    interrupt_stats: Vec<InterruptStats>
+}
+
+#[derive(Default)]
+pub struct PicStringState {
+
+    pub imr: String,
+    pub isr: String,
+    pub irr: String,
+
+    pub interrupt_stats: Vec<(String, String, String)>
 }
 
 impl IoDevice for Pic {
@@ -124,6 +160,7 @@ impl Pic {
             expecting_icw2: false,
             expecting_icw4: false,
             error: false,
+            interrupt_stats: vec![InterruptStats::new(); 8]
         }
     }
 
@@ -153,6 +190,58 @@ impl Pic {
                 self.expecting_icw4 = true;
             }
         }
+        else if byte & OCW2_NONSPECIFIC_EOI != 0 {
+            //log::trace!("PIC: Received nonspecific EOI");
+
+            self.isr = Pic::clear_lsb(self.isr);
+        }
+        else if byte & OCW_IS_OCW3 != 0  { 
+            
+            let rr = match byte & OCW3_RR_COMMAND {
+                0b10 => {
+                    log::debug!("PIC: OCW3 Read Selected IRR register");
+                    ReadSelect::IRR
+                },
+                0b11 => {
+                    log::debug!("PIC: OCW3 Read Selected ISR register");
+                    ReadSelect::ISR
+                }
+                _ => self.read_select
+            };
+            self.read_select = rr;
+
+        }
+        else {
+            log::trace!("PIC: Unhandled command: {:02X}", byte)
+        }
+    }
+
+
+    pub fn clear_msb(byte: u8) -> u8 {
+
+        let mut mask: u8 = 0x80;
+        let mut byte = byte;
+        for _ in 0..8 {
+            if byte & mask != 0 {
+                byte &= !mask;
+                break;
+            }
+            mask >>= 1;
+        }
+        byte
+    }    
+    pub fn clear_lsb(byte: u8) -> u8 {
+
+        let mut mask: u8 = 0x01;
+        let mut byte = byte;
+        for _ in 0..8 {
+            if byte & mask != 0 {
+                byte &= !mask;
+                break;
+            }
+            mask <<= 1;
+        }
+        byte
     }
 
     pub fn handle_data_register_write(&mut self, byte: u8) {
@@ -162,12 +251,14 @@ impl Pic {
                 // We aren't expecting any ICWs, so treat this write as a set of the IMR
                 log::trace!("PIC: Set IMR to: {:02X}", byte);
                 self.set_imr(byte);
+                return;
             }
             InitializationState::ExpectingICW2 => {
                 // This value should be an ICW2 based on just receiving an ICW1 on control port
 
                 log::debug!("PIC: Read ICW2: {:02X}", byte);
                 self.init_state = InitializationState::ExpectingICW4;
+                return;
             }
             InitializationState::ExpectingICW4 => {
                 // This value should be an ICW4 based on receiving an ICW2 (ICW3 skipped in Single mode)
@@ -184,10 +275,9 @@ impl Pic {
                     log::error!("PIC: Error: MCS-80/85 mode unsupported");
                     self.error = true;
                 }
+                return;
             }
         }
-
-        // Handle Operational Control Words (again, only bytes)
 
     }
 
@@ -207,35 +297,73 @@ impl Pic {
     }
 
     fn set_imr(&mut self, byte: u8) {
+
+        // Changing the IMR will allow devices with current high IR lines to generate interrupts
         self.imr = byte;
+
+        let mut ir_bit = 0x01;
+        for interrupt in 0..8 {
+
+            let have_request = ir_bit & self.irr != 0;
+            let is_masked = ir_bit & self.imr != 0;
+            let is_in_service = ir_bit & self.isr != 0;
+
+            if have_request && !is_masked && !is_in_service {
+                // (Set INT request line high)
+                self.int_request = true;
+                self.interrupt_stats[interrupt as usize].serviced_count += 1;
+            }
+
+            ir_bit <<= 1;
+        }
+        
     }
 
     pub fn request_interrupt(&mut self, interrupt: u8) {
         // Called by a device to request interrupt service
+        // Simulates IR line going high
 
         if interrupt > 7 {
             panic!("PIC: Received interrupt out of range: {}", interrupt);
         }
+
         //log::trace!("PIC: Interrupt {} requested by device", interrupt);
 
         // Interrupts 0-7 map to bits 0-7 in IMR register
         let intr_bit: u8 = 0x01 << interrupt;
+        // Set the request bit in the IR register
+        self.irr |= intr_bit; 
 
         if self.imr & intr_bit != 0 {
-            // If the corresponding bit is set in the IMR, do not process
+            // If the corresponding bit is set in the IMR, it is masked: do not process right now
+            self.interrupt_stats[interrupt as usize].imr_masked_count += 1;
         }
         else if self.isr & intr_bit != 0 {
-            // If the corresponding bit is set in the ISR, do not process
+            // If the corresponding bit is set in the ISR, do not process right now
+            self.interrupt_stats[interrupt as usize].isr_masked_count += 1;
         }
         else {
-            // Interrupt is not masked or in service, process
-            // Set bit in Interrupt Request Register
-            self.irr |= intr_bit; 
+            if interrupt == 1 {
+                log::trace!("PIC: Interrupt {} requested by keyboard and not masked", interrupt);
+            }
 
-            // set INT request line high
+            // Interrupt is not masked or already in service, process it...
+            // (Set INT request line high)
             self.int_request = true;
+            self.interrupt_stats[interrupt as usize].serviced_count += 1;
+        }
+    }
+
+    pub fn clear_interrupt(&mut self, interrupt: u8) {
+        // Called by device to withdraw interrupt service request
+        // Simulates IR line going low
+        if interrupt > 7 {
+            panic!("PIC: Received interrupt out of range: {}", interrupt);
         }
 
+        // Clear the corresponding bit in the IRR register
+        let intr_bit: u8 = 0x01 << interrupt;
+        self.imr &= !intr_bit;
     }
 
     pub fn query_interrupt_line(&self) -> bool {
@@ -246,24 +374,29 @@ impl Pic {
     pub fn get_interrupt_vector(&mut self) -> Option<u8> {
 
         // Only handling timer interrupts for now
-        // Return the highest priority vector from the IRR
-        let intr_bit: u8 = 0x01;
+        // Return the highest priority vector not currently masked from the IRR
+        let mut ir_bit: u8 = 0x01;
         for irq in 0..8 {
-            let intr_bit = intr_bit << irq;
-            if self.irr & intr_bit  != 0 {
-                
-                // found highest priority IRR
 
-                // Clear it
-                self.irr &= !intr_bit;
-                // Set it in ISR being serviced
-                self.isr |= intr_bit;
+            let have_request = ir_bit & self.irr != 0;
+            let is_masked = ir_bit & self.imr != 0;
+            let is_in_service = ir_bit & self.isr != 0;
+
+            if have_request && !is_masked {
+                
+                // found highest priority IRR not masked
+
+                // Clear its bit in the IR...
+                self.irr &= !ir_bit;
+                // ...and set it in ISR being serviced
+                self.isr |= ir_bit;
                 self.irq = irq;
                 // INT line low
                 self.int_request = false;
 
                 return Some(irq + PIC_INTERRUPT_OFFSET)
             }
+            ir_bit <<= 1;
         }
         None
     }
@@ -272,5 +405,25 @@ impl Pic {
         // Clear ISR bit
         let intr_bit: u8 = 0x01 << self.irq;
         self.isr &= !intr_bit;
+    }
+
+    pub fn get_string_state(&self) -> PicStringState {
+    
+        let mut state = PicStringState {
+            imr: format!("{:08b}", self.imr),
+            irr: format!("{:08b}", self.irr),
+            isr: format!("{:08b}", self.isr),
+            interrupt_stats: Vec::new()
+        };
+
+        for i in 0..8 {
+            state.interrupt_stats.push(
+                ( 
+                    format!("{}", self.interrupt_stats[i].imr_masked_count), 
+                    format!("{}", self.interrupt_stats[i].isr_masked_count), 
+                    format!("{}", self.interrupt_stats[i].serviced_count )
+                ));
+        }
+        state
     }
 }

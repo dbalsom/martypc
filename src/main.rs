@@ -6,14 +6,16 @@ use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use rand::distributions::DistString;
 use winit::dpi::LogicalSize;
-use winit::event::{Event, StartCause, VirtualKeyCode};
+use winit::event::{Event, WindowEvent, StartCause, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
+use std::borrow::Borrow;
 use std::time::{Duration, Instant};
 use std::fs::{File, read};
 use rand::{Rng};
+
 
 mod arch;
 mod bus;
@@ -21,6 +23,7 @@ mod byteinterface;
 mod cga;
 mod cpu;
 mod dma;
+mod floppy;
 mod gui;
 mod io;
 mod machine;
@@ -29,12 +32,16 @@ mod memerror;
 mod pic;
 mod pit;
 mod ppi;
+mod rom;
 mod util;
 mod video;
+mod input;
 
-use machine::{Machine, MachineType};
+use machine::{Machine, MachineType, VideoType};
+use rom::{RomManager, RomError};
 use video::{CGAColor};
 use byteinterface::ByteInterface;
+
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -60,14 +67,25 @@ fn main() -> Result<(), Error> {
     let timer_length = Duration::new(1, 0);
     env_logger::init();
 
+    let mut roms = RomManager::new(MachineType::IBM_PC_5150);
+
+    //roms.try_load_from_dir(".\\rom");
+    //std::process::exit(0);
+
     // Init machine
-    let bios_vec = read("./bin/bios.bin").unwrap_or_else(|e| {
-        panic!("Couldn't open BIOS image ./bin/bios.bin: {}", e)
+    let bios_vec = read("./rom/bios.rom").unwrap_or_else(|e| {
+        eprintln!("Couldn't open BIOS image ./rom/bios.rom: {}", e);
+        std::process::exit(1);
     });
 
-    let mut machine = Machine::new(MachineType::IBM_PC_5150, bios_vec);
-    
+    let basic_vec = read("./rom/basic_v1.rom").unwrap_or_else(|e| {
+        eprintln!("Couldn't open BASIC image: {}", e);
+        std::process::exit(1);
+    });
 
+    let mut machine = Machine::new(MachineType::IBM_PC_5150, VideoType::CGA, bios_vec, basic_vec);
+    
+    let video = video::Video::new();
 
     // Init graphics & GUI 
 
@@ -131,10 +149,57 @@ fn main() -> Result<(), Error> {
 
                 world.last_second = Instant::now();
             }
-            Event::WindowEvent { event, .. } => {
-                // Update egui inputs
-                framework.handle_event(&event);
-            }
+            //Event::WindowEvent { event, .. } => {
+//
+            //    match &event {
+//
+            //        KeyboardInput => {
+            //            println!("Event: {:?}", e);
+            //        }
+            //    }
+//
+            //    // Update egui inputs
+            //    framework.handle_event(&event);
+            //}
+            Event::WindowEvent{ event, .. } => {
+
+                match event {
+                    WindowEvent::KeyboardInput{
+                        input: winit::event::KeyboardInput {
+                            virtual_keycode:Some(keycode),
+                            state,
+                            ..
+                        },
+                        ..
+                    } => {
+                        if !framework.has_focus() {
+                            match state {
+                                winit::event::ElementState::Pressed => {
+                                    
+                                    if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                        log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                        machine.key_press(keycode);
+                                    };
+                                },
+                                winit::event::ElementState::Released => {
+                                    if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                        log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                        machine.key_release(keycode);
+                                    };
+                                }
+                            }
+                        }
+                        else {
+                            framework.handle_event(&event);
+                        }
+                    },
+                    _ => {
+                        framework.handle_event(&event);
+                    }
+                }
+            },
+
+
             // Draw the current frame
             Event::MainEventsCleared => {
 
@@ -160,7 +225,7 @@ fn main() -> Result<(), Error> {
                     // Draw the world
                     world.update();
                     
-                    world.draw(pixels.get_frame());
+                    //world.draw(pixels.get_frame());
 
                     // Get breakpoint from GUI
                     let bp_str = framework.gui.get_breakpoint();
@@ -194,20 +259,23 @@ fn main() -> Result<(), Error> {
                         }
                         None => {}
                     }
-
+                    
+                    // Draw video memory
+                    video.draw(pixels.get_frame(), machine.cga(), machine.bus());
                     
                     // Update egui data
 
                     // -- Update memory viewer window
-                    let mem_dump_addr_str = framework.gui.get_memory_view_address();
-                    let mem_dump_addr = match machine.cpu().eval_address(mem_dump_addr_str) {
-                        Some(i) => i,
-                        None => 0
-                    };
-                    let mem_dump_str = machine.bus().dump_flat(mem_dump_addr as usize, 256);
+                    {
+                        let mem_dump_addr_str = framework.gui.get_memory_view_address();
+                        let mem_dump_addr = match machine.cpu().eval_address(mem_dump_addr_str) {
+                            Some(i) => i,
+                            None => 0
+                        };
+                        let mem_dump_str = machine.bus().dump_flat(mem_dump_addr as usize, 256);
 
-                    framework.gui.update_memory_view(mem_dump_str);
-
+                        framework.gui.update_memory_view(mem_dump_str);
+                    }   
                     // -- Update register viewer window
                     let cpu_state = machine.cpu().get_string_state();
                     framework.gui.update_cpu_state(cpu_state);
@@ -215,6 +283,18 @@ fn main() -> Result<(), Error> {
                     // -- Update PIT viewer window
                     let pit_state = machine.pit_state();
                     framework.gui.update_pit_state(pit_state);
+
+                    // -- Update PIC viewer window
+                    let pic_state = machine.pic_state();
+                    framework.gui.update_pic_state(pic_state);
+
+                    // -- Update PPI viewer window
+                    let ppi_state = machine.ppi_state();
+                    framework.gui.update_ppi_state(ppi_state);
+
+                    // -- Update Instruction Trace window
+                    let trace = machine.cpu().dump_instruction_history();
+                    framework.gui.update_trace_state(trace);
 
                     // -- Update disassembly viewer window
                     let disassembly_addr_str = framework.gui.get_disassembly_view_address();

@@ -5,35 +5,47 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::bus::BusInterface;
-
-use crate::io::{IoHandler, IoBusInterface};
-use crate::dma;
-use crate::pic;
-use crate::pit::{self, PitStringState};
-use crate::ppi;
-use crate::cga;
-
-use crate::cpu::{Cpu, Flag, CpuError};
-
-
+use crate::{
+    bus::BusInterface,
+    dma,
+    cga::{self, CGACard},
+    cpu::{Cpu, Flag, CpuError},
+    floppy,
+    io::{IoHandler, IoBusInterface},
+    pit::{self, PitStringState},
+    pic::{self, PicStringState},
+    ppi::{self, PpiStringState},
+};
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
 #[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug)]
 pub enum MachineType {
     IBM_PC_5150,
     IBM_XT_5160
 }
 
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone)]
+pub enum VideoType {
+    MDA,
+    CGA,
+    EGA,
+    VGA
+}
+
 pub struct Machine {
     machine_type: MachineType,
+    video_type: VideoType,
     bus: BusInterface,
     io_bus: IoBusInterface,
     cpu: Cpu,
     dma_controller: Rc<RefCell<dma::DMAController>>,
     pit: Rc<RefCell<pit::Pit>>,
     pic: Rc<RefCell<pic::Pic>>,
+    ppi: Rc<RefCell<ppi::Ppi>>,
+    cga: Rc<RefCell<cga::CGACard>>,
     error: bool,
     error_str: String,
 
@@ -50,18 +62,29 @@ lazy_static! {
         m.insert(0xfe158, "Base 16K Read/Write Test");
         m.insert(0xfe235, "8249 Interrupt Controller Test");
         m.insert(0xfe285, "8253 Timer Checkout");
+        m.insert(0xfe33b, "ROS Checksum II");
+        m.insert(0xfe352, "Initialize CRTC Controller");
+        m.insert(0xfe3af, "Video Line Test");
+        m.insert(0xfe4c7, "Keyboard Test");
+        m.insert(0xfe3c0, "CRT Interface Lines Test");
+        m.insert(0xfe55c, "Diskette Attachment Test");
         m.insert(0xfe630, "Error Beep");
         m.insert(0xfe666, "Beep");
         m.insert(0xfe688, "Keyboard Reset");
         m.insert(0xfe6b2, "Blink LED Interrupt");
         m.insert(0xfe6ca, "Print Message");
-        m.insert(0xfe6fa, "Bootstrap Loader");
+        m.insert(0xfe6f2, "Bootstrap Loader");
+        m.insert(0xf6000, "ROM BASIC");
         m
     };
 }
 
 impl Machine {
-    pub fn new(machine_type: MachineType, bios_buf: Vec<u8>) -> Machine {
+    pub fn new(
+        machine_type: MachineType,
+        video_type: VideoType,
+        bios_buf: Vec<u8>,
+        basic_buf: Vec<u8>) -> Machine {
 
         let mut bus = BusInterface::new();
         let mut io_bus = IoBusInterface::new();
@@ -77,10 +100,13 @@ impl Machine {
         io_bus.register_port_handler(pic::PIC_DATA_PORT, IoHandler::new(pic.clone()));
 
         // Intel 8255 Programmable Peripheral Interface
-        let mut ppi = Rc::new(RefCell::new(ppi::Ppi::new()));
+        // PPI Needs to know machine_type as DIP switches and thus PPI behavior are different 
+        // for PC vs XT
+        let mut ppi = Rc::new(RefCell::new(ppi::Ppi::new(machine_type, video_type)));
         io_bus.register_port_handler(ppi::PPI_PORT_A, IoHandler::new(ppi.clone()));
         io_bus.register_port_handler(ppi::PPI_PORT_B, IoHandler::new(ppi.clone()));
         io_bus.register_port_handler(ppi::PPI_PORT_C, IoHandler::new(ppi.clone()));
+        io_bus.register_port_handler(ppi::PPI_COMMAND_PORT, IoHandler::new(ppi.clone()));
         
         // Intel 8253 Programmable Interval Timer
         // Ports 0x40,41,42 Data ports, 0x43 Control port
@@ -95,12 +121,27 @@ impl Machine {
         let mut dma = Rc::new(RefCell::new(dma::DMAController::new()));
         io_bus.register_port_handler(dma::DMA_CONTROL_PORT, IoHandler::new(dma.clone()));
 
+        // Floppy Controller:
+        let mut fdc = Rc::new(RefCell::new(floppy::FloppyController::new()));
+        io_bus.register_port_handler(floppy::FDC_DIGITAL_OUTPUT_REGISTER, IoHandler::new(fdc.clone()));
+        io_bus.register_port_handler(floppy::FDC_STATUS_REGISTER, IoHandler::new(fdc.clone()));
+        io_bus.register_port_handler(floppy::FDC_DATA_REGISTER, IoHandler::new(fdc.clone()));
+
         // CGA card
         let mut cga = Rc::new(RefCell::new(cga::CGACard::new()));
+        io_bus.register_port_handler(cga::CRTC_REGISTER_SELECT, IoHandler::new(cga.clone()));
+        io_bus.register_port_handler(cga::CRTC_REGISTER, IoHandler::new(cga.clone()));
         io_bus.register_port_handler(cga::CGA_MODE_CONTROL_REGISTER, IoHandler::new(cga.clone()));
+        io_bus.register_port_handler(cga::CGA_STATUS_REGISTER, IoHandler::new(cga.clone()));
+        io_bus.register_port_handler(cga::CGA_LIGHTPEN_REGISTER, IoHandler::new(cga.clone()));
 
         // Install BIOS image
         bus.copy_from(bios_buf, 0xFE000, 4, true).unwrap();
+
+        // Load ROM BASIC if present
+        if basic_buf.len() > 0 {
+            bus.copy_from(basic_buf, 0xF6000, 4, true).unwrap();
+        }
 
         // Temporarily patch DMA test
         bus.patch_from(vec![0xEB, 0x03], 0xFE130).unwrap();  // JZ -> JNP
@@ -109,12 +150,15 @@ impl Machine {
 
         Machine {
             machine_type: machine_type,
+            video_type: video_type,
             bus: bus,
             io_bus: io_bus,
             cpu: cpu,
             dma_controller: dma,
             pit: pit,
             pic: pic,
+            ppi: ppi,
+            cga: cga,
             error: false,
             error_str: String::new(),
         }
@@ -128,6 +172,10 @@ impl Machine {
         &mut self.bus
     }
 
+    pub fn cga(&self) -> Rc<RefCell<CGACard>> {
+        self.cga.clone()
+    }
+
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
     }
@@ -138,11 +186,32 @@ impl Machine {
         pit_data
     }
 
+    pub fn pic_state(&self) -> PicStringState {
+        let pic = self.pic.borrow();
+        pic.get_string_state()
+    }
+
+    pub fn ppi_state(&self) -> PpiStringState {
+        let pic = self.ppi.borrow();
+        pic.get_string_state()
+    }
+
     pub fn get_error_str(&self) -> Option<&str> {
         match self.error {
             true => Some(&self.error_str),
             false => None
         }
+    }
+
+    pub fn key_press(&self, code: u8) {
+        self.ppi.borrow_mut().send_keyboard(code);
+        self.pic.borrow_mut().request_interrupt(1);
+    }
+
+    pub fn key_release(&self, code: u8 ) {
+        // HO Bit set converts a scancode into its 'release' code
+        self.ppi.borrow_mut().send_keyboard(code | 0x80);
+        self.pic.borrow_mut().request_interrupt(1);
     }
 
     pub fn run(&mut self, cycle_target: u32, single_step: bool, breakpoint: u32) {
@@ -169,18 +238,6 @@ impl Machine {
                     return
                 }
 
-                // Check for interrupts if Interrupt Flag is set
-                if self.cpu.get_flag(Flag::Interrupt){
-
-                    let mut pic = self.pic.borrow_mut();
-                    if pic.query_interrupt_line() {
-                        match pic.get_interrupt_vector() {
-                            Some(irq) =>  self.cpu.do_hw_interrupt(&mut self.bus, &mut self.io_bus, irq),
-                            None => {}
-                        }
-                    }
-                }
-
                 match self.cpu.step(&mut self.bus, &mut self.io_bus) {
                     Ok(()) => {
                     },
@@ -191,10 +248,23 @@ impl Machine {
                     } 
                 }
 
+                // Check for hardware interrupts if Interrupt Flag is set and not in wait cycle
+                if self.cpu.interrupts_enabled() {
+
+                    let mut pic = self.pic.borrow_mut();
+                    if pic.query_interrupt_line() {
+                        match pic.get_interrupt_vector() {
+                            Some(irq) =>  self.cpu.do_hw_interrupt(&mut self.bus, irq),
+                            None => {}
+                        }
+                    }
+                }
+
                 // Run devices
                 self.dma_controller.borrow_mut().run(&mut self.io_bus);
-                self.pit.borrow_mut().run(&mut self.io_bus,7, &mut self.pic.borrow_mut());
-
+                self.pit.borrow_mut().run(&mut self.io_bus,&mut self.pic.borrow_mut(), 7);
+                self.cga.borrow_mut().run(&mut self.io_bus, 7);
+                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), 7);
 
             }
             // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all

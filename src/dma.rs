@@ -1,3 +1,11 @@
+/*
+
+    Implements the Intel 8237 DMA Controller
+
+
+*/
+
+
 use crate::io::{IoBusInterface, IoDevice};
 use log::debug;
 
@@ -6,8 +14,37 @@ pub const DMA_CONTROL_PORT: u16 = 0x08;
 // Control byte bit fields
 pub const DMA_CONTROL_DISABLE: u8 = 0x04;
 
+pub enum ServiceMode {
+    SingleTransfer,
+    BlockTransfer,
+    DemandTransfer,
+    Cascade
+}
+
+pub enum TransferType {
+    Read,
+    Write,
+    Verify
+}
+
+pub struct DMAChannel {
+    current_address_reg: u16,
+    current_word_count_reg: u16,
+    base_address_reg: u16,
+    base_word_count: u16,
+    mode_reg: u8,
+}
+
 pub struct DMAController {
-    enabled: bool
+    enabled: bool,
+    channel: [DMAChannel; 4],
+    
+    command_register: u8,
+    request_reg: u8,
+    mask_reg: u8,
+    status_reg: u8,
+    temp_reg: u8
+
 }
 
 impl IoDevice for DMAController {

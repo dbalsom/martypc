@@ -1,5 +1,5 @@
 use crate::cpu::{Cpu, Flag};
-use crate::arch::{Opcode};
+use crate::arch::{Opcode, Register8, Register16};
 
 impl Cpu {
 
@@ -13,7 +13,6 @@ impl Cpu {
             }
             byte >>= 1;
         }
-
         bits % 2 == 0
     }
 
@@ -36,8 +35,6 @@ impl Cpu {
     }
 
     pub fn set_flags_from_result_u8(&mut self, result: u8) {
-        // Most ALU operations set o..szapc flags
-        
         // Set Sign flag to state of Sign (HO) bit
         self.set_flag_state(Flag::Sign, result & 0x80 != 0);
 
@@ -269,7 +266,6 @@ impl Cpu {
         (word, carry)
     }    
 
-    // TODO: Handle Aux Carry Flag
     fn add_u8(byte1: u8, byte2: u8, carry_in: bool) -> (u8, bool, bool, bool) {
         // OVERFLOW flag indicates signed overflow
         // CARRY flag indicates unsigned overflow
@@ -299,7 +295,6 @@ impl Cpu {
         (sum, carry, overflow, aux_carry)
     }
 
-    // TODO: Handle Aux Carry Flag
     fn add_u16(word1: u16, word2: u16, carry_in: bool) -> (u16, bool, bool, bool) {
         // OVERFLOW flag indicates signed overflow
         // CARRY flag indicates unsigned overflow
@@ -330,7 +325,7 @@ impl Cpu {
     }    
 
     // TODO: Handle Aux Carry Flag
-    fn sub_u8(byte1: u8, byte2: u8, carry_in: bool) -> (u8, bool, bool, bool) {
+    pub fn sub_u8(byte1: u8, byte2: u8, carry_in: bool) -> (u8, bool, bool, bool) {
         // OVERFLOW flag indicates signed overflow
         // CARRY flag indicates unsigned overflow
         let mut carry = false;
@@ -359,7 +354,8 @@ impl Cpu {
     }
 
     // TODO: Handle Aux Carry Flag
-    fn sub_u16(word1: u16, word2: u16, carry_in: bool) -> (u16, bool, bool, bool) {
+    // TODO: Make overflow checks more efficient?
+    pub fn sub_u16(word1: u16, word2: u16, carry_in: bool) -> (u16, bool, bool, bool) {
         // OVERFLOW flag indicates signed overflow
         // CARRY flag indicates unsigned overflow
         let mut carry = false;
@@ -368,7 +364,7 @@ impl Cpu {
 
         // do aux flag here
 
-        let sum_u32 = (word1 as u32).wrapping_sub(word1 as u32);
+        let sum_u32 = (word1 as u32).wrapping_sub(word2 as u32);
         let sum_u32 = sum_u32.wrapping_sub(carry_in as u32);
         if sum_u32 > u16::MAX as u32 {
             // Unsigned overflow occurred
@@ -385,6 +381,83 @@ impl Cpu {
         let sum = word1.wrapping_sub(word2);
         let sum = sum.wrapping_sub(carry_in as u16);
         (sum, carry, overflow, aux_carry)
+    }
+
+    pub fn multiply_u8(&mut self, operand1: u8) {
+        
+        // 8 bit operand => 16 bit product
+        let product: u16 = self.al as u16 * operand1 as u16;
+
+        // Set carry and overflow if product wouldn't fit in u8
+        if product & 0xFF00 != 0 {
+            self.set_flag(Flag::Carry);
+            self.set_flag(Flag::Overflow);
+        }
+
+        // Note: Does not set Sign or Zero flags
+        self.set_register16(Register16::AX, product);
+    }    
+
+    pub fn multiply_u16(&mut self, operand1: u16) {
+        
+        // 16 bit operand => 32bit product
+        let product: u32 = self.ax as u32 * operand1 as u32;
+
+        // Set carry and overflow if product wouldn't fit in u16
+        if product & 0xFFFF0000 != 0 {
+            self.set_flag(Flag::Carry);
+            self.set_flag(Flag::Overflow);
+        }
+
+        // Note: Does not set Sign or Zero flags
+        let ho_word = (product >> 16) as u16;
+        let lo_word = (product & 0x0000FFFF) as u16;
+
+        self.set_register16(Register16::DX, ho_word);
+        self.set_register16(Register16::AX, lo_word);
+    
+    }
+
+    // DIV r/m8 instruction
+    // Divide can fail on div by 0 or overflow - (on which we would trigger an exception)
+    pub fn divide_u8(&mut self, operand1: u8) -> bool {
+
+        // Divide by 0 returns failure
+        if operand1 == 0 {
+            return false;
+        }
+
+        let quotient = self.ax / operand1 as u16;
+        let remainder  = self.ax % operand1 as u16;
+
+        // TODO: should we return without modifying AL on failure??
+        self.set_register8(Register8::AL, quotient as u8);
+        self.set_register8(Register8::AH, remainder as u8);
+
+        // Return false if overflow
+        return quotient & 0xFF00 == 0;
+    }
+
+    // DIV r/m16 instruction
+    // Divide can fail on div by 0 or overflow - (on which we would trigger an exception)
+    pub fn divide_u16(&mut self, operand1: u16) -> bool {
+
+        // Divide by 0 returns failure
+        if operand1 == 0 {
+            return false;
+        }
+
+        let numerator = (self.dx as u32) << 16 | self.ax as u32;
+
+        let quotient = numerator / operand1 as u32;
+        let remainder  = numerator % operand1 as u32;
+
+        // TODO: should we return without modifying AL on failure??
+        self.set_register16(Register16::AX, quotient as u16);
+        self.set_register16(Register16::DX, remainder as u16);
+
+        // Return false if overflow
+        return quotient & 0xFFFF0000 == 0;
     }
 
     pub fn math_op8(&mut self, opcode: Opcode, operand1: u8, operand2: u8) -> u8 {
@@ -507,8 +580,6 @@ impl Cpu {
                 // Return the operand1 unchanged
                 operand1
             }                        
-
-            
             _=> panic!("cpu::math_op8(): Invalid opcode: {:?}", opcode)
         }
     }
@@ -572,6 +643,31 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }            
+            Opcode::OR => {
+                let result = operand1 | operand2;
+                // Clear carry, overflow
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::Overflow);
+                self.set_flags_from_result_u16(result);
+                result
+            }
+            Opcode::AND => {
+                let result = operand1 & operand2;
+                // Clear carry, overflow
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::Overflow);
+                self.set_flags_from_result_u16(result);
+                result
+            }        
+            Opcode::TEST => {
+                let result = operand1 & operand2;
+                // Clear carry, overflow
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::Overflow);
+                self.set_flags_from_result_u16(result);
+                // Do not modify operand
+                operand1  
+            }    
             Opcode::CMP => {
                 // CMP behaves like SUB except we do not store the result
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, false );
@@ -775,7 +871,7 @@ impl Cpu {
                 }
                 self.set_flags_from_result_u16(result);
             }
-            _=> panic!("Invalid opcode provided to bitshift_op8()")
+            _=> panic!("Invalid opcode provided to bitshift_op16()")
         }
 
         // Return result        
@@ -895,5 +991,29 @@ mod tests {
         assert_eq!(carry, true);
 
     }
+
+    #[test]
     
+    fn test_mul() {
+        let mut cpu = Cpu::new(0);
+
+        cpu.set_register16(Register16::AX, 1);
+
+        for i in 0..7 {
+            cpu.multiply_u8(2);
+        }
+        assert_eq!(cpu.al, 128);
+        cpu.multiply_u8(2);
+        assert_eq!(cpu.ax, 256);
+
+        cpu.set_register16(Register16::AX, 1);
+
+        for i in 0..15 {
+            cpu.multiply_u16(2);
+        }
+        assert_eq!(cpu.ax, 32768);
+        cpu.multiply_u16(2);
+        assert_eq!(cpu.ax, 0);
+        assert_eq!(cpu.dx, 1); // dx will contain overflow from ax @ 65536
+    }
 }

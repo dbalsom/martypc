@@ -23,7 +23,7 @@ use crate::io::IoBusInterface;
 use crate::arch::{OperandType, Instruction, decode, RepType, Register8, Register16};
 
 pub const CPU_MHZ: f64 = 4.77272666;
-const CPU_HISTORY_LEN: usize = 16;
+const CPU_HISTORY_LEN: usize = 32;
 
 const INTERRUPT_VEC_LEN: usize = 4;
 
@@ -50,13 +50,21 @@ const CPU_FLAGS_ALWAYS_ON: u16 = CPU_FLAG_RESERVED1 | CPU_FLAG_RESERVED12 | CPU_
 const REGISTER_HI_MASK: u16    = 0b0000_0000_1111_1111;
 const REGISTER_LO_MASK: u16    = 0b1111_1111_0000_0000;
 
+
+#[derive(Debug, Copy, Clone)]
+pub enum CpuException {
+    NoException,
+    DivideError
+}
+
 #[derive(Debug)]
 pub enum CpuError {
     InvalidInstructionError(u8, u32),
     UnhandledInstructionError(u8, u32),
     InstructionDecodeError(u32),
     ExecutionError(u32),
-    CpuHaltedError(u32)
+    CpuHaltedError(u32),
+    ExceptionError(CpuException)
 }
 impl Error for CpuError {}
 impl Display for CpuError{
@@ -66,7 +74,8 @@ impl Display for CpuError{
             CpuError::UnhandledInstructionError(o, addr)=>write!(f, "An unhandled instruction was encountered: {:02X} at address: {:06X}", o, addr),
             CpuError::InstructionDecodeError(addr)=>write!(f, "An error occurred during instruction decode at address: {:06X}", addr),
             CpuError::ExecutionError(addr)=>write!(f, "An unspecified execution error occurred at: {:06X}", addr),
-            CpuError::CpuHaltedError(addr)=>write!(f, "The CPU was halted at address: {:06X}.", addr)
+            CpuError::CpuHaltedError(addr)=>write!(f, "The CPU was halted at address: {:06X}.", addr),
+            CpuError::ExceptionError(exception)=>write!(f, "The CPU threw an exception: {:?}", exception)
         }
     }
 }
@@ -141,6 +150,7 @@ pub struct Cpu {
     piq_capacity: u32,
     error_string: String,
     instruction_history: VecDeque<Instruction>,
+    interrupt_wait_cycle: bool,
     in_irq: bool
 }
 
@@ -217,6 +227,7 @@ pub enum ExecutionResult {
     OkayRep,
     UnsupportedOpcode(u8),
     ExecutionError(String),
+    ExceptionError(CpuException),
     Halt
 }
 
@@ -240,6 +251,15 @@ impl Cpu {
 
     pub fn set_flag(&mut self, flag: Flag ) {
 
+        if let Flag::Interrupt = flag {
+            self.interrupt_wait_cycle = true;
+            //if self.eflags & CPU_FLAG_INT_ENABLE == 0 {
+                // The interrupt flag was *just* set, so instruct the CPU to start
+                // honoring interrupts on the *next* instruction
+                self.interrupt_wait_cycle = true;
+            //}
+        }
+
         self.eflags |= match flag {
             Flag::Carry => CPU_FLAG_CARRY,
             Flag::Parity => CPU_FLAG_PARITY,
@@ -250,7 +270,9 @@ impl Cpu {
             Flag::Interrupt => CPU_FLAG_INT_ENABLE,
             Flag::Direction => CPU_FLAG_DIRECTION,
             Flag::Overflow => CPU_FLAG_OVERFLOW
-        }
+        };
+
+
     }
 
     pub fn clear_flag(&mut self, flag: Flag) {
@@ -351,10 +373,8 @@ impl Cpu {
             Register8::CL => self.cl,
             Register8::DH => self.dh,
             Register8::DL => self.dl,         
-            _ => panic!("Invalid register")
         }
     }
-
 
     pub fn get_register16(&self, reg: Register16) -> u16 {
         match reg {
@@ -411,8 +431,7 @@ impl Cpu {
             Register8::DL => {
                 self.dl = value;
                 self.dx = self.dx & REGISTER_LO_MASK | value as u16
-            }
-            _=>panic!("bad register8")              
+            }           
         }
     }
 
@@ -674,12 +693,87 @@ impl Cpu {
 
         self.pop_register16(bus, Register16::IP);
         self.pop_register16(bus, Register16::CS);
-        log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
+        //log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
         self.pop_flags(bus);
         self.in_irq = false;
     }
 
-    pub fn do_hw_interrupt(&mut self, bus: &mut BusInterface, io_bus: &mut IoBusInterface, interrupt: u8) {
+    pub fn do_sw_interrupt(&mut self, bus: &mut BusInterface, interrupt: u8) {
+        self.in_irq = true;
+
+        // When an interrupt occurs the following happens:
+        // 1. CPU pushes flags register to stack
+        // 2. CPU pushes far return address into the stack
+        // 3. CPU fetches the four byte interrupt vector from the IVT
+        // 4. CPU transfers control to the routine specified by the interrupt vector
+        // (AoA 17.1)
+
+        self.push_flags(bus);
+
+        // Push return address of next instruction onto stack
+        self.push_register16(bus, Register16::CS);
+        
+        // We need to push the address past the current instruction (skip size of INT)
+        // INT instruction = two bytes
+        let ip = self.ip + 2;
+        self.push_u16(bus, ip);
+        
+        if interrupt == 0x10 && self.ah==0x02 {
+            log::trace!("CPU: Software Interrupt: {:02X} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
+        }
+        // Read the IVT
+        let ivt_addr = util::get_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
+        let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
+        let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
+        self.ip = new_ip;
+        self.cs = new_cs;
+
+        if interrupt == 0x10 {
+            self.log_interrupt(interrupt);
+            //log::trace!("CPU: Software Interrupt: {:02X} AH: {:02X} AL: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, self.ah, self.al,  new_cs, new_ip);
+        }
+        //log::trace!("CPU: Software Interrupt: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, new_cs, new_ip);
+        self.in_irq = true;
+    }
+
+    pub fn log_interrupt(&self, interrupt: u8) {
+
+        match interrupt {
+            0x10 => {
+                // Video Services
+                match self.ah {
+                    0x00 => {
+                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}", 
+                            interrupt, self.ah, self.al);
+                    }
+                    0x01 => {
+                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})", 
+                            interrupt, self.ah, self.ch, self.cl);
+                    }
+                    0x02 => {
+                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
+                            interrupt, self.ah, self.bh, self.dh, self.dl);
+                        
+                        if self.dh == 0xFF {
+                            log::trace!(" >>>>>>>>>>>>>>>>>> Row was set to 0xff at address [{:04X}:{:04X}]", self.cs, self.ip);
+                        }
+                    }
+                    0x09 => {
+                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
+                            interrupt, self.ah, self.al as char, self.bh, self.bl, self.cx);
+                    }
+                    0x10 => {
+                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}", 
+                            interrupt, self.ah, self.al as char, self.bh, self.cx);
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        };
+    }
+
+    pub fn do_hw_interrupt(&mut self, bus: &mut BusInterface, interrupt: u8) {
         self.in_irq = true;
 
         // When an interrupt occurs the following happens:
@@ -693,7 +787,11 @@ impl Cpu {
         // Push cs:ip return address to stack
         self.push_register16(bus, Register16::CS);
         self.push_register16(bus, Register16::IP);
-        log::trace!("CPU: Interrupt: {} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
+
+        // timer interrupt to noisy to log
+        if interrupt != 8 {
+            log::trace!("CPU: Interrupt: {} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
+        }
         // Read the IVT
         let ivt_addr = util::get_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
@@ -701,8 +799,18 @@ impl Cpu {
         self.ip = new_ip;
         self.cs = new_cs;
 
-        log::trace!("CPU: Interrupt: {} Jumping to IV [{:04X}:{:04X}]", interrupt, new_cs, new_ip);
+        // timer interrupt to noisy to log
+        if interrupt != 8 {
+            self.log_interrupt(interrupt);
+            //log::trace!("CPU: Hardware Interrupt: {} Jumping to IV [{:04X}:{:04X}]", interrupt, new_cs, new_ip);
+        }
         self.in_irq = true;
+    }
+
+    // Return true if we are able to process interrupts
+    pub fn interrupts_enabled(&self) -> bool {
+
+        self.get_flag(Flag::Interrupt) && !self.interrupt_wait_cycle
     }
 
     pub fn step(&mut self, bus: &mut BusInterface, io_bus: &mut IoBusInterface) -> Result<(), CpuError> {
@@ -766,6 +874,10 @@ impl Cpu {
                         self.is_error = true;
                         Err(CpuError::CpuHaltedError(instruction_address))
                     }
+                    ExecutionResult::ExceptionError(exception) => {
+                        // Handle DIV by 0 here
+                        Err(CpuError::ExceptionError(exception))
+                    }
                 }
             }
             Err(_) => {
@@ -781,7 +893,6 @@ impl Cpu {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-
             let i_string = format!("{:05X} {}\n", i.address, i);
             disassembly_string.push_str(&i_string);
         }

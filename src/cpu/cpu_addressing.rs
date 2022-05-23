@@ -3,8 +3,6 @@
 use crate::cpu::{Cpu, Flag};
 use crate::bus::{BusInterface};
 use crate::arch::{OperandType, AddressingMode, SegmentOverride, Displacement, Register8, Register16};
-use crate::util::{get_linear_address, relative_offset_u16};
-
 
 impl Cpu {
 
@@ -15,6 +13,10 @@ impl Cpu {
         };
     }
 
+    pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
+        ((segment as u32) << 4) + offset as u32
+    }
+    
     fn calc_effective_address(&self, mode: AddressingMode, segment: SegmentOverride) -> (u16, u16) {
         // Addressing modes that reference BP use the stack segment instead of data segment 
         // unless a segment override is present.
@@ -23,7 +25,7 @@ impl Cpu {
         // ds:[bx+di]
         // ss:[bp+si]
         // ss:[bp+di]
-        // ds:[si]
+        // ds:[si]f
         // ds:[di]
         // ds:[{}]
         // ds:[bx]
@@ -102,11 +104,8 @@ impl Cpu {
 
         match operand {
             OperandType::Immediate8(imm8) => Some(imm8),
-            OperandType::Immediate16(imm16) => None,
             OperandType::Relative8(rel8) => Some(rel8 as u8),
-            OperandType::Relative16(rel16) => None,
-            OperandType::Offset8(offset8) => None,
-            OperandType::Offset16(offset16) => None,
+            OperandType::Offset8(offset8) => Some(offset8 as u8),
             OperandType::Register8(reg8) => {
                 match reg8 {
                     Register8::AH => Some(self.ah),
@@ -119,17 +118,17 @@ impl Cpu {
                     Register8::DL => Some(self.dl)
                 }
             },
-            OperandType::Register16(r16) => None,
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = get_linear_address(segment, offset);
-                let (byte, read_cost) = bus.read_u8(flat_addr as usize).unwrap();
+                let flat_addr = Cpu::calc_linear_address(segment, offset);
+                let (byte, _read_cost) = bus.read_u8(flat_addr as usize).unwrap();
                 Some(byte)
             }
-            OperandType::NearAddress(u16) => None,
-            OperandType::FarAddress(segment,offset) => None,
+            OperandType::NearAddress(_u16) => None,
+            OperandType::FarAddress(_segment, _offset) => None,
             OperandType::NoOperand => None,
-            OperandType::InvalidOperand => None
+            OperandType::InvalidOperand => None,
+            _=> None
         }
     }
 
@@ -137,13 +136,9 @@ impl Cpu {
     pub fn read_operand16(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride) -> Option<u16> {
 
         match operand {
-            OperandType::Immediate8(imm8) => None,
             OperandType::Immediate16(imm16) => Some(imm16),
-            OperandType::Relative8(rel8) => None,
             OperandType::Relative16(rel16) => Some(rel16 as u16),
-            OperandType::Offset8(offset8) => None,
-            OperandType::Offset16(offset16) => None,
-            OperandType::Register8(reg8) => None,
+            OperandType::Offset16(offset16) => Some(offset16 as u16),
             OperandType::Register16(reg16) => {
                 match reg16 {
                     Register16::AX => Some(self.ax),
@@ -160,18 +155,32 @@ impl Cpu {
                     Register16::DS => Some(self.ds),
                     _=> panic!("read_operand16(): Invalid Register16 operand")
                 }
-
             },
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = get_linear_address(segment, offset);
-                let (byte, read_cost) = bus.read_u16(flat_addr as usize).unwrap();
+                let flat_addr = Cpu::calc_linear_address(segment, offset);
+                let (byte, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
                 Some(byte)
             }
-            OperandType::NearAddress(u16) => None,
-            OperandType::FarAddress(segment,offset) => None,
+            OperandType::NearAddress(_u16) => None,
+            OperandType::FarAddress(_segment, _offset) => None,
             OperandType::NoOperand => None,
-            OperandType::InvalidOperand => None
+            OperandType::InvalidOperand => None,
+            _ => None
+        }
+    }    
+
+    pub fn read_operand_farptr(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride) -> Option<(u16, u16)> {
+
+        match operand {
+            OperandType::AddressingMode(mode) => {
+                let (segment, offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = Cpu::calc_linear_address(segment, offset);
+                let (offset, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
+                let (segment, _read_cost) = bus.read_u16( (flat_addr + 2) as usize ).unwrap();
+                Some((segment, offset))
+            }
+            _ => None
         }
     }    
 
@@ -200,7 +209,7 @@ impl Cpu {
             OperandType::Register16(r16) => {}
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = get_linear_address(segment, offset);
+                let flat_addr = Cpu::calc_linear_address(segment, offset);
                 let write_cost = bus.write_u8(flat_addr as usize, value).unwrap();
             }
             OperandType::NearAddress(offset) => {}
@@ -240,7 +249,7 @@ impl Cpu {
             }
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = get_linear_address(segment, offset);
+                let flat_addr = Cpu::calc_linear_address(segment, offset);
                 let write_cost = bus.write_u16(flat_addr as usize, value).unwrap();
             }
             OperandType::NearAddress(offset) => {}

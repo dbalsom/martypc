@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-egui = "0.17"
+syntect = "5.0.0"
+egui = { version = "0.17"}
 egui_wgpu_backend = "0.17"
 egui-winit = { version = "0.17", default-features = false, features = ["links"] }
 env_logger = "0.9"

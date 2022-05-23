@@ -83,18 +83,18 @@ impl IoDevice for ProgrammableIntervalTimer {
     fn read_u8(&mut self, port: u16) -> u8 {
         match port {
             PIT_COMMAND_REGISTER => 0,
-            PIT_CHANNEL_0_DATA_PORT => self.handle_data_read(0),
-            PIT_CHANNEL_1_DATA_PORT => self.handle_data_read(1),
-            PIT_CHANNEL_2_DATA_PORT => self.handle_data_read(2),
+            PIT_CHANNEL_0_DATA_PORT => self.data_read(0),
+            PIT_CHANNEL_1_DATA_PORT => self.data_read(1),
+            PIT_CHANNEL_2_DATA_PORT => self.data_read(2),
             _ => panic!("PIT: Bad port #")
         }
     }
     fn write_u8(&mut self, port: u16, data: u8) {
         match port {
-            PIT_COMMAND_REGISTER => self.handle_command_register(data),
-            PIT_CHANNEL_0_DATA_PORT => self.handle_data_write(0, data),
-            PIT_CHANNEL_1_DATA_PORT => self.handle_data_write(1, data),
-            PIT_CHANNEL_2_DATA_PORT => self.handle_data_write(2, data),
+            PIT_COMMAND_REGISTER => self.command_register_write(data),
+            PIT_CHANNEL_0_DATA_PORT => self.data_write(0, data),
+            PIT_CHANNEL_1_DATA_PORT => self.data_write(1, data),
+            PIT_CHANNEL_2_DATA_PORT => self.data_write(2, data),
             _ => panic!("PIT: Bad port #")
         }
     }
@@ -110,7 +110,7 @@ impl IoDevice for ProgrammableIntervalTimer {
 impl ProgrammableIntervalTimer {
     pub fn new() -> Self {
         let mut vec = Vec::<PitChannel>::new();
-        for i in 0..=3 {
+        for _ in 0..3 {
             let pit = PitChannel {
                 channel_mode: ChannelMode::InterruptOnTerminalCount,
                 access_mode: AccessMode::HiByteOnly,
@@ -145,10 +145,9 @@ impl ProgrammableIntervalTimer {
         cpu_cycles as f64 * PIT_DIVISOR
     }
 
+    fn parse_command_register(&mut self, command_byte: u8) -> (u32, AccessMode, ChannelMode, bool) {
 
-
-    fn read_command_register(&mut self, command_byte: u8) -> (u32, AccessMode, ChannelMode, bool) {
-
+        
         let channel_select: u32 = (command_byte >> 6) as u32;
 
         let access_mode = match (command_byte & PIT_ACCESS_MODE_MASK) >> 4 {
@@ -172,13 +171,15 @@ impl ProgrammableIntervalTimer {
         };
 
         let bcd_enable = command_byte & PIT_BCD_MODE_MASK == 0x01;
-
+        if bcd_enable {
+            log::error!("PIT: BCD mode unimplemented");
+        }
         (channel_select, access_mode, channel_mode, bcd_enable)
     }
 
-    fn handle_command_register(&mut self, command_byte: u8) {
+    fn command_register_write(&mut self, command_byte: u8) {
 
-        let (channel_select, access_mode, channel_mode, bcd_enable) = self.read_command_register(command_byte);
+        let (channel_select, access_mode, channel_mode, bcd_enable) = self.parse_command_register(command_byte);
 
         if let AccessMode::LatchCountValue = access_mode {
             // All 0's access mode indicates a Latch Count Value command
@@ -218,47 +219,50 @@ impl ProgrammableIntervalTimer {
 
     }
 
-    pub fn handle_data_write(&mut self, port: usize, data: u8) {
+    pub fn data_write(&mut self, port_num: usize, data: u8) {
         
+        let mut port = &mut self.channels[port_num];
 
-        match self.channels[port].access_mode {
+        match port.access_mode {
             AccessMode::LoByteOnly => {
-                self.channels[port].reload_value = data as u16;
-                self.channels[port].waiting_for_reload = false;
-                log::debug!("Channel {} reloaded with value {} in LSB mode.", port, self.channels[port].reload_value);
-                self.channels[port].current_count =  self.channels[port].reload_value;
+                port.reload_value = data as u16;
+                port.waiting_for_reload = false;
+                log::debug!("Channel {} reloaded with value {} in LSB mode.", port_num, port.reload_value);
+                port.current_count =  port.reload_value;
             }
             AccessMode::HiByteOnly => {
-                self.channels[port].reload_value = (data as u16) << 8;
-                self.channels[port].waiting_for_reload = false;
-                log::debug!("Channel {} reloaded with value {} in HSB mode.", port, self.channels[port].reload_value);
-                self.channels[port].current_count =  self.channels[port].reload_value;
+                port.reload_value = (data as u16) << 8;
+                port.waiting_for_reload = false;
+                log::debug!("Channel {} reloaded with value {} in HSB mode.", port_num, port.reload_value);
+                port.current_count =  port.reload_value;
             }
             AccessMode::LoByteHiByte => {
                 // Expect lo byte first, hi byte second
-
-                if self.channels[port].waiting_for_hibyte {
-                    self.channels[port].reload_value |= (data as u16) << 8;
-                    self.channels[port].waiting_for_hibyte = false;
-                    self.channels[port].waiting_for_reload = false;
+                if port.waiting_for_lobyte {
+                    port.reload_value = data as u16;
+                    port.waiting_for_lobyte = false;
+                    port.waiting_for_hibyte = true;
                 }
-                else if self.channels[port].waiting_for_lobyte {
-                    self.channels[port].reload_value = data as u16;
-                    self.channels[port].waiting_for_lobyte = false;
-                    self.channels[port].waiting_for_hibyte = true;
+                else if port.waiting_for_hibyte {
+                    port.reload_value |= (data as u16) << 8;
+                    port.waiting_for_hibyte = false;
+                    port.waiting_for_reload = false;
+                    log::debug!("Channel {} reloaded with value {} in WORD mode.", port_num, port.reload_value);
+                    port.current_count =  port.reload_value;
                 }
-                log::debug!("Channel {} reloaded with value {} in WORD mode.", port, self.channels[port].reload_value);
-                self.channels[port].current_count =  self.channels[port].reload_value;
+                else {
+                    port.reload_value = data as u16;
+                    port.waiting_for_lobyte = false;
+                    port.waiting_for_hibyte = true;
+                }
             }
             AccessMode::LatchCountValue => {
                 // Shouldn't reach here
             }
         }
-
-
     }
 
-    pub fn handle_data_read(&mut self, port: usize) -> u8 {
+    pub fn data_read(&mut self, port: usize) -> u8 {
         let mut port = &mut self.channels[port];
         if port.count_is_latched {
             match port.access_mode {
@@ -309,7 +313,7 @@ impl ProgrammableIntervalTimer {
         }
     }
 
-    pub fn run(&mut self, io_bus: &mut IoBusInterface, cpu_cycles: u32, pic: &mut pic::Pic) {
+    pub fn run(&mut self, io_bus: &mut IoBusInterface, pic: &mut pic::Pic, cpu_cycles: u32 ) {
 
         let mut pit_cycles = Pit::get_pit_cycles(cpu_cycles);
         let pit_cycles_remainder = pit_cycles.fract();
@@ -353,7 +357,7 @@ impl ProgrammableIntervalTimer {
                             t.current_count -= 1;
                             if t.current_count == 1 {
                                 t.output_is_high = true;
-                                //log::trace!("Would trigger IRQ0")
+                                //log::trace!("PIT: Triggering IRQ0");
                                 pic.request_interrupt(0);
                             }
                         }
@@ -405,7 +409,8 @@ impl ProgrammableIntervalTimer {
                             }
                         }
                         else {
-                            t.current_count -= 2;
+                            // This shouldn't wrap unless a odd reload count was provided 
+                            t.current_count = t.current_count.wrapping_sub(2);
                             if t.current_count == 0 {
                                 // Change flipflop state
                                 t.output_is_high = !t.output_is_high;
@@ -426,7 +431,7 @@ impl ProgrammableIntervalTimer {
             c0_access_mode: format!("{:?}", self.channels[0].access_mode),
             c0_channel_mode: format!("{:?}", self.channels[0].channel_mode),
             c1_value: format!("{:06}", self.channels[1].current_count),
-            c1_reload_value: format!("{:06}", self.channels[0].reload_value),
+            c1_reload_value: format!("{:06}", self.channels[1].reload_value),
             c1_access_mode: format!("{:?}", self.channels[1].access_mode),
             c1_channel_mode: format!("{:?}", self.channels[1].channel_mode),
             c2_value: format!("{:06}", self.channels[2].current_count),

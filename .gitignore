@@ -1,1 +1,11 @@
+# Rust compiler output
 /target
+
+# Visual Studio Code editor files
+/.vscode
+
+# Rom files
+/Rom
+
+# Assembly stuff
+/asm
