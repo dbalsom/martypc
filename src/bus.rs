@@ -116,7 +116,7 @@ impl BusInterface {
         }
     }
 
-    pub fn copy_from(&mut self, src_vec: Vec<u8>, location: usize, cycle_cost: u32, read_only: bool) -> Result<(), bool> {
+    pub fn copy_from(&mut self, src_vec: &Vec<u8>, location: usize, cycle_cost: u32, read_only: bool) -> Result<(), bool> {
         
         let src_size = src_vec.len();
         if location as usize + src_size > self.memory.len() {
@@ -143,7 +143,7 @@ impl BusInterface {
         Ok(())
     }
 
-    pub fn patch_from(&mut self, src_vec: Vec<u8>, location: usize) -> Result<(), bool> {
+    pub fn patch_from(&mut self, src_vec: &Vec<u8>, location: usize) -> Result<(), bool> {
         let src_size = src_vec.len();
         if location as usize + src_size > self.memory.len() {
             // copy request goes out of bounds

@@ -37,7 +37,7 @@ pub struct DMAChannel {
 
 pub struct DMAController {
     enabled: bool,
-    channel: [DMAChannel; 4],
+    //channel: [DMAChannel; 4],
     
     command_register: u8,
     request_reg: u8,
@@ -73,7 +73,14 @@ impl DMAController {
     pub fn new() -> Self {
 
         Self {
-            enabled: true
+            enabled: true,
+            //channel: [DMAChannel; 4],
+    
+            command_register: 0,
+            request_reg: 0,
+            mask_reg: 0,
+            status_reg: 0,
+            temp_reg: 0
         }
     }
 

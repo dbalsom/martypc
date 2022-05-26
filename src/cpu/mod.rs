@@ -271,8 +271,6 @@ impl Cpu {
             Flag::Direction => CPU_FLAG_DIRECTION,
             Flag::Overflow => CPU_FLAG_OVERFLOW
         };
-
-
     }
 
     pub fn clear_flag(&mut self, flag: Flag) {

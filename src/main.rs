@@ -67,23 +67,41 @@ fn main() -> Result<(), Error> {
     let timer_length = Duration::new(1, 0);
     env_logger::init();
 
-    let mut roms = RomManager::new(MachineType::IBM_PC_5150);
+    let mut rom_manager = RomManager::new(MachineType::IBM_PC_5150);
 
-    //roms.try_load_from_dir(".\\rom");
+    match rom_manager.try_load_from_dir("./rom") {
+        Ok(_) => {
+        }
+        Err(e) => {
+            match e {
+                RomError::DirNotFound => {
+                    eprintln!("Rom folder not found")
+                }
+                RomError::RomNotFoundForMachine => {
+                    eprintln!("No valid rom found for specified machine type")
+                }
+                _ => {
+                    eprintln!("Error loading rom file.")
+                }
+            }
+            std::process::exit(1);
+        }
+    }
+
     //std::process::exit(0);
 
     // Init machine
-    let bios_vec = read("./rom/bios.rom").unwrap_or_else(|e| {
-        eprintln!("Couldn't open BIOS image ./rom/bios.rom: {}", e);
-        std::process::exit(1);
-    });
+    //let bios_vec = read("./rom/bios.rom").unwrap_or_else(|e| {
+    //    eprintln!("Couldn't open BIOS image ./rom/bios.rom: {}", e);
+    //    std::process::exit(1);
+    //});
 
-    let basic_vec = read("./rom/basic_v1.rom").unwrap_or_else(|e| {
-        eprintln!("Couldn't open BASIC image: {}", e);
-        std::process::exit(1);
-    });
+    //let basic_vec = read("./rom/basic_v1.rom").unwrap_or_else(|e| {
+    //    eprintln!("Couldn't open BASIC image: {}", e);
+    //    std::process::exit(1);
+    //});
 
-    let mut machine = Machine::new(MachineType::IBM_PC_5150, VideoType::CGA, bios_vec, basic_vec);
+    let mut machine = Machine::new(MachineType::IBM_PC_5150, VideoType::CGA, rom_manager );
     
     let video = video::Video::new();
 

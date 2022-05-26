@@ -15,6 +15,7 @@ use crate::{
     pit::{self, PitStringState},
     pic::{self, PicStringState},
     ppi::{self, PpiStringState},
+    rom::RomManager,
 };
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
@@ -38,6 +39,7 @@ pub enum VideoType {
 pub struct Machine {
     machine_type: MachineType,
     video_type: VideoType,
+    rom_manager: RomManager,
     bus: BusInterface,
     io_bus: IoBusInterface,
     cpu: Cpu,
@@ -51,40 +53,12 @@ pub struct Machine {
 
 }
 
-lazy_static! {
-    static ref BIOS_CHECKPOINTS: HashMap<u32, &'static str> = {
-        let mut m = HashMap::new();
-        m.insert(0xfe01a, "RAM Check Routine");
-        m.insert(0xfe05b, "8088 Processor Test");
-        m.insert(0xfe0b0, "ROS Checksum");
-        m.insert(0xfe0da, "8237 DMA Initialization Test");
-        m.insert(0xfe117, "DMA Controller test");
-        m.insert(0xfe158, "Base 16K Read/Write Test");
-        m.insert(0xfe235, "8249 Interrupt Controller Test");
-        m.insert(0xfe285, "8253 Timer Checkout");
-        m.insert(0xfe33b, "ROS Checksum II");
-        m.insert(0xfe352, "Initialize CRTC Controller");
-        m.insert(0xfe3af, "Video Line Test");
-        m.insert(0xfe4c7, "Keyboard Test");
-        m.insert(0xfe3c0, "CRT Interface Lines Test");
-        m.insert(0xfe55c, "Diskette Attachment Test");
-        m.insert(0xfe630, "Error Beep");
-        m.insert(0xfe666, "Beep");
-        m.insert(0xfe688, "Keyboard Reset");
-        m.insert(0xfe6b2, "Blink LED Interrupt");
-        m.insert(0xfe6ca, "Print Message");
-        m.insert(0xfe6f2, "Bootstrap Loader");
-        m.insert(0xf6000, "ROM BASIC");
-        m
-    };
-}
-
 impl Machine {
     pub fn new(
         machine_type: MachineType,
         video_type: VideoType,
-        bios_buf: Vec<u8>,
-        basic_buf: Vec<u8>) -> Machine {
+        rom_manager: RomManager
+        ) -> Machine {
 
         let mut bus = BusInterface::new();
         let mut io_bus = IoBusInterface::new();
@@ -135,22 +109,16 @@ impl Machine {
         io_bus.register_port_handler(cga::CGA_STATUS_REGISTER, IoHandler::new(cga.clone()));
         io_bus.register_port_handler(cga::CGA_LIGHTPEN_REGISTER, IoHandler::new(cga.clone()));
 
-        // Install BIOS image
-        bus.copy_from(bios_buf, 0xFE000, 4, true).unwrap();
+        // Load BIOS ROM images
+        rom_manager.copy_into_memory(&mut bus);
 
-        // Load ROM BASIC if present
-        if basic_buf.len() > 0 {
-            bus.copy_from(basic_buf, 0xF6000, 4, true).unwrap();
-        }
-
-        // Temporarily patch DMA test
-        bus.patch_from(vec![0xEB, 0x03], 0xFE130).unwrap();  // JZ -> JNP
-        // Patch Checksum test since we patched BIOS
-        bus.patch_from(vec![0x74, 0xD5], 0xFE0D8).unwrap();  // JNZ -> JZ
+        // Install ROM patches if any
+        rom_manager.install_patches(&mut bus);
 
         Machine {
-            machine_type: machine_type,
-            video_type: video_type,
+            machine_type,
+            video_type,
+            rom_manager,
             bus: bus,
             io_bus: io_bus,
             cpu: cpu,
@@ -228,9 +196,9 @@ impl Machine {
 
                 // Match checkpoints
                 let flat_address = self.cpu.get_flat_address();
-                match BIOS_CHECKPOINTS.get(&flat_address) {
-                    Some(str) => log::trace!("BIOS CHECKPOINT: {}", str),
-                    None => {}
+
+                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address as usize) {
+                    log::trace!("ROM CHECKPOINT: {}", cp);
                 }
 
                 // Check for breakpoint
