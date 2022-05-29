@@ -4,6 +4,8 @@
 
 */
 
+use std::io::Read;
+
 use crate::io::{IoDevice};
 
 
@@ -161,6 +163,31 @@ impl Pic {
             expecting_icw4: false,
             error: false,
             interrupt_stats: vec![InterruptStats::new(); 8]
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.init_state = InitializationState::Normal;
+        self.imr = 0xFF;
+        self.isr = 0x00;
+        self.irr = 0x00;
+        self.read_select = ReadSelect::IRR;
+        self.irq = 0;
+        self.int_request = false;
+        self.buffered = false;
+        self.nested = true;
+        self.special_nested = false;
+        self.polled = false;
+        self.auto_eoi = false;
+        self.rotate_on_aeoi = false;
+        self.expecting_icw2 = false;
+        self.expecting_icw4 = false;
+        self.error = false;
+
+        for stat_entry in &mut self.interrupt_stats {
+            stat_entry.imr_masked_count = 0;
+            stat_entry.isr_masked_count = 0;
+            stat_entry.serviced_count = 0;
         }
     }
 

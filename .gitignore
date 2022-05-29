@@ -1,6 +1,9 @@
 # Mac stuff
 .DS_Store
 
+# Windows stufff
+Thumbs.db
+
 # Rust compiler output
 /target
 

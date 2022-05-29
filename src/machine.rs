@@ -1,9 +1,10 @@
 
 use log;
-use lazy_static::lazy_static;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::cell::RefCell;
+
+use std::{
+    rc::Rc,
+    cell::{Cell, RefCell}
+};
 
 use crate::{
     bus::BusInterface,
@@ -36,6 +37,40 @@ pub enum VideoType {
     VGA
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum ExecutionState {
+    Paused,
+    BreakpointHit,
+    Running,
+}
+
+pub struct ExecutionControl {
+    state: ExecutionState,
+    do_step: Cell<bool>,
+    do_reset: Cell<bool>
+}
+
+impl ExecutionControl {
+    pub fn new() -> Self {
+        Self { 
+            state: ExecutionState::Paused,
+            do_step: Cell::new(false), 
+            do_reset: Cell::new(false)
+        }
+    }
+    pub fn set_state(&mut self, state: ExecutionState) {
+        self.state = state
+    }
+    pub fn get_state(&self) -> ExecutionState {
+        self.state
+    }
+    pub fn do_step(&mut self) {
+        self.do_step.set(true)
+    }
+    pub fn do_reset(&mut self) {
+        self.do_reset.set(true)
+    }
+}
 pub struct Machine {
     machine_type: MachineType,
     video_type: VideoType,
@@ -50,7 +85,6 @@ pub struct Machine {
     cga: Rc<RefCell<cga::CGACard>>,
     error: bool,
     error_str: String,
-
 }
 
 impl Machine {
@@ -182,11 +216,46 @@ impl Machine {
         self.pic.borrow_mut().request_interrupt(1);
     }
 
-    pub fn run(&mut self, cycle_target: u32, single_step: bool, breakpoint: u32) {
+    pub fn reset(&mut self) {
+        self.cpu.reset();
 
-        let cycle_target_adj = match single_step {
-            true => 1,
-            false => cycle_target
+        // Clear RAM
+        self.bus.reset();
+
+        // Reload BIOS ROM images
+        self.rom_manager.copy_into_memory(&mut self.bus);
+
+        // Re-install ROM patches if any
+        self.rom_manager.install_patches(&mut self.bus);
+
+        // Reset devices
+        self.pit.borrow_mut().reset();
+        self.pic.borrow_mut().reset();
+    }
+    
+    pub fn run(&mut self, cycle_target: u32, exec_control: &ExecutionControl, breakpoint: u32) {
+
+        // Was reset requested?
+        if exec_control.do_reset.get() {
+            self.reset();
+            exec_control.do_reset.set(false);
+            return
+        }
+    
+        let cycle_target_adj = match exec_control.state {
+            ExecutionState::Paused => {
+                match exec_control.do_step.get() {
+                    true => {
+                        // Reset step flag
+                        exec_control.do_step.set(false);
+                        // Execute 1 cycle
+                        1
+                    },
+                    false => return
+                }
+            }
+            ExecutionState::Running => cycle_target,
+            ExecutionState::BreakpointHit => cycle_target
         };
 
         let mut cycles_elapsed = 0;
@@ -240,6 +309,5 @@ impl Machine {
             // even cycles keeps the BIOS PIT test from working!
             cycles_elapsed += 7;
         }
-
     }
 }

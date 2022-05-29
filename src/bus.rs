@@ -175,6 +175,16 @@ impl BusInterface {
         });        
     }
 
+    pub fn reset(&mut self) {
+        // Clear mem range descriptors
+        self.desc_vec.clear();
+
+        // Set all bytes to 0
+        for byte_ref in &mut self.memory {
+            *byte_ref = 0;
+        }
+    }
+
     pub fn read_u8(&self, address: usize ) -> Result<(u8, u32), MemError> {
         if address < self.memory.len() {
             let b: u8 = self.memory[address];

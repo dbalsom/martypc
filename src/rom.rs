@@ -123,6 +123,15 @@ impl RomManager {
                     ]
                 },
                 RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 10,
+                    is_complete: Cell::new(false),
+                    roms: vec![
+                        "3a0eacac07f1020b95ce06043982dfd1" // Supersoft Diagnostic ROM
+                    ]
+                },
+                
+                RomSet {
                     machine_type: MachineType::IBM_XT_5160,
                     priority: 4,
                     is_complete: Cell::new(false),
@@ -312,9 +321,22 @@ impl RomManager {
                     patches: Vec::new(),
                     checkpoints: HashMap::new()
                 }
-            )
-
-            ]),
+            ),(
+                "3a0eacac07f1020b95ce06043982dfd1", // Supersoft PC/XT Diagnostic ROM
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xFE000,
+                    size: 32768,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            )]),
             rom_images: HashMap::new()
         }
     }
@@ -355,20 +377,11 @@ impl RomManager {
                         // and save its filename
                         rom.present = true;
                         rom.filename = entry.path();
-                        
-                        valid_rom.push((file_digest_str.clone(), entry.path()));
                         log::debug!("Found {:?} file for machine {:?}: {:?} MD5: {}", rom.rom_type, machine_type, entry.path(), file_digest_str);
                     }
                 }
             }
         }
-
-        // We now have a vec of valid rom files
-        valid_rom.sort_by(|a,b| {
-            let desc1 = self.get_romdesc(a.0.as_str()).unwrap();
-            let desc2 = self.get_romdesc(b.0.as_str()).unwrap();
-            desc2.priority.cmp(&desc1.priority)
-        });
 
         // Loop through all ROM set definitions for this machine type and mark which are complete
         // and them to a vec of complete rom sets
@@ -417,10 +430,33 @@ impl RomManager {
         let mut rom_set_active = self.rom_sets_complete[0].clone();
 
         // Filter roms that are optional and missing
-        rom_set_active.roms.retain(|r| {
-            let rom_desc = self.get_romdesc(r).unwrap();
+        rom_set_active.roms.retain(|rom| {
+            let rom_desc = self.get_romdesc(rom).unwrap();
             rom_desc.present
         });
+
+        // Now remove all but highest priority Basic images
+        
+        // Find highest priority Basic:
+        let mut highest_priority_basic = 0;
+        for rom in &rom_set_active.roms {
+            let rom_desc = self.get_romdesc(rom).unwrap();
+            if let RomType::BASIC = rom_desc.rom_type {
+                if rom_desc.priority > highest_priority_basic {
+                    highest_priority_basic = rom_desc.priority;
+                }
+            }
+        }
+
+        log::debug!("Highest priority BASIC: {}", highest_priority_basic);
+        // Remove all lower priority Basics:
+        rom_set_active.roms.retain(|rom| {
+            let rom_desc = self.get_romdesc(rom).unwrap();
+            match rom_desc.rom_type {
+                RomType::BASIC => rom_desc.priority == highest_priority_basic,
+                _=> true
+            }
+        });    
 
         // Load ROM images from active rom set
         for rom_str in &rom_set_active.roms {
@@ -443,13 +479,13 @@ impl RomManager {
 
             let mut cp_map: HashMap<usize, &'static str> = HashMap::new();
 
-            // Copy checkpoints for each rom in active_checkpoints for faster lookup
+            // Copy checkpoints for each rom in checkpoints_active for faster lookup
             // Since this will be looked up per-instruction
             for kv in rom_desc.checkpoints.iter() {
                 cp_map.insert(*kv.0, kv.1);
             }
-            self.checkpoints_active.extend(cp_map.iter());
 
+            self.checkpoints_active.extend(cp_map.iter());
         }
         
         log::debug!("Loaded {} checkpoints for active ROM set.", self.checkpoints_active.len());

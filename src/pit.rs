@@ -55,10 +55,7 @@ pub struct PitChannel {
 
 pub struct ProgrammableIntervalTimer {
 
-    enabled: bool,
     cycle_accumulator: f64,
-    last_command_byte: u8,
-    channel_selected: u32,
     channels: Vec<PitChannel>,
 }
 pub type Pit = ProgrammableIntervalTimer;
@@ -130,11 +127,30 @@ impl ProgrammableIntervalTimer {
             vec.push(pit);
         }
         Self {
-            enabled: true,
             cycle_accumulator: 0.0,
-            last_command_byte: 0,
-            channel_selected: 0,
             channels: vec
+        }
+    }
+
+    pub fn reset(&mut self) {
+
+        self.cycle_accumulator = 0.0;
+        
+        for channel in &mut self.channels {
+            channel.channel_mode = ChannelMode::InterruptOnTerminalCount;
+            channel.access_mode = AccessMode::HiByteOnly;
+            channel.reload_value = 0;
+            channel.waiting_for_reload = false;
+            channel.waiting_for_lobyte = false;
+            channel.waiting_for_hibyte = false;
+            channel.current_count = 0;
+            channel.read_in_progress = false;
+            channel.normal_lobyte_read = false;
+            channel.count_is_latched = false;
+            channel.output_is_high = false;
+            channel.latched_lobyte_read = false;
+            channel.latch_count = 0;
+            channel.bcd_mode = false;
         }
     }
 

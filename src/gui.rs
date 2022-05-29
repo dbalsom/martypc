@@ -2,11 +2,18 @@ use egui::{ClippedMesh, Context, TexturesDelta};
 use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use winit::window::Window;
+
+use std::{
+    cell::RefCell,
+    rc::Rc
+};
 use crate::{
+    machine::{ExecutionControl, ExecutionState},
     cpu::CpuStringState, 
     pit::PitStringState, 
     pic::PicStringState,
-    ppi::PpiStringState};
+    ppi::PpiStringState
+};
 
 //use crate::syntax_highlighting::code_view_ui;
 
@@ -21,11 +28,11 @@ pub(crate) struct Framework {
     textures: TexturesDelta,
 
     // State for the GUI
-    pub gui: Gui,
+    pub gui: GuiState,
 }
 
 /// Example application state. A real application will need a lot more state than this.
-pub(crate) struct Gui {
+pub(crate) struct GuiState {
     /// Only show the egui window when true.
     window_open: bool,
     error_dialog_open: bool,
@@ -38,6 +45,7 @@ pub(crate) struct Gui {
     pic_viewer_open: bool,
     ppi_viewer_open: bool,
 
+    exec_control: Rc<RefCell<ExecutionControl>>,
     cpu_single_step: bool,
     cpu_step_flag: bool,
 
@@ -56,7 +64,12 @@ pub(crate) struct Gui {
 
 impl Framework {
     /// Create egui.
-    pub(crate) fn new(width: u32, height: u32, scale_factor: f32, pixels: &pixels::Pixels) -> Self {
+    pub(crate) fn new(
+        width: u32, 
+        height: u32, 
+        scale_factor: f32, 
+        pixels: &pixels::Pixels,
+        exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
         let egui_ctx = Context::default();
@@ -68,7 +81,7 @@ impl Framework {
         };
         let rpass = RenderPass::new(pixels.device(), pixels.render_texture_format(), 1);
         let textures = TexturesDelta::default();
-        let gui = Gui::new();
+        let gui = GuiState::new(exec_control);
 
         Self {
             egui_ctx,
@@ -111,7 +124,7 @@ impl Framework {
         // Run the egui frame and create all paint jobs to prepare for rendering.
         let raw_input = self.egui_state.take_egui_input(window);
         let output = self.egui_ctx.run(raw_input, |egui_ctx| {
-            // Draw the demo application.
+            // Draw the application.
             self.gui.ui(egui_ctx);
         });
 
@@ -153,9 +166,9 @@ impl Framework {
     }
 }
 
-impl Gui {
-    /// Create a `Gui`.
-    fn new() -> Self {
+impl GuiState {
+    /// Create a struct representing the state of the GUI.
+    fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
         Self { 
             window_open: false, 
             error_dialog_open: false,
@@ -168,6 +181,7 @@ impl Gui {
             pic_viewer_open: false,
             ppi_viewer_open: false,
 
+            exec_control: exec_control,
             cpu_single_step: true,
             cpu_step_flag: false,
 
@@ -318,23 +332,33 @@ impl Gui {
                     ui.label(egui::RichText::new("❎").color(egui::Color32::RED).font(egui::FontId::proportional(40.0)));
                     ui.label(&self.error_string);
                 });
-                
             });
 
         egui::Window::new("CPU Control")
             .open(&mut self.cpu_control_dialog_open)
             .show(ctx, |ui| {
+
+                let mut exec_control = self.exec_control.borrow_mut();
                 ui.horizontal(|ui|{
                     if ui.button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0))).clicked() {
-                        self.cpu_single_step = true;
+                        exec_control.set_state(ExecutionState::Paused);
                     };
                     if ui.button(egui::RichText::new("⏭").font(egui::FontId::proportional(20.0))).clicked() {
-                        self.cpu_step_flag = true;
-                        //println!("step")
+                        exec_control.do_step();
                     };
                     if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
-                        self.cpu_single_step = false;
+                        exec_control.set_state(ExecutionState::Running);
                     };
+                    if ui.button(egui::RichText::new("R").font(egui::FontId::proportional(20.0))).clicked() {
+                        exec_control.do_reset();
+                    };
+                });
+
+                let state_str = format!("{:?}", exec_control.get_state());
+                ui.separator();
+                ui.horizontal(|ui|{
+                    ui.label("Run state: ");
+                    ui.label(&state_str);
                 });
                 ui.separator();
                 ui.horizontal(|ui|{
@@ -459,8 +483,7 @@ impl Gui {
                         ui.label(egui::RichText::new("DX:").text_style(egui::TextStyle::Monospace));
                         ui.add(egui::TextEdit::singleline(&mut self.cpu_state.dx).font(egui::TextStyle::Monospace));
                     });
-                    ui.end_row();
-                                       
+                    ui.end_row();         
                 });
 
                 ui.separator();
@@ -557,6 +580,11 @@ impl Gui {
 
                         ui.end_row();  
                     });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("Instruction #:").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.cpu_state.instruction_count).font(egui::TextStyle::Monospace));
+                }); 
             });        
             
         egui::Window::new("PIT View")
@@ -707,6 +735,11 @@ impl Gui {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
                         ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex).font(egui::TextStyle::Monospace));
                     });
                     ui.end_row();
                     ui.horizontal(|ui| {

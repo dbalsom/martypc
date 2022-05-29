@@ -149,6 +149,7 @@ pub struct Cpu {
     piq_len: u32,
     piq_capacity: u32,
     error_string: String,
+    instruction_count: u64,
     instruction_history: VecDeque<Instruction>,
     interrupt_wait_cycle: bool,
     in_irq: bool
@@ -212,7 +213,8 @@ pub struct CpuStringState {
     pub t_fl: String,
     pub i_fl: String,
     pub d_fl: String,
-    pub o_fl: String
+    pub o_fl: String,
+    pub instruction_count: String,
 }
     
 pub enum RegisterType {
@@ -498,6 +500,9 @@ impl Cpu {
         
         self.set_register16(Register16::CS, 0xFFFF);
         self.set_register16(Register16::IP, 0x0000);
+
+        self.eflags = 0;
+        self.instruction_count = 0;
     }
 
     pub fn get_flat_address(&self) -> u32 {
@@ -591,7 +596,8 @@ impl Cpu {
                 format!("{:1}", fl as u8)
             },
             
-            flags: format!("{:04}", self.eflags)
+            flags: format!("{:04}", self.eflags),
+            instruction_count: format!("{}", self.instruction_count)
         }
     }
     
@@ -831,6 +837,7 @@ impl Cpu {
                             self.instruction_history.pop_front();
                         }
                         self.instruction_history.push_back(i);
+                        self.instruction_count += 1;
                         Ok(())
                     }
                     ExecutionResult::OkayJump => {
@@ -843,6 +850,7 @@ impl Cpu {
                             self.instruction_history.pop_front();
                         }
                         self.instruction_history.push_back(i);
+                        self.instruction_count += 1;
                         Ok(())
                     }
                     ExecutionResult::OkayRep => {
@@ -855,6 +863,7 @@ impl Cpu {
                             self.instruction_history.pop_front();
                         }
                         self.instruction_history.push_back(i);
+                        self.instruction_count += 1;
                         Ok(())
                     }                    
                     ExecutionResult::UnsupportedOpcode(o) => {

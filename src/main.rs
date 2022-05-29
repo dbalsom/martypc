@@ -11,9 +11,12 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use std::borrow::Borrow;
-use std::time::{Duration, Instant};
-use std::fs::{File, read};
+use std::{
+    fs::{File, read},
+    time::{Duration, Instant},
+    cell::RefCell,
+    rc::Rc
+};
 use rand::{Rng};
 
 
@@ -67,25 +70,22 @@ fn main() -> Result<(), Error> {
     let timer_length = Duration::new(1, 0);
     env_logger::init();
 
+    // Instantiate the rom manager to load roms for the requested machine type
     let mut rom_manager = RomManager::new(MachineType::IBM_PC_5150);
 
-    match rom_manager.try_load_from_dir("./rom") {
-        Ok(_) => {
-        }
-        Err(e) => {
-            match e {
-                RomError::DirNotFound => {
-                    eprintln!("Rom folder not found")
-                }
-                RomError::RomNotFoundForMachine => {
-                    eprintln!("No valid rom found for specified machine type")
-                }
-                _ => {
-                    eprintln!("Error loading rom file.")
-                }
+    if let Err(e) = rom_manager.try_load_from_dir("./rom") {
+        match e {
+            RomError::DirNotFound => {
+                eprintln!("Rom folder not found")
             }
-            std::process::exit(1);
+            RomError::RomNotFoundForMachine => {
+                eprintln!("No valid rom found for specified machine type")
+            }
+            _ => {
+                eprintln!("Error loading rom file.")
+            }
         }
+        std::process::exit(1);
     }
 
     //std::process::exit(0);
@@ -101,6 +101,8 @@ fn main() -> Result<(), Error> {
     //    std::process::exit(1);
     //});
 
+    // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
+    let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
     let mut machine = Machine::new(MachineType::IBM_PC_5150, VideoType::CGA, rom_manager );
     
     let video = video::Video::new();
@@ -125,7 +127,7 @@ fn main() -> Result<(), Error> {
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
         let pixels = Pixels::new(WIDTH, HEIGHT, surface_texture)?;
         let framework =
-            Framework::new(window_size.width, window_size.height, scale_factor, &pixels);
+            Framework::new(window_size.width, window_size.height, scale_factor, &pixels, exec_control.clone());
 
         (pixels, framework)
     };
@@ -255,29 +257,29 @@ fn main() -> Result<(), Error> {
                     // Get single step flag from GUI and either step or run CPU
                     // TODO: This logic is messy, figure out a better way to control CPU state 
                     //       via gui
-                    if framework.gui.get_cpu_single_step() {
-                        if framework.gui.get_cpu_step_flag() {
-                            machine.run(CYCLES_PER_FRAME, true, 0);
-                        }
-                    } 
-                    else {
-                        machine.run(CYCLES_PER_FRAME, false, bp_addr);
-                        // Check for breakpoint
-                        if machine.cpu().get_flat_address() == bp_addr && bp_addr != 0 {
-                            println!("Breakpoint hit at {:06X}", bp_addr);
-                            framework.gui.set_cpu_single_step();
-                        }
-                    }
+
+                    //if framework.gui.get_cpu_single_step() {
+                    //    if framework.gui.get_cpu_step_flag() {
+                    //        machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), 0);
+                    //    }
+                    //}
+                    //else {
+                    //    machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), bp_addr);
+                    //    // Check for breakpoint
+                    //    if machine.cpu().get_flat_address() == bp_addr && bp_addr != 0 {
+                    //        log::debug!("Breakpoint hit at {:06X}", bp_addr);
+                    //        framework.gui.set_cpu_single_step();
+                    //    }
+                    //}
+
+                    machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), 0);
 
                     // Any errors?
-                    match machine.get_error_str() {
-                        Some(err) => {
-                            framework.gui.show_error(err);
-                            framework.gui.show_disassembly_view();
-                        }
-                        None => {}
+                    if let Some(err) = machine.get_error_str() {
+                        framework.gui.show_error(err);
+                        framework.gui.show_disassembly_view();
                     }
-                    
+
                     // Draw video memory
                     video.draw(pixels.get_frame(), machine.cga(), machine.bus());
                     

@@ -6,7 +6,7 @@
     acts as the interface for the PC/XT keyboard. We emulate the keyboard through 
     the PPI.
 */
-//#![allow(dead_code)]
+#![allow(dead_code)]
 
 use crate::io::{IoDevice};
 use crate::machine::{MachineType, VideoType};
@@ -122,6 +122,7 @@ pub struct PpiStringState {
     pub port_a_mode: String,
     pub port_a_value_bin: String,
     pub port_a_value_hex: String,
+    pub kb_byte_value_hex: String,
     pub port_c_mode: String,
     pub port_c_value: String,
 }
@@ -305,6 +306,7 @@ impl Ppi {
             port_a_mode: format!("{:?}", self.port_a_mode),
             port_a_value_bin: format!("{:08b}", port_a_value),
             port_a_value_hex: format!("{:02X}", port_a_value),
+            kb_byte_value_hex: format!("{:02X}", self.kb_byte),
             port_c_mode: format!("{:?}", self.port_c_mode),
             port_c_value: format!("{:08b}", port_c_value )
         }
