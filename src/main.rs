@@ -219,7 +219,6 @@ fn main() -> Result<(), Error> {
                 }
             },
 
-
             // Draw the current frame
             Event::MainEventsCleared => {
 
@@ -311,6 +310,10 @@ fn main() -> Result<(), Error> {
                     // -- Update PPI viewer window
                     let ppi_state = machine.ppi_state();
                     framework.gui.update_ppi_state(ppi_state);
+
+                    // -- Update DMA viewer window
+                    let dma_state = machine.dma_state();
+                    framework.gui.update_dma_state(dma_state);
 
                     // -- Update Instruction Trace window
                     let trace = machine.cpu().dump_instruction_history();

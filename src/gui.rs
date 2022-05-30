@@ -10,9 +10,10 @@ use std::{
 use crate::{
     machine::{ExecutionControl, ExecutionState},
     cpu::CpuStringState, 
+    dma::DMAControllerStringState,
     pit::PitStringState, 
     pic::PicStringState,
-    ppi::PpiStringState
+    ppi::PpiStringState, 
 };
 
 //use crate::syntax_highlighting::code_view_ui;
@@ -44,7 +45,8 @@ pub(crate) struct GuiState {
     pit_viewer_open: bool,
     pic_viewer_open: bool,
     ppi_viewer_open: bool,
-
+    dma_viewer_open: bool,
+    
     exec_control: Rc<RefCell<ExecutionControl>>,
     cpu_single_step: bool,
     cpu_step_flag: bool,
@@ -56,6 +58,9 @@ pub(crate) struct GuiState {
     pub pit_state: PitStringState,
     pub pic_state: PicStringState,
     pub ppi_state: PpiStringState,
+    pub dma_state: DMAControllerStringState,
+    dma_channel_select: u32,
+    dma_channel_select_str: String,
     memory_viewer_dump: String,
     disassembly_viewer_string: String,
     disassembly_viewer_address: String,
@@ -180,7 +185,8 @@ impl GuiState {
             pit_viewer_open: false,
             pic_viewer_open: false,
             ppi_viewer_open: false,
-
+            dma_viewer_open: false,
+            
             exec_control: exec_control,
             cpu_single_step: true,
             cpu_step_flag: false,
@@ -193,6 +199,9 @@ impl GuiState {
             pit_state: Default::default(),
             pic_state: Default::default(),
             ppi_state: Default::default(),
+            dma_state: Default::default(),
+            dma_channel_select: 0,
+            dma_channel_select_str: String::new(),
             disassembly_viewer_string: String::new(),
             disassembly_viewer_address: "cs:ip".to_string(),
             trace_string: String::new(),
@@ -262,6 +271,12 @@ impl GuiState {
     pub fn update_ppi_state(&mut self, state: PpiStringState) {
         self.ppi_state = state;
     }
+
+    pub fn update_dma_state(&mut self, state: DMAControllerStringState) {
+        self.dma_state = state;
+    }
+
+
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
@@ -304,7 +319,11 @@ impl GuiState {
                     if ui.button("PPI...").clicked() {
                         self.ppi_viewer_open = true;
                         ui.close_menu();
-                    }    
+                    }
+                    if ui.button("DMA...").clicked() {
+                        self.dma_viewer_open = true;
+                        ui.close_menu();
+                    }
                 
                 });
             });
@@ -753,6 +772,89 @@ impl GuiState {
                     });
                     ui.end_row();
                 });
-            });           
+            });
+
+            egui::Window::new("DMA View")
+            .open(&mut self.dma_viewer_open)
+            .resizable(true)
+            .default_width(600.0)
+            .show(ctx, |ui| {
+                egui::Grid::new("dma_view")
+                    .striped(true)
+                    .min_col_width(300.0)
+                    .show(ui, |ui| {
+
+                    egui::ComboBox::from_label("Channel #")
+                        .selected_text(format!("Channel #{}", self.dma_channel_select))
+                        .show_ui(ui, |ui| {
+                            for (i, chan) in self.dma_state.dma_channel_state.iter_mut().enumerate() {
+                                ui.selectable_value(&mut self.dma_channel_select, i as u32, format!("Channel #{}",i));
+                            }
+                        });
+                    ui.end_row();   
+
+                    let chan = &mut self.dma_state.dma_channel_state[self.dma_channel_select as usize];
+                    
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} CAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.current_address_reg).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} CWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.current_word_count_reg).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} BAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.base_address_reg).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} BWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.base_word_count_reg).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();       
+                        
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} Service Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.service_mode).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} Address Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.address_mode).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} Xfer Type:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.transfer_type).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} Auto Init:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.auto_init).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();                     
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} Terminal Ct: ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.terminal_count).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();  
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} Masked:      ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.masked).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();                          
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new(format!("#{} Page:        ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                            ui.add(egui::TextEdit::singleline(&mut chan.page).font(egui::TextStyle::Monospace));
+                        });
+                        ui.end_row();  
+                });
+            });            
+
+        }
     }
-}
+
+

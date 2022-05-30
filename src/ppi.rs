@@ -326,7 +326,7 @@ impl Ppi {
         // Keyboard should send a 'aa' byte when clock line is held low (for how long?)
         // BIOS waits 20ms. We consider ourselves reset after 10ms
         // Clock line must go high again
-        if self.kb_counting_low {
+        if self.kb_counting_low && self.kb_low_count < KB_RESET_CYCLES {
             self.kb_low_count += cycles;
         }
 

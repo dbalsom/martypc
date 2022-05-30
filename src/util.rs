@@ -24,3 +24,21 @@ pub fn fmt_byte_array(bytes: &[u8]) -> String {
     fmt_str
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    pub fn test_extend() {
+
+        let extend1 = 0x7F;
+        let extend2 = 0x80;
+
+        let extended1 = sign_extend_u8_to_u16(extend1);
+        assert_eq!(extended1, 0x007F);
+
+        let extended2 = sign_extend_u8_to_u16(extend2);
+        assert_eq!(extended2, 0xFF80);
+
+
+    }
+}

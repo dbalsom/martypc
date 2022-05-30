@@ -11,6 +11,7 @@ use crate::{
     dma,
     cga::{self, CGACard},
     cpu::{Cpu, Flag, CpuError},
+    dma::{DMAControllerStringState},
     floppy,
     io::{IoHandler, IoBusInterface},
     pit::{self, PitStringState},
@@ -127,7 +128,29 @@ impl Machine {
         // DMA Controller: 
         // Intel 8237 DMA Controller
         let mut dma = Rc::new(RefCell::new(dma::DMAController::new()));
-        io_bus.register_port_handler(dma::DMA_CONTROL_PORT, IoHandler::new(dma.clone()));
+
+        io_bus.register_port_handler(dma::DMA_CHANNEL_0_ADDR_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_0_WC_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_1_ADDR_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_1_WC_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_2_ADDR_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_2_WC_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_3_ADDR_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_3_WC_PORT, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_COMMAND_REGISTER, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_WRITE_REQ_REGISTER, IoHandler::new(dma.clone()));
+
+        io_bus.register_port_handler(dma::DMA_CHANNEL_MASK_REGISTER, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_MODE_REGISTER, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CLEAR_FLIPFLOP, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_MASTER_CLEAR, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CLEAR_MASK_REGISTER, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_WRITE_MASK_REGISTER, IoHandler::new(dma.clone()));
+
+        io_bus.register_port_handler(dma::DMA_CHANNEL_0_PAGE_REGISTER, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_1_PAGE_REGISTER, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_2_PAGE_REGISTER, IoHandler::new(dma.clone()));
+        io_bus.register_port_handler(dma::DMA_CHANNEL_3_PAGE_REGISTER, IoHandler::new(dma.clone()));
 
         // Floppy Controller:
         let mut fdc = Rc::new(RefCell::new(floppy::FloppyController::new()));
@@ -135,7 +158,7 @@ impl Machine {
         io_bus.register_port_handler(floppy::FDC_STATUS_REGISTER, IoHandler::new(fdc.clone()));
         io_bus.register_port_handler(floppy::FDC_DATA_REGISTER, IoHandler::new(fdc.clone()));
 
-        // CGA card
+        // CGA card:
         let mut cga = Rc::new(RefCell::new(cga::CGACard::new()));
         io_bus.register_port_handler(cga::CRTC_REGISTER_SELECT, IoHandler::new(cga.clone()));
         io_bus.register_port_handler(cga::CRTC_REGISTER, IoHandler::new(cga.clone()));
@@ -196,6 +219,11 @@ impl Machine {
     pub fn ppi_state(&self) -> PpiStringState {
         let pic = self.ppi.borrow();
         pic.get_string_state()
+    }
+
+    pub fn dma_state(&self) -> DMAControllerStringState {
+        let dma = self.dma_controller.borrow();
+        dma.get_string_state()
     }
 
     pub fn get_error_str(&self) -> Option<&str> {

@@ -342,8 +342,6 @@ impl RomManager {
     }
 
     pub fn try_load_from_dir(&mut self, path: &str) -> Result<bool, RomError> {
-        
-        let mut valid_rom: Vec<(String, PathBuf)> = Vec::new();
 
         // Red in directory entries within the provided path
         let dir = match fs::read_dir(path) {
