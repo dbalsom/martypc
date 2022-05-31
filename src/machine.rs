@@ -48,6 +48,7 @@ pub enum ExecutionState {
 pub struct ExecutionControl {
     state: ExecutionState,
     do_step: Cell<bool>,
+    do_run: Cell<bool>,
     do_reset: Cell<bool>
 }
 
@@ -56,18 +57,39 @@ impl ExecutionControl {
         Self { 
             state: ExecutionState::Paused,
             do_step: Cell::new(false), 
+            do_run: Cell::new(false), 
             do_reset: Cell::new(false)
         }
     }
+
     pub fn set_state(&mut self, state: ExecutionState) {
         self.state = state
     }
+
     pub fn get_state(&self) -> ExecutionState {
         self.state
     }
+
     pub fn do_step(&mut self) {
-        self.do_step.set(true)
+        self.do_step.set(true);
     }
+
+    pub fn do_run(&mut self) {
+        // Run does nothing unless paused or at bp
+        match self.state {
+            ExecutionState::Paused => {
+                self.do_run.set(true);
+                self.state = ExecutionState::Running;
+            }
+            ExecutionState::BreakpointHit => {
+                // Step out of breakpoint status into paused status
+                self.do_run.set(true);
+                self.state = ExecutionState::Running;
+            }
+            _ => {}
+        }        
+    }
+
     pub fn do_reset(&mut self) {
         self.do_reset.set(true)
     }
@@ -170,7 +192,15 @@ impl Machine {
         rom_manager.copy_into_memory(&mut bus);
 
         // Install ROM patches if any
-        rom_manager.install_patches(&mut bus);
+        //rom_manager.install_patches(&mut bus);
+
+        // Load a floppy
+        let basic_vec = std::fs::read("./floppy/dos.ima").unwrap_or_else(|e| {
+            eprintln!("Couldn't open floppy image: {}", e);
+            std::process::exit(1);
+        });         
+
+        fdc.borrow_mut().load_image_from(basic_vec);
 
         Machine {
             machine_type,
@@ -254,14 +284,14 @@ impl Machine {
         self.rom_manager.copy_into_memory(&mut self.bus);
 
         // Re-install ROM patches if any
-        self.rom_manager.install_patches(&mut self.bus);
+        //self.rom_manager.install_patches(&mut self.bus);
 
         // Reset devices
         self.pit.borrow_mut().reset();
         self.pic.borrow_mut().reset();
     }
     
-    pub fn run(&mut self, cycle_target: u32, exec_control: &ExecutionControl, breakpoint: u32) {
+    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl, breakpoint: u32) {
 
         // Was reset requested?
         if exec_control.do_reset.get() {
@@ -291,16 +321,17 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
             if self.cpu.is_error() == false {
 
-                // Match checkpoints
+                
                 let flat_address = self.cpu.get_flat_address();
 
-                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address as usize) {
-                    log::trace!("ROM CHECKPOINT: {}", cp);
-                }
-
-                // Check for breakpoint
+                // Check for immediate breakpoint
                 if flat_address == breakpoint && breakpoint != 0 {
                     return
+                }
+
+                // Match checkpoints
+                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address as usize) {
+                    log::trace!("ROM CHECKPOINT: {}", cp);
                 }
 
                 match self.cpu.step(&mut self.bus, &mut self.io_bus) {
@@ -327,6 +358,8 @@ impl Machine {
 
                 // Run devices
                 self.dma_controller.borrow_mut().run(&mut self.io_bus);
+
+                // PIT needs PIC to issue 
                 self.pit.borrow_mut().run(&mut self.io_bus,&mut self.pic.borrow_mut(), 7);
                 self.cga.borrow_mut().run(&mut self.io_bus, 7);
                 self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), 7);

@@ -24,6 +24,7 @@ use crate::arch::{OperandType, Instruction, decode, RepType, Register8, Register
 
 pub const CPU_MHZ: f64 = 4.77272666;
 const CPU_HISTORY_LEN: usize = 32;
+const CPU_CALL_STACK_LEN: usize = 16;
 
 const INTERRUPT_VEC_LEN: usize = 4;
 
@@ -80,6 +81,12 @@ impl Display for CpuError{
     }
 }
 
+#[derive(Debug)]
+pub enum CallStackEntry {
+    Call(u16,u16,u16),
+    CallF(u16,u16,u16,u16),
+    Interrupt(u16,u16,u8)
+}
 
 pub enum Flag {
     Carry,
@@ -151,6 +158,7 @@ pub struct Cpu {
     error_string: String,
     instruction_count: u64,
     instruction_history: VecDeque<Instruction>,
+    call_stack: VecDeque<CallStackEntry>,
     interrupt_wait_cycle: bool,
     in_irq: bool
 }
@@ -723,7 +731,7 @@ impl Cpu {
         self.push_u16(bus, ip);
         
         if interrupt == 0x10 && self.ah==0x02 {
-            log::trace!("CPU: Software Interrupt: {:02X} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
+            //log::trace!("CPU: Software Interrupt: {:02X} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
         }
         // Read the IVT
         let ivt_addr = util::get_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
@@ -733,7 +741,7 @@ impl Cpu {
         self.cs = new_cs;
 
         if interrupt == 0x10 {
-            self.log_interrupt(interrupt);
+            //self.log_interrupt(interrupt);
             //log::trace!("CPU: Software Interrupt: {:02X} AH: {:02X} AL: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, self.ah, self.al,  new_cs, new_ip);
         }
         //log::trace!("CPU: Software Interrupt: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, new_cs, new_ip);
@@ -904,6 +912,26 @@ impl Cpu {
             disassembly_string.push_str(&i_string);
         }
         disassembly_string
+    }
+
+    pub fn dump_call_stack(&self) -> String {
+        let mut call_stack_string = String::new();
+
+        for call in &self.call_stack {
+            match call {
+                CallStackEntry::Call(cs,ip,rel16) => {
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} CALL {:04X}\n", cs, ip, rel16));
+                }
+                CallStackEntry::CallF(cs,ip,seg,off) => {
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} CALL FAR {:04X}:{:04X}\n", cs, ip, seg, off));
+                }
+                CallStackEntry::Interrupt(cs, ip, inum) => {
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} INT {:02X}\n", cs, ip, inum));
+                }
+            }   
+        }
+
+        call_stack_string
     }
 
     pub fn assert_state(&self) {

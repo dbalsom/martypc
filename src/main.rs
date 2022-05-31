@@ -271,7 +271,7 @@ fn main() -> Result<(), Error> {
                     //    }
                     //}
 
-                    machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), 0);
+                    machine.run(CYCLES_PER_FRAME, &mut exec_control.borrow_mut(), bp_addr);
 
                     // Any errors?
                     if let Some(err) = machine.get_error_str() {
@@ -318,6 +318,10 @@ fn main() -> Result<(), Error> {
                     // -- Update Instruction Trace window
                     let trace = machine.cpu().dump_instruction_history();
                     framework.gui.update_trace_state(trace);
+
+                    // -- Update Call Stack window
+                    let stack = machine.cpu().dump_call_stack();
+                    framework.gui.update_call_stack_state(stack);
 
                     // -- Update disassembly viewer window
                     let disassembly_addr_str = framework.gui.get_disassembly_view_address();

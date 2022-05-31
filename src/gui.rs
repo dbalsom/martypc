@@ -46,6 +46,7 @@ pub(crate) struct GuiState {
     pic_viewer_open: bool,
     ppi_viewer_open: bool,
     dma_viewer_open: bool,
+    call_stack_open: bool,
     
     exec_control: Rc<RefCell<ExecutionControl>>,
     cpu_single_step: bool,
@@ -64,7 +65,8 @@ pub(crate) struct GuiState {
     memory_viewer_dump: String,
     disassembly_viewer_string: String,
     disassembly_viewer_address: String,
-    trace_string: String
+    trace_string: String,
+    call_stack_string: String
 }
 
 impl Framework {
@@ -186,6 +188,7 @@ impl GuiState {
             pic_viewer_open: false,
             ppi_viewer_open: false,
             dma_viewer_open: false,
+            call_stack_open: false,
             
             exec_control: exec_control,
             cpu_single_step: true,
@@ -205,6 +208,7 @@ impl GuiState {
             disassembly_viewer_string: String::new(),
             disassembly_viewer_address: "cs:ip".to_string(),
             trace_string: String::new(),
+            call_stack_string: String::new(),
 
         }
     }
@@ -268,6 +272,10 @@ impl GuiState {
         self.trace_string = trace_string;
     }
 
+    pub fn update_call_stack_state(&mut self, call_stack_string: String) {
+        self.call_stack_string = call_stack_string;
+    }
+
     pub fn update_ppi_state(&mut self, state: PpiStringState) {
         self.ppi_state = state;
     }
@@ -304,6 +312,10 @@ impl GuiState {
                         self.trace_viewer_open = true;
                         ui.close_menu();
                     }
+                    if ui.button("Call Stack...").clicked() {
+                        self.call_stack_open = true;
+                        ui.close_menu();
+                    }                    
                     if ui.button("Disassembly...").clicked() {
                         self.disassembly_viewer_open = true;
                         ui.close_menu();
@@ -405,7 +417,7 @@ impl GuiState {
                 });
             });
 
-        egui::Window::new("Trace View")
+        egui::Window::new("Instruction Trace")
             .open(&mut self.trace_viewer_open)
             .resizable(true)
             .default_width(540.0)
@@ -418,6 +430,21 @@ impl GuiState {
                     ui.end_row()
                 });
             });       
+
+
+        egui::Window::new("Call Stack")
+            .open(&mut self.call_stack_open)
+            .resizable(true)
+            .default_width(540.0)
+            .show(ctx, |ui| {
+
+                ui.horizontal(|ui| {
+                    ui.add_sized(ui.available_size(), 
+                        egui::TextEdit::multiline(&mut self.call_stack_string)
+                            .font(egui::TextStyle::Monospace));
+                    ui.end_row()
+                });
+            });              
 
         egui::Window::new("Disassembly View")
             .open(&mut self.disassembly_viewer_open)

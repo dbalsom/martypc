@@ -10,8 +10,9 @@ Thumbs.db
 # Visual Studio Code editor files
 /.vscode
 
-# Rom files
-/Rom
+# Emulator files
+/rom
+/floppy
 
 # Assembly stuff
 /asm

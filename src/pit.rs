@@ -95,11 +95,11 @@ impl IoDevice for ProgrammableIntervalTimer {
             _ => panic!("PIT: Bad port #")
         }
     }
-    fn read_u16(&mut self, port: u16) -> u16 {
+    fn read_u16(&mut self, _port: u16) -> u16 {
         log::error!("Invalid 16-bit read from PIT");
         0   
     }
-    fn write_u16(&mut self, port: u16, data: u16) {
+    fn write_u16(&mut self, _port: u16, _data: u16) {
         log::error!("Invalid 16-bit write to PIT");
     }
 }
@@ -162,7 +162,6 @@ impl ProgrammableIntervalTimer {
     }
 
     fn parse_command_register(&mut self, command_byte: u8) -> (u32, AccessMode, ChannelMode, bool) {
-
         
         let channel_select: u32 = (command_byte >> 6) as u32;
 
@@ -353,7 +352,7 @@ impl ProgrammableIntervalTimer {
 
     pub fn tick(&mut self, pic: &mut pic::Pic) {
 
-        for t in &mut self.channels {
+        for (i,t) in &mut self.channels.iter_mut().enumerate() {
             match t.channel_mode {
                 ChannelMode::InterruptOnTerminalCount => {
                     if t.waiting_for_reload {
@@ -373,8 +372,13 @@ impl ProgrammableIntervalTimer {
                             t.current_count -= 1;
                             if t.current_count == 1 {
                                 t.output_is_high = true;
-                                //log::trace!("PIT: Triggering IRQ0");
-                                pic.request_interrupt(0);
+
+                                // Only trigger interrupt on Channel #0
+                                if i == 0 {
+                                    //log::trace!("PIT: Triggering IRQ0");
+                                    pic.request_interrupt(0);
+                                }
+
                             }
                         }
                     }
@@ -411,7 +415,7 @@ impl ProgrammableIntervalTimer {
                         if t.current_count == 0 {
 
                             if t.reload_value == 0 {
-                                t.current_count = u16::MAX;
+                                t.current_count = u16::MAX - 1;
                             }
                             else {
                                 // For even reload values, use reload value
@@ -430,6 +434,12 @@ impl ProgrammableIntervalTimer {
                             if t.current_count == 0 {
                                 // Change flipflop state
                                 t.output_is_high = !t.output_is_high;
+
+                                // Only trigger interrupt on Channel #0
+                                if t.output_is_high && i == 0 {
+                                    //log::trace!("PIT: Triggering IRQ0");
+                                    pic.request_interrupt(0);
+                                }                                
                             }
                         }
                     }

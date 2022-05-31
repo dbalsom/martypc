@@ -154,7 +154,6 @@ impl Ppi {
     }
 }
 
-
 impl IoDevice for Ppi {
     fn read_u8(&mut self, port: u16) -> u8 {
         //log::trace!("PPI Read from port: {:04X}", port);

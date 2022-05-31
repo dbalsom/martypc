@@ -20,7 +20,7 @@ impl Cpu {
                 // No flags affected
                 let dest_addr = util::get_linear_address(self.es, self.di);
 
-                
+                // Write AL to [es:di]
                 bus.write_u8(dest_addr as usize, self.al).unwrap();
 
                 match self.get_flag(Flag::Direction) {

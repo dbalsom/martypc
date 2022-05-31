@@ -197,7 +197,7 @@ impl RomManager {
                             (0xfe688, "Keyboard Reset"),
                             (0xfe6b2, "Blink LED Interrupt"),
                             (0xfe6ca, "Print Message"),
-                            (0xfe6fa, "Bootstrap Loader"),
+                            (0xfe6f2, "Bootstrap Loader"),
                             (0xf6000, "ROM BASIC"),
                         ])                                   
                 }

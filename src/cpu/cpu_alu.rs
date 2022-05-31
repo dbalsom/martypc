@@ -4,34 +4,24 @@ use crate::arch::{Opcode, Register8, Register16};
 impl Cpu {
 
     fn calc_parity_flag_u8(operand: u8) -> bool {
-        let mut bits = 0;
-        let mut byte = operand;
-
-        for _ in 0..8 {
-            if byte & 0x01 != 0 {
-                bits += 1;
+        let mut bits_set = 0;
+        for i in 0..8 {
+            if operand & (0x01 << i) != 0 {
+                bits_set += 1;
             }
-            byte >>= 1;
         }
-        bits % 2 == 0
+        // even number of bits set?
+        bits_set % 2 == 0
     }
 
     fn calc_parity_flag_u16(operand: u16) -> bool {
-        // Parity flag only ever looks at lowest 8 bytes
+        // Parity flag only ever looks at lowest 8 bits in operand
         Cpu::calc_parity_flag_u8(operand as u8)
     }
 
-    fn set_parity_flag_from_u8(&mut self, operand: u8) -> bool {
-        match Cpu::calc_parity_flag_u8(operand) {
-            true => {
-                self.set_flag(Flag::Parity);
-                true
-            }
-            false => {
-                self.clear_flag(Flag::Parity);
-                false
-            }
-        }
+    fn set_parity_flag_from_u8(&mut self, operand: u8) {
+
+        self.set_flag_state(Flag::Parity, Cpu::calc_parity_flag_u8(operand));
     }
 
     pub fn set_flags_from_result_u8(&mut self, result: u8) {
@@ -56,17 +46,9 @@ impl Cpu {
         self.set_parity_flag_from_u16(result);
     }
 
-    fn set_parity_flag_from_u16(&mut self, operand: u16) -> bool {
-        match Cpu::calc_parity_flag_u16(operand) {
-            true => {
-                self.set_flag(Flag::Parity);
-                true
-            }
-            false => {
-                self.clear_flag(Flag::Parity);
-                false
-            }
-        }
+    fn set_parity_flag_from_u16(&mut self, operand: u16) {
+
+        self.set_flag_state(Flag::Parity, Cpu::calc_parity_flag_u16(operand));
     }
 
     fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {
@@ -118,7 +100,7 @@ impl Cpu {
         let mut new_carry;
 
         while count > 0 {
-            new_carry = byte & 1 != 0;
+            new_carry = byte & 0x01 != 0;
             byte >>= 1;
             if saved_carry {
                 byte |= 0x80;
@@ -136,7 +118,7 @@ impl Cpu {
         let mut new_carry;
 
         while count > 0 {
-            new_carry = word & 1 != 0;
+            new_carry = word & 0x0001 != 0;
             word >>= 1;
             if saved_carry {
                 word |= 0x8000;
@@ -172,10 +154,10 @@ impl Cpu {
         let mut new_carry;
 
         while count > 0 {
-            new_carry = word & 0x80 != 0;
+            new_carry = word & 0x8000 != 0;
             word <<= 1;
             if saved_carry {
-                word |= 0x01;
+                word |= 0x0001;
             }
             saved_carry = new_carry;
             count -= 1;

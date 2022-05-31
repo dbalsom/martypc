@@ -1,10 +1,12 @@
 use crate::arch;
 use crate::arch::{OperandType, Opcode, Instruction, Register8, Register16, RepType, SegmentOverride};
-use crate::cpu::{Cpu, ExecutionResult, CpuException, Flag};
+use crate::cpu::{Cpu, ExecutionResult, CpuException, Flag, CallStackEntry};
 use crate::bus::{BusInterface};
 use crate::io::IoBusInterface;
 
 use crate::util;
+
+use super::CPU_CALL_STACK_LEN;
 
 impl Cpu {
 
@@ -391,16 +393,16 @@ impl Cpu {
                     0x73 => !self.get_flag(Flag::Carry), // JNB -> Jump if carry not set
                     0x74 => self.get_flag(Flag::Zero), // JZ -> Jump if Zero set
                     0x75 => !self.get_flag(Flag::Zero), // JNZ -> Jump if Zero not set
-                    0x76 => self.get_flag(Flag::Carry) | self.get_flag(Flag::Zero), // JBE -> Jump if Carry OR Zero
-                    0x77 => !self.get_flag(Flag::Carry) & !self.get_flag(Flag::Zero), // JNBE -> Jump if Carry not set AND Zero not set
+                    0x76 => self.get_flag(Flag::Carry) || self.get_flag(Flag::Zero), // JBE -> Jump if Carry OR Zero
+                    0x77 => !self.get_flag(Flag::Carry) && !self.get_flag(Flag::Zero), // JNBE -> Jump if Carry not set AND Zero not set
                     0x78 => self.get_flag(Flag::Sign), // JS -> Jump if Sign set
                     0x79 => !self.get_flag(Flag::Sign), // JNS -> Jump if Sign not set
                     0x7A => self.get_flag(Flag::Parity), // JP -> Jump if Parity set
                     0x7B => !self.get_flag(Flag::Parity), // JNP -> Jump if Parity not set
                     0x7C => self.get_flag(Flag::Sign) != self.get_flag(Flag::Overflow), // JL -> Jump if Sign flag != Overflow flag
                     0x7D => self.get_flag(Flag::Sign) == self.get_flag(Flag::Overflow), // JNL -> Jump if Sign flag == Overflow flag
-                    0x7E => self.get_flag(Flag::Zero) | (self.get_flag(Flag::Sign) != self.get_flag(Flag::Overflow)),  // JLE ((ZF=1) OR (SF!=OF))
-                    0x7F => !self.get_flag(Flag::Zero) & (self.get_flag(Flag::Sign) == self.get_flag(Flag::Overflow)), // JNLE ((ZF=0) AND (SF=OF))
+                    0x7E => self.get_flag(Flag::Zero) || (self.get_flag(Flag::Sign) != self.get_flag(Flag::Overflow)),  // JLE ((ZF=1) OR (SF!=OF))
+                    0x7F => !self.get_flag(Flag::Zero) && (self.get_flag(Flag::Sign) == self.get_flag(Flag::Overflow)), // JNLE ((ZF=0) AND (SF=OF))
                     _ => false
                 };
                 if jump {
@@ -548,12 +550,13 @@ impl Cpu {
                 // XCHG AX, DI
                 // Flags: None
                 let ax_value = self.ax;
-                let cx_value = self.cx;
-                self.set_register16(Register16::AX, cx_value);
-                self.set_register16(Register16::CX, ax_value);
+                let di_value = self.di;
+                self.set_register16(Register16::AX, di_value);
+                self.set_register16(Register16::DI, ax_value);
             }
             0x98 => {
                 // CBW - Convert Byte to Word
+                // Flags: None
                 self.set_register16(Register16::AX, util::sign_extend_u8_to_u16(self.al));
             }
             0x99 => {
@@ -587,7 +590,7 @@ impl Cpu {
             0xA0 => {
                 // MOV al, offset8
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let offset = self.read_operand8(bus, i.operand2_type, arch::SegmentOverride::NoOverride).unwrap();
+                let offset = self.read_operand8(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
                 
                 // Calculate offset address using default segment
                 let addr = Cpu::calc_linear_address(self.ds, offset as u16);
@@ -600,7 +603,7 @@ impl Cpu {
             0xA1 => {
                 // MOV AX, offset16
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let offset = self.read_operand16(bus, i.operand2_type, arch::SegmentOverride::NoOverride).unwrap();
+                let offset = self.read_operand16(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
                 
                 // Calculate offset address using default segment
                 let addr = Cpu::calc_linear_address(self.ds, offset as u16);
@@ -614,7 +617,7 @@ impl Cpu {
                 // MOV offset8, Al
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
 
-                let offset = self.read_operand8(bus, i.operand1_type, arch::SegmentOverride::NoOverride).unwrap();
+                let offset = self.read_operand8(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
                 
                 // Calculate offset address using default segment
                 let addr = Cpu::calc_linear_address(self.ds, offset as u16);
@@ -627,7 +630,7 @@ impl Cpu {
                 // MOV offset16, AX
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
 
-                let offset = self.read_operand16(bus, i.operand1_type, arch::SegmentOverride::NoOverride).unwrap();
+                let offset = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
                 
                 // Calculate offset address using default segment
                 let addr = Cpu::calc_linear_address(self.ds, offset as u16);
@@ -840,10 +843,14 @@ impl Cpu {
             }
             0xC3 => {
                 // RETN - Return from call
+                // Flags: None
                 // Effectively, this instruction is pop ip
                 let new_ip = self.pop_u16(bus);
                 self.ip = new_ip;
-                // RETN alters no flags
+                
+                // Pop call stack
+                self.call_stack.pop_back();
+
                 jump = true
             }
             0xC4 => {
@@ -854,6 +861,7 @@ impl Cpu {
                 // Operand 2 is far pointer
                 let (lds_segment, lds_offset) = self.read_operand_farptr(bus, i.operand2_type, i.segment_override).unwrap();
 
+                //log::trace!("LDS instruction: Loaded {:04X}:{:04X}", lds_segment, lds_offset);
                 self.write_operand16(bus, i.operand1_type, i.segment_override, lds_offset);
                 self.ds = lds_segment;
             }
@@ -876,23 +884,30 @@ impl Cpu {
                 unhandled = true;
             }
             0xCA => {
-               // RETF imm16 - Far Return w/ release 
-               self.pop_register16(bus, Register16::IP);
-               self.pop_register16(bus, Register16::CS);
-               let stack_disp = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
-               self.release(stack_disp);
-               jump = true;
+                // RETF imm16 - Far Return w/ release 
+                self.pop_register16(bus, Register16::IP);
+                self.pop_register16(bus, Register16::CS);
+                let stack_disp = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                self.release(stack_disp);
+
+                // Pop call stack
+                self.call_stack.pop_back();
+                jump = true;
             }
             0xCB => {
                 // RETF - Far Return
                 self.pop_register16(bus, Register16::IP);
                 self.pop_register16(bus, Register16::CS);
+
+                // Pop call stack
+                self.call_stack.pop_back();                
                 jump = true;
             }
             0xCC => {
                 // INT 3 - Software Interrupt 3
                 // This is a special form of INT which assumes IRQ 3 always. Most assemblers will not generate this form
                 self.do_sw_interrupt(bus, 3);
+
                 jump = true;    
             }
             0xCD => {
@@ -1073,13 +1088,21 @@ impl Cpu {
             0xE8 => {
                 // CALL rel16
                 // Push offset of next instruction (CALL rel16 is 3 bytes)
+                let cs = self.get_register16(Register16::CS);
                 let ip = self.get_register16(Register16::IP);
                 let next_i = ip + 3;
                 self.push_u16(bus, next_i);
 
                 // Add rel16 to ip
-                let rel = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                self.ip = self.ip.wrapping_add(rel);
+                let rel16 = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                self.ip = util::relative_offset_u16(self.ip, rel16 as i16 + i.size as i16 );
+                jump = true;
+
+                // Add to call stack
+                if self.call_stack.len() == CPU_CALL_STACK_LEN {
+                    self.call_stack.pop_front();
+                }                
+                self.call_stack.push_back(CallStackEntry::Call(cs, ip, rel16));
             }
             0xE9 => {
                 // JMP rel16
