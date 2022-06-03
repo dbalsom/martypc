@@ -204,13 +204,13 @@ impl Cpu {
                 match self.get_flag(Flag::Direction) {
                     false => {
                         // Direction flag clear, process forwards
-                        self.si = self.si.wrapping_add(2);
-                        self.di = self.di.wrapping_add(2);
+                        self.si = self.si.wrapping_add(1);
+                        self.di = self.di.wrapping_add(1);
                     }
                     true => {
                         // Direction flag set, process backwards
-                        self.si = self.si.wrapping_sub(2);
-                        self.di = self.di.wrapping_sub(2);
+                        self.si = self.si.wrapping_sub(1);
+                        self.di = self.di.wrapping_sub(1);
                     }
                 }
             }

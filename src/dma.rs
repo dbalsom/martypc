@@ -9,6 +9,8 @@
 use std::ops::Add;
 
 use crate::io::{IoBusInterface, IoDevice};
+use crate::bus::BusInterface;
+
 use log;
 
 pub const DMA_CHANNEL_0_ADDR_PORT: u16  = 0x00; // R/W
@@ -485,8 +487,12 @@ impl DMAController {
         };
 
         chan.mode_reg = data;
+        chan.terminal_count = false;
+
         log::trace!("DMA Channel {} mode set: Transfer type: {:?}, Auto init: {:?}, Address Mode: {:?}, Service Mode: {:?}",
             chan_n, chan.transfer_type, chan.auto_init, chan.address_mode, chan.service_mode );
+
+
     }    
 
     pub fn handle_clear_flopflop(&mut self) {
@@ -535,10 +541,10 @@ impl DMAController {
         for chan in self.channels.iter() {
 
             chan_vec.push(DMAChannelStringState{
-                current_address_reg: format!("{:?}", chan.current_address_reg),
-                current_word_count_reg: format!("{:?}", chan.current_word_count_reg),
-                base_address_reg: format!("{:?}", chan.base_address_reg),
-                base_word_count_reg: format!("{:?}", chan.base_word_count_reg),
+                current_address_reg: format!("{:04X}", chan.current_address_reg),
+                current_word_count_reg: format!("{}", chan.current_word_count_reg),
+                base_address_reg: format!("{:04X}", chan.base_address_reg),
+                base_word_count_reg: format!("{}", chan.base_word_count_reg),
             
                 service_mode: format!("{:?}", chan.service_mode),
                 address_mode: format!("{:?}", chan.address_mode),
@@ -546,7 +552,7 @@ impl DMAController {
                 auto_init: format!("{:?}", chan.auto_init),
                 terminal_count: format!("{:?}", chan.terminal_count),
                 masked: format!("{:?}", chan.masked),
-                page: format!("{:?}", chan.page)
+                page: format!("{:02X}", chan.page)
             });
         }
 
@@ -554,6 +560,69 @@ impl DMAController {
             flopflop: format!("{:?}", self.flipflop),
             dma_channel_state: chan_vec 
         }
+    }
+
+    pub fn get_dma_transfer_address(&self, channel: usize) -> usize {
+        if channel >= DMA_CHANNEL_COUNT {
+            panic!("Invalid DMA Channel");
+        }  
+        let address: usize = ((self.channels[channel].page as usize) << 16) + self.channels[channel].current_address_reg as usize;
+        address
+    }
+
+    pub fn check_dma_ready(&self, channel: usize) -> bool {
+        if channel >= DMA_CHANNEL_COUNT {
+            panic!("Invalid DMA Channel");
+        }
+        let mut is_ready = false;
+        if !self.channels[channel].masked {
+            is_ready = true;
+        }
+        is_ready
+    }
+
+    pub fn check_terminal_count(&self, channel: usize) -> bool {
+        if channel >= DMA_CHANNEL_COUNT {
+            panic!("Invalid DMA Channel");
+        }
+        
+        self.channels[channel].terminal_count
+    }
+
+    pub fn do_dma_transfer_u8(&mut self, bus: &mut BusInterface, channel: usize, data: u8) {
+        if channel >= DMA_CHANNEL_COUNT {
+            panic!("Invalid DMA Channel");
+        }  
+
+        let bus_address = self.get_dma_transfer_address(channel);
+
+        match self.channels[channel].address_mode {
+            AddressMode::Increment => {
+
+                if self.channels[channel].current_word_count_reg > 0 {
+                    bus.write_u8(bus_address, data);
+                    
+                    self.channels[channel].current_address_reg += 1;
+                    self.channels[channel].current_word_count_reg -= 1;
+
+                    //log::trace!("DMA write {:02X} to address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
+                }
+                else if self.channels[channel].current_word_count_reg == 0 && !self.channels[channel].terminal_count {
+                    
+                    // Transfer one more on a 0 count, then set TC
+                    bus.write_u8(bus_address, data);
+                    self.channels[channel].current_address_reg += 1;
+
+                    //log::trace!("DMA write {:02X} to address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
+                    self.channels[channel].terminal_count = true;
+                    log::trace!("Terminal count reached on DMA channel {:01X}", channel);
+                }
+                else {
+                    // Trying to transfer on a terminal count
+                }
+            }
+            _=> panic!("DMA Decrement address mode unimplemented")
+        }        
     }
 
     pub fn run(&mut self, io_bus: &mut IoBusInterface) {

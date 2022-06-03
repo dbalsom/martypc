@@ -8,10 +8,9 @@ use std::{
 
 use crate::{
     bus::BusInterface,
-    dma,
     cga::{self, CGACard},
     cpu::{Cpu, Flag, CpuError},
-    dma::{DMAControllerStringState},
+    dma::{self, DMAControllerStringState},
     floppy,
     io::{IoHandler, IoBusInterface},
     pit::{self, PitStringState},
@@ -106,6 +105,7 @@ pub struct Machine {
     pic: Rc<RefCell<pic::Pic>>,
     ppi: Rc<RefCell<ppi::Ppi>>,
     cga: Rc<RefCell<cga::CGACard>>,
+    fdc: Rc<RefCell<floppy::FloppyController>>,
     error: bool,
     error_str: String,
 }
@@ -195,12 +195,13 @@ impl Machine {
         //rom_manager.install_patches(&mut bus);
 
         // Load a floppy
-        let basic_vec = std::fs::read("./floppy/dos.ima").unwrap_or_else(|e| {
+        let basic_vec = std::fs::read("./floppy/kings.img").unwrap_or_else(|e| {
             eprintln!("Couldn't open floppy image: {}", e);
             std::process::exit(1);
         });         
 
-        fdc.borrow_mut().load_image_from(basic_vec);
+        // Load into floppy drive 0 (A:)
+        fdc.borrow_mut().load_image_from(0, basic_vec);
 
         Machine {
             machine_type,
@@ -214,6 +215,7 @@ impl Machine {
             pic: pic,
             ppi: ppi,
             cga: cga,
+            fdc: fdc,
             error: false,
             error_str: String::new(),
         }
@@ -300,12 +302,14 @@ impl Machine {
             return
         }
     
+        let mut ignore_breakpoint = false;
         let cycle_target_adj = match exec_control.state {
             ExecutionState::Paused => {
                 match exec_control.do_step.get() {
                     true => {
                         // Reset step flag
                         exec_control.do_step.set(false);
+                        ignore_breakpoint = true;
                         // Execute 1 cycle
                         1
                     },
@@ -321,11 +325,11 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
             if self.cpu.is_error() == false {
 
-                
                 let flat_address = self.cpu.get_flat_address();
 
                 // Check for immediate breakpoint
-                if flat_address == breakpoint && breakpoint != 0 {
+                if (flat_address == breakpoint) && breakpoint != 0 && !ignore_breakpoint {
+
                     return
                 }
 
@@ -359,11 +363,17 @@ impl Machine {
                 // Run devices
                 self.dma_controller.borrow_mut().run(&mut self.io_bus);
 
-                // PIT needs PIC to issue 
+                // PIT needs PIC to issue timer interrupts
                 self.pit.borrow_mut().run(&mut self.io_bus,&mut self.pic.borrow_mut(), 7);
                 self.cga.borrow_mut().run(&mut self.io_bus, 7);
                 self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), 7);
-
+                
+                // FDC needs PIC to issue floppy drive interrupts, DMA to request DMA transfers, and Memory Bus to pass to DMA
+                self.fdc.borrow_mut().run(
+                    &mut self.pic.borrow_mut(),
+                    &mut self.dma_controller.borrow_mut(),
+                    &mut self.bus,
+                    7);
             }
             // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all
             // that good stuff. For now during initial development we're going to assume an average instruction cost of 8** 7

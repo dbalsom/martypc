@@ -400,6 +400,22 @@ impl Cpu {
     
     }
 
+    /// Signed Multiply, 8 bits
+    pub fn multiply_i8(&mut self, operand1: i8) {
+        
+        // 8 bit operand => 16 bit product
+        let product: i16 = self.al as i16 * operand1 as i16;
+
+        // Set carry and overflow if product wouldn't fit in u8
+        if product < i8::MIN.into() || product > i8::MAX.into() {
+            self.set_flag(Flag::Carry);
+            self.set_flag(Flag::Overflow);
+        }
+
+        // Note: Does not set Sign or Zero flags
+        self.set_register16(Register16::AX, product as u16);
+    }  
+
     // DIV r/m8 instruction
     // Divide can fail on div by 0 or overflow - (on which we would trigger an exception)
     pub fn divide_u8(&mut self, operand1: u8) -> bool {
@@ -607,6 +623,16 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result    
             }
+            Opcode::NEG => {
+                // Compute (0-operand)
+                // AoA 6.5.5
+                let (result, _carry, _overflow, aux_carry) = Cpu::sub_u16(0, operand1, false);
+                
+                // NEG Updates AF, SF, PF, ZF
+                self.set_flag_state(Flag::AuxCarry, aux_carry);
+                self.set_flags_from_result_u16(result);
+                result
+            }            
             Opcode::INC => {
                 // INC acts like add xx, 1, however does not set carry flag
                 let (result, _carry, overflow, aux_carry) = Cpu::add_u16(operand1, 1, false);

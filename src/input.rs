@@ -29,8 +29,10 @@ pub fn match_virtual_keycode( vkc: VirtualKeyCode ) -> Option<u8> {
         VirtualKeyCode::Key6 => Some(0x07),
         VirtualKeyCode::Key7 => Some(0x08),
         VirtualKeyCode::Key8 => Some(0x09),
-        VirtualKeyCode::Key9 => Some(0x10),
-        VirtualKeyCode::Key0 => Some(0x11),
+        VirtualKeyCode::Key9 => Some(0x0A),
+        VirtualKeyCode::Key0 => Some(0x0B),
+        VirtualKeyCode::Minus => Some(0x0C),
+        VirtualKeyCode::Equals => Some(0x0D),
         VirtualKeyCode::A => Some(0x1E),
         VirtualKeyCode::B => Some(0x30),
         VirtualKeyCode::C => Some(0x2E),
@@ -47,7 +49,7 @@ pub fn match_virtual_keycode( vkc: VirtualKeyCode ) -> Option<u8> {
         VirtualKeyCode::N => Some(0x31),
         VirtualKeyCode::O => Some(0x18),
         VirtualKeyCode::P => Some(0x19),
-        VirtualKeyCode::Q => Some(0x1A),
+        VirtualKeyCode::Q => Some(0x10),
         VirtualKeyCode::R => Some(0x13),
         VirtualKeyCode::S => Some(0x1F),
         VirtualKeyCode::T => Some(0x14),
@@ -64,8 +66,8 @@ pub fn match_virtual_keycode( vkc: VirtualKeyCode ) -> Option<u8> {
         VirtualKeyCode::LBracket => Some(0x1A),
         VirtualKeyCode::RBracket => Some(0x1B),
         VirtualKeyCode::Semicolon => Some(0x27),
-        VirtualKeyCode::Grave => Some(0x28),
-        VirtualKeyCode::Apostrophe => Some(0x29),
+        VirtualKeyCode::Grave => Some(0x29),
+        VirtualKeyCode::Apostrophe => Some(0x28),
 
         VirtualKeyCode::Comma => Some(0x33),
         VirtualKeyCode::Period => Some(0x34),
@@ -90,6 +92,11 @@ pub fn match_virtual_keycode( vkc: VirtualKeyCode ) -> Option<u8> {
         VirtualKeyCode::Numpad9 => Some(0x49),
         VirtualKeyCode::NumpadSubtract => Some(0x4A),
         VirtualKeyCode::NumpadAdd => Some(0x4E),
+        
+        VirtualKeyCode::Left => Some(0x4B),
+        VirtualKeyCode::Right => Some(0x4D),
+        VirtualKeyCode::Up => Some(0x48),
+        VirtualKeyCode::Down => Some(0x50),
         _=>None
     }
 

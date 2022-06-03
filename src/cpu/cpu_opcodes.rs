@@ -445,9 +445,20 @@ impl Cpu {
                 handled_override = true;
             }
             0x84 => {
-                unhandled = true;
+                // TEST r/m8, r8
+                // Flags: o..sz.pc
+                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                // math_op8 handles flags
+                self.math_op8(Opcode::TEST, op1_value, op2_value);
             }
             0x85 => {
+                // TEST r/m16, r16
+                // Flags: o..sz.pc                
+                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                // math_op16 handles flags
+                self.math_op16(Opcode::TEST, op1_value, op2_value);
                 unhandled = true;
             }
             0x86 => {
@@ -492,7 +503,9 @@ impl Cpu {
                 unhandled = true;
             }
             0x8F => {
-                unhandled = true;
+                // POP r/m16
+                let value = self.pop_u16(bus);
+                self.write_operand16(bus, i.operand1_type, i.segment_override, value);
             }
             0x90 => {
                 // NOP
@@ -563,7 +576,17 @@ impl Cpu {
                 unhandled = true;
             }
             0x9A => {
-                unhandled = true;
+                // CALLF - Call Far
+
+                self.push_register16(bus, Register16::CS);
+                let next_i = self.ip + (i.size as u16);
+                self.push_u16(bus, next_i);
+
+                if let OperandType::FarAddress(segment, offset) = i.operand1_type {                
+                    self.cs = segment;
+                    self.ip = offset;
+                }
+                jump = true;
             }
             0x9B => {
                 unhandled = true;
@@ -704,23 +727,23 @@ impl Cpu {
             }
             0xA8 => {
                 // TEST al, imm8
+                // Flags: o..sz.pc
                 let op1_value = self.al;
-                let op2_value = self.read_operand8(bus, i.operand2_type, arch::SegmentOverride::NoOverride).unwrap();
+                let op2_value = self.read_operand8(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
                 
-                let result = self.math_op8(Opcode::TEST,  op1_value, op2_value);
-                self.set_register8(Register8::AL, result);
+                self.math_op8(Opcode::TEST,  op1_value, op2_value);
             }
             0xA9 => {
                 // TEST ax, imm16
+                // Flags: o..sz.pc
                 let op1_value = self.ax;
-                let op2_value = self.read_operand16(bus, i.operand2_type, arch::SegmentOverride::NoOverride).unwrap();
+                let op2_value = self.read_operand16(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
                 
-                let result = self.math_op16(Opcode::TEST,  op1_value, op2_value);
-                self.set_register16(Register16::AX, result);
+                self.math_op16(Opcode::TEST,  op1_value, op2_value);
             }
             0xAA => {
                 // STOSB
-                self.string_op(bus, Opcode::STOSB, arch::SegmentOverride::NoOverride);
+                self.string_op(bus, Opcode::STOSB, SegmentOverride::NoOverride);
 
                 // Check for end condition (CX==0)
                 if self.in_rep {
@@ -733,7 +756,7 @@ impl Cpu {
             }
             0xAB => {
                 // STOSW
-                self.string_op(bus, Opcode::STOSW, arch::SegmentOverride::NoOverride);
+                self.string_op(bus, Opcode::STOSW, SegmentOverride::NoOverride);
                 // Check for end condition (CX==0)
                 if self.in_rep {
                     self.decrement_register16(Register16::CX);
@@ -921,7 +944,10 @@ impl Cpu {
                 jump = true;
             }
             0xCE => {
-                unhandled = true;
+                // INTO - Call Overflow Interrupt Handler
+                self.do_sw_interrupt(bus, 4);
+            
+                jump = true;
             }
             0xCF => {
                 // IRET instruction
@@ -1070,7 +1096,10 @@ impl Cpu {
                 //println!("IN: Would input value from port {:#02X}", op2_value);                
             }
             0xE5 => {
-                unhandled = true;
+                // IN ax, imm8
+                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap(); 
+                let in_byte = io_bus.read_u8(op2_value as u16);
+                self.set_register16(Register16::AX, in_byte as u16);
             }
             0xE6 => {
                 // OUT imm8, al
@@ -1176,7 +1205,7 @@ impl Cpu {
 
                     Opcode::TEST => {
                         let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                        let op2_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                        let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
                         // Don't use result, just set flags
                         let _result = self.math_op8(i.mnemonic, op1_value, op2_value);
                     }
@@ -1195,6 +1224,11 @@ impl Cpu {
                         // Multiply handles writing to ax
                         self.multiply_u8(op1_value);
                     }
+                    Opcode::IMUL => {
+                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                        // Multiply handles writing to ax
+                        self.multiply_i8(op1_value as i8);
+                    }                    
                     Opcode::DIV => {
                         let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
                         // Divide handles writing to dx:ax
@@ -1214,7 +1248,7 @@ impl Cpu {
 
                     Opcode::TEST => {
                         let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                        let op2_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                        let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
                         // Don't use result, just set flags
                         let _result = self.math_op16(i.mnemonic, op1_value, op2_value);
                     }
@@ -1304,6 +1338,41 @@ impl Cpu {
                         self.ip = ptr16;
                         jump = true;
                     }
+                    // Jump Far
+                    Opcode::JMPF => {
+
+                        let (segment, offset) = self.read_operand_farptr(bus, i.operand1_type, i.segment_override).unwrap();
+
+                        self.cs = segment;
+                        self.ip = offset;
+                        jump = true;
+
+                        //log::trace!("JMPF: Destination [{:04X}:{:04X}]", segment, offset);
+                    }
+                    // Call Near
+                    Opcode::CALL => {
+                        let ptr16 = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                        log::trace!("CALL: Destination [{:04X}]", ptr16);
+                        
+                        // Push return address (next instruction offset) onto stack
+                        let next_i = self.ip + (i.size as u16);
+                        self.push_u16(bus, next_i);
+
+                        self.ip = ptr16;
+                        jump = true;
+                    }
+                    // Call Far
+                    Opcode::CALLF => {
+                        let (segment, offset) = self.read_operand_farptr(bus, i.operand1_type, i.segment_override).unwrap();
+
+                        self.cs = segment;
+                        self.ip = offset;
+
+                        log::trace!("CALLF: Destination [{:04X}:{:04X}]", segment, offset);
+                        //jump = true;
+                        unhandled = true;
+
+                    }
                     _=> {
                         unhandled = true;
                     }
@@ -1320,9 +1389,9 @@ impl Cpu {
         match i.segment_override {
             SegmentOverride::NoOverride => {},
             _ => {
-                //Check that we properly handled override
+                //Check that we properly handled override. No longer panics as IBM DOS 1.0 has a stray 'cs' override
                 if !handled_override {
-                    panic!("Unhandled segment override: {:02}", i.opcode);
+                    log::warn!("Unhandled segment override at [{:04X}:{:04X}]: {:02X}", self.cs, self.ip, i.opcode);
                 }
             }
 

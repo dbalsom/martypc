@@ -198,6 +198,8 @@ impl RomManager {
                             (0xfe6b2, "Blink LED Interrupt"),
                             (0xfe6ca, "Print Message"),
                             (0xfe6f2, "Bootstrap Loader"),
+                            (0xFEF33, "FDC Wait for Interrupt"),
+                            (0xFEF47, "FDC Interrupt Timeout"),
                             (0xf6000, "ROM BASIC"),
                         ])                                   
                 }
