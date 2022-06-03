@@ -404,9 +404,9 @@ impl Cpu {
     pub fn multiply_i8(&mut self, operand1: i8) {
         
         // 8 bit operand => 16 bit product
-        let product: i16 = self.al as i16 * operand1 as i16;
+        let product: i16 = (self.al as i8 as i16) * (operand1 as i16);
 
-        // Set carry and overflow if product wouldn't fit in u8
+        // Set carry and overflow if product wouldn't fit in i8
         if product < i8::MIN.into() || product > i8::MAX.into() {
             self.set_flag(Flag::Carry);
             self.set_flag(Flag::Overflow);

@@ -602,8 +602,9 @@ impl ModRmByte {
             addressing_mode
         })        
     }
-    fn get_op1_reg8(&self) -> Register8 {
+
     // Interpret the 'R/M' field as an 8 bit register selector
+    fn get_op1_reg8(&self) -> Register8 {
         match self.b_rm {
             0x00 => Register8::AL,
             0x01 => Register8::CL,

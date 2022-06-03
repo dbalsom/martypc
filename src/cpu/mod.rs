@@ -152,6 +152,7 @@ pub struct Cpu {
     is_single_step: bool,
     is_error: bool,
     in_rep: bool,
+    rep_opcode: u8,
     rep_type: RepType,
     piq_len: u32,
     piq_capacity: u32,

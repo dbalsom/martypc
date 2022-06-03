@@ -17,6 +17,7 @@ impl Cpu {
         ((segment as u32) << 4) + offset as u32
     }
     
+    /// Calculate the Effective Address for the given AddressingMode enum
     fn calc_effective_address(&self, mode: AddressingMode, segment: SegmentOverride) -> (u16, u16) {
         // Addressing modes that reference BP use the stack segment instead of data segment 
         // unless a segment override is present.
@@ -48,6 +49,7 @@ impl Cpu {
         // ss:[bp+{}]
         // ds:[bx+{}]
 
+        // Override default segments based on prefix
         let segment_base_default_ds: u16 = match segment {
             SegmentOverride::NoOverride => self.ds,
             SegmentOverride::SegmentES => self.es,
@@ -99,6 +101,15 @@ impl Cpu {
         }
     }
 
+    pub fn load_effective_address(&self, operand: OperandType) -> Option<u16> {
+        if let OperandType::AddressingMode(mode) = operand {
+            let (_segment, offset) = self.calc_effective_address(mode, SegmentOverride::NoOverride);
+            return Some(offset);
+        }
+        None
+    }
+
+    /// Return the value of an 8-bit Operand
     // TODO: implement cycle cost
     pub fn read_operand8(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride) -> Option<u8> {
 
@@ -132,6 +143,7 @@ impl Cpu {
         }
     }
 
+    /// Return the value of a 16-bit Operand
     // TODO: implement cycle cost
     pub fn read_operand16(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride) -> Option<u16> {
 

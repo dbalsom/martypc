@@ -637,7 +637,13 @@ impl FloppyController {
 
         // Maximum size of DMA transfer
 
-        let max_sectors = track_len - sector + 1;
+        let max_sectors;
+        if track_len > 0 {
+            max_sectors = track_len - sector + 1;
+        }
+        else {
+            max_sectors = 1;
+        }
         self.dma_bytes_left = max_sectors as usize * SECTOR_SIZE;
 
         log::trace!("command_read_sector: cyl:{:01X} head:{:01X} sector:{:02X} sector_size:{:02X} track_len:{:02X} gap3_len:{:02X} data_len:{:02X}",
@@ -656,6 +662,10 @@ impl FloppyController {
         //let lba: usize = (cylinder as usize * 2 + (head as usize)) * 8 + (sector as usize - 1);
         //lba * SECTOR_SIZE
 
+        if sector == 0 {
+            log::warn!("Invalid sector # == 0");
+            return 0;
+        }
         // ignore heads for now
         (cylinder as usize * 8 + sector as usize - 1) * SECTOR_SIZE
     }
@@ -716,7 +726,8 @@ impl FloppyController {
 
                         //log::trace!("Byte address for FDC read: {:04X}", byte_address);
                         if byte_address >= self.drives[self.drive_select].disk_image.len() {
-                            log::error!("Read past end of disk image!");
+                            log::error!("Read past end of disk image: {}/{}!", byte_address, self.drives[self.drive_select].disk_image.len() );
+                            self.dma_bytes_left = 0;
                         }
                         else {
                             let byte = self.drives[self.drive_select].disk_image[byte_address];

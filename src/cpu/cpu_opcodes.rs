@@ -27,7 +27,14 @@ impl Cpu {
         if (i.prefixes & arch::OPCODE_PREFIX_REP1 != 0) || (i.prefixes & arch::OPCODE_PREFIX_REP2 != 0) {
             // A REPx prefix was set
             self.in_rep = true;
-            // do we need the rep count?
+            self.rep_opcode = i.opcode;
+        }
+
+        if self.in_rep {
+            //log::trace!("REP Prefix on instruction: {:?}", i.mnemonic);
+            if let Opcode::STI = i.mnemonic {
+                panic!("Whoops. REP on STI at {:04X}:{:04X} REP was set on opcode : {:02X}", self.cs, self.ip, self.rep_opcode);
+            }
         }
 
         // Reset the wait cycle after STI
@@ -500,7 +507,10 @@ impl Cpu {
                 handled_override = true;
             }
             0x8D => {
-                unhandled = true;
+                // LEA - Load Effective Address
+
+                let value = self.load_effective_address(i.operand2_type).unwrap();
+                self.write_operand16(bus, i.operand1_type, SegmentOverride::NoOverride, value);
             }
             0x8F => {
                 // POP r/m16
@@ -696,7 +706,7 @@ impl Cpu {
                 // Flags: All
                 self.string_op(bus, i.mnemonic, i.segment_override);       
 
-                // Check for end condition (CX==0)
+                // Check for REP end condition #1 (CX==0)
                 if self.in_rep {
                     self.decrement_register16(Register16::CX);
                     if self.get_register16(Register16::CX) == 0 {
@@ -704,15 +714,17 @@ impl Cpu {
                         self.rep_type = RepType::NoRep;
                     }
                 }
-                // Check for end condition (Z/NZ)
+                // Check for REP end condition #2 (Z/NZ)
                 match self.rep_type {
                     RepType::Repnz => {
-                        if !self.get_flag(Flag::Zero) {
+                        // Repeat while NOT zero. If Zero flag is set, end REP.
+                        if self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
                         }
                     }
                     RepType::Repz => {
+                        // Repeat while zero. If zero flag is NOT set, end REP.
                         if !self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
@@ -783,7 +795,7 @@ impl Cpu {
                 // Flags: ALL
                 self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
 
-                // Check for end condition (CX==0)
+                // Check for REP end condition #1 (CX==0)
                 if self.in_rep {
                     self.decrement_register16(Register16::CX);
                     if self.get_register16(Register16::CX) == 0 {
@@ -791,15 +803,17 @@ impl Cpu {
                         self.rep_type = RepType::NoRep;
                     }
                 }
-                // Check for end condition (Z/NZ)
+                // Check for REP end condition #2 (Z/NZ)
                 match self.rep_type {
                     RepType::Repnz => {
-                        if !self.get_flag(Flag::Zero) {
+                        // Repeat while NOT zero. If Zero flag is set, end REP.
+                        if self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
                         }
                     }
                     RepType::Repz => {
+                        // Repeat while zero. If zero flag is NOT set, end REP.
                         if !self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
@@ -821,15 +835,17 @@ impl Cpu {
                         self.rep_type = RepType::NoRep;
                     }
                 }
-                // Check for end condition (Z/NZ)
+                // Check for REP end condition #2 (Z/NZ)
                 match self.rep_type {
                     RepType::Repnz => {
-                        if !self.get_flag(Flag::Zero) {
+                        // Repeat while NOT zero. If Zero flag is set, end REP.
+                        if self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
                         }
                     }
                     RepType::Repz => {
+                        // Repeat while zero. If zero flag is NOT set, end REP.
                         if !self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
@@ -877,7 +893,13 @@ impl Cpu {
                 jump = true
             }
             0xC4 => {
-                unhandled = true;
+                // LES - Load ES from Pointer
+                // Operand 2 is far pointer
+                let (les_segment, les_offset) = self.read_operand_farptr(bus, i.operand2_type, i.segment_override).unwrap();
+
+                //log::trace!("LES instruction: Loaded {:04X}:{:04X}", les_segment, les_offset);
+                self.write_operand16(bus, i.operand1_type, i.segment_override, les_offset);
+                self.es = les_segment;
             }
             0xC5 => {
                 // LDS - Load DS from Pointer
