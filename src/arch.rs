@@ -1243,6 +1243,61 @@ pub fn decode(bytes: &mut impl ByteInterface) -> Result<Instruction, Box<dyn std
             operand2_size = OperandSize::Operand16;
             operand1_type = OperandType::Register16(modrm.get_op2_segmentreg16());
         }
+        0xC0 => {
+            // Bitwise opcode extensions - r/m8, imm8
+            // This opcode was only supported on 80186 and above
+            operand1_size = OperandSize::Operand8;
+
+            op_flags |= INSTRUCTION_HAS_MODRM;
+            let modrm = ModRmByte::read_from(bytes, &mut cycle_cost)?;
+            let addr_mode = modrm.get_addressing_mode();
+            operand1_type = match addr_mode {
+                AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
+                _=> OperandType::AddressingMode(addr_mode)
+            };
+            let op_ext = modrm.get_op_extension();
+            mnemonic = match op_ext {
+                0x00 => Opcode::ROL,
+                0x01 => Opcode::ROR,
+                0x02 => Opcode::RCL,
+                0x03 => Opcode::RCR,
+                0x04 => Opcode::SHL,
+                0x05 => Opcode::SHR,
+                0x06 => Opcode::SHL,
+                0x07 => Opcode::SAR,
+                _=>Opcode::InvalidOpcode
+            };
+
+            let operand2 = bytes.read_u8(&mut cycle_cost);
+            operand2_type = OperandType::Immediate8(operand2);
+        }
+        0xC1 => {
+            // Bitwise opcode extensions - r/m16, imm8
+            // This opcode was only supported on 80186 and above
+            operand1_size = OperandSize::Operand16;
+
+            op_flags |= INSTRUCTION_HAS_MODRM;
+            let modrm = ModRmByte::read_from(bytes, &mut cycle_cost)?;
+            let addr_mode = modrm.get_addressing_mode();
+            operand1_type = match addr_mode {
+                AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
+                _=> OperandType::AddressingMode(addr_mode)
+            };
+            let op_ext = modrm.get_op_extension();
+            mnemonic = match op_ext {
+                0x00 => Opcode::ROL,
+                0x01 => Opcode::ROR,
+                0x02 => Opcode::RCL,
+                0x03 => Opcode::RCR,
+                0x04 => Opcode::SHL,
+                0x05 => Opcode::SHR,
+                0x06 => Opcode::SHL,
+                0x07 => Opcode::SAR,
+                _=> Opcode::InvalidOpcode,
+            };
+            let operand2 = bytes.read_u8(&mut cycle_cost);
+            operand2_type = OperandType::Immediate8(operand2);
+        }        
         0xD0 => {
             // Bitwise opcode extensions - r/m8, 0x01
             operand1_size = OperandSize::Operand8;
