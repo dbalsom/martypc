@@ -393,8 +393,8 @@ pub enum OperandType {
     Immediate16(u16),
     Relative8(i8),
     Relative16(i16),
-    Offset8(i16),
-    Offset16(i16),
+    Offset8(u16),
+    Offset16(u16),
     Register8(Register8),
     Register16(Register16),
     AddressingMode(AddressingMode),
@@ -774,10 +774,40 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
             format!("{:#06X}", rel16)
         }
         OperandType::Offset8(offset8) => {
-            format!("byte ptr ds:[{:#06X}]", offset8)
+            let segment;
+            match i.segment_override {
+                SegmentOverride::SegmentES => {
+                    segment = "es".to_string();
+                }
+                SegmentOverride::SegmentCS => {
+                    segment = "cs".to_string();
+                }
+                SegmentOverride::SegmentSS => {
+                    segment = "ss".to_string();
+                }
+                _ => {
+                    segment = "ds".to_string();
+                }
+            }            
+            format!("byte ptr {}:[{:#06X}]", segment, offset8)
         }
         OperandType::Offset16(offset16) => {
-            format!("word ptr ds:[{:#06X}]", offset16)
+            let segment;
+            match i.segment_override {
+                SegmentOverride::SegmentES => {
+                    segment = "es".to_string();
+                }
+                SegmentOverride::SegmentCS => {
+                    segment = "cs".to_string();
+                }
+                SegmentOverride::SegmentSS => {
+                    segment = "ss".to_string();
+                }
+                _ => {
+                    segment = "ds".to_string();
+                }
+            }                        
+            format!("word ptr {}:[{:#06X}]", segment, offset16)
         }
         OperandType::Register8(reg8) => {
             match reg8 {
@@ -827,23 +857,27 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
             let mut segment1 = "ds".to_string();
             let mut segment2 = "ss".to_string();
 
-            // Handle segment override prefixes (TODO: What is supposed to happen if there's more than one?)
-            if i.prefixes & OPCODE_PREFIX_ES_OVERRIDE != 0 {
-                segment1 = "es".to_string();
-                segment2 = "es".to_string();
+            // Handle segment override prefixes 
+            match i.segment_override {
+                SegmentOverride::SegmentES => {
+                    segment1 = "es".to_string();
+                    segment2 = "es".to_string();
+                }
+                SegmentOverride::SegmentCS => {
+                    segment1 = "cs".to_string();
+                    segment2 = "cs".to_string();
+                }
+                SegmentOverride::SegmentSS => {
+                    segment1 = "ss".to_string();
+                    segment2 = "ss".to_string();
+                }
+                SegmentOverride::SegmentDS => {
+                    segment1 = "ds".to_string();
+                    segment2 = "ds".to_string();
+                }
+                _ => {}
             }
-            else if i.prefixes & OPCODE_PREFIX_CS_OVERRIDE != 0 {
-                segment1 = "cs".to_string();
-                segment2 = "cs".to_string();
-            }
-            else if i.prefixes & OPCODE_PREFIX_SS_OVERRIDE != 0 {
-                segment1 = "ss".to_string();
-                segment2 = "ss".to_string();
-            }
-            else if i.prefixes & OPCODE_PREFIX_DS_OVERRIDE != 0 {
-                segment1 = "ds".to_string();
-                segment2 = "ds".to_string();
-            }
+
             match addr_mode {
                 AddressingMode::BxSi             => format!("{}{}:[bx+si]", ptr_prefix, segment1),
                 AddressingMode::BxDi             => format!("{}{}:[bx+di]", ptr_prefix, segment1),
@@ -1609,11 +1643,11 @@ pub fn decode(bytes: &mut impl ByteInterface) -> Result<Instruction, Box<dyn std
                 Ok((OperandType::Relative16(operand), OperandSize::Operand16))                
             }
             OperandTemplate::Offset8 => {
-                let operand = bytes.read_i16(&mut cycle_cost);
+                let operand = bytes.read_u16(&mut cycle_cost);
                 Ok((OperandType::Offset8(operand), OperandSize::Operand8))
             }
             OperandTemplate::Offset16 => {
-                let operand = bytes.read_i16(&mut cycle_cost);
+                let operand = bytes.read_u16(&mut cycle_cost);
                 Ok((OperandType::Offset16(operand), OperandSize::Operand16))
             }
             OperandTemplate::FixedRegister8(r8) => {

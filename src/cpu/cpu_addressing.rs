@@ -116,7 +116,17 @@ impl Cpu {
         match operand {
             OperandType::Immediate8(imm8) => Some(imm8),
             OperandType::Relative8(rel8) => Some(rel8 as u8),
-            OperandType::Offset8(offset8) => Some(offset8 as u8),
+            OperandType::Offset8(offset8) => {
+                let segment_base: u16 = match seg_override {
+                    SegmentOverride::SegmentES => self.es,
+                    SegmentOverride::SegmentCS => self.cs,
+                    SegmentOverride::SegmentSS => self.ss,
+                    _ => self.ds
+                };
+                let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
+                let (byte, _read_cost) = bus.read_u8(flat_addr as usize).unwrap();
+                Some(byte)
+            },
             OperandType::Register8(reg8) => {
                 match reg8 {
                     Register8::AH => Some(self.ah),
@@ -150,7 +160,17 @@ impl Cpu {
         match operand {
             OperandType::Immediate16(imm16) => Some(imm16),
             OperandType::Relative16(rel16) => Some(rel16 as u16),
-            OperandType::Offset16(offset16) => Some(offset16 as u16),
+            OperandType::Offset16(offset16) => {
+                let segment_base: u16 = match seg_override {
+                    SegmentOverride::SegmentES => self.es,
+                    SegmentOverride::SegmentCS => self.cs,
+                    SegmentOverride::SegmentSS => self.ss,
+                    _ => self.ds
+                };
+                let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
+                let (word, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
+                Some(word)
+            }
             OperandType::Register16(reg16) => {
                 match reg16 {
                     Register16::AX => Some(self.ax),
@@ -171,8 +191,8 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let (byte, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
-                Some(byte)
+                let (word, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
+                Some(word)
             }
             OperandType::NearAddress(_u16) => None,
             OperandType::FarAddress(_segment, _offset) => None,
@@ -204,7 +224,16 @@ impl Cpu {
             OperandType::Immediate16(imm16) => {}
             OperandType::Relative8(rel8) => {}
             OperandType::Relative16(rel16) => {}
-            OperandType::Offset8(offset8) => {}
+            OperandType::Offset8(offset8) => {
+                let segment_base: u16 = match seg_override {
+                    SegmentOverride::SegmentES => self.es,
+                    SegmentOverride::SegmentCS => self.cs,
+                    SegmentOverride::SegmentSS => self.ss,
+                    _ => self.ds
+                };
+                let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
+                let write_cost = bus.write_u8(flat_addr as usize, value);
+            }
             OperandType::Offset16(offset16) => {}
             OperandType::Register8(reg8) => {
                 match reg8 {
@@ -240,7 +269,16 @@ impl Cpu {
             OperandType::Relative8(rel8) => {}
             OperandType::Relative16(rel16) => {}
             OperandType::Offset8(offset8) => {}
-            OperandType::Offset16(offset16) => {}
+            OperandType::Offset16(offset16) => {
+                let segment_base: u16 = match seg_override {
+                    SegmentOverride::SegmentES => self.es,
+                    SegmentOverride::SegmentCS => self.cs,
+                    SegmentOverride::SegmentSS => self.ss,
+                    _ => self.ds
+                };
+                let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
+                let write_cost = bus.write_u16(flat_addr as usize, value);
+            }
             OperandType::Register8(reg8) => {}
             OperandType::Register16(reg16) => {
                 match reg16 {

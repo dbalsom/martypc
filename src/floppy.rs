@@ -425,6 +425,8 @@ impl FloppyController {
     pub fn handle_data_register_write(&mut self, data: u8) {
         //log::trace!("Data Register Write");
 
+        return;
+        
         if !self.in_command { 
             let command = data & COMMAND_MASK;
 

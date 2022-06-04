@@ -623,53 +623,29 @@ impl Cpu {
             0xA0 => {
                 // MOV al, offset8
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let offset = self.read_operand8(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
-                
-                // Calculate offset address using default segment
-                let addr = Cpu::calc_linear_address(self.ds, offset as u16);
-                let (value, _cost) = bus.read_u8(addr as usize).unwrap();
-
-                // Store result
-                self.set_register8(Register8::AL, value);
+                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                self.set_register8(Register8::AL, op2_value);
                 handled_override = true;
             }
             0xA1 => {
                 // MOV AX, offset16
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let offset = self.read_operand16(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
-                
-                // Calculate offset address using default segment
-                let addr = Cpu::calc_linear_address(self.ds, offset as u16);
-                let (value, _cost) = bus.read_u16(addr as usize).unwrap();
-
-                // Store result
-                self.set_register16(Register16::AX, value);                
+                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                self.set_register16(Register16::AX, op2_value);                
                 handled_override = true;
             }
             0xA2 => {
                 // MOV offset8, Al
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-
-                let offset = self.read_operand8(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
-                
-                // Calculate offset address using default segment
-                let addr = Cpu::calc_linear_address(self.ds, offset as u16);
-
-                // Write AL to address
-                bus.write_u8(addr as usize, self.get_register8(Register8::AL)).unwrap();
+                let op2_value = self.al;
+                self.write_operand8(bus, i.operand1_type, i.segment_override, op2_value);
                 handled_override = true;
             }
             0xA3 => {
                 // MOV offset16, AX
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-
-                let offset = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
-                
-                // Calculate offset address using default segment
-                let addr = Cpu::calc_linear_address(self.ds, offset as u16);
-
-                // Write AX to address
-                bus.write_u16(addr as usize, self.get_register16(Register16::AX)).unwrap();
+                let op2_value = self.ax;
+                self.write_operand16(bus, i.operand1_type, i.segment_override, op2_value);
                 handled_override = true;        
             }
             0xA4 => {

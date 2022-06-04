@@ -195,13 +195,13 @@ impl Machine {
         //rom_manager.install_patches(&mut bus);
 
         // Load a floppy
-        let basic_vec = std::fs::read("./floppy/svardos.img").unwrap_or_else(|e| {
-            eprintln!("Couldn't open floppy image: {}", e);
-            std::process::exit(1);
-        });         
+        //let basic_vec = std::fs::read("./floppy/dos110.img").unwrap_or_else(|e| {
+        //    eprintln!("Couldn't open floppy image: {}", e);
+        //    std::process::exit(1);
+        //});         
 
         // Load into floppy drive 0 (A:)
-        fdc.borrow_mut().load_image_from(0, basic_vec);
+        //fdc.borrow_mut().load_image_from(0, basic_vec);
 
         Machine {
             machine_type,
