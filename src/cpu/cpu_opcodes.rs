@@ -1,6 +1,6 @@
 use crate::arch;
 use crate::arch::{OperandType, Opcode, Instruction, Register8, Register16, RepType, SegmentOverride};
-use crate::cpu::{Cpu, ExecutionResult, CpuException, Flag, CallStackEntry};
+use crate::cpu::{Cpu, ExecutionResult, CpuException, Flag, CallStackEntry, RepState};
 use crate::bus::{BusInterface};
 use crate::io::IoBusInterface;
 
@@ -22,19 +22,102 @@ impl Cpu {
             _ => false,
         };
 
-
         // Check for REPx prefixes
         if (i.prefixes & arch::OPCODE_PREFIX_REP1 != 0) || (i.prefixes & arch::OPCODE_PREFIX_REP2 != 0) {
             // A REPx prefix was set
+            
+            match i.mnemonic {
+                Opcode::STOSB | Opcode::STOSW | Opcode::LODSB | Opcode::LODSW | 
+                Opcode::MOVSB | Opcode::MOVSW | Opcode::SCASB | Opcode::SCASW |
+                Opcode::CMPSB | Opcode::CMPSW => {
+                    // Valid string ops with REP prefix
+                }
+                _=> {
+                    if let Opcode::STI = i.mnemonic {
+                        return ExecutionResult::ExecutionError(
+                            format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", i.mnemonic, self.cs, self.ip)
+                        );
+                    }
+                }
+            }
+
+            // Check if we have saved state from returning from an interrupt
+            if let Some(rep_state) = self.rep_state.last() {
+                // Is this state for the current instruction?
+                if rep_state.0 == self.cs && rep_state.1 == self.ip {
+                    // Restore the current state
+                    log::trace!(" >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Restoring state for REP string instruction.");
+                    match rep_state.2 {                        
+                        RepState::StosbState(es, di, cx) => { // dst: [es:di], cx
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx);
+                        }, 
+                        RepState::StoswState(es, di, cx) => { // dst: [es:di], cx
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx);
+                        }, 
+                        RepState::LodsbState(seg, seg_val, si, cx) => { // src: [ds*:si], cx
+                            self.set_register16(seg, seg_val);
+                            self.si = si;
+                            self.set_register16(Register16::CX, cx);
+                        }, 
+                        RepState::LodswState(seg, seg_val, si, cx) => {  // src: [ds*:si], cx
+                            self.set_register16(seg, seg_val);
+                            self.si = si;
+                            self.set_register16(Register16::CX, cx);                            
+                        },
+                        RepState::MovsbState(seg, seg_val, si, es, di, cx) => {  // src: [ds*:si], dst: [es:di], cx
+                            self.set_register16(seg, seg_val);
+                            self.si = si;
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx);                            
+                        },
+                        RepState::MovswState(seg, seg_val, si, es, di, cx) => { // src: [ds*:si]. dst: [es:di], cx
+                            self.set_register16(seg, seg_val);
+                            self.si = si;
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx); 
+                        }, 
+                        RepState::ScasbState(es,di,cx) => { // src: [es:di], cx
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx);
+                        }, 
+                        RepState::ScaswState(es,di,cx) => { // src: [es:di], cx
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx);
+                        }, 
+                        RepState::CmpsbState(seg, seg_val, si, es, di, cx) => { // src: [ds*:si], dst: [es:di], cx
+                            self.set_register16(seg, seg_val);
+                            self.si = si;
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx);   
+                        }, 
+                        RepState::CmpswState(seg, seg_val, si, es, di, cx) => {  // src: [ds*:si], dst: [es:di], cx
+                            self.set_register16(seg, seg_val);
+                            self.si = si;
+                            self.es = es;
+                            self.di = di;
+                            self.set_register16(Register16::CX, cx);   
+                        },        
+                    }
+                    self.rep_state.pop();
+                }
+            }
+            
             self.in_rep = true;
-            self.rep_opcode = i.opcode;
+            self.rep_mnemonic = i.mnemonic;
         }
 
         if self.in_rep {
             //log::trace!("REP Prefix on instruction: {:?}", i.mnemonic);
-            if let Opcode::STI = i.mnemonic {
-                panic!("Whoops. REP on STI at {:04X}:{:04X} REP was set on opcode : {:02X}", self.cs, self.ip, self.rep_opcode);
-            }
+
         }
 
         // Reset the wait cycle after STI
@@ -466,7 +549,6 @@ impl Cpu {
                 let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
                 // math_op16 handles flags
                 self.math_op16(Opcode::TEST, op1_value, op2_value);
-                unhandled = true;
             }
             0x86 => {
                 // XCHG r8, r/m8
@@ -516,6 +598,7 @@ impl Cpu {
                 // POP r/m16
                 let value = self.pop_u16(bus);
                 self.write_operand16(bus, i.operand1_type, i.segment_override, value);
+                handled_override = true;
             }
             0x90 => {
                 // NOP

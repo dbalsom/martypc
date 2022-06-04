@@ -676,6 +676,22 @@ impl Cpu {
                 // Do not modify operand
                 operand1  
             }    
+            Opcode::XOR => {
+                let result = operand1 ^ operand2;
+                // Clear carry, overflow
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::Overflow);
+                self.set_flags_from_result_u16(result);
+                result
+            }
+            Opcode::NOT => {
+                let result = !operand1;
+                // Clear carry, overflow
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::Overflow);
+                self.set_flags_from_result_u16(result);
+                result
+            }            
             Opcode::CMP => {
                 // CMP behaves like SUB except we do not store the result
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, false );

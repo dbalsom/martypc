@@ -136,7 +136,7 @@ impl Cpu {
                 }                   
             }
             Opcode::SCASB => {
-                // SCASB: Compare byte with value in AL.  
+                // SCASB: Compare byte from [es:di] with value in AL.  
                 // Flags: o..szapc
                 // Override: ES cannot be overridden
                 let scan_addr = util::get_linear_address(self.es, self.di);
@@ -161,7 +161,7 @@ impl Cpu {
                 }
             }
             Opcode::SCASW => {
-                // SCASB: Compare word with value in AX.  
+                // SCASB: Compare word from [es:di] with value in AX.  
                 // Flags: o..szapc
                 // Override: ES cannot be overridden                
                 let scan_addr = util::get_linear_address(self.es, self.di);
@@ -186,7 +186,7 @@ impl Cpu {
                 }                 
             }
             Opcode::CMPSB => {
-                // CMPSB: Compare bytes
+                // CMPSB: Compare bytes from [es:di] to [ds:si]
                 // Flags: o..szapc
                 // Override: DS can be overridden
                 let esdi_addr = util::get_linear_address(self.es, self.di);

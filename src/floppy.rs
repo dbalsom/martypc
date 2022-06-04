@@ -3,6 +3,7 @@
     Implement the NEC µPD764 Floppy Disk Controller
 
 */
+#![allow(dead_code)]
 use std::collections::VecDeque;
 
 use crate::io::{IoDevice};
@@ -426,7 +427,7 @@ impl FloppyController {
         //log::trace!("Data Register Write");
 
         return;
-        
+
         if !self.in_command { 
             let command = data & COMMAND_MASK;
 

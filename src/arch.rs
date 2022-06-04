@@ -219,6 +219,10 @@ pub enum Opcode {
     XOR,
 }
 
+impl Default for Opcode {
+    fn default() -> Self { Opcode::InvalidOpcode }
+}
+
 fn opcode_to_str(op: Opcode) -> &'static str {
     match op {
         Opcode::NOP => "NOP",
@@ -678,6 +682,7 @@ impl ModRmByte {
     }
 }
 
+#[derive (Copy, Clone)]
 pub struct Instruction {
     pub(crate) opcode: u8,
     pub(crate) flags: u32,

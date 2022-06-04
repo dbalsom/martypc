@@ -20,7 +20,7 @@ use crate::bus::BusInterface;
 use crate::byteinterface::ByteInterface;
 use crate::io::IoBusInterface;
 
-use crate::arch::{OperandType, Instruction, decode, RepType, Register8, Register16};
+use crate::arch::{OperandType, Instruction, Opcode, SegmentOverride, decode, RepType, Register8, Register16};
 
 pub const CPU_MHZ: f64 = 4.77272666;
 const CPU_HISTORY_LEN: usize = 32;
@@ -63,18 +63,18 @@ pub enum CpuError {
     InvalidInstructionError(u8, u32),
     UnhandledInstructionError(u8, u32),
     InstructionDecodeError(u32),
-    ExecutionError(u32),
+    ExecutionError(u32, String),
     CpuHaltedError(u32),
     ExceptionError(CpuException)
 }
 impl Error for CpuError {}
 impl Display for CpuError{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
+        match &*self {
             CpuError::InvalidInstructionError(o, addr)=>write!(f, "An invalid instruction was encountered: {:02X} at address: {:06X}", o, addr),
             CpuError::UnhandledInstructionError(o, addr)=>write!(f, "An unhandled instruction was encountered: {:02X} at address: {:06X}", o, addr),
             CpuError::InstructionDecodeError(addr)=>write!(f, "An error occurred during instruction decode at address: {:06X}", addr),
-            CpuError::ExecutionError(addr)=>write!(f, "An unspecified execution error occurred at: {:06X}", addr),
+            CpuError::ExecutionError(addr, err)=>write!(f, "An execution error occurred at: {:06X} Message: {}", addr, err),
             CpuError::CpuHaltedError(addr)=>write!(f, "The CPU was halted at address: {:06X}.", addr),
             CpuError::ExceptionError(exception)=>write!(f, "The CPU threw an exception: {:?}", exception)
         }
@@ -88,6 +88,21 @@ pub enum CallStackEntry {
     Interrupt(u16,u16,u8)
 }
 
+/// Representation of the state of a REPeated string instruction, saved on interrupt
+pub enum RepState {
+    StosbState(u16, u16, u16), // dst: [es:di], cx
+    StoswState(u16, u16, u16), // dst: [es:di], cx
+    LodsbState(Register16, u16, u16, u16), // src: [ds*:si], cx
+    LodswState(Register16, u16, u16, u16), // src: [ds*:si], cx
+    MovsbState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si], dst: [es:di], cx
+    MovswState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si]. dst: [es:di], cx
+    ScasbState(u16,u16,u16), // src: [es:di], cx
+    ScaswState(u16,u16,u16), // src: [es:di], cx
+    CmpsbState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si], dst: [es:di], cx
+    CmpswState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si], dst: [es:di], cx
+}
+
+/// Representation of a flag in the eFlags CPU register
 pub enum Flag {
     Carry,
     Parity,
@@ -152,16 +167,18 @@ pub struct Cpu {
     is_single_step: bool,
     is_error: bool,
     in_rep: bool,
-    rep_opcode: u8,
+    rep_mnemonic: Opcode,
     rep_type: RepType,
+    rep_state: Vec<(u16, u16, RepState)>,
     piq_len: u32,
     piq_capacity: u32,
     error_string: String,
     instruction_count: u64,
+    current_instruction: Instruction,
     instruction_history: VecDeque<Instruction>,
     call_stack: VecDeque<CallStackEntry>,
     interrupt_wait_cycle: bool,
-    in_irq: bool
+    
 }
 
 pub struct CpuRegisterState {
@@ -512,6 +529,15 @@ impl Cpu {
 
         self.eflags = 0;
         self.instruction_count = 0;
+
+        self.in_rep = false;
+        self.rep_state.clear();
+        self.piq_len = 0;
+        self.halted = false;
+        self.interrupt_wait_cycle = false;
+        self.is_error = false;
+        self.instruction_history.clear();
+        self.call_stack.clear();
     }
 
     pub fn get_flat_address(&self) -> u32 {
@@ -581,7 +607,7 @@ impl Cpu {
                 format!("{:1}", fl as u8)
             },
             z_fl: {
-                let fl = self.eflags &CPU_FLAG_ZERO > 0;
+                let fl = self.eflags & CPU_FLAG_ZERO > 0;
                 format!("{:1}", fl as u8)
             },
             s_fl: {
@@ -708,11 +734,10 @@ impl Cpu {
         self.pop_register16(bus, Register16::CS);
         //log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
         self.pop_flags(bus);
-        self.in_irq = false;
     }
 
+    /// Perform a software interrupt
     pub fn do_sw_interrupt(&mut self, bus: &mut BusInterface, interrupt: u8) {
-        self.in_irq = true;
 
         // When an interrupt occurs the following happens:
         // 1. CPU pushes flags register to stack
@@ -745,8 +770,7 @@ impl Cpu {
             //self.log_interrupt(interrupt);
             //log::trace!("CPU: Software Interrupt: {:02X} AH: {:02X} AL: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, self.ah, self.al,  new_cs, new_ip);
         }
-        //log::trace!("CPU: Software Interrupt: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, new_cs, new_ip);
-        self.in_irq = true;
+
     }
 
     pub fn log_interrupt(&self, interrupt: u8) {
@@ -786,8 +810,8 @@ impl Cpu {
         };
     }
 
+    /// Perform a hardware interrupt
     pub fn do_hw_interrupt(&mut self, bus: &mut BusInterface, interrupt: u8) {
-        self.in_irq = true;
 
         // When an interrupt occurs the following happens:
         // 1. CPU pushes flags register to stack
@@ -801,10 +825,55 @@ impl Cpu {
         self.push_register16(bus, Register16::CS);
         self.push_register16(bus, Register16::IP);
 
-        // timer interrupt to noisy to log
-        if interrupt != 8 {
-            log::trace!("CPU: Interrupt: {} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
+        // If we are in a repeated string instruction (REP prefix) we need to save the state of the REP instruction
+        if self.in_rep {
+            let (src_reg, src_reg_val) = match self.current_instruction.segment_override {
+                SegmentOverride::SegmentCS => (Register16::CS, self.cs),
+                SegmentOverride::SegmentES => (Register16::ES, self.es),
+                SegmentOverride::SegmentSS => (Register16::SS, self.ss),
+                _=> (Register16::DS, self.ds)
+            };
+
+            let state: RepState = match self.current_instruction.mnemonic {
+                Opcode::LODSB => {
+                    RepState::LodsbState(src_reg, src_reg_val, self.si, self.cx)
+                }
+                Opcode::LODSW => {
+                    RepState::LodswState(src_reg, src_reg_val, self.si, self.cx)
+                } 
+                Opcode::MOVSB => {
+                    RepState::MovsbState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
+                } 
+                Opcode::MOVSW => {
+                    RepState::MovswState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
+                } 
+                Opcode::CMPSB => {
+                    RepState::CmpsbState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
+                } 
+                Opcode::CMPSW => {
+                    RepState::CmpswState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
+                }
+                Opcode::STOSB => {
+                    RepState::StosbState(self.es, self.di, self.cx)
+                } 
+                Opcode::STOSW => {
+                    RepState::StoswState(self.es, self.di, self.cx)
+                } 
+                Opcode::SCASB => {
+                    RepState::ScasbState(self.es, self.di, self.cx)
+                } 
+                Opcode::SCASW => {
+                    RepState::ScaswState(self.es, self.di, self.cx)
+                }
+                _=> {
+                    panic!("Invalid instruction saving REP state");
+                }
+            };
+
+            self.rep_state.push((self.cs, self.ip, state));
+            self.in_rep = false;
         }
+
         // Read the IVT
         let ivt_addr = util::get_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
@@ -815,9 +884,10 @@ impl Cpu {
         // timer interrupt to noisy to log
         if interrupt != 8 {
             self.log_interrupt(interrupt);
+            //log::trace!("CPU: Interrupt: {} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
             //log::trace!("CPU: Hardware Interrupt: {} Jumping to IV [{:04X}:{:04X}]", interrupt, new_cs, new_ip);
         }
-        self.in_irq = true;
+
     }
 
     // Return true if we are able to process interrupts
@@ -834,6 +904,7 @@ impl Cpu {
 
         match decode(bus) {
             Ok(mut i) => {
+                self.current_instruction = i;
                 match self.execute_instruction(&i, bus, io_bus) {
 
                     ExecutionResult::Okay => {
@@ -883,7 +954,7 @@ impl Cpu {
                     ExecutionResult::ExecutionError(e) => {
                         self.is_running = false;
                         self.is_error = true;
-                        Err(CpuError::ExecutionError(instruction_address))
+                        Err(CpuError::ExecutionError(instruction_address, e))
                     }
                     ExecutionResult::Halt => {
                         self.is_running = false;
