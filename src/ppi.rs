@@ -147,7 +147,7 @@ impl Ppi {
                 MachineType::IBM_PC_5150 => SW1_HAVE_CGA_LORES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES,
                 MachineType::IBM_XT_5160 => SW1_HAVE_CGA_LORES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES
             },
-            dip_sw2: SW2_RAM_544K,
+            dip_sw2: !SW2_RAM_544K,
             timer_in: false,
             speaker_in: false,
         }

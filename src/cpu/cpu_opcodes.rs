@@ -663,10 +663,12 @@ impl Cpu {
             0x98 => {
                 // CBW - Convert Byte to Word
                 // Flags: None
-                self.set_register16(Register16::AX, util::sign_extend_u8_to_u16(self.al));
+                self.sign_extend_al();
             }
             0x99 => {
-                unhandled = true;
+                // CWD - Convert Word to Doubleword
+                // Flags: None
+                self.sign_extend_ax();
             }
             0x9A => {
                 // CALLF - Call Far
@@ -1345,8 +1347,13 @@ impl Cpu {
                     }
                     Opcode::MUL => {
                         let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                        // Multiply handles writing to dx:ax
+                        // Multiply handles writing to ax
                         self.multiply_u16(op1_value);
+                    }
+                    Opcode::IMUL => {
+                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                        // Multiply handles writing to dx:ax
+                        self.multiply_i16(op1_value as i16);
                     }
                     Opcode::DIV => {
                         let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
@@ -1356,6 +1363,14 @@ impl Cpu {
                             exception = CpuException::DivideError;
                         }
                         // TODO: Handle DIV exceptions
+                    }
+                    Opcode::IDIV => {
+                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                        // Divide handles writing to dx:ax
+                        let success = self.divide_i16(op1_value);
+                        if !success {
+                            exception = CpuException::DivideError;
+                        }
                     }
                     _=> unhandled = true
                 }

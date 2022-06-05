@@ -33,11 +33,24 @@ const MODE_ENABLE: u8           = 0b0000_1000;
 const MODE_HIRES_GRAPHICS: u8   = 0b0001_0000;
 const MODE_BLINKING: u8         = 0b0010_0000;
 
+// Color control register bits.
+// Alt color = Overscan in Text mode, BG color in 320x200 graphics, FG color in 640x200 graphics
+const CC_ALT_COLOR_MASK: u8     = 0b0000_0111;
+// Controls whether palette is high intensity
+const CC_BRIGHT_BIT: u8         = 0b0000_1000;
+// Controls primary palette between magenta/cyan and red/green
+const CC_PALETTE_BIT: u8        = 0b0001_0000;
+
 const STATUS_DISPLAY_ENABLE: u8 = 0b0000_0001;
 const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
 const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
 const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 
+pub enum CGAPalette {
+    MagentaCyanWhite,
+    RedGreenYellow,
+    RedCyanWhite // "Hidden" CGA palette
+}
 pub enum Resolution {
     Res640by200,
     Res320by200
@@ -86,6 +99,8 @@ pub struct CGACard {
     crtc_cursor_end_line: u8,
     crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
+
+    cc_register: u8
 }
 
 #[derive(Debug)]
@@ -139,12 +154,13 @@ impl IoDevice for CGACard {
             CRTC_REGISTER => {
                 self.handle_crtc_register_write(data);
             }
+            CGA_COLOR_CONTROL_REGISTER => {
+                self.handle_cc_register_write(data);
+            }
             _ => {}
         }
-        if let CGA_MODE_CONTROL_REGISTER = port {
-            
-        }
     }
+
     fn read_u16(&mut self, _port: u16) -> u16 {
         log::error!("Invalid 16-bit read from CGA");
         0   
@@ -180,6 +196,8 @@ impl CGACard {
             crtc_cursor_end_line: CGA_DEFAULT_CURSOR_END_LINE,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
+
+            cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT
         }
     }
 
@@ -197,6 +215,25 @@ impl CGACard {
 
     pub fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
+    }
+
+    /// Return the current palette number, intensity attribute bit, and alt color
+    pub fn get_palette(&self) -> (CGAPalette, bool, u8) {
+
+        let alt_color = self.cc_register & 0x03;
+        let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
+        
+        let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
+            true => CGAPalette::MagentaCyanWhite,
+            false => CGAPalette::RedGreenYellow
+        };
+        
+        // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
+        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx { 
+            palette = CGAPalette::RedCyanWhite;
+        }
+    
+        (palette, intensity, alt_color)
     }
 
     pub fn is_graphics_mode(&self) -> bool {
@@ -340,6 +377,10 @@ impl CGACard {
         else {
             0
         }
+    }
+
+    pub fn handle_cc_register_write(&mut self, data: u8) {
+
     }
 
     pub fn run(&mut self, io_bus: &mut IoBusInterface, cpu_cycles: u32) {

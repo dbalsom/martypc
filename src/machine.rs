@@ -195,7 +195,7 @@ impl Machine {
         //rom_manager.install_patches(&mut bus);
 
         // Load a floppy
-        let floppy_vec = std::fs::read("./floppy/cat2.img").unwrap_or_else(|e| {
+        let floppy_vec = std::fs::read("./floppy/digger.img").unwrap_or_else(|e| {
             eprintln!("Couldn't open floppy image: {}", e);
             std::process::exit(1);
         });         

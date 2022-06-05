@@ -380,6 +380,7 @@ impl Cpu {
         self.set_register16(Register16::AX, product);
     }    
 
+    /// Unsigned Multiply, 16 bits
     pub fn multiply_u16(&mut self, operand1: u16) {
         
         // 16 bit operand => 32bit product
@@ -415,6 +416,24 @@ impl Cpu {
         // Note: Does not set Sign or Zero flags
         self.set_register16(Register16::AX, product as u16);
     }  
+
+    /// Signed Multiply, 16 bits
+    pub fn multiply_i16(&mut self, operand1: i16) {
+
+        // 16 bit operand => 32 bit product
+        let product: i32 = (self.ax as i16 as i32) * (operand1 as i32);
+
+        // Set carry and overflow if product wouldn't fit in i16
+        if product < i16::MIN.into() || product > i16::MAX.into() {
+            self.set_flag(Flag::Carry);
+            self.set_flag(Flag::Overflow);
+        }
+
+        // Note: Does not set Sign or Zero flags
+        // Store 32-bit product in DX:AX
+        self.set_register16(Register16::DX, ((product as u32) >> 16 & 0xFFFF) as u16 );
+        self.set_register16(Register16::AX, ((product as u32) & 0xFFFF) as u16 );        
+    }
 
     // DIV r/m8 instruction
     // Divide can fail on div by 0 or overflow - (on which we would trigger an exception)
@@ -458,6 +477,57 @@ impl Cpu {
         return quotient & 0xFFFF0000 == 0;
     }
 
+    // Integer DIV r/m16 instruction
+    // Divide can fail on div by 0 or overflow - (on which we would trigger an exception)
+    pub fn divide_i16(&mut self, operand1: u16) -> bool {
+
+        // Divide by 0 returns failure
+        if operand1 == 0 {
+            return false;
+        }
+
+        let numerator: i32 = ((self.dx as u32) << 16 | self.ax as u32) as i32 ;
+
+        let quotient = numerator / operand1 as i32;
+        let remainder  = numerator % operand1 as i32;
+
+        // TODO: should we return without modifying AL on failure??
+        self.set_register16(Register16::AX, quotient as u16);
+        self.set_register16(Register16::DX, remainder as u16);
+
+        // Return false if overflow
+        return quotient as u32 & 0xFFFF0000 == 0;
+    }
+
+    /// Sign extend AL into AX
+    pub fn sign_extend_al(&mut self) {
+
+        if self.al & 0x80 != 0 {
+            self.ah = 0xFF;
+            self.ax &= 0xFF00;
+        }
+        else {
+            self.ah = 0x00;
+            self.ax &= 0x00FF;
+        }
+    }
+
+    /// Sign extend AX ito DX:AX
+    pub fn sign_extend_ax(&mut self) {
+
+        if self.ax & 0x8000 != 0 {
+            self.dx = 0xFFFF;
+            self.dl = 0xFF;
+            self.dh = 0xFF;
+        }
+        else {
+            self.dx = 0x0000;
+            self.dl = 0x00;
+            self.dh = 0x00;
+        }
+    }
+
+    /// Perform various 8-bit math operations
     pub fn math_op8(&mut self, opcode: Opcode, operand1: u8, operand2: u8) -> u8 {
 
         match opcode {
@@ -582,6 +652,7 @@ impl Cpu {
         }
     }
 
+    /// Perform various 16-bit math operations
     pub fn math_op16(&mut self, opcode: Opcode, operand1: u16, operand2: u16) -> u16 {
 
         match opcode {
@@ -706,6 +777,7 @@ impl Cpu {
         }
     }    
 
+    /// Perform various 8-bit binary shift operations
     pub fn bitshift_op8(&mut self, opcode: Opcode, operand1: u8, operand2: u8) -> u8 {
 
         // Operand2 will either be 1 or value of CL register on 8088
@@ -804,6 +876,7 @@ impl Cpu {
         result
     }
 
+    /// Peform various 16-bit binary shift operations
     pub fn bitshift_op16(&mut self, opcode: Opcode, operand1: u16, operand2: u8) -> u16 {
 
         // Operand2 will either be 1 or value of CL register on 8088

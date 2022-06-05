@@ -95,7 +95,14 @@ lazy_static! {
                     heads: 1,
                     sectors: 8
                 }
-            ),( 
+            ),(
+                184_320,
+                DiskFormat{
+                    cylinders: 40,
+                    heads: 1,
+                    sectors: 9
+                }
+            ),(
                 327_680,
                 DiskFormat{
                     cylinders: 40,

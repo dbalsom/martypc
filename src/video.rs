@@ -4,7 +4,8 @@
 // It also defines representational details such as colors
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::cga::{self, CGACard, DisplayMode};
+
+use crate::cga::{self, CGACard, CGAPalette, DisplayMode};
 use crate::bus::BusInterface;
 
 extern crate rand; 
@@ -107,38 +108,38 @@ pub fn color_enum_to_rgba(color: CGAColor) -> &'static [u8; 4] {
     }
 }
 
-pub fn get_cga_gfx_color(bits: u8, palette: usize, intensity: bool) -> &'static [u8; 4] {
+pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'static [u8; 4] {
     match (bits, palette, intensity) {
         // Palette 0 - Low Intensity
-        (0b00, 0, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, 0, false) => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8], // Green
-        (0b10, 0, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
-        (0b11, 0, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Brown
+        (0b00, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8], // Green
+        (0b10, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
+        (0b11, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Brown
         // Palette 0 - High Intensity
-        (0b00, 0, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, 0, true) => &[0x55u8, 0xFFu8, 0x55u8, 0xFFu8], // GreenBright
-        (0b10, 0, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
-        (0b11, 0, true) => &[0xFFu8, 0xFFu8, 0x55u8, 0xFFu8], // Yellow
+        (0b00, CGAPalette::MagentaCyanWhite, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::MagentaCyanWhite, true) => &[0x55u8, 0xFFu8, 0x55u8, 0xFFu8], // GreenBright
+        (0b10, CGAPalette::MagentaCyanWhite, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
+        (0b11, CGAPalette::MagentaCyanWhite, true) => &[0xFFu8, 0xFFu8, 0x55u8, 0xFFu8], // Yellow
         // Palette 1 - Low Intensity
-        (0b00, 1, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, 1, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
-        (0b10, 1, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Magenta
-        (0b11, 1, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        (0b00, CGAPalette::RedGreenYellow, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::RedGreenYellow, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
+        (0b10, CGAPalette::RedGreenYellow, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Magenta
+        (0b11, CGAPalette::RedGreenYellow, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
         // Palette 1 - High Intensity
-        (0b00, 1, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, 1, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
-        (0b10, 1, true) => &[0xFFu8, 0x55u8, 0xFFu8, 0xFFu8], // MagentaBright
-        (0b11, 1, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
+        (0b00, CGAPalette::RedGreenYellow, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::RedGreenYellow, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
+        (0b10, CGAPalette::RedGreenYellow, true) => &[0xFFu8, 0x55u8, 0xFFu8, 0xFFu8], // MagentaBright
+        (0b11, CGAPalette::RedGreenYellow, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
         // Palette 2 - Low Intensity
-        (0b00, 2, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, 2, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
-        (0b10, 2, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
-        (0b11, 2, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        (0b00, CGAPalette::RedCyanWhite, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::RedCyanWhite, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
+        (0b10, CGAPalette::RedCyanWhite, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
+        (0b11, CGAPalette::RedCyanWhite, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
         // Palette 2 - High Intensity
-        (0b00, 2, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, 2, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
-        (0b10, 2, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
-        (0b11, 2, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
+        (0b00, CGAPalette::RedCyanWhite, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::RedCyanWhite, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
+        (0b10, CGAPalette::RedCyanWhite, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
+        (0b11, CGAPalette::RedCyanWhite, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
         _=> &[0x00u8, 0x00u8, 0x00u8, 0xFFu8] // Default Black
     }
 }
@@ -167,14 +168,15 @@ impl Video {
         let mode_40_cols = cga_card.is_40_columns();
         if cga_card.is_graphics_mode() {
         
-            self.draw_gfx_mode2x(frame, FRAME_W, FRAME_H, video_mem );
+            let (palette, intensity, alt_color) = cga_card.get_palette();
+            self.draw_gfx_mode2x(frame, FRAME_W, FRAME_H, video_mem, palette, intensity);
         }
         else {
             self.draw_text_mode(frame, video_mem, mode_40_cols );
         }
     }
 
-    pub fn draw_gfx_mode2x(&self, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8]) {
+    pub fn draw_gfx_mode2x(&self, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
         // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
         
         let mut field_src_offset = 0;
@@ -202,7 +204,7 @@ impl Video {
                         let shift_ct = 8 - (pix_n * 2) - 2;
                         let pix_bits = cga_byte >> shift_ct & 0x03;
                         // Get the RGBA for this pixel
-                        let color = get_cga_gfx_color(pix_bits, 1, true);
+                        let color = get_cga_gfx_color(pix_bits, &pal, intensity);
                         // Draw first row of pixel 2x
                         frame[(dst1_y_idx + dst1_x_idx + (pix_n * 8)) as usize]     = color[0];
                         frame[(dst1_y_idx + dst1_x_idx + (pix_n * 8)) as usize + 1] = color[1];
