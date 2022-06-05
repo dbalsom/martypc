@@ -4,7 +4,8 @@
 
 */
 #![allow(dead_code)]
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashMap};
+use lazy_static::lazy_static;
 
 use crate::io::{IoDevice};
 use crate::dma;
@@ -13,6 +14,7 @@ use crate::pic;
 
 pub const FDC_IRQ: u8 = 0x06;
 pub const FDC_DMA: usize = 2;
+pub const FDC_MAX_DRIVES: usize = 4;
 
 pub const SECTOR_SIZE: usize = 512;
 
@@ -77,6 +79,42 @@ pub const ST0_UNIT_CHECK: u8    = 0b0001_0000;
 pub const ST0_SEEK_END: u8      = 0b0010_0000;
 pub const ST0_RESET: u8         = 0b1100_0000;
 
+pub struct DiskFormat {
+    cylinders: u8,
+    heads: u8,
+    sectors: u8
+}
+
+lazy_static! {
+    static ref DISK_FORMATS: HashMap<usize, DiskFormat> = {
+        let map = HashMap::from([
+            (
+                163_840, 
+                DiskFormat{
+                    cylinders: 40,
+                    heads: 1,
+                    sectors: 8
+                }
+            ),( 
+                327_680,
+                DiskFormat{
+                    cylinders: 40,
+                    heads: 2,
+                    sectors: 8
+                }
+            ),( 
+                368_640,
+                DiskFormat{
+                    cylinders: 40,
+                    heads: 2,
+                    sectors: 9
+                }
+            ),            
+        ]);
+        map
+    };
+}
+
 pub enum IoMode {
     ToCpu,
     FromCpu
@@ -104,13 +142,16 @@ pub enum Operation {
     ReadSector(u8, u8, u8, u8, u8, u8, u8) // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
 }
 pub struct DiskDrive {
-    head: u8,
     cylinder: u8,
+    head: u8,
     sector: u8,
-    max_sector: u8,
+    max_cylinders: u8,
+    max_heads: u8,
+    max_sectors: u8,
     ready: bool,
     motor_on: bool,
     positioning: bool,
+    have_disk: bool,
     disk_image: Vec<u8>
 }
 pub struct FloppyController {
@@ -131,6 +172,7 @@ pub struct FloppyController {
     send_interrupt: bool,
     end_interrupt: bool,
     in_command: bool,
+    command_init: bool,
 
     data_register_out: VecDeque<u8>,
     data_register_in: VecDeque<u8>,
@@ -204,48 +246,61 @@ impl FloppyController {
             send_interrupt: false,
             end_interrupt: false,
             in_command: false,
+            command_init: false,
 
             data_register_out: VecDeque::new(),
             data_register_in: VecDeque::new(),
             drives: [
                 DiskDrive {
-                    head: 0,
                     cylinder: 0,
+                    head: 0,
                     sector: 0,
-                    max_sector: 0,
-                    ready: true,
+                    max_cylinders: 0,
+                    max_heads: 0,
+                    max_sectors: 0,
+                    ready: false,
                     motor_on: false,
                     positioning: false,
+                    have_disk: false,
                     disk_image: Vec::new(),
                 },
                 DiskDrive {
-                    head: 0,
                     cylinder: 0,
+                    head: 0,
                     sector: 0,
-                    max_sector: 0,
-                    ready: true,
+                    max_cylinders: 0,
+                    max_heads: 0,
+                    max_sectors: 0,
+                    ready: false,
                     motor_on: false,
                     positioning: false,
+                    have_disk: false,
                     disk_image: Vec::new(),
                 },
                 DiskDrive {
-                    head: 0,
                     cylinder: 0,
+                    head: 0,
                     sector: 0,
-                    max_sector: 0,
-                    ready: true,
+                    max_cylinders: 0,
+                    max_heads: 0,
+                    max_sectors: 0,
+                    ready: false,
                     motor_on: false,
                     positioning: false,
+                    have_disk: false,
                     disk_image: Vec::new(),
                 },
                 DiskDrive {
-                    head: 0,
                     cylinder: 0,
+                    head: 0,
                     sector: 0,
-                    max_sector: 0,
-                    ready: true,
+                    max_cylinders: 0,
+                    max_heads: 0,
+                    max_sectors: 0,
+                    ready: false,
                     motor_on: false,
                     positioning: false,
+                    have_disk: false,
                     disk_image: Vec::new(),
                 }
             ],
@@ -272,8 +327,9 @@ impl FloppyController {
         for drive in &mut self.drives.iter_mut() {
             drive.head = 0;
             drive.cylinder = 0;
-            drive.sector = 0;
-            drive.ready = true;
+            drive.sector = 1;
+
+            drive.ready = drive.have_disk;
             drive.motor_on = false;
             drive.positioning = false;
         }
@@ -286,9 +342,65 @@ impl FloppyController {
         self.dma_bytes_left = 0;
     }
 
-    pub fn load_image_from(&mut self, drive_select: u8, src_vec: Vec<u8>) {
+    /// Load a disk into the specified drive
+    pub fn load_image_from(&mut self, drive_select: usize, src_vec: Vec<u8>) -> Result<(), &'static str>  {
+        
+        if drive_select >= FDC_MAX_DRIVES {
+            return Err("Invalid drive selection");
+        }
 
-        self.drives[drive_select as usize].disk_image = src_vec;
+        let image_len: usize = src_vec.len();
+
+        // Disk images must contain whole sectors
+        if image_len % SECTOR_SIZE > 0 {
+            return Err("Invalid image length")
+        }
+
+        // Look up disk parameters based on image size
+        if let Some(fmt) = DISK_FORMATS.get(&image_len) {
+            self.drives[drive_select].max_cylinders = fmt.cylinders;
+            self.drives[drive_select].max_heads = fmt.heads;
+            self.drives[drive_select].max_sectors = fmt.sectors;
+        }
+        else {
+            // No image format found. 
+            if image_len < 163_840 {
+                // If image is smaller than single sided disk, assume single sided disk, 8 sectors per track
+                // This is useful for loading things like boot sector images without having to copy them to
+                // a full disk image
+                self.drives[drive_select].max_cylinders = 40;
+                self.drives[drive_select].max_heads = 1;
+                self.drives[drive_select].max_sectors = 8;
+            }
+            else {
+                return Err("Invalid image length")
+            }
+        }
+
+        self.drives[drive_select].have_disk = true;
+        self.drives[drive_select].disk_image = src_vec;
+        log::debug!("Loaded floppy image, size: {} c: {} h: {} s: {}", 
+            self.drives[drive_select].disk_image.len(),
+            self.drives[drive_select].max_cylinders,
+            self.drives[drive_select].max_heads,
+            self.drives[drive_select].max_sectors
+        );
+
+        Ok(())
+    }
+
+    /// Unload (eject) the disk in the specified drive
+    pub fn unload_image(&mut self, drive_select: usize) {
+        let drive = &mut self.drives[drive_select];
+
+        drive.cylinder = 0;
+        drive.head = 0;
+        drive.sector = 1;
+        drive.max_cylinders = 40;
+        drive.max_heads = 1;
+        drive.max_sectors = 8;
+        drive.have_disk = false;
+        drive.disk_image.clear();
     }
 
     pub fn handle_status_register_read(&mut self) -> u8 {
@@ -321,6 +433,13 @@ impl FloppyController {
         msr_byte
     }
 
+    pub fn motor_on(&mut self, drive_select: usize) {
+        if self.drives[drive_select].have_disk {
+            self.drives[drive_select].motor_on = true;
+            self.drives[drive_select].ready = true;
+        }
+    }
+
     pub fn handle_dor_write(&mut self, data: u8) {
 
         if data & DOR_FDC_RESET == 0 {
@@ -333,13 +452,22 @@ impl FloppyController {
         }
 
         let disk_n = data & 0x03;
-        self.drives[0].motor_on = data & DOR_MOTOR_FDD_A != 0;
-        self.drives[1].motor_on = data & DOR_MOTOR_FDD_B != 0;
-        self.drives[2].motor_on = data & DOR_MOTOR_FDD_C != 0;
-        self.drives[3].motor_on = data & DOR_MOTOR_FDD_D != 0;    
+        if data & DOR_MOTOR_FDD_A != 0 {
+            self.motor_on(0);
+        }
+        if data & DOR_MOTOR_FDD_B != 0 {
+            self.motor_on(1);
+        }
+        if data & DOR_MOTOR_FDD_C != 0 {
+            self.motor_on(2);
+        }
+        if data & DOR_MOTOR_FDD_D != 0 {
+            self.motor_on(3);
+        }
 
         if !self.drives[disk_n as usize].motor_on {
-            //log::warn!("FDD selected without motor on: {:02X}", data);
+            // It's valid to issue this command without turning a motor on. In this case the FDC can
+            // be enabled, but no drive is selected.
         }
         else {
             log::debug!("Drive {} selected, motor on", disk_n);
@@ -407,7 +535,7 @@ impl FloppyController {
             }
         }
         
-        log::trace!("Data Register Read: {:02X}", out_byte );
+        //log::trace!("Data Register Read: {:02X}", out_byte );
         out_byte
     }    
 
@@ -425,9 +553,6 @@ impl FloppyController {
 
     pub fn handle_data_register_write(&mut self, data: u8) {
         //log::trace!("Data Register Write");
-
-        return;
-
         if !self.in_command { 
             let command = data & COMMAND_MASK;
 
@@ -638,6 +763,8 @@ impl FloppyController {
         // DMA now in progress (TODO: Support PIO mode?)
         self.in_dma = true;
 
+        // The IBM PC BIOS only seems to ever set a track_len of 8. How do we support 9 sector (365k) floppies?
+
         // Maximum size of DMA transfer
 
         let max_sectors;
@@ -653,24 +780,26 @@ impl FloppyController {
             cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
         log::trace!("command_read_sector: may operate on maximum of {} sectors", max_sectors);
 
-        let base_address = self.get_image_address(cylinder, head, sector);
-        log::trace!("Base address of image read: {:06X}", base_address);
+        let base_address = self.get_image_address(self.drive_select, cylinder, head, sector);
+        log::trace!("command_read_sector: base address of image read: {:06X}", base_address);
 
+        // Flag to set up transfer size later
+        self.command_init = false;
         // Keep running command until DMA transfer completes
         return false
     }
 
     /// Return a byte offset given a CHS (Cylinder, Head, Sector) address
-    pub fn get_image_address(&self, cylinder: u8, head: u8, sector: u8) -> usize {
-        //let lba: usize = (cylinder as usize * 2 + (head as usize)) * 8 + (sector as usize - 1);
-        //lba * SECTOR_SIZE
+    pub fn get_image_address(&self, drive_select: usize, cylinder: u8, head: u8, sector: u8) -> usize {
 
         if sector == 0 {
-            log::warn!("Invalid sector # == 0");
+            log::warn!("Invalid sector == 0");
             return 0;
         }
-        // ignore heads for now
-        (cylinder as usize * 8 + sector as usize - 1) * SECTOR_SIZE
+        let hpc = self.drives[drive_select].max_heads as usize;
+        let spt = self.drives[drive_select].max_sectors as usize;
+        let lba: usize = (cylinder as usize * hpc + (head as usize)) * spt + (sector as usize - 1);
+        lba * SECTOR_SIZE
     }
 
     pub fn get_next_sector(&self, cylinder: u8, head: u8, sector: u8) -> (u8, u8, u8) {
@@ -713,6 +842,19 @@ impl FloppyController {
                     return
                 }
 
+                if !self.command_init {
+                    let xfer_size = dma.get_dma_transfer_size(FDC_DMA);
+
+                    if xfer_size % SECTOR_SIZE != 0 {
+                        log::warn!("DMA word count not multiple of sector size");
+                    }
+
+                    let xfer_sectors = xfer_size / SECTOR_SIZE;
+                    log::trace!("DMA programmed for transfer of {} sectors", xfer_sectors);
+
+                    self.dma_bytes_left = xfer_sectors * SECTOR_SIZE;
+                    self.command_init = true;
+                }
 
                 if self.dma_bytes_left == SECTOR_SIZE {
                     let dst_address = dma.get_dma_transfer_address(FDC_DMA);
@@ -724,7 +866,7 @@ impl FloppyController {
 
                     // Check if DMA is ready
                     if dma.check_dma_ready(FDC_DMA) {
-                        let base_address = self.get_image_address(cylinder, head, sector);
+                        let base_address = self.get_image_address(self.drive_select, cylinder, head, sector);
                         let byte_address = base_address + self.dma_byte_count;
 
                         //log::trace!("Byte address for FDC read: {:04X}", byte_address);

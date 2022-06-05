@@ -46,7 +46,7 @@ impl Cpu {
                 // Is this state for the current instruction?
                 if rep_state.0 == self.cs && rep_state.1 == self.ip {
                     // Restore the current state
-                    log::trace!(" >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Restoring state for REP string instruction.");
+                    log::trace!("Restoring state for REP string instruction.");
                     match rep_state.2 {                        
                         RepState::StosbState(es, di, cx) => { // dst: [es:di], cx
                             self.es = es;

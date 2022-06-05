@@ -13,7 +13,6 @@ use rand::{
     Rng,
 }; 
 
-
 pub const ATTR_BLUE_FG: u8 = 0b0000_0001;
 pub const ATTR_GREEN_FG: u8 = 0b0000_0010;
 pub const ATTR_RED_FG: u8 = 0b0000_0100;
@@ -25,9 +24,19 @@ pub const ATTR_BRIGHT_BG: u8 = 0b1000_0000;
 
 // Font is encoded as a bit pattern with a span of 256 bits per row
 static CGA_FONT: &'static [u8; 2048] = include_bytes!("cga_font.bin");
+
+const CGA_FIELD_OFFSET: u32 = 8192;
+
 const FONT_SPAN: u32 = 32;
 const FONT_W: u32 = 8;
 const FONT_H: u32 = 8;
+
+const GFX_W: u32 = 320;
+const GFX_H: u32 = 200;
+
+const FRAME_W: u32 = 640;
+const FRAME_H: u32 = 400;
+
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Copy, Clone)]
@@ -98,6 +107,41 @@ pub fn color_enum_to_rgba(color: CGAColor) -> &'static [u8; 4] {
     }
 }
 
+pub fn get_cga_gfx_color(bits: u8, palette: usize, intensity: bool) -> &'static [u8; 4] {
+    match (bits, palette, intensity) {
+        // Palette 0 - Low Intensity
+        (0b00, 0, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, 0, false) => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8], // Green
+        (0b10, 0, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
+        (0b11, 0, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Brown
+        // Palette 0 - High Intensity
+        (0b00, 0, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, 0, true) => &[0x55u8, 0xFFu8, 0x55u8, 0xFFu8], // GreenBright
+        (0b10, 0, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
+        (0b11, 0, true) => &[0xFFu8, 0xFFu8, 0x55u8, 0xFFu8], // Yellow
+        // Palette 1 - Low Intensity
+        (0b00, 1, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, 1, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
+        (0b10, 1, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Magenta
+        (0b11, 1, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        // Palette 1 - High Intensity
+        (0b00, 1, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, 1, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
+        (0b10, 1, true) => &[0xFFu8, 0x55u8, 0xFFu8, 0xFFu8], // MagentaBright
+        (0b11, 1, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
+        // Palette 2 - Low Intensity
+        (0b00, 2, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, 2, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
+        (0b10, 2, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
+        (0b11, 2, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        // Palette 2 - High Intensity
+        (0b00, 2, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, 2, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
+        (0b10, 2, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
+        (0b11, 2, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
+        _=> &[0x00u8, 0x00u8, 0x00u8, 0xFFu8] // Default Black
+    }
+}
 
 
 pub struct Video {
@@ -122,10 +166,69 @@ impl Video {
         let cga_card = cga.borrow();
         let mode_40_cols = cga_card.is_40_columns();
         if cga_card.is_graphics_mode() {
-
+        
+            self.draw_gfx_mode2x(frame, FRAME_W, FRAME_H, video_mem );
         }
         else {
             self.draw_text_mode(frame, video_mem, mode_40_cols );
+        }
+    }
+
+    pub fn draw_gfx_mode2x(&self, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8]) {
+        // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
+        
+        let mut field_src_offset = 0;
+        let mut field_dst_offset = 0;
+        for _field in 0..2 {
+            for draw_y in 0..(GFX_H / 2) {
+
+                // CGA gfx mode = 2 bits (4 pixels per byte). Double line count to skip every other line
+                let src_y_idx = draw_y * (GFX_W / 4) + field_src_offset; 
+                let dst_span = (FRAME_W) * 4;
+                let dst1_y_idx = draw_y * (dst_span * 4) + field_dst_offset;  // RBGA = 4 bytes x 2x pixels
+                let dst2_y_idx = draw_y * (dst_span * 4) + dst_span + field_dst_offset;  // One scanline down
+
+                // Draw 4 pixels at a time
+                for draw_x in 0..(GFX_W / 4) {
+
+                    let dst1_x_idx = (draw_x * 4) * 4 * 2;
+                    let dst2_x_idx = dst1_x_idx + 4;
+
+                    let cga_byte: u8 = mem[(src_y_idx + draw_x) as usize];
+
+                    // Four pixels in a byte
+                    for pix_n in 0..4 {
+                        // Mask the pixel bits, right-to-left
+                        let shift_ct = 8 - (pix_n * 2) - 2;
+                        let pix_bits = cga_byte >> shift_ct & 0x03;
+                        // Get the RGBA for this pixel
+                        let color = get_cga_gfx_color(pix_bits, 1, true);
+                        // Draw first row of pixel 2x
+                        frame[(dst1_y_idx + dst1_x_idx + (pix_n * 8)) as usize]     = color[0];
+                        frame[(dst1_y_idx + dst1_x_idx + (pix_n * 8)) as usize + 1] = color[1];
+                        frame[(dst1_y_idx + dst1_x_idx + (pix_n * 8)) as usize + 2] = color[2];
+                        frame[(dst1_y_idx + dst1_x_idx + (pix_n * 8)) as usize + 3] = color[3];
+
+                        frame[(dst1_y_idx + dst2_x_idx + (pix_n * 8)) as usize]     = color[0];
+                        frame[(dst1_y_idx + dst2_x_idx + (pix_n * 8)) as usize + 1] = color[1];
+                        frame[(dst1_y_idx + dst2_x_idx + (pix_n * 8)) as usize + 2] = color[2];
+                        frame[(dst1_y_idx + dst2_x_idx + (pix_n * 8)) as usize + 3] = color[3];
+
+                        // Draw 2nd row of pixel 2x
+                        frame[(dst2_y_idx + dst1_x_idx + (pix_n * 8)) as usize]     = color[0];
+                        frame[(dst2_y_idx + dst1_x_idx + (pix_n * 8)) as usize + 1] = color[1];
+                        frame[(dst2_y_idx + dst1_x_idx + (pix_n * 8)) as usize + 2] = color[2];
+                        frame[(dst2_y_idx + dst1_x_idx + (pix_n * 8)) as usize + 3] = color[3];      
+
+                        frame[(dst2_y_idx + dst2_x_idx + (pix_n * 8)) as usize]     = color[0];
+                        frame[(dst2_y_idx + dst2_x_idx + (pix_n * 8)) as usize + 1] = color[1];
+                        frame[(dst2_y_idx + dst2_x_idx + (pix_n * 8)) as usize + 2] = color[2];
+                        frame[(dst2_y_idx + dst2_x_idx + (pix_n * 8)) as usize + 3] = color[3];                                    
+                    }
+                }
+            }
+            field_src_offset += CGA_FIELD_OFFSET;
+            field_dst_offset += (FRAME_W) * 4 * 2;
         }
     }
 

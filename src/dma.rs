@@ -562,6 +562,15 @@ impl DMAController {
         }
     }
 
+    pub fn get_dma_transfer_size(&self, channel: usize) -> usize {
+        if channel >= DMA_CHANNEL_COUNT {
+            panic!("Invalid DMA Channel");
+        }  
+
+        let size: usize = self.channels[channel].base_word_count_reg as usize + 1;
+        return size
+    }
+
     pub fn get_dma_transfer_address(&self, channel: usize) -> usize {
         if channel >= DMA_CHANNEL_COUNT {
             panic!("Invalid DMA Channel");
