@@ -1,3 +1,4 @@
+
 use egui::{ClippedMesh, Context, TexturesDelta};
 use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
@@ -5,6 +6,7 @@ use winit::window::Window;
 
 use std::{
     cell::RefCell,
+    ffi::OsString,
     rc::Rc
 };
 use crate::{
@@ -48,6 +50,9 @@ pub(crate) struct GuiState {
     dma_viewer_open: bool,
     call_stack_open: bool,
     
+    floppy_names: Vec<OsString>,
+    new_floppy_name: Option<OsString>,
+
     exec_control: Rc<RefCell<ExecutionControl>>,
     cpu_single_step: bool,
     cpu_step_flag: bool,
@@ -190,6 +195,9 @@ impl GuiState {
             dma_viewer_open: false,
             call_stack_open: false,
             
+            floppy_names: Vec::new(),
+            new_floppy_name: Option::None,
+
             exec_control: exec_control,
             cpu_single_step: true,
             cpu_step_flag: false,
@@ -230,6 +238,16 @@ impl GuiState {
     pub fn show_error(&mut self, err_str: &str) {
         self.error_dialog_open = true;
         self.error_string = err_str.to_string();
+    }
+
+    pub fn set_floppy_names(&mut self, names: Vec<OsString>) {
+        self.floppy_names = names;
+    }
+
+    pub fn get_new_floppy_name(&mut self) -> Option<OsString> {
+        let got_str = self.new_floppy_name.clone();
+        self.new_floppy_name = None;
+        got_str
     }
 
     pub fn update_memory_view(&mut self, mem_str: String) {
@@ -284,7 +302,6 @@ impl GuiState {
         self.dma_state = state;
     }
 
-
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
@@ -294,6 +311,18 @@ impl GuiState {
                         self.window_open = true;
                         ui.close_menu();
                     }
+                });
+                ui.menu_button("Load", |ui| {
+                    ui.menu_button("Image in Drive A:...", |ui| {
+                        for name in &self.floppy_names {
+                            if ui.button(name.to_str().unwrap()).clicked() {
+                                
+                                log::debug!("Selected floppy filename: {:?}", name);
+                                self.new_floppy_name = Some(name.clone());
+                                ui.close_menu();
+                            }
+                        }
+                    });
                 });
                 ui.menu_button("Debug", |ui| {
                     if ui.button("CPU Control...").clicked() {
@@ -338,6 +367,7 @@ impl GuiState {
                     }
                 
                 });
+                
             });
         });
 

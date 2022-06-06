@@ -27,6 +27,7 @@ mod cga;
 mod cpu;
 mod dma;
 mod floppy;
+mod floppy_manager;
 mod gui;
 mod io;
 mod machine;
@@ -42,6 +43,7 @@ mod input;
 
 use machine::{Machine, MachineType, VideoType};
 use rom::{RomManager, RomError};
+use floppy_manager::{FloppyManager, FloppyError};
 use video::{CGAColor};
 use byteinterface::ByteInterface;
 
@@ -76,13 +78,29 @@ fn main() -> Result<(), Error> {
     if let Err(e) = rom_manager.try_load_from_dir("./rom") {
         match e {
             RomError::DirNotFound => {
-                eprintln!("Rom folder not found")
+                eprintln!("Rom directory not found")
             }
             RomError::RomNotFoundForMachine => {
                 eprintln!("No valid rom found for specified machine type")
             }
             _ => {
                 eprintln!("Error loading rom file.")
+            }
+        }
+        std::process::exit(1);
+    }
+
+    // Instantiate the floppy manager
+    let mut floppy_manager = FloppyManager::new();
+
+    // Scan the floppy directory
+    if let Err(e) = floppy_manager.scan_dir("./floppy") {
+        match e {
+            FloppyError::DirNotFound => {
+                eprintln!("Floppy directory not found")
+            }
+            _ => {
+                eprintln!("Error reading floppy directory")
             }
         }
         std::process::exit(1);
@@ -103,7 +121,7 @@ fn main() -> Result<(), Error> {
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
-    let mut machine = Machine::new(MachineType::IBM_PC_5150, VideoType::CGA, rom_manager );
+    let mut machine = Machine::new(MachineType::IBM_PC_5150, VideoType::CGA, rom_manager, floppy_manager );
     
     let video = video::Video::new();
 
@@ -283,6 +301,26 @@ fn main() -> Result<(), Error> {
                     video.draw(pixels.get_frame(), machine.cga(), machine.bus());
                     
                     // Update egui data
+
+                    // -- Update list of floppies
+                    let name_vec = machine.floppy_manager().get_floppy_names();
+                    framework.gui.set_floppy_names(name_vec);
+
+                    // -- Do we have a new floppy image to load?
+                    if let Some(new_floppy_name) = framework.gui.get_new_floppy_name() {
+                        log::debug!("Load new floppy image: {:?}", new_floppy_name);
+
+                        let vec = match machine.floppy_manager().load_floppy_data(&new_floppy_name) {
+                            Ok(vec) => {
+                                machine.fdc().borrow_mut().load_image_from(0, vec);
+                                println!("Loaded okay!");
+                            } 
+                            Err(e) => {
+                                log::error!("Failed to load floppy image! {:?}", new_floppy_name);
+                                eprintln!("Failed to read file: {:?}", new_floppy_name);
+                            }
+                        };
+                    }
 
                     // -- Update memory viewer window
                     {

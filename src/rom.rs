@@ -3,7 +3,7 @@
     Rom Manager module
 
 */
-#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::mem::discriminant;
@@ -64,13 +64,6 @@ pub struct RomManager {
 
     machine_type: MachineType,
     
-    current_bios: String,
-    current_bios_vec: Vec<u8>,
-    current_basic: String,
-    current_basic_vec: Vec<u8>,
-    current_diag: String,
-    have_basic: bool,
-
     rom_sets: Vec<RomSet>,
     rom_sets_complete: Vec<RomSet>,
     rom_set_active: Option<RomSet>,
@@ -84,12 +77,6 @@ impl RomManager {
     pub fn new(machine_type: MachineType) -> Self {
         Self {
             machine_type,
-            current_bios: String::new(),
-            current_bios_vec: Vec::new(),
-            current_basic: String::new(),
-            current_basic_vec: Vec::new(),
-            current_diag: String::new(),
-            have_basic: false,
 
             rom_sets: Vec::from([
                 RomSet {
@@ -503,10 +490,6 @@ impl RomManager {
 
     pub fn get_romdesc_mut(&mut self, key: &str) -> Option<&mut RomDescriptor> {
         self.rom_defs.get_mut(key)
-    }
-
-    pub fn has_basic(&self) -> bool {
-        self.have_basic
     }
 
     pub fn copy_into_memory(&self, bus: &mut BusInterface) -> bool {

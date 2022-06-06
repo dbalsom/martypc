@@ -1,7 +1,6 @@
+#![allow(dead_code)]
 use std::error::Error;
 use core::fmt::Display;
-
-
 
 #[derive(Debug)]
 pub enum MemError {

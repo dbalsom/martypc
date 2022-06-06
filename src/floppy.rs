@@ -774,18 +774,18 @@ impl FloppyController {
 
         // Maximum size of DMA transfer
 
-        let max_sectors;
-        if track_len > 0 {
-            max_sectors = track_len - sector + 1;
-        }
-        else {
-            max_sectors = 1;
-        }
-        self.dma_bytes_left = max_sectors as usize * SECTOR_SIZE;
+        //let max_sectors;
+        //if track_len > 0 {
+        //    max_sectors = track_len - sector + 1;
+        //}
+        //else {
+        //    max_sectors = 1;
+        //}
+        //self.dma_bytes_left = max_sectors as usize * SECTOR_SIZE;
 
         log::trace!("command_read_sector: cyl:{:01X} head:{:01X} sector:{:02X} sector_size:{:02X} track_len:{:02X} gap3_len:{:02X} data_len:{:02X}",
             cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
-        log::trace!("command_read_sector: may operate on maximum of {} sectors", max_sectors);
+        //log::trace!("command_read_sector: may operate on maximum of {} sectors", max_sectors);
 
         let base_address = self.get_image_address(self.drive_select, cylinder, head, sector);
         log::trace!("command_read_sector: base address of image read: {:06X}", base_address);

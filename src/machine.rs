@@ -1,4 +1,11 @@
+/*
 
+    Machine.rs
+    This module defines all the parts that make up the virtual computer.
+    This module also contains the main run() method that makes the CPU execute instructions and
+    run devices for a given time slice.
+
+*/
 use log;
 
 use std::{
@@ -11,7 +18,8 @@ use crate::{
     cga::{self, CGACard},
     cpu::{Cpu, Flag, CpuError},
     dma::{self, DMAControllerStringState},
-    floppy,
+    floppy::{self, FloppyController},
+    floppy_manager::{FloppyManager},
     io::{IoHandler, IoBusInterface},
     pit::{self, PitStringState},
     pic::{self, PicStringState},
@@ -97,6 +105,7 @@ pub struct Machine {
     machine_type: MachineType,
     video_type: VideoType,
     rom_manager: RomManager,
+    floppy_manager: FloppyManager,
     bus: BusInterface,
     io_bus: IoBusInterface,
     cpu: Cpu,
@@ -105,7 +114,7 @@ pub struct Machine {
     pic: Rc<RefCell<pic::Pic>>,
     ppi: Rc<RefCell<ppi::Ppi>>,
     cga: Rc<RefCell<cga::CGACard>>,
-    fdc: Rc<RefCell<floppy::FloppyController>>,
+    fdc: Rc<RefCell<FloppyController>>,
     error: bool,
     error_str: String,
 }
@@ -114,7 +123,8 @@ impl Machine {
     pub fn new(
         machine_type: MachineType,
         video_type: VideoType,
-        rom_manager: RomManager
+        rom_manager: RomManager,
+        floppy_manager: FloppyManager,
         ) -> Machine {
 
         let mut bus = BusInterface::new();
@@ -194,19 +204,11 @@ impl Machine {
         // Install ROM patches if any
         //rom_manager.install_patches(&mut bus);
 
-        // Load a floppy
-        let floppy_vec = std::fs::read("./floppy/digger.img").unwrap_or_else(|e| {
-            eprintln!("Couldn't open floppy image: {}", e);
-            std::process::exit(1);
-        });         
-
-        //Load into floppy drive 0 (A:)
-        fdc.borrow_mut().load_image_from(0, floppy_vec);
-
         Machine {
             machine_type,
             video_type,
             rom_manager,
+            floppy_manager,
             bus: bus,
             io_bus: io_bus,
             cpu: cpu,
@@ -235,6 +237,14 @@ impl Machine {
 
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
+    }
+
+    pub fn fdc(&self) -> Rc<RefCell<FloppyController>> {
+        self.fdc.clone()
+    }
+
+    pub fn floppy_manager(&self) -> &FloppyManager {
+        &self.floppy_manager
     }
 
     pub fn pit_state(&self) -> PitStringState {

@@ -380,7 +380,7 @@ impl CGACard {
     }
 
     pub fn handle_cc_register_write(&mut self, data: u8) {
-
+        self.cc_register = data;
     }
 
     pub fn run(&mut self, io_bus: &mut IoBusInterface, cpu_cycles: u32) {

@@ -242,13 +242,13 @@ impl ProgrammableIntervalTimer {
             AccessMode::LoByteOnly => {
                 port.reload_value = data as u16;
                 port.waiting_for_reload = false;
-                log::debug!("Channel {} reloaded with value {} in LSB mode.", port_num, port.reload_value);
+                //log::trace!("Channel {} reloaded with value {} in LSB mode.", port_num, port.reload_value);
                 port.current_count =  port.reload_value;
             }
             AccessMode::HiByteOnly => {
                 port.reload_value = (data as u16) << 8;
                 port.waiting_for_reload = false;
-                log::debug!("Channel {} reloaded with value {} in HSB mode.", port_num, port.reload_value);
+                //log::trace!("Channel {} reloaded with value {} in HSB mode.", port_num, port.reload_value);
                 port.current_count =  port.reload_value;
             }
             AccessMode::LoByteHiByte => {
@@ -262,7 +262,7 @@ impl ProgrammableIntervalTimer {
                     port.reload_value |= (data as u16) << 8;
                     port.waiting_for_hibyte = false;
                     port.waiting_for_reload = false;
-                    log::debug!("Channel {} reloaded with value {} in WORD mode.", port_num, port.reload_value);
+                    //log::trace!("Channel {} reloaded with value {} in WORD mode.", port_num, port.reload_value);
                     port.current_count =  port.reload_value;
                 }
                 else {

@@ -286,8 +286,8 @@ impl Cpu {
                 // ES Segment Override Prefix
             }
             0x27 => {
-                // DAA
-                unhandled = true;
+                // DAA — Decimal Adjust AL after Addition
+                self.daa();
             }
             0x28 | 0x2A | 0x2C => {
                 // SUB r/m8,r8 | r8, r/m8 | al,imm8 
@@ -583,7 +583,13 @@ impl Cpu {
                 handled_override = true;
             }
             0x8C | 0x8E => {
-                // MOV SReg, r/m16  | MOV SReg, r/m16
+                // MOV r/m16, SReg | MOV SReg, r/m16
+
+                if let OperandType::Register16(foo) = i.operand2_type {
+                    if let Register16::InvalidRegister = foo {
+                        println!("Whoops!")
+                    }
+                }                
                 let op_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
                 self.write_operand16(bus, i.operand1_type, i.segment_override, op_value);
                 handled_override = true;
@@ -735,12 +741,16 @@ impl Cpu {
             }
             0xA4 => {
                 // MOVSB
-                self.string_op(bus, Opcode::MOVSB, i.segment_override);
+                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                    self.string_op(bus, Opcode::MOVSB, i.segment_override);
+                }
 
                 // Check for end condition (CX==0)
                 if self.in_rep {
-                    self.decrement_register16(Register16::CX);
-                    if self.get_register16(Register16::CX) == 0 {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
                         self.in_rep = false;
                         self.rep_type = RepType::NoRep;
                     }
@@ -749,12 +759,16 @@ impl Cpu {
             }
             0xA5 => {
                 // MOVSW
-                self.string_op(bus, Opcode::MOVSW, i.segment_override);
+                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                    self.string_op(bus, Opcode::MOVSW, i.segment_override);
+                }
 
                 // Check for end condition (CX==0)
                 if self.in_rep {
-                    self.decrement_register16(Register16::CX);
-                    if self.get_register16(Register16::CX) == 0 {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
                         self.in_rep = false;
                         self.rep_type = RepType::NoRep;
                     }
@@ -765,12 +779,16 @@ impl Cpu {
                 // CMPSB
                 // Segment override: DS overridable
                 // Flags: All
-                self.string_op(bus, i.mnemonic, i.segment_override);       
+                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                    self.string_op(bus, i.mnemonic, i.segment_override);       
+                }
 
                 // Check for REP end condition #1 (CX==0)
                 if self.in_rep {
-                    self.decrement_register16(Register16::CX);
-                    if self.get_register16(Register16::CX) == 0 {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
                         self.in_rep = false;
                         self.rep_type = RepType::NoRep;
                     }
@@ -816,12 +834,16 @@ impl Cpu {
             }
             0xAA => {
                 // STOSB
-                self.string_op(bus, Opcode::STOSB, SegmentOverride::NoOverride);
+                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                    self.string_op(bus, Opcode::STOSB, SegmentOverride::NoOverride);
+                }
 
                 // Check for end condition (CX==0)
                 if self.in_rep {
-                    self.decrement_register16(Register16::CX);
-                    if self.get_register16(Register16::CX) == 0 {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
                         self.in_rep = false;
                         self.rep_type = RepType::NoRep;
                     }
@@ -829,11 +851,16 @@ impl Cpu {
             }
             0xAB => {
                 // STOSW
-                self.string_op(bus, Opcode::STOSW, SegmentOverride::NoOverride);
+                if !self.in_rep || (self.in_rep && self.cx > 0) {                
+                    self.string_op(bus, Opcode::STOSW, SegmentOverride::NoOverride);
+                }
+
                 // Check for end condition (CX==0)
                 if self.in_rep {
-                    self.decrement_register16(Register16::CX);
-                    if self.get_register16(Register16::CX) == 0 {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
                         self.in_rep = false;
                         self.rep_type = RepType::NoRep;
                     }
@@ -854,12 +881,16 @@ impl Cpu {
             0xAE => {
                 // SCASB
                 // Flags: ALL
-                self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
+                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                    self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
+                }
 
                 // Check for REP end condition #1 (CX==0)
                 if self.in_rep {
-                    self.decrement_register16(Register16::CX);
-                    if self.get_register16(Register16::CX) == 0 {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
                         self.in_rep = false;
                         self.rep_type = RepType::NoRep;
                     }
@@ -886,12 +917,16 @@ impl Cpu {
             0xAF => {
                 // SCASW   - Merge with SCASB ^
                 // Flags: ALL
-                self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
+                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                    self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
+                }
 
                 // Check for end condition (CX==0)
                 if self.in_rep {
-                    self.decrement_register16(Register16::CX);
-                    if self.get_register16(Register16::CX) == 0 {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
                         self.in_rep = false;
                         self.rep_type = RepType::NoRep;
                     }
@@ -1071,10 +1106,14 @@ impl Cpu {
                 handled_override = true;
             }
             0xD4 => {
-                unhandled = true;
+                // AAM - Ascii adjust AX after Multiply
+                // Get imm8 value
+                let op1_value = self.read_operand8(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                self.aam(op1_value);
             }
             0xD5 => {
-                unhandled = true;
+                // AAD - Ascii Adjust before Division
+                self.aad();
             }
             0xD6 => {
                 unhandled = true;

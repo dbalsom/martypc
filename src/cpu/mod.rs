@@ -12,6 +12,7 @@ mod cpu_addressing;
 mod cpu_stack;
 mod cpu_alu;
 mod cpu_string;
+mod cpu_bcd;
 
 use crate::util;
 use crate::util::get_linear_address;
@@ -866,7 +867,7 @@ impl Cpu {
                     RepState::ScaswState(self.es, self.di, self.cx)
                 }
                 _=> {
-                    panic!("Invalid instruction saving REP state");
+                    panic!("Invalid instruction saving REP state: {:?}", self.current_instruction.mnemonic);
                 }
             };
 

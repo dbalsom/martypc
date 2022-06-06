@@ -24,7 +24,8 @@
             "cwd": "${workspaceFolder}",
             "env": {
                 "RUST_LOG": "marty=trace",
-                "RUST_LOG_STYLE": "always"
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
             }
         },
         {

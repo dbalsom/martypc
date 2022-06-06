@@ -504,7 +504,7 @@ impl Cpu {
 
         if self.al & 0x80 != 0 {
             self.ah = 0xFF;
-            self.ax &= 0xFF00;
+            self.ax |= 0xFF00;
         }
         else {
             self.ah = 0x00;

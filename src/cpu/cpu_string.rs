@@ -187,14 +187,16 @@ impl Cpu {
             }
             Opcode::CMPSB => {
                 // CMPSB: Compare bytes from [es:di] to [ds:si]
-                // Flags: o..szapc
+                // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
                 // Override: DS can be overridden
-                let esdi_addr = util::get_linear_address(self.es, self.di);
                 let dssi_addr = util::get_linear_address(segment_base_default_ds, self.si);
-                let (esdi_op, _cost1) = bus.read_u8(esdi_addr as usize).unwrap();
+                let esdi_addr = util::get_linear_address(self.es, self.di);
+                
                 let (dssi_op, _cost2) = bus.read_u8(dssi_addr as usize).unwrap();
+                let (esdi_op, _cost1) = bus.read_u8(esdi_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(dssi_op, esdi_op, false);
+
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
