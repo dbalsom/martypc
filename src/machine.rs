@@ -195,6 +195,7 @@ impl Machine {
         io_bus.register_port_handler(cga::CRTC_REGISTER_SELECT, IoHandler::new(cga.clone()));
         io_bus.register_port_handler(cga::CRTC_REGISTER, IoHandler::new(cga.clone()));
         io_bus.register_port_handler(cga::CGA_MODE_CONTROL_REGISTER, IoHandler::new(cga.clone()));
+        io_bus.register_port_handler(cga::CGA_COLOR_CONTROL_REGISTER, IoHandler::new(cga.clone()));
         io_bus.register_port_handler(cga::CGA_STATUS_REGISTER, IoHandler::new(cga.clone()));
         io_bus.register_port_handler(cga::CGA_LIGHTPEN_REGISTER, IoHandler::new(cga.clone()));
 

@@ -380,6 +380,7 @@ impl CGACard {
     }
 
     pub fn handle_cc_register_write(&mut self, data: u8) {
+        log::trace!("Write to color control register: {:02X}", data);
         self.cc_register = data;
     }
 

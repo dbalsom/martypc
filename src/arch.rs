@@ -102,8 +102,8 @@ pub const OPCODE_PREFIX_REP2: u32            = 0b_0010_0000_0000;
 pub enum RepType {
     NoRep,
     Rep,
-    Repnz,
-    Repz
+    Repne,
+    Repe
 }
 impl Default for RepType {
     fn default() -> Self { RepType::NoRep }

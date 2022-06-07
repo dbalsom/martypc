@@ -27,17 +27,22 @@ impl Cpu {
             // A REPx prefix was set
             
             match i.mnemonic {
-                Opcode::STOSB | Opcode::STOSW | Opcode::LODSB | Opcode::LODSW | 
-                Opcode::MOVSB | Opcode::MOVSW | Opcode::SCASB | Opcode::SCASW |
-                Opcode::CMPSB | Opcode::CMPSW => {
+                Opcode::STOSB | Opcode::STOSW | Opcode::LODSB | Opcode::LODSW | Opcode::MOVSB | Opcode::MOVSW => {
+                    self.rep_type = RepType::Rep;
+                }
+                Opcode::SCASB | Opcode::SCASW | Opcode::CMPSB | Opcode::CMPSW => {
                     // Valid string ops with REP prefix
+                    if i.prefixes & arch::OPCODE_PREFIX_REP1 != 0 {
+                        self.rep_type = RepType::Repne;
+                    }
+                    else {
+                        self.rep_type = RepType::Repe;
+                    }
                 }
                 _=> {
-                    if let Opcode::STI = i.mnemonic {
-                        return ExecutionResult::ExecutionError(
-                            format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", i.mnemonic, self.cs, self.ip)
-                        );
-                    }
+                    return ExecutionResult::ExecutionError(
+                        format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", i.mnemonic, self.cs, self.ip)
+                    );
                 }
             }
 
@@ -795,14 +800,14 @@ impl Cpu {
                 }
                 // Check for REP end condition #2 (Z/NZ)
                 match self.rep_type {
-                    RepType::Repnz => {
+                    RepType::Repne => {
                         // Repeat while NOT zero. If Zero flag is set, end REP.
                         if self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
                         }
                     }
-                    RepType::Repz => {
+                    RepType::Repe => {
                         // Repeat while zero. If zero flag is NOT set, end REP.
                         if !self.get_flag(Flag::Zero) {
                             self.in_rep = false;
@@ -832,10 +837,10 @@ impl Cpu {
                 
                 self.math_op16(Opcode::TEST,  op1_value, op2_value);
             }
-            0xAA => {
-                // STOSB
+            0xAA | 0xAB => {
+                // STOSB & STOSW
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, Opcode::STOSB, SegmentOverride::NoOverride);
+                    self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
                 }
 
                 // Check for end condition (CX==0)
@@ -849,37 +854,14 @@ impl Cpu {
                     }
                 }
             }
-            0xAB => {
-                // STOSW
-                if !self.in_rep || (self.in_rep && self.cx > 0) {                
-                    self.string_op(bus, Opcode::STOSW, SegmentOverride::NoOverride);
-                }
-
-                // Check for end condition (CX==0)
-                if self.in_rep {
-                    if self.cx > 0 {
-                        self.decrement_register16(Register16::CX);
-                    }
-                    if self.cx == 0 {
-                        self.in_rep = false;
-                        self.rep_type = RepType::NoRep;
-                    }
-                }
-            }
-            0xAC => {
-                // LODSB
+            0xAC | 0xAD => {
+                // LODSB & LODSW
                 // Flags: None
                 self.string_op(bus, i.mnemonic, i.segment_override);
                 handled_override = true;
             }
-            0xAD => {
-                // LODSW
-                // Flags: None
-                self.string_op(bus, i.mnemonic, i.segment_override);
-                handled_override = true;
-            }
-            0xAE => {
-                // SCASB
+            0xAE | 0xAF => {
+                // SCASB & SCASW
                 // Flags: ALL
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
                     self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
@@ -897,50 +879,14 @@ impl Cpu {
                 }
                 // Check for REP end condition #2 (Z/NZ)
                 match self.rep_type {
-                    RepType::Repnz => {
+                    RepType::Repne => {
                         // Repeat while NOT zero. If Zero flag is set, end REP.
                         if self.get_flag(Flag::Zero) {
                             self.in_rep = false;
                             self.rep_type = RepType::NoRep;
                         }
                     }
-                    RepType::Repz => {
-                        // Repeat while zero. If zero flag is NOT set, end REP.
-                        if !self.get_flag(Flag::Zero) {
-                            self.in_rep = false;
-                            self.rep_type = RepType::NoRep;
-                        }
-                    }
-                    _=> {}
-                };
-            }
-            0xAF => {
-                // SCASW   - Merge with SCASB ^
-                // Flags: ALL
-                if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
-                }
-
-                // Check for end condition (CX==0)
-                if self.in_rep {
-                    if self.cx > 0 {
-                        self.decrement_register16(Register16::CX);
-                    }
-                    if self.cx == 0 {
-                        self.in_rep = false;
-                        self.rep_type = RepType::NoRep;
-                    }
-                }
-                // Check for REP end condition #2 (Z/NZ)
-                match self.rep_type {
-                    RepType::Repnz => {
-                        // Repeat while NOT zero. If Zero flag is set, end REP.
-                        if self.get_flag(Flag::Zero) {
-                            self.in_rep = false;
-                            self.rep_type = RepType::NoRep;
-                        }
-                    }
-                    RepType::Repz => {
+                    RepType::Repe => {
                         // Repeat while zero. If zero flag is NOT set, end REP.
                         if !self.get_flag(Flag::Zero) {
                             self.in_rep = false;
@@ -1487,7 +1433,7 @@ impl Cpu {
                     // Call Near
                     Opcode::CALL => {
                         let ptr16 = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                        log::trace!("CALL: Destination [{:04X}]", ptr16);
+                        //log::trace!("CALL: Destination [{:04X}]", ptr16);
                         
                         // Push return address (next instruction offset) onto stack
                         let next_i = self.ip + (i.size as u16);
@@ -1503,10 +1449,8 @@ impl Cpu {
                         self.cs = segment;
                         self.ip = offset;
 
-                        log::trace!("CALLF: Destination [{:04X}:{:04X}]", segment, offset);
-                        //jump = true;
-                        unhandled = true;
-
+                        //log::trace!("CALLF: Destination [{:04X}:{:04X}]", segment, offset);
+                        jump = true;
                     }
                     _=> {
                         unhandled = true;

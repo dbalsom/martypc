@@ -111,25 +111,25 @@ pub fn color_enum_to_rgba(color: CGAColor) -> &'static [u8; 4] {
 pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'static [u8; 4] {
     match (bits, palette, intensity) {
         // Palette 0 - Low Intensity
-        (0b00, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8], // Green
-        (0b10, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
-        (0b11, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Brown
-        // Palette 0 - High Intensity
-        (0b00, CGAPalette::MagentaCyanWhite, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, CGAPalette::MagentaCyanWhite, true) => &[0x55u8, 0xFFu8, 0x55u8, 0xFFu8], // GreenBright
-        (0b10, CGAPalette::MagentaCyanWhite, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
-        (0b11, CGAPalette::MagentaCyanWhite, true) => &[0xFFu8, 0xFFu8, 0x55u8, 0xFFu8], // Yellow
-        // Palette 1 - Low Intensity
         (0b00, CGAPalette::RedGreenYellow, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, CGAPalette::RedGreenYellow, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
-        (0b10, CGAPalette::RedGreenYellow, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Magenta
-        (0b11, CGAPalette::RedGreenYellow, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
-        // Palette 1 - High Intensity
+        (0b01, CGAPalette::RedGreenYellow, false) => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8], // Green
+        (0b10, CGAPalette::RedGreenYellow, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
+        (0b11, CGAPalette::RedGreenYellow, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Brown
+        // Palette 0 - High Intensity
         (0b00, CGAPalette::RedGreenYellow, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
-        (0b01, CGAPalette::RedGreenYellow, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
-        (0b10, CGAPalette::RedGreenYellow, true) => &[0xFFu8, 0x55u8, 0xFFu8, 0xFFu8], // MagentaBright
-        (0b11, CGAPalette::RedGreenYellow, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
+        (0b01, CGAPalette::RedGreenYellow, true) => &[0x55u8, 0xFFu8, 0x55u8, 0xFFu8], // GreenBright
+        (0b10, CGAPalette::RedGreenYellow, true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
+        (0b11, CGAPalette::RedGreenYellow, true) => &[0xFFu8, 0xFFu8, 0x55u8, 0xFFu8], // Yellow
+        // Palette 1 - Low Intensity
+        (0b00, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
+        (0b10, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Magenta
+        (0b11, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        // Palette 1 - High Intensity
+        (0b00, CGAPalette::MagentaCyanWhite, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
+        (0b01, CGAPalette::MagentaCyanWhite, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
+        (0b10, CGAPalette::MagentaCyanWhite, true) => &[0xFFu8, 0x55u8, 0xFFu8, 0xFFu8], // MagentaBright
+        (0b11, CGAPalette::MagentaCyanWhite, true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
         // Palette 2 - Low Intensity
         (0b00, CGAPalette::RedCyanWhite, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
         (0b01, CGAPalette::RedCyanWhite, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
