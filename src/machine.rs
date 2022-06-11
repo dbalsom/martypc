@@ -16,7 +16,7 @@ use std::{
 use crate::{
     bus::BusInterface,
     cga::{self, CGACard},
-    cpu::{Cpu, Flag, CpuError},
+    cpu::{CpuType, Cpu, Flag, CpuError},
     dma::{self, DMAControllerStringState},
     floppy::{self, FloppyController},
     floppy_manager::{FloppyManager},
@@ -130,7 +130,7 @@ impl Machine {
         let mut bus = BusInterface::new();
         let mut io_bus = IoBusInterface::new();
         
-        let mut cpu = Cpu::new(4);
+        let mut cpu = Cpu::new(CpuType::Cpu8186, 4);
         cpu.reset();        
 
         // Attach IO Device handlers
@@ -201,6 +201,11 @@ impl Machine {
 
         // Load BIOS ROM images
         rom_manager.copy_into_memory(&mut bus);
+
+        // Set entry point for ROM (mostly used for diagnostic ROMs that don't have a FAR JUMP reset vector)
+        let rom_entry_point = rom_manager.get_entrypoint();
+        cpu.set_reset_address(rom_entry_point.0, rom_entry_point.1);
+        cpu.reset_address();
 
         // Install ROM patches if any
         //rom_manager.install_patches(&mut bus);
@@ -372,10 +377,17 @@ impl Machine {
                 }
 
                 // Run devices
+                let fake_cycles = 7;
                 self.dma_controller.borrow_mut().run(&mut self.io_bus);
 
-                // PIT needs PIC to issue timer interrupts
-                self.pit.borrow_mut().run(&mut self.io_bus,&mut self.pic.borrow_mut(), 7);
+                // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh
+                self.pit.borrow_mut().run(
+                    &mut self.io_bus,
+                    &mut self.bus,
+                    &mut self.pic.borrow_mut(),
+                    &mut self.dma_controller.borrow_mut(),
+                    fake_cycles);
+
                 self.cga.borrow_mut().run(&mut self.io_bus, 7);
                 self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), 7);
                 
@@ -384,7 +396,7 @@ impl Machine {
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     &mut self.bus,
-                    7);
+                    fake_cycles);
             }
             // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all
             // that good stuff. For now during initial development we're going to assume an average instruction cost of 8** 7

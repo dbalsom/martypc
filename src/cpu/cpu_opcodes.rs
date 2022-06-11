@@ -26,6 +26,8 @@ impl Cpu {
         if (i.prefixes & arch::OPCODE_PREFIX_REP1 != 0) || (i.prefixes & arch::OPCODE_PREFIX_REP2 != 0) {
             // A REPx prefix was set
             
+            let mut invalid_rep = false;
+
             match i.mnemonic {
                 Opcode::STOSB | Opcode::STOSW | Opcode::LODSB | Opcode::LODSW | Opcode::MOVSB | Opcode::MOVSW => {
                     self.rep_type = RepType::Rep;
@@ -40,9 +42,11 @@ impl Cpu {
                     }
                 }
                 _=> {
-                    return ExecutionResult::ExecutionError(
-                        format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", i.mnemonic, self.cs, self.ip)
-                    );
+                    invalid_rep = true;
+                    //return ExecutionResult::ExecutionError(
+                    //    format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", i.mnemonic, self.cs, self.ip)
+                    //);
+                    log::warn!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", i.mnemonic, self.cs, self.ip);
                 }
             }
 
@@ -115,14 +119,10 @@ impl Cpu {
                     self.rep_state.pop();
                 }
             }
-            
-            self.in_rep = true;
-            self.rep_mnemonic = i.mnemonic;
-        }
-
-        if self.in_rep {
-            //log::trace!("REP Prefix on instruction: {:?}", i.mnemonic);
-
+            if !invalid_rep {
+                self.in_rep = true;
+                self.rep_mnemonic = i.mnemonic;
+            }
         }
 
         // Reset the wait cycle after STI
@@ -311,7 +311,7 @@ impl Cpu {
                 let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
                 let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
+                // math_op16 handles flags
                 let result = self.math_op16(Opcode::SUB,  op1_value,  op2_value);
                 self.write_operand16(bus, i.operand1_type, i.segment_override, result);
                 handled_override = true;
@@ -321,7 +321,7 @@ impl Cpu {
             }
             0x2F => {
                 // DAS
-                unhandled = true;
+                self.das();
             }
             0x30 | 0x32 | 0x34 => {
                 // XOR r/m8, r8  |  XOR r8, r/m8
@@ -356,7 +356,7 @@ impl Cpu {
             }
             0x37 => {
                 // AAA
-                unhandled = true;
+                self.aaa();
             }
             0x38 | 0x3A | 0x3C => {
                 // CMP r/m8,r8 | r8, r/m8 | al,imm8 
@@ -385,7 +385,7 @@ impl Cpu {
             }
             0x3F => {
                 // AAS
-                unhandled = true;
+                self.aas();
             }
             0x40..=0x47 => {
                 // INC r16 register-encoded operands
@@ -684,11 +684,19 @@ impl Cpu {
             0x9A => {
                 // CALLF - Call Far
 
+                // Push return address of next instruction
                 self.push_register16(bus, Register16::CS);
                 let next_i = self.ip + (i.size as u16);
                 self.push_u16(bus, next_i);
 
-                if let OperandType::FarAddress(segment, offset) = i.operand1_type {                
+                if let OperandType::FarAddress(segment, offset) = i.operand1_type {        
+                    
+                    // Add to call stack
+                    if self.call_stack.len() == CPU_CALL_STACK_LEN {
+                        self.call_stack.pop_front();
+                    }                    
+                    self.call_stack.push_back(CallStackEntry::CallF(self.cs, self.ip, segment, offset));
+                    
                     self.cs = segment;
                     self.ip = offset;
                 }
@@ -780,8 +788,8 @@ impl Cpu {
                 }
                 handled_override = true;
             }
-            0xA6 => {
-                // CMPSB
+            0xA6 | 0xA7 => {
+                // CMPSB & CMPSw
                 // Segment override: DS overridable
                 // Flags: All
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
@@ -817,9 +825,6 @@ impl Cpu {
                     _=> {}
                 };
                 handled_override = true;
-            }
-            0xA7 => {
-                unhandled = true;
             }
             0xA8 => {
                 // TEST al, imm8
@@ -857,7 +862,22 @@ impl Cpu {
             0xAC | 0xAD => {
                 // LODSB & LODSW
                 // Flags: None
-                self.string_op(bus, i.mnemonic, i.segment_override);
+
+                // Although LODSx is not typically used with a REP prefix, it can be
+                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                    self.string_op(bus, i.mnemonic, i.segment_override);
+                }
+                
+                // Check for REP end condition #1 (CX==0)
+                if self.in_rep {
+                    if self.cx > 0 {
+                        self.decrement_register16(Register16::CX);
+                    }
+                    if self.cx == 0 {
+                        self.in_rep = false;
+                        self.rep_type = RepType::NoRep;
+                    }
+                }
                 handled_override = true;
             }
             0xAE | 0xAF => {
@@ -909,6 +929,12 @@ impl Cpu {
                 // MOV r16, imm16
                 if let OperandType::Immediate16(imm16) = i.operand2_type {
                     if let OperandType::Register16(reg) = i.operand1_type {
+                        if imm16 == 0xB4 {
+                            // breaky breaky
+                            
+                            
+                            println!("rat");
+                        }
                         self.set_register16(reg, imm16);
                     }
                 }
@@ -920,7 +946,18 @@ impl Cpu {
                 unhandled = true;
             }
             0xC2 => {
-                unhandled = true;
+                // RETN imm16 - Return from call w/ release
+                // Flags: None
+                let new_ip = self.pop_u16(bus);
+                self.ip = new_ip;
+                
+                let stack_disp = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                self.release(stack_disp);                
+
+                // Pop call stack
+                self.call_stack.pop_back();
+
+                jump = true
             }
             0xC3 => {
                 // RETN - Return from call
@@ -942,6 +979,7 @@ impl Cpu {
                 //log::trace!("LES instruction: Loaded {:04X}:{:04X}", les_segment, les_offset);
                 self.write_operand16(bus, i.operand1_type, i.segment_override, les_offset);
                 self.es = les_segment;
+                handled_override = true;
             }
             0xC5 => {
                 // LDS - Load DS from Pointer
@@ -951,6 +989,7 @@ impl Cpu {
                 //log::trace!("LDS instruction: Loaded {:04X}:{:04X}", lds_segment, lds_offset);
                 self.write_operand16(bus, i.operand1_type, i.segment_override, lds_offset);
                 self.ds = lds_segment;
+                handled_override = true;
             }
             0xC6 => {
                 // MOV r/m8, imm8
@@ -1055,11 +1094,18 @@ impl Cpu {
                 // AAM - Ascii adjust AX after Multiply
                 // Get imm8 value
                 let op1_value = self.read_operand8(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
-                self.aam(op1_value);
+                
+                if op1_value == 0 {
+                    exception = CpuException::DivideError;
+                }
+                else {
+                    self.aam(op1_value);
+                }
             }
             0xD5 => {
                 // AAD - Ascii Adjust before Division
-                self.aad();
+                let op1_value = self.read_operand8(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                self.aad(op1_value);
             }
             0xD6 => {
                 unhandled = true;
@@ -1243,7 +1289,10 @@ impl Cpu {
                 //println!("OUT: Would output {:02X} to Port {:#04X}", op2_value, op1_value);                
             }
             0xEF => {
-                unhandled = true;
+                // OUT dx, ax
+
+                // Do nothing for now
+                // unhandled = true;
             }
             0xF0 => {
                 unhandled = true;
@@ -1305,7 +1354,16 @@ impl Cpu {
                             exception = CpuException::DivideError;
                         }
                         // TODO: Handle DIV exceptions
-                    }                    
+                    }          
+                    Opcode::IDIV => {
+                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                        // Divide handles writing to dx:ax
+                        let success = self.divide_i8(op1_value);
+                        if !success {
+                            exception = CpuException::DivideError;
+                        }
+                        // TODO: Handle DIV exceptions
+                    }                                 
                     _=> unhandled = true
                 }
                 handled_override = true;
@@ -1439,12 +1497,29 @@ impl Cpu {
                         let next_i = self.ip + (i.size as u16);
                         self.push_u16(bus, next_i);
 
+                        // Add to call stack
+                        if self.call_stack.len() == CPU_CALL_STACK_LEN {
+                            self.call_stack.pop_front();
+                        }                
+                        self.call_stack.push_back(CallStackEntry::Call(self.cs, self.ip, ptr16));
+                        
                         self.ip = ptr16;
                         jump = true;
                     }
                     // Call Far
                     Opcode::CALLF => {
                         let (segment, offset) = self.read_operand_farptr(bus, i.operand1_type, i.segment_override).unwrap();
+
+                        // Push return address of next instruction
+                        self.push_register16(bus, Register16::CS);
+                        let next_i = self.ip + (i.size as u16);
+                        self.push_u16(bus, next_i);
+
+                        // Add to call stack
+                        if self.call_stack.len() == CPU_CALL_STACK_LEN {
+                            self.call_stack.pop_front();
+                        }                
+                        self.call_stack.push_back(CallStackEntry::CallF(self.cs, self.ip, segment, offset));
 
                         self.cs = segment;
                         self.ip = offset;

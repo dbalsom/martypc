@@ -1,7 +1,9 @@
-use crate::cpu::{Cpu, ExecutionResult, Flag};
+use crate::cpu::{self, Cpu, ExecutionResult, Flag};
 use crate::bus::{BusInterface};
 use crate::arch::{Register8, Register16};
 use crate::util;
+
+use super::CPU_FLAG_RESERVED1;
 
 impl Cpu {
 
@@ -77,6 +79,8 @@ impl Cpu {
 
     pub fn push_flags(&mut self, bus: &mut BusInterface) {
 
+        // TODO: Handle stack exception per Intel manual when SP==1
+
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
 
@@ -88,7 +92,10 @@ impl Cpu {
 
         let stack_addr = util::get_linear_address(self.ss, self.sp);
         let (result, _cost) = bus.read_u16(stack_addr as usize).unwrap();
-        self.eflags = result;
+
+        // Ensure state of reserved flag bits
+        self.eflags = result & cpu::EFLAGS_POP_MASK;
+        self.eflags |= CPU_FLAG_RESERVED1;
 
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_add(2);

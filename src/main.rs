@@ -72,8 +72,12 @@ fn main() -> Result<(), Error> {
     let timer_length = Duration::new(1, 0);
     env_logger::init();
 
+    // Choose machine type (move to cfg?)
+    let machine_type = MachineType::IBM_PC_5150;
+
     // Instantiate the rom manager to load roms for the requested machine type
-    let mut rom_manager = RomManager::new(MachineType::IBM_PC_5150);
+    
+    let mut rom_manager = RomManager::new(machine_type);
 
     if let Err(e) = rom_manager.try_load_from_dir("./rom") {
         match e {
@@ -121,7 +125,7 @@ fn main() -> Result<(), Error> {
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
-    let mut machine = Machine::new(MachineType::IBM_PC_5150, VideoType::CGA, rom_manager, floppy_manager );
+    let mut machine = Machine::new(machine_type, VideoType::CGA, rom_manager, floppy_manager );
     
     let video = video::Video::new();
 
@@ -160,7 +164,8 @@ fn main() -> Result<(), Error> {
         // Handle input events
         if input.update(&event) {
             // Close events
-            if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
+            
+            if input.quit() {
                 *control_flow = ControlFlow::Exit;
                 return;
             }

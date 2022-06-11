@@ -42,6 +42,7 @@ pub struct RomPatch {
 pub struct RomSet {
     machine_type: MachineType,
     priority: u32,
+    reset_vector: (u16, u16),
     roms: Vec<&'static str>,
     is_complete: Cell<bool>,
 }
@@ -83,6 +84,7 @@ impl RomManager {
                     machine_type: MachineType::IBM_PC_5150,
                     priority: 0,
                     is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
                     roms: vec![
                         "6338a9808445de12109a2389b71ee2eb",  // 5150 BIOS v1 04/24/81
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
@@ -93,6 +95,7 @@ impl RomManager {
                     machine_type: MachineType::IBM_PC_5150,
                     priority: 1,
                     is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
                     roms: vec![
                         "6a1ed4e3f500d785a01ff4d3e000d79c", // 5150 BIOS v2 10/19/81
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
@@ -103,6 +106,7 @@ impl RomManager {
                     machine_type: MachineType::IBM_PC_5150,
                     priority: 2,
                     is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
                     roms: vec![
                         "f453eb2df6daf21ec644d33663d85434", // 5150 BIOS v3 10/27/83
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
@@ -113,15 +117,178 @@ impl RomManager {
                     machine_type: MachineType::IBM_PC_5150,
                     priority: 10,
                     is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
                     roms: vec![
                         "3a0eacac07f1020b95ce06043982dfd1" // Supersoft Diagnostic ROM
                     ]
                 },
-                
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 10,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
+                    roms: vec![
+                        "b612305db2df43f88f9fb7f9b42d696e" // add.bin test suite
+                    ]
+                },    
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 11,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "7c075d48c950ef1d2900c1a10698ac6c" // bitwise.bin test suite
+                    ]
+                },      
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 12,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "a3e85d6807b8f92547681eaca5fbb92f" // bcdcnv.bin test suite
+                    ]
+                },  
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 13,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "6b0a52be2b82fbfaf0e00b0c195c11c1" // cmpneg.bin test suite
+                    ]
+                },    
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 14,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "87e6183b7a3f9e6f797e7bea092bc74d" // control.bin test suite
+                    ]
+                },                   
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 15,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "d0d91c22fce1d2d57fa591190362d0a8" // datatrnf.bin test suite
+                    ]
+                },                
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 16,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "19a32b41480d0e7a6f77f748eaa231c9" // div.bin test suite
+                    ]
+                },   
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 17,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "4cee4ef637299fe7e48196d3da1eb846" // interrupt.bin test suite
+                    ]
+                },       
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 18,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "edcd652c64df0bfb923d5499ea713992" // jmpmov.bin test suite
+                    ]
+                },      
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 19,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "bdd8489b68773ccaeab434e985409ba6" // jump1.bin test suite
+                    ]
+                },
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 20,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "c9243ef5e2c6b6723db313473bf2519b" // jump2.bin test suite
+                    ]
+                },  
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 21,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "7e81ea262fec23f0c20c8e11e7b2689a" // mul.bin test suite
+                    ]
+                }, 
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 22,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "cb8c54acd992166a67ea3927131cf219" // rep.bin test suite
+                    ]
+                },       
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 23,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "317e7c9ce01851b6227ac01d48c7778e" // rotate.bin test suite
+                    ]
+                },  
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 24,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "b2e5c51c10a1ce987cccebca8d0ba5c2" // segpr.bin test suite
+                    ]
+                },         
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 25,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "3aa4d3110127adfa652812f0428d620a" // shifts.bin test suite
+                    ]
+                },        
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 26,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "845902b2b98e43580c3b44a3c09c8376" // strings.bin test suite
+                    ]
+                }, 
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
+                    priority: 27,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xF000, 0),
+                    roms: vec![
+                        "2e8df7c7c23646760dd18749d03b7b5a" // sub.bin test suite
+                    ]
+                },                                                                                                                  
                 RomSet {
                     machine_type: MachineType::IBM_XT_5160,
                     priority: 4,
                     is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
                     roms: vec![
                         "fd9ff9cbe0a8f154746ccb0a33f6d3e7", // 5160 BIOS u18 v01/10/86
                         "f051b4bbc3b60c3a14df94a0e4ee720f", // 5160 BIOS u19 v01/10/86
@@ -131,6 +298,7 @@ impl RomManager {
                     machine_type: MachineType::IBM_XT_5160,
                     priority: 5,
                     is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
                     roms: vec![
                         "9696472098999c02217bf922786c1f4a", // 5160 BIOS u18 v05/09/86
                         "df9f29de490d7f269a6405df1fed69b7", // 5160 BIOS u19 v05/09/86
@@ -179,6 +347,7 @@ impl RomManager {
                             (0xfe352, "Initialize CRTC Controller"),
                             (0xfe3af, "Video Line Test"),
                             (0xfe3c0, "CRT Interface Lines Test"),
+                            (0xfe3f8, "Additional R/W Storage Test"),
                             (0xfe630, "Error Beep"),
                             (0xfe666, "Beep"),
                             (0xfe688, "Keyboard Reset"),
@@ -308,7 +477,21 @@ impl RomManager {
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    checkpoints: HashMap::new()
+                    checkpoints: HashMap::from([
+                        (0xfe01a, "RAM Check Routine"),
+                        (0xfe05b, "8088 Processor Test"),
+                        (0xFE0AC, "ROS Checksum Test I"),
+                        (0xFE0D7, "8237 DMA Initialization Test"),
+                        (0xFE136, "Start DRAM Refresh"),
+                        (0xFE166, "Base 16K RAM Test"),
+                        (0xFE1DA, "Initialize 8259 PIC"),
+                        (0xFE20B, "Determine Configuration and Mfg Mode"),
+                        //(0xFECA0, "Wait Routine"),
+                        (0xFE261, "Initialize CRTC Controller"),
+                        (0xFE2EE, "Video Line Test"),
+                        (0xFE35C, "8259 Interrupt Controller Test"),
+
+                    ]) 
                 }
             ),(
                 "3a0eacac07f1020b95ce06043982dfd1", // Supersoft PC/XT Diagnostic ROM
@@ -325,7 +508,280 @@ impl RomManager {
                     patches: Vec::new(),
                     checkpoints: HashMap::new()                   
                 }
-            )]),
+            ),(
+                "b612305db2df43f88f9fb7f9b42d696e", // add.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "7c075d48c950ef1d2900c1a10698ac6c", // bitwise.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "a3e85d6807b8f92547681eaca5fbb92f", // bcdcnv.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "6b0a52be2b82fbfaf0e00b0c195c11c1", // cmpneg.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "d0d91c22fce1d2d57fa591190362d0a8", // datatrnf.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "87e6183b7a3f9e6f797e7bea092bc74d", // control.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "19a32b41480d0e7a6f77f748eaa231c9", // div.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "4cee4ef637299fe7e48196d3da1eb846", // interrupt.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "edcd652c64df0bfb923d5499ea713992", // jmpmov.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "bdd8489b68773ccaeab434e985409ba6", // jump1.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "c9243ef5e2c6b6723db313473bf2519b", // jump2.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "7e81ea262fec23f0c20c8e11e7b2689a", // mul.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "cb8c54acd992166a67ea3927131cf219", // rep.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "317e7c9ce01851b6227ac01d48c7778e", // rotate.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "b2e5c51c10a1ce987cccebca8d0ba5c2", // segpr.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "3aa4d3110127adfa652812f0428d620a", // shifts.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "845902b2b98e43580c3b44a3c09c8376", // strings.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            ),(
+                "2e8df7c7c23646760dd18749d03b7b5a", // sub.bin test suite
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    optional: false,
+                    priority: 10,
+                    address: 0xF0000,
+                    size: 65536,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()                   
+                }
+            )                           
+            
+            
+            ]),
             rom_images: HashMap::new()
         }
     }
@@ -527,9 +983,16 @@ impl RomManager {
         }
     }
 
-    pub fn get_checkpoint(&self, addr: usize) -> Option<&&str> {
+    pub fn get_entrypoint(&self) -> (u16, u16) {
+        if let Some(rom_set) = &self.rom_set_active {
+            rom_set.reset_vector
+        }
+        else {
+            (0xFFFF,0)
+        }
+    }
 
+    pub fn get_checkpoint(&self, addr: usize) -> Option<&&str> {
         self.checkpoints_active.get(&addr)
-        
     }
 }

@@ -1,8 +1,10 @@
 use log;
 
 use crate::io::{IoBusInterface, IoDevice};
+use crate::bus::{BusInterface};
 use crate::cpu::CPU_MHZ;
 use crate::pic;
+use crate::dma;
 
 const PIT_CHANNEL_PORT_BASE: u16 = 0x40;
 pub const PIT_CHANNEL_0_DATA_PORT: u16 = 0x40;
@@ -328,7 +330,13 @@ impl ProgrammableIntervalTimer {
         }
     }
 
-    pub fn run(&mut self, io_bus: &mut IoBusInterface, pic: &mut pic::Pic, cpu_cycles: u32 ) {
+    pub fn run(
+        &mut self, 
+        io_bus: &mut IoBusInterface, 
+        bus: &mut BusInterface, 
+        pic: &mut pic::Pic, 
+        dma: &mut dma::DMAController,
+        cpu_cycles: u32 ) {
 
         let mut pit_cycles = Pit::get_pit_cycles(cpu_cycles);
         let pit_cycles_remainder = pit_cycles.fract();
@@ -346,11 +354,11 @@ impl ProgrammableIntervalTimer {
         let pit_cycles_int = pit_cycles as u32;
         
         for _ in 0..pit_cycles_int {
-            self.tick(pic);
+            self.tick(bus, pic, dma);
         }
     }
 
-    pub fn tick(&mut self, pic: &mut pic::Pic) {
+    pub fn tick(&mut self, bus: &mut BusInterface, pic: &mut pic::Pic, dma: &mut dma::DMAController ) {
 
         for (i,t) in &mut self.channels.iter_mut().enumerate() {
             match t.channel_mode {
@@ -402,6 +410,11 @@ impl ProgrammableIntervalTimer {
                         else {
                             t.current_count -= 1;
                             if t.current_count == 1 {
+
+                                if i == 1 {
+                                    // Channel 1 wants to do DMA refresh.
+                                    dma.do_dma_read_u8(bus, 0);
+                                }
                                 // Output would go low here
                             }
                         }

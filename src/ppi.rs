@@ -38,7 +38,7 @@ pub const SW1_HAVE_8087: u8      = 0b0000_0010;
 // SW4_3: ON, OFF: Only banks 0/1 populated
 // SW4_3: OFF, ON: Only banks 0/1/2 populated
 // SW4_3: OFF, OFF: Banks 0/1/2/3 populated
-pub const SW1_RAM_BANKS: u128    = 0b0000_1100;
+pub const SW1_RAM_BANKS: u8    = 0b0000_1100;
 
 // SW6_5: OFF, OFF: MDA card
 // SW6_5: ON, OFF: CGA 40 Cols
@@ -74,10 +74,13 @@ pub const SW2_RAM_448K: u8       = 0b0001_0011;
 pub const SW2_RAM_480K: u8       = 0b0001_0010;
 pub const SW2_RAM_512K: u8       = 0b0001_0001;
 pub const SW2_RAM_544K: u8       = 0b0001_0000;
+// need mb revision?
 pub const SW2_RAM_576K: u8       = 0b0000_1111;
 pub const SW2_RAM_608K: u8       = 0b0000_1110;
 pub const SW2_RAM_640K: u8       = 0b0000_1101;
 pub const SW2_5: u8              = 0b0001_0000;
+
+pub const SW2_RAM_TEST: u8       = 0b1110_1111;
 
 // PORT B INPUTS
 pub const PORTB_TIMER2_GATE: u8  = 0b0000_0001;
@@ -144,10 +147,10 @@ impl Ppi {
             kb_byte: 0,
             clear_keyboard: false,
             dip_sw1: match machine_type {
-                MachineType::IBM_PC_5150 => SW1_HAVE_CGA_LORES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES,
-                MachineType::IBM_XT_5160 => SW1_HAVE_CGA_LORES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES
+                MachineType::IBM_PC_5150 => SW1_HAVE_CGA_LORES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS,
+                MachineType::IBM_XT_5160 => SW1_HAVE_CGA_LORES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS
             },
-            dip_sw2: !SW2_RAM_544K,
+            dip_sw2: SW2_RAM_TEST,
             timer_in: false,
             speaker_in: false,
         }

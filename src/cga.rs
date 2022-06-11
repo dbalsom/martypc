@@ -36,10 +36,11 @@ const MODE_BLINKING: u8         = 0b0010_0000;
 // Color control register bits.
 // Alt color = Overscan in Text mode, BG color in 320x200 graphics, FG color in 640x200 graphics
 const CC_ALT_COLOR_MASK: u8     = 0b0000_0111;
+const CC_ALT_INTENSITY: u8      = 0b0000_1000;
 // Controls whether palette is high intensity
-const CC_BRIGHT_BIT: u8         = 0b0000_1000;
+const CC_BRIGHT_BIT: u8         = 0b0001_0000;
 // Controls primary palette between magenta/cyan and red/green
-const CC_PALETTE_BIT: u8        = 0b0001_0000;
+const CC_PALETTE_BIT: u8        = 0b0010_0000;
 
 const STATUS_DISPLAY_ENABLE: u8 = 0b0000_0001;
 const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;

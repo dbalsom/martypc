@@ -216,6 +216,37 @@ impl Cpu {
                     }
                 }
             }
+            Opcode::CMPSW => {
+                // CMPSW: Compare words from [es:di] to [ds:si]
+                // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
+                // Override: DS can be overridden
+                let dssi_addr = util::get_linear_address(segment_base_default_ds, self.si);
+                let esdi_addr = util::get_linear_address(self.es, self.di);
+                
+                let (dssi_op, _cost2) = bus.read_u16(dssi_addr as usize).unwrap();
+                let (esdi_op, _cost1) = bus.read_u16(esdi_addr as usize).unwrap();
+
+                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(dssi_op, esdi_op, false);
+
+                // Test operation behaves like CMP
+                self.set_flag_state(Flag::Carry, carry);
+                self.set_flag_state(Flag::Overflow, overflow);
+                self.set_flag_state(Flag::AuxCarry, aux_carry);
+                self.set_flags_from_result_u16(result);                    
+
+                match self.get_flag(Flag::Direction) {
+                    false => {
+                        // Direction flag clear, process forwards
+                        self.si = self.si.wrapping_add(2);
+                        self.di = self.di.wrapping_add(2);
+                    }
+                    true => {
+                        // Direction flag set, process backwards
+                        self.si = self.si.wrapping_sub(2);
+                        self.di = self.di.wrapping_sub(2);
+                    }
+                }
+            }            
             _ => {
                 panic!("CPU: Unhandled opcode to string_op(): {:?}", opcode);
             }            

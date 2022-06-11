@@ -10,6 +10,7 @@ use regex::Regex;
 mod cpu_opcodes;
 mod cpu_addressing;
 mod cpu_stack;
+mod cpu_bitwise;
 mod cpu_alu;
 mod cpu_string;
 mod cpu_bcd;
@@ -47,11 +48,20 @@ const CPU_FLAG_RESERVED13: u16 = 0b0010_0000_0000_0000;
 const CPU_FLAG_RESERVED14: u16 = 0b0100_0000_0000_0000;
 const CPU_FLAG_RESERVED15: u16 = 0b1000_0000_0000_0000;
 
-const CPU_FLAGS_ALWAYS_ON: u16 = CPU_FLAG_RESERVED1 | CPU_FLAG_RESERVED12 | CPU_FLAG_RESERVED13 | CPU_FLAG_RESERVED14 | CPU_FLAG_RESERVED15;
+const EFLAGS_POP_MASK: u16     = 0b0000_1111_1101_0101;
 
 const REGISTER_HI_MASK: u16    = 0b0000_0000_1111_1111;
 const REGISTER_LO_MASK: u16    = 0b1111_1111_0000_0000;
 
+
+pub enum CpuType {
+    Cpu8088,
+    Cpu8086,
+    Cpu8186
+}
+impl Default for CpuType {
+    fn default() -> Self { CpuType::Cpu8088 }
+}
 
 #[derive(Debug, Copy, Clone)]
 pub enum CpuException {
@@ -141,6 +151,7 @@ pub enum Register {
 
 #[derive(Default)]
 pub struct Cpu {
+    cpu_type: CpuType,
     ah: u8,
     al: u8,
     ax: u16,
@@ -179,6 +190,8 @@ pub struct Cpu {
     instruction_history: VecDeque<Instruction>,
     call_stack: VecDeque<CallStackEntry>,
     interrupt_wait_cycle: bool,
+    reset_seg: u16,
+    reset_offset: u16
     
 }
 
@@ -262,11 +275,14 @@ pub enum ExecutionResult {
 
 impl Cpu {
 
-    pub fn new(piq_capacity: u32) -> Self {
+    pub fn new(cpu_type: CpuType, piq_capacity: u32) -> Self {
         let mut cpu: Cpu = Default::default();
-        cpu.eflags = CPU_FLAGS_ALWAYS_ON;
+        cpu.cpu_type = cpu_type;
+        cpu.eflags = CPU_FLAG_RESERVED1;
         cpu.piq_capacity = piq_capacity;
         cpu.instruction_history = VecDeque::with_capacity(16);
+        cpu.reset_seg = 0xFFFF;
+        cpu.reset_offset = 0x0000;
         cpu
     }
 
@@ -338,7 +354,6 @@ impl Cpu {
     pub fn load_flags(&mut self) -> u16 {
 
         // Return 8 LO bits of eFlags register
-        // AoA 6.3.6
         self.eflags & 0x00FF
     }
 
@@ -511,6 +526,16 @@ impl Cpu {
         self.set_register16(reg, value);
     }
 
+    pub fn set_reset_address(&mut self, segment: u16, offset: u16) {
+        self.reset_seg = segment;
+        self.reset_offset = offset;
+    }
+
+    pub fn reset_address(&mut self) {
+        self.cs = self.reset_seg;
+        self.ip = self.reset_offset;
+    }
+
     pub fn reset(&mut self) {
         self.set_register16(Register16::AX, 0);
         self.set_register16(Register16::BX, 0);
@@ -525,10 +550,10 @@ impl Cpu {
         self.set_register16(Register16::SS, 0);
         self.set_register16(Register16::DS, 0);
         
-        self.set_register16(Register16::CS, 0xFFFF);
-        self.set_register16(Register16::IP, 0x0000);
+        self.set_register16(Register16::CS, self.reset_seg);
+        self.set_register16(Register16::IP, self.reset_offset);
 
-        self.eflags = 0;
+        self.eflags = CPU_FLAG_RESERVED1;
         self.instruction_count = 0;
 
         self.in_rep = false;
@@ -754,7 +779,7 @@ impl Cpu {
         
         // We need to push the address past the current instruction (skip size of INT)
         // INT instruction = two bytes
-        let ip = self.ip + 2;
+        let ip = self.ip.wrapping_add(2);
         self.push_u16(bus, ip);
         
         if interrupt == 0x10 && self.ah==0x02 {
@@ -771,8 +796,30 @@ impl Cpu {
             //self.log_interrupt(interrupt);
             //log::trace!("CPU: Software Interrupt: {:02X} AH: {:02X} AL: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, self.ah, self.al,  new_cs, new_ip);
         }
-
     }
+
+    /// Handle a CPU exception
+    pub fn handle_exception(&mut self, bus: &mut BusInterface, exception: u8) {
+
+        // 
+        self.push_flags(bus);
+
+        // Push return address of next instruction onto stack
+        self.push_register16(bus, Register16::CS);
+
+        // Don't push address of next instruction
+        self.push_u16(bus, self.ip);
+        
+        if exception == 0x0 {
+            log::trace!("CPU Exception: {:02X} Saving return: {:04X}:{:04X}", exception, self.cs, self.ip);
+        }
+        // Read the IVT
+        let ivt_addr = util::get_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
+        let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
+        let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
+        self.ip = new_ip;
+        self.cs = new_cs;
+    }    
 
     pub fn log_interrupt(&self, interrupt: u8) {
 
@@ -911,7 +958,7 @@ impl Cpu {
                     ExecutionResult::Okay => {
                         // Normal non-jump instruction updates CS:IP to next instruction
                         self.assert_state();
-                        self.ip += i.size as u16;
+                        self.ip = self.ip.wrapping_add(i.size as u16);
 
                         i.address = instruction_address;
                         if self.instruction_history.len() == CPU_HISTORY_LEN {
@@ -964,7 +1011,16 @@ impl Cpu {
                     }
                     ExecutionResult::ExceptionError(exception) => {
                         // Handle DIV by 0 here
-                        Err(CpuError::ExceptionError(exception))
+                        match exception {
+                            CpuException::DivideError => {
+                                self.handle_exception(bus, 0);
+                                Ok(())
+                            }
+                            _ => {
+                                // Unhandled exception?
+                                Err(CpuError::ExceptionError(exception))
+                            }
+                        }
                     }
                 }
             }

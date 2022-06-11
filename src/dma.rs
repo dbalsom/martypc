@@ -598,6 +598,63 @@ impl DMAController {
         self.channels[channel].terminal_count
     }
 
+    pub fn do_dma_read_u8(&mut self, bus: &mut BusInterface, channel: usize ) -> u8 {
+        if channel >= DMA_CHANNEL_COUNT {
+            panic!("Invalid DMA Channel");
+        }  
+
+        if !self.enabled {
+            return 0;
+        }
+
+        let mut data: u8 = 0;
+        let mut _cost = 0;
+        let bus_address = self.get_dma_transfer_address(channel);
+
+        match self.channels[channel].address_mode {
+            AddressMode::Increment => {
+                if self.channels[channel].current_word_count_reg > 0 {
+
+                    (data, _cost) = bus.read_u8(bus_address).unwrap();
+                    
+                    if self.channels[channel].current_word_count_reg == 1 {
+                        //log::trace!("car: {} cwc: {} ", self.channels[channel].current_address_reg, self.channels[channel].current_word_count_reg);
+                    }
+
+                    // Internal address register wraps around
+                    self.channels[channel].current_address_reg.wrapping_add(1);
+                    self.channels[channel].current_word_count_reg -= 1;
+
+                    //log::trace!("DMA read {:02X} from address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
+                }
+                else if self.channels[channel].current_word_count_reg == 0 && !self.channels[channel].terminal_count {
+                    
+                    // Transfer one more on a 0 count, then set TC
+                    (data, _cost) = bus.read_u8(bus_address).unwrap();
+
+                    //self.channels[channel].current_address_reg += 1;
+
+                    //log::trace!("DMA read {:02X} from address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
+                    if self.channels[channel].auto_init {
+                        // Reload channel if auto-init on
+                        self.channels[channel].current_address_reg = self.channels[channel].base_address_reg;
+                        self.channels[channel].current_word_count_reg  = self.channels[channel].base_word_count_reg;
+                    }
+                    else {
+                        self.channels[channel].terminal_count = true;
+                        log::trace!("Terminal count reached on DMA channel {:01X}", channel);
+                    }
+                }
+                else {
+                    // Trying to transfer on a terminal count
+                }                
+            }
+            _=> panic!("DMA Decrement address mode unimplemented")
+        }        
+        
+        0
+    }
+
     pub fn do_dma_transfer_u8(&mut self, bus: &mut BusInterface, channel: usize, data: u8) {
         if channel >= DMA_CHANNEL_COUNT {
             panic!("Invalid DMA Channel");

@@ -123,8 +123,8 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
         // Palette 1 - Low Intensity
         (0b00, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
         (0b01, CGAPalette::MagentaCyanWhite, false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
-        (0b10, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Magenta
-        (0b11, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        (0b10, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0x00u8, 0xAAu8, 0xFFu8], // Magenta
+        (0b11, CGAPalette::MagentaCyanWhite, false) => &[0xAAu8, 0xAAu8, 0xAAu8, 0xFFu8], // Gray
         // Palette 1 - High Intensity
         (0b00, CGAPalette::MagentaCyanWhite, true) => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8], // Black
         (0b01, CGAPalette::MagentaCyanWhite, true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright

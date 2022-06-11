@@ -891,7 +891,7 @@ impl FloppyController {
                             // See if we are done
                             let tc = dma.check_terminal_count(FDC_DMA);
                             if tc {
-                                log::trace!("DMA terminal count triggered end of Sector Read operation.");
+                                log::trace!("DMA terminal count triggered end of Sector Read operation, {} bytes read.", self.dma_byte_count);
                                 self.dma_bytes_left = 0;
                             }
                             
