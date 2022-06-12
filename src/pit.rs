@@ -390,7 +390,6 @@ impl ProgrammableIntervalTimer {
                             }
                         }
                     }
-
                 },
                 ChannelMode::HardwareRetriggerableOneShot => {},
                 ChannelMode::RateGenerator => {
@@ -408,9 +407,13 @@ impl ProgrammableIntervalTimer {
                             }
                         }
                         else {
-                            t.current_count -= 1;
+                            t.current_count = t.current_count - 1;
                             if t.current_count == 1 {
 
+                                // Only trigger interrupt on Channel #0
+                                if i == 0 {                                
+                                    pic.request_interrupt(0);
+                                }
                                 if i == 1 {
                                     // Channel 1 wants to do DMA refresh.
                                     dma.do_dma_read_u8(bus, 0);
