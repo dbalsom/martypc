@@ -5,7 +5,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::cga::{self, CGACard, CGAPalette, DisplayMode};
+use crate::cga::{self, CGACard, CGAPalette, DisplayMode, CursorInfo};
 use crate::bus::BusInterface;
 
 extern crate rand; 
@@ -172,7 +172,8 @@ impl Video {
             self.draw_gfx_mode2x(frame, FRAME_W, FRAME_H, video_mem, palette, intensity);
         }
         else {
-            self.draw_text_mode(frame, video_mem, mode_40_cols );
+            let cursor = cga_card.get_cursor_info();
+            self.draw_text_mode(cursor, frame, video_mem, mode_40_cols );
         }
     }
 
@@ -234,7 +235,7 @@ impl Video {
         }
     }
 
-    pub fn draw_text_mode(&self, frame: &mut [u8], mem: &[u8], lowres: bool) {
+    pub fn draw_text_mode(&self, cursor: CursorInfo, frame: &mut [u8], mem: &[u8], lowres: bool) {
 
         let mem_span = match lowres {
             true => 40,
@@ -254,14 +255,138 @@ impl Video {
             let (fg_color, bg_color) = get_colors_from_attr_byte(char[1]);
 
             match lowres {
-                true => draw_glyph4x(char[0], fg_color, bg_color, frame, 640, 400, x * 8, y * 8),
-                false => draw_glyph2x(char[0], fg_color, bg_color, frame, 640, 400, x * 8, y * 8)
+                true => draw_glyph4x(char[0], fg_color, bg_color, frame, FRAME_W, FRAME_H, x * 8, y * 8),
+                false => draw_glyph2x(char[0], fg_color, bg_color, frame, FRAME_W, FRAME_H, x * 8, y * 8)
             }
 
         }
+
+        match lowres {
+            true => self.draw_cursor4x(cursor, frame, FRAME_W, FRAME_H, mem ),
+            false => self.draw_cursor2x(cursor, frame, FRAME_W, FRAME_H, mem )
+        }
     }
 
+    pub fn draw_cursor4x(&self, cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8] ) {
+        
+        // First off, is cursor even visible?
+        if !cursor.visible {
+            return
+        }
+        
+        // Do not draw cursor off screen
+        let pos_x = cursor.pos_x * 8;
+        let pos_y = cursor.pos_y * 8;
+        if (pos_x + (FONT_W * 2) > frame_w) || (pos_y + (FONT_H * 2 ) > frame_h) {
+            return
+        }
+
+        // Is character attr in mem range?
+        let attr_addr = (cursor.addr * 2 + 1) as usize;
+        if attr_addr > mem.len() {
+            return
+        }
+        let cursor_attr: u8 = mem[attr_addr];
+        let (fg_color, _bg_color) = get_colors_from_attr_byte(cursor_attr);
+        let color = color_enum_to_rgba(fg_color);
+
+        // Cursor start regsiter can be greater than end register, in this case no cursor is shown
+        let cursor_height = cursor.line_end - cursor.line_start;
+        if cursor_height < 1 {
+            return
+        }
+
+        let line_start = cursor.line_start as u32;
+        let line_end = cursor.line_end as u32;
+
+        for draw_glyph_y in line_start..line_end {
+
+            let dst_row_offset = frame_w * 4 * ((pos_y * 2) + (draw_glyph_y*2));
+            let dst_row_offset2 = dst_row_offset + (frame_w * 4);
+            
+            for draw_glyph_x in 0..FONT_W {
+            
+                let dst_offset = dst_row_offset + ((pos_x * 2) + (draw_glyph_x*2)) * 4;
+                frame[dst_offset as usize] = color[0];
+                frame[dst_offset as usize + 1] = color[1];
+                frame[dst_offset as usize + 2] = color[2];
+                frame[dst_offset as usize + 3] = color[3];
+    
+                frame[(dst_offset + 4) as usize] = color[0];
+                frame[(dst_offset + 4) as usize + 1] = color[1];
+                frame[(dst_offset + 4) as usize + 2] = color[2];
+                frame[(dst_offset + 4) as usize + 3] = color[3];
+    
+                let dst_offset2 = dst_row_offset2 + ((pos_x * 2) + (draw_glyph_x*2)) * 4;
+                frame[dst_offset2 as usize] = color[0];
+                frame[dst_offset2 as usize + 1] = color[1];
+                frame[dst_offset2 as usize + 2] = color[2];
+                frame[dst_offset2 as usize + 3] = color[3];   
+    
+                frame[(dst_offset2 + 4 ) as usize] = color[0];
+                frame[(dst_offset2 + 4) as usize + 1] = color[1];
+                frame[(dst_offset2 + 4) as usize + 2] = color[2];
+                frame[(dst_offset2 + 4) as usize + 3] = color[3];    
+            }
+        }    
+    }
+
+    pub fn draw_cursor2x(&self, cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8] ) {
+        
+        // First off, is cursor even visible?
+        if !cursor.visible {
+            return
+        }
+        
+        // Do not draw cursor off screen
+        let pos_x = cursor.pos_x * 8;
+        let pos_y = cursor.pos_y * 8;
+        if (pos_x + (FONT_W * 2) > frame_w) || (pos_y + (FONT_H * 2 ) > frame_h) {
+            return
+        }
+
+        // Is character attr in mem range?
+        let attr_addr = (cursor.addr * 2 + 1) as usize;
+        if attr_addr > mem.len() {
+            return
+        }
+        let cursor_attr: u8 = mem[attr_addr];
+        let (fg_color, _bg_color) = get_colors_from_attr_byte(cursor_attr);
+        let color = color_enum_to_rgba(fg_color);
+
+        // Cursor start regsiter can be greater than end register, in this case no cursor is shown
+        if cursor.line_start > cursor.line_end {
+            return
+        }
+
+        let line_start = cursor.line_start as u32;
+        let line_end = cursor.line_end as u32;
+
+        for draw_glyph_y in line_start..=line_end {
+
+            let dst_row_offset = frame_w * 4 * ((pos_y * 2) + (draw_glyph_y*2));
+            let dst_row_offset2 = dst_row_offset + (frame_w * 4);
+                                        
+            for draw_glyph_x in 0..FONT_W {
+            
+                let dst_offset = dst_row_offset + (pos_x + draw_glyph_x) * 4;
+                frame[dst_offset as usize] = color[0];
+                frame[dst_offset as usize + 1] = color[1];
+                frame[dst_offset as usize + 2] = color[2];
+                frame[dst_offset as usize + 3] = color[3];
+    
+                let dst_offset2 = dst_row_offset2 + (pos_x + draw_glyph_x) * 4;
+                frame[dst_offset2 as usize] = color[0];
+                frame[dst_offset2 as usize + 1] = color[1];
+                frame[dst_offset2 as usize + 2] = color[2];
+                frame[dst_offset2 as usize + 3] = color[3];   
+
+            }
+        }                 
+    }    
 }
+
+
 
 pub fn get_colors_from_attr_byte(byte: u8) -> (CGAColor, CGAColor) {
 

@@ -8,12 +8,12 @@ pub const CGA_MEM_SIZE: usize = 16384;
 pub const CGA_DEFAULT_CURSOR_START_LINE: u8 = 6;
 pub const CGA_DEFAULT_CURSOR_END_LINE: u8 = 7;
 pub const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
+pub const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
 
 const FRAME_CPU_TIME: u32 = 79648;
 const FRAME_VBLANK_START: u32 = 70314;
 const SCANLINE_CPU_TIME: u32 = 304;
 const SCANLINE_HBLANK_START: u32 = 250;
-
 
 const CGA_HBLANK: f64 = 0.1785714;
 
@@ -32,6 +32,9 @@ const MODE_BW: u8               = 0b0000_0100;
 const MODE_ENABLE: u8           = 0b0000_1000;
 const MODE_HIRES_GRAPHICS: u8   = 0b0001_0000;
 const MODE_BLINKING: u8         = 0b0010_0000;
+
+const CURSOR_LINE_MASK: u8      = 0b0000_1111;
+const CURSOR_ATTR_MASK: u8      = 0b0011_0000;
 
 // Color control register bits.
 // Alt color = Overscan in Text mode, BG color in 320x200 graphics, FG color in 640x200 graphics
@@ -77,6 +80,15 @@ pub enum DisplayMode {
     Mode8LowResTweaked
 }
 
+pub struct CursorInfo {
+    pub addr: u32,
+    pub pos_x: u32,
+    pub pos_y: u32,
+    pub line_start: u8,
+    pub line_end: u8,
+    pub visible: bool
+}
+
 pub struct CGACard {
 
     mode_byte: u8,
@@ -89,10 +101,12 @@ pub struct CGACard {
     mode_blinking: bool,
     scanline_cycles: u32,
     frame_cycles: u32,
+    cursor_frames: u32,
     in_hblank: bool,
     in_vblank: bool,
     
     crtc_cursor_status: bool,
+    crtc_cursor_slowblink: bool,
     crtc_cursor_blink_rate: f64,
     crtc_register_select_byte: u8,
     crtc_register_selected: CRTCRegister,
@@ -125,6 +139,7 @@ pub enum CRTCRegister {
     LightPenPositionHOByte,
     LightPenPositionLOByte
 }
+
 
 impl IoDevice for CGACard {
     fn read_u8(&mut self, port: u16) -> u8 {
@@ -184,11 +199,13 @@ impl CGACard {
             mode_hires_txt: true,
             mode_blinking: true,
             frame_cycles: 0,
+            cursor_frames: 0,
             scanline_cycles: 0,
             in_hblank: false,
             in_vblank: false,
 
             crtc_cursor_status: false,
+            crtc_cursor_slowblink: false,
             crtc_cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
             crtc_register_selected: CRTCRegister::TotalHorizontalCharacter,
             crtc_register_select_byte: 0,
@@ -210,8 +227,46 @@ impl CGACard {
         (self.crtc_cursor_address_ho as u32) << 8 | self.crtc_cursor_address_lo as u32
     }
 
+
     pub fn get_cursor_status(&self) -> bool {
         self.crtc_cursor_status
+    }
+
+    pub fn get_cursor_info(&self) -> CursorInfo {
+        let addr = self.get_cursor_address();
+
+        match self.display_mode {
+            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
+                CursorInfo{
+                    addr,
+                    pos_x: addr % 40,
+                    pos_y: addr / 40,
+                    line_start: self.crtc_cursor_start_line,
+                    line_end: self.crtc_cursor_end_line,
+                    visible: self.get_cursor_status()
+                }
+            }
+            DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
+                CursorInfo{
+                    addr,
+                    pos_x: addr % 80,
+                    pos_y: addr / 80,
+                    line_start: self.crtc_cursor_start_line,
+                    line_end: self.crtc_cursor_end_line,
+                    visible: self.get_cursor_status()
+                }
+            }
+            _=> {
+                CursorInfo{
+                    addr: 0,
+                    pos_x: 0,
+                    pos_y: 0,
+                    line_start: 0,
+                    line_end: 0,
+                    visible: false
+                }
+            }
+        }
     }
 
     pub fn get_display_mode(&self) -> DisplayMode {
@@ -290,8 +345,26 @@ impl CGACard {
     pub fn handle_crtc_register_write(&mut self, byte: u8 ) {
 
         match self.crtc_register_selected {
-            CRTCRegister::CursorStartLine => self.crtc_cursor_start_line = byte,
-            CRTCRegister::CursorEndLine => self.crtc_cursor_end_line = byte,
+            CRTCRegister::CursorStartLine => {
+                self.crtc_cursor_start_line = byte & CURSOR_LINE_MASK;
+                match byte & CURSOR_ATTR_MASK >> 4 {
+                    0b00 | 0b10 => {
+                        self.crtc_cursor_status = true;
+                        self.crtc_cursor_slowblink = false;
+                    }
+                    0b01 => {
+                        self.crtc_cursor_status = false;
+                        self.crtc_cursor_slowblink = false;
+                    }
+                    _ => {
+                        self.crtc_cursor_status = true;
+                        self.crtc_cursor_slowblink = true;
+                    }
+                }
+            }
+            CRTCRegister::CursorEndLine => {
+                self.crtc_cursor_end_line = byte & CURSOR_LINE_MASK;
+            }
             CRTCRegister::CursorAddressHOByte => {
                 //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
                 self.crtc_cursor_address_ho = byte
@@ -392,6 +465,13 @@ impl CGACard {
 
         if self.frame_cycles > FRAME_CPU_TIME {
             self.frame_cycles -= FRAME_CPU_TIME;
+            self.cursor_frames += 1;
+            // Blink the cursor
+            let cursor_cycle = CGA_DEFAULT_CURSOR_FRAME_CYCLE * (self.crtc_cursor_slowblink as u32 + 1);
+            if self.cursor_frames > cursor_cycle {
+                self.cursor_frames -= cursor_cycle;
+                self.crtc_cursor_status = !self.crtc_cursor_status;
+            }
         }
         if self.scanline_cycles > SCANLINE_CPU_TIME {
             self.scanline_cycles -= SCANLINE_CPU_TIME;
@@ -401,10 +481,5 @@ impl CGACard {
         self.in_hblank = self.scanline_cycles > SCANLINE_HBLANK_START;
         // Are we in VBLANK interval?
         self.in_vblank = self.frame_cycles > FRAME_VBLANK_START;
-
-        // Blink cursor 
-        let blink_period = (FRAME_CPU_TIME as f64 * self.crtc_cursor_blink_rate) as u32;
-        // Blink cycle on/off per blink_period
-        self.crtc_cursor_status = blink_period & 0x01 != 0;
     }
 }
