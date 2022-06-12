@@ -407,7 +407,7 @@ impl ProgrammableIntervalTimer {
                             }
                         }
                         else {
-                            t.current_count = t.current_count - 1;
+                            t.current_count -= 1;
                             if t.current_count == 1 {
 
                                 // Only trigger interrupt on Channel #0
