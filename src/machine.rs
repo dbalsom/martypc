@@ -339,6 +339,9 @@ impl Machine {
         let mut cycles_elapsed = 0;
 
         while cycles_elapsed < cycle_target_adj {
+
+            let fake_cycles = 7;
+
             if self.cpu.is_error() == false {
 
                 let flat_address = self.cpu.get_flat_address();
@@ -377,7 +380,7 @@ impl Machine {
                 }
 
                 // Run devices
-                let fake_cycles = 7;
+                
                 self.dma_controller.borrow_mut().run(&mut self.io_bus);
 
                 // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh
@@ -401,7 +404,7 @@ impl Machine {
             // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all
             // that good stuff. For now during initial development we're going to assume an average instruction cost of 8** 7
             // even cycles keeps the BIOS PIT test from working!
-            cycles_elapsed += 7;
+            cycles_elapsed += fake_cycles;
         }
     }
 }

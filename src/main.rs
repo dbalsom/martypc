@@ -44,7 +44,7 @@ mod input;
 use machine::{Machine, MachineType, VideoType};
 use rom::{RomManager, RomError};
 use floppy_manager::{FloppyManager, FloppyError};
-use video::{CGAColor};
+
 use byteinterface::ByteInterface;
 
 
@@ -302,8 +302,9 @@ fn main() -> Result<(), Error> {
                         framework.gui.show_disassembly_view();
                     }
 
+                    let composite_enabled = framework.gui.get_composite_enabled();
                     // Draw video memory
-                    video.draw(pixels.get_frame(), machine.cga(), machine.bus());
+                    video.draw(pixels.get_frame(), machine.cga(), machine.bus(), composite_enabled);
                     
                     // Update egui data
 
@@ -406,6 +407,7 @@ fn main() -> Result<(), Error> {
 
                     // Render everything together
                     let render_result = pixels.render_with(|encoder, render_target, context| {
+                        
                         // Render the world texture
                         context.scaling_renderer.render(encoder, render_target);
 
@@ -448,40 +450,9 @@ impl World {
 
     /// Update the `World` internal state; bounce the box around the screen.
     fn update(&mut self) {
-
-        
     }
 
     /// Draw the `World` state to the frame buffer.
-    ///
-    /// Assumes the default texture format: `wgpu::TextureFormat::Rgba8UnormSrgb`
-    fn draw(&self, frame: &mut [u8]) {
-        //for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
-        //    let x = (i % WIDTH as usize) as i16;
-        //    let y = (i / WIDTH as usize) as i16;
-        //
-        //    let inside_the_box = x >= self.box_x
-        //        && x < self.box_x + BOX_SIZE
-        //        && y >= self.box_y
-        //        && y < self.box_y + BOX_SIZE;
-        //
-        //    let rgba = if inside_the_box {
-        //        [0x5e, 0x48, 0xe8, 0xff]
-        //    } else {
-        //        [0x48, 0xb2, 0xe8, 0xff]
-        //    };
-        //
-        //    pixel.copy_from_slice(&rgba);
-        //}
-
-        for y in 0..25 {
-            for x in 0..80 {
-                let fg_color: CGAColor = rand::random();
-                let bg_color: CGAColor = rand::random();
-
-                let glyph = rand::thread_rng().gen_range(0..256);
-                video::draw_glyph2x(glyph as u8, fg_color, bg_color, frame, WIDTH, HEIGHT, x * 8, y * 8);
-            }
-        }        
+    fn draw(&self, frame: &mut [u8]) {   
     }
 }

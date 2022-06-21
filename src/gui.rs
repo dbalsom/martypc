@@ -71,7 +71,9 @@ pub(crate) struct GuiState {
     disassembly_viewer_string: String,
     disassembly_viewer_address: String,
     trace_string: String,
-    call_stack_string: String
+    call_stack_string: String,
+
+    composite: bool
 }
 
 impl Framework {
@@ -218,6 +220,8 @@ impl GuiState {
             trace_string: String::new(),
             call_stack_string: String::new(),
 
+            composite: false
+
         }
     }
 
@@ -264,6 +268,10 @@ impl GuiState {
 
     pub fn get_disassembly_view_address(&mut self) -> &str {
         &self.disassembly_viewer_address
+    }
+
+    pub fn get_composite_enabled(&self) -> bool {
+        self.composite
     }
 
     pub fn update_dissassembly_view(&mut self, disassembly_string: String) {
@@ -367,7 +375,11 @@ impl GuiState {
                     }
                 
                 });
-                
+                ui.menu_button("Options", |ui| {
+                    if ui.checkbox(&mut self.composite, "Composite").clicked() {
+                        ui.close_menu();
+                    }
+                });
             });
         });
 

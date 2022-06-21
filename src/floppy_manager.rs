@@ -69,6 +69,7 @@ impl FloppyManager {
         for (key, _val) in &self.image_map {
             vec.push(key.clone());
         }
+        vec.sort_by(|a, b| a.cmp(b));
         vec
     }
 

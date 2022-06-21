@@ -50,10 +50,32 @@ const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
 const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
 const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 
+#[allow(non_camel_case_types)]
+#[derive(Debug, Copy, Clone)]
+pub enum CGAColor {
+    Black,
+    Blue,
+    Green,
+    Cyan,
+    Red,
+    Magenta,
+    Brown,
+    White,
+    BlackBright,
+    BlueBright,
+    GreenBright,
+    CyanBright,
+    RedBright,
+    MagentaBright,
+    Yellow,
+    WhiteBright
+}
+
 pub enum CGAPalette {
-    MagentaCyanWhite,
-    RedGreenYellow,
-    RedCyanWhite // "Hidden" CGA palette
+    Monochrome(CGAColor),
+    MagentaCyanWhite(CGAColor),
+    RedGreenYellow(CGAColor),
+    RedCyanWhite(CGAColor) // "Hidden" CGA palette
 }
 pub enum Resolution {
     Res640by200,
@@ -112,6 +134,7 @@ pub struct CGACard {
     crtc_register_selected: CRTCRegister,
     crtc_cursor_start_line: u8,
     crtc_cursor_end_line: u8,
+    crtc_maximum_scan_line: u8,
     crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
 
@@ -120,16 +143,16 @@ pub struct CGACard {
 
 #[derive(Debug)]
 pub enum CRTCRegister {
-    TotalHorizontalCharacter,
-    DisplayHorizontalCharacter,
-    HorizontalSyncSignal,
-    HorizontalSyncDuration,
-    TotalVerticalCharacter,
-    AdjustVerticalCharacter,
-    DisplayVerticalCharacter,
-    VerticalSyncSignal,
+    HorizontalTotal,
+    HorizontalDisplayed,
+    HorizontalSyncPosition,
+    SyncWidth,
+    VerticalTotal,
+    VerticalTotalAdjust,
+    VerticalDisplayed,
+    VerticalSync,
     InterlaceMode,
-    NumberOfScanLinesPerScreenLine,
+    MaximumScanLineAddress,
     CursorStartLine,
     CursorEndLine,
     PageAddressLOByte,
@@ -139,7 +162,6 @@ pub enum CRTCRegister {
     LightPenPositionHOByte,
     LightPenPositionLOByte
 }
-
 
 impl IoDevice for CGACard {
     fn read_u8(&mut self, port: u16) -> u8 {
@@ -207,11 +229,13 @@ impl CGACard {
             crtc_cursor_status: false,
             crtc_cursor_slowblink: false,
             crtc_cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
-            crtc_register_selected: CRTCRegister::TotalHorizontalCharacter,
+            crtc_register_selected: CRTCRegister::HorizontalTotal,
             crtc_register_select_byte: 0,
 
             crtc_cursor_start_line: CGA_DEFAULT_CURSOR_START_LINE,
             crtc_cursor_end_line: CGA_DEFAULT_CURSOR_END_LINE,
+
+            crtc_maximum_scan_line: 7,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
 
@@ -227,9 +251,12 @@ impl CGACard {
         (self.crtc_cursor_address_ho as u32) << 8 | self.crtc_cursor_address_lo as u32
     }
 
-
     pub fn get_cursor_status(&self) -> bool {
         self.crtc_cursor_status
+    }
+
+    pub fn get_character_height(&self) -> u8 {
+        self.crtc_maximum_scan_line + 1
     }
 
     pub fn get_cursor_info(&self) -> CursorInfo {
@@ -274,22 +301,46 @@ impl CGACard {
     }
 
     /// Return the current palette number, intensity attribute bit, and alt color
-    pub fn get_palette(&self) -> (CGAPalette, bool, u8) {
+    pub fn get_palette(&self) -> (CGAPalette, bool) {
 
-        let alt_color = self.cc_register & 0x03;
         let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
         
+        // Get background color
+        let alt_color = match self.cc_register & 0x0F {
+            0b0000 => CGAColor::Black,
+            0b0001 => CGAColor::Blue,
+            0b0010 => CGAColor::Green,
+            0b0011 => CGAColor::Cyan,
+            0b0100 => CGAColor::Red,
+            0b0101 => CGAColor::Magenta,
+            0b0110 => CGAColor::Brown,
+            0b0111 => CGAColor::White,
+            0b1000 => CGAColor::BlackBright,
+            0b1001 => CGAColor::BlueBright,
+            0b1010 => CGAColor::GreenBright,
+            0b1011 => CGAColor::CyanBright,
+            0b1100 => CGAColor::RedBright,
+            0b1101 => CGAColor::MagentaBright,
+            0b1110 => CGAColor::Yellow,
+            _ => CGAColor::WhiteBright
+        };
+
+        // Are we in high res mode?
+        if self.mode_hires_gfx {
+            return (CGAPalette::Monochrome(alt_color), true); 
+        }
+
         let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
-            true => CGAPalette::MagentaCyanWhite,
-            false => CGAPalette::RedGreenYellow
+            true => CGAPalette::MagentaCyanWhite(alt_color),
+            false => CGAPalette::RedGreenYellow(alt_color)
         };
         
         // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
         if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx { 
-            palette = CGAPalette::RedCyanWhite;
+            palette = CGAPalette::RedCyanWhite(alt_color);
         }
     
-        (palette, intensity, alt_color)
+        (palette, intensity)
     }
 
     pub fn is_graphics_mode(&self) -> bool {
@@ -316,16 +367,16 @@ impl CGACard {
         //log::trace!("CGA: CRTC register {:02X} selected", byte);
         self.crtc_register_select_byte = byte;
         self.crtc_register_selected = match byte {
-            0x00 => CRTCRegister::TotalHorizontalCharacter,
-            0x01 => CRTCRegister::DisplayHorizontalCharacter,
-            0x02 => CRTCRegister::HorizontalSyncSignal,
-            0x03 => CRTCRegister::HorizontalSyncDuration,
-            0x04 => CRTCRegister::TotalVerticalCharacter,
-            0x05 => CRTCRegister::AdjustVerticalCharacter,
-            0x06 => CRTCRegister::DisplayVerticalCharacter,
-            0x07 => CRTCRegister::VerticalSyncSignal,
+            0x00 => CRTCRegister::HorizontalTotal,
+            0x01 => CRTCRegister::HorizontalDisplayed,
+            0x02 => CRTCRegister::HorizontalSyncPosition,
+            0x03 => CRTCRegister::SyncWidth,
+            0x04 => CRTCRegister::VerticalTotal,
+            0x05 => CRTCRegister::VerticalTotalAdjust,
+            0x06 => CRTCRegister::VerticalDisplayed,
+            0x07 => CRTCRegister::VerticalSync,
             0x08 => CRTCRegister::InterlaceMode,
-            0x09 => CRTCRegister::NumberOfScanLinesPerScreenLine,
+            0x09 => CRTCRegister::MaximumScanLineAddress,
             0x0A => CRTCRegister::CursorStartLine,
             0x0B => CRTCRegister::CursorEndLine,
             0x0C => CRTCRegister::PageAddressLOByte,
@@ -337,7 +388,7 @@ impl CGACard {
             _ => {
                 log::debug!("CGA: Select to invalid CRTC register");
                 self.crtc_register_select_byte = 0;
-                CRTCRegister::TotalHorizontalCharacter
+                CRTCRegister::HorizontalTotal
             } 
         }
     }
@@ -373,8 +424,11 @@ impl CGACard {
                 //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
                 self.crtc_cursor_address_lo = byte
             }
+            CRTCRegister::MaximumScanLineAddress => {
+                self.crtc_maximum_scan_line = byte
+            }
             _ => {
-                log::debug!("CGA: Write to unsupported CRTC register: {:?}", self.crtc_register_selected);
+                log::debug!("CGA: Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
             }
         }
     }
