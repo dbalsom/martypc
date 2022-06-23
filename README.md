@@ -60,5 +60,6 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ![cat](https://user-images.githubusercontent.com/7229541/173169921-32b5dbad-0cb7-4cfa-921f-09ba7f946e85.png)
 
-Composite CGA Simulation
+Composite CGA Simulation:
+
 ![kq1b](https://user-images.githubusercontent.com/7229541/175355050-af26243c-4a6e-49dd-9b01-991bc3420cb2.png)
