@@ -34,7 +34,6 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ## Missing features: (Planned)
 
-* Complete CGA support including low res graphics modes and composite monitor simulation
 * PC Speaker sound
 * Writing to floppy and saving floppy images
 * Better debugger and breakpoint system
@@ -61,4 +60,6 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ![cat](https://user-images.githubusercontent.com/7229541/173169921-32b5dbad-0cb7-4cfa-921f-09ba7f946e85.png)
 
-![kq1](https://user-images.githubusercontent.com/7229541/173169927-a06d7c23-2611-4a7e-8fd9-244ec50c55d8.png)
+Composite CGA Simulation:
+
+![kq1b](https://user-images.githubusercontent.com/7229541/175355050-af26243c-4a6e-49dd-9b01-991bc3420cb2.png)
