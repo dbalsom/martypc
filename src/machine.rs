@@ -10,7 +10,7 @@ use log;
 
 use std::{
     rc::Rc,
-    cell::{Cell, RefCell}
+    cell::{Cell, RefCell}, collections::VecDeque
 };
 
 use crate::{
@@ -115,6 +115,7 @@ pub struct Machine {
     ppi: Rc<RefCell<ppi::Ppi>>,
     cga: Rc<RefCell<cga::CGACard>>,
     fdc: Rc<RefCell<FloppyController>>,
+    kb_buf: VecDeque<u8>,
     error: bool,
     error_str: String,
 }
@@ -224,6 +225,7 @@ impl Machine {
             ppi: ppi,
             cga: cga,
             fdc: fdc,
+            kb_buf: VecDeque::new(),
             error: false,
             error_str: String::new(),
         }
@@ -281,15 +283,14 @@ impl Machine {
         }
     }
 
-    pub fn key_press(&self, code: u8) {
-        self.ppi.borrow_mut().send_keyboard(code);
-        self.pic.borrow_mut().request_interrupt(1);
+    pub fn key_press(&mut self, code: u8) {
+
+        self.kb_buf.push_back(code);
     }
 
-    pub fn key_release(&self, code: u8 ) {
+    pub fn key_release(&mut self, code: u8 ) {
         // HO Bit set converts a scancode into its 'release' code
-        self.ppi.borrow_mut().send_keyboard(code | 0x80);
-        self.pic.borrow_mut().request_interrupt(1);
+        self.kb_buf.push_back(code | 0x80);
     }
 
     pub fn reset(&mut self) {
@@ -310,6 +311,8 @@ impl Machine {
     }
     
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl, breakpoint: u32) {
+
+        let mut kb_event_processed = false;
 
         // Was reset requested?
         if exec_control.do_reset.get() {
@@ -377,6 +380,21 @@ impl Machine {
                             None => {}
                         }
                     }
+                }
+
+                // Process a keyboard event once per frame.
+                // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
+                // they then appear to happen instantenously. The PPI has no buffer, so one scancode gets lost. 
+                // 
+                // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
+                // fast typist and this method seems to work fine.
+                if self.kb_buf.len() > 0 && !kb_event_processed {
+
+                    let kb_byte = self.kb_buf.pop_front().unwrap();
+
+                    self.ppi.borrow_mut().send_keyboard(kb_byte);
+                    self.pic.borrow_mut().request_interrupt(1);
+                    kb_event_processed = true;
                 }
 
                 // Run devices

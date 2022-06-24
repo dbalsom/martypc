@@ -18,7 +18,7 @@ pub const PPI_PORT_C: u16 = 0x62;
 pub const PPI_COMMAND_PORT: u16 = 0x63;
 
 pub const KB_RESET_CYCLES: u32 = 47700;
-pub const KB_RESET_CYCLE_DELAY: u32 = 500; // Cycles until reset byte is sent after reset
+pub const KB_RESET_CYCLE_DELAY: u32 = 50; // Cycles until reset byte is sent after reset
 
 // Dipswitch information from
 // http://www.minuszerodegrees.net/5150/misc/5150_motherboard_switch_settings.htm
@@ -221,12 +221,12 @@ impl IoDevice for Ppi {
                 }
 
                 if self.pb_byte & PORTB_PULL_KB_LOW == 0 {
-                    log::trace!("PPI: Pulling keyboard clock LOW");
+                    //log::trace!("PPI: Pulling keyboard clock LOW");
                     self.kb_clock_low = true;
                     self.kb_counting_low = true;
                 }
                 else if self.kb_clock_low {
-                    log::trace!("PPI: Keyboard clock resume HIGH");
+                    //log::trace!("PPI: Keyboard clock resume HIGH");
                     self.kb_clock_low = false;
 
                     if self.kb_low_count > KB_RESET_CYCLES {

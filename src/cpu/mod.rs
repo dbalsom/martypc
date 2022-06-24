@@ -796,6 +796,14 @@ impl Cpu {
             //self.log_interrupt(interrupt);
             //log::trace!("CPU: Software Interrupt: {:02X} AH: {:02X} AL: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, self.ah, self.al,  new_cs, new_ip);
         }
+
+        if interrupt == 0x13 {
+            // Disk interrupts
+            if self.dl & 0x80 != 0 {
+                // Hard disk request
+                log::trace!("Hard disk requested in int13h");
+            }
+        }
     }
 
     /// Handle a CPU exception

@@ -447,41 +447,63 @@ impl FloppyController {
         }
     }
 
+    pub fn motor_off(&mut self, drive_select: usize) {
+
+        if self.drives[drive_select].motor_on {
+            log::trace!("Drive {}: turning motor off.", drive_select)
+        }
+        self.drives[drive_select].motor_on = false;
+        //self.drives[drive_select].ready = false;    // Breaks booting(?)
+    }
+
     pub fn handle_dor_write(&mut self, data: u8) {
 
         if data & DOR_FDC_RESET == 0 {
-            // Reset when reset bit is *not* set
-            // ignore all other commands
+            // Reset the FDC when the reset bit is *not* set
+            // Ignore all other commands
             log::debug!("FDC Reset requested: {:02X}", data);
             self.reset();
             self.send_interrupt = true;
-            return
-        }
-
-        let disk_n = data & 0x03;
-        if data & DOR_MOTOR_FDD_A != 0 {
-            self.motor_on(0);
-        }
-        if data & DOR_MOTOR_FDD_B != 0 {
-            self.motor_on(1);
-        }
-        if data & DOR_MOTOR_FDD_C != 0 {
-            self.motor_on(2);
-        }
-        if data & DOR_MOTOR_FDD_D != 0 {
-            self.motor_on(3);
-        }
-
-        if !self.drives[disk_n as usize].motor_on {
-            // It's valid to issue this command without turning a motor on. In this case the FDC can
-            // be enabled, but no drive is selected.
         }
         else {
-            log::debug!("Drive {} selected, motor on", disk_n);
-            self.drive_select = disk_n as usize;
-            self.drives[disk_n as usize].motor_on = true;
+            // Not reset. Turn drive motors on or off based on the MOTx bits in the DOR byte.
+            let disk_n = data & 0x03;
+            if data & DOR_MOTOR_FDD_A != 0 {
+                self.motor_on(0);
+            }
+            else {
+                self.motor_off(0);
+            }
+            if data & DOR_MOTOR_FDD_B != 0 {
+                self.motor_on(1);
+            }
+            else {
+                self.motor_off(1);
+            }
+            if data & DOR_MOTOR_FDD_C != 0 {
+                self.motor_on(2);
+            }
+            else {
+                self.motor_off(2);
+            }
+            if data & DOR_MOTOR_FDD_D != 0 {
+                self.motor_on(3);
+            }
+            else {
+                self.motor_off(3);
+            }
+    
+            // Select drive from DRx bits.
+            if self.drives[disk_n as usize].motor_on {
+                log::debug!("Drive {} selected, motor on", disk_n);
+                self.drive_select = disk_n as usize;
+                self.drives[disk_n as usize].motor_on = true;
+            }
+            else {
+                // It's valid to write to the dor without turning a motor on. 
+                // In this case the FDC can be re-enabled, but with no drive selected.
+            }
         }
-
         self.dor = data;
     }
 
