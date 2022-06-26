@@ -490,6 +490,13 @@ impl RomManager {
                         (0xFE261, "Initialize CRTC Controller"),
                         (0xFE2EE, "Video Line Test"),
                         (0xFE35C, "8259 Interrupt Controller Test"),
+                        (0xFE38F, "8253 Timer Checkout"),
+                        (0xFE3D4, "Keyboard Test"),
+                        (0xFE40F, "Setup Interrupt Vector Table"),
+                        (0xFE448, "Expansion I/O Box Test"),
+                        (0xFE499, "Additional R/W Storage Test"),
+                        (0xFE53C, "Optional ROM Scan"),
+                        (0xFE55B, "Diskette Attachment Test"),
 
                     ]) 
                 }

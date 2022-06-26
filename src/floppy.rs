@@ -906,7 +906,7 @@ impl FloppyController {
                         else {
                             let byte = self.drives[self.drive_select].disk_image[byte_address];
 
-                            dma.do_dma_transfer_u8(bus, FDC_DMA, byte);
+                            dma.do_dma_write_u8(bus, FDC_DMA, byte);
                             self.dma_byte_count += 1;
                             self.dma_bytes_left -= 1;
 

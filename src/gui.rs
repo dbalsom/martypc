@@ -681,72 +681,62 @@ impl GuiState {
             .default_width(600.0)
             .show(ctx, |ui| {
                 egui::Grid::new("pit_view")
+                    .num_columns(2)
+                    .spacing([40.0, 4.0])
                     .striped(true)
-                    .min_col_width(300.0)
                     .show(ui, |ui| {
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#0 Access Mode: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_access_mode).font(egui::TextStyle::Monospace));
-                    });
+                    ui.label(egui::RichText::new("#0 Access Mode: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_access_mode).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#0 Channel Mode:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_channel_mode).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#0 Channel Mode:").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_channel_mode).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#0 Counter:     ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_value).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#0 Counter:     ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_value).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#0 Reload Val:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_reload_value).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#0 Reload Val:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_reload_value).font(egui::TextStyle::Monospace));
                     ui.end_row();
                     
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#1 Access Mode: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_access_mode).font(egui::TextStyle::Monospace));
-                    });
+                    ui.label(egui::RichText::new("#1 Access Mode: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_access_mode).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#1 Channel Mode:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_channel_mode).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#1 Channel Mode:").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_channel_mode).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#1 Counter:     ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_value).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#1 Counter:     ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_value).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#1 Reload Val:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_reload_value).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#1 Reload Val:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_reload_value).font(egui::TextStyle::Monospace));
                     ui.end_row();  
                     
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#2 Access Mode: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_access_mode).font(egui::TextStyle::Monospace));
-                    });
+                    ui.label(egui::RichText::new("#2 Access Mode: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_access_mode).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#2 Channel Mode:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_channel_mode).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#2 Channel Mode:").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_channel_mode).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#2 Counter:     ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_value).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("#2 Counter:     ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_value).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("#2 Reload Val:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_reload_value).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();                       
+
+                    ui.label(egui::RichText::new("#2 Reload Val:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_reload_value).font(egui::TextStyle::Monospace));
+                    ui.end_row();  
+
+                    ui.label(egui::RichText::new("#2 Gate Status: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_gate_status).font(egui::TextStyle::Monospace));
+                    ui.end_row();                              
                 });
             });               
 
@@ -806,51 +796,50 @@ impl GuiState {
             .default_width(600.0)
             .show(ctx, |ui| {
                 egui::Grid::new("ppi_view")
+                    .num_columns(2)
                     .striped(true)
-                    .min_col_width(300.0)
+                    .spacing([40.0, 4.0])
                     .show(ui, |ui| {
+                        
+                    ui.label(egui::RichText::new("Port A Mode:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_mode).font(egui::TextStyle::Monospace));
+                    ui.end_row();
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Port A Mode:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_mode).font(egui::TextStyle::Monospace));
-                    });
+                    ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_bin).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_bin).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex).font(egui::TextStyle::Monospace));
-                    });
+                    
+                    ui.label(egui::RichText::new("Keyboard resets:").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.kb_resets_counter).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Port C Mode:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_mode).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("Port C Mode:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_mode).font(egui::TextStyle::Monospace));
                     ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Port C Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_value).font(egui::TextStyle::Monospace));
-                    });
+
+                    ui.label(egui::RichText::new("Port C Value: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_value).font(egui::TextStyle::Monospace));
                     ui.end_row();
                 });
             });
 
             egui::Window::new("DMA View")
             .open(&mut self.dma_viewer_open)
-            .resizable(true)
-            .default_width(600.0)
+            .resizable(false)
+            .default_width(200.0)
             .show(ctx, |ui| {
                 egui::Grid::new("dma_view")
+                    .num_columns(2)
                     .striped(true)
-                    .min_col_width(300.0)
+                    .min_col_width(50.0)
                     .show(ui, |ui| {
 
                     egui::ComboBox::from_label("Channel #")
@@ -864,62 +853,55 @@ impl GuiState {
 
                     let chan = &mut self.dma_state.dma_channel_state[self.dma_channel_select as usize];
                     
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} CAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.current_address_reg).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} CWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.current_word_count_reg).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} BAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.base_address_reg).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} BWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.base_word_count_reg).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();       
-                        
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} Service Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.service_mode).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} Address Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.address_mode).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} Xfer Type:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.transfer_type).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} Auto Init:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.auto_init).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();                     
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} Terminal Ct: ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.terminal_count).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();  
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} Masked:      ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.masked).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();                          
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(format!("#{} Page:        ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut chan.page).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();  
+                    ui.label(egui::RichText::new(format!("#{} CAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.current_address_reg).font(egui::TextStyle::Monospace));
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new(format!("#{} Page:        ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.page).font(egui::TextStyle::Monospace));
+                    ui.end_row();                      
+
+                    ui.label(egui::RichText::new(format!("#{} CWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.current_word_count_reg).font(egui::TextStyle::Monospace));
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new(format!("#{} BAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.base_address_reg).font(egui::TextStyle::Monospace));
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new(format!("#{} BWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.base_word_count_reg).font(egui::TextStyle::Monospace));
+                    ui.end_row();    
+
+                    ui.label(egui::RichText::new(format!("#{} Service Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.service_mode).font(egui::TextStyle::Monospace));
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new(format!("#{} Address Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.address_mode).font(egui::TextStyle::Monospace));
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new(format!("#{} Xfer Type:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.transfer_type).font(egui::TextStyle::Monospace));
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new(format!("#{} Auto Init:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.auto_init).font(egui::TextStyle::Monospace));
+                    ui.end_row();   
+
+                    ui.label(egui::RichText::new(format!("#{} Terminal Ct: ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.terminal_count).font(egui::TextStyle::Monospace));
+                    ui.end_row();  
+
+                    ui.label(egui::RichText::new(format!("#{} TC Reached:  ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.terminal_count_reached).font(egui::TextStyle::Monospace));
+                    ui.end_row();
+
+                    ui.label(egui::RichText::new(format!("#{} Masked:      ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut chan.masked).font(egui::TextStyle::Monospace));
+                    ui.end_row();   
+
+
                 });
             });            
 

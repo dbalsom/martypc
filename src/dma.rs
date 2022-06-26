@@ -107,6 +107,7 @@ pub struct DMAChannel {
     address_mode: AddressMode,
     transfer_type: TransferType,
     terminal_count: bool,
+    terminal_count_reached: bool,
     request: bool,
     masked: bool,
     page: u8
@@ -125,6 +126,7 @@ pub struct DMAChannelStringState {
     pub transfer_type: String,
     pub auto_init: String,
     pub terminal_count: String,
+    pub terminal_count_reached: String,
     pub masked: String,
     pub page: String
 }
@@ -402,11 +404,17 @@ impl DMAController {
 
     pub fn handle_status_register_read(&mut self) -> u8 {
         let mut status_byte = 0;
-        for (i, chan) in self.channels.iter().enumerate() {
-            if chan.terminal_count {
+        for (i, chan) in self.channels.iter_mut().enumerate() {
+
+            // Intel: Bits 0-3 are set every time a TC is reached by that channel or an external EOP is applied. 
+            // These bits are cleared upon Reset and on each Status Read.
+            if chan.terminal_count_reached {
                 status_byte |= 0x01 << i;
+
+                chan.terminal_count_reached = false;
             }
             
+            // Intel: Bits 4-7 are set whenever their corresponding channel is requesting service.
             if chan.request {
                 status_byte |= 0x01 << (i + 4);
             }
@@ -551,6 +559,7 @@ impl DMAController {
                 transfer_type: format!("{:?}", chan.transfer_type),
                 auto_init: format!("{:?}", chan.auto_init),
                 terminal_count: format!("{:?}", chan.terminal_count),
+                terminal_count_reached: format!("{:?}", chan.terminal_count_reached),
                 masked: format!("{:?}", chan.masked),
                 page: format!("{:02X}", chan.page)
             });
@@ -622,7 +631,7 @@ impl DMAController {
                     }
 
                     // Internal address register wraps around
-                    self.channels[channel].current_address_reg.wrapping_add(1);
+                    self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
                     self.channels[channel].current_word_count_reg -= 1;
 
                     //log::trace!("DMA read {:02X} from address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
@@ -644,6 +653,8 @@ impl DMAController {
                         self.channels[channel].terminal_count = true;
                         log::trace!("Terminal count reached on DMA channel {:01X}", channel);
                     }
+                    // Set the tc status bit regardless of auto-init
+                    self.channels[channel].terminal_count_reached = true;
                 }
                 else {
                     // Trying to transfer on a terminal count
@@ -655,7 +666,7 @@ impl DMAController {
         0
     }
 
-    pub fn do_dma_transfer_u8(&mut self, bus: &mut BusInterface, channel: usize, data: u8) {
+    pub fn do_dma_write_u8(&mut self, bus: &mut BusInterface, channel: usize, data: u8) {
         if channel >= DMA_CHANNEL_COUNT {
             panic!("Invalid DMA Channel");
         }  
@@ -668,7 +679,7 @@ impl DMAController {
                 if self.channels[channel].current_word_count_reg > 0 {
                     bus.write_u8(bus_address, data);
                     
-                    self.channels[channel].current_address_reg += 1;
+                    self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
                     self.channels[channel].current_word_count_reg -= 1;
 
                     //log::trace!("DMA write {:02X} to address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
@@ -682,6 +693,11 @@ impl DMAController {
                     //log::trace!("DMA write {:02X} to address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
                     self.channels[channel].terminal_count = true;
                     log::trace!("Terminal count reached on DMA channel {:01X}", channel);
+
+                    // TODO: Support auto-init here
+
+                    // Set the tc status bit regardless of auto-init
+                    self.channels[channel].terminal_count_reached = true;
                 }
                 else {
                     // Trying to transfer on a terminal count

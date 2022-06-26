@@ -1,3 +1,8 @@
+/* 
+    pit.rs 
+    Implement the Intel 8253 Programmable Interval Timer
+*/
+
 use log;
 
 use crate::io::{IoBusInterface, IoDevice};
@@ -52,7 +57,8 @@ pub struct PitChannel {
     output_is_high: bool,
     latched_lobyte_read: bool,
     latch_count: u16,
-    bcd_mode: bool
+    bcd_mode: bool,
+    input_gate: bool,
 }
 
 pub struct ProgrammableIntervalTimer {
@@ -76,6 +82,7 @@ pub struct PitStringState {
     pub c2_reload_value: String,
     pub c2_access_mode: String,
     pub c2_channel_mode: String,
+    pub c2_gate_status: String,
 }
 
 impl IoDevice for ProgrammableIntervalTimer {
@@ -108,13 +115,20 @@ impl IoDevice for ProgrammableIntervalTimer {
 
 impl ProgrammableIntervalTimer {
     pub fn new() -> Self {
+        /*
+            The Intel documentation says: 
+            "Prior to initialization, the mode, count, and output of all counters is undefined."
+            This makes it a challenge to decide the initial state of the virtual PIT. The 5160 
+            BIOS will halt during POST if there's a pending timer interrupt, so that's a clue we
+            shouldn't initially start a timer running, but beyond that it's a guess.
+        */
         let mut vec = Vec::<PitChannel>::new();
         for _ in 0..3 {
             let pit = PitChannel {
                 channel_mode: ChannelMode::InterruptOnTerminalCount,
                 access_mode: AccessMode::HiByteOnly,
                 reload_value: 0,
-                waiting_for_reload: false,
+                waiting_for_reload: true,
                 waiting_for_lobyte: false,
                 waiting_for_hibyte: false,
                 current_count: 0,
@@ -125,6 +139,7 @@ impl ProgrammableIntervalTimer {
                 latched_lobyte_read: false,
                 latch_count: 0,
                 bcd_mode: false,
+                input_gate: true,
             };
             vec.push(pit);
         }
@@ -142,7 +157,7 @@ impl ProgrammableIntervalTimer {
             channel.channel_mode = ChannelMode::InterruptOnTerminalCount;
             channel.access_mode = AccessMode::HiByteOnly;
             channel.reload_value = 0;
-            channel.waiting_for_reload = false;
+            channel.waiting_for_reload = true;
             channel.waiting_for_lobyte = false;
             channel.waiting_for_hibyte = false;
             channel.current_count = 0;
@@ -153,12 +168,14 @@ impl ProgrammableIntervalTimer {
             channel.latched_lobyte_read = false;
             channel.latch_count = 0;
             channel.bcd_mode = false;
+            channel.input_gate = true;
         }
     }
 
     fn is_latch_command(command_byte: u8) -> bool {
         command_byte & PIT_ACCESS_MODE_MASK == 0
     }
+
     fn get_pit_cycles(cpu_cycles: u32) -> f64 {
         cpu_cycles as f64 * PIT_DIVISOR
     }
@@ -215,6 +232,8 @@ impl ProgrammableIntervalTimer {
             match channel.channel_mode {
                 ChannelMode::InterruptOnTerminalCount => {
                     channel.waiting_for_reload = true;
+                    // Intel: The output will be intiially low after the mode set operation.
+                    channel.output_is_high = false;
                 }
                 ChannelMode::HardwareRetriggerableOneShot => {
                     channel.waiting_for_reload = true;
@@ -330,6 +349,14 @@ impl ProgrammableIntervalTimer {
         }
     }
 
+    pub fn set_channel_gate(&mut self, channel: usize, state: bool ) {
+        if channel > 2 {
+            return
+        }
+        // Note: Only the gate to PIT channel #2 is connected to anything (PPI port)
+        self.channels[channel].input_gate = state;
+    }
+
     pub fn run(
         &mut self, 
         io_bus: &mut IoBusInterface, 
@@ -363,40 +390,40 @@ impl ProgrammableIntervalTimer {
         for (i,t) in &mut self.channels.iter_mut().enumerate() {
             match t.channel_mode {
                 ChannelMode::InterruptOnTerminalCount => {
-                    if t.waiting_for_reload {
-                        // Don't count while waiting for reload value
-                    }
-                    else {
+                    // Don't count while waiting for reload value
+                    if !t.waiting_for_reload {
+
+                        // Reload value of 0 equates to to reload value of 2^16
                         if t.current_count == 0 {
-                            if t.reload_value == 0 {
-                                // 0 functions as a reload value of 65536
-                                t.current_count = u16::MAX;
+                            if t.reload_value != 0 {
+                                panic!("unexpected timer state");
                             }
-                            else {
-                                t.current_count = t.reload_value;                            
-                            }
+                            t.current_count = u16::MAX - 1;
                         }
                         else {
                             t.current_count -= 1;
-                            if t.current_count == 1 {
-                                t.output_is_high = true;
-
-                                // Only trigger interrupt on Channel #0
-                                if i == 0 {
-                                    //log::trace!("PIT: Triggering IRQ0");
-                                    pic.request_interrupt(0);
-                                }
-
+                        }
+                        
+                        // Terminal Count reached.
+                        if t.current_count == 0 {
+                            
+                            // Only trigger an interrupt on Channel #0, and only if output is going from low to high
+                            if !t.output_is_high && i == 0 {
+                                pic.request_interrupt(0);
                             }
+
+                            t.output_is_high = true;
+                            // Counter just wraps around in this mode, it is NOT reloaded.
+                            t.current_count = u16::MAX - 1;
                         }
                     }
                 },
                 ChannelMode::HardwareRetriggerableOneShot => {},
                 ChannelMode::RateGenerator => {
-                    if t.waiting_for_reload {
-                        // Don't count while waiting for reload value
-                    }
-                    else {
+                    // Don't count while waiting for reload value
+                    if !t.waiting_for_reload {
+
+
                         if t.current_count == 0 {
                             if t.reload_value == 0 {
                                 // 0 functions as a reload value of 65536
@@ -424,38 +451,66 @@ impl ProgrammableIntervalTimer {
                     }
                 },
                 ChannelMode::SquareWaveGenerator => {
-                    if t.waiting_for_reload {
-                        // Don't count while waiting for reload value
-                    }
-                    else {
+                    // Don't count while waiting for reload value
+                    if !t.waiting_for_reload {
+                        
+                        // Reload value of 0 equates to to reload value of 2^16
                         if t.current_count == 0 {
+                            if t.reload_value != 0 {
+                                panic!("unexpected timer state");
+                            }
+                            t.current_count = u16::MAX - 1;
+                        }
+                        else {
+                            t.current_count -= 1;
+                        }
 
-                            if t.reload_value == 0 {
-                                t.current_count = u16::MAX - 1;
+                        // Intel: "If the count is odd and the output is high, the first clock pulse
+                        // (after the count is loaded) decrements the count by 1. Subsequent pulses
+                        // decrement the clock by 2..."
+                        if t.current_count & 0x01 == 0 {
+                            // Count is odd - can only occur immediately after reload of odd reload value
+
+                            if t.output_is_high { 
+                                t.current_count = t.current_count.wrapping_sub(1);
+                                // count is even from now on
                             }
                             else {
-                                // For even reload values, use reload value
-                                // For odd reload values, use reload value - 1
-                                if t.reload_value & 0x01 == 0 {
-                                    t.current_count = t.reload_value;                            
-                                }
-                                else {
-                                    t.current_count = t.reload_value - 1;
-                                }
+                                // Intel: "... After timeout, the output goes low and the full count is reloaded.
+                                // The first clock pulse decrements the counter by 3."
+                                t.current_count = t.current_count.wrapping_sub(3);
+                                // count is even from now on
+
+                                // TODO: What happens on a reload value of 1? OSdev says you should avoid it - would 
+                                // it wrap the counter?
                             }
                         }
                         else {
-                            // This shouldn't wrap unless a odd reload count was provided 
                             t.current_count = t.current_count.wrapping_sub(2);
-                            if t.current_count == 0 {
-                                // Change flipflop state
-                                t.output_is_high = !t.output_is_high;
+                        }
 
-                                // Only trigger interrupt on Channel #0
-                                if t.output_is_high && i == 0 {
-                                    //log::trace!("PIT: Triggering IRQ0");
+                        // Terminal count reached
+                        if t.current_count == 0 {
+
+                            // Change flipflop state
+                            t.output_is_high = !t.output_is_high;
+
+                            // Only Channel #0 generates interrupts
+                            if i == 0 {
+                                if t.output_is_high {
                                     pic.request_interrupt(0);
-                                }                                
+                                }
+                                else {
+                                    pic.clear_interrupt(0);
+                                }
+                            }  
+
+                            // Reload counter
+                            if t.reload_value == 0 {
+                                t.current_count = u16::MAX - 1; 
+                            }
+                            else {
+                                t.current_count = t.reload_value;                            
                             }
                         }
                     }
@@ -480,6 +535,7 @@ impl ProgrammableIntervalTimer {
             c2_reload_value: format!("{:06}", self.channels[2].reload_value),
             c2_access_mode: format!("{:?}", self.channels[2].access_mode),
             c2_channel_mode: format!("{:?}", self.channels[2].channel_mode),
+            c2_gate_status: format!("{:?}", self.channels[2].input_gate)
         }
     }
 }

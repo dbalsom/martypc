@@ -73,7 +73,7 @@ fn main() -> Result<(), Error> {
     env_logger::init();
 
     // Choose machine type (move to cfg?)
-    let machine_type = MachineType::IBM_PC_5150;
+    let machine_type = MachineType::IBM_XT_5160;
 
     // Instantiate the rom manager to load roms for the requested machine type
     
@@ -407,7 +407,7 @@ fn main() -> Result<(), Error> {
 
                     // Render everything together
                     let render_result = pixels.render_with(|encoder, render_target, context| {
-                        
+
                         // Render the world texture
                         context.scaling_renderer.render(encoder, render_target);
 
