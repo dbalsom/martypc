@@ -69,7 +69,7 @@ pub const COMMAND_FORMAT_TRACK: u8          = 0x0D;
 pub const COMMAND_FIX_DRIVE_DATA: u8        = 0x03;
 pub const COMMAND_CHECK_DRIVE_STATUS: u8    = 0x04;
 pub const COMMAND_CALIBRATE_DRIVE: u8       = 0x07;
-pub const COMMAND_CHECK_INT_STATUS: u8      = 0x08;
+pub const COMMAND_SENSE_INT_STATUS: u8      = 0x08;
 pub const COMMAND_READ_SECTOR_ID: u8        = 0x0A;
 pub const COMMAND_SEEK_HEAD: u8             = 0x0F;
 
@@ -78,6 +78,14 @@ pub const ST0_NOT_READY: u8     = 0b0000_1000;
 pub const ST0_UNIT_CHECK: u8    = 0b0001_0000;
 pub const ST0_SEEK_END: u8      = 0b0010_0000;
 pub const ST0_RESET: u8         = 0b1100_0000;
+pub const ST0_INVALID_OPCODE: u8 = 0b1000_0000;
+
+pub const ST3_ESIG: u8          = 0b1000_0000;
+pub const ST3_WRITE_PROTECT: u8 = 0b0100_0000;
+pub const ST3_READY: u8         = 0b0010_0000;
+pub const ST3_TRACK0: u8        = 0b0001_0000;
+pub const ST3_DOUBLESIDED: u8   = 0b0000_1000;
+pub const ST3_HEAD: u8          = 0b0000_0100;
 
 pub struct DiskFormat {
     cylinders: u8,
@@ -127,6 +135,7 @@ pub enum IoMode {
     FromCpu
 }
 
+#[derive (Clone, Copy)]
 pub enum Command {
     NoCommand,
     ReadTrack,
@@ -138,7 +147,7 @@ pub enum Command {
     FixDriveData,
     CheckDriveStatus,
     CalibrateDrive,
-    CheckIntStatus,
+    SenseIntStatus,
     ReadSectorID,
     SeekParkHead,
     Invalid
@@ -149,6 +158,7 @@ pub enum Operation {
     ReadSector(u8, u8, u8, u8, u8, u8, u8) // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
 }
 pub struct DiskDrive {
+    error_signal: bool,
     cylinder: u8,
     head: u8,
     sector: u8,
@@ -159,12 +169,35 @@ pub struct DiskDrive {
     motor_on: bool,
     positioning: bool,
     have_disk: bool,
+    write_protected: bool,
     disk_image: Vec<u8>
 }
+
+impl DiskDrive {
+    pub fn new() -> Self {
+        Self {
+            error_signal: false,
+            cylinder: 0,
+            head: 0,
+            sector: 0,
+            max_cylinders: 0,
+            max_heads: 0,
+            max_sectors: 0,
+            ready: false,
+            motor_on: false,
+            positioning: false,
+            have_disk: false,
+            write_protected: false,
+            disk_image: Vec::new(),
+        }
+    }
+}
+
 pub struct FloppyController {
 
     status_byte: u8,
     reset_flag: bool,
+    reset_sense_count: u8,
     mrq: bool,
 
     data_register: u8,
@@ -174,9 +207,11 @@ pub struct FloppyController {
     dio: IoMode,
     reading_command: bool,
     command: Command,
+    last_command: Command,
     command_byte_n: u32,
     operation: Operation,
     send_interrupt: bool,
+    pending_interrupt: bool,
     end_interrupt: bool,
     in_command: bool,
     command_init: bool,
@@ -240,6 +275,7 @@ impl FloppyController {
         Self {
             status_byte: 0,
             reset_flag: false,
+            reset_sense_count: 0,
             mrq: true,
             data_register: 0,
             dma: true,
@@ -248,9 +284,11 @@ impl FloppyController {
             dio: IoMode::FromCpu,
             reading_command: false,
             command: Command::NoCommand,
+            last_command: Command::NoCommand,
             command_byte_n: 0,
             operation: Operation::NoOperation,
             send_interrupt: false,
+            pending_interrupt: false,
             end_interrupt: false,
             in_command: false,
             command_init: false,
@@ -258,58 +296,10 @@ impl FloppyController {
             data_register_out: VecDeque::new(),
             data_register_in: VecDeque::new(),
             drives: [
-                DiskDrive {
-                    cylinder: 0,
-                    head: 0,
-                    sector: 0,
-                    max_cylinders: 0,
-                    max_heads: 0,
-                    max_sectors: 0,
-                    ready: false,
-                    motor_on: false,
-                    positioning: false,
-                    have_disk: false,
-                    disk_image: Vec::new(),
-                },
-                DiskDrive {
-                    cylinder: 0,
-                    head: 0,
-                    sector: 0,
-                    max_cylinders: 0,
-                    max_heads: 0,
-                    max_sectors: 0,
-                    ready: false,
-                    motor_on: false,
-                    positioning: false,
-                    have_disk: false,
-                    disk_image: Vec::new(),
-                },
-                DiskDrive {
-                    cylinder: 0,
-                    head: 0,
-                    sector: 0,
-                    max_cylinders: 0,
-                    max_heads: 0,
-                    max_sectors: 0,
-                    ready: false,
-                    motor_on: false,
-                    positioning: false,
-                    have_disk: false,
-                    disk_image: Vec::new(),
-                },
-                DiskDrive {
-                    cylinder: 0,
-                    head: 0,
-                    sector: 0,
-                    max_cylinders: 0,
-                    max_heads: 0,
-                    max_sectors: 0,
-                    ready: false,
-                    motor_on: false,
-                    positioning: false,
-                    have_disk: false,
-                    disk_image: Vec::new(),
-                }
+                DiskDrive::new(),
+                DiskDrive::new(),
+                DiskDrive::new(),
+                DiskDrive::new()
             ],
             drive_select: 0,
             
@@ -327,9 +317,12 @@ impl FloppyController {
         self.status_byte = 0;
         self.drive_select = 0;
         self.reset_flag = true;
+        self.reset_sense_count = 0;
 
         self.data_register_out.clear();
         self.data_register_in.clear();
+
+        self.dio = IoMode::FromCpu;
 
         for drive in &mut self.drives.iter_mut() {
             drive.head = 0;
@@ -347,6 +340,8 @@ impl FloppyController {
         self.in_dma = false;
         self.dma_byte_count = 0;
         self.dma_bytes_left = 0;
+
+
     }
 
     /// Load a disk into the specified drive
@@ -529,25 +524,57 @@ impl FloppyController {
             st0 |= ST0_SEEK_END;
         }
 
-        // Highest two bits are set after a reset procedure
-        if self.reset_flag {
-            st0 |= ST0_RESET;
-            self.reset_flag = false;
-        }
-
         st0
     }
 
+    /// Generate the value of the ST1 Status Register in response to a command
     pub fn make_st1_byte(&mut self) -> u8 {
         // The ST1 status register contains mostly error codes, so for now we can just always return success
         // by returning 0, until we handle possible errors.
         0
     }
 
+    /// Generate the value of the ST2 Status Register in response to a command
     pub fn make_st2_byte(&mut self) -> u8 {
         // The ST2 status register contains mostly error codes, so for now we can just always return success
         // by returning 0 until we handle possible errors.
         0
+    }
+
+    /// Generate the value of the ST3 Status Register in response to a command
+    pub fn make_st3_byte(&mut self, drive_select: usize) -> u8 {
+
+        // Set drive select bits DS0 & DS1
+        let mut st3_byte = (drive_select & 0x03) as u8;
+
+        // HDSEL signal: 1 == head 1 active
+        if self.drives[drive_select].head == 1 {
+            st3_byte |= ST3_HEAD;
+        }
+
+        // DSDR signal - Is this active for a double sided drive, or only when a double-sided disk is present?
+        st3_byte |= ST3_DOUBLESIDED;
+
+        if self.drives[drive_select].cylinder == 0 {
+            st3_byte |= ST3_TRACK0;
+        }
+
+        // Drive ready - Should drive be ready when no disk is present?
+        if self.drives[drive_select].ready {
+            st3_byte |= ST3_READY;
+        }
+
+        // Write protect status
+        if self.drives[drive_select].write_protected {
+            st3_byte |= ST3_WRITE_PROTECT;
+        }
+
+        // Error signal
+        if self.drives[drive_select].error_signal {
+            st3_byte |= ST3_ESIG;
+        }
+
+        st3_byte
     }
 
     pub fn handle_data_register_read(&mut self) -> u8 {
@@ -611,17 +638,16 @@ impl FloppyController {
                 }
                 COMMAND_CHECK_DRIVE_STATUS => {
                     log::trace!("Received Check Drive Status command: {:02}", command);
+                    self.set_command(Command::CheckDriveStatus, 1);
                 }
                 COMMAND_CALIBRATE_DRIVE => {
                     log::trace!("Received Calibrate Drive command: {:02}", command);
                     self.set_command(Command::CalibrateDrive, 1);
                 }
-                COMMAND_CHECK_INT_STATUS => {
-                    log::trace!("Received Check Interrupt Status command: {:02}", command);
-                    // Queue response bytes
-                    
-                    self.do_sense_interrupt();
-
+                COMMAND_SENSE_INT_STATUS => {
+                    log::trace!("Received Sense Interrupt Status command: {:02}", command);
+                    // Sense Interrupt command has no input bytes
+                    self.command_sense_interrupt();
                 }
                 COMMAND_READ_SECTOR_ID => {
                     log::trace!("Received Read Sector ID command: {:02}", command);
@@ -662,11 +688,10 @@ impl FloppyController {
                             result = self.command_fix_drive_data();
                         }
                         Command::CheckDriveStatus => {
+                            result = self.command_check_drive_status();
                         }
                         Command::CalibrateDrive => {
                             result = self.command_calibrate_drive();
-                        }
-                        Command::CheckIntStatus => {
                         }
                         Command::ReadSectorID => {
                             result = self.command_fix_drive_data();
@@ -685,6 +710,7 @@ impl FloppyController {
 
                     // Clear command if complete
                     if result {
+                        self.last_command = self.command;
                         self.command = Command::NoCommand;
                     }
                 }
@@ -692,13 +718,70 @@ impl FloppyController {
         }
     }    
 
-    pub fn do_sense_interrupt(&mut self) {
+    pub fn command_sense_interrupt(&mut self) {
         
+        /* The 5160 BIOS performs four sense interrupts after a reset of the fdc, presumably one for each of 
+           the possible drives. The BIOS expects to to see drive select bits 00 to 11 in the resuling st0 bytes,
+           even if no such drives are present. 
+
+           In theory the FDC issues interrupts when drive status changes between READY and NOT READY states,
+           so a reset would cause all four drives to transition from NOT READY to READY, thus four interrupts.
+
+           But there's no real explanation for interrupts from non-existent drives, or whether the interrupt
+           line is per drive or for the entire controller. The documentation for the Sense Interrupt command
+           seems to indicate that the interrupt flag is cleared immediately, so it wouldn't leave three more
+           interrupts remaining to be serviced.  
+
+           Puzzling.
+           
+           The 5150 BIOS doesn't do this, and there's no explanation as to why this changed.*/
+
         // Release IR line
         self.end_interrupt = true;
 
+        let mut st0_byte = ST0_INVALID_OPCODE;
+
+        if self.reset_flag {
+            // FDC was just reset, answer with and ST0 for the first drive, but prepare to send up 
+            // to three more ST0 responses 
+            st0_byte |= ST0_RESET;
+            self.reset_sense_count = 1;
+            self.reset_flag = false;
+        }
+        else if let Command::SenseIntStatus = self.last_command {
+            // This Sense Interrupt command was preceded by another. 
+            // Advance the reset sense count to clear all drives assuming the calling code is doing
+            // a four sense-interrupt sequence.
+            if self.reset_sense_count < 4 {
+                st0_byte |= ST0_RESET;
+                st0_byte |= self.reset_sense_count & 0x03;
+                self.reset_sense_count += 1;
+            }
+            else {
+                // More than four sense interrupts in a row shouldn't happen
+                st0_byte = ST0_INVALID_OPCODE;
+                self.reset_flag = false;
+                self.reset_sense_count = 0;
+            }
+        }
+        else {
+            // Sense interrupt in response to some other command
+            if self.pending_interrupt {
+
+                let seek_flag = match self.last_command {
+                    Command::SeekParkHead => true,
+                    _ => false,
+                };
+                st0_byte = self.make_st0_byte(seek_flag);
+            }
+            else {
+                // Sense Interrupt without pending interrupt is invalid
+                st0_byte = ST0_INVALID_OPCODE;
+            }
+        }
+
         // Send ST0 register to FIFO
-        let cb0 = self.make_st0_byte(false);
+        let cb0 = st0_byte;
         self.data_register_out.push_back(cb0);
 
         // Send Current Cylinder to FIFO
@@ -707,6 +790,11 @@ impl FloppyController {
         
         // We have data for CPU to read
         self.send_data_register();
+
+        self.last_command = Command::SenseIntStatus;
+        self.command = Command::NoCommand;
+        log::trace!("command_sense_interrupt completed."); 
+        
     }
 
     pub fn command_fix_drive_data(&mut self) -> bool {
@@ -715,6 +803,20 @@ impl FloppyController {
         let headload_ndm = self.data_register_in.pop_front().unwrap();
 
         log::trace!("command_fix_drive_data completed: {:08b},{:08b}", steprate_unload, headload_ndm);
+        return true
+    }
+
+    pub fn command_check_drive_status(&mut self) -> bool {
+
+        let drive_select: usize = (self.data_register_in.pop_front().unwrap() & 0x03) as usize;
+
+        let st3 = self.make_st3_byte(drive_select);
+        self.data_register_out.push_back(st3);
+
+        // We have data for the CPU to read
+        self.send_data_register();
+
+        log::trace!("command_check_drive_status completed: {:02b}", drive_select);
         return true
     }
     
@@ -853,12 +955,14 @@ impl FloppyController {
         // Send an interrupt if one is queued
         if self.send_interrupt {
             pic.request_interrupt(FDC_IRQ);
+            self.pending_interrupt = true;
             self.send_interrupt = false;
         }
 
         // End an interrupt if one was handled
         if self.end_interrupt {
             pic.clear_interrupt(FDC_IRQ);
+            self.pending_interrupt = false;
             self.end_interrupt = false;
         }
 

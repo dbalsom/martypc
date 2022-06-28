@@ -26,7 +26,7 @@ mod byteinterface;
 mod cga;
 mod cpu;
 mod dma;
-mod floppy;
+mod fdc;
 mod floppy_manager;
 mod gui;
 mod io;
@@ -36,13 +36,13 @@ mod memerror;
 mod pic;
 mod pit;
 mod ppi;
-mod rom;
+mod rom_manager;
 mod util;
 mod video;
 mod input;
 
 use machine::{Machine, MachineType, VideoType};
-use rom::{RomManager, RomError};
+use rom_manager::{RomManager, RomError};
 use floppy_manager::{FloppyManager, FloppyError};
 
 use byteinterface::ByteInterface;

@@ -18,13 +18,13 @@ use crate::{
     cga::{self, CGACard},
     cpu::{CpuType, Cpu, Flag, CpuError},
     dma::{self, DMAControllerStringState},
-    floppy::{self, FloppyController},
+    fdc::{self, FloppyController},
     floppy_manager::{FloppyManager},
     io::{IoHandler, IoBusInterface},
     pit::{self, PitStringState},
     pic::{self, PicStringState},
     ppi::{self, PpiStringState},
-    rom::RomManager,
+    rom_manager::RomManager,
 };
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
@@ -186,10 +186,10 @@ impl Machine {
         io_bus.register_port_handler(dma::DMA_CHANNEL_3_PAGE_REGISTER, IoHandler::new(dma.clone()));
 
         // Floppy Controller:
-        let mut fdc = Rc::new(RefCell::new(floppy::FloppyController::new()));
-        io_bus.register_port_handler(floppy::FDC_DIGITAL_OUTPUT_REGISTER, IoHandler::new(fdc.clone()));
-        io_bus.register_port_handler(floppy::FDC_STATUS_REGISTER, IoHandler::new(fdc.clone()));
-        io_bus.register_port_handler(floppy::FDC_DATA_REGISTER, IoHandler::new(fdc.clone()));
+        let mut fdc = Rc::new(RefCell::new(fdc::FloppyController::new()));
+        io_bus.register_port_handler(fdc::FDC_DIGITAL_OUTPUT_REGISTER, IoHandler::new(fdc.clone()));
+        io_bus.register_port_handler(fdc::FDC_STATUS_REGISTER, IoHandler::new(fdc.clone()));
+        io_bus.register_port_handler(fdc::FDC_DATA_REGISTER, IoHandler::new(fdc.clone()));
 
         // CGA card:
         let mut cga = Rc::new(RefCell::new(cga::CGACard::new()));
@@ -208,8 +208,10 @@ impl Machine {
         cpu.set_reset_address(rom_entry_point.0, rom_entry_point.1);
         cpu.reset_address();
 
-        // Install ROM patches if any
-        //rom_manager.install_patches(&mut bus);
+        // Install ROM patches if any are specified for immediate patching
+        if rom_manager.get_patch_checkpoint() == 0 {
+            rom_manager.install_patches(&mut bus);
+        }
 
         Machine {
             machine_type,
@@ -356,8 +358,14 @@ impl Machine {
                 }
 
                 // Match checkpoints
-                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address as usize) {
+                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
                     log::trace!("ROM CHECKPOINT: {}", cp);
+                }
+
+                // Check for patching checkpoint & install patches
+                if self.rom_manager.get_patch_checkpoint() == flat_address {
+                    log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
+                    self.rom_manager.install_patches(&mut self.bus);
                 }
 
                 match self.cpu.step(&mut self.bus, &mut self.io_bus) {
