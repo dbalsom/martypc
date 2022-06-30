@@ -1,4 +1,4 @@
-# Marty
+# Marty  ![pc_pixel2x](https://user-images.githubusercontent.com/7229541/176571877-ead7fb9c-0a83-41b1-8c51-ff8deeea7c5f.png)
 
 ## Introduction
 
