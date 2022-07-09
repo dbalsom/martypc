@@ -1,4 +1,5 @@
-# Marty
+![pc_pixel2x](https://user-images.githubusercontent.com/7229541/176571877-ead7fb9c-0a83-41b1-8c51-ff8deeea7c5f.png)
+# Marty 
 
 ## Introduction
 
@@ -13,9 +14,9 @@ This emulator is nowhere near cycle-accurate. It will not run the 8088mph demo a
 
 ## Requirements
 
-Marty requires an original IBM PC 5150 BIOS ROM be placed in a /roms folder. I hope to support a free BIOS at some point which I can distribute or at least link to. In the meantime Google is your friend.
+Marty requires an original IBM PC 5150 or 5160 BIOS ROM be placed in a /roms folder. I hope to support a free BIOS at some point which I can distribute or at least link to. In the meantime Google is your friend. For hard disk support you will also need the 20Mbit Fixed Disk Adapter ROM. 
 
-Place floppy images in a /floppy folder and Marty will find them on start-up. Floppy images up to 360k are supported.
+Place floppy raw sector images (IMA or IMG) in a /floppy folder and Marty will find them on start-up. Floppy images up to 360k are supported.
 
 ## Features
 
@@ -40,12 +41,12 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ## Known Issues
 
-* Keyboard input is a bit spotty, possibly due to missed interrupts or bad timing.
+* Keyboard input is a bit spotty, possibly due to missed interrupts or bad timing. (Update: Fixed?)
 * Only DOS 2.0 supported. DOS 3.0+ fails to boot.
 
 ## Wishlist features: (Maybe)
 
-* Hard disk emulation
+* Hard disk emulation (In progress)
 * EGA/VGA graphics
 * Mouse support
 
