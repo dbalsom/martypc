@@ -801,7 +801,18 @@ impl Cpu {
             // Disk interrupts
             if self.dl & 0x80 != 0 {
                 // Hard disk request
-                log::trace!("Hard disk requested in int13h");
+                match self.ah {
+                    0x03 => {
+                        log::trace!("Hard disk int13h: Write Sectors: Num: {} Drive: {:02X} C: {} H: {} S: {}",
+                            self.al,
+                            self.dl,
+                            self.ch,
+                            self.dh,
+                            self.cl)
+                    }
+                    _=> log::trace!("Hard disk requested in int13h. AH: {:02X}", self.ah)
+                }
+                
             }
         }
     }

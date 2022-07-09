@@ -2,23 +2,51 @@
 use egui::{ClippedMesh, Context, TexturesDelta};
 use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
-use winit::window::Window;
+use regex::Regex;
+
+const VHD_REGEX: &str = r"[\w_]*.vhd$";
+
+use winit::{
+    window::{Window},
+    event_loop::EventLoopProxy
+};
 
 use std::{
     cell::RefCell,
     ffi::OsString,
-    rc::Rc
+    rc::Rc, collections::VecDeque
 };
 use crate::{
     machine::{ExecutionControl, ExecutionState},
     cpu::CpuStringState, 
     dma::DMAControllerStringState,
+    hdc::HardDiskFormat,
     pit::PitStringState, 
     pic::PicStringState,
     ppi::PpiStringState, 
+    
 };
 
 //use crate::syntax_highlighting::code_view_ui;
+
+pub(crate) enum GuiWindow {
+    CpuControl,
+    MemoryViewer,
+    CpuStateViewer,
+    TraceViewer,
+    DiassemblyViewer,
+    PitViewer,
+    PicViewer,
+    PpiViewer,
+    DmaViewer,
+    CallStack,
+    VHDCreator,
+}
+
+pub(crate) enum GuiEvent {
+    LoadVHD(u32,OsString),
+    CreateVHD(OsString, HardDiskFormat)
+}
 
 /// Manages all state required for rendering egui over `Pixels`.
 pub(crate) struct Framework {
@@ -36,7 +64,10 @@ pub(crate) struct Framework {
 
 /// Example application state. A real application will need a lot more state than this.
 pub(crate) struct GuiState {
-    /// Only show the egui window when true.
+
+    event_queue: VecDeque<GuiEvent>,
+
+    /// Only show the associated window when true.
     window_open: bool,
     error_dialog_open: bool,
     cpu_control_dialog_open: bool,
@@ -49,9 +80,24 @@ pub(crate) struct GuiState {
     ppi_viewer_open: bool,
     dma_viewer_open: bool,
     call_stack_open: bool,
+    vhd_creator_open: bool,
     
+    // Floppy Disk Images
     floppy_names: Vec<OsString>,
-    new_floppy_name: Option<OsString>,
+    new_floppy_name0: Option<OsString>,
+    new_floppy_name1: Option<OsString>,
+    
+    // VHD Images
+    vhd_names: Vec<OsString>,
+    new_vhd_name0: Option<OsString>,
+    vhd_name0: OsString,
+    new_vhd_name1: Option<OsString>,
+    vhd_name1: OsString,
+
+    vhd_formats: Vec<HardDiskFormat>,
+    selected_format_idx: usize,
+    new_vhd_filename: String,
+    vhd_regex: Regex,
 
     exec_control: Rc<RefCell<ExecutionControl>>,
     cpu_single_step: bool,
@@ -184,6 +230,8 @@ impl GuiState {
     /// Create a struct representing the state of the GUI.
     fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
         Self { 
+
+            event_queue: VecDeque::new(),
             window_open: false, 
             error_dialog_open: false,
             cpu_control_dialog_open: true,
@@ -196,9 +244,22 @@ impl GuiState {
             ppi_viewer_open: false,
             dma_viewer_open: false,
             call_stack_open: false,
+            vhd_creator_open: false,
             
             floppy_names: Vec::new(),
-            new_floppy_name: Option::None,
+            new_floppy_name0: Option::None,
+            new_floppy_name1: Option::None,
+
+            vhd_names: Vec::new(),
+            new_vhd_name0: Option::None,
+            vhd_name0: OsString::new(),
+            new_vhd_name1: Option::None,
+            vhd_name1: OsString::new(),
+
+            vhd_formats: Vec::new(),
+            selected_format_idx: 0,
+            new_vhd_filename: String::new(),
+            vhd_regex: Regex::new(VHD_REGEX).unwrap(),
 
             exec_control: exec_control,
             cpu_single_step: true,
@@ -225,6 +286,10 @@ impl GuiState {
         }
     }
 
+    pub fn get_event(&mut self) -> Option<GuiEvent> {
+        self.event_queue.pop_front()
+    }
+
     pub fn get_cpu_single_step(&self) -> bool {
         self.cpu_single_step
     }
@@ -239,6 +304,22 @@ impl GuiState {
         return flag
     }
 
+    pub fn is_window_open(&self, window: GuiWindow) -> bool {
+        match window {
+            GuiWindow::CpuControl => self.cpu_control_dialog_open,
+            GuiWindow::MemoryViewer => self.memory_viewer_open,
+            GuiWindow::CpuStateViewer => self.register_viewer_open,
+            GuiWindow::TraceViewer => self.trace_viewer_open,
+            GuiWindow::DiassemblyViewer => self.disassembly_viewer_open,
+            GuiWindow::PitViewer => self.pic_viewer_open,
+            GuiWindow::PicViewer => self.pic_viewer_open,
+            GuiWindow::PpiViewer => self.ppi_viewer_open,
+            GuiWindow::DmaViewer => self.dma_viewer_open,
+            GuiWindow::CallStack => self.call_stack_open,
+            GuiWindow::VHDCreator => self.vhd_creator_open,
+        }
+    }
+
     pub fn show_error(&mut self, err_str: &str) {
         self.error_dialog_open = true;
         self.error_string = err_str.to_string();
@@ -248,11 +329,41 @@ impl GuiState {
         self.floppy_names = names;
     }
 
+    pub fn set_vhd_names(&mut self, names: Vec<OsString>) {
+        self.vhd_names = names;
+    }
+
+    /// Retrieve a newly selected floppy image name.
+    /// 
+    /// If a floppy image was selected from the UI then we return it as an Option.
+    /// A return value of None indicates no selection change.
     pub fn get_new_floppy_name(&mut self) -> Option<OsString> {
-        let got_str = self.new_floppy_name.clone();
-        self.new_floppy_name = None;
+        let got_str = self.new_floppy_name0.clone();
+        self.new_floppy_name0 = None;
         got_str
     }
+
+    /// Retrieve a newly selected VHD image name for the specified device slot.
+    /// 
+    /// If a VHD image was selected from the UI then we return it as an Option.
+    /// A return value of None indicates no selection change.
+    pub fn get_new_vhd_name(&mut self, dev: u32) -> Option<OsString> {
+        match dev {
+            0 => {
+                let got_str = self.new_vhd_name0.clone();
+                self.new_vhd_name0 = None;
+                got_str
+            }
+            1 => {                
+                let got_str = self.new_vhd_name1.clone();
+                self.new_vhd_name0 = None;
+                got_str
+            }
+            _ => {
+                None
+            }
+        }
+    }    
 
     pub fn update_memory_view(&mut self, mem_str: String) {
         self.memory_viewer_dump = mem_str;
@@ -310,27 +421,53 @@ impl GuiState {
         self.dma_state = state;
     }
 
+    pub fn update_vhd_formats(&mut self, formats: Vec<HardDiskFormat>) {
+        self.vhd_formats = formats.clone()
+    }
+
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
+
+                let font_size = 20.0;
+
                 ui.menu_button("File", |ui| {
                     if ui.button("About...").clicked() {
                         self.window_open = true;
                         ui.close_menu();
                     }
                 });
-                ui.menu_button("Load", |ui| {
-                    ui.menu_button("Image in Drive A:...", |ui| {
+                ui.menu_button("Media", |ui| {
+                    ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
+                    ui.menu_button("Load Floppy in Drive A:...", |ui| {
                         for name in &self.floppy_names {
                             if ui.button(name.to_str().unwrap()).clicked() {
                                 
                                 log::debug!("Selected floppy filename: {:?}", name);
-                                self.new_floppy_name = Some(name.clone());
+                                self.new_floppy_name0 = Some(name.clone());
                                 ui.close_menu();
                             }
                         }
                     });
+
+                    ui.menu_button("Load VHD in Drive 0:...", |ui| {
+                        for name in &self.vhd_names {
+
+                            if ui.radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap()).clicked() {
+
+                                log::debug!("Selected VHD filename: {:?}", name);
+                                self.new_vhd_name0 = Some(name.clone());
+                                ui.close_menu();
+                            }
+                        }
+                    });                               
+
+                    if ui.button("Create new VHD...").clicked() {
+                        self.vhd_creator_open = true;
+                        ui.close_menu();
+                    };
+                    
                 });
                 ui.menu_button("Debug", |ui| {
                     if ui.button("CPU Control...").clicked() {
@@ -842,13 +979,26 @@ impl GuiState {
                     .min_col_width(50.0)
                     .show(ui, |ui| {
 
-                    egui::ComboBox::from_label("Channel #")
-                        .selected_text(format!("Channel #{}", self.dma_channel_select))
-                        .show_ui(ui, |ui| {
-                            for (i, chan) in self.dma_state.dma_channel_state.iter_mut().enumerate() {
-                                ui.selectable_value(&mut self.dma_channel_select, i as u32, format!("Channel #{}",i));
-                            }
-                        });
+                    ui.label(egui::RichText::new(format!("Enabled:")).text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.dma_state.enabled).font(egui::TextStyle::Monospace));
+                    ui.end_row();     
+
+                    //ui.horizontal(|ui| {
+                    //    ui.separator();
+                    //});
+                    ui.separator();
+                    ui.separator();
+                    ui.end_row();    
+
+                    ui.horizontal(|ui| {
+                        egui::ComboBox::from_label("Channel #")
+                            .selected_text(format!("Channel #{}", self.dma_channel_select))
+                            .show_ui(ui, |ui| {
+                                for (i, _chan) in self.dma_state.dma_channel_state.iter_mut().enumerate() {
+                                    ui.selectable_value(&mut self.dma_channel_select, i as u32, format!("Channel #{}",i));
+                                }
+                            });
+                    });                        
                     ui.end_row();   
 
                     let chan = &mut self.dma_state.dma_channel_state[self.dma_channel_select as usize];
@@ -904,6 +1054,35 @@ impl GuiState {
 
                 });
             });            
+
+            egui::Window::new("Create VHD")
+                .open(&mut self.vhd_creator_open)
+                .resizable(false)
+                .default_width(400.0)
+                .show(ctx, |ui| {
+
+                    if self.vhd_formats.len() > 0 {
+                        egui::ComboBox::from_label("Format")
+                        .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
+                        .show_ui(ui, |ui| {
+                            for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
+                                ui.selectable_value(&mut self.selected_format_idx, i, format!("{}", fmt.desc));
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label("Filename: ");
+                            ui.text_edit_singleline(&mut self.new_vhd_filename);
+                        });               
+
+                        let enabled = self.vhd_regex.is_match(&self.new_vhd_filename.to_lowercase());
+
+                        if ui.add_enabled(enabled, egui::Button::new("Create"))
+                            .clicked() {
+                            self.event_queue.push_back(GuiEvent::CreateVHD(OsString::from(&self.new_vhd_filename), self.vhd_formats[self.selected_format_idx].clone()))
+                        };                        
+                    }
+            });
 
         }
     }

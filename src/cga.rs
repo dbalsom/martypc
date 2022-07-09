@@ -199,13 +199,6 @@ impl IoDevice for CGACard {
         }
     }
 
-    fn read_u16(&mut self, _port: u16) -> u16 {
-        log::error!("Invalid 16-bit read from CGA");
-        0   
-    }
-    fn write_u16(&mut self, _port: u16, _data: u16) {
-        log::error!("Invalid 16-bit write to CGA");
-    }
 }
 
 impl CGACard {

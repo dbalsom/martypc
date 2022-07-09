@@ -5,9 +5,7 @@ use std::cell::RefCell;
 
 pub trait IoDevice {
     fn read_u8(&mut self, port: u16) -> u8;
-    fn write_u8(&mut self, port: u16, data: u8);
-    fn read_u16(&mut self, port: u16) -> u16;
-    fn write_u16(&mut self, port: u16, data: u16);    
+    fn write_u8(&mut self, port: u16, data: u8); 
 }
 type IoDeviceReadU8Fn = fn (&mut (dyn IoDevice + 'static ), port: u16) -> u8;
 type IoDeviceWriteU8Fn = fn (&mut (dyn IoDevice + 'static ), port: u16, data: u8);

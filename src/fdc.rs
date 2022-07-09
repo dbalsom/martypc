@@ -1,5 +1,5 @@
 /*
-    floppy.rc
+    floppy.rs
     Implement the NEC µPD764 Floppy Disk Controller
 
 */
@@ -258,16 +258,6 @@ impl IoDevice for FloppyController {
             _ => unreachable!("FLOPPY: Bad port #")
         }    
     }    
-    fn read_u16(&mut self, port: u16) -> u16 {
-        match port {
-            _ => unreachable!("FLOPPY: Bad port read")
-        }
-    }
-    fn write_u16(&mut self, port: u16, data: u16) {
-        match port {
-            _ => unreachable!("FLOPPY: Bad port write")
-        }
-    }
 }
 
 impl FloppyController {

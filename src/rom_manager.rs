@@ -31,9 +31,11 @@ pub enum RomType {
     Diagnostic,
 }
 
+#[derive (Clone)]
 pub struct RomPatch {
     desc: &'static str,
-    address: usize,
+    checkpoint: u32,
+    address: u32,
     bytes: Vec<u8>
 }
 
@@ -58,7 +60,6 @@ pub struct RomDescriptor {
     size: usize,
     cycle_cost: u32,
     patches: Vec<RomPatch>,
-    patch_checkpoint: u32,
     checkpoints: HashMap<u32, &'static str>,
 }
 
@@ -70,8 +71,9 @@ pub struct RomManager {
     rom_sets_complete: Vec<RomSet>,
     rom_set_active: Option<RomSet>,
     checkpoints_active: HashMap<u32, &'static str>,
+    patches_active: HashMap<u32, RomPatch>,
     rom_defs: HashMap<&'static str, RomDescriptor>,
-    rom_images: HashMap<&'static str, Vec<u8>>
+    rom_images: HashMap<&'static str, Vec<u8>>,
 }
 
 impl RomManager {
@@ -293,6 +295,7 @@ impl RomManager {
                     roms: vec![
                         "fd9ff9cbe0a8f154746ccb0a33f6d3e7", // 5160 BIOS u18 v01/10/86
                         "f051b4bbc3b60c3a14df94a0e4ee720f", // 5160 BIOS u19 v01/10/86
+                        "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                     ]
                 },
                 RomSet {
@@ -303,6 +306,7 @@ impl RomManager {
                     roms: vec![
                         "9696472098999c02217bf922786c1f4a", // 5160 BIOS u18 v05/09/86
                         "df9f29de490d7f269a6405df1fed69b7", // 5160 BIOS u19 v05/09/86
+                        "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                     ]
                 }
 
@@ -310,6 +314,7 @@ impl RomManager {
             rom_sets_complete: Vec::new(),
             rom_set_active: None,
             checkpoints_active: HashMap::new(),
+            patches_active: HashMap::new(),
             rom_defs: HashMap::from([(
                 "6338a9808445de12109a2389b71ee2eb", // 5150 BIOS v1 04/24/81
                 RomDescriptor {
@@ -322,19 +327,7 @@ impl RomManager {
                     address: 0xFE000,
                     size: 8192,
                     cycle_cost: BIOS_READ_CYCLE_COST,
-                    patches: 
-                        vec![
-                        RomPatch{
-                            desc: "Patch DMA check failure: JZ->JNP",
-                            address: 0xFE130,
-                            bytes: vec![0xEB, 0x03]
-                        },
-                        RomPatch{
-                            desc: "Patch ROM checksum failure: JNZ-JZ",
-                            address: 0xFE0D8,
-                            bytes: vec![0x74, 0xD5]
-                        }],   
-                    patch_checkpoint: 0,
+                    patches: Vec::new(), 
                     checkpoints:
                         HashMap::from([
                             (0xfe01a, "RAM Check Routine"),
@@ -374,7 +367,6 @@ impl RomManager {
                     size: 8192,       
                     cycle_cost: BIOS_READ_CYCLE_COST,                         
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }        
             ),(
@@ -390,7 +382,6 @@ impl RomManager {
                     size: 8192,       
                     cycle_cost: BIOS_READ_CYCLE_COST,                               
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                  
                 }      
             ),(
@@ -406,7 +397,6 @@ impl RomManager {
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()
                 }
             ),(
@@ -422,7 +412,6 @@ impl RomManager {
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     size: 32768,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()
                 }
             ),(
@@ -438,7 +427,6 @@ impl RomManager {
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()
                 }
             ),(
@@ -454,7 +442,6 @@ impl RomManager {
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()
                 }
             ),(
@@ -470,7 +457,6 @@ impl RomManager {
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()
                 }
             ),(
@@ -488,10 +474,10 @@ impl RomManager {
                     patches: vec![
                         RomPatch{
                             desc: "Patch RAM Check Routine for faster boot",
+                            checkpoint: 0xFE499,
                             address: 0xFE4EA,
                             bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90]
-                        }],
-                    patch_checkpoint: 0xFE499,
+                        }],                    
                     checkpoints: HashMap::from([
                         (0xfe01a, "RAM Check Routine"),
                         (0xfe05b, "8088 Processor Test"),
@@ -516,6 +502,29 @@ impl RomManager {
                     ]) 
                 }
             ),(
+                "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    optional: false,
+                    priority: 1,
+                    address: 0xC8000,
+                    size: 4096,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::from([
+                        (0xC8003, "HDC Expansion Init"),   
+                        (0xC8117, "HDC Disk Reset"),
+                        (0xC8596, "HDC Status Timeout"),
+                        (0xC8192, "HDC Bootstrap Loader"),
+                        (0xC81FF, "HDC Boot From Fixed Disk"),
+                        (0xC8700, "HDC Wait for Interrupt"),
+                        (0xC8746, "HDC Got Interrupt")
+                    ])          
+                }
+            ),(
                 "3a0eacac07f1020b95ce06043982dfd1", // Supersoft PC/XT Diagnostic ROM
                 RomDescriptor {
                     rom_type: RomType::BIOS,
@@ -528,7 +537,6 @@ impl RomManager {
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -544,7 +552,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -560,7 +567,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -576,7 +582,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -592,7 +597,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -608,7 +612,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -624,7 +627,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -640,7 +642,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -656,7 +657,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -672,7 +672,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -688,7 +687,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -704,7 +702,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -720,7 +717,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -736,7 +732,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -752,7 +747,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -768,7 +762,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -784,7 +777,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -800,7 +792,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             ),(
@@ -816,7 +807,6 @@ impl RomManager {
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    patch_checkpoint: 0,
                     checkpoints: HashMap::new()                   
                 }
             )                           
@@ -956,7 +946,7 @@ impl RomManager {
             self.rom_images.insert(*rom_str, file_vec);
         }
 
-        // Load Checkpoints from active rom set
+        // Load checkpoints from active rom set
         for rom_str in &rom_set_active.roms {
 
             let rom_desc = self.get_romdesc(*rom_str).unwrap();
@@ -971,8 +961,25 @@ impl RomManager {
 
             self.checkpoints_active.extend(cp_map.iter());
         }
-        
+
         log::debug!("Loaded {} checkpoints for active ROM set.", self.checkpoints_active.len());
+
+        // Load patches from active rom set
+        for rom_str in &rom_set_active.roms {
+            let rom_desc = self.get_romdesc(*rom_str).unwrap();
+
+            let mut patch_map: HashMap<u32, RomPatch> = HashMap::new();
+
+            // Copy patches for each rom in patches_active for faster lookup
+            // Since this will be looked up per-instruction
+            for patch in rom_desc.patches.iter() {
+                patch_map.insert(patch.checkpoint, (*patch).clone());
+            }
+
+            // Copy patches for each rom into patches_active for faster lookup
+            // Since this will be looked up per-instruction
+            self.patches_active.extend(patch_map);
+        }
 
         // Store active rom set 
         self.rom_set_active = Some(rom_set_active);
@@ -1017,21 +1024,18 @@ impl RomManager {
                     log::debug!("Found {} patches for ROM {}", rom_desc.patches.len(), rom_str );
                     for patch in &rom_desc.patches {
                         log::debug!("Installing patch '{}' at address {:06X}", patch.desc, patch.address);
-                        bus.patch_from(&patch.bytes, patch.address);
+                        bus.patch_from(&patch.bytes, patch.address as usize);
                     }
                 }
             }
         }
     }
 
-    pub fn get_patch_checkpoint(&self) -> u32 {
-        let mut patch_checkpoint = 0;
-        if let Some(rom_set) = self.rom_set_active.as_ref() {
-            for rom_str in &rom_set.roms {
-                if let Some(rom_desc) = self.get_romdesc(rom_str) {
-                    patch_checkpoint = rom_desc.patch_checkpoint;
-                }
-            }
+    pub fn is_patch_checkpoint(&self, address: u32) -> bool {
+        let mut patch_checkpoint = false;
+
+        if let Some(_) = self.patches_active.get(&address) {
+            patch_checkpoint = true;
         }
         patch_checkpoint
     }

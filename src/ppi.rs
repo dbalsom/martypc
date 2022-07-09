@@ -214,13 +214,7 @@ impl IoDevice for Ppi {
             _ => panic!("PPI: Bad port #")
         }
     }
-    fn read_u16(&mut self, _port: u16) -> u16 {
-        log::error!("Invalid 16-bit read from PPI");
-        0   
-    }
-    fn write_u16(&mut self, _port: u16, _data: u16) {
-        log::error!("Invalid 16-bit write to PPI");
-    }
+
 }
 
 impl Ppi {

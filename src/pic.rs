@@ -119,27 +119,6 @@ impl IoDevice for Pic {
             _ => unreachable!("PIC: Bad port #")
         }    
     }    
-    fn read_u16(&mut self, port: u16) -> u16 {
-        match port {
-            PIC_COMMAND_PORT => {
-                0
-            },
-            PIC_DATA_PORT => {
-                0
-            },
-            _ => unreachable!("PIC: Bad port #")
-        }
-    }
-    fn write_u16(&mut self, port: u16, data: u16) {
-        match port {
-            PIC_COMMAND_PORT => {
-            },
-            PIC_DATA_PORT => {
-                // Set Mask
-            },
-            _ => unreachable!("PIC: Bad port #")
-        }
-    }
 }
 
 impl Pic {

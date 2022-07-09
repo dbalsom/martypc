@@ -133,7 +133,8 @@ pub struct DMAChannelStringState {
 
 #[derive (Default)]
 pub struct DMAControllerStringState {
-    pub flopflop: String,
+    pub enabled: String,
+    pub flipflop: String,
     pub dma_channel_state: Vec<DMAChannelStringState>
 }
 pub struct DMAController {
@@ -275,12 +276,6 @@ impl IoDevice for DMAController {
         if port == DMA_COMMAND_REGISTER {
          
         }
-    }
-    fn read_u16(&mut self, port: u16) -> u16 {
-        0
-    }
-    fn write_u16(&mut self, port: u16, data: u16) {
-
     }
 }
 
@@ -566,7 +561,8 @@ impl DMAController {
         }
 
         DMAControllerStringState { 
-            flopflop: format!("{:?}", self.flipflop),
+            enabled: format!("{:?}", self.enabled),
+            flipflop: format!("{:?}", self.flipflop),
             dma_channel_state: chan_vec 
         }
     }
@@ -597,6 +593,27 @@ impl DMAController {
             is_ready = true;
         }
         is_ready
+    }
+
+    /// Request DMA Serivce 
+    /// Equivalent to setting the DREQ line high for the given DMA channel
+    pub fn request_dma_service(&mut self, channel: usize) {
+
+        self.request_reg |= 0x01 << channel;
+    }
+
+    /// Clear DMA Service 
+    /// Equivlaent to de-asserting the DREQ line for the given DMA channel
+    pub fn clear_dma_service(&mut self, channel: usize ) {
+
+        self.request_reg &= !(0x01 << channel);
+    }
+
+    /// Get the state of the DACK line for the specified DMA channel. 
+    /// DACK signals whether the requestin device can be serviced.
+    pub fn read_dma_acknowledge(&self, channel: usize) -> bool {
+
+        true
     }
 
     pub fn check_terminal_count(&self, channel: usize) -> bool {
@@ -663,7 +680,7 @@ impl DMAController {
             _=> panic!("DMA Decrement address mode unimplemented")
         }        
         
-        0
+        data
     }
 
     pub fn do_dma_write_u8(&mut self, bus: &mut BusInterface, channel: usize, data: u8) {
@@ -688,7 +705,7 @@ impl DMAController {
                     
                     // Transfer one more on a 0 count, then set TC
                     bus.write_u8(bus_address, data);
-                    self.channels[channel].current_address_reg += 1;
+                    //self.channels[channel].current_address_reg += 1;
 
                     //log::trace!("DMA write {:02X} to address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
                     self.channels[channel].terminal_count = true;

@@ -4,7 +4,6 @@
 use crate::gui::Framework;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
-use rand::distributions::DistString;
 use winit::dpi::LogicalSize;
 use winit::event::{Event, WindowEvent, StartCause, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -15,13 +14,13 @@ use std::{
     fs::{File, read},
     time::{Duration, Instant},
     cell::RefCell,
-    rc::Rc
+    rc::Rc,
+    path::Path
 };
-use rand::{Rng};
-
 
 mod arch;
 mod bus;
+mod bytebuf;
 mod byteinterface;
 mod cga;
 mod cpu;
@@ -29,24 +28,27 @@ mod dma;
 mod fdc;
 mod floppy_manager;
 mod gui;
+mod hdc;
 mod io;
 mod machine;
-mod membuf;
 mod memerror;
 mod pic;
 mod pit;
 mod ppi;
 mod rom_manager;
 mod util;
+mod vhd;
+mod vhd_manager;
 mod video;
 mod input;
 
 use machine::{Machine, MachineType, VideoType};
 use rom_manager::{RomManager, RomError};
 use floppy_manager::{FloppyManager, FloppyError};
-
+use vhd_manager::{VHDManager, VHDManagerError};
+use vhd::{VirtualHardDisk};
 use byteinterface::ByteInterface;
-
+use gui::GuiEvent;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -59,24 +61,26 @@ const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 
 const CYCLES_PER_FRAME: u32 = (cpu::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
-/// Representation of the application state. In this example, a box will bounce around the screen.
-struct World {
+// Rendering Stats
+struct Counter {
     frame_count: u64,
     current_fps: u32,
     last_period: Instant,
-    last_second: Instant
+    last_second: Instant,
+    last_cpu_cycles: u64,
+    current_cpu_cps: u64,
+    last_pit_ticks: u64,
+    current_pit_tps: u64,
 }
 
 fn main() -> Result<(), Error> {
 
-    let timer_length = Duration::new(1, 0);
     env_logger::init();
 
     // Choose machine type (move to cfg?)
     let machine_type = MachineType::IBM_XT_5160;
 
-    // Instantiate the rom manager to load roms for the requested machine type
-    
+    // Instantiate the rom manager to load roms for the requested machine type    
     let mut rom_manager = RomManager::new(machine_type);
 
     if let Err(e) = rom_manager.try_load_from_dir("./rom") {
@@ -110,27 +114,33 @@ fn main() -> Result<(), Error> {
         std::process::exit(1);
     }
 
-    //std::process::exit(0);
+    // Instantiate the VHD manager
+    let mut vhd_manager = VHDManager::new();
 
-    // Init machine
-    //let bios_vec = read("./rom/bios.rom").unwrap_or_else(|e| {
-    //    eprintln!("Couldn't open BIOS image ./rom/bios.rom: {}", e);
-    //    std::process::exit(1);
-    //});
-
-    //let basic_vec = read("./rom/basic_v1.rom").unwrap_or_else(|e| {
-    //    eprintln!("Couldn't open BASIC image: {}", e);
-    //    std::process::exit(1);
-    //});
+    // Scan the HDD directory
+    if let Err(e) = vhd_manager.scan_dir("./hdd") {
+        match e {
+            VHDManagerError::DirNotFound => {
+                eprintln!("HDD directory not found")
+            }
+            _ => {
+                eprintln!("Error reading floppy directory")
+            }
+        }
+        std::process::exit(1);        
+    } 
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
+
+    // Instantiate the main Machine data struct
+    // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(machine_type, VideoType::CGA, rom_manager, floppy_manager );
     
+    // Create the video renderer
     let video = video::Video::new();
 
     // Init graphics & GUI 
-
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let window = {
@@ -153,10 +163,9 @@ fn main() -> Result<(), Error> {
 
         (pixels, framework)
     };
-    let mut world = World::new();
+    let mut stat_counter = Counter::new();
 
     // Run the winit event loop
-
     event_loop.run(move |event, _, control_flow| {
 
         //*control_flow = ControlFlow::Poll;
@@ -188,22 +197,8 @@ fn main() -> Result<(), Error> {
         match event {
             Event::NewEvents(StartCause::Init) => {
                 // Initialization stuff here?
-                println!("Initializing...");
-
-                world.last_second = Instant::now();
+                stat_counter.last_second = Instant::now();
             }
-            //Event::WindowEvent { event, .. } => {
-//
-            //    match &event {
-//
-            //        KeyboardInput => {
-            //            println!("Event: {:?}", e);
-            //        }
-            //    }
-//
-            //    // Update egui inputs
-            //    framework.handle_event(&event);
-            //}
             Event::WindowEvent{ event, .. } => {
 
                 match event {
@@ -246,28 +241,36 @@ fn main() -> Result<(), Error> {
             Event::MainEventsCleared => {
 
                 // Calculate FPS
-                let elapsed_ms = world.last_second.elapsed().as_millis();
+                let elapsed_ms = stat_counter.last_second.elapsed().as_millis();
                 if elapsed_ms > 1000 {
-                    // One second elapsed
-                    //println!("fps: {} elapsed ms: {}", world.current_fps, elapsed_ms );
-                    world.current_fps = 0;
-                    world.last_second = Instant::now();
+                    // One second elapsed, calculate FPS/CPS
+                    let pit_ticks = machine.pit_cycles();
+                    let cpu_cycles = machine.cpu_cycles();
+
+                    stat_counter.current_cpu_cps = cpu_cycles - stat_counter.last_cpu_cycles;
+                    stat_counter.last_cpu_cycles = cpu_cycles;
+
+                    stat_counter.current_pit_tps = pit_ticks - stat_counter.last_pit_ticks;
+                    stat_counter.last_pit_ticks = pit_ticks;
+
+                    //println!("fps: {} | cps: {} | pit tps: {}", 
+                    //    stat_counter.current_fps,
+                    //    stat_counter.current_cpu_cps, 
+                    //    stat_counter.current_pit_tps);
+
+                    stat_counter.current_fps = 0;
+                    stat_counter.last_second = Instant::now();
                 } 
 
                 // Decide whether to draw a frame
-                let elapsed_us = world.last_period.elapsed().as_micros();
+                let elapsed_us = stat_counter.last_period.elapsed().as_micros();
 
                 if elapsed_us > MICROS_PER_FRAME as u128 {
 
-                    world.last_period = Instant::now();
-                    world.frame_count += 1;
-                    world.current_fps += 1;
+                    stat_counter.last_period = Instant::now();
+                    stat_counter.frame_count += 1;
+                    stat_counter.current_fps += 1;
                     //println!("frame: {} elapsed: {}", world.current_fps, elapsed_us);
-
-                    // Draw the world
-                    world.update();
-                    
-                    //world.draw(pixels.get_frame());
 
                     // Get breakpoint from GUI
                     let bp_str = framework.gui.get_breakpoint();
@@ -296,17 +299,51 @@ fn main() -> Result<(), Error> {
 
                     machine.run(CYCLES_PER_FRAME, &mut exec_control.borrow_mut(), bp_addr);
 
+                    let composite_enabled = framework.gui.get_composite_enabled();
+                    // Draw video memory
+                    video.draw(pixels.get_frame(), machine.cga(), machine.bus(), composite_enabled);
+                    
+                    // Update egui data
+
                     // Any errors?
                     if let Some(err) = machine.get_error_str() {
                         framework.gui.show_error(err);
                         framework.gui.show_disassembly_view();
                     }
 
-                    let composite_enabled = framework.gui.get_composite_enabled();
-                    // Draw video memory
-                    video.draw(pixels.get_frame(), machine.cga(), machine.bus(), composite_enabled);
+                    // -- Handle GUI "Events"
+                    loop {
+                        match framework.gui.get_event() {
+
+                            Some(GuiEvent::CreateVHD(filename, fmt)) => {
+                                log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
+
+                                let vhd_path = Path::new("./hdd").join(filename);
+
+                                match vhd::create_vhd(
+                                    vhd_path.into_os_string(), 
+                                    fmt.max_cylinders, 
+                                    fmt.max_heads, 
+                                    fmt.max_sectors) {
+
+                                    Ok(vhd) => {
+                                        // We don't actually do anything with the newly created file
+
+                                        // Rescan dir to show new file in list
+                                        vhd_manager.scan_dir("./hdd");
+                                    }
+                                    Err(err) => {
+                                        log::error!("Error creating VHD: {}", err);
+                                    }
+                                }
+                            }
+                            None => break,
+                            _ => {
+                                // Unhandled event?
+                            }
+                        }
+                    }
                     
-                    // Update egui data
 
                     // -- Update list of floppies
                     let name_vec = machine.floppy_manager().get_floppy_names();
@@ -316,21 +353,64 @@ fn main() -> Result<(), Error> {
                     if let Some(new_floppy_name) = framework.gui.get_new_floppy_name() {
                         log::debug!("Load new floppy image: {:?}", new_floppy_name);
 
-                        let vec = match machine.floppy_manager().load_floppy_data(&new_floppy_name) {
+                        match machine.floppy_manager().load_floppy_data(&new_floppy_name) {
                             Ok(vec) => {
-                                machine.fdc().borrow_mut().load_image_from(0, vec);
-                                println!("Loaded okay!");
+                                
+                                match machine.fdc().borrow_mut().load_image_from(0, vec) {
+                                    Ok(()) => {
+                                        log::info!("Floppy image successfully loaded into virtual drive.");
+                                    }
+                                    Err(err) => {
+                                        log::warn!("Floppy image failed to load: {}", err);
+                                    }
+                                }
                             } 
                             Err(e) => {
                                 log::error!("Failed to load floppy image! {:?}", new_floppy_name);
+                                // TODO: Some sort of GUI indication of failure
                                 eprintln!("Failed to read file: {:?}", new_floppy_name);
                             }
-                        };
+                        }
                     }
 
-                    // -- Update memory viewer window
-                    {
+                    // -- Update VHD Creator window
+                    if framework.gui.is_window_open(gui::GuiWindow::VHDCreator) {
+                        framework.gui.update_vhd_formats(machine.hdc().borrow_mut().get_supported_formats());
+                    }
+
+                    // -- Update list of VHD images
+                    let name_vec = vhd_manager.get_vhd_names();
+                    framework.gui.set_vhd_names(name_vec);
+
+                    // -- Do we have a new VHD image to load?
+                    for i in 0..machine::NUM_HDDS {
+                        if let Some(new_vhd_name) = framework.gui.get_new_vhd_name(i) {
+                            log::debug!("Load new VHD image: {:?} in device: {}", new_vhd_name, i);
+
+                            match vhd_manager.get_vhd_file(&new_vhd_name) {
+                                Ok(vhd_file) => {
+
+                                    match VirtualHardDisk::from_file(vhd_file) {
+                                        Ok(vhd) => {
+                                            machine.hdc().borrow_mut().set_vhd(i as usize, vhd);
+                                            log::info!("VHD image {:?} successfully loaded into virtual drive: {}", new_vhd_name, i);
+                                        },
+                                        Err(err) => {
+                                            log::error!("Error loading VHD: {}", err);
+                                        }
+                                    }
+                                }
+                                Err(err) => {
+                                    log::error!("Failed to load VHD image {:?}: {}", new_vhd_name, err);
+                                }                                
+                            }
+                        }
+                    }
+
+                    // -- Update memory viewer window if open
+                    if framework.gui.is_window_open(gui::GuiWindow::MemoryViewer) {
                         let mem_dump_addr_str = framework.gui.get_memory_view_address();
+                        // Show address 0 if expression evail fails
                         let mem_dump_addr = match machine.cpu().eval_address(mem_dump_addr_str) {
                             Some(i) => i,
                             None => 0
@@ -339,9 +419,12 @@ fn main() -> Result<(), Error> {
 
                         framework.gui.update_memory_view(mem_dump_str);
                     }   
+
                     // -- Update register viewer window
-                    let cpu_state = machine.cpu().get_string_state();
-                    framework.gui.update_cpu_state(cpu_state);
+                    if framework.gui.is_window_open(gui::GuiWindow::CpuStateViewer) {
+                        let cpu_state = machine.cpu().get_string_state();
+                        framework.gui.update_cpu_state(cpu_state);
+                    }
 
                     // -- Update PIT viewer window
                     let pit_state = machine.pit_state();
@@ -436,23 +519,19 @@ fn main() -> Result<(), Error> {
     });
 }
 
-impl World {
-    /// Create a new `World` instance that can draw a moving box.
+impl Counter {
     fn new() -> Self {
         Self {
 
             frame_count: 0,
             current_fps: 0,
             last_second: Instant::now(),
-            last_period: Instant::now()
+            last_period: Instant::now(),
+            last_cpu_cycles: 0,
+            current_cpu_cps: 0,
+            last_pit_ticks: 0,
+            current_pit_tps: 0,
         }
     }
 
-    /// Update the `World` internal state; bounce the box around the screen.
-    fn update(&mut self) {
-    }
-
-    /// Draw the `World` state to the frame buffer.
-    fn draw(&self, frame: &mut [u8]) {   
-    }
 }

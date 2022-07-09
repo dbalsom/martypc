@@ -1,5 +1,5 @@
 /*
-    floppy_browser.rc
+    floppy_manager.rc
     Enumerate images in the /floppy directory to allow floppy selection
 
 */
@@ -15,7 +15,6 @@ pub enum FloppyError {
 }
 
 pub struct FloppyImage {
-    
     path: PathBuf,
     size: u64
 }

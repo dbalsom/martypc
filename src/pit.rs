@@ -62,7 +62,7 @@ pub struct PitChannel {
 }
 
 pub struct ProgrammableIntervalTimer {
-
+    pit_cycles: u64,
     cycle_accumulator: f64,
     channels: Vec<PitChannel>,
 }
@@ -104,13 +104,7 @@ impl IoDevice for ProgrammableIntervalTimer {
             _ => panic!("PIT: Bad port #")
         }
     }
-    fn read_u16(&mut self, _port: u16) -> u16 {
-        log::error!("Invalid 16-bit read from PIT");
-        0   
-    }
-    fn write_u16(&mut self, _port: u16, _data: u16) {
-        log::error!("Invalid 16-bit write to PIT");
-    }
+
 }
 
 impl ProgrammableIntervalTimer {
@@ -144,6 +138,7 @@ impl ProgrammableIntervalTimer {
             vec.push(pit);
         }
         Self {
+            pit_cycles: 0,
             cycle_accumulator: 0.0,
             channels: vec
         }
@@ -385,7 +380,13 @@ impl ProgrammableIntervalTimer {
         }
     }
 
+    pub fn get_cycles(&self) -> u64 {
+        self.pit_cycles
+    }
+
     pub fn tick(&mut self, bus: &mut BusInterface, pic: &mut pic::Pic, dma: &mut dma::DMAController ) {
+
+        self.pit_cycles += 1;
 
         for (i,t) in &mut self.channels.iter_mut().enumerate() {
             match t.channel_mode {
@@ -461,14 +462,11 @@ impl ProgrammableIntervalTimer {
                             }
                             t.current_count = u16::MAX - 1;
                         }
-                        else {
-                            t.current_count -= 1;
-                        }
 
                         // Intel: "If the count is odd and the output is high, the first clock pulse
                         // (after the count is loaded) decrements the count by 1. Subsequent pulses
                         // decrement the clock by 2..."
-                        if t.current_count & 0x01 == 0 {
+                        if t.current_count & 0x01 != 0 {
                             // Count is odd - can only occur immediately after reload of odd reload value
 
                             if t.output_is_high { 

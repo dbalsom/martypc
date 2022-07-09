@@ -13,6 +13,7 @@ Thumbs.db
 # Emulator files
 /rom
 /floppy
+/hdd
 
 # Assembly stuff
 /asm

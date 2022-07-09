@@ -19,13 +19,18 @@ use crate::{
     cpu::{CpuType, Cpu, Flag, CpuError},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
+    hdc::{self, HardDiskController},
     floppy_manager::{FloppyManager},
+    vhd_manager::{VHDManager},
     io::{IoHandler, IoBusInterface},
     pit::{self, PitStringState},
     pic::{self, PicStringState},
     ppi::{self, PpiStringState},
     rom_manager::RomManager,
 };
+
+pub const NUM_FLOPPIES: u32 = 2;
+pub const NUM_HDDS: u32 = 2;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
@@ -115,9 +120,11 @@ pub struct Machine {
     ppi: Rc<RefCell<ppi::Ppi>>,
     cga: Rc<RefCell<cga::CGACard>>,
     fdc: Rc<RefCell<FloppyController>>,
+    hdc: Rc<RefCell<HardDiskController>>,
     kb_buf: VecDeque<u8>,
     error: bool,
     error_str: String,
+    cpu_cycles: u64,
 }
 
 impl Machine {
@@ -191,6 +198,13 @@ impl Machine {
         io_bus.register_port_handler(fdc::FDC_STATUS_REGISTER, IoHandler::new(fdc.clone()));
         io_bus.register_port_handler(fdc::FDC_DATA_REGISTER, IoHandler::new(fdc.clone()));
 
+        // Hard Disk Controller:  (Only functions if the required rom is loaded)
+        let mut hdc = Rc::new(RefCell::new(hdc::HardDiskController::new(dma.clone(), hdc::DRIVE_TYPE2_DIP)));
+        io_bus.register_port_handler(hdc::HDC_DATA_REGISTER, IoHandler::new(hdc.clone()));
+        io_bus.register_port_handler(hdc::HDC_STATUS_REGISTER, IoHandler::new(hdc.clone()));
+        io_bus.register_port_handler(hdc::HDC_READ_DIP_REGISTER, IoHandler::new(hdc.clone()));
+        io_bus.register_port_handler(hdc::HDC_WRITE_MASK_REGISTER, IoHandler::new(hdc.clone()));
+
         // CGA card:
         let mut cga = Rc::new(RefCell::new(cga::CGACard::new()));
         io_bus.register_port_handler(cga::CRTC_REGISTER_SELECT, IoHandler::new(cga.clone()));
@@ -208,11 +222,6 @@ impl Machine {
         cpu.set_reset_address(rom_entry_point.0, rom_entry_point.1);
         cpu.reset_address();
 
-        // Install ROM patches if any are specified for immediate patching
-        if rom_manager.get_patch_checkpoint() == 0 {
-            rom_manager.install_patches(&mut bus);
-        }
-
         Machine {
             machine_type,
             video_type,
@@ -227,9 +236,11 @@ impl Machine {
             ppi: ppi,
             cga: cga,
             fdc: fdc,
+            hdc: hdc,
             kb_buf: VecDeque::new(),
             error: false,
             error_str: String::new(),
+            cpu_cycles: 0
         }
     }
 
@@ -253,8 +264,20 @@ impl Machine {
         self.fdc.clone()
     }
 
+    pub fn hdc(&self) -> Rc<RefCell<HardDiskController>> {
+        self.hdc.clone()
+    }
+
     pub fn floppy_manager(&self) -> &FloppyManager {
         &self.floppy_manager
+    }
+
+    pub fn cpu_cycles(&self) -> u64 {
+        self.cpu_cycles
+    }
+
+    pub fn pit_cycles(&self) -> u64 {
+        self.pit.borrow().get_cycles()
     }
 
     pub fn pit_state(&self) -> PitStringState {
@@ -363,7 +386,7 @@ impl Machine {
                 }
 
                 // Check for patching checkpoint & install patches
-                if self.rom_manager.get_patch_checkpoint() == flat_address {
+                if self.rom_manager.is_patch_checkpoint(flat_address) {
                     log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
                     self.rom_manager.install_patches(&mut self.bus);
                 }
@@ -420,17 +443,25 @@ impl Machine {
                 self.cga.borrow_mut().run(&mut self.io_bus, 7);
                 self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), 7);
                 
-                // FDC needs PIC to issue floppy drive interrupts, DMA to request DMA transfers, and Memory Bus to pass to DMA
+                // FDC needs PIC to issue controller interrupts, DMA to request DMA transfers, and Memory Bus to read/write to via DMA
                 self.fdc.borrow_mut().run(
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     &mut self.bus,
                     fake_cycles);
+
+                // HDC needs PIC to issue controller interrupts, DMA to request DMA stransfers, and Memory Bus to read/write to via DMA                    
+                self.hdc.borrow_mut().run(
+                    &mut self.pic.borrow_mut(),
+                    &mut self.dma_controller.borrow_mut(),
+                    &mut self.bus,
+                    fake_cycles);                
             }
             // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all
             // that good stuff. For now during initial development we're going to assume an average instruction cost of 8** 7
             // even cycles keeps the BIOS PIT test from working!
             cycles_elapsed += fake_cycles;
+            self.cpu_cycles += fake_cycles as u64;
         }
     }
 }
