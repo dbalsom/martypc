@@ -524,7 +524,7 @@ impl HardDiskController {
 
             State::WaitingForCommand => {
                 if self.interrupt_active {
-                    log::warn!(" >>>>>>>>>>>>>>>>> Received command with interrupt active")
+                    log::warn!(" >>> Received command with interrupt active")
                 }
                 match byte {
                     0b000_00000 => {
@@ -713,7 +713,7 @@ impl HardDiskController {
         };
 
         if self.interrupt_active {
-            log::trace!(">>>>>>> sending interrupt bit");
+            //log::trace!(">>> Sending interrupt bit");
             out_byte |= R1_STATUS_INT; 
         }
 
@@ -1128,20 +1128,212 @@ impl HardDiskController {
         self.state = State::HaveCommandStatus;
     }
 
+    /// Process the Write Sector Buffer operation.
+    /// This operation continues until the DMA transfer is complete.
+    fn opearation_write_sector_buffer(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
+        if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
+
+            if self.dma_bytes_left > 0 {
+                // Bytes left to transfer
+                let _byte = dma.do_dma_read_u8(bus, HDC_DMA);
+                self.dma_byte_count += 1;
+                self.dma_bytes_left -= 1;
+                
+                log::trace!("dma_bytes_left:{}", self.dma_bytes_left);
+                // See if we are done based on DMA controller
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if tc {
+                    log::trace!("DMA terminal count triggered end of WriteSectorBuffer command.");
+                    if self.dma_bytes_left != 0 {
+                        log::warn!("Incomplete DMA transfer on terminal count!")
+                    }
+
+                    log::trace!("Completed WriteSectorBuffer command.");
+                    self.end_dma_command(0, false);
+                }
+            }
+            else {
+                // No more bytes left to transfer. Finalize operation
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if !tc {
+                    log::warn!("WriteSectorBuffer complete without DMA terminal count.");
+                }
+
+                log::trace!("Completed WriteSectorBuffer command.");
+                self.end_dma_command(0, false);                                
+            }
+        }
+        else if !self.dreq_active {
+            log::error!("Error: WriteSectorBuffer command without DMA active!")
+        }   
+    }
+
+    /// Process the Read Sector operation. 
+    /// This operation continues until the DMA transfer is complete.
+    fn operation_read_sector(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
+        if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
+
+            if self.dma_bytes_left > 0 {
+                // Bytes left to transfer
+
+                let byte = self.drives[self.drive_select].sector_buf[self.operation_status.buffer_idx];
+                dma.do_dma_write_u8(bus, HDC_DMA,byte);
+                self.operation_status.buffer_idx += 1;
+                self.dma_byte_count += 1;
+                self.dma_bytes_left -= 1;
+
+                // Exhausted the sector buffer, read more from disk
+                if self.operation_status.buffer_idx == SECTOR_SIZE {
+
+                    // Advance to next sector
+                    log::trace!("Command Read: Advancing to next sector...");
+                    let(new_c, new_h, new_s) = self.drives[self.drive_select].get_next_sector(
+                        self.drives[self.drive_select].cylinder,
+                        self.drives[self.drive_select].head,
+                        self.drives[self.drive_select].sector);
+
+                    self.drives[self.drive_select].cylinder = new_c;
+                    self.drives[self.drive_select].head = new_h;
+                    self.drives[self.drive_select].sector = new_s;
+                    self.operation_status.buffer_idx = 0;
+
+                    match &mut self.drives[self.drive_select].vhd {
+                        Some(vhd) => {
+                            match vhd.read_sector(&mut self.drives[self.drive_select].sector_buf,
+                                self.drives[self.drive_select].cylinder,
+                                self.drives[self.drive_select].head,
+                                self.drives[self.drive_select].sector) {
+
+                                    Ok(_) => {
+                                        // Sector read successful
+                                    }
+                                    Err(err) => {
+                                        log::error!("Sector read failed: {}", err);
+                                    }
+                                };
+                        }
+                        None => {
+                            log::error!("Read operation without VHD mounted.");
+                        }
+                    }
+                }
+
+                // See if we are done based on DMA controller
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if tc {
+                    log::trace!("DMA terminal count triggered end of Read command.");
+                    if self.dma_bytes_left != 0 {
+                        log::warn!("Incomplete DMA transfer on terminal count!")
+                    }
+
+                    log::trace!("Completed Read Command");
+                    self.end_dma_command(0, false);
+                }
+            }
+            else {
+                // No more bytes left to transfer. Finalize operation
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if !tc {
+                    log::warn!("Command Read complete without DMA terminal count.");
+                }
+
+                log::trace!("Completed Read Command");
+                self.end_dma_command(0, false);                                
+            }
+        }
+        else if !self.dreq_active {
+            log::error!("Error: Read command without DMA active!")
+        }   
+    }
+
+    fn operation_write_sector(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
+        if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
+
+            if self.dma_bytes_left > 0 {
+                // Bytes left to transfer
+
+                let byte = dma.do_dma_read_u8(bus, HDC_DMA);
+                self.drives[self.drive_select].sector_buf[self.operation_status.buffer_idx] = byte;
+                self.operation_status.buffer_idx += 1;
+                self.dma_byte_count += 1;
+                self.dma_bytes_left -= 1;
+
+                // Filled the sector buffer, write it to disk
+                if self.operation_status.buffer_idx == SECTOR_SIZE {
+                    
+                    match &mut self.drives[self.drive_select].vhd {
+                        Some(vhd) => {
+                            match vhd.write_sector(&self.drives[self.drive_select].sector_buf,
+                                self.drives[self.drive_select].cylinder,
+                                self.drives[self.drive_select].head,
+                                self.drives[self.drive_select].sector) {
+
+                                    Ok(_) => {
+                                        // Sector write successful
+                                    }
+                                    Err(err) => {
+                                        log::error!("Sector write failed: {}", err);
+                                    }
+                                };
+                        }
+                        None => {
+                            log::error!("Write operation without VHD mounted.");
+                        }
+                    }
+
+                    // Advance to next sector
+                    log::trace!("Command Write: Advancing to next sector...");
+                    let(new_c, new_h, new_s) = self.drives[self.drive_select].get_next_sector(
+                        self.drives[self.drive_select].cylinder,
+                        self.drives[self.drive_select].head,
+                        self.drives[self.drive_select].sector);
+
+                    self.drives[self.drive_select].cylinder = new_c;
+                    self.drives[self.drive_select].head = new_h;
+                    self.drives[self.drive_select].sector = new_s;
+                    self.operation_status.buffer_idx = 0;
+                }
+
+                // See if we are done based on DMA controller
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if tc {
+                    log::trace!("DMA terminal count triggered end of Write command.");
+                    if self.dma_bytes_left != 0 {
+                        log::warn!("Incomplete DMA transfer on terminal count!")
+                    }
+
+                    self.end_dma_command(0, false);
+                }
+            }
+            else {
+                // No more bytes left to transfer. Finalize operation
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if !tc {
+                    log::warn!("Command Write complete without DMA terminal count.");
+                }
+
+                self.end_dma_command(0, false);                                
+            }
+        }
+        else if !self.dreq_active {
+            log::error!("Error: Read command without DMA active!")
+        }                       
+    }
+
     /// Run the HDC device.
     pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, cpu_cycles: u32 ) {
 
         // Handle interrupts
         if self.send_interrupt {
             if self.irq_enabled {
-                log::trace!(">>> Firing HDC IRQ 5");
+                //log::trace!(">>> Firing HDC IRQ 5");
                 pic.request_interrupt(HDC_IRQ);
                 self.send_interrupt = false;
                 self.interrupt_active = true;
 
             }
             else {
-                log::trace!(">>> IRQ was masked");
+                //log::trace!(">>> IRQ was masked");
                 self.send_interrupt = false;
                 self.interrupt_active = false;
             }
@@ -1166,196 +1358,19 @@ impl HardDiskController {
             self.dreq_active = false;
         }
 
-        // Process any running commands
+        // Process any running Operations
         match self.state {
 
             State::ExecutingCommand => {
                 match self.command {
                     Command::WriteSectorBuffer => {
-                        if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
-
-                            if self.dma_bytes_left > 0 {
-                                // Bytes left to transfer
-                                let _byte = dma.do_dma_read_u8(bus, HDC_DMA);
-                                self.dma_byte_count += 1;
-                                self.dma_bytes_left -= 1;
-                                
-                                log::trace!("dma_bytes_left:{}", self.dma_bytes_left);
-                                // See if we are done based on DMA controller
-                                let tc = dma.check_terminal_count(HDC_DMA);
-                                if tc {
-                                    log::trace!("DMA terminal count triggered end of WriteSectorBuffer command.");
-                                    if self.dma_bytes_left != 0 {
-                                        log::warn!("Incomplete DMA transfer on terminal count!")
-                                    }
-
-                                    log::trace!("Completed WriteSectorBuffer command.");
-                                    self.end_dma_command(0, false);
-                                }
-                            }
-                            else {
-                                // No more bytes left to transfer. Finalize operation
-                                let tc = dma.check_terminal_count(HDC_DMA);
-                                if !tc {
-                                    log::warn!("WriteSectorBuffer complete without DMA terminal count.");
-                                }
-
-                                log::trace!("Completed WriteSectorBuffer command.");
-                                self.end_dma_command(0, false);                                
-                            }
-                        }
-                        else if !self.dreq_active {
-                            log::error!("Error: WriteSectorBuffer command without DMA active!")
-                        }   
+                        self.opearation_write_sector_buffer(dma, bus);
                     }
                     Command::Read => {
-                        if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
-
-                            if self.dma_bytes_left > 0 {
-                                // Bytes left to transfer
-
-                                let byte = self.drives[self.drive_select].sector_buf[self.operation_status.buffer_idx];
-                                dma.do_dma_write_u8(bus, HDC_DMA,byte);
-                                self.operation_status.buffer_idx += 1;
-                                self.dma_byte_count += 1;
-                                self.dma_bytes_left -= 1;
-        
-                                // Exhausted the sector buffer, read more from disk
-                                if self.operation_status.buffer_idx == SECTOR_SIZE {
-
-                                    // Advance to next sector
-                                    log::trace!("Command Read: Advancing to next sector...");
-                                    let(new_c, new_h, new_s) = self.drives[self.drive_select].get_next_sector(
-                                        self.drives[self.drive_select].cylinder,
-                                        self.drives[self.drive_select].head,
-                                        self.drives[self.drive_select].sector);
-
-                                    self.drives[self.drive_select].cylinder = new_c;
-                                    self.drives[self.drive_select].head = new_h;
-                                    self.drives[self.drive_select].sector = new_s;
-                                    self.operation_status.buffer_idx = 0;
-
-                                    match &mut self.drives[self.drive_select].vhd {
-                                        Some(vhd) => {
-                                            match vhd.read_sector(&mut self.drives[self.drive_select].sector_buf,
-                                                self.drives[self.drive_select].cylinder,
-                                                self.drives[self.drive_select].head,
-                                                self.drives[self.drive_select].sector) {
-
-                                                    Ok(_) => {
-                                                        // Sector read successful
-                                                    }
-                                                    Err(err) => {
-                                                        log::error!("Sector read failed: {}", err);
-                                                    }
-                                                };
-                                        }
-                                        None => {
-                                            log::error!("Read operation without VHD mounted.");
-                                        }
-                                    }
-                                }
-
-                                // See if we are done based on DMA controller
-                                let tc = dma.check_terminal_count(HDC_DMA);
-                                if tc {
-                                    log::trace!("DMA terminal count triggered end of Read command.");
-                                    if self.dma_bytes_left != 0 {
-                                        log::warn!("Incomplete DMA transfer on terminal count!")
-                                    }
-
-                                    log::trace!("Completed Read Command");
-                                    self.end_dma_command(0, false);
-                                }
-                            }
-                            else {
-                                // No more bytes left to transfer. Finalize operation
-                                let tc = dma.check_terminal_count(HDC_DMA);
-                                if !tc {
-                                    log::warn!("Command Read complete without DMA terminal count.");
-                                }
-
-                                log::trace!("Completed Read Command");
-                                self.end_dma_command(0, false);                                
-                            }
-                        }
-                        else if !self.dreq_active {
-                            log::error!("Error: Read command without DMA active!")
-                        }                       
+                        self.operation_read_sector(dma, bus);
                     }
                     Command::Write => {
-                        if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
-
-                            if self.dma_bytes_left > 0 {
-                                // Bytes left to transfer
-
-                                let byte = dma.do_dma_read_u8(bus, HDC_DMA);
-                                self.drives[self.drive_select].sector_buf[self.operation_status.buffer_idx] = byte;
-                                self.operation_status.buffer_idx += 1;
-                                self.dma_byte_count += 1;
-                                self.dma_bytes_left -= 1;
-        
-                                // Filled the sector buffer, write it to disk
-                                if self.operation_status.buffer_idx == SECTOR_SIZE {
-
-                                    
-                                    match &mut self.drives[self.drive_select].vhd {
-                                        Some(vhd) => {
-                                            match vhd.write_sector(&self.drives[self.drive_select].sector_buf,
-                                                self.drives[self.drive_select].cylinder,
-                                                self.drives[self.drive_select].head,
-                                                self.drives[self.drive_select].sector) {
-
-                                                    Ok(_) => {
-                                                        // Sector write successful
-                                                    }
-                                                    Err(err) => {
-                                                        log::error!("Sector write failed: {}", err);
-                                                    }
-                                                };
-                                        }
-                                        None => {
-                                            log::error!("Write operation without VHD mounted.");
-                                        }
-                                    }
-
-                                    // Advance to next sector
-                                    log::trace!("Command Write: Advancing to next sector...");
-                                    let(new_c, new_h, new_s) = self.drives[self.drive_select].get_next_sector(
-                                        self.drives[self.drive_select].cylinder,
-                                        self.drives[self.drive_select].head,
-                                        self.drives[self.drive_select].sector);
-
-                                    self.drives[self.drive_select].cylinder = new_c;
-                                    self.drives[self.drive_select].head = new_h;
-                                    self.drives[self.drive_select].sector = new_s;
-                                    self.operation_status.buffer_idx = 0;
-                                }
-
-                                // See if we are done based on DMA controller
-                                let tc = dma.check_terminal_count(HDC_DMA);
-                                if tc {
-                                    log::trace!("DMA terminal count triggered end of Write command.");
-                                    if self.dma_bytes_left != 0 {
-                                        log::warn!("Incomplete DMA transfer on terminal count!")
-                                    }
-
-                                    self.end_dma_command(0, false);
-                                }
-                            }
-                            else {
-                                // No more bytes left to transfer. Finalize operation
-                                let tc = dma.check_terminal_count(HDC_DMA);
-                                if !tc {
-                                    log::warn!("Command Write complete without DMA terminal count.");
-                                }
-
-                                self.end_dma_command(0, false);                                
-                            }
-                        }
-                        else if !self.dreq_active {
-                            log::error!("Error: Read command without DMA active!")
-                        }                       
+                        self.operation_write_sector(dma, bus);
                     }                    
                     _ => panic!("Unexpected command")
                 }
