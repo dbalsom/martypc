@@ -20,14 +20,16 @@ Place floppy raw sector images (IMA or IMG) in a /floppy folder and Marty will f
 
 ## Features
 
-Currently Marty will emulate an original IBM 5150 PC with a CGA card. 
+Currently Marty will emulate an original IBM 5150 PC or 5160 XT with a CGA card. 
 
-The CGA emulation is nowhere near finished, but basic graphics and text modes are supported.
+The CGA emulation is nowhere near finished, but basic graphics and text modes are supported. A fast table-based composite monitor emulation is available for 16 colors in games that supported it.
 
 The PPI, PIC, PIT, DMA chips are all at least partially implemented, although most of them with the bare minimum features needed to boot
 a few games and likely contain lots of bugs. 
 
 The Floppy disk controller is implemented for read-only operation at the moment.
+
+The IBM 20MB Fixed Disk Controller is emulated with VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
 
 There is currently no sound.
 
@@ -41,12 +43,10 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ## Known Issues
 
-* Keyboard input is a bit spotty, possibly due to missed interrupts or bad timing. (Update: Fixed?)
-* Only DOS 2.0 supported. DOS 3.0+ fails to boot.
+* CPU sometimes halts during POST. Probably a timing bug.
 
-## Wishlist features: (Maybe)
+## Wishlist features:
 
-* Hard disk emulation (In progress)
 * EGA/VGA graphics
 * Mouse support
 
