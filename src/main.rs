@@ -311,7 +311,7 @@ fn main() -> Result<(), Error> {
                         framework.gui.show_disassembly_view();
                     }
 
-                    // -- Handle GUI "Events"
+                    // -- Handle egui "Events"
                     loop {
                         match framework.gui.get_event() {
 
@@ -326,7 +326,7 @@ fn main() -> Result<(), Error> {
                                     fmt.max_heads, 
                                     fmt.max_sectors) {
 
-                                    Ok(vhd) => {
+                                    Ok(_) => {
                                         // We don't actually do anything with the newly created file
 
                                         // Rescan dir to show new file in list
@@ -337,41 +337,38 @@ fn main() -> Result<(), Error> {
                                     }
                                 }
                             }
+                            Some(GuiEvent::LoadFloppy(drive_select, filename)) => {
+                                log::debug!("Load floppy image: {:?} into drive: {}", filename, drive_select);
+
+                                match machine.floppy_manager().load_floppy_data(&filename) {
+                                    Ok(vec) => {
+                                        
+                                        match machine.fdc().borrow_mut().load_image_from(0, vec) {
+                                            Ok(()) => {
+                                                log::info!("Floppy image successfully loaded into virtual drive.");
+                                            }
+                                            Err(err) => {
+                                                log::warn!("Floppy image failed to load: {}", err);
+                                            }
+                                        }
+                                    } 
+                                    Err(e) => {
+                                        log::error!("Failed to load floppy image! {:?}", filename);
+                                        // TODO: Some sort of GUI indication of failure
+                                        eprintln!("Failed to read floppy image file: {:?}", filename);
+                                    }
+                                }                                
+                            }
                             None => break,
                             _ => {
                                 // Unhandled event?
                             }
                         }
                     }
-                    
 
                     // -- Update list of floppies
                     let name_vec = machine.floppy_manager().get_floppy_names();
                     framework.gui.set_floppy_names(name_vec);
-
-                    // -- Do we have a new floppy image to load?
-                    if let Some(new_floppy_name) = framework.gui.get_new_floppy_name() {
-                        log::debug!("Load new floppy image: {:?}", new_floppy_name);
-
-                        match machine.floppy_manager().load_floppy_data(&new_floppy_name) {
-                            Ok(vec) => {
-                                
-                                match machine.fdc().borrow_mut().load_image_from(0, vec) {
-                                    Ok(()) => {
-                                        log::info!("Floppy image successfully loaded into virtual drive.");
-                                    }
-                                    Err(err) => {
-                                        log::warn!("Floppy image failed to load: {}", err);
-                                    }
-                                }
-                            } 
-                            Err(e) => {
-                                log::error!("Failed to load floppy image! {:?}", new_floppy_name);
-                                // TODO: Some sort of GUI indication of failure
-                                eprintln!("Failed to read file: {:?}", new_floppy_name);
-                            }
-                        }
-                    }
 
                     // -- Update VHD Creator window
                     if framework.gui.is_window_open(gui::GuiWindow::VHDCreator) {
@@ -392,8 +389,14 @@ fn main() -> Result<(), Error> {
 
                                     match VirtualHardDisk::from_file(vhd_file) {
                                         Ok(vhd) => {
-                                            machine.hdc().borrow_mut().set_vhd(i as usize, vhd);
-                                            log::info!("VHD image {:?} successfully loaded into virtual drive: {}", new_vhd_name, i);
+                                            match machine.hdc().borrow_mut().set_vhd(i as usize, vhd) {
+                                                Ok(_) => {
+                                                    log::info!("VHD image {:?} successfully loaded into virtual drive: {}", new_vhd_name, i);
+                                                }
+                                                Err(err) => {
+                                                    log::error!("Error mounting VHD: {}", err);
+                                                }
+                                            }
                                         },
                                         Err(err) => {
                                             log::error!("Error loading VHD: {}", err);
@@ -427,63 +430,74 @@ fn main() -> Result<(), Error> {
                     }
 
                     // -- Update PIT viewer window
-                    let pit_state = machine.pit_state();
-                    framework.gui.update_pit_state(pit_state);
+                    if framework.gui.is_window_open(gui::GuiWindow::PitViewer) {
+                        let pit_state = machine.pit_state();
+                        framework.gui.update_pit_state(pit_state);
+                    }
 
                     // -- Update PIC viewer window
-                    let pic_state = machine.pic_state();
-                    framework.gui.update_pic_state(pic_state);
+                    if framework.gui.is_window_open(gui::GuiWindow::PicViewer) {
+                        let pic_state = machine.pic_state();
+                        framework.gui.update_pic_state(pic_state);
+                    }
 
                     // -- Update PPI viewer window
-                    let ppi_state = machine.ppi_state();
-                    framework.gui.update_ppi_state(ppi_state);
+                    if framework.gui.is_window_open(gui::GuiWindow::PpiViewer) {
+                        let ppi_state = machine.ppi_state();
+                        framework.gui.update_ppi_state(ppi_state);  
+                    }
 
                     // -- Update DMA viewer window
-                    let dma_state = machine.dma_state();
-                    framework.gui.update_dma_state(dma_state);
+                    if framework.gui.is_window_open(gui::GuiWindow::DmaViewer) {
+                        let dma_state = machine.dma_state();
+                        framework.gui.update_dma_state(dma_state);
+                    }
 
                     // -- Update Instruction Trace window
-                    let trace = machine.cpu().dump_instruction_history();
-                    framework.gui.update_trace_state(trace);
+                    if framework.gui.is_window_open(gui::GuiWindow::TraceViewer) {
+                        let trace = machine.cpu().dump_instruction_history();
+                        framework.gui.update_trace_state(trace);
+                    }
 
                     // -- Update Call Stack window
-                    let stack = machine.cpu().dump_call_stack();
-                    framework.gui.update_call_stack_state(stack);
+                    if framework.gui.is_window_open(gui::GuiWindow::CallStack) {
+                        let stack = machine.cpu().dump_call_stack();
+                        framework.gui.update_call_stack_state(stack);
+                    }
 
                     // -- Update disassembly viewer window
-                    let disassembly_addr_str = framework.gui.get_disassembly_view_address();
-                    let disassembly_addr = match machine.cpu().eval_address(disassembly_addr_str) {
-                        Some(i) => i,
-                        None => 0
-                    };
+                    if framework.gui.is_window_open(gui::GuiWindow::DiassemblyViewer) {
+                        let disassembly_addr_str = framework.gui.get_disassembly_view_address();
+                        let disassembly_addr = match machine.cpu().eval_address(disassembly_addr_str) {
+                            Some(i) => i,
+                            None => 0
+                        };
 
-                    let bus = machine.mut_bus();
-                    bus.set_cursor(disassembly_addr as usize);
-                    let mut disassembly_string = String::new();
-                    for _ in 0..24 {
-                        
-                        let address = bus.tell();
-                        if address < machine::MAX_MEMORY_ADDRESS {
+                        let bus = machine.mut_bus();
+                        bus.set_cursor(disassembly_addr as usize);
+                        let mut disassembly_string = String::new();
+                        for _ in 0..24 {
 
-                            let decode_str: String = match arch::decode(bus) {
-                                Ok(i) => {
-    
-                                    let instr_slice = bus.get_slice_at(address, i.size as usize);
-                                    let instr_bytes_str = util::fmt_byte_array(instr_slice);
-    
-    
-                                    format!("{:05X} {:012} {}\n", address, instr_bytes_str, i)
-                                }
-                                Err(_) => {
-                                    format!("{:05X} INVALID\n", address)
-                                }
-                            };
-                            disassembly_string.push_str(&decode_str)
+                            let address = bus.tell();
+                            if address < machine::MAX_MEMORY_ADDRESS {
+
+                                let decode_str: String = match arch::decode(bus) {
+                                    Ok(i) => {
+                                    
+                                        let instr_slice = bus.get_slice_at(address, i.size as usize);
+                                        let instr_bytes_str = util::fmt_byte_array(instr_slice);                                    
+                                        format!("{:05X} {:012} {}\n", address, instr_bytes_str, i)
+                                    }
+                                    Err(_) => {
+                                        format!("{:05X} INVALID\n", address)
+                                    }
+                                };
+                                disassembly_string.push_str(&decode_str)
+                            }
+
                         }
-
+                        framework.gui.update_dissassembly_view(disassembly_string);
                     }
-                    framework.gui.update_dissassembly_view(disassembly_string);
-
 
                     // Prepare egui
                     framework.prepare(&window);

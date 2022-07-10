@@ -45,7 +45,8 @@ pub(crate) enum GuiWindow {
 
 pub(crate) enum GuiEvent {
     LoadVHD(u32,OsString),
-    CreateVHD(OsString, HardDiskFormat)
+    CreateVHD(OsString, HardDiskFormat),
+    LoadFloppy(u32, OsString)
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -445,7 +446,9 @@ impl GuiState {
                             if ui.button(name.to_str().unwrap()).clicked() {
                                 
                                 log::debug!("Selected floppy filename: {:?}", name);
+                                
                                 self.new_floppy_name0 = Some(name.clone());
+                                self.event_queue.push_back(GuiEvent::LoadFloppy(0, name.clone()));
                                 ui.close_menu();
                             }
                         }
