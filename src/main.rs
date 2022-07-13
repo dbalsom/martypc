@@ -314,7 +314,6 @@ fn main() -> Result<(), Error> {
                     // -- Handle egui "Events"
                     loop {
                         match framework.gui.get_event() {
-
                             Some(GuiEvent::CreateVHD(filename, fmt)) => {
                                 log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
@@ -343,7 +342,7 @@ fn main() -> Result<(), Error> {
                                 match machine.floppy_manager().load_floppy_data(&filename) {
                                     Ok(vec) => {
                                         
-                                        match machine.fdc().borrow_mut().load_image_from(0, vec) {
+                                        match machine.fdc().borrow_mut().load_image_from(drive_select, vec) {
                                             Ok(()) => {
                                                 log::info!("Floppy image successfully loaded into virtual drive.");
                                             }
@@ -358,6 +357,10 @@ fn main() -> Result<(), Error> {
                                         eprintln!("Failed to read floppy image file: {:?}", filename);
                                     }
                                 }                                
+                            }
+                            Some(GuiEvent::EjectFloppy(drive_select)) => {
+                                log::info!("Ejecting floppy in drive: {}", drive_select);
+                                machine.fdc().borrow_mut().unload_image(drive_select);
                             }
                             None => break,
                             _ => {

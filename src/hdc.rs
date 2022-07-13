@@ -223,7 +223,9 @@ pub struct OperationStatus {
     drive_select: usize,
     buffer_idx: usize,
     block_ct: u8,
-    block_n: u8
+    block_n: u8,
+    dma_bytes_left: usize,
+    dma_byte_count: usize,
 }
 
 pub enum Continuation {
@@ -276,8 +278,6 @@ pub struct HardDiskController {
     send_dreq: bool,
     clear_dreq: bool,
     dreq_active: bool,
-    dma_bytes_left: usize,
-    dma_byte_count: usize,
 }
 
 impl HardDiskController {
@@ -320,8 +320,7 @@ impl HardDiskController {
             send_dreq: false,
             clear_dreq: false,
             dreq_active: false,         
-            dma_bytes_left: 0,
-            dma_byte_count: 0,
+
         }
     }
 
@@ -362,7 +361,6 @@ impl HardDiskController {
                     supported = true;
                     break;
                 }
-
         }
 
         if supported {
@@ -830,9 +828,8 @@ impl HardDiskController {
             self.drives[self.drive_select].sector = dcb.s;
             //self.command_status.block_ct = block_count;
             self.operation_status.block_n = 0;
-
-            self.dma_bytes_left = xfer_size;
-            self.dma_byte_count = 0;
+            self.operation_status.dma_bytes_left = xfer_size;
+            self.operation_status.dma_byte_count = 0;
 
             self.state = State::ExecutingCommand;
             self.send_dreq = true;
@@ -883,8 +880,8 @@ impl HardDiskController {
             self.operation_status.block_ct = dcb.block_count;
             self.operation_status.block_n = 0;
 
-            self.dma_bytes_left = xfer_size;
-            self.dma_byte_count = 0;
+            self.operation_status.dma_bytes_left = xfer_size;
+            self.operation_status.dma_byte_count = 0;
 
             self.state = State::ExecutingCommand;
             self.send_dreq = true;
@@ -968,8 +965,8 @@ impl HardDiskController {
         if xfer_size != SECTOR_SIZE {
             log::warn!("Command ReadSectorBuffer: DMA word count != sector size");
         }
-        self.dma_bytes_left = xfer_size;
-        self.dma_byte_count = 0;
+        self.operation_status.dma_bytes_left = xfer_size;
+        self.operation_status.dma_byte_count = 0;
 
         log::trace!("Command ReadSectorBuffer: DMA xfer size: {}", xfer_size);
 
@@ -989,8 +986,8 @@ impl HardDiskController {
         if xfer_size != SECTOR_SIZE {
             log::warn!("Command WriteSectorBuffer: DMA word count != sector size");
         }
-        self.dma_bytes_left = xfer_size;
-        self.dma_byte_count = 0;
+        self.operation_status.dma_bytes_left = xfer_size;
+        self.operation_status.dma_byte_count = 0;
 
         log::trace!("Command WriteSectorBuffer: DMA xfer size: {}", xfer_size);
 
@@ -1119,8 +1116,8 @@ impl HardDiskController {
     fn end_dma_command(&mut self, drive: u32, error: bool ) {
 
         self.clear_dreq = true;
-        self.dma_byte_count = 0;
-        self.dma_bytes_left = 0;
+        self.operation_status.dma_byte_count = 0;
+        self.operation_status.dma_bytes_left = 0;
 
         self.error_flag = error;
         self.send_interrupt = true;
@@ -1133,18 +1130,17 @@ impl HardDiskController {
     fn opearation_write_sector_buffer(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
         if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
 
-            if self.dma_bytes_left > 0 {
+            if self.operation_status.dma_bytes_left > 0 {
                 // Bytes left to transfer
                 let _byte = dma.do_dma_read_u8(bus, HDC_DMA);
-                self.dma_byte_count += 1;
-                self.dma_bytes_left -= 1;
+                self.operation_status.dma_byte_count += 1;
+                self.operation_status.dma_bytes_left -= 1;
                 
-                log::trace!("dma_bytes_left:{}", self.dma_bytes_left);
                 // See if we are done based on DMA controller
                 let tc = dma.check_terminal_count(HDC_DMA);
                 if tc {
                     log::trace!("DMA terminal count triggered end of WriteSectorBuffer command.");
-                    if self.dma_bytes_left != 0 {
+                    if self.operation_status.dma_bytes_left != 0 {
                         log::warn!("Incomplete DMA transfer on terminal count!")
                     }
 
@@ -1173,14 +1169,14 @@ impl HardDiskController {
     fn operation_read_sector(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
         if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
 
-            if self.dma_bytes_left > 0 {
+            if self.operation_status.dma_bytes_left > 0 {
                 // Bytes left to transfer
 
                 let byte = self.drives[self.drive_select].sector_buf[self.operation_status.buffer_idx];
                 dma.do_dma_write_u8(bus, HDC_DMA,byte);
                 self.operation_status.buffer_idx += 1;
-                self.dma_byte_count += 1;
-                self.dma_bytes_left -= 1;
+                self.operation_status.dma_byte_count += 1;
+                self.operation_status.dma_bytes_left -= 1;
 
                 // Exhausted the sector buffer, read more from disk
                 if self.operation_status.buffer_idx == SECTOR_SIZE {
@@ -1222,7 +1218,7 @@ impl HardDiskController {
                 let tc = dma.check_terminal_count(HDC_DMA);
                 if tc {
                     log::trace!("DMA terminal count triggered end of Read command.");
-                    if self.dma_bytes_left != 0 {
+                    if self.operation_status.dma_bytes_left != 0 {
                         log::warn!("Incomplete DMA transfer on terminal count!")
                     }
 
@@ -1249,14 +1245,14 @@ impl HardDiskController {
     fn operation_write_sector(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
         if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
 
-            if self.dma_bytes_left > 0 {
+            if self.operation_status.dma_bytes_left > 0 {
                 // Bytes left to transfer
 
                 let byte = dma.do_dma_read_u8(bus, HDC_DMA);
                 self.drives[self.drive_select].sector_buf[self.operation_status.buffer_idx] = byte;
                 self.operation_status.buffer_idx += 1;
-                self.dma_byte_count += 1;
-                self.dma_bytes_left -= 1;
+                self.operation_status.dma_byte_count += 1;
+                self.operation_status.dma_bytes_left -= 1;
 
                 // Filled the sector buffer, write it to disk
                 if self.operation_status.buffer_idx == SECTOR_SIZE {
@@ -1298,7 +1294,7 @@ impl HardDiskController {
                 let tc = dma.check_terminal_count(HDC_DMA);
                 if tc {
                     log::trace!("DMA terminal count triggered end of Write command.");
-                    if self.dma_bytes_left != 0 {
+                    if self.operation_status.dma_bytes_left != 0 {
                         log::warn!("Incomplete DMA transfer on terminal count!")
                     }
 

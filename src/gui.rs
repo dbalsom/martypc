@@ -46,7 +46,8 @@ pub(crate) enum GuiWindow {
 pub(crate) enum GuiEvent {
     LoadVHD(u32,OsString),
     CreateVHD(OsString, HardDiskFormat),
-    LoadFloppy(u32, OsString)
+    LoadFloppy(usize, OsString),
+    EjectFloppy(usize)
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -291,6 +292,10 @@ impl GuiState {
         self.event_queue.pop_front()
     }
 
+    pub fn send_event(&mut self, event: GuiEvent) {
+        self.event_queue.push_back(event);
+    }
+
     pub fn get_cpu_single_step(&self) -> bool {
         self.cpu_single_step
     }
@@ -441,6 +446,7 @@ impl GuiState {
                 });
                 ui.menu_button("Media", |ui| {
                     ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
+
                     ui.menu_button("Load Floppy in Drive A:...", |ui| {
                         for name in &self.floppy_names {
                             if ui.button(name.to_str().unwrap()).clicked() {
@@ -453,6 +459,29 @@ impl GuiState {
                             }
                         }
                     });
+
+                    ui.menu_button("Load Floppy in Drive B:...", |ui| {
+                        for name in &self.floppy_names {
+                            if ui.button(name.to_str().unwrap()).clicked() {
+                                
+                                log::debug!("Selected floppy filename: {:?}", name);
+                                
+                                self.new_floppy_name1 = Some(name.clone());
+                                self.event_queue.push_back(GuiEvent::LoadFloppy(1, name.clone()));
+                                ui.close_menu();
+                            }
+                        }
+                    });      
+                    
+                    if ui.button("Eject Floppy in Drive A:...").clicked() {
+                        self.event_queue.push_back(GuiEvent::EjectFloppy(0));
+                        ui.close_menu();
+                    };       
+                    
+                    if ui.button("Eject Floppy in Drive B:...").clicked() {
+                        self.event_queue.push_back(GuiEvent::EjectFloppy(1));
+                        ui.close_menu();
+                    };                              
 
                     ui.menu_button("Load VHD in Drive 0:...", |ui| {
                         for name in &self.vhd_names {
