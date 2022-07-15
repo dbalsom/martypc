@@ -349,10 +349,6 @@ impl Pic {
             self.interrupt_stats[interrupt as usize].isr_masked_count += 1;
         }
         else {
-            if interrupt == 1 {
-                log::trace!("PIC: Interrupt {} requested by keyboard and not masked", interrupt);
-            }
-
             // Interrupt is not masked or already in service, process it...
             // (Set INT request line high)
             self.int_request = true;

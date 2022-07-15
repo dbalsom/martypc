@@ -215,13 +215,13 @@ fn main() -> Result<(), Error> {
                                 winit::event::ElementState::Pressed => {
                                     
                                     if let Some(keycode) = input::match_virtual_keycode(keycode) {
-                                        log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                        //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                         machine.key_press(keycode);
                                     };
                                 },
                                 winit::event::ElementState::Released => {
                                     if let Some(keycode) = input::match_virtual_keycode(keycode) {
-                                        log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                        //log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                         machine.key_release(keycode);
                                     };
                                 }

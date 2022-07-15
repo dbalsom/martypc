@@ -353,7 +353,7 @@ impl Ppi {
             self.clear_keyboard = false;
             self.kb_byte = 0;
             pic.clear_interrupt(1);
-            log::trace!("PPI: Clearing keyboard");
+            //log::trace!("PPI: Clearing keyboard");
         }
 
         // Keyboard should send a 'aa' byte when clock line is held low (for how long?)
