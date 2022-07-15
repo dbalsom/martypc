@@ -338,6 +338,7 @@ impl DMAController {
                 chan.current_address_reg = (chan.current_address_reg & 0xFF00) | (data as u16);
             }
         }
+        //log::trace!("Address port write: {:02X} BAR: {:04X} CAR: {:04X}", data, chan.base_address_reg, chan.current_address_reg);
 
         // Flop the flop on write
         self.flipflop = !self.flipflop;
@@ -694,7 +695,11 @@ impl DMAController {
             AddressMode::Increment => {
 
                 if self.channels[channel].current_word_count_reg > 0 {
-                    bus.write_u8(bus_address, data);
+                    
+                    // Don't transfer anything if in Verify mode
+                    if let TransferType::Write = self.channels[channel].transfer_type {
+                        bus.write_u8(bus_address, data);
+                    }
                     
                     self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
                     self.channels[channel].current_word_count_reg -= 1;
@@ -704,7 +709,9 @@ impl DMAController {
                 else if self.channels[channel].current_word_count_reg == 0 && !self.channels[channel].terminal_count {
                     
                     // Transfer one more on a 0 count, then set TC
-                    bus.write_u8(bus_address, data);
+                    if let TransferType::Write = self.channels[channel].transfer_type {
+                        bus.write_u8(bus_address, data);
+                    }
                     //self.channels[channel].current_address_reg += 1;
 
                     //log::trace!("DMA write {:02X} to address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);

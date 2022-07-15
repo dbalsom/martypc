@@ -1033,55 +1033,57 @@ impl GuiState {
                     });                        
                     ui.end_row();   
 
-                    let chan = &mut self.dma_state.dma_channel_state[self.dma_channel_select as usize];
-                    
-                    ui.label(egui::RichText::new(format!("#{} CAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.current_address_reg).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                    if (self.dma_channel_select as usize) < self.dma_state.dma_channel_state.len() {
+                        let chan = &mut self.dma_state.dma_channel_state[self.dma_channel_select as usize];
+                        
+                        ui.label(egui::RichText::new(format!("#{} CAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.current_address_reg).font(egui::TextStyle::Monospace));
+                        ui.end_row();
 
-                    ui.label(egui::RichText::new(format!("#{} Page:        ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.page).font(egui::TextStyle::Monospace));
-                    ui.end_row();                      
+                        ui.label(egui::RichText::new(format!("#{} Page:        ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.page).font(egui::TextStyle::Monospace));
+                        ui.end_row();                      
 
-                    ui.label(egui::RichText::new(format!("#{} CWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.current_word_count_reg).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                        ui.label(egui::RichText::new(format!("#{} CWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.current_word_count_reg).font(egui::TextStyle::Monospace));
+                        ui.end_row();
 
-                    ui.label(egui::RichText::new(format!("#{} BAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.base_address_reg).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                        ui.label(egui::RichText::new(format!("#{} BAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.base_address_reg).font(egui::TextStyle::Monospace));
+                        ui.end_row();
 
-                    ui.label(egui::RichText::new(format!("#{} BWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.base_word_count_reg).font(egui::TextStyle::Monospace));
-                    ui.end_row();    
+                        ui.label(egui::RichText::new(format!("#{} BWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.base_word_count_reg).font(egui::TextStyle::Monospace));
+                        ui.end_row();    
 
-                    ui.label(egui::RichText::new(format!("#{} Service Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.service_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                        ui.label(egui::RichText::new(format!("#{} Service Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.service_mode).font(egui::TextStyle::Monospace));
+                        ui.end_row();
 
-                    ui.label(egui::RichText::new(format!("#{} Address Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.address_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                        ui.label(egui::RichText::new(format!("#{} Address Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.address_mode).font(egui::TextStyle::Monospace));
+                        ui.end_row();
 
-                    ui.label(egui::RichText::new(format!("#{} Xfer Type:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.transfer_type).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                        ui.label(egui::RichText::new(format!("#{} Xfer Type:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.transfer_type).font(egui::TextStyle::Monospace));
+                        ui.end_row();
 
-                    ui.label(egui::RichText::new(format!("#{} Auto Init:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.auto_init).font(egui::TextStyle::Monospace));
-                    ui.end_row();   
+                        ui.label(egui::RichText::new(format!("#{} Auto Init:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.auto_init).font(egui::TextStyle::Monospace));
+                        ui.end_row();   
 
-                    ui.label(egui::RichText::new(format!("#{} Terminal Ct: ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.terminal_count).font(egui::TextStyle::Monospace));
-                    ui.end_row();  
+                        ui.label(egui::RichText::new(format!("#{} Terminal Ct: ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.terminal_count).font(egui::TextStyle::Monospace));
+                        ui.end_row();  
 
-                    ui.label(egui::RichText::new(format!("#{} TC Reached:  ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.terminal_count_reached).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                        ui.label(egui::RichText::new(format!("#{} TC Reached:  ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.terminal_count_reached).font(egui::TextStyle::Monospace));
+                        ui.end_row();
 
-                    ui.label(egui::RichText::new(format!("#{} Masked:      ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut chan.masked).font(egui::TextStyle::Monospace));
-                    ui.end_row();   
+                        ui.label(egui::RichText::new(format!("#{} Masked:      ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut chan.masked).font(egui::TextStyle::Monospace));
+                        ui.end_row();
+                    }
 
 
                 });

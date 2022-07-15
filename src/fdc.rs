@@ -15,7 +15,7 @@ use crate::pic;
 pub const FDC_IRQ: u8 = 0x06;
 pub const FDC_DMA: usize = 2;
 pub const FDC_MAX_DRIVES: usize = 4;
-
+pub const FORMAT_BUFFER_SIZE: usize = 4;
 pub const SECTOR_SIZE: usize = 512;
 
 pub const FDC_DIGITAL_OUTPUT_REGISTER: u16 = 0x3F2;
@@ -151,11 +151,13 @@ lazy_static! {
     };
 }
 
+/// Represent the state of the DIO bit of the Main Status Register in a readable way.
 pub enum IoMode {
     ToCpu,
     FromCpu
 }
 
+/// Represent the various commands that the NEC FDC knows how to handle.
 #[derive (Clone, Copy, Debug)]
 pub enum Command {
     NoCommand,
@@ -174,6 +176,11 @@ pub enum Command {
     Invalid
 }
 
+/// Represents the possible values of the Interrupt Code field in Status Register 0.
+/// Returning 'AbnormalTermination' may result in a General Failure reading drive 
+/// message in DOS.
+/// InvalidCommand should be returned for any command not handled by the FDC - later
+/// controller models added more commands.
 pub enum InterruptCode {
     NormalTermination,
     AbnormalTermination,
@@ -181,13 +188,31 @@ pub enum InterruptCode {
     AbnormalPolling
 }   
 
-pub enum Operation {
-    NoOperation,
-    ReadSector(u8, u8, u8, u8, u8, u8, u8), // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
-    WriteSector(u8, u8, u8, u8, u8, u8, u8) // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
+/// Attempt to classify every general error condition a virtual disk drive may experience.
+/// These states are used to build the status bytes presented afer a command has been
+/// executed. The exact mapping between error conditions and status flags is uncertain...
+#[derive (Clone, Copy, Debug)]
+pub enum DriveError {
+    NoError,
+    NoMedia,
+    BadSeek,
+    BadRead,
+    BadWrite,
+    WriteProtect,
+    DMAError,
 }
 
-
+/// Classify operations - an Operation is intiated by any Command that does not immediately
+/// terminate, and is called on a repeated basis by the run() method until complete. 
+/// 
+/// Operations usually involve DMA transfers.
+#[derive (Debug)]
+pub enum Operation {
+    NoOperation,
+    ReadSector(u8, u8, u8, u8, u8, u8, u8),     // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
+    WriteSector(u8, u8, u8, u8, u8, u8, u8),    // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
+    FormatTrack(u8, u8, u8, u8)
+}
 
 pub struct DiskDrive {
     error_signal: bool,
@@ -247,16 +272,19 @@ pub struct FloppyController {
     command: Command,
     command_fn: Option<CommandDispatchFn>,
     last_command: Command,
+    receiving_command: bool,
     command_byte_n: u32,
     operation: Operation,
+    operation_init: bool,
     send_interrupt: bool,
     pending_interrupt: bool,
     end_interrupt: bool,
-    receiving_command: bool,
-    command_init: bool,
+    
+    last_error: DriveError,
 
     data_register_out: VecDeque<u8>,
     data_register_in: VecDeque<u8>,
+    format_buffer: VecDeque<u8>,
 
     drives: [DiskDrive; 4],    
     drive_select: usize,
@@ -266,6 +294,7 @@ pub struct FloppyController {
     dma_bytes_left: usize
 }
 
+/// IO Port handlers for the FDC
 impl IoDevice for FloppyController {
 
     fn read_u8(&mut self, port: u16) -> u8 {
@@ -316,15 +345,20 @@ impl FloppyController {
             command_fn: None,
             last_command: Command::NoCommand,
             command_byte_n: 0,
+            receiving_command: false,
             operation: Operation::NoOperation,
+            operation_init: false,
+
+            last_error: DriveError::NoError,
+
             send_interrupt: false,
             pending_interrupt: false,
             end_interrupt: false,
-            receiving_command: false,
-            command_init: false,
-
+            
             data_register_out: VecDeque::new(),
             data_register_in: VecDeque::new(),
+            format_buffer: VecDeque::new(),
+
             drives: [
                 DiskDrive::new(),
                 DiskDrive::new(),
@@ -342,8 +376,6 @@ impl FloppyController {
     /// Reset the Floppy Drive Controller
     pub fn reset(&mut self) {
 
-        // We keep the currently loaded floppy image(s). After all, a reboot wouldn't 
-        // eject your disks.
         self.status_byte = 0;
         self.drive_select = 0;
         self.reset_flag = true;
@@ -351,10 +383,13 @@ impl FloppyController {
 
         self.data_register_out.clear();
         self.data_register_in.clear();
+        self.format_buffer.clear();
 
         self.mrq = true;
         self.dio = IoMode::FromCpu;
 
+        // Seek to first sector for each drive, but keep the currently loaded floppy image(s). 
+        // After all, a reboot wouldn't eject your disks.
         for drive in &mut self.drives.iter_mut() {
             drive.head = 0;
             drive.cylinder = 0;
@@ -365,7 +400,9 @@ impl FloppyController {
             drive.positioning = false;
         }
 
+        self.last_error = DriveError::NoError;
         self.send_interrupt = false;
+        self.pending_interrupt = false;
         self.end_interrupt = false;
 
         self.in_dma = false;
@@ -578,7 +615,17 @@ impl FloppyController {
         // The ST1 status register contains mostly error codes
         let mut st1_byte = 0;
 
-        // Check behavior on real hardware
+        // Set the "No Data" bit if we received an invalid request
+        match self.last_error {
+            DriveError::BadRead | DriveError::BadWrite | DriveError::BadSeek => {
+                st1_byte |= ST1_NODATA
+            }
+            _=> {}
+        }
+
+        // Based on DOS's behavior regarding the "Not ready error" it appears that 
+        // operations without a disk timeout instead of returning a particular error
+        // flag. Need to verify this on real hardware if possible.
         if !self.drives[drive_select].have_disk {
             st1_byte |= ST1_NODATA | ST1_NO_ID;
         }
@@ -620,7 +667,7 @@ impl FloppyController {
             st3_byte |= ST3_WRITE_PROTECT;
         }
 
-        // Error signal
+        // Error signal - (What conditions cause ESIG to assert?)
         if self.drives[drive_select].error_signal {
             st3_byte |= ST3_ESIG;
         }
@@ -647,6 +694,8 @@ impl FloppyController {
     }    
 
     pub fn set_command(&mut self, command: Command, n_bytes: u32, command_fn: CommandDispatchFn ) {
+        // Since we are entering a new command, clear the previous error status
+        self.last_error = DriveError::NoError;
         self.receiving_command = true;
         self.command = command;
         self.command_fn = Some(command_fn);
@@ -657,6 +706,24 @@ impl FloppyController {
         self.busy = true;
         self.dio = IoMode::ToCpu;
         self.mrq = true;
+    }
+    
+    /// Returns whether the CHS address is valid for the specified drive
+    pub fn is_id_valid(&mut self, drive_select: usize, c: u8, h: u8, s:u8 ) -> bool {
+
+        if !self.drives[drive_select].have_disk {
+            return false;
+        }
+
+        // Sectors are 1-indexed 
+        if c < self.drives[drive_select].max_cylinders
+            && h < self.drives[drive_select].max_heads
+            && s <= self.drives[drive_select].max_sectors {
+
+            return true;
+        }
+
+        return false;
     }
 
     /// Handle a write to the Data Register, 0x3F5. 
@@ -671,8 +738,8 @@ impl FloppyController {
     pub fn handle_data_register_write(&mut self, data: u8) {
         //log::trace!("Data Register Write");
         if !self.receiving_command { 
-            let command = data & COMMAND_MASK;
 
+            let command = data & COMMAND_MASK;
             match command {
                 COMMAND_READ_TRACK => {
                     log::trace!("Received Read Track command: {:02}", command);
@@ -693,6 +760,7 @@ impl FloppyController {
                 }
                 COMMAND_FORMAT_TRACK => {
                     log::trace!("Received Format Track command: {:02}", command);
+                    self.set_command(Command::FormatTrack, 5, FloppyController::command_format_track );
                 }
                 COMMAND_FIX_DRIVE_DATA => {
                     log::trace!("Received Fix Drive Data command: {:02}", command);
@@ -708,7 +776,7 @@ impl FloppyController {
                 }
                 COMMAND_SENSE_INT_STATUS => {
                     log::trace!("Received Sense Interrupt Status command: {:02}", command);
-                    // Sense Interrupt command has no input bytes
+                    // Sense Interrupt command has no input bytes, so execute directly
                     self.command_sense_interrupt();
                 }
                 COMMAND_READ_SECTOR_ID => {
@@ -773,10 +841,10 @@ impl FloppyController {
 
            Puzzling.
            
-           The 5150 BIOS doesn't do this, and there's no explanation as to why this changed.*/
+           The 5150 BIOS doesn't do this, and there's no explanation as to why this changed.
 
-        // Release IR line
-        self.end_interrupt = true;
+            Sense Interrupt returns the Invalid Opcode interrupt code if an interrupt was not in progress.
+        */
 
         let mut st0_byte = ST0_INVALID_OPCODE;
 
@@ -811,7 +879,13 @@ impl FloppyController {
                     Command::SeekParkHead => true,
                     _ => false,
                 };
-                st0_byte = self.make_st0_byte(InterruptCode::NormalTermination, self.drive_select, seek_flag);
+
+                let code = match self.last_error {
+                    DriveError::BadRead | DriveError::BadWrite | DriveError::BadSeek => InterruptCode::AbnormalTermination,
+                    _=> InterruptCode::NormalTermination
+                };
+
+                st0_byte = self.make_st0_byte(code, self.drive_select, seek_flag);
             }
             else {
                 // Sense Interrupt without pending interrupt is invalid
@@ -829,6 +903,8 @@ impl FloppyController {
         
         // We have data for CPU to read
         self.send_data_register();
+        // Deassert interrupt
+        self.end_interrupt = true;
 
         self.last_command = Command::SenseIntStatus;
         self.command = Command::NoCommand;
@@ -836,8 +912,10 @@ impl FloppyController {
         
     }
 
+    /// Perform the Fix Drive Data command.
+    /// We don't do anything currently with the provided values which are only useful for real drive timings.
     pub fn command_fix_drive_data(&mut self) -> Continuation {
-        // We don't really do anything with these values
+        
         let steprate_unload = self.data_register_in.pop_front().unwrap();
         let headload_ndm = self.data_register_in.pop_front().unwrap();
 
@@ -846,6 +924,8 @@ impl FloppyController {
         Continuation::CommandComplete
     }
 
+    /// Perform the Check Drive Status command.
+    /// This command returns the ST3 status register.
     pub fn command_check_drive_status(&mut self) -> Continuation {
 
         let drive_select: usize = (self.data_register_in.pop_front().unwrap() & 0x03) as usize;
@@ -856,7 +936,7 @@ impl FloppyController {
         // We have data for the CPU to read
         self.send_data_register();
 
-        log::trace!("command_check_drive_status completed: {:02b}", drive_select);
+        log::trace!("command_check_drive_status completed: {}", drive_select);
 
         Continuation::CommandComplete
     }
@@ -880,7 +960,7 @@ impl FloppyController {
         self.drives[drive_select].head = head_select;
         self.drives[drive_select].sector = 1;
         
-        log::trace!("command_calibrate_drive completed: {:02b}", drive_select);
+        log::trace!("command_calibrate_drive completed: {}", drive_select);
 
         // Calibrate command sends interrupt when complete
         self.send_interrupt = true;
@@ -888,6 +968,8 @@ impl FloppyController {
     }
 
     /// Performs a Seek for the specified drive to the specified cylinder and head.
+    /// 
+    /// This command has no result phase. The status of the command is checked via Sense Interrupt.
     pub fn command_seek_head(&mut self) -> Continuation {
         // A real floppy drive would take some time to seek
         // Not sure how to go about determining proper timings. For now, seek instantly
@@ -897,17 +979,23 @@ impl FloppyController {
         let drive_select = (drive_head_select & 0x03) as usize;
         let head_select = (drive_head_select >> 2) & 0x01;
 
-        // Set CHS
+        // Is this seek out of bounds?
+        if !self.is_id_valid(drive_select, cylinder, head_select, 1) {
+            self.last_error = DriveError::BadSeek;
+            self.send_interrupt = true;
+            log::warn!("command_seek_head: invalid seek: drive:{} c: {} h: {}", drive_head_select, cylinder, head_select);
+            return Continuation::CommandComplete;
+        }
+    
+        // Set CHS to new seeked values
         self.drives[drive_select].cylinder = cylinder;
         self.drives[drive_select].head = head_select;
-        // We can only seek to the start of a cylinder, so set to first sector
         self.drives[drive_select].sector = 1;
 
-        // Seek command sends interrupt when complete
+        log::trace!("command_seek_head completed: {} cylinder: {}", drive_head_select, cylinder);
+
+        self.last_error = DriveError::NoError;
         self.send_interrupt = true;
-
-        log::trace!("command_seek_head completed: {:03b} cylinder: {:02X}", drive_head_select, cylinder);
-
         Continuation::CommandComplete
     }
 
@@ -942,16 +1030,16 @@ impl FloppyController {
         // Also, returning error codes would cause the BIOS to issue an error 601.
         // So, we just let this operation time out if no disk is present, and that seems to work.
         if !self.drives[drive_select].have_disk {
-            //self.send_results_phase(
-            //    InterruptCode::NormalTermination, 
-            //    drive_select, 
-            //    self.drives[drive_select].cylinder,
-            //    self.drives[drive_select].head,
-            //    self.drives[drive_select].sector,
-            //    0
-            //);
-            //self.send_interrupt = true;
             return Continuation::CommandComplete
+        }
+
+        // Is this read out of bounds?
+        if !self.is_id_valid(drive_select, cylinder, head, sector) {
+            self.last_error = DriveError::BadRead;
+            self.send_interrupt = true;
+            log::warn!("command_read_sector: invalid chs: drive:{}, c:{} h:{} s:{}", 
+                drive_select, cylinder, head, sector);
+            return Continuation::CommandComplete;
         }
 
         // "Seek" to values given in command
@@ -982,7 +1070,7 @@ impl FloppyController {
         //}
         //self.dma_bytes_left = max_sectors as usize * SECTOR_SIZE;
 
-        log::trace!("command_read_sector: drive: {:01X} cyl:{:01X} head:{:01X} sector:{:02X} sector_size:{:02X} track_len:{:02X} gap3_len:{:02X} data_len:{:02X}",
+        log::trace!("command_read_sector: drive: {} cyl:{} head:{} sector:{} sector_size:{} track_len:{} gap3_len:{} data_len:{}",
             drive_select, cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
         //log::trace!("command_read_sector: may operate on maximum of {} sectors", max_sectors);
 
@@ -990,7 +1078,7 @@ impl FloppyController {
         log::trace!("command_read_sector: base address of image read: {:06X}", base_address);
 
         // Flag to set up transfer size later
-        self.command_init = false;
+        self.operation_init = false;
 
         // Keep running command until DMA transfer completes
         Continuation::ContinueAsOperation
@@ -1029,7 +1117,7 @@ impl FloppyController {
         // DMA now in progress (TODO: Support PIO mode?)
         self.in_dma = true;
 
-        log::trace!("command_write_sector: cyl:{:01X} head:{:01X} sector:{:02X} sector_size:{:02X} track_len:{:02X} gap3_len:{:02X} data_len:{:02X}",
+        log::trace!("command_write_sector: cyl:{} head:{} sector:{} sector_size:{} track_len:{} gap3_len:{} data_len:{}",
             cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
         //log::trace!("command_read_sector: may operate on maximum of {} sectors", max_sectors);
 
@@ -1037,7 +1125,36 @@ impl FloppyController {
         log::trace!("command_write_sector: base address of image write: {:06X}", base_address);
 
         // Flag to set up transfer size later
-        self.command_init = false;
+        self.operation_init = false;
+
+        // Keep running command until DMA transfer completes
+        Continuation::ContinueAsOperation
+    }
+
+    /// Perform the Write Sector Command
+    pub fn command_format_track(&mut self) -> Continuation {
+
+        let drive_head_select = self.data_register_in.pop_front().unwrap();
+        let sector_size = self.data_register_in.pop_front().unwrap();
+        let track_len = self.data_register_in.pop_front().unwrap();
+        let gap3_len = self.data_register_in.pop_front().unwrap();
+        let fill_byte = self.data_register_in.pop_front().unwrap();
+
+        let drive_select = (drive_head_select & 0x03) as usize;
+        let head_select = (drive_head_select >> 2) & 0x01;
+
+        // Start format operation
+        self.operation_init = false;
+        self.operation = Operation::FormatTrack(sector_size, track_len, gap3_len, fill_byte);
+
+        // Clear MRQ until operation completion so there is no attempt to read result values
+        self.mrq = false;
+
+        // DMA now in progress (TODO: Support PIO mode?)
+        self.in_dma = true;
+
+        log::trace!("command_format_track: sector_size:{} track_len:{} gap3_len:{} fill_byte:{:02X}",
+            sector_size, track_len, gap3_len, fill_byte);
 
         // Keep running command until DMA transfer completes
         Continuation::ContinueAsOperation
@@ -1102,6 +1219,8 @@ impl FloppyController {
         self.data_register_out.push_back(sector_size);
     
         self.send_data_register();
+        // Clear error state
+        self.last_error = DriveError::NoError;
     }
 
     fn operation_read_sector(
@@ -1120,7 +1239,10 @@ impl FloppyController {
             return
         }
 
-        if !self.command_init {
+        // Is read valid?
+
+
+        if !self.operation_init {
             let xfer_size = dma.get_dma_transfer_size(FDC_DMA);
 
             if xfer_size % SECTOR_SIZE != 0 {
@@ -1130,13 +1252,11 @@ impl FloppyController {
             let xfer_sectors = xfer_size / SECTOR_SIZE;
             log::trace!("DMA programmed for transfer of {} sectors", xfer_sectors);
 
-            self.dma_bytes_left = xfer_sectors * SECTOR_SIZE;
-            self.command_init = true;
-        }
-
-        if self.dma_bytes_left == SECTOR_SIZE {
             let dst_address = dma.get_dma_transfer_address(FDC_DMA);
-            log::trace!("DMA destination address: {:05X}", dst_address)
+            log::trace!("DMA destination address: {:05X}", dst_address);
+
+            self.dma_bytes_left = xfer_sectors * SECTOR_SIZE;
+            self.operation_init = true;
         }
 
         if self.dma_bytes_left > 0 {
@@ -1212,7 +1332,7 @@ impl FloppyController {
             return
         }
 
-        if !self.command_init {
+        if !self.operation_init {
             let xfer_size = dma.get_dma_transfer_size(FDC_DMA);
 
             if xfer_size % SECTOR_SIZE != 0 {
@@ -1223,7 +1343,7 @@ impl FloppyController {
             log::trace!("DMA programmed for transfer of {} sectors", xfer_sectors);
 
             self.dma_bytes_left = xfer_sectors * SECTOR_SIZE;
-            self.command_init = true;
+            self.operation_init = true;
         }
 
         if self.dma_bytes_left == SECTOR_SIZE {
@@ -1287,7 +1407,110 @@ impl FloppyController {
             self.operation = Operation::NoOperation;
             self.send_interrupt = true;
         }
+    }
+    
+    /// Run the Format Track Operation
+    /// 
+    /// DOS will program DMA for the entire track length, but we only read track_len * 4 bytes from DMA 
+    /// to read in the format buffers for each sector
+    fn operation_format_track(
+        &mut self, 
+        dma: &mut dma::DMAController, 
+        bus: &mut BusInterface,
+        sector_size: u8,
+        track_len: u8, 
+        gap3_len: u8,
+        fill_byte: u8 ) {
+
+        if !self.in_dma {
+            log::error!("Error: Format Track operation without DMA!");
+            self.operation = Operation::NoOperation;
+            return
+        }
+
+        if !self.operation_init {
+            let xfer_size = dma.get_dma_transfer_size(FDC_DMA);
+
+            if xfer_size < (track_len as usize * FORMAT_BUFFER_SIZE) {
+                log::error!("Format Track: DMA word count too small for track_len({:02}) format buffers.", track_len);
+                self.operation = Operation::NoOperation;
+                return 
+            }
+
+            let xfer_sectors = xfer_size / SECTOR_SIZE;
+            log::trace!("Format Track: DMA programmed for transfer of {} sectors", xfer_sectors);
+
+            self.dma_bytes_left = track_len as usize * FORMAT_BUFFER_SIZE;
+            self.operation_init = true;
+        }
+
+        if self.dma_bytes_left > 0 {
+            // Bytes left to transfer
+
+            // Check if DMA is ready
+            if dma.check_dma_ready(FDC_DMA) {
+                let byte = dma.do_dma_read_u8(bus, FDC_DMA);
+                self.format_buffer.push_back(byte);
+                self.dma_bytes_left = self.dma_bytes_left.saturating_sub(1);
+            }
+
+            // Have we read in all 4 bytes of a format buffer? Format the sector specified by the buffer.
+            if self.format_buffer.len() == FORMAT_BUFFER_SIZE {
+
+                let f_cylinder = self.format_buffer.pop_front().unwrap();
+                let f_head = self.format_buffer.pop_front().unwrap();
+                let f_sector = self.format_buffer.pop_front().unwrap();
+                let f_sector_size = self.format_buffer.pop_front().unwrap();
+
+                log::trace!("Formatting cylinder: {} head: {} sector: {} size: {} with byte: {:02X}", 
+                    f_cylinder, f_head, f_sector, f_sector_size, fill_byte);
+
+                self.format_sector(f_cylinder, f_head, f_sector, fill_byte);
+                self.send_interrupt = true;
+
+                // Clear for next 4 bytes
+                self.format_buffer.clear();
+            }
+        }
+        else {
+            // No more bytes left to transfer. Finalize operation
+
+            //let tc = dma.check_terminal_count(FDC_DMA);
+            //if !tc {
+            //    log::warn!("FDC Format Track complete without DMA terminal count.");
+            //}
+
+            self.dma_byte_count = 0;
+            self.dma_bytes_left = 0;
+
+            //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
+
+            // Terminate normally by sending results registers
+
+            // Note the u765a whitepaper says this about the result codes of the Format Track command:
+            // "In this case, the ID information has no meaning"
+            self.send_results_phase(
+                InterruptCode::NormalTermination, 
+                self.drive_select, 
+                0, 
+                0,
+                0, 
+                sector_size);
+
+            // Set new CHS
+            //self.drives[self.drive_select].cylinder = new_c;
+            //self.drives[self.drive_select].head = new_h;
+            //self.drives[self.drive_select].sector = new_s;
+        
+            // Finalize operation
+            self.operation = Operation::NoOperation;
+            self.send_interrupt = true;
+        }
     }    
+
+    pub fn format_sector(&mut self, cylinder: u8, head: u8, sector: u8, fill_byte: u8) {
+
+    }
 
     /// Run the Floppy Drive Controller. Process running Operations.
     pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, cpu_cycles: u32 ) {
@@ -1308,14 +1531,20 @@ impl FloppyController {
 
         // Run operation
         match self.operation {
+            Operation::NoOperation => {
+                // Do nothing
+            }
             Operation::ReadSector(cylinder, head, sector, sector_size, track_len, _gap3_len, _data_len) => {
                 self.operation_read_sector(dma, bus, cylinder, head, sector, sector_size, track_len)
             }
             Operation::WriteSector(cylinder, head, sector, sector_size, track_len, _gap3_len, _data_len) => {
                 self.operation_write_sector(dma, bus, cylinder, head, sector, sector_size, track_len)
             }
+            Operation::FormatTrack(sector_size, track_len, gap3_len, fill_byte) => {
+                self.operation_format_track(dma, bus, sector_size, track_len, gap3_len, fill_byte)
+            }
             _ => {
-                // Do nothing
+                log::error!("Invalid FDC operation: {:?}", self.operation)
             }
         }
     }
