@@ -28,6 +28,7 @@ mod dma;
 mod fdc;
 mod floppy_manager;
 mod gui;
+mod gui_image;
 mod hdc;
 mod io;
 mod machine;
