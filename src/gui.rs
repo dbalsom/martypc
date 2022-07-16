@@ -1,22 +1,26 @@
+/*
+    gui.rs
 
-use egui::{ClippedMesh, Context, TexturesDelta};
+    Handle drawing the egui interface
+
+*/
+use std::{
+    cell::RefCell,
+    collections::{HashMap, VecDeque},
+    ffi::OsString,
+    rc::Rc
+};
+
+use egui::{ClippedMesh, Context, ColorImage, ImageData, TexturesDelta};
 use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
+use winit::{window::Window};
 
-const VHD_REGEX: &str = r"[\w_]*.vhd$";
-
-use winit::{
-    window::{Window},
-    event_loop::EventLoopProxy
-};
-
-use std::{
-    cell::RefCell,
-    ffi::OsString,
-    rc::Rc, collections::VecDeque
-};
 use crate::{
+
+    gui_image::{UiImage, get_ui_image},
+
     machine::{ExecutionControl, ExecutionState},
     cpu::CpuStringState, 
     dma::DMAControllerStringState,
@@ -27,7 +31,7 @@ use crate::{
     
 };
 
-//use crate::syntax_highlighting::code_view_ui;
+const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
 pub(crate) enum GuiWindow {
     CpuControl,
@@ -67,10 +71,11 @@ pub(crate) struct Framework {
 /// Example application state. A real application will need a lot more state than this.
 pub(crate) struct GuiState {
 
+    texture: Option<egui::TextureHandle>,
     event_queue: VecDeque<GuiEvent>,
 
     /// Only show the associated window when true.
-    window_open: bool,
+    about_window_open: bool,
     error_dialog_open: bool,
     cpu_control_dialog_open: bool,
     memory_viewer_open: bool,
@@ -233,8 +238,9 @@ impl GuiState {
     fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
         Self { 
 
+            texture: None,
             event_queue: VecDeque::new(),
-            window_open: false, 
+            about_window_open: false, 
             error_dialog_open: false,
             cpu_control_dialog_open: true,
             memory_viewer_open: false,
@@ -438,9 +444,9 @@ impl GuiState {
 
                 let font_size = 20.0;
 
-                ui.menu_button("File", |ui| {
+                ui.menu_button("Emulator", |ui| {
                     if ui.button("About...").clicked() {
-                        self.window_open = true;
+                        self.about_window_open = true;
                         ui.close_menu();
                     }
                 });
@@ -552,19 +558,30 @@ impl GuiState {
             });
         });
 
-        egui::Window::new("Hello, egui!")
-            .open(&mut self.window_open)
-            .show(ctx, |ui| {
-                ui.label("This example demonstrates using egui with pixels.");
-                ui.label("Made with 💖 in San Francisco!");
+        let texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
+            ctx.load_texture(
+                "logo",
+                get_ui_image(UiImage::Logo),
+            )
+        });
 
+        egui::Window::new("About")
+            .open(&mut self.about_window_open)
+            .show(ctx, |ui| {
+
+                ui.image(texture, texture.size_vec2());
                 ui.separator();
+
+                ui.label("Marty is free software.");
 
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x /= 2.0;
-                    ui.label("Learn more about egui at");
-                    ui.hyperlink("https://docs.rs/egui");
+                    ui.label("Github:");
+                    ui.hyperlink("https://github.com/dbalsom/marty");
                 });
+
+                ui.separator();
+                
             });
 
         egui::Window::new("Error")
