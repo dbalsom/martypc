@@ -14,6 +14,7 @@ Thumbs.db
 /rom
 /floppy
 /hdd
+*.pcm
 
 # Assembly stuff
 /asm

@@ -6,8 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
-syntect = "5.0.0"
 egui = { version = "0.17"}
 egui_wgpu_backend = "0.17"
 egui-winit = { version = "0.17", default-features = false, features = ["links"] }
@@ -23,3 +21,5 @@ md5 = "0.7.0"
 anyhow = "1.0.58"
 uuid = { version = "1.1.2", features = ["v4"]}
 image = "0.24.2"
+cpal = "0.13.5"
+ringbuf = "0.2.8"

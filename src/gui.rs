@@ -323,7 +323,7 @@ impl GuiState {
             GuiWindow::CpuStateViewer => self.register_viewer_open,
             GuiWindow::TraceViewer => self.trace_viewer_open,
             GuiWindow::DiassemblyViewer => self.disassembly_viewer_open,
-            GuiWindow::PitViewer => self.pic_viewer_open,
+            GuiWindow::PitViewer => self.pit_viewer_open,
             GuiWindow::PicViewer => self.pic_viewer_open,
             GuiWindow::PpiViewer => self.ppi_viewer_open,
             GuiWindow::DmaViewer => self.dma_viewer_open,
@@ -581,7 +581,7 @@ impl GuiState {
                 });
 
                 ui.separator();
-                
+
             });
 
         egui::Window::new("Error")

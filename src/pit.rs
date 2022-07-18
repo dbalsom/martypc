@@ -358,6 +358,7 @@ impl ProgrammableIntervalTimer {
         bus: &mut BusInterface, 
         pic: &mut pic::Pic, 
         dma: &mut dma::DMAController,
+        buffer_producer: &mut ringbuf::Producer<u8>,
         cpu_cycles: u32 ) {
 
         let mut pit_cycles = Pit::get_pit_cycles(cpu_cycles);
@@ -376,7 +377,8 @@ impl ProgrammableIntervalTimer {
         let pit_cycles_int = pit_cycles as u32;
         
         for _ in 0..pit_cycles_int {
-            self.tick(bus, pic, dma);
+            // Each tick, the state of PIT Channel #2 is pushed into the ringbuf
+            self.tick(bus, pic, dma, buffer_producer);
         }
     }
 
@@ -384,8 +386,17 @@ impl ProgrammableIntervalTimer {
         self.pit_cycles
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, pic: &mut pic::Pic, dma: &mut dma::DMAController ) {
+    pub fn get_output_state(&self, channel: usize) -> bool {
+        self.channels[channel].output_is_high
+    }
 
+    pub fn tick(
+        &mut self,
+        bus: &mut BusInterface,
+        pic: &mut pic::Pic,
+        dma: &mut dma::DMAController,
+        buffer_producer: &mut ringbuf::Producer<u8>) 
+    {
         self.pit_cycles += 1;
 
         for (i,t) in &mut self.channels.iter_mut().enumerate() {
@@ -446,6 +457,7 @@ impl ProgrammableIntervalTimer {
                                     // Channel 1 wants to do DMA refresh.
                                     dma.do_dma_read_u8(bus, 0);
                                 }
+
                                 // Output would go low here
                             }
                         }
@@ -515,6 +527,22 @@ impl ProgrammableIntervalTimer {
                 },
                 ChannelMode::SoftwareTriggeredStrobe => {},
                 ChannelMode::HardwareTriggeredStrobe => {},
+            }
+
+            // Push state of PIT channel #2 output to ring buffer
+            if i == 2 {
+                if t.output_is_high {
+                    match buffer_producer.push(1) {
+                        Ok(()) => (),
+                        Err(_) => ()
+                    }
+                }
+                else {
+                    match buffer_producer.push(0) {
+                        Ok(()) => (),
+                        Err(_) => ()
+                    }
+                }
             }
         }
     }

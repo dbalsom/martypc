@@ -10,7 +10,9 @@ use log;
 
 use std::{
     rc::Rc,
-    cell::{Cell, RefCell}, collections::VecDeque
+    cell::{Cell, RefCell}, collections::VecDeque,
+    fs::File,
+    io::Write
 };
 
 use crate::{
@@ -27,7 +29,10 @@ use crate::{
     pic::{self, PicStringState},
     ppi::{self, PpiStringState},
     rom_manager::RomManager,
+    sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer}
 };
+
+use ringbuf::{RingBuffer, Producer, Consumer};
 
 pub const NUM_FLOPPIES: u32 = 2;
 pub const NUM_HDDS: u32 = 2;
@@ -109,6 +114,7 @@ impl ExecutionControl {
 pub struct Machine {
     machine_type: MachineType,
     video_type: VideoType,
+    sound_player: SoundPlayer,
     rom_manager: RomManager,
     floppy_manager: FloppyManager,
     bus: BusInterface,
@@ -116,6 +122,12 @@ pub struct Machine {
     cpu: Cpu,
     dma_controller: Rc<RefCell<dma::DMAController>>,
     pit: Rc<RefCell<pit::Pit>>,
+    pit_buffer_producer: Producer<u8>,
+    pit_buffer_consumer: Consumer<u8>,
+    pit_samples_produced: u64,
+    pit_ticks_per_sample: f64,
+    pit_ticks: f64,
+    debug_snd_file: File,
     pic: Rc<RefCell<pic::Pic>>,
     ppi: Rc<RefCell<ppi::Ppi>>,
     cga: Rc<RefCell<cga::CGACard>>,
@@ -131,6 +143,7 @@ impl Machine {
     pub fn new(
         machine_type: MachineType,
         video_type: VideoType,
+        sound_player: SoundPlayer,
         rom_manager: RomManager,
         floppy_manager: FloppyManager,
         ) -> Machine {
@@ -140,6 +153,18 @@ impl Machine {
         
         let mut cpu = Cpu::new(CpuType::Cpu8186, 4);
         cpu.reset();        
+
+        let pit_buf_size = (pit::PIT_MHZ * 1_000_000.0 / BUFFER_MS as f64) as usize;
+        // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
+        let mut pit_buf: RingBuffer<u8> = RingBuffer::new(pit_buf_size);
+        let (pit_buffer_producer, mut pit_buffer_consumer) = pit_buf.split();
+        let sample_rate = sound_player.sample_rate();
+        let pit_ticks_per_sample = (pit::PIT_MHZ * 1_000_000.0) / sample_rate as f64;
+
+        // open a file to write the sound to
+        let mut debug_snd_file = File::create("output.pcm").expect("Couldn't open debug pcm file");
+
+        log::trace!("Sample rate: {} pit_ticks_per_sample: {}", sample_rate, pit_ticks_per_sample);
 
         // Attach IO Device handlers
 
@@ -225,6 +250,7 @@ impl Machine {
         Machine {
             machine_type,
             video_type,
+            sound_player,
             rom_manager,
             floppy_manager,
             bus: bus,
@@ -232,6 +258,12 @@ impl Machine {
             cpu: cpu,
             dma_controller: dma,
             pit: pit,
+            pit_buffer_producer,
+            pit_buffer_consumer,
+            pit_ticks_per_sample,
+            pit_ticks: 0.0,
+            pit_samples_produced: 0,
+            debug_snd_file,
             pic: pic,
             ppi: ppi,
             cga: cga,
@@ -438,10 +470,18 @@ impl Machine {
                     &mut self.bus,
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
+                    &mut self.pit_buffer_producer,
                     fake_cycles);
 
-                self.cga.borrow_mut().run(&mut self.io_bus, 7);
-                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), 7);
+                // Sample the PIT channel
+                self.pit_ticks += fake_cycles as f64;
+                while self.pit_ticks > self.pit_ticks_per_sample {
+                    self.pit_buf_to_sound_buf();
+                    self.pit_ticks -= self.pit_ticks_per_sample
+                }
+
+                self.cga.borrow_mut().run(&mut self.io_bus, fake_cycles);
+                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), fake_cycles);
                 
                 // FDC needs PIC to issue controller interrupts, DMA to request DMA transfers, and Memory Bus to read/write to via DMA
                 self.fdc.borrow_mut().run(
@@ -463,5 +503,38 @@ impl Machine {
             cycles_elapsed += fake_cycles;
             self.cpu_cycles += fake_cycles as u64;
         }
+    }
+
+    pub fn play_sound_buffer(&self) {
+        self.sound_player.play();
+    }
+
+    pub fn pit_buf_to_sound_buf(&mut self) {
+
+        let pit_ticks: usize = self.pit_ticks_per_sample as usize;
+        if self.pit_buffer_consumer.len() < pit_ticks {
+            return
+        }
+
+        let mut sum = 0;
+        for _ in 0..pit_ticks {
+            sum += match self.pit_buffer_consumer.pop() {
+                Some(s) => s,
+                None => {
+                    log::trace!("No byte in pit buffer");
+                    0
+                }
+            }
+        }
+
+        let average: f32 = sum as f32 / pit_ticks as f32;
+
+        //log::trace!("Sample: sum: {}, ticks: {}, avg: {}", sum, pit_ticks, average);
+
+        self.pit_samples_produced += 1;
+        //log::trace!("producer: {}", self.pit_samples_produced);
+
+        self.sound_player.queue_sample(average * VOLUME_ADJUST);
+        self.debug_snd_file.write(&average.to_be_bytes());
     }
 }
