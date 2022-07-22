@@ -464,12 +464,13 @@ impl Machine {
                 
                 self.dma_controller.borrow_mut().run(&mut self.io_bus);
 
-                // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh
+                // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh, PPI for timer gate & speaker pin
                 self.pit.borrow_mut().run(
                     &mut self.io_bus,
                     &mut self.bus,
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
+                    &mut self.ppi.borrow_mut(),
                     &mut self.pit_buffer_producer,
                     fake_cycles);
 

@@ -345,6 +345,14 @@ impl Ppi {
         }
     }
 
+    pub fn get_pb0_state(&self) -> bool {
+        self.pb_byte & 0x01 != 0
+    }
+
+    pub fn get_pb1_state(&self) -> bool {
+        (self.pb_byte >> 1) & 0x01 != 0
+    }
+
     pub fn run(&mut self, pic: &mut pic::Pic, cycles: u32 ) {
 
         // Our keyboard byte was read, so clear the interrupt request line and reset the byte

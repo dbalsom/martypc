@@ -10,6 +10,7 @@ use crate::bus::{BusInterface};
 use crate::cpu::CPU_MHZ;
 use crate::pic;
 use crate::dma;
+use crate::ppi;
 
 const PIT_CHANNEL_PORT_BASE: u16 = 0x40;
 pub const PIT_CHANNEL_0_DATA_PORT: u16 = 0x40;
@@ -358,6 +359,7 @@ impl ProgrammableIntervalTimer {
         bus: &mut BusInterface, 
         pic: &mut pic::Pic, 
         dma: &mut dma::DMAController,
+        ppi: &mut ppi::Ppi,
         buffer_producer: &mut ringbuf::Producer<u8>,
         cpu_cycles: u32 ) {
 
@@ -378,7 +380,7 @@ impl ProgrammableIntervalTimer {
         
         for _ in 0..pit_cycles_int {
             // Each tick, the state of PIT Channel #2 is pushed into the ringbuf
-            self.tick(bus, pic, dma, buffer_producer);
+            self.tick(bus, pic, dma, ppi, buffer_producer);
         }
     }
 
@@ -395,6 +397,7 @@ impl ProgrammableIntervalTimer {
         bus: &mut BusInterface,
         pic: &mut pic::Pic,
         dma: &mut dma::DMAController,
+        ppi: &mut ppi::Ppi,
         buffer_producer: &mut ringbuf::Producer<u8>) 
     {
         self.pit_cycles += 1;
@@ -529,19 +532,16 @@ impl ProgrammableIntervalTimer {
                 ChannelMode::HardwareTriggeredStrobe => {},
             }
 
-            // Push state of PIT channel #2 output to ring buffer
+            let ppi_pb1 = ppi.get_pb1_state();
+
+            // Push state of PIT channel #2 output to ring buffer. 
+            // Note: Bit #1 of PPI Port B is AND'd with output.
             if i == 2 {
-                if t.output_is_high {
-                    match buffer_producer.push(1) {
-                        Ok(()) => (),
-                        Err(_) => ()
-                    }
-                }
-                else {
-                    match buffer_producer.push(0) {
-                        Ok(()) => (),
-                        Err(_) => ()
-                    }
+
+                let mut speaker_signal = t.output_is_high && ppi_pb1;
+                match buffer_producer.push(speaker_signal as u8) {
+                    Ok(()) => (),
+                    Err(_) => ()
                 }
             }
         }
