@@ -1130,29 +1130,11 @@ impl Cpu {
                 self.set_register8(Register8::AL, value as u8);
                 handled_override = true;
             }
-            0xD8 => {
-                unhandled = true;
-            }
-            0xD9 => {
-                unhandled = true;
-            }
-            0xDA => {
-                unhandled = true;
-            }
-            0xDB => {
-                unhandled = true;
-            }
-            0xDC => {
-                unhandled = true;
-            }
-            0xDD => {
-                unhandled = true;
-            }
-            0xDE => {
-                unhandled = true;
-            }
-            0xDF => {
-                unhandled = true;
+            0xD8..=0xDF => {
+                // ESC - FPU instructions. 
+                
+                // Perform dummy read if memory operand
+                let _op1_value = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride);
             }
             0xE0 => {
                 // LOOPNE - Decrement CX, Jump short if count!=0 and ZF=0

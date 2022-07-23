@@ -1142,10 +1142,13 @@ pub fn decode(bytes: &mut impl ByteInterface) -> Result<Instruction, Box<dyn std
         0xCD => (Opcode::INT,  OperandTemplate::Immediate8,    OperandTemplate::NoOperand,   0),
         0xCE => (Opcode::INTO, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
         0xCF => (Opcode::IRET, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
-        
+
         0xD4 => (Opcode::AAM,  OperandTemplate::Immediate8,   OperandTemplate::NoOperand,    0),
         0xD5 => (Opcode::AAD,  OperandTemplate::Immediate8,   OperandTemplate::NoOperand,    0),
         0xD7 => (Opcode::XLAT, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
+        // FPU instructions
+        0xD8..=0xDF => (Opcode::ESC, OperandTemplate::ModRM16, OperandTemplate::NoOperand, 0),
+
         0xE0 => (Opcode::LOOPNE, OperandTemplate::Relative8,   OperandTemplate::NoOperand,   INSTRUCTION_REL_JUMP),
         0xE1 => (Opcode::LOOPE,  OperandTemplate::Relative8,   OperandTemplate::NoOperand,   INSTRUCTION_REL_JUMP),
         0xE2 => (Opcode::LOOP, OperandTemplate::Relative8,   OperandTemplate::NoOperand,     INSTRUCTION_REL_JUMP),
