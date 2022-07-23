@@ -365,7 +365,7 @@ impl Pic {
 
         // Clear the corresponding bit in the IRR register
         let intr_bit: u8 = 0x01 << interrupt;
-        self.imr &= !intr_bit;
+        self.irr &= !intr_bit;
     }
 
     pub fn query_interrupt_line(&self) -> bool {
