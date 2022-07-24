@@ -8,6 +8,7 @@ use crate::memerror::MemError;
 
 const ADDRESS_SPACE: usize = 1_048_576;
 const DEFAULT_CYCLE_COST: u32 = 4;
+const ROM_BIT: u8 = 0b1000_0000;
 
 struct MemRangeDescriptor {
     start: usize,
@@ -18,6 +19,7 @@ struct MemRangeDescriptor {
 }
 pub struct BusInterface {
     memory: Vec<u8>,
+    memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
     cursor: usize
 }
@@ -111,6 +113,7 @@ impl BusInterface {
     pub fn new() -> BusInterface {
         BusInterface {
             memory: vec![0; ADDRESS_SPACE],
+            memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
             cursor: 0
         }
@@ -124,10 +127,19 @@ impl BusInterface {
             return Err(false)
         }
 
-        let mem_slice: &mut [u8] = &mut self.memory[location..location+src_size];
-        
+        let mem_slice: &mut [u8] = &mut self.memory[location..location + src_size];
+        let mask_slice: &mut [u8] = &mut self.memory_mask[location..location + src_size];
         for (dst, src) in mem_slice.iter_mut().zip(src_vec.as_slice()) {
             *dst = *src;
+        }
+
+        // Write access mask
+        let access_bit = match read_only {
+            true => ROM_BIT,
+            false => 0x00
+        };
+        for dst in mask_slice.iter_mut() {
+            *dst = cycle_cost as u8 & 0xEF | access_bit;
         }
 
         self.desc_vec.push({
@@ -218,14 +230,18 @@ impl BusInterface {
 
     pub fn write_u8(&mut self, address: usize, data: u8) -> Result<u32, MemError> {
         if address < self.memory.len() {
-            self.memory[address] = data;
+            if self.memory_mask[address] & ROM_BIT == 0 {
+                self.memory[address] = data;                
+            }
             return Ok(DEFAULT_CYCLE_COST)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
     pub fn write_i8(&mut self, address: usize, data: i8) -> Result<u32, MemError> {
         if address < self.memory.len() {
-            self.memory[address] = data as u8;
+            if self.memory_mask[address] & ROM_BIT == 0 {
+                self.memory[address] = data as u8;
+            }
             return Ok(DEFAULT_CYCLE_COST)
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -234,8 +250,10 @@ impl BusInterface {
     pub fn write_u16(&mut self, address: usize, data: u16) -> Result<u32, MemError> {
         if address < self.memory.len() - 1 {
             // Little Endian is LO byte first
-            self.memory[address] = (data & 0xFF) as u8;
-            self.memory[address+1] = (data >> 8) as u8;
+            if self.memory_mask[address] & ROM_BIT == 0 {
+                self.memory[address] = (data & 0xFF) as u8;
+                self.memory[address+1] = (data >> 8) as u8;              
+            }
             return Ok(DEFAULT_CYCLE_COST)
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -244,8 +262,10 @@ impl BusInterface {
     pub fn write_i16(&mut self, address: usize, data: u16) -> Result<u32, MemError> {
         if address < self.memory.len() - 1 {
             // Little Endian is LO byte first
-            self.memory[address] = (data as u16 & 0xFF) as u8;
-            self.memory[address+1] = (data as u16 >> 8) as u8;
+            if self.memory_mask[address] & ROM_BIT == 0 {
+                self.memory[address] = (data as u16 & 0xFF) as u8;
+                self.memory[address+1] = (data as u16 >> 8) as u8;
+            }
             return Ok(DEFAULT_CYCLE_COST)
         }
         Err(MemError::ReadOutOfBoundsError)

@@ -472,6 +472,12 @@ impl RomManager {
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: vec![
+                        RomPatch {
+                            desc: "Patch ROS checksum routine",
+                            checkpoint: 0xFE0AC,
+                            address: 0xFE0D5,
+                            bytes: vec![0xEB, 0x00]
+                        },
                         RomPatch{
                             desc: "Patch RAM Check Routine for faster boot",
                             checkpoint: 0xFE499,
