@@ -134,6 +134,7 @@ pub struct PpiStringState {
     pub port_a_mode: String,
     pub port_a_value_bin: String,
     pub port_a_value_hex: String,
+    pub port_b_value_bin: String,
     pub kb_byte_value_hex: String,
     pub kb_resets_counter: String,
     pub port_c_mode: String,
@@ -332,17 +333,27 @@ impl Ppi {
                 self.kb_byte
             }
         };
+        let port_b_value = self.pb_byte;
         let port_c_value = self.calc_port_c_value();
 
         PpiStringState {
             port_a_mode: format!("{:?}", self.port_a_mode),
             port_a_value_bin: format!("{:08b}", port_a_value),
             port_a_value_hex: format!("{:02X}", port_a_value),
+            port_b_value_bin: format!("{:08b}", port_b_value),
             kb_byte_value_hex: format!("{:02X}", self.kb_byte),
             kb_resets_counter: format!("{}", self.kb_resets_counter),
             port_c_mode: format!("{:?}", self.port_c_mode),
             port_c_value: format!("{:08b}", port_c_value )
         }
+    }
+
+    pub fn get_pb0_state(&self) -> bool {
+        self.pb_byte & PORTB_TIMER2_GATE != 0
+    }
+
+    pub fn get_pb1_state(&self) -> bool {
+        self.pb_byte & PORTB_SPEAKER_DATA != 0
     }
 
     pub fn run(&mut self, pic: &mut pic::Pic, cycles: u32 ) {

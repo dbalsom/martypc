@@ -1538,7 +1538,8 @@ impl Cpu {
             ExecutionResult::UnsupportedOpcode(i.opcode)
         }
         else {
-            if self.halted{
+            if self.halted && !self.get_flag(Flag::Interrupt) {
+                // CPU was halted with interrupts disabled - will not continue
                 ExecutionResult::Halt
             }
             else if jump {

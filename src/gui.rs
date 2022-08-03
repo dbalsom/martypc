@@ -323,7 +323,7 @@ impl GuiState {
             GuiWindow::CpuStateViewer => self.register_viewer_open,
             GuiWindow::TraceViewer => self.trace_viewer_open,
             GuiWindow::DiassemblyViewer => self.disassembly_viewer_open,
-            GuiWindow::PitViewer => self.pic_viewer_open,
+            GuiWindow::PitViewer => self.pit_viewer_open,
             GuiWindow::PicViewer => self.pic_viewer_open,
             GuiWindow::PpiViewer => self.ppi_viewer_open,
             GuiWindow::DmaViewer => self.dma_viewer_open,
@@ -581,7 +581,7 @@ impl GuiState {
                 });
 
                 ui.separator();
-                
+
             });
 
         egui::Window::new("Error")
@@ -998,6 +998,10 @@ impl GuiState {
                     ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex).font(egui::TextStyle::Monospace));
                     ui.end_row();
+
+                    ui.label(egui::RichText::new("Port B Value: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_b_value_bin).font(egui::TextStyle::Monospace));
+                    ui.end_row();                    
 
                     ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex).font(egui::TextStyle::Monospace));

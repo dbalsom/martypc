@@ -37,6 +37,7 @@ mod pic;
 mod pit;
 mod ppi;
 mod rom_manager;
+mod sound;
 mod util;
 mod vhd;
 mod vhd_manager;
@@ -50,6 +51,7 @@ use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use byteinterface::ByteInterface;
 use gui::GuiEvent;
+use sound::SoundPlayer;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -59,14 +61,14 @@ const HEIGHT: u32 = 400;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
-
 const CYCLES_PER_FRAME: u32 = (cpu::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
 // Rendering Stats
 struct Counter {
     frame_count: u64,
     current_fps: u32,
-    last_period: Instant,
+    last_frame: Instant,
+    last_sndbuf: Instant,
     last_second: Instant,
     last_cpu_cycles: u64,
     current_cpu_cps: u64,
@@ -131,13 +133,6 @@ fn main() -> Result<(), Error> {
         std::process::exit(1);        
     } 
 
-    // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
-    let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
-
-    // Instantiate the main Machine data struct
-    // Machine coordinates all the parts of the emulated computer
-    let mut machine = Machine::new(machine_type, VideoType::CGA, rom_manager, floppy_manager );
-    
     // Create the video renderer
     let video = video::Video::new();
 
@@ -154,6 +149,9 @@ fn main() -> Result<(), Error> {
             .unwrap()
     };
 
+    // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
+    let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
+
     let (mut pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
@@ -166,6 +164,20 @@ fn main() -> Result<(), Error> {
     };
     let mut stat_counter = Counter::new();
 
+    // Init sound 
+    let sample_fmt = SoundPlayer::get_sample_format();
+    let mut sp = match sample_fmt {
+        cpal::SampleFormat::F32 => SoundPlayer::new::<f32>(),
+        cpal::SampleFormat::I16 => SoundPlayer::new::<i16>(),
+        cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(),
+    };
+
+    // Instantiate the main Machine data struct
+    // Machine coordinates all the parts of the emulated computer
+    let mut machine = Machine::new(machine_type, VideoType::CGA, sp, rom_manager, floppy_manager );
+
+    machine.play_sound_buffer();
+    
     // Run the winit event loop
     event_loop.run(move |event, _, control_flow| {
 
@@ -263,12 +275,20 @@ fn main() -> Result<(), Error> {
                     stat_counter.last_second = Instant::now();
                 } 
 
+                // Decide whether to play sound buffer
+                let elapsed_snd_ms = stat_counter.last_sndbuf.elapsed().as_millis();
+                if elapsed_snd_ms > sound::BUFFER_MS as u128 {
+
+                    stat_counter.last_sndbuf = Instant::now();
+                    //machine.play_sound_buffer();
+                }
+
                 // Decide whether to draw a frame
-                let elapsed_us = stat_counter.last_period.elapsed().as_micros();
+                let elapsed_us = stat_counter.last_frame.elapsed().as_micros();
 
                 if elapsed_us > MICROS_PER_FRAME as u128 {
 
-                    stat_counter.last_period = Instant::now();
+                    stat_counter.last_frame = Instant::now();
                     stat_counter.frame_count += 1;
                     stat_counter.current_fps += 1;
                     //println!("frame: {} elapsed: {}", world.current_fps, elapsed_us);
@@ -544,7 +564,8 @@ impl Counter {
             frame_count: 0,
             current_fps: 0,
             last_second: Instant::now(),
-            last_period: Instant::now(),
+            last_sndbuf: Instant::now(),
+            last_frame: Instant::now(),
             last_cpu_cycles: 0,
             current_cpu_cps: 0,
             last_pit_ticks: 0,
