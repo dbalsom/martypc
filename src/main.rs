@@ -67,6 +67,7 @@ const CYCLES_PER_FRAME: u32 = (cpu::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 struct Counter {
     frame_count: u64,
     current_fps: u32,
+    fps: u32,
     last_frame: Instant,
     last_sndbuf: Instant,
     last_second: Instant,
@@ -74,6 +75,9 @@ struct Counter {
     current_cpu_cps: u64,
     last_pit_ticks: u64,
     current_pit_tps: u64,
+    emulation_time: Duration,
+    render_time: Duration,
+    accumulated_us: u128
 }
 
 fn main() -> Result<(), Error> {
@@ -271,23 +275,20 @@ fn main() -> Result<(), Error> {
                     //    stat_counter.current_cpu_cps, 
                     //    stat_counter.current_pit_tps);
 
+                    stat_counter.fps = stat_counter.current_fps;
                     stat_counter.current_fps = 0;
                     stat_counter.last_second = Instant::now();
                 } 
 
-                // Decide whether to play sound buffer
-                let elapsed_snd_ms = stat_counter.last_sndbuf.elapsed().as_millis();
-                if elapsed_snd_ms > sound::BUFFER_MS as u128 {
-
-                    stat_counter.last_sndbuf = Instant::now();
-                    //machine.play_sound_buffer();
-                }
-
                 // Decide whether to draw a frame
                 let elapsed_us = stat_counter.last_frame.elapsed().as_micros();
+                stat_counter.last_frame = Instant::now();
 
-                if elapsed_us > MICROS_PER_FRAME as u128 {
+                stat_counter.accumulated_us += elapsed_us;
 
+                while stat_counter.accumulated_us > MICROS_PER_FRAME as u128 {
+
+                    stat_counter.accumulated_us -= MICROS_PER_FRAME as u128;
                     stat_counter.last_frame = Instant::now();
                     stat_counter.frame_count += 1;
                     stat_counter.current_fps += 1;
@@ -318,12 +319,17 @@ fn main() -> Result<(), Error> {
                     //    }
                     //}
 
+                    // Emulate a frame worth of instructions
+                    let emulation_start = Instant::now();
                     machine.run(CYCLES_PER_FRAME, &mut exec_control.borrow_mut(), bp_addr);
+                    stat_counter.emulation_time = Instant::now() - emulation_start;
 
-                    let composite_enabled = framework.gui.get_composite_enabled();
                     // Draw video memory
+                    let composite_enabled = framework.gui.get_composite_enabled();
+                    let render_start = Instant::now();
                     video.draw(pixels.get_frame(), machine.cga(), machine.bus(), composite_enabled);
-                    
+                    stat_counter.render_time = Instant::now() - render_start;
+
                     // Update egui data
 
                     // Any errors?
@@ -432,6 +438,16 @@ fn main() -> Result<(), Error> {
                                 }                                
                             }
                         }
+                    }
+
+                    // Update performance viewer
+                    if framework.gui.is_window_open(gui::GuiWindow::PerfViewer) {
+
+                        framework.gui.update_perf_view(
+                            stat_counter.fps,
+                            stat_counter.emulation_time.as_millis() as u32,
+                            stat_counter.render_time.as_millis() as u32
+                        )
                     }
 
                     // -- Update memory viewer window if open
@@ -563,6 +579,7 @@ impl Counter {
 
             frame_count: 0,
             current_fps: 0,
+            fps: 0,
             last_second: Instant::now(),
             last_sndbuf: Instant::now(),
             last_frame: Instant::now(),
@@ -570,6 +587,9 @@ impl Counter {
             current_cpu_cps: 0,
             last_pit_ticks: 0,
             current_pit_tps: 0,
+            emulation_time: Duration::ZERO,
+            render_time: Duration::ZERO,
+            accumulated_us: 0
         }
     }
 

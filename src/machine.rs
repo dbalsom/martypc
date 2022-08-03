@@ -127,7 +127,7 @@ pub struct Machine {
     pit_samples_produced: u64,
     pit_ticks_per_sample: f64,
     pit_ticks: f64,
-    debug_snd_file: File,
+    debug_snd_file: Option<File>,
     pic: Rc<RefCell<pic::Pic>>,
     ppi: Rc<RefCell<ppi::Ppi>>,
     cga: Rc<RefCell<cga::CGACard>>,
@@ -163,7 +163,7 @@ impl Machine {
 
         // open a file to write the sound to
         //let mut debug_snd_file = File::create("output.pcm").expect("Couldn't open debug pcm file");
-
+        
         log::trace!("Sample rate: {} pit_ticks_per_sample: {}", sample_rate, pit_ticks_per_sample);
 
         // Attach IO Device handlers
@@ -263,7 +263,7 @@ impl Machine {
             pit_ticks_per_sample,
             pit_ticks: 0.0,
             pit_samples_produced: 0,
-            debug_snd_file,
+            debug_snd_file: None,
             pic: pic,
             ppi: ppi,
             cga: cga,

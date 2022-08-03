@@ -35,6 +35,7 @@ const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
 pub(crate) enum GuiWindow {
     CpuControl,
+    PerfViewer,
     MemoryViewer,
     CpuStateViewer,
     TraceViewer,
@@ -79,6 +80,7 @@ pub(crate) struct GuiState {
     error_dialog_open: bool,
     cpu_control_dialog_open: bool,
     memory_viewer_open: bool,
+    perf_viewer_open: bool,
     register_viewer_open: bool,
     trace_viewer_open: bool,
     disassembly_viewer_open: bool,
@@ -89,6 +91,10 @@ pub(crate) struct GuiState {
     call_stack_open: bool,
     vhd_creator_open: bool,
     
+    current_fps: u32,
+    emulation_ms: u32,
+    render_ms: u32,
+
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
     new_floppy_name0: Option<OsString>,
@@ -243,6 +249,7 @@ impl GuiState {
             about_window_open: false, 
             error_dialog_open: false,
             cpu_control_dialog_open: true,
+            perf_viewer_open: false,
             memory_viewer_open: false,
             register_viewer_open: true,
             disassembly_viewer_open: true,
@@ -254,6 +261,10 @@ impl GuiState {
             call_stack_open: false,
             vhd_creator_open: false,
             
+            current_fps: 0,
+            emulation_ms: 0,
+            render_ms: 0,
+        
             floppy_names: Vec::new(),
             new_floppy_name0: Option::None,
             new_floppy_name1: Option::None,
@@ -319,6 +330,7 @@ impl GuiState {
     pub fn is_window_open(&self, window: GuiWindow) -> bool {
         match window {
             GuiWindow::CpuControl => self.cpu_control_dialog_open,
+            GuiWindow::PerfViewer => self.perf_viewer_open,
             GuiWindow::MemoryViewer => self.memory_viewer_open,
             GuiWindow::CpuStateViewer => self.register_viewer_open,
             GuiWindow::TraceViewer => self.trace_viewer_open,
@@ -437,6 +449,12 @@ impl GuiState {
         self.vhd_formats = formats.clone()
     }
 
+    pub fn update_perf_view(&mut self, current_fps: u32, emulation_ms: u32, render_ms: u32) {
+        self.current_fps = current_fps;
+        self.emulation_ms = emulation_ms;
+        self.render_ms = render_ms;
+    }
+
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
@@ -445,10 +463,14 @@ impl GuiState {
                 let font_size = 20.0;
 
                 ui.menu_button("Emulator", |ui| {
+                    if ui.button("Performance...").clicked() {
+                        self.perf_viewer_open = true;
+                        ui.close_menu();
+                    }
                     if ui.button("About...").clicked() {
                         self.about_window_open = true;
                         ui.close_menu();
-                    }
+                    }                    
                 });
                 ui.menu_button("Media", |ui| {
                     ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
@@ -591,6 +613,27 @@ impl GuiState {
                     ui.label(egui::RichText::new("❎").color(egui::Color32::RED).font(egui::FontId::proportional(40.0)));
                     ui.label(&self.error_string);
                 });
+            });
+
+        egui::Window::new("Performance")
+            .open(&mut &mut self.perf_viewer_open)
+            .show(ctx, |ui| {
+
+                egui::Grid::new("perf")
+                    .striped(true)
+                    .min_col_width(100.0)
+                    .show(ui, |ui| {
+
+                        ui.label("FPS: ");
+                        ui.label(egui::RichText::new(format!("{}", self.current_fps)).background_color(egui::Color32::BLACK));
+                        ui.end_row();
+                        ui.label("Emulation time: ");
+                        ui.label(egui::RichText::new(format!("{}", self.emulation_ms)).background_color(egui::Color32::BLACK));
+                        ui.end_row();
+                        ui.label("Render time: ");
+                        ui.label(egui::RichText::new(format!("{}", self.render_ms)).background_color(egui::Color32::BLACK));
+                        ui.end_row();
+                    });      
             });
 
         egui::Window::new("CPU Control")
