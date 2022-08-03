@@ -154,15 +154,15 @@ impl Machine {
         let mut cpu = Cpu::new(CpuType::Cpu8186, 4);
         cpu.reset();        
 
-        let pit_buf_size = (pit::PIT_MHZ * 1_000_000.0 / BUFFER_MS as f64) as usize;
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
-        let mut pit_buf: RingBuffer<u8> = RingBuffer::new(pit_buf_size);
-        let (pit_buffer_producer, mut pit_buffer_consumer) = pit_buf.split();
+        let pit_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
+        let pit_buf: RingBuffer<u8> = RingBuffer::new(pit_buf_size);
+        let (pit_buffer_producer, pit_buffer_consumer) = pit_buf.split();
         let sample_rate = sound_player.sample_rate();
         let pit_ticks_per_sample = (pit::PIT_MHZ * 1_000_000.0) / sample_rate as f64;
 
         // open a file to write the sound to
-        let mut debug_snd_file = File::create("output.pcm").expect("Couldn't open debug pcm file");
+        //let mut debug_snd_file = File::create("output.pcm").expect("Couldn't open debug pcm file");
 
         log::trace!("Sample rate: {} pit_ticks_per_sample: {}", sample_rate, pit_ticks_per_sample);
 
@@ -439,7 +439,10 @@ impl Machine {
                     let mut pic = self.pic.borrow_mut();
                     if pic.query_interrupt_line() {
                         match pic.get_interrupt_vector() {
-                            Some(irq) =>  self.cpu.do_hw_interrupt(&mut self.bus, irq),
+                            Some(irq) => {
+                                self.cpu.do_hw_interrupt(&mut self.bus, irq);
+                                self.cpu.resume();
+                            },
                             None => {}
                         }
                     }
@@ -464,7 +467,7 @@ impl Machine {
                 
                 self.dma_controller.borrow_mut().run(&mut self.io_bus);
 
-                // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh, PPI for timer gate & speaker pin
+                // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh, PPI for timer gate & speaker data
                 self.pit.borrow_mut().run(
                     &mut self.io_bus,
                     &mut self.bus,
@@ -476,10 +479,14 @@ impl Machine {
 
                 // Sample the PIT channel
                 self.pit_ticks += fake_cycles as f64;
-                while self.pit_ticks > self.pit_ticks_per_sample {
+                while self.pit_ticks >= self.pit_ticks_per_sample {
                     self.pit_buf_to_sound_buf();
-                    self.pit_ticks -= self.pit_ticks_per_sample
+                    self.pit_ticks -= self.pit_ticks_per_sample;
                 }
+
+                //while self.pit_buffer_consumer.len() >= self.pit_ticks_per_sample as usize {
+                //    self.pit_buf_to_sound_buf();
+                //}
 
                 self.cga.borrow_mut().run(&mut self.io_bus, fake_cycles);
                 self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), fake_cycles);
@@ -518,14 +525,17 @@ impl Machine {
         }
 
         let mut sum = 0;
+        let mut sample = 0;
         for _ in 0..pit_ticks {
-            sum += match self.pit_buffer_consumer.pop() {
+            
+            sample = match self.pit_buffer_consumer.pop() {
                 Some(s) => s,
                 None => {
                     log::trace!("No byte in pit buffer");
                     0
                 }
-            }
+            };
+            sum += sample;
         }
 
         let average: f32 = sum as f32 / pit_ticks as f32;
@@ -535,7 +545,8 @@ impl Machine {
         self.pit_samples_produced += 1;
         //log::trace!("producer: {}", self.pit_samples_produced);
 
-        self.sound_player.queue_sample(average * VOLUME_ADJUST);
-        self.debug_snd_file.write(&average.to_be_bytes());
+        self.sound_player.queue_sample(average as f32 * VOLUME_ADJUST);
+        //self.debug_snd_file.write(&average.to_be_bytes()).expect("Error writing to debug sound file");
+                
     }
 }

@@ -999,6 +999,10 @@ impl GuiState {
                     ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex).font(egui::TextStyle::Monospace));
                     ui.end_row();
 
+                    ui.label(egui::RichText::new("Port B Value: ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_b_value_bin).font(egui::TextStyle::Monospace));
+                    ui.end_row();                    
+
                     ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex).font(egui::TextStyle::Monospace));
                     ui.end_row();

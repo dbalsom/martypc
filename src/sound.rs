@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::Write;
 
 pub const VOLUME_ADJUST: f32 = 0.10;
-pub const BUFFER_MS: u32 = 250;
+pub const BUFFER_MS: f32 = 30.0;
 
 pub struct SoundPlayer {
 
@@ -48,33 +48,47 @@ impl SoundPlayer {
         let sample_rate = config.sample_rate().0;
         let channels = config.channels() as usize;
         
+        let min_buffer = ((BUFFER_MS / 1000.0) / (1.0 / sample_rate as f32)) as usize;
+        log::trace!("Minimum sample buffer size: {}", min_buffer);
         //let buffer_size = (sample_rate as f32 * (BUFFER_MS as f32 / 1000.0)) as usize;
+
         let buffer_size = sample_rate;
         let buffer = RingBuffer::new(buffer_size as usize );
         let (buffer_producer, mut buffer_consumer) = buffer.split();
 
         let err_fn = |err| eprintln!("An error occurred during streaming: {}", err);
 
-        let mut debug_snd_file = File::create("output2.pcm").expect("Couldn't open debug pcm file");
+        //let mut debug_snd_file = File::create("output2.pcm").expect("Couldn't open debug pcm file");
 
         let mut consumer_count: u64 = 0;
         let mut last_value: f32 = 0.0;
-
+        let mut refill_buffer: bool = true;
         let mut next_value = move || {
             consumer_count += 1;
             //log::trace!("consumer: {}", consumer_count);
 
-            let s: f32 = match buffer_consumer.pop() {
+            if refill_buffer {
+                if buffer_consumer.len() < min_buffer {
+                    return 0.0
+                }
+                else {
+                    refill_buffer = false;
+                }
+            }
+
+            let sample: f32 = match buffer_consumer.pop() {
                 Some(s) => {
                     s
                 }
                 None => {
-                    //log::trace!("No sample from consumer");
+                    //log::trace!("Buffer underrun");
+                    println!("Buffer underrun");
+                    refill_buffer = true;
                     0.0
                 }
             };
-            debug_snd_file.write(&s.to_be_bytes());
-            s
+            //debug_snd_file.write(&s.to_be_bytes());
+            sample
         };
 
         let output_stream = audio_device
@@ -106,7 +120,10 @@ impl SoundPlayer {
     }
 
     pub fn queue_sample(&mut self, data: f32) {
-        self.buffer_producer.push(data);
+        match self.buffer_producer.push(data) {
+            Ok(_) => {},
+            Err(_) => {}
+        }
     }
     
     pub fn queue_sample_slice(&mut self, data: &[f32]) {

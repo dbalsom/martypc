@@ -957,13 +957,25 @@ impl Cpu {
 
     }
 
-    // Return true if we are able to process interrupts
+    /// Return true if an interrupt can occur under current execution state
     pub fn interrupts_enabled(&self) -> bool {
-
         self.get_flag(Flag::Interrupt) && !self.interrupt_wait_cycle
+    }
+    
+    /// Resume from halted state
+    pub fn resume(&mut self) {
+        if self.halted {
+            log::trace!("Resuming from halt");
+        }
+        self.halted = false;
     }
 
     pub fn step(&mut self, bus: &mut BusInterface, io_bus: &mut IoBusInterface) -> Result<(), CpuError> {
+
+        // When halted, the CPU waits for an interrupt to fire before resuming execution
+        if self.halted {
+            return Ok(())
+        }
 
         let instruction_address = get_linear_address(self.cs, self.ip);
 
@@ -1024,6 +1036,9 @@ impl Cpu {
                         Err(CpuError::ExecutionError(instruction_address, e))
                     }
                     ExecutionResult::Halt => {
+                        // Specifically, this error condition is a halt with interrupts disabled -
+                        // execution cannot continue. This state is most encountered during BIOS
+                        // initialization.
                         self.is_running = false;
                         self.is_error = true;
                         Err(CpuError::CpuHaltedError(instruction_address))
