@@ -82,7 +82,7 @@ impl SoundPlayer {
                 }
                 None => {
                     //log::trace!("Buffer underrun");
-                    println!("Buffer underrun");
+                    //println!("Buffer underrun");
                     refill_buffer = true;
                     0.0
                 }
