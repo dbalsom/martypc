@@ -188,11 +188,9 @@ impl Video {
 
     pub fn draw(&self, frame: &mut [u8], cga: Rc<RefCell<CGACard>>, bus: &BusInterface, composite: bool) {
 
-        let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
-
-        let cga_card = cga.borrow();
+        let cga_card = cga.borrow();        
+        let start_address = cga_card.get_start_address() as usize;
         let mode_40_cols = cga_card.is_40_columns();
-
 
         match cga_card.get_display_mode() {
             DisplayMode::Disabled => {
@@ -203,10 +201,15 @@ impl Video {
                 let cursor = cga_card.get_cursor_info();
                 let char_height = cga_card.get_character_height();
     
+                // Start address is multiplied by two due to 2 bytes per character (char + attr)
+                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE - start_address * 2);
+
                 self.draw_text_mode(cursor, frame, FRAME_W, FRAME_H, video_mem, char_height, mode_40_cols );
             }
             DisplayMode::Mode4LowResGraphics | DisplayMode::Mode5LowResAltPalette => {
                 let (palette, intensity) = cga_card.get_palette();
+
+                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
                     draw_gfx_mode2x(frame, FRAME_W, FRAME_H, video_mem, palette, intensity);
                 }
@@ -216,6 +219,8 @@ impl Video {
             }
             DisplayMode::Mode6HiResGraphics => {
                 let (palette, intensity) = cga_card.get_palette();
+
+                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
                     draw_gfx_mode_highres2x(frame, FRAME_W, FRAME_H, video_mem, palette);
                 }
@@ -226,6 +231,8 @@ impl Video {
             }
             DisplayMode::Mode7LowResComposite => {
                 let (palette, intensity) = cga_card.get_palette();
+
+                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
                     draw_gfx_mode_highres2x(frame, FRAME_W, FRAME_H, video_mem, palette);
                 }

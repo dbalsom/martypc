@@ -134,6 +134,8 @@ pub struct CGACard {
     crtc_register_selected: CRTCRegister,
     crtc_cursor_start_line: u8,
     crtc_cursor_end_line: u8,
+    crtc_start_address_ho: u8,
+    crtc_start_address_lo: u8,
     crtc_maximum_scan_line: u8,
     crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
@@ -155,8 +157,8 @@ pub enum CRTCRegister {
     MaximumScanLineAddress,
     CursorStartLine,
     CursorEndLine,
-    PageAddressLOByte,
-    PageAddressHOByte,
+    StartAddressLOByte,
+    StartAddressHOByte,
     CursorAddressHOByte,
     CursorAddressLOByte,
     LightPenPositionHOByte,
@@ -228,6 +230,8 @@ impl CGACard {
             crtc_cursor_start_line: CGA_DEFAULT_CURSOR_START_LINE,
             crtc_cursor_end_line: CGA_DEFAULT_CURSOR_END_LINE,
 
+            crtc_start_address_ho: 0,
+            crtc_start_address_lo: 0,
             crtc_maximum_scan_line: 7,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
@@ -355,7 +359,12 @@ impl CGACard {
         }
     }
 
-    pub fn handle_crtc_register_select(&mut self, byte: u8 ) {
+    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
+    pub fn get_start_address(&self) -> u16 {
+        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
+    }
+
+    fn handle_crtc_register_select(&mut self, byte: u8 ) {
 
         //log::trace!("CGA: CRTC register {:02X} selected", byte);
         self.crtc_register_select_byte = byte;
@@ -372,8 +381,8 @@ impl CGACard {
             0x09 => CRTCRegister::MaximumScanLineAddress,
             0x0A => CRTCRegister::CursorStartLine,
             0x0B => CRTCRegister::CursorEndLine,
-            0x0C => CRTCRegister::PageAddressLOByte,
-            0x0D => CRTCRegister::PageAddressHOByte,
+            0x0C => CRTCRegister::StartAddressHOByte,
+            0x0D => CRTCRegister::StartAddressLOByte,
             0x0E => CRTCRegister::CursorAddressHOByte,
             0x0F => CRTCRegister::CursorAddressLOByte,
             0x10 => CRTCRegister::LightPenPositionHOByte,
@@ -386,7 +395,7 @@ impl CGACard {
         }
     }
 
-    pub fn handle_crtc_register_write(&mut self, byte: u8 ) {
+    fn handle_crtc_register_write(&mut self, byte: u8 ) {
 
         match self.crtc_register_selected {
             CRTCRegister::CursorStartLine => {
@@ -417,6 +426,12 @@ impl CGACard {
                 //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
                 self.crtc_cursor_address_lo = byte
             }
+            CRTCRegister::StartAddressHOByte => {
+                self.crtc_start_address_ho = byte
+            }
+            CRTCRegister::StartAddressLOByte => {
+                self.crtc_start_address_lo = byte
+            }
             CRTCRegister::MaximumScanLineAddress => {
                 self.crtc_maximum_scan_line = byte
             }
@@ -426,7 +441,7 @@ impl CGACard {
         }
     }
     
-    pub fn handle_crtc_register_read(&mut self ) -> u8 {
+    fn handle_crtc_register_read(&mut self ) -> u8 {
         match self.crtc_register_selected {
             CRTCRegister::CursorStartLine => self.crtc_cursor_start_line,
             CRTCRegister::CursorEndLine => self.crtc_cursor_end_line,
@@ -445,7 +460,7 @@ impl CGACard {
         }
     }
 
-    pub fn handle_mode_register(&mut self, mode_byte: u8) {
+    fn handle_mode_register(&mut self, mode_byte: u8) {
 
         self.mode_hires_txt = mode_byte & MODE_HIRES_TEXT != 0;
         self.mode_graphics = mode_byte & MODE_GRAPHICS != 0;
@@ -481,7 +496,7 @@ impl CGACard {
             self.mode_enable );
     }
 
-    pub fn handle_status_register_read(&mut self) -> u8 {
+    fn handle_status_register_read(&mut self) -> u8 {
         // Bit 1 of the status register is set when the CGA can be safely written to without snow.
         // It is tied to the 'Display Enable' line from the CGA card, inverted.
         // Thus it will be 1 when the CGA card is not currently scanning, IE during both horizontal
@@ -500,7 +515,7 @@ impl CGACard {
         }
     }
 
-    pub fn handle_cc_register_write(&mut self, data: u8) {
+    fn handle_cc_register_write(&mut self, data: u8) {
         log::trace!("Write to color control register: {:02X}", data);
         self.cc_register = data;
     }
