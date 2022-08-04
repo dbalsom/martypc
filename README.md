@@ -58,7 +58,7 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ## Screenshots
 ![tools](https://user-images.githubusercontent.com/7229541/173169915-58b0bb5f-663c-41de-be3c-66952297558e.png)
-
+![keen4](https://user-images.githubusercontent.com/7229541/182751737-85f2b9d1-d3b4-4b96-888c-3e8762c6c458.PNG)
 ![cat](https://user-images.githubusercontent.com/7229541/173169921-32b5dbad-0cb7-4cfa-921f-09ba7f946e85.png)
 
 Composite CGA Simulation:
