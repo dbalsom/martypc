@@ -31,19 +31,17 @@ The Floppy disk controller is implemented for read-only operation at the moment.
 
 The IBM 20MB Fixed Disk Controller is emulated with VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
 
-There is currently no sound.
-
 Marty has a GUI with a few useful debugging displays including the current instruction disassembly, memory, and various internal chip states. 
 
 ## Missing features: (Planned)
 
-* PC Speaker sound
 * Writing to floppy and saving floppy images
 * Better debugger and breakpoint system
 
 ## Known Issues
 
-* CPU sometimes halts during POST. Probably a timing bug.
+* Windows 1.0 runs but PAINT.EXE crashes the system
+* Magic Mushroom demo exits immediately
 
 ## Wishlist features:
 
@@ -58,7 +56,7 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ## Screenshots
 ![tools](https://user-images.githubusercontent.com/7229541/173169915-58b0bb5f-663c-41de-be3c-66952297558e.png)
-
+![keen4](https://user-images.githubusercontent.com/7229541/182751737-85f2b9d1-d3b4-4b96-888c-3e8762c6c458.PNG)
 ![cat](https://user-images.githubusercontent.com/7229541/173169921-32b5dbad-0cb7-4cfa-921f-09ba7f946e85.png)
 
 Composite CGA Simulation:
