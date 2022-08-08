@@ -18,17 +18,19 @@ use std::{
 use crate::{
     bus::BusInterface,
     cga::{self, CGACard},
-    cpu::{CpuType, Cpu, Flag, CpuError},
+    cpu::{self, CpuType, Cpu, Flag, CpuError},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
     floppy_manager::{FloppyManager},
     vhd_manager::{VHDManager},
     io::{IoHandler, IoBusInterface},
+    mouse::Mouse,
     pit::{self, PitStringState},
     pic::{self, PicStringState},
     ppi::{self, PpiStringState},
     rom_manager::RomManager,
+    serial::{self, SerialPortController},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer}
 };
 
@@ -133,6 +135,8 @@ pub struct Machine {
     cga: Rc<RefCell<cga::CGACard>>,
     fdc: Rc<RefCell<FloppyController>>,
     hdc: Rc<RefCell<HardDiskController>>,
+    serial_controller: Rc<RefCell<serial::SerialPortController>>,
+    mouse: Mouse,
     kb_buf: VecDeque<u8>,
     error: bool,
     error_str: String,
@@ -230,6 +234,27 @@ impl Machine {
         io_bus.register_port_handler(hdc::HDC_READ_DIP_REGISTER, IoHandler::new(hdc.clone()));
         io_bus.register_port_handler(hdc::HDC_WRITE_MASK_REGISTER, IoHandler::new(hdc.clone()));
 
+        // Serial Controller & Serial Ports
+        let serial = Rc::new(RefCell::new(serial::SerialPortController::new()));
+        io_bus.register_port_handler(serial::SERIAL1_RX_TX_BUFFER, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL1_INTERRUPT_ENABLE, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL1_INTERRUPT_ID, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL1_LINE_CONTROL, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL1_MODEM_CONTROL, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL1_LINE_STATUS, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL1_MODEM_STATUS, IoHandler::new(serial.clone()));
+
+        io_bus.register_port_handler(serial::SERIAL2_RX_TX_BUFFER, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL2_INTERRUPT_ENABLE, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL2_INTERRUPT_ID, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL2_LINE_CONTROL, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL2_MODEM_CONTROL, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL2_LINE_STATUS, IoHandler::new(serial.clone()));
+        io_bus.register_port_handler(serial::SERIAL2_MODEM_STATUS, IoHandler::new(serial.clone()));
+
+        // Mouse
+        let mouse = Mouse::new(serial.clone());
+
         // CGA card:
         let mut cga = Rc::new(RefCell::new(cga::CGACard::new()));
         io_bus.register_port_handler(cga::CRTC_REGISTER_SELECT, IoHandler::new(cga.clone()));
@@ -269,6 +294,8 @@ impl Machine {
             cga: cga,
             fdc: fdc,
             hdc: hdc,
+            serial_controller: serial,
+            mouse,
             kb_buf: VecDeque::new(),
             error: false,
             error_str: String::new(),
@@ -341,13 +368,16 @@ impl Machine {
     }
 
     pub fn key_press(&mut self, code: u8) {
-
         self.kb_buf.push_back(code);
     }
 
     pub fn key_release(&mut self, code: u8 ) {
         // HO Bit set converts a scancode into its 'release' code
         self.kb_buf.push_back(code | 0x80);
+    }
+
+    pub fn mouse(&self) -> &Mouse {
+        &self.mouse
     }
 
     pub fn reset(&mut self) {
@@ -365,6 +395,11 @@ impl Machine {
         // Reset devices
         self.pit.borrow_mut().reset();
         self.pic.borrow_mut().reset();
+    }
+
+    fn cycles_to_us(&self, cycles: u32) -> f64 {
+
+        1.0 / cpu::CPU_MHZ * cycles as f64
     }
     
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl, breakpoint: u32) {
@@ -400,7 +435,7 @@ impl Machine {
 
         while cycles_elapsed < cycle_target_adj {
 
-            let fake_cycles = 7;
+            let fake_cycles: u32 = 7;
 
             if self.cpu.is_error() == false {
 
@@ -447,6 +482,9 @@ impl Machine {
                         }
                     }
                 }
+
+                // Convert cycles into elapsed microseconds
+                let us = self.cycles_to_us(fake_cycles);
 
                 // Process a keyboard event once per frame.
                 // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
@@ -503,7 +541,14 @@ impl Machine {
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     &mut self.bus,
-                    fake_cycles);                
+                    fake_cycles);         
+                    
+                // Serial port needs PIC to issue interrupts
+                self.serial_controller.borrow_mut().run(
+                    &mut self.pic.borrow_mut(),
+                    us);
+
+                self.mouse.run(us);
             }
             // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all
             // that good stuff. For now during initial development we're going to assume an average instruction cost of 8** 7

@@ -5,7 +5,14 @@ use crate::gui::Framework;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent, StartCause, VirtualKeyCode};
+use winit::event::{
+    Event, 
+    WindowEvent, 
+    DeviceEvent, 
+    ElementState, 
+    StartCause, 
+    VirtualKeyCode
+};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
@@ -33,10 +40,12 @@ mod hdc;
 mod io;
 mod machine;
 mod memerror;
+mod mouse;
 mod pic;
 mod pit;
 mod ppi;
 mod rom_manager;
+mod serial;
 mod sound;
 mod util;
 mod vhd;
@@ -78,6 +87,56 @@ struct Counter {
     emulation_time: Duration,
     render_time: Duration,
     accumulated_us: u128
+}
+
+impl Counter {
+    fn new() -> Self {
+        Self {
+            frame_count: 0,
+            current_fps: 0,
+            fps: 0,
+            last_second: Instant::now(),
+            last_sndbuf: Instant::now(),
+            last_frame: Instant::now(),
+            last_cpu_cycles: 0,
+            current_cpu_cps: 0,
+            last_pit_ticks: 0,
+            current_pit_tps: 0,
+            emulation_time: Duration::ZERO,
+            render_time: Duration::ZERO,
+            accumulated_us: 0
+        }
+    }
+}
+struct MouseData {
+    l_button_was_pressed: bool,
+    l_button_is_pressed: bool,
+    r_button_was_pressed: bool,
+    r_button_is_pressed: bool,
+    frame_delta_x: f64,
+    frame_delta_y: f64
+}
+impl MouseData {
+    fn new() -> Self {
+        Self {
+            l_button_was_pressed: false,
+            l_button_is_pressed: false,
+            r_button_was_pressed: false,
+            r_button_is_pressed: false,
+            frame_delta_x: 0.0,
+            frame_delta_y: 0.0
+        }
+    }
+    pub fn reset(&mut self) {
+        if !self.l_button_is_pressed {
+            self.l_button_was_pressed = false;
+        }
+        if !self.r_button_is_pressed {
+            self.r_button_was_pressed = false;
+        }
+        self.frame_delta_x = 0.0;
+        self.frame_delta_y = 0.0;
+    }
 }
 
 fn main() -> Result<(), Error> {
@@ -166,9 +225,15 @@ fn main() -> Result<(), Error> {
 
         (pixels, framework)
     };
+
     let mut stat_counter = Counter::new();
 
+    // Mouse event struct
+    let mut mouse_data = MouseData::new();
+
     // Init sound 
+    // The cpal sound library uses generics to initialize depending on the SampleFormat type.
+    // On Windows at least a sample type of f32 is typical, but just in case...
     let sample_fmt = SoundPlayer::get_sample_format();
     let mut sp = match sample_fmt {
         cpal::SampleFormat::F32 => SoundPlayer::new::<f32>(),
@@ -215,6 +280,51 @@ fn main() -> Result<(), Error> {
             Event::NewEvents(StartCause::Init) => {
                 // Initialization stuff here?
                 stat_counter.last_second = Instant::now();
+            }
+            Event::DeviceEvent{ event, .. } => {
+                match event {
+                    DeviceEvent::MouseMotion {
+                        delta: (x, y)
+                    } => {
+                        // We can get a lot more mouse updates than we want to send to the virtual mouse,
+                        // so add up all deltas between each mouse polling period
+                        mouse_data.frame_delta_x += x;
+                        mouse_data.frame_delta_y += y;
+                    },
+                    DeviceEvent::Button { 
+                        button,
+                        state 
+                    } => {
+                        // Button ID is a raw u32. How confident are we that the mouse buttons for the basic three button
+                        // mouse are consistent across platforms?
+                        // On Windows it appears the right mouse button is button 3 and the middle mouse button is button 2.
+
+                        // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse 
+                        // clicks are 'sticky', if a button was pressed during the last update period it will be sent as
+                        // pressed during virtual mouse update.
+                        match (button, state) {
+                            (1, ElementState::Pressed) => {
+                                mouse_data.l_button_was_pressed = true;
+                                mouse_data.l_button_is_pressed = true;
+                            },
+                            (1, ElementState::Released) => {
+                                mouse_data.l_button_is_pressed = false;
+                            },
+                            (3, ElementState::Pressed) => {
+                                mouse_data.r_button_was_pressed = true;
+                                mouse_data.r_button_is_pressed = true;
+                            },
+                            (3, ElementState::Released) => {
+                                mouse_data.r_button_is_pressed = false;
+                            }                              
+                            _=> {}
+                        }
+                        //log::debug!("Mouse button: {:?} state: {:?}", button, state);
+                    }
+                    _ => {
+
+                    }
+                }
             }
             Event::WindowEvent{ event, .. } => {
 
@@ -318,6 +428,16 @@ fn main() -> Result<(), Error> {
                     //        framework.gui.set_cpu_single_step();
                     //    }
                     //}
+
+                    // Send mouse event to machine
+                    machine.mouse().update(
+                        mouse_data.l_button_was_pressed,
+                        mouse_data.r_button_was_pressed,
+                        mouse_data.frame_delta_x,
+                        mouse_data.frame_delta_y
+                    );
+                    // Reset mouse for next frame
+                    mouse_data.reset();
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
@@ -573,24 +693,3 @@ fn main() -> Result<(), Error> {
     });
 }
 
-impl Counter {
-    fn new() -> Self {
-        Self {
-
-            frame_count: 0,
-            current_fps: 0,
-            fps: 0,
-            last_second: Instant::now(),
-            last_sndbuf: Instant::now(),
-            last_frame: Instant::now(),
-            last_cpu_cycles: 0,
-            current_cpu_cps: 0,
-            last_pit_ticks: 0,
-            current_pit_tps: 0,
-            emulation_time: Duration::ZERO,
-            render_time: Duration::ZERO,
-            accumulated_us: 0
-        }
-    }
-
-}

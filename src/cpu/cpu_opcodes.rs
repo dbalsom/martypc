@@ -1209,6 +1209,7 @@ impl Cpu {
 
             }
             0xE7 => {
+                // OUT imm16
                 unhandled = true;
             }
             0xE8 => {
@@ -1261,7 +1262,10 @@ impl Cpu {
                 self.set_register8(Register8::AL, in_byte);
             }
             0xED => {
-                unhandled = true;
+                // IN ax, dx
+                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap(); 
+                let in_byte = io_bus.read_u8(op2_value);
+                self.set_register16(Register16::AX, in_byte as u16);
             }
             0xEE => {
                 // OUT dx, al
@@ -1273,9 +1277,14 @@ impl Cpu {
             }
             0xEF => {
                 // OUT dx, ax
+                // On the 8088, this does two writes to successive port #'s 
+                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
 
-                // Do nothing for now
-                // unhandled = true;
+                // Write first 8 bits to first port
+                io_bus.write_u8(op1_value, (op2_value & 0xFF) as u8);
+                // Write next 8 bits to port + 1
+                io_bus.write_u8(op1_value + 1, (op2_value >> 8 & 0xFF) as u8);
             }
             0xF0 => {
                 unhandled = true;
