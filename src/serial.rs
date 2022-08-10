@@ -261,7 +261,7 @@ impl SerialPort {
     }
 
     /// Handle a read of the RX buffer register
-    /// Or if DSLAB is active, read the Disisor Latch LSB
+    /// or if DSLAB is active, read the Divisor Latch LSB
     fn rx_buffer_read(&mut self) -> u8 {
         // If DSLAB, send Divisor Latch LSB
         if self.divisor_latch_access {

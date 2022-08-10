@@ -109,6 +109,8 @@ impl Counter {
     }
 }
 struct MouseData {
+    is_captured: bool,
+    have_update: bool,
     l_button_was_pressed: bool,
     l_button_is_pressed: bool,
     r_button_was_pressed: bool,
@@ -119,6 +121,8 @@ struct MouseData {
 impl MouseData {
     fn new() -> Self {
         Self {
+            is_captured: false,
+            have_update: false,
             l_button_was_pressed: false,
             l_button_is_pressed: false,
             r_button_was_pressed: false,
@@ -136,6 +140,16 @@ impl MouseData {
         }
         self.frame_delta_x = 0.0;
         self.frame_delta_y = 0.0;
+        self.have_update = false;
+    }
+}
+
+struct KeyboardData {
+    ctrl_pressed: bool
+}
+impl KeyboardData {
+    fn new() -> Self {
+        Self { ctrl_pressed: false }
     }
 }
 
@@ -228,6 +242,8 @@ fn main() -> Result<(), Error> {
 
     let mut stat_counter = Counter::new();
 
+    // KB modifiers
+    let mut kb_data = KeyboardData::new();
     // Mouse event struct
     let mut mouse_data = MouseData::new();
 
@@ -288,6 +304,7 @@ fn main() -> Result<(), Error> {
                     } => {
                         // We can get a lot more mouse updates than we want to send to the virtual mouse,
                         // so add up all deltas between each mouse polling period
+                        mouse_data.have_update = true;
                         mouse_data.frame_delta_x += x;
                         mouse_data.frame_delta_y += y;
                     },
@@ -306,16 +323,20 @@ fn main() -> Result<(), Error> {
                             (1, ElementState::Pressed) => {
                                 mouse_data.l_button_was_pressed = true;
                                 mouse_data.l_button_is_pressed = true;
+                                mouse_data.have_update = true;
                             },
                             (1, ElementState::Released) => {
                                 mouse_data.l_button_is_pressed = false;
+                                mouse_data.have_update = true;
                             },
                             (3, ElementState::Pressed) => {
                                 mouse_data.r_button_was_pressed = true;
                                 mouse_data.r_button_is_pressed = true;
+                                mouse_data.have_update = true;
                             },
                             (3, ElementState::Released) => {
                                 mouse_data.r_button_is_pressed = false;
+                                mouse_data.have_update = true;
                             }                              
                             _=> {}
                         }
@@ -329,15 +350,47 @@ fn main() -> Result<(), Error> {
             Event::WindowEvent{ event, .. } => {
 
                 match event {
-                    WindowEvent::KeyboardInput{
+                    WindowEvent::ModifiersChanged(modifier_state) => {
+                        kb_data.ctrl_pressed = modifier_state.ctrl();
+                    }
+                    WindowEvent::KeyboardInput {
                         input: winit::event::KeyboardInput {
-                            virtual_keycode:Some(keycode),
+                            virtual_keycode: Some(keycode),
                             state,
                             ..
                         },
                         ..
                     } => {
+
+                        // Match global hotkeys regardless of egui focus
+                        match (state, keycode) {
+                            (winit::event::ElementState::Pressed, VirtualKeyCode::F10 ) => {
+                                if kb_data.ctrl_pressed {
+                                    // Ctrl-F10 pressed. Toggle mouse capture.
+                                    log::trace!("Control F10 pressed.");
+                                    if !mouse_data.is_captured {
+                                        match window.set_cursor_grab(true) {
+                                            Ok(_) => mouse_data.is_captured = true,
+                                            Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                        }
+                                    }
+                                    else {
+                                        // Cursor is grabbed, ungrab
+                                        match window.set_cursor_grab(false) {
+                                            Ok(_) => mouse_data.is_captured = false,
+                                            Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                        }                                        
+                                    }
+                                    
+                                }
+                            }
+                            _=>{}
+                        }
+
                         if !framework.has_focus() {
+                            // An egui widget doesn't have focus, so send an event to the emulated machine
+                            // TODO: widget seems to lose focus before 'enter' is processed in a text entry, passing that 
+                            // enter to the emulator
                             match state {
                                 winit::event::ElementState::Pressed => {
                                     
@@ -355,6 +408,7 @@ fn main() -> Result<(), Error> {
                             }
                         }
                         else {
+                            // Egui widget has focus, so send keyboard event to egui
                             framework.handle_event(&event);
                         }
                     },
@@ -429,15 +483,17 @@ fn main() -> Result<(), Error> {
                     //    }
                     //}
 
-                    // Send mouse event to machine
-                    machine.mouse().update(
-                        mouse_data.l_button_was_pressed,
-                        mouse_data.r_button_was_pressed,
-                        mouse_data.frame_delta_x,
-                        mouse_data.frame_delta_y
-                    );
-                    // Reset mouse for next frame
-                    mouse_data.reset();
+                    // Send any pending mouse update to machine if mouse is captured
+                    if mouse_data.is_captured && mouse_data.have_update {
+                        machine.mouse().update(
+                            mouse_data.l_button_was_pressed,
+                            mouse_data.r_button_was_pressed,
+                            mouse_data.frame_delta_x,
+                            mouse_data.frame_delta_y
+                        );
+                        // Reset mouse for next frame
+                        mouse_data.reset();
+                    }
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
