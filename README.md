@@ -20,33 +20,35 @@ Place floppy raw sector images (IMA or IMG) in a /floppy folder and Marty will f
 
 ## Features
 
-Currently Marty will emulate an original IBM 5150 PC or 5160 XT with a CGA card. 
+Currently Marty will emulate an original IBM 5150 PC or 5160 XT if supplied the appropriate BIOS.
 
-The CGA emulation is nowhere near finished, but basic graphics and text modes are supported. A fast table-based composite monitor emulation is available for 16 colors in games that supported it.
-
-The PPI, PIC, PIT, DMA chips are all at least partially implemented, although most of them with the bare minimum features needed to boot
-a few games and likely contain lots of bugs. 
-
-The Floppy disk controller is implemented for read-only operation at the moment.
-
-The IBM 20MB Fixed Disk Controller is emulated with VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
+The following devices are at least partially implemented:
+* CGA Card - Basic graphics and text modes are supported. I would like to rewrite this to do proper CRTC emulation.
+* µPD764 Floppy Disk Controller - Enough FDC commands are implemented to make DOS happy.
+* IBM 20MB Fixed Disk Controller - Emulated with basic VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
+* 8255 PPI - Dip switches & keyboard input.
+* 8259 PIC - Mostly fully implemented.
+* 8253 PIT - Enough modes to run basic games. Not all modes are implemented, neither is BCD mode.
+* 8237 DMA Controller - Mostly fully implemented, but DMA transfers are currently "faked"
+* 8250 UART - COM1 hard-coded to mouse, COM2 is available for serial passthrough to a host adapter.
+* Mouse - A standard Microsoft Mouse is implemented on COM1.
 
 Marty has a GUI with a few useful debugging displays including the current instruction disassembly, memory, and various internal chip states. 
 
 ## Missing features: (Planned)
 
-* Writing to floppy and saving floppy images
+* Better Configuration system
 * Better debugger and breakpoint system
 
 ## Known Issues
 
 * Windows 1.0 runs but PAINT.EXE crashes the system
 * Magic Mushroom demo exits immediately
+* 8088mph and area5150 demos don't run at all
 
 ## Wishlist features:
 
 * EGA/VGA graphics
-* Mouse support
 
 ## Probably never implementing:
 
