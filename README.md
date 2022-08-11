@@ -26,12 +26,13 @@ The following devices are at least partially implemented:
 * CGA Card - Basic graphics and text modes are supported. I would like to rewrite this to do proper CRTC emulation.
 * µPD764 Floppy Disk Controller - Enough FDC commands are implemented to make DOS happy.
 * IBM 20MB Fixed Disk Controller - Emulated with basic VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
-* 8255 PPI - Dip switches & keyboard input.
+* 8255 PPI - Dip switches, speaker gate, keyboard input.
 * 8259 PIC - Mostly fully implemented.
 * 8253 PIT - Enough modes to run basic games. Not all modes are implemented, neither is BCD mode.
 * 8237 DMA Controller - Mostly fully implemented, but DMA transfers are currently "faked"
 * 8250 UART - COM1 hard-coded to mouse, COM2 is available for serial passthrough to a host adapter.
 * Mouse - A standard Microsoft Mouse is implemented on COM1.
+* PC Speaker - Beeps and boops, although still a little glitchy. No speaker response modelling.
 
 Marty has a GUI with a few useful debugging displays including the current instruction disassembly, memory, and various internal chip states. 
 
