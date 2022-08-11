@@ -23,3 +23,4 @@ uuid = { version = "1.1.2", features = ["v4"]}
 image = "0.24.2"
 cpal = "0.13.5"
 ringbuf = "0.2.8"
+serialport = "4.2.0"

@@ -175,7 +175,11 @@ pub struct SerialPort {
     rx_timer: f64,
     tx_queue: VecDeque<u8>,
     tx_timer: f64,
-    us_per_byte: f64
+    us_per_byte: f64,
+
+    // Serial port bridge
+    bridge_port: Option<Box<dyn serialport::SerialPort>>,
+    bridge_buf: Vec<u8>
 }
 
 impl SerialPort {
@@ -189,7 +193,7 @@ impl SerialPort {
             parity_enable: false,
             divisor_latch_access: false,
             divisor: 12, // 9600 baud
-            line_status_reg: 0,
+            line_status_reg: STATUS_TRANSMIT_EMPTY,
             interrupts_active: 0,
             interrupt_enable_reg: 0,
             raise_interrupt: false,
@@ -205,7 +209,10 @@ impl SerialPort {
             rx_timer: 0.0,
             tx_queue: VecDeque::new(),
             tx_timer: 0.0,
-            us_per_byte: 833.333 // 9600 baud
+            us_per_byte: 833.333, // 9600 baud
+
+            bridge_port: None,
+            bridge_buf: vec![0; 1000]
         }
     }
     /// Convert the integer divisor value into baud rate
@@ -284,9 +291,9 @@ impl SerialPort {
         }
     }
 
-    /// Send a byte to the serial port tx buffer.
+    /// Send a byte to the serial port tx buffer register.
     /// For COM1, COM1 is always attached to Mouse which ignores input.
-    /// COM2 may be connected to a host serial port?
+    /// COM2 may be bridged to a host serial port.
     fn tx_buffer_write(&mut self, byte: u8) {
         // If DSLAB, set Divisor Latch LSB
         if self.divisor_latch_access { 
@@ -301,6 +308,8 @@ impl SerialPort {
         else {
             log::trace!("{}: Tx buffer write: {:02X}", self.name, byte);
             self.tx_holding_reg = byte;
+            self.tx_holding_empty = false;
+            self.line_status_reg &= !STATUS_TRANSMIT_EMPTY;
         }
     }
 
@@ -419,7 +428,7 @@ impl SerialPort {
     }
 
     /// Handle reading from the Modem Status register
-    fn modem_status_read(&self) -> u8 {
+    fn modem_status_read(&mut self) -> u8 {
         if self.loopback {
             // In loopback mode, the four HO bits in the Modem status register reflect
             // the four LO bits in the Modem Control register as follows:
@@ -440,7 +449,26 @@ impl SerialPort {
             byte
         }
         else {
-            self.modem_status_reg
+            let byte = self.modem_status_reg;
+
+            // Clear DCTS and DDSR flags
+            self.modem_status_reg &= !MODEM_STATUS_DCTS;
+            self.modem_status_reg &= !MODEM_STATUS_DDSR;
+
+            byte
+        }
+    }
+
+    fn set_modem_status_connected(&mut self) {
+
+        if self.modem_status_reg & MODEM_STATUS_CTS == 0 {
+            self.modem_status_reg |= MODEM_STATUS_CTS;
+            self.modem_status_reg |= MODEM_STATUS_DCTS;
+        }
+
+        if self.modem_status_reg & MODEM_STATUS_DSR == 0 {
+            self.modem_status_reg |= MODEM_STATUS_DSR;
+            self.modem_status_reg |= MODEM_STATUS_DDSR;
         }
     }
 
@@ -470,6 +498,28 @@ impl SerialPort {
         if self.interrupts_active == 0 {
             self.lower_interrupt = true;
         }
+    }
+
+    fn bridge_port(&mut self, port_name: String) -> anyhow::Result<bool> {
+
+        let mut port_result = serialport::new(port_name.clone(), 9600)
+            .timeout(std::time::Duration::from_millis(5))
+            .stop_bits(serialport::StopBits::One)
+            .parity(serialport::Parity::None)
+            .open();
+
+        match port_result {
+            Ok(bridge_port) => {
+                log::trace!("Successfully opened host port {}", port_name);
+                self.bridge_port = Some(bridge_port);
+                self.set_modem_status_connected();
+            }
+            Err(e) => {
+                log::trace!("Error opening host port: {}", e);
+            }
+        }
+
+        Ok(true)
     }
    
 }
@@ -505,6 +555,11 @@ impl SerialPortController {
     pub fn queue_byte(&mut self, port: usize, byte: u8) {
         self.port[port].rx_queue.push_back(byte);
     } 
+
+    /// Bridge the specified serial port
+    pub fn bridge_port(&mut self, port: usize, port_name: String) {
+        self.port[port].bridge_port(port_name);
+    }
 
     /// Run the serial ports for the specified number of microseconds
     pub fn run(&mut self, pic: &mut pic::Pic, us: f64) {
@@ -543,11 +598,11 @@ impl SerialPortController {
                     port.line_status_reg |= STATUS_DATA_READY;
 
                     // Raise Data Available interrupt if not masked
-                    if port.interrupt_enable_reg & INTERRUPT_DATA_AVAIL != 0 {
-                        port.interrupts_active |= INTERRUPT_DATA_AVAIL;
-                        pic.request_interrupt(port.irq);
-                    }
+                    port.raise_interrupt_type(INTERRUPT_DATA_AVAIL);
 
+                    if port.name.eq("COM2") {
+                        log::trace!("{}: Received byte: {:02X}", port.name, b );
+                    }
                     //log::trace!("{}: Received byte: {:02X}", port.name, b );
                 }
 
@@ -558,10 +613,19 @@ impl SerialPortController {
             port.tx_timer += us;
             while port.tx_timer > port.us_per_byte {
 
+                // Is there a byte waiting to be sent in the tx holding register?
                 if !port.tx_holding_empty {
-                    // We could send the byte somewhere here...
+                    
+                    // If we have bridged this serial port, send the byte to the tx queue
+                    if let Some(_) = &port.bridge_port {
+                        log::trace!("{}: Sending byte: {:02X}", port.name, port.tx_holding_reg);
+                        port.tx_queue.push_back(port.tx_holding_reg);
+                    }
 
+                    port.tx_holding_reg = 0;
                     port.tx_holding_empty = true;
+                    port.line_status_reg |= STATUS_TRANSMIT_EMPTY;
+
                     port.raise_interrupt_type(INTERRUPT_TX_EMPTY);
                 }
 
@@ -570,6 +634,57 @@ impl SerialPortController {
         }
         
         
+    }
+
+    /// The update function is called per-frame, instead of within the emulation loop.
+    /// This allows bridging realtime events with virtual device.
+    pub fn update(&mut self) {
+
+        for port in &mut self.port {
+            
+            match &mut port.bridge_port {
+                Some(bridge_port) => {
+                    
+                    // Write any pending bytes
+                    if port.tx_queue.len() > 0 {
+
+                        port.tx_queue.make_contiguous();
+                        let (tx1, _) = port.tx_queue.as_slices();
+                        
+                        match bridge_port.write(tx1) {
+                            Ok(_) => {
+                                log::trace!("Wrote bytes: {:?}", tx1);
+                            }
+                            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => (),
+                            Err(e) => log::error!("Error writing byte: {:?}", e),                            
+                        }
+
+                        port.tx_queue.clear();
+                    }
+
+
+                    // Read any pending bytes
+                    match bridge_port.read(port.bridge_buf.as_mut_slice()) {
+                        Ok(ct) => {
+
+                            if ct > 0 {
+                                log::trace!("Read {} bytes from serial port", ct);
+                            }
+                            for i in 0..ct {
+                                // TODO: Must be a more efficient way to copy the vec to vecdeque?
+                                let byte = port.bridge_buf[i];
+                                port.rx_queue.push_back(byte);
+                                log::trace!("Wrote byte : {:02X} to buf", byte);
+                            }
+                        },
+                        Err(e) => {
+                            //log::error!("Error reading serial device: {}", e);
+                        }
+                    }
+                },
+                None => {}
+            }
+        }
     }
 
 }

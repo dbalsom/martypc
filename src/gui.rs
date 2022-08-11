@@ -17,6 +17,8 @@ use pixels::{wgpu, PixelsContext};
 use regex::Regex;
 use winit::{window::Window};
 
+use serialport::SerialPortInfo;
+
 use crate::{
 
     gui_image::{UiImage, get_ui_image},
@@ -52,7 +54,8 @@ pub(crate) enum GuiEvent {
     LoadVHD(u32,OsString),
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, OsString),
-    EjectFloppy(usize)
+    EjectFloppy(usize),
+    BridgeSerialPort(String)
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -111,6 +114,10 @@ pub(crate) struct GuiState {
     selected_format_idx: usize,
     new_vhd_filename: String,
     vhd_regex: Regex,
+
+    // Serial ports
+    serial_ports: Vec<SerialPortInfo>,
+    serial_port_name: String,
 
     exec_control: Rc<RefCell<ExecutionControl>>,
     cpu_single_step: bool,
@@ -279,6 +286,9 @@ impl GuiState {
             selected_format_idx: 0,
             new_vhd_filename: String::new(),
             vhd_regex: Regex::new(VHD_REGEX).unwrap(),
+
+            serial_ports: Vec::new(),
+            serial_port_name: String::new(),
 
             exec_control: exec_control,
             cpu_single_step: true,
@@ -449,6 +459,10 @@ impl GuiState {
         self.vhd_formats = formats.clone()
     }
 
+    pub fn update_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
+        self.serial_ports = ports;
+    }
+
     pub fn update_perf_view(&mut self, current_fps: u32, emulation_ms: u32, render_ms: u32) {
         self.current_fps = current_fps;
         self.emulation_ms = emulation_ms;
@@ -576,6 +590,16 @@ impl GuiState {
                     if ui.checkbox(&mut self.composite, "Composite").clicked() {
                         ui.close_menu();
                     }
+                    ui.menu_button("Attach COM2: ...", |ui| {
+                        for port in &self.serial_ports {
+
+                            if ui.radio_value(&mut self.serial_port_name, port.port_name.clone(), port.port_name.clone()).clicked() {
+
+                                self.event_queue.push_back(GuiEvent::BridgeSerialPort(self.serial_port_name.clone()));
+                                ui.close_menu();
+                            }
+                        }
+                    });                                
                 });
             });
         });

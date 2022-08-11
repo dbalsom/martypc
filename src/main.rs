@@ -210,6 +210,19 @@ fn main() -> Result<(), Error> {
         std::process::exit(1);        
     } 
 
+    // Enumerate serial ports
+    let serial_ports = match serialport::available_ports() {
+        Ok(ports) => ports,
+        Err(e) => {
+            log::error!("Didn't find any serial ports: {:?}", e);
+            Vec::new()
+        }
+    };
+
+    for port in &serial_ports {
+        log::debug!("Found serial port: {:?}", port);
+    }
+
     // Create the video renderer
     let video = video::Video::new();
 
@@ -239,6 +252,9 @@ fn main() -> Result<(), Error> {
 
         (pixels, framework)
     };
+
+    // Set list of serial ports
+    framework.gui.update_serial_ports(serial_ports);
 
     let mut stat_counter = Counter::new();
 
@@ -500,6 +516,9 @@ fn main() -> Result<(), Error> {
                     machine.run(CYCLES_PER_FRAME, &mut exec_control.borrow_mut(), bp_addr);
                     stat_counter.emulation_time = Instant::now() - emulation_start;
 
+                    // Do per-frame updates (Serial port emulation)
+                    machine.frame_update();
+
                     // Draw video memory
                     let composite_enabled = framework.gui.get_composite_enabled();
                     let render_start = Instant::now();
@@ -564,6 +583,11 @@ fn main() -> Result<(), Error> {
                             Some(GuiEvent::EjectFloppy(drive_select)) => {
                                 log::info!("Ejecting floppy in drive: {}", drive_select);
                                 machine.fdc().borrow_mut().unload_image(drive_select);
+                            }
+                            Some(GuiEvent::BridgeSerialPort(port_name)) => {
+
+                                log::info!("Bridging serial port: {}", port_name);
+                                machine.bridge_serial_port(1, port_name);
                             }
                             None => break,
                             _ => {

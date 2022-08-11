@@ -380,6 +380,10 @@ impl Machine {
         &self.mouse
     }
 
+    pub fn bridge_serial_port(&mut self, port_num: usize, port_name: String) {
+        self.serial_controller.borrow_mut().bridge_port(port_num, port_name);
+    }
+
     pub fn reset(&mut self) {
         self.cpu.reset();
 
@@ -556,6 +560,13 @@ impl Machine {
             cycles_elapsed += fake_cycles;
             self.cpu_cycles += fake_cycles as u64;
         }
+    }
+
+    /// Called to update machine once per frame.
+    /// Mostly used for serial function.
+    pub fn frame_update(&mut self) {
+
+        self.serial_controller.borrow_mut().update();
     }
 
     pub fn play_sound_buffer(&self) {
