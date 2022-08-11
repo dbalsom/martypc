@@ -48,15 +48,22 @@ impl Mouse {
 
     pub fn update(&self, l_button_pressed: bool, r_button_pressed: bool, delta_x: f64, delta_y: f64) {
 
-        let mut scaled_x = (delta_x * MOUSE_SCALE);
-        let mut scaled_y = (delta_y * MOUSE_SCALE);
-        // Minimum movement of one unit
+        let mut scaled_x = delta_x * MOUSE_SCALE;
+        let mut scaled_y = delta_y * MOUSE_SCALE;
+    
+        // Mouse scale can cause fractional integer updates. Adjust to Minimum movement of one unit
         if scaled_x > 0.0 && scaled_x < 1.0 {
             scaled_x = 1.0;
+        }
+        if scaled_x < 0.0 && scaled_x > -1.0 {
+            scaled_x = -1.0;
         }
         if scaled_y > 0.0 && scaled_y < 1.0 {
             scaled_y = 1.0;
         }
+        if scaled_y < 0.0 && scaled_y > -1.0 {
+            scaled_y = -1.0;
+        }        
         let delta_x_i8 = scaled_x as i8;
         let delta_y_i8 = scaled_y as i8;
 
