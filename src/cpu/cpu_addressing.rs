@@ -292,7 +292,12 @@ impl Cpu {
                     Register16::DI => self.set_register16(Register16::DI, value),
                     Register16::ES => self.set_register16(Register16::ES, value),
                     Register16::CS => self.set_register16(Register16::CS, value),
-                    Register16::SS => self.set_register16(Register16::SS, value),
+                    Register16::SS => {
+                        self.set_register16(Register16::SS, value);
+                        // Technically only MOV ss, nn instructions will inhibit interrupts for one instruction
+                        // Other writes may not. 
+                        self.interrupt_inhibit = true;
+                    },
                     Register16::DS => self.set_register16(Register16::DS, value),
                     _=> panic!("read_operand16(): Invalid Register16 operand")
                 }

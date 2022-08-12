@@ -126,7 +126,7 @@ impl Cpu {
         }
 
         // Reset the wait cycle after STI
-        self.interrupt_wait_cycle = false;
+        self.interrupt_inhibit = false;
 
         match i.opcode {
             0x00 | 0x02 | 0x04 => {

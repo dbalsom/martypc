@@ -189,7 +189,7 @@ pub struct Cpu {
     current_instruction: Instruction,
     instruction_history: VecDeque<Instruction>,
     call_stack: VecDeque<CallStackEntry>,
-    interrupt_wait_cycle: bool,
+    interrupt_inhibit: bool,
     reset_seg: u16,
     reset_offset: u16
     
@@ -297,11 +297,11 @@ impl Cpu {
     pub fn set_flag(&mut self, flag: Flag ) {
 
         if let Flag::Interrupt = flag {
-            self.interrupt_wait_cycle = true;
+            self.interrupt_inhibit = true;
             //if self.eflags & CPU_FLAG_INT_ENABLE == 0 {
                 // The interrupt flag was *just* set, so instruct the CPU to start
                 // honoring interrupts on the *next* instruction
-                self.interrupt_wait_cycle = true;
+                // self.interrupt_inhibit = true;
             //}
         }
 
@@ -560,7 +560,7 @@ impl Cpu {
         self.rep_state.clear();
         self.piq_len = 0;
         self.halted = false;
-        self.interrupt_wait_cycle = false;
+        self.interrupt_inhibit = false;
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
@@ -959,7 +959,7 @@ impl Cpu {
 
     /// Return true if an interrupt can occur under current execution state
     pub fn interrupts_enabled(&self) -> bool {
-        self.get_flag(Flag::Interrupt) && !self.interrupt_wait_cycle
+        self.get_flag(Flag::Interrupt) && !self.interrupt_inhibit
     }
     
     /// Resume from halted state

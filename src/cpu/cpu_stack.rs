@@ -68,7 +68,11 @@ impl Cpu {
             Register16::DI => self.di = data,
             Register16::CS => self.cs = data,
             Register16::DS => self.ds = data,
-            Register16::SS => self.ss = data,
+            Register16::SS => {
+                self.ss = data;
+                // Inhibit interrupts for one instruction after issuing POP SS
+                self.interrupt_inhibit = true
+            },
             Register16::ES => self.es = data,     
             Register16::IP => self.ip = data,      
             _ => panic!("Invalid register")            
