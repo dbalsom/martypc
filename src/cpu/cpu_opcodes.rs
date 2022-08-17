@@ -475,29 +475,26 @@ impl Cpu {
                 // POP di
                 self.pop_register16(bus, Register16::DI);
             }
-            0x60..=0x6F => {
-                // Not implemented on 8088
-                unhandled = true;
-            }
-            0x70..=0x7F => {
+            0x60..=0x7F => {
                 // JMP rel8 variants
-                jump = match i.opcode {
-                    0x70 => self.get_flag(Flag::Overflow),  // JO - Jump if overflow set
-                    0x71 => !self.get_flag(Flag::Overflow), // JNO - Jump it overflow not set
-                    0x72 => self.get_flag(Flag::Carry), // JB -> Jump if carry set
-                    0x73 => !self.get_flag(Flag::Carry), // JNB -> Jump if carry not set
-                    0x74 => self.get_flag(Flag::Zero), // JZ -> Jump if Zero set
-                    0x75 => !self.get_flag(Flag::Zero), // JNZ -> Jump if Zero not set
-                    0x76 => self.get_flag(Flag::Carry) || self.get_flag(Flag::Zero), // JBE -> Jump if Carry OR Zero
-                    0x77 => !self.get_flag(Flag::Carry) && !self.get_flag(Flag::Zero), // JNBE -> Jump if Carry not set AND Zero not set
-                    0x78 => self.get_flag(Flag::Sign), // JS -> Jump if Sign set
-                    0x79 => !self.get_flag(Flag::Sign), // JNS -> Jump if Sign not set
-                    0x7A => self.get_flag(Flag::Parity), // JP -> Jump if Parity set
-                    0x7B => !self.get_flag(Flag::Parity), // JNP -> Jump if Parity not set
-                    0x7C => self.get_flag(Flag::Sign) != self.get_flag(Flag::Overflow), // JL -> Jump if Sign flag != Overflow flag
-                    0x7D => self.get_flag(Flag::Sign) == self.get_flag(Flag::Overflow), // JNL -> Jump if Sign flag == Overflow flag
-                    0x7E => self.get_flag(Flag::Zero) || (self.get_flag(Flag::Sign) != self.get_flag(Flag::Overflow)),  // JLE ((ZF=1) OR (SF!=OF))
-                    0x7F => !self.get_flag(Flag::Zero) && (self.get_flag(Flag::Sign) == self.get_flag(Flag::Overflow)), // JNLE ((ZF=0) AND (SF=OF))
+                // Note that 0x60-6F maps to 0x70-7F on 8088
+                jump = match i.opcode & 0x0F {
+                    0x00 => self.get_flag(Flag::Overflow),  // JO - Jump if overflow set
+                    0x01 => !self.get_flag(Flag::Overflow), // JNO - Jump it overflow not set
+                    0x02 => self.get_flag(Flag::Carry), // JB -> Jump if carry set
+                    0x03 => !self.get_flag(Flag::Carry), // JNB -> Jump if carry not set
+                    0x04 => self.get_flag(Flag::Zero), // JZ -> Jump if Zero set
+                    0x05 => !self.get_flag(Flag::Zero), // JNZ -> Jump if Zero not set
+                    0x06 => self.get_flag(Flag::Carry) || self.get_flag(Flag::Zero), // JBE -> Jump if Carry OR Zero
+                    0x07 => !self.get_flag(Flag::Carry) && !self.get_flag(Flag::Zero), // JNBE -> Jump if Carry not set AND Zero not set
+                    0x08 => self.get_flag(Flag::Sign), // JS -> Jump if Sign set
+                    0x09 => !self.get_flag(Flag::Sign), // JNS -> Jump if Sign not set
+                    0x0A => self.get_flag(Flag::Parity), // JP -> Jump if Parity set
+                    0x0B => !self.get_flag(Flag::Parity), // JNP -> Jump if Parity not set
+                    0x0C => self.get_flag(Flag::Sign) != self.get_flag(Flag::Overflow), // JL -> Jump if Sign flag != Overflow flag
+                    0x0D => self.get_flag(Flag::Sign) == self.get_flag(Flag::Overflow), // JNL -> Jump if Sign flag == Overflow flag
+                    0x0E => self.get_flag(Flag::Zero) || (self.get_flag(Flag::Sign) != self.get_flag(Flag::Overflow)),  // JLE ((ZF=1) OR (SF!=OF))
+                    0x0F => !self.get_flag(Flag::Zero) && (self.get_flag(Flag::Sign) == self.get_flag(Flag::Overflow)), // JNLE ((ZF=0) AND (SF=OF))
                     _ => false
                 };
                 if jump {
