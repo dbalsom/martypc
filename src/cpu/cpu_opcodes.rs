@@ -543,6 +543,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
                 // math_op8 handles flags
                 self.math_op8(Opcode::TEST, op1_value, op2_value);
+                handled_override = true;
             }
             0x85 => {
                 // TEST r/m16, r16
