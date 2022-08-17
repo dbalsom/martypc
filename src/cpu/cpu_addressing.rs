@@ -14,7 +14,7 @@ impl Cpu {
     }
 
     pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
-        ((segment as u32) << 4) + offset as u32
+        ((segment as u32) << 4) + offset as u32 & 0xFFFFFu32
     }
     
     /// Calculate the Effective Address for the given AddressingMode enum
