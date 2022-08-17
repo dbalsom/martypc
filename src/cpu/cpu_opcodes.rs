@@ -931,14 +931,9 @@ impl Cpu {
                     }
                 }
             }
-            0xC0 => {
-                unhandled = true;
-            }
-            0xC1 => {
-                unhandled = true;
-            }
-            0xC2 => {
+            0xC0 | 0xC2 => {
                 // RETN imm16 - Return from call w/ release
+                // 0xC0 undocumented alias for 0xC2
                 // Flags: None
                 let new_ip = self.pop_u16(bus);
                 self.ip = new_ip;
@@ -951,8 +946,9 @@ impl Cpu {
 
                 jump = true
             }
-            0xC3 => {
+            0xC1 | 0xC3 => {
                 // RETN - Return from call
+                // 0xC1 undocumented alias for 0xC3
                 // Flags: None
                 // Effectively, this instruction is pop ip
                 let new_ip = self.pop_u16(bus);
@@ -995,14 +991,9 @@ impl Cpu {
                 self.write_operand16(bus, i.operand1_type, i.segment_override, op2_value);
                 handled_override = true;
             }
-            0xC8 => {
-                unhandled = true;
-            }
-            0xC9 => {
-                unhandled = true;
-            }
-            0xCA => {
+            0xC8 | 0xCA => {
                 // RETF imm16 - Far Return w/ release 
+                // 0xC8 undocumented alias for 0xCA
                 self.pop_register16(bus, Register16::IP);
                 self.pop_register16(bus, Register16::CS);
                 let stack_disp = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
@@ -1012,8 +1003,9 @@ impl Cpu {
                 self.call_stack.pop_back();
                 jump = true;
             }
-            0xCB => {
+            0xC9 | 0xCB => {
                 // RETF - Far Return
+                // 0xC9 undocumented alias for 0xCB
                 self.pop_register16(bus, Register16::IP);
                 self.pop_register16(bus, Register16::CS);
 
