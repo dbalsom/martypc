@@ -695,10 +695,10 @@ pub struct Instruction {
     pub(crate) segment_override: SegmentOverride,
     pub(crate) operand1_type: OperandType,
     pub(crate) operand1_size: OperandSize,
-    pub(crate) operand1: u16,
+    //pub(crate) operand1: u16,
     pub(crate) operand2_type: OperandType,
     pub(crate) operand2_size: OperandSize,
-    pub(crate) operand2: u16,
+    //pub(crate) operand2: u16,
     pub(crate) is_location: bool
 }
 
@@ -714,10 +714,10 @@ impl Default for Instruction {
             segment_override: SegmentOverride::NoOverride,
             operand1_type: OperandType::NoOperand,
             operand1_size: OperandSize::NoOperand,
-            operand1: 0,
+            //operand1: 0,
             operand2_type: OperandType::NoOperand,
             operand2_size: OperandSize::NoOperand,
-            operand2: 0,
+            //operand2: 0,
             is_location: false,
         }
     }
@@ -1723,10 +1723,10 @@ pub fn decode(bytes: &mut impl ByteInterface) -> Result<Instruction, Box<dyn std
         segment_override: op_segment_override,
         operand1_type: operand1_type,
         operand1_size: operand1_size,
-        operand1: 0,
+        //operand1: 0,
         operand2_type: operand2_type,
         operand2_size: operand2_size,
-        operand2: 0,
+        //operand2: 0,
         is_location: false 
     })
 }
