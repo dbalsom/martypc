@@ -489,12 +489,12 @@ impl ProgrammableIntervalTimer {
                     // Don't count while waiting for reload value
                     if !t.waiting_for_reload && t.input_gate {
 
-                        // Reload value of 0 equates to to reload value of 2^16
+                        // Counter value of 0 equates to to reload value of 2^16
                         if t.current_count == 0 {
                             if t.reload_value != 0 {
                                 panic!("unexpected timer state");
                             }
-                            t.current_count = u16::MAX - 1;
+                            t.current_count = u16::MAX;
                         }
                         else {
                             t.current_count -= 1;
@@ -510,7 +510,7 @@ impl ProgrammableIntervalTimer {
 
                             t.output_is_high = true;
                             // Counter just wraps around in this mode, it is NOT reloaded.
-                            t.current_count = u16::MAX - 1;
+                            t.current_count = u16::MAX;
                         }
                     }
                 },
@@ -550,12 +550,12 @@ impl ProgrammableIntervalTimer {
                     // Don't count while waiting for reload value, or if input gate is low
                     if !t.waiting_for_reload && t.input_gate {
                         
-                        // Reload value of 0 equates to to reload value of 2^16
+                        // Counter value of 0 equates to to reload value of 2^16
                         if t.current_count == 0 {
                             if t.reload_value != 0 {
                                 panic!("unexpected timer state");
                             }
-                            t.current_count = u16::MAX - 1;
+                            t.current_count = u16::MAX;
                         }
 
                         if t.current_count & 0x01 != 0 {
@@ -600,7 +600,7 @@ impl ProgrammableIntervalTimer {
 
                             // Reload counter
                             if t.reload_value == 0 {
-                                t.current_count = u16::MAX - 1; 
+                                t.current_count = u16::MAX; 
                             }
                             else {
                                 t.current_count = t.reload_value;                            
