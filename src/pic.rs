@@ -205,11 +205,11 @@ impl Pic {
             
             let rr = match byte & OCW3_RR_COMMAND {
                 0b10 => {
-                    log::debug!("PIC: OCW3 Read Selected IRR register");
+                    //log::debug!("PIC: OCW3 Read Selected IRR register");
                     ReadSelect::IRR
                 },
                 0b11 => {
-                    log::debug!("PIC: OCW3 Read Selected ISR register");
+                    //log::debug!("PIC: OCW3 Read Selected ISR register");
                     ReadSelect::ISR
                 }
                 _ => self.read_select

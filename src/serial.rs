@@ -483,7 +483,7 @@ impl SerialPort {
             // bit 3 of the modem control regsister must be set to 1
             if self.modem_control_reg & MODEM_CONTROL_OUT2 != 0 {
 
-                log::trace!("Sending interrupt. Interrupts active: {:04b}", self.interrupts_active);
+                //log::trace!("Sending interrupt. Interrupts active: {:04b}", self.interrupts_active);
                 self.raise_interrupt = true;
             }
         }
@@ -568,7 +568,7 @@ impl SerialPortController {
 
             // Raise interrupt if pending
             if port.raise_interrupt {
-                log::trace!("asserting irq: {}", port.irq);
+                //log::trace!("asserting irq: {}", port.irq);
                 pic.request_interrupt(port.irq);
                 port.raise_interrupt = false;
             }
@@ -618,7 +618,7 @@ impl SerialPortController {
                     
                     // If we have bridged this serial port, send the byte to the tx queue
                     if let Some(_) = &port.bridge_port {
-                        log::trace!("{}: Sending byte: {:02X}", port.name, port.tx_holding_reg);
+                        //log::trace!("{}: Sending byte: {:02X}", port.name, port.tx_holding_reg);
                         port.tx_queue.push_back(port.tx_holding_reg);
                     }
 
@@ -653,7 +653,7 @@ impl SerialPortController {
                         
                         match bridge_port.write(tx1) {
                             Ok(_) => {
-                                log::trace!("Wrote bytes: {:?}", tx1);
+                                //log::trace!("Wrote bytes: {:?}", tx1);
                             }
                             Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => (),
                             Err(e) => log::error!("Error writing byte: {:?}", e),                            
@@ -674,7 +674,7 @@ impl SerialPortController {
                                 // TODO: Must be a more efficient way to copy the vec to vecdeque?
                                 let byte = port.bridge_buf[i];
                                 port.rx_queue.push_back(byte);
-                                log::trace!("Wrote byte : {:02X} to buf", byte);
+                                //log::trace!("Wrote byte : {:02X} to buf", byte);
                             }
                         },
                         Err(e) => {
