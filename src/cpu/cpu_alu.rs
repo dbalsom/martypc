@@ -1,27 +1,33 @@
 use crate::cpu::{Cpu, CpuType, Flag};
 use crate::arch::{Opcode, Register8, Register16};
 
+const PARITY_TABLE: [bool; 256] = {
+    let mut table = [false; 256];
+    
+    // can't do for loop in const
+    let mut index = 0;
+    loop {
+        table[index] = index.count_ones() % 2 == 0;
+        index += 1;
+        
+        if index == 256 {
+            break;
+        }
+    }
+
+    table
+};
+
 impl Cpu {
 
-    fn calc_parity_flag_u8(operand: u8) -> bool {
-        let mut bits_set = 0;
-        for i in 0..8 {
-            if operand & (0x01 << i) != 0 {
-                bits_set += 1;
-            }
-        }
-        // even number of bits set?
-        bits_set % 2 == 0
-    }
-
-    fn calc_parity_flag_u16(operand: u16) -> bool {
-        // Parity flag only ever looks at lowest 8 bits in operand
-        Cpu::calc_parity_flag_u8(operand as u8)
-    }
-
+    #[inline(always)]
     fn set_parity_flag_from_u8(&mut self, operand: u8) {
+        self.set_flag_state(Flag::Parity, PARITY_TABLE[operand as usize]);
+    }
 
-        self.set_flag_state(Flag::Parity, Cpu::calc_parity_flag_u8(operand));
+    #[inline(always)]
+    fn set_parity_flag_from_u16(&mut self, operand: u16) {
+        self.set_flag_state(Flag::Parity, PARITY_TABLE[(operand & 0xFF) as usize]);
     }
 
     pub fn set_flags_from_result_u8(&mut self, result: u8) {
@@ -44,11 +50,6 @@ impl Cpu {
 
         // Set Parity Flag
         self.set_parity_flag_from_u16(result);
-    }
-
-    fn set_parity_flag_from_u16(&mut self, operand: u16) {
-
-        self.set_flag_state(Flag::Parity, Cpu::calc_parity_flag_u16(operand));
     }
 
     fn add_u8(byte1: u8, byte2: u8, carry_in: bool) -> (u8, bool, bool, bool) {
