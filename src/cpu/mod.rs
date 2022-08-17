@@ -15,8 +15,6 @@ mod cpu_alu;
 mod cpu_string;
 mod cpu_bcd;
 
-use crate::util;
-use crate::util::get_linear_address;
 
 use crate::bus::BusInterface;
 use crate::byteinterface::ByteInterface;
@@ -332,6 +330,7 @@ impl Cpu {
         };
     }
 
+    #[inline(always)]
     pub fn set_flag_state(&mut self, flag: Flag, state: bool) {
         if state {
             self.set_flag(flag)
@@ -352,11 +351,11 @@ impl Cpu {
     }
 
     pub fn load_flags(&mut self) -> u16 {
-
         // Return 8 LO bits of eFlags register
         self.eflags & 0x00FF
     }
 
+    #[inline]
     pub fn get_flag(&self, flag: Flag) -> bool {
         let mut flags = self.eflags;
         flags &= match flag {
@@ -405,6 +404,7 @@ impl Cpu {
         }
     }
 
+    #[inline]
     pub fn get_register8(&self, reg:Register8) -> u8 {
         match reg {
             Register8::AH => self.ah,
@@ -418,6 +418,7 @@ impl Cpu {
         }
     }
 
+    #[inline]
     pub fn get_register16(&self, reg: Register16) -> u16 {
         match reg {
             Register16::AX => self.ax,
@@ -440,6 +441,7 @@ impl Cpu {
     // Sets one of the 8 bit registers.
     // It's tempting to represent the H/X registers as a union, because they are one.
     // However, in the exercise of this project I decided to avoid all unsafe code.
+    #[inline]
     pub fn set_register8(&mut self, reg: Register8, value: u8) {
         match reg {
             Register8::AH => {
@@ -477,6 +479,7 @@ impl Cpu {
         }
     }
 
+    #[inline]
     pub fn set_register16(&mut self, reg: Register16, value: u16) {
         match reg {
             Register16::AX => {
@@ -566,8 +569,8 @@ impl Cpu {
         self.call_stack.clear();
     }
 
-    pub fn get_flat_address(&self) -> u32 {
-        get_linear_address(self.cs, self.ip)
+    pub fn get_linear_ip(&self) -> u32 {
+        Cpu::calc_linear_address(self.cs, self.ip)
     }
 
     pub fn get_state(&self) -> CpuRegisterState {
@@ -685,7 +688,7 @@ impl Cpu {
             let offset_u16r = u16::from_str_radix(offset_str, 16);
 
             match(segment_u16r, offset_u16r) {
-                (Ok(segment),Ok(offset)) => Some(get_linear_address(segment,offset)),
+                (Ok(segment),Ok(offset)) => Some(Cpu::calc_linear_address(segment,offset)),
                 _ => None
             }
         }
@@ -726,7 +729,7 @@ impl Cpu {
                 _ => 0
             };
 
-            Some(get_linear_address(segment, offset))
+            Some(Cpu::calc_linear_address(segment, offset))
         }
         else if let Some(caps) = REGOFFSET_REX.captures(expr) {
 
@@ -744,7 +747,7 @@ impl Cpu {
             let offset_u16r = u16::from_str_radix(offset_str, 16);
             
             match offset_u16r {
-                Ok(offset) => Some(get_linear_address(segment, offset)),
+                Ok(offset) => Some(Cpu::calc_linear_address(segment, offset)),
                 _ => None
             }
         }
@@ -786,7 +789,7 @@ impl Cpu {
             //log::trace!("CPU: Software Interrupt: {:02X} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
         }
         // Read the IVT
-        let ivt_addr = util::get_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
+        let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
         let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
@@ -833,7 +836,7 @@ impl Cpu {
             log::trace!("CPU Exception: {:02X} Saving return: {:04X}:{:04X}", exception, self.cs, self.ip);
         }
         // Read the IVT
-        let ivt_addr = util::get_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
+        let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
         let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
@@ -942,7 +945,7 @@ impl Cpu {
         }
 
         // Read the IVT
-        let ivt_addr = util::get_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
+        let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
         let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
@@ -977,7 +980,7 @@ impl Cpu {
             return Ok(())
         }
 
-        let instruction_address = get_linear_address(self.cs, self.ip);
+        let instruction_address = Cpu::calc_linear_address(self.cs, self.ip);
 
         bus.set_cursor(instruction_address as usize);
 

@@ -11,9 +11,9 @@ pub fn sign_extend_u8_to_u16(some_u8: u8) -> u16 {
     some_u8 as i8 as i16 as u16
 }
 
-pub fn get_linear_address(segment: u16, offset: u16) -> u32 {
-    (((segment as u32) << 4) + offset as u32) & 0xFFFFFu32
-}
+//pub fn get_linear_address(segment: u16, offset: u16) -> u32 {
+//    (((segment as u32) << 4) + offset as u32) & 0xFFFFFu32
+//}
 
 pub fn fmt_byte_array(bytes: &[u8]) -> String {
     let mut fmt_str = String::new();

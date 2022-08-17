@@ -12,13 +12,13 @@ impl Cpu {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
 
-        let stack_addr = util::get_linear_address(self.ss, self.sp);
+        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
         let _cost = bus.write_u16(stack_addr as usize, data).unwrap();
     }
 
     pub fn pop_u16(&mut self, bus: &mut BusInterface) -> u16 {
 
-        let stack_addr = util::get_linear_address(self.ss, self.sp);
+        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
         let (result, _cost) = bus.read_u16(stack_addr as usize).unwrap();
         
         // Stack pointer grows downwards
@@ -48,14 +48,14 @@ impl Cpu {
             _ => panic!("Invalid register")            
         };
         
-        let stack_addr = util::get_linear_address(self.ss, self.sp);
+        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
         let _cost = bus.write_u16(stack_addr as usize, data).unwrap();
 
     }
 
     pub fn pop_register16(&mut self, bus: &mut BusInterface, reg: Register16) {
 
-        let stack_addr = util::get_linear_address(self.ss, self.sp);
+        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
         let (data, _cost) = bus.read_u16(stack_addr as usize).unwrap();
         match reg {
             Register16::AX => self.set_register16(reg, data),
@@ -88,13 +88,13 @@ impl Cpu {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
 
-        let stack_addr = util::get_linear_address(self.ss, self.sp);
+        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
         let _cost = bus.write_u16(stack_addr as usize, self.eflags).unwrap();
     }
 
     pub fn pop_flags(&mut self, bus: &mut BusInterface) {
 
-        let stack_addr = util::get_linear_address(self.ss, self.sp);
+        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
         let (result, _cost) = bus.read_u16(stack_addr as usize).unwrap();
 
         // Ensure state of reserved flag bits

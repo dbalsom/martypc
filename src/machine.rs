@@ -443,7 +443,7 @@ impl Machine {
 
             if self.cpu.is_error() == false {
 
-                let flat_address = self.cpu.get_flat_address();
+                let flat_address = self.cpu.get_linear_ip();
 
                 // Check for immediate breakpoint
                 if (flat_address == breakpoint) && breakpoint != 0 && !ignore_breakpoint {

@@ -1,7 +1,7 @@
 
 
-use crate::cpu::{Cpu, Flag};
-use crate::bus::{BusInterface};
+use crate::cpu::Cpu;
+use crate::bus::BusInterface;
 use crate::arch::{OperandType, AddressingMode, SegmentOverride, Displacement, Register8, Register16};
 
 impl Cpu {
