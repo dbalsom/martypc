@@ -5,10 +5,19 @@ use crate::io::{IoBusInterface, IoDevice};
 pub const CGA_MEM_ADDRESS: usize = 0xB8000;
 pub const CGA_MEM_SIZE: usize = 16384;
 
-pub const CGA_DEFAULT_CURSOR_START_LINE: u8 = 6;
-pub const CGA_DEFAULT_CURSOR_END_LINE: u8 = 7;
-pub const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
-pub const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
+const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
+const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
+
+const DEFAULT_CURSOR_START_LINE: u8 = 6;
+const DEFAULT_CURSOR_END_LINE: u8 = 7;
+const DEFAULT_HORIZONTAL_TOTAL: u8 = 113;
+const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 80;
+const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 90;
+const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 10;
+const DEFAULT_VERTICAL_TOTAL: u8 = 31;
+const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 6;
+const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
+const DEFAULT_VERTICAL_SYNC_POS: u8 = 28;
 
 const FRAME_CPU_TIME: u32 = 79648;
 const FRAME_VBLANK_START: u32 = 70314;
@@ -127,16 +136,28 @@ pub struct CGACard {
     in_hblank: bool,
     in_vblank: bool,
     
-    crtc_cursor_status: bool,
-    crtc_cursor_slowblink: bool,
-    crtc_cursor_blink_rate: f64,
+    cursor_status: bool,
+    cursor_slowblink: bool,
+    cursor_blink_rate: f64,
+
     crtc_register_select_byte: u8,
     crtc_register_selected: CRTCRegister,
+
+    crtc_horizontal_total: u8,
+    crtc_horizontal_displayed: u8,
+    crtc_horizontal_sync_pos: u8,
+    crtc_sync_width: u8,
+    crtc_vertical_total: u8,
+    crtc_vertical_total_adjust: u8,
+    crtc_vertical_displayed: u8,
+    crtc_vertical_sync_pos: u8,
+    crtc_interlace_mode: u8,
+    crtc_maximum_scanline_address: u8,
     crtc_cursor_start_line: u8,
     crtc_cursor_end_line: u8,
+    crtc_start_address: u16,
     crtc_start_address_ho: u8,
     crtc_start_address_lo: u8,
-    crtc_maximum_scan_line: u8,
     crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
 
@@ -157,12 +178,12 @@ pub enum CRTCRegister {
     MaximumScanLineAddress,
     CursorStartLine,
     CursorEndLine,
-    StartAddressLOByte,
-    StartAddressHOByte,
-    CursorAddressHOByte,
-    CursorAddressLOByte,
-    LightPenPositionHOByte,
-    LightPenPositionLOByte
+    StartAddressH,
+    StartAddressL,
+    CursorAddressH,
+    CursorAddressL,
+    LightPenPositionH,
+    LightPenPositionL
 }
 
 impl IoDevice for CGACard {
@@ -221,18 +242,28 @@ impl CGACard {
             in_hblank: false,
             in_vblank: false,
 
-            crtc_cursor_status: false,
-            crtc_cursor_slowblink: false,
-            crtc_cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
+            cursor_status: false,
+            cursor_slowblink: false,
+            cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
+
             crtc_register_selected: CRTCRegister::HorizontalTotal,
             crtc_register_select_byte: 0,
 
-            crtc_cursor_start_line: CGA_DEFAULT_CURSOR_START_LINE,
-            crtc_cursor_end_line: CGA_DEFAULT_CURSOR_END_LINE,
-
+            crtc_horizontal_total: DEFAULT_HORIZONTAL_TOTAL,
+            crtc_horizontal_displayed: DEFAULT_HORIZONTAL_DISPLAYED,
+            crtc_horizontal_sync_pos: DEFAULT_HORIZONTAL_SYNC_POS,
+            crtc_sync_width: DEFAULT_HORIZONTAL_SYNC_WIDTH,
+            crtc_vertical_total: DEFAULT_VERTICAL_TOTAL,
+            crtc_vertical_total_adjust: DEFAULT_VERTICAL_TOTAL_ADJUST,
+            crtc_vertical_displayed: DEFAULT_VERTICAL_DISPLAYED,
+            crtc_vertical_sync_pos: DEFAULT_VERTICAL_SYNC_POS,
+            crtc_interlace_mode: 0,
+            crtc_maximum_scanline_address: 7,
+            crtc_cursor_start_line: DEFAULT_CURSOR_START_LINE,
+            crtc_cursor_end_line: DEFAULT_CURSOR_END_LINE,
+            crtc_start_address: 0,
             crtc_start_address_ho: 0,
             crtc_start_address_lo: 0,
-            crtc_maximum_scan_line: 7,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
 
@@ -249,11 +280,11 @@ impl CGACard {
     }
 
     pub fn get_cursor_status(&self) -> bool {
-        self.crtc_cursor_status
+        self.cursor_status
     }
 
     pub fn get_character_height(&self) -> u8 {
-        self.crtc_maximum_scan_line + 1
+        self.crtc_maximum_scanline_address + 1
     }
 
     pub fn get_cursor_info(&self) -> CursorInfo {
@@ -381,12 +412,12 @@ impl CGACard {
             0x09 => CRTCRegister::MaximumScanLineAddress,
             0x0A => CRTCRegister::CursorStartLine,
             0x0B => CRTCRegister::CursorEndLine,
-            0x0C => CRTCRegister::StartAddressHOByte,
-            0x0D => CRTCRegister::StartAddressLOByte,
-            0x0E => CRTCRegister::CursorAddressHOByte,
-            0x0F => CRTCRegister::CursorAddressLOByte,
-            0x10 => CRTCRegister::LightPenPositionHOByte,
-            0x11 => CRTCRegister::LightPenPositionLOByte,
+            0x0C => CRTCRegister::StartAddressH,
+            0x0D => CRTCRegister::StartAddressL,
+            0x0E => CRTCRegister::CursorAddressH,
+            0x0F => CRTCRegister::CursorAddressL,
+            0x10 => CRTCRegister::LightPenPositionH,
+            0x11 => CRTCRegister::LightPenPositionL,
             _ => {
                 log::debug!("CGA: Select to invalid CRTC register");
                 self.crtc_register_select_byte = 0;
@@ -397,43 +428,77 @@ impl CGACard {
 
     fn handle_crtc_register_write(&mut self, byte: u8 ) {
 
+        //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
         match self.crtc_register_selected {
+            CRTCRegister::HorizontalTotal => {
+                // (R0) 8 bit write only
+                self.crtc_horizontal_total = byte;
+            },
+            CRTCRegister::HorizontalDisplayed => {
+                // (R1) 8 bit write only
+                self.crtc_horizontal_displayed = byte;
+            }
+            CRTCRegister::HorizontalSyncPosition => {
+                // (R2) 8 bit write only
+                self.crtc_horizontal_sync_pos = byte;
+            },
+            CRTCRegister::SyncWidth => {
+                // (R3) 8 bit write only
+                self.crtc_sync_width = byte;
+            },
+            CRTCRegister::VerticalTotal => {
+                // (R4) 7 bit write only
+                self.crtc_vertical_total = byte & 0x7F;
+            },
+            CRTCRegister::VerticalTotalAdjust => {
+                // (R5) 5 bit write only
+                self.crtc_vertical_total_adjust = byte & 0x1F;
+            }
+            CRTCRegister::VerticalDisplayed => {
+                // (R6) 7 bit write only
+                self.crtc_vertical_displayed = byte; 
+            },
+            CRTCRegister::VerticalSync => {
+                // (R7) 7 bit write only
+                self.crtc_vertical_sync_pos = byte & 0x7F;
+            },
+            CRTCRegister::InterlaceMode => {
+                self.crtc_interlace_mode = byte;
+            },            
+            CRTCRegister::MaximumScanLineAddress => {
+                self.crtc_maximum_scanline_address = byte
+            }            
             CRTCRegister::CursorStartLine => {
                 self.crtc_cursor_start_line = byte & CURSOR_LINE_MASK;
                 match byte & CURSOR_ATTR_MASK >> 4 {
                     0b00 | 0b10 => {
-                        self.crtc_cursor_status = true;
-                        self.crtc_cursor_slowblink = false;
+                        self.cursor_status = true;
+                        self.cursor_slowblink = false;
                     }
                     0b01 => {
-                        self.crtc_cursor_status = false;
-                        self.crtc_cursor_slowblink = false;
+                        self.cursor_status = false;
+                        self.cursor_slowblink = false;
                     }
                     _ => {
-                        self.crtc_cursor_status = true;
-                        self.crtc_cursor_slowblink = true;
+                        self.cursor_status = true;
+                        self.cursor_slowblink = true;
                     }
                 }
             }
             CRTCRegister::CursorEndLine => {
                 self.crtc_cursor_end_line = byte & CURSOR_LINE_MASK;
             }
-            CRTCRegister::CursorAddressHOByte => {
-                //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
+            CRTCRegister::CursorAddressH => {
                 self.crtc_cursor_address_ho = byte
             }
-            CRTCRegister::CursorAddressLOByte => {
-                //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
+            CRTCRegister::CursorAddressL => {
                 self.crtc_cursor_address_lo = byte
             }
-            CRTCRegister::StartAddressHOByte => {
+            CRTCRegister::StartAddressH => {
                 self.crtc_start_address_ho = byte
             }
-            CRTCRegister::StartAddressLOByte => {
+            CRTCRegister::StartAddressL => {
                 self.crtc_start_address_lo = byte
-            }
-            CRTCRegister::MaximumScanLineAddress => {
-                self.crtc_maximum_scan_line = byte
             }
             _ => {
                 log::debug!("CGA: Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
@@ -445,11 +510,11 @@ impl CGACard {
         match self.crtc_register_selected {
             CRTCRegister::CursorStartLine => self.crtc_cursor_start_line,
             CRTCRegister::CursorEndLine => self.crtc_cursor_end_line,
-            CRTCRegister::CursorAddressHOByte => {
+            CRTCRegister::CursorAddressH => {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_ho );
                 self.crtc_cursor_address_ho 
             },
-            CRTCRegister::CursorAddressLOByte => {
+            CRTCRegister::CursorAddressL => {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
                 self.crtc_cursor_address_lo
             }
@@ -501,14 +566,14 @@ impl CGACard {
         // It is tied to the 'Display Enable' line from the CGA card, inverted.
         // Thus it will be 1 when the CGA card is not currently scanning, IE during both horizontal
         // and vertical refresh.
-        // For now, we just always return 1.
+
         // https://www.vogons.org/viewtopic.php?t=47052
         
         if self.in_hblank {
             STATUS_DISPLAY_ENABLE
         }
         else if self.in_vblank {
-            STATUS_VERTICAL_RETRACE
+            STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
         }
         else {
             0
@@ -529,10 +594,10 @@ impl CGACard {
             self.frame_cycles -= FRAME_CPU_TIME;
             self.cursor_frames += 1;
             // Blink the cursor
-            let cursor_cycle = CGA_DEFAULT_CURSOR_FRAME_CYCLE * (self.crtc_cursor_slowblink as u32 + 1);
+            let cursor_cycle = CGA_DEFAULT_CURSOR_FRAME_CYCLE * (self.cursor_slowblink as u32 + 1);
             if self.cursor_frames > cursor_cycle {
                 self.cursor_frames -= cursor_cycle;
-                self.crtc_cursor_status = !self.crtc_cursor_status;
+                self.cursor_status = !self.cursor_status;
             }
         }
         if self.scanline_cycles > SCANLINE_CPU_TIME {

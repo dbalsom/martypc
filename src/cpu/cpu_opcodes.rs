@@ -927,12 +927,6 @@ impl Cpu {
                 // MOV r16, imm16
                 if let OperandType::Immediate16(imm16) = i.operand2_type {
                     if let OperandType::Register16(reg) = i.operand1_type {
-                        if imm16 == 0xB4 {
-                            // breaky breaky
-                            
-                            
-                            println!("rat");
-                        }
                         self.set_register16(reg, imm16);
                     }
                 }
@@ -1106,7 +1100,15 @@ impl Cpu {
                 self.aad(op1_value);
             }
             0xD6 => {
-                unhandled = true;
+                // SALC - Undocumented Opcode - Set Carry flag in AL
+                // http://www.rcollins.org/secrets/opcodes/SALC.html
+
+                self.set_register8(Register8::AL,
+                    match self.get_flag(Flag::Carry) {
+                        true => 0xFF,
+                        false => 0
+                    }
+                );
             }
             0xD7 => {
                 // XLAT

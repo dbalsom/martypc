@@ -202,7 +202,7 @@ impl Video {
                 let char_height = cga_card.get_character_height();
     
                 // Start address is multiplied by two due to 2 bytes per character (char + attr)
-                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE - start_address * 2);
+                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
 
                 self.draw_text_mode(cursor, frame, FRAME_W, FRAME_H, video_mem, char_height, mode_40_cols );
             }

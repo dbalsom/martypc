@@ -201,6 +201,7 @@ pub enum Opcode {
     ROL,
     ROR,
     SAHF,
+    SALC,
     SAR,
     SBB,
     SCASB,
@@ -310,6 +311,7 @@ fn opcode_to_str(op: Opcode) -> &'static str {
         Opcode::ROL => "ROL",
         Opcode::ROR => "ROR",
         Opcode::SAHF => "SAHF",
+        Opcode::SALC => "SALC",
         Opcode::SAR => "SAR",
         Opcode::SBB => "SBB",
         Opcode::SCASB => "SCASB",
@@ -1161,6 +1163,7 @@ pub fn decode(bytes: &mut impl ByteInterface) -> Result<Instruction, Box<dyn std
 
         0xD4 => (Opcode::AAM,  OperandTemplate::Immediate8,   OperandTemplate::NoOperand,    0),
         0xD5 => (Opcode::AAD,  OperandTemplate::Immediate8,   OperandTemplate::NoOperand,    0),
+        0xD6 => (Opcode::SALC, OperandTemplate::NoOperand,  OperandTemplate::NoOperand,      0),
         0xD7 => (Opcode::XLAT, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
         // FPU instructions
         0xD8..=0xDF => (Opcode::ESC, OperandTemplate::ModRM16, OperandTemplate::NoOperand, 0),

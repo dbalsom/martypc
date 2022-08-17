@@ -659,7 +659,7 @@ mod tests {
 
         cpu.set_register16(Register16::AX, 1);
 
-        for i in 0..7 {
+        for _ in 0..7 {
             cpu.multiply_u8(2);
         }
         assert_eq!(cpu.al, 128);
@@ -668,7 +668,7 @@ mod tests {
 
         cpu.set_register16(Register16::AX, 1);
 
-        for i in 0..15 {
+        for _ in 0..15 {
             cpu.multiply_u16(2);
         }
         assert_eq!(cpu.ax, 32768);
