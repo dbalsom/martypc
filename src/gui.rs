@@ -46,6 +46,7 @@ pub(crate) enum GuiWindow {
     PicViewer,
     PpiViewer,
     DmaViewer,
+    CrtcViewer,
     CallStack,
     VHDCreator,
 }
@@ -91,6 +92,7 @@ pub(crate) struct GuiState {
     pic_viewer_open: bool,
     ppi_viewer_open: bool,
     dma_viewer_open: bool,
+    crtc_viewer_open: bool,
     call_stack_open: bool,
     vhd_creator_open: bool,
     
@@ -131,6 +133,7 @@ pub(crate) struct GuiState {
     pub pic_state: PicStringState,
     pub ppi_state: PpiStringState,
     pub dma_state: DMAControllerStringState,
+    pub crtc_state: Vec<(String, String)>,
     dma_channel_select: u32,
     dma_channel_select_str: String,
     memory_viewer_dump: String,
@@ -265,6 +268,7 @@ impl GuiState {
             pic_viewer_open: false,
             ppi_viewer_open: false,
             dma_viewer_open: false,
+            crtc_viewer_open: false,
             call_stack_open: false,
             vhd_creator_open: false,
             
@@ -305,6 +309,7 @@ impl GuiState {
             dma_state: Default::default(),
             dma_channel_select: 0,
             dma_channel_select_str: String::new(),
+            crtc_state: Default::default(),
             disassembly_viewer_string: String::new(),
             disassembly_viewer_address: "cs:ip".to_string(),
             trace_string: String::new(),
@@ -349,6 +354,7 @@ impl GuiState {
             GuiWindow::PicViewer => self.pic_viewer_open,
             GuiWindow::PpiViewer => self.ppi_viewer_open,
             GuiWindow::DmaViewer => self.dma_viewer_open,
+            GuiWindow::CrtcViewer => self.crtc_viewer_open,
             GuiWindow::CallStack => self.call_stack_open,
             GuiWindow::VHDCreator => self.vhd_creator_open,
         }
@@ -469,6 +475,10 @@ impl GuiState {
         self.render_ms = render_ms;
     }
 
+    pub fn update_crtc_state(&mut self, state: Vec<(String, String)>) {
+        self.crtc_state = state;
+    }
+
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
@@ -582,6 +592,10 @@ impl GuiState {
                     }
                     if ui.button("DMA...").clicked() {
                         self.dma_viewer_open = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("CRTC...").clicked() {
+                        self.crtc_viewer_open = true;
                         ui.close_menu();
                     }
                 
@@ -1174,6 +1188,26 @@ impl GuiState {
                     }
 
 
+                });
+            });            
+
+            egui::Window::new("CRTC View")
+            .open(&mut self.crtc_viewer_open)
+            .resizable(false)
+            .default_width(200.0)
+            .show(ctx, |ui| {
+                egui::Grid::new("crtc_view")
+                    .num_columns(2)
+                    .striped(true)
+                    .min_col_width(50.0)
+                    .show(ui, |ui| {
+
+                    for register in &self.crtc_state {   
+
+                        ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                        ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                        ui.end_row();
+                    }
                 });
             });            
 

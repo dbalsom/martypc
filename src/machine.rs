@@ -360,6 +360,10 @@ impl Machine {
         dma.get_string_state()
     }
 
+    pub fn crtc_state(&self) -> Vec<(String, String)> {
+        self.cga.borrow().get_string_state()
+    }
+
     pub fn get_error_str(&self) -> Option<&str> {
         match self.error {
             true => Some(&self.error_str),

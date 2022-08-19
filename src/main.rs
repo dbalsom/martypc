@@ -693,6 +693,12 @@ fn main() -> Result<(), Error> {
                         framework.gui.update_dma_state(dma_state);
                     }
 
+                    // -- Update CRTC viewer
+                    if framework.gui.is_window_open(gui::GuiWindow::CrtcViewer) {
+                        let crtc_state = machine.crtc_state();
+                        framework.gui.update_crtc_state(crtc_state);
+                    }
+
                     // -- Update Instruction Trace window
                     if framework.gui.is_window_open(gui::GuiWindow::TraceViewer) {
                         let trace = machine.cpu().dump_instruction_history();

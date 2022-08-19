@@ -270,6 +270,29 @@ impl CGACard {
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT
         }
     }
+    
+    pub fn get_string_state(&self) -> Vec<(String, String)> {
+        let mut crtc_vec = Vec::new();
+
+        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalTotal), format!("{}", self.crtc_horizontal_total)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalDisplayed), format!("{}", self.crtc_horizontal_displayed)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalSyncPosition), format!("{}", self.crtc_horizontal_sync_pos)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::SyncWidth), format!("{}", self.crtc_sync_width)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotal), format!("{}", self.crtc_vertical_total)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotalAdjust), format!("{}", self.crtc_vertical_total_adjust)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalDisplayed), format!("{}", self.crtc_vertical_displayed)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalSync), format!("{}", self.crtc_vertical_sync_pos)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::InterlaceMode), format!("{}", self.crtc_interlace_mode)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::MaximumScanLineAddress), format!("{}", self.crtc_maximum_scanline_address)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorStartLine), format!("{}", self.crtc_cursor_start_line)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorEndLine), format!("{}", self.crtc_cursor_end_line)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressH), format!("{}", self.crtc_start_address_ho)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressL), format!("{}", self.crtc_start_address_lo)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressH), format!("{}", self.crtc_cursor_address_ho)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressL), format!("{}", self.crtc_cursor_address_lo)));
+
+        crtc_vec
+    }
 
     pub fn get_cursor_span(&self) -> (u8, u8) {
         (self.crtc_cursor_start_line, self.crtc_cursor_end_line)
