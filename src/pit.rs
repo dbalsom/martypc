@@ -486,7 +486,7 @@ impl ProgrammableIntervalTimer {
         for (i,t) in &mut self.channels.iter_mut().enumerate() {
             match t.mode {
                 ChannelMode::InterruptOnTerminalCount => {
-                    // Don't count while waiting for reload value
+                    // Don't count while waiting for reload value or if input gate is low
                     if !t.waiting_for_reload && t.input_gate {
 
                         // Counter value of 0 equates to to reload value of 2^16
@@ -516,34 +516,40 @@ impl ProgrammableIntervalTimer {
                 },
                 ChannelMode::HardwareRetriggerableOneShot => {},
                 ChannelMode::RateGenerator => {
-                    // Don't count while waiting for reload value
+                    // Don't count while waiting for reload value or if input gate is low
                     if !t.waiting_for_reload && t.input_gate {
 
                         if t.current_count == 0 {
-                            if t.reload_value == 0 {
-                                // 0 functions as a reload value of 65536
-                                t.current_count = u16::MAX;
-                            }
-                            else {
-                                t.current_count = t.reload_value;                            
-                            }
+                            // 0 essentially functions as a counter value of 65536
+                            t.current_count = u16::MAX;
                         }
                         else {
                             t.current_count -= 1;
                             
                             if t.current_count == 1 {
+                                // OSDev: When the current count decrements from two to one, the output goes low
+                                //        the next falling edge of the clock it will go high again
+                                t.output_is_high = false;
+                            }
+                            if t.current_count == 0 {
+                                // Decremented from 1 to 0, output high, reload counter and continue
+                                t.output_is_high = true;
+                                t.current_count = t.reload_value;
 
-                                // Only trigger interrupt on Channel #0
-                                if i == 0 {                                
+                                if i == 0 {                          
+                                    // Channel #0 is connected to PIC and generates interrupt
                                     pic.request_interrupt(0);
                                 }
                                 if i == 1 {
-                                    // Channel 1 wants to do DMA refresh.
+                                    // Channel #1 is connected to DMA for DMA refresh.
                                     dma.do_dma_read_u8(bus, 0);
                                 }
-                                // Output would go low here
                             }
                         }
+                    }
+                    // Low gate input forces output high
+                    if !t.input_gate {
+                        t.output_is_high = true;
                     }
                 },
                 ChannelMode::SquareWaveGenerator => {
@@ -579,7 +585,7 @@ impl ProgrammableIntervalTimer {
                             }
                         }
                         else {
-                            t.current_count = t.current_count.wrapping_sub(2);
+                            t.current_count = t.current_count.saturating_sub(2);
                         }
 
                         // Terminal count reached
