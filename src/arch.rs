@@ -749,7 +749,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
 
     let (op_type, op_size) = match op {
         OperandSelect::FirstOperand=> (i.operand1_type, i.operand1_size),
-        OperandSelect::SecondOperand=> (i.operand2_type, i.operand1_size)
+        OperandSelect::SecondOperand=> (i.operand2_type, i.operand2_size)
     };
     
     let instruction_string: String = match op_type {
