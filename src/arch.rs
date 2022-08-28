@@ -82,9 +82,10 @@ const MODRM_REG_SI_OR_DH:      u8 = 0b00_000_110;
 const MODRM_RED_DI_OR_BH:      u8 = 0b00_000_111;
 
 // Instruction flags
-const INSTRUCTION_HAS_MODRM:   u32 = 0b0000_0001;
-const INSTRUCTION_LOCKABLE:    u32 = 0b0000_0010;
-const INSTRUCTION_REL_JUMP:    u32 = 0b0000_0100;
+const INSTRUCTION_USES_MEM:    u32 = 0b0000_0001;
+const INSTRUCTION_HAS_MODRM:   u32 = 0b0000_0010;
+const INSTRUCTION_LOCKABLE:    u32 = 0b0000_0100;
+const INSTRUCTION_REL_JUMP:    u32 = 0b0000_1000;
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_ES_OVERRIDE: u32     = 0b_0000_0000_0001;
@@ -1704,6 +1705,14 @@ pub fn decode(bytes: &mut impl ByteInterface) -> Result<Instruction, Box<dyn std
     match operand2_template {
         OperandTemplate::NoTemplate => (),
         _=> (operand2_type, operand2_size) = match_op(operand2_template)?
+    }
+
+    // Set a flag if either of the instruction operands is a memory operand.
+    if let OperandType::AddressingMode(_) = operand1_type {
+        op_flags |= INSTRUCTION_USES_MEM;
+    }
+    if let OperandType::AddressingMode(_) = operand2_type {
+        op_flags |= INSTRUCTION_USES_MEM;
     }
 
     // Cheating here by seeing how many bytes we read, should we be specific about what each opcode size is?
