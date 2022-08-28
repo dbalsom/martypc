@@ -6,21 +6,26 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+anyhow = "1.0.58"
+configparser = "3.0.1"
+cpal = "0.13.5"
 egui = { version = "0.17"}
 egui_wgpu_backend = "0.17"
 egui-winit = { version = "0.17", default-features = false, features = ["links"] }
 env_logger = "0.9"
+image = "0.24.2"
+lazy_static = "1.4.0"
 log = "0.4"
+md5 = "0.7.0"
 pixels = "0.9.0"
-winit = "0.26"
-winit_input_helper = "0.12"
 rand = "0.8.5"
 regex = "1.5.5"
-lazy_static = "1.4.0"
-md5 = "0.7.0"
-anyhow = "1.0.58"
-uuid = { version = "1.1.2", features = ["v4"]}
-image = "0.24.2"
-cpal = "0.13.5"
 ringbuf = "0.2.8"
 serialport = "4.2.0"
+uuid = { version = "1.1.2", features = ["v4"]}
+winit = "0.26"
+winit_input_helper = "0.12"
+
+
+
+

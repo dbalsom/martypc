@@ -1,6 +1,14 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
+use std::{
+    fs::{File, read},
+    time::{Duration, Instant},
+    cell::RefCell,
+    rc::Rc,
+    path::Path
+};
+
 use crate::gui::Framework;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
@@ -17,13 +25,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use std::{
-    fs::{File, read},
-    time::{Duration, Instant},
-    cell::RefCell,
-    rc::Rc,
-    path::Path
-};
+use configparser::ini::Ini;
 
 mod arch;
 mod bus;
@@ -157,8 +159,42 @@ fn main() -> Result<(), Error> {
 
     env_logger::init();
 
-    // Choose machine type (move to cfg?)
-    let machine_type = MachineType::IBM_XT_5160;
+    // Read config file
+    let mut config = Ini::new();
+
+    // Defaults
+    let mut machine_type = MachineType::IBM_XT_5160;
+
+    match std::fs::read_to_string("./marty.cfg") {
+        Ok(config_string) => {
+            match config.read(config_string) {
+                Ok(_) => {
+
+                    let machine_type_s = config.get("machine", "type").unwrap_or("IBM_XT_5160".to_string());
+                    machine_type = match machine_type_s.as_str() {
+                        "IBM_PC_5150" => MachineType::IBM_PC_5150,
+                        "IBM_XT_5160" => MachineType::IBM_XT_5160,
+                        _ => {
+                            log::warn!("Invalid machine type in config: {}", machine_type_s);
+                            MachineType::IBM_PC_5150
+                        }
+                    };
+
+                }
+                Err(e) => {
+                    eprintln!("Error reading configuration file.");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Couldn't read configuration file.");
+            std::process::exit(1);
+        }
+    };
+
+
+
 
     // Instantiate the rom manager to load roms for the requested machine type    
     let mut rom_manager = RomManager::new(machine_type);
