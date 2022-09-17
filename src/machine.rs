@@ -16,8 +16,10 @@ use std::{
 };
 
 use crate::{
-    bus::BusInterface,
+    bus::{BusInterface, MemRangeDescriptor},
     cga::{self, CGACard},
+    ega::{self, EGACard},
+    vga::{self, VGACard},
     cpu::{self, CpuType, Cpu, Flag, CpuError},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
@@ -31,7 +33,8 @@ use crate::{
     ppi::{self, PpiStringState},
     rom_manager::RomManager,
     serial::{self, SerialPortController},
-    sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer}
+    sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
+    videocard::{VideoCard, VideoType, VideoCardState}
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
@@ -46,15 +49,6 @@ pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 pub enum MachineType {
     IBM_PC_5150,
     IBM_XT_5160
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone)]
-pub enum VideoType {
-    MDA,
-    CGA,
-    EGA,
-    VGA
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -132,7 +126,7 @@ pub struct Machine {
     debug_snd_file: Option<File>,
     pic: Rc<RefCell<pic::Pic>>,
     ppi: Rc<RefCell<ppi::Ppi>>,
-    cga: Rc<RefCell<cga::CGACard>>,
+    video: Rc<RefCell<dyn VideoCard>>,
     fdc: Rc<RefCell<FloppyController>>,
     hdc: Rc<RefCell<HardDiskController>>,
     serial_controller: Rc<RefCell<serial::SerialPortController>>,
@@ -255,14 +249,81 @@ impl Machine {
         // Mouse
         let mouse = Mouse::new(serial.clone());
 
-        // CGA card:
-        let mut cga = Rc::new(RefCell::new(cga::CGACard::new()));
-        io_bus.register_port_handler(cga::CRTC_REGISTER_SELECT, IoHandler::new(cga.clone()));
-        io_bus.register_port_handler(cga::CRTC_REGISTER, IoHandler::new(cga.clone()));
-        io_bus.register_port_handler(cga::CGA_MODE_CONTROL_REGISTER, IoHandler::new(cga.clone()));
-        io_bus.register_port_handler(cga::CGA_COLOR_CONTROL_REGISTER, IoHandler::new(cga.clone()));
-        io_bus.register_port_handler(cga::CGA_STATUS_REGISTER, IoHandler::new(cga.clone()));
-        io_bus.register_port_handler(cga::CGA_LIGHTPEN_REGISTER, IoHandler::new(cga.clone()));
+        // Initialize the appropriate model of Video Card.
+        let mut video: Rc<RefCell<dyn VideoCard>> = match video_type {
+            VideoType::CGA => {
+                let video = Rc::new(RefCell::new(cga::CGACard::new()));
+                io_bus.register_port_handlers(
+                    vec![
+                        cga::CRTC_REGISTER_SELECT,
+                        cga::CRTC_REGISTER,
+                        cga::CGA_MODE_CONTROL_REGISTER,
+                        cga::CGA_COLOR_CONTROL_REGISTER,
+                        cga::CGA_STATUS_REGISTER,
+                        cga::CGA_LIGHTPEN_REGISTER,
+                    ],
+                    video.clone()
+                );
+                video
+            }
+            VideoType::EGA => {
+                let video = Rc::new(RefCell::new(EGACard::new()));
+                io_bus.register_port_handlers(
+                    vec![
+                        ega::MISC_OUTPUT_REGISTER,
+                        ega::INPUT_STATUS_REGISTER_1,
+                        ega::INPUT_STATUS_REGISTER_1_MDA,
+                        ega::CRTC_REGISTER_ADDRESS,
+                        ega::CRTC_REGISTER_ADDRESS_MDA,
+                        ega::CRTC_REGISTER,
+                        ega::CRTC_REGISTER_MDA,
+                        ega::EGA_GRAPHICS_1_POSITION,
+                        ega::EGA_GRAPHICS_2_POSITION, 
+                        ega::EGA_GRAPHICS_ADDRESS,
+                        ega::EGA_GRAPHICS_DATA,
+                        ega::ATTRIBUTE_REGISTER,
+                        ega::ATTRIBUTE_REGISTER_ALT,
+                        ega::SEQUENCER_ADDRESS_REGISTER,
+                        ega::SEQUENCER_DATA_REGISTER
+                    ],
+                    video.clone()
+                );
+                let mem_descriptor = MemRangeDescriptor::new(0xA0000, 65536, false );
+                bus.register_map(video.clone(), mem_descriptor);
+                video
+            }
+            VideoType::VGA => {
+                let video = Rc::new(RefCell::new(VGACard::new()));
+                io_bus.register_port_handlers(
+                    vec![
+                        vga::MISC_OUTPUT_REGISTER_WRITE,
+                        vga::MISC_OUTPUT_REGISTER_READ,
+                        vga::INPUT_STATUS_REGISTER_1,
+                        vga::INPUT_STATUS_REGISTER_1_MDA,
+                        vga::CRTC_REGISTER_ADDRESS,
+                        vga::CRTC_REGISTER_ADDRESS_MDA,
+                        vga::CRTC_REGISTER,
+                        vga::CRTC_REGISTER_MDA,
+                        vga::GRAPHICS_ADDRESS,
+                        vga::GRAPHICS_DATA,
+                        vga::ATTRIBUTE_REGISTER,
+                        vga::ATTRIBUTE_REGISTER_ALT,
+                        vga::SEQUENCER_ADDRESS_REGISTER,
+                        vga::SEQUENCER_DATA_REGISTER,
+                        vga::PEL_ADDRESS_READ_MODE,
+                        vga::PEL_ADDRESS_WRITE_MODE,
+                        vga::PEL_DATA,    
+                        vga::PEL_MASK,
+                        vga::DAC_STATE_REGISTER,
+                    ],
+                    video.clone()
+                );
+                let mem_descriptor = MemRangeDescriptor::new(0xA0000, 65536, false );
+                bus.register_map(video.clone(), mem_descriptor);
+                video
+            }
+            _=> panic!("Unsupported video card type.")
+        };
 
         // Load BIOS ROM images
         rom_manager.copy_into_memory(&mut bus);
@@ -291,7 +352,7 @@ impl Machine {
             debug_snd_file: None,
             pic: pic,
             ppi: ppi,
-            cga: cga,
+            video: video,
             fdc: fdc,
             hdc: hdc,
             serial_controller: serial,
@@ -311,8 +372,12 @@ impl Machine {
         &mut self.bus
     }
 
-    pub fn cga(&self) -> Rc<RefCell<CGACard>> {
-        self.cga.clone()
+    //pub fn cga(&self) -> Rc<RefCell<CGACard>> {
+    //    self.cga.clone()
+    //}
+
+    pub fn videocard(&self) -> Rc<RefCell<dyn VideoCard>> {
+        self.video.clone()
     }
 
     pub fn cpu(&self) -> &Cpu {
@@ -359,9 +424,9 @@ impl Machine {
         let dma = self.dma_controller.borrow();
         dma.get_string_state()
     }
-
-    pub fn crtc_state(&self) -> Vec<(String, String)> {
-        self.cga.borrow().get_string_state()
+    
+    pub fn videocard_state(&self) -> VideoCardState {
+        self.video.borrow().get_videocard_string_state()
     }
 
     pub fn get_error_str(&self) -> Option<&str> {
@@ -403,6 +468,8 @@ impl Machine {
         // Reset devices
         self.pit.borrow_mut().reset();
         self.pic.borrow_mut().reset();
+
+        self.video.borrow_mut().reset();
     }
 
     fn cycles_to_us(&self, cycles: u32) -> f64 {
@@ -534,7 +601,10 @@ impl Machine {
                 //    self.pit_buf_to_sound_buf();
                 //}
 
-                self.cga.borrow_mut().run(&mut self.io_bus, fake_cycles);
+                // Run the video device
+                // This uses dynamic dispatch - be aware of any performance hit
+                self.video.borrow_mut().run( fake_cycles);
+                
                 self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), fake_cycles);
                 
                 // FDC needs PIC to issue controller interrupts, DMA to request DMA transfers, and Memory Bus to read/write to via DMA

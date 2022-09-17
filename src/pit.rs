@@ -77,14 +77,17 @@ pub struct PitStringState {
     pub c0_reload_value: String,
     pub c0_access_mode: String,
     pub c0_channel_mode: String,
+    pub c0_channel_output: String,
     pub c1_value: String,
     pub c1_reload_value: String,
     pub c1_access_mode: String,
     pub c1_channel_mode: String,
+    pub c1_channel_output: String,
     pub c2_value: String,
     pub c2_reload_value: String,
     pub c2_access_mode: String,
     pub c2_channel_mode: String,
+    pub c2_channel_output: String,
     pub c2_gate_status: String,
 }
 
@@ -418,25 +421,33 @@ impl ProgrammableIntervalTimer {
         cpu_cycles: u32 ) {
 
         let mut pit_cycles = Pit::get_pit_cycles(cpu_cycles);
-        let pit_cycles_remainder = pit_cycles.fract();
+        //let pit_cycles_remainder = pit_cycles.fract();
+//
+        //// Add up fractional cycles until we can make a whole one. 
+        //// Attempts to compensate for clock drift because of unaccounted fractional cycles
+        //self.cycle_accumulator += pit_cycles_remainder;
+        //
+        //// If we have enough cycles, drain them out of accumulator into cycle count
+        //while self.cycle_accumulator > 1.0 {
+        //    pit_cycles += 1.0;
+        //    self.cycle_accumulator -= 1.0;
+        //}
+//
+        //let pit_cycles_int = pit_cycles as u32;
+//
+        ////log::trace!("pit cycles: {}", pit_cycles_int );
+        //for _ in 0..pit_cycles_int {
+        //    // Each tick, the state of PIT Channel #2 is pushed into the ringbuf
+        //    self.tick(bus, pic, dma, ppi, buffer_producer);
+        //}
 
-        // Add up fractional cycles until we can make a whole one. 
-        // Attempts to compensate for clock drift because of unaccounted fractional cycles
-        self.cycle_accumulator += pit_cycles_remainder;
-        
-        // If we have enough cycles, drain them out of accumulator into cycle count
+        self.cycle_accumulator += pit_cycles;
         while self.cycle_accumulator > 1.0 {
             pit_cycles += 1.0;
             self.cycle_accumulator -= 1.0;
-        }
-
-        let pit_cycles_int = pit_cycles as u32;
-
-        //log::trace!("pit cycles: {}", pit_cycles_int );
-        for _ in 0..pit_cycles_int {
-            // Each tick, the state of PIT Channel #2 is pushed into the ringbuf
             self.tick(bus, pic, dma, ppi, buffer_producer);
         }
+        
     }
 
     pub fn get_cycles(&self) -> u64 {
@@ -643,14 +654,17 @@ impl ProgrammableIntervalTimer {
             c0_reload_value: format!("{:06}", self.channels[0].reload_value),
             c0_access_mode: format!("{:?}", self.channels[0].access_mode),
             c0_channel_mode: format!("{:?}", self.channels[0].mode),
+            c0_channel_output: format!("{:?}", self.channels[0].output_is_high),
             c1_value: format!("{:06}", self.channels[1].current_count),
             c1_reload_value: format!("{:06}", self.channels[1].reload_value),
             c1_access_mode: format!("{:?}", self.channels[1].access_mode),
             c1_channel_mode: format!("{:?}", self.channels[1].mode),
+            c1_channel_output: format!("{:?}", self.channels[1].output_is_high),
             c2_value: format!("{:06}", self.channels[2].current_count),
             c2_reload_value: format!("{:06}", self.channels[2].reload_value),
             c2_access_mode: format!("{:?}", self.channels[2].access_mode),
             c2_channel_mode: format!("{:?}", self.channels[2].mode),
+            c2_channel_output: format!("{:?}", self.channels[2].output_is_high),
             c2_gate_status: format!("{:?}", self.channels[2].input_gate)
         }
     }

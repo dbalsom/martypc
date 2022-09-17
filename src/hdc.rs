@@ -1182,7 +1182,7 @@ impl HardDiskController {
                 if self.operation_status.buffer_idx == SECTOR_SIZE {
 
                     // Advance to next sector
-                    log::trace!("Command Read: Advancing to next sector...");
+                    //log::trace!("Command Read: Advancing to next sector...");
                     let(new_c, new_h, new_s) = self.drives[self.drive_select].get_next_sector(
                         self.drives[self.drive_select].cylinder,
                         self.drives[self.drive_select].head,

@@ -1,6 +1,21 @@
 #![allow(dead_code)]
+
+use std::collections::HashMap;
+
 use log;
 use crate::io::{IoBusInterface, IoDevice};
+use crate::videocard::{
+    VideoCard,
+    VideoType,
+    DisplayMode,
+    CursorInfo,
+    FontInfo,
+    CGAColor,
+    CGAPalette
+};
+
+static DUMMY_PLANE: [u8; 1] = [0];
+static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
 
 pub const CGA_MEM_ADDRESS: usize = 0xB8000;
 pub const CGA_MEM_SIZE: usize = 16384;
@@ -59,33 +74,12 @@ const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
 const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
 const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 
-#[allow(non_camel_case_types)]
-#[derive(Debug, Copy, Clone)]
-pub enum CGAColor {
-    Black,
-    Blue,
-    Green,
-    Cyan,
-    Red,
-    Magenta,
-    Brown,
-    White,
-    BlackBright,
-    BlueBright,
-    GreenBright,
-    CyanBright,
-    RedBright,
-    MagentaBright,
-    Yellow,
-    WhiteBright
-}
+static CGA_FONT: &'static [u8; 2048] = include_bytes!("..\\assets\\cga_8by8.bin");
+const CGA_FONT_W: u32 = 8;
+const CGA_FONT_H: u32 = 8;
 
-pub enum CGAPalette {
-    Monochrome(CGAColor),
-    MagentaCyanWhite(CGAColor),
-    RedGreenYellow(CGAColor),
-    RedCyanWhite(CGAColor) // "Hidden" CGA palette
-}
+
+
 pub enum Resolution {
     Res640by200,
     Res320by200
@@ -97,28 +91,7 @@ pub enum BitDepth {
     Depth4,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum DisplayMode {
-    Disabled,
-    Mode0TextBw40,
-    Mode1TextCo40,
-    Mode2TextBw80,
-    Mode3TextCo80,
-    Mode4LowResGraphics,
-    Mode5LowResAltPalette,
-    Mode6HiResGraphics,
-    Mode7LowResComposite,
-    Mode8LowResTweaked
-}
 
-pub struct CursorInfo {
-    pub addr: u32,
-    pub pos_x: u32,
-    pub pos_y: u32,
-    pub line_start: u8,
-    pub line_end: u8,
-    pub visible: bool
-}
 
 pub struct CGACard {
 
@@ -224,6 +197,7 @@ impl IoDevice for CGACard {
 
 }
 
+
 impl CGACard {
 
     pub fn new() -> Self {
@@ -270,153 +244,21 @@ impl CGACard {
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT
         }
     }
-    
-    pub fn get_string_state(&self) -> Vec<(String, String)> {
-        let mut crtc_vec = Vec::new();
 
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalTotal), format!("{}", self.crtc_horizontal_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalDisplayed), format!("{}", self.crtc_horizontal_displayed)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalSyncPosition), format!("{}", self.crtc_horizontal_sync_pos)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::SyncWidth), format!("{}", self.crtc_sync_width)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotal), format!("{}", self.crtc_vertical_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotalAdjust), format!("{}", self.crtc_vertical_total_adjust)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalDisplayed), format!("{}", self.crtc_vertical_displayed)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalSync), format!("{}", self.crtc_vertical_sync_pos)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::InterlaceMode), format!("{}", self.crtc_interlace_mode)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::MaximumScanLineAddress), format!("{}", self.crtc_maximum_scanline_address)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorStartLine), format!("{}", self.crtc_cursor_start_line)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorEndLine), format!("{}", self.crtc_cursor_end_line)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressH), format!("{}", self.crtc_start_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressL), format!("{}", self.crtc_start_address_lo)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressH), format!("{}", self.crtc_cursor_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressL), format!("{}", self.crtc_cursor_address_lo)));
-
-        crtc_vec
-    }
-
-    pub fn get_cursor_span(&self) -> (u8, u8) {
+    fn get_cursor_span(&self) -> (u8, u8) {
         (self.crtc_cursor_start_line, self.crtc_cursor_end_line)
     }
 
-    pub fn get_cursor_address(&self) -> u32 {
+    fn get_cursor_address(&self) -> u32 {
         (self.crtc_cursor_address_ho as u32) << 8 | self.crtc_cursor_address_lo as u32
     }
 
-    pub fn get_cursor_status(&self) -> bool {
+    fn get_cursor_status(&self) -> bool {
         self.cursor_status
     }
 
-    pub fn get_character_height(&self) -> u8 {
-        self.crtc_maximum_scanline_address + 1
-    }
 
-    pub fn get_cursor_info(&self) -> CursorInfo {
-        let addr = self.get_cursor_address();
 
-        match self.display_mode {
-            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
-                CursorInfo{
-                    addr,
-                    pos_x: addr % 40,
-                    pos_y: addr / 40,
-                    line_start: self.crtc_cursor_start_line,
-                    line_end: self.crtc_cursor_end_line,
-                    visible: self.get_cursor_status()
-                }
-            }
-            DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
-                CursorInfo{
-                    addr,
-                    pos_x: addr % 80,
-                    pos_y: addr / 80,
-                    line_start: self.crtc_cursor_start_line,
-                    line_end: self.crtc_cursor_end_line,
-                    visible: self.get_cursor_status()
-                }
-            }
-            _=> {
-                CursorInfo{
-                    addr: 0,
-                    pos_x: 0,
-                    pos_y: 0,
-                    line_start: 0,
-                    line_end: 0,
-                    visible: false
-                }
-            }
-        }
-    }
-
-    pub fn get_display_mode(&self) -> DisplayMode {
-        self.display_mode
-    }
-
-    /// Return the current palette number, intensity attribute bit, and alt color
-    pub fn get_palette(&self) -> (CGAPalette, bool) {
-
-        let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
-        
-        // Get background color
-        let alt_color = match self.cc_register & 0x0F {
-            0b0000 => CGAColor::Black,
-            0b0001 => CGAColor::Blue,
-            0b0010 => CGAColor::Green,
-            0b0011 => CGAColor::Cyan,
-            0b0100 => CGAColor::Red,
-            0b0101 => CGAColor::Magenta,
-            0b0110 => CGAColor::Brown,
-            0b0111 => CGAColor::White,
-            0b1000 => CGAColor::BlackBright,
-            0b1001 => CGAColor::BlueBright,
-            0b1010 => CGAColor::GreenBright,
-            0b1011 => CGAColor::CyanBright,
-            0b1100 => CGAColor::RedBright,
-            0b1101 => CGAColor::MagentaBright,
-            0b1110 => CGAColor::Yellow,
-            _ => CGAColor::WhiteBright
-        };
-
-        // Are we in high res mode?
-        if self.mode_hires_gfx {
-            return (CGAPalette::Monochrome(alt_color), true); 
-        }
-
-        let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
-            true => CGAPalette::MagentaCyanWhite(alt_color),
-            false => CGAPalette::RedGreenYellow(alt_color)
-        };
-        
-        // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
-        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx { 
-            palette = CGAPalette::RedCyanWhite(alt_color);
-        }
-    
-        (palette, intensity)
-    }
-
-    pub fn is_graphics_mode(&self) -> bool {
-        self.mode_graphics
-    }
-
-    pub fn is_40_columns(&self) -> bool {
-
-        match self.display_mode {
-            DisplayMode::Mode0TextBw40 => true,
-            DisplayMode::Mode1TextCo40 => true,
-            DisplayMode::Mode2TextBw80 => false,
-            DisplayMode::Mode3TextCo80 => false,
-            DisplayMode::Mode4LowResGraphics => true,
-            DisplayMode::Mode5LowResAltPalette => true,
-            DisplayMode::Mode6HiResGraphics => false,
-            DisplayMode::Mode7LowResComposite => false,
-            _=> false
-        }
-    }
-
-    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
-    pub fn get_start_address(&self) -> u16 {
-        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
-    }
 
     fn handle_crtc_register_select(&mut self, byte: u8 ) {
 
@@ -608,7 +450,186 @@ impl CGACard {
         self.cc_register = data;
     }
 
-    pub fn run(&mut self, io_bus: &mut IoBusInterface, cpu_cycles: u32) {
+
+}
+
+impl VideoCard for CGACard {
+
+    fn get_video_type(&self) -> VideoType {
+        VideoType::CGA
+    }
+
+    fn get_display_mode(&self) -> DisplayMode {
+        self.display_mode
+    }
+
+    fn get_display_extents(&self) -> (u32, u32) {
+
+        // CGA supports a single fixed 8x8 font. The size of the displayed window 
+        // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
+        // (Excepting fancy CRTC tricks that delay vsync)
+        let mut width = self.crtc_horizontal_displayed as u32 * CGA_FONT_W as u32;
+        let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
+
+        if self.mode_hires_gfx {
+            width = width * 2;
+        }
+        (width, height)
+    }
+    
+    fn is_40_columns(&self) -> bool {
+
+        match self.display_mode {
+            DisplayMode::Mode0TextBw40 => true,
+            DisplayMode::Mode1TextCo40 => true,
+            DisplayMode::Mode2TextBw80 => false,
+            DisplayMode::Mode3TextCo80 => false,
+            DisplayMode::Mode4LowResGraphics => true,
+            DisplayMode::Mode5LowResAltPalette => true,
+            DisplayMode::Mode6HiResGraphics => false,
+            DisplayMode::Mode7LowResComposite => false,
+            _=> false
+        }
+    }
+
+    fn is_graphics_mode(&self) -> bool {
+        self.mode_graphics
+    }
+
+    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
+    fn get_start_address(&self) -> u16 {
+        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
+    }
+
+    fn get_cursor_info(&self) -> CursorInfo {
+        let addr = self.get_cursor_address();
+
+        match self.display_mode {
+            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
+                CursorInfo{
+                    addr,
+                    pos_x: addr % 40,
+                    pos_y: addr / 40,
+                    line_start: self.crtc_cursor_start_line,
+                    line_end: self.crtc_cursor_end_line,
+                    visible: self.get_cursor_status()
+                }
+            }
+            DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
+                CursorInfo{
+                    addr,
+                    pos_x: addr % 80,
+                    pos_y: addr / 80,
+                    line_start: self.crtc_cursor_start_line,
+                    line_end: self.crtc_cursor_end_line,
+                    visible: self.get_cursor_status()
+                }
+            }
+            _=> {
+                // Not a valid text mode
+                CursorInfo{
+                    addr: 0,
+                    pos_x: 0,
+                    pos_y: 0,
+                    line_start: 0,
+                    line_end: 0,
+                    visible: false
+                }
+            }
+        }
+    }
+    
+    fn get_clock_divisor(&self) -> u32 {
+        1
+    }
+
+    fn get_current_font(&self) -> FontInfo {
+        FontInfo {
+            w: CGA_FONT_W,
+            h: CGA_FONT_H,
+            font_data: CGA_FONT
+        }
+    }
+
+    fn get_character_height(&self) -> u8 {
+        self.crtc_maximum_scanline_address + 1
+    }    
+
+    /// Return the current palette number, intensity attribute bit, and alt color
+    fn get_cga_palette(&self) -> (CGAPalette, bool) {
+
+        let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
+        
+        // Get background color
+        let alt_color = match self.cc_register & 0x0F {
+            0b0000 => CGAColor::Black,
+            0b0001 => CGAColor::Blue,
+            0b0010 => CGAColor::Green,
+            0b0011 => CGAColor::Cyan,
+            0b0100 => CGAColor::Red,
+            0b0101 => CGAColor::Magenta,
+            0b0110 => CGAColor::Brown,
+            0b0111 => CGAColor::White,
+            0b1000 => CGAColor::BlackBright,
+            0b1001 => CGAColor::BlueBright,
+            0b1010 => CGAColor::GreenBright,
+            0b1011 => CGAColor::CyanBright,
+            0b1100 => CGAColor::RedBright,
+            0b1101 => CGAColor::MagentaBright,
+            0b1110 => CGAColor::Yellow,
+            _ => CGAColor::WhiteBright
+        };
+
+        // Are we in high res mode?
+        if self.mode_hires_gfx {
+            return (CGAPalette::Monochrome(alt_color), true); 
+        }
+
+        let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
+            true => CGAPalette::MagentaCyanWhite(alt_color),
+            false => CGAPalette::RedGreenYellow(alt_color)
+        };
+        
+        // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
+        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx { 
+            palette = CGAPalette::RedCyanWhite(alt_color);
+        }
+    
+        (palette, intensity)
+    }    
+
+    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String,String)>> {
+
+        let mut map = HashMap::new();
+
+        let mut general_vec = Vec::new();
+        general_vec.push((format!("Adapter Type:"), format!("{:?}", self.get_video_type())));
+        general_vec.push((format!("Display Mode:"), format!("{:?}", self.get_display_mode())));
+        map.insert("General".to_string(), general_vec);
+
+        let mut crtc_vec = Vec::new();
+        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalTotal), format!("{}", self.crtc_horizontal_total)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalDisplayed), format!("{}", self.crtc_horizontal_displayed)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalSyncPosition), format!("{}", self.crtc_horizontal_sync_pos)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::SyncWidth), format!("{}", self.crtc_sync_width)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotal), format!("{}", self.crtc_vertical_total)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotalAdjust), format!("{}", self.crtc_vertical_total_adjust)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalDisplayed), format!("{}", self.crtc_vertical_displayed)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalSync), format!("{}", self.crtc_vertical_sync_pos)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::InterlaceMode), format!("{}", self.crtc_interlace_mode)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::MaximumScanLineAddress), format!("{}", self.crtc_maximum_scanline_address)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorStartLine), format!("{}", self.crtc_cursor_start_line)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorEndLine), format!("{}", self.crtc_cursor_end_line)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressH), format!("{}", self.crtc_start_address_ho)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressL), format!("{}", self.crtc_start_address_lo)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressH), format!("{}", self.crtc_cursor_address_ho)));
+        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressL), format!("{}", self.crtc_cursor_address_lo)));
+        map.insert("CRTC".to_string(), crtc_vec);
+        map       
+    }
+
+
+    fn run(&mut self, cpu_cycles: u32) {
 
         self.frame_cycles += cpu_cycles;
         self.scanline_cycles += cpu_cycles;
@@ -631,5 +652,27 @@ impl CGACard {
         self.in_hblank = self.scanline_cycles > SCANLINE_HBLANK_START;
         // Are we in VBLANK interval?
         self.in_vblank = self.frame_cycles > FRAME_VBLANK_START;
+    }    
+
+    fn reset(&mut self) {
+        log::debug!("Resetting")
     }
+
+    fn get_pixel(&self, x: u32, y:u32) -> &[u8] {
+        &DUMMY_PIXEL
+    }
+
+    fn get_pixel_raw(&self, x: u32, y:u32) -> u8 {
+        0
+    }
+
+    fn get_plane_slice(&self, plane: usize) -> &[u8] {
+        &DUMMY_PLANE
+    }
+
+    fn dump_mem(&self) {
+        
+        log::warn!("memory dump for CGA unimplemented")
+    }
+
 }

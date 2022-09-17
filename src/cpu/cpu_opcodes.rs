@@ -115,6 +115,9 @@ impl Cpu {
                             self.di = di;
                             self.set_register16(Register16::CX, cx);   
                         },        
+                        RepState::NoState => {
+                            // Rep prefix on invalid opcode, restore nothing
+                        }
                     }
                     self.rep_state.pop();
                 }

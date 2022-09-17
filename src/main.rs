@@ -27,6 +27,11 @@ use winit_input_helper::WinitInputHelper;
 
 use configparser::ini::Ini;
 
+#[path = "./devices/ega/mod.rs"]
+mod ega;
+#[path = "./devices/vga/mod.rs"]
+mod vga;
+
 mod arch;
 mod bus;
 mod bytebuf;
@@ -50,25 +55,33 @@ mod rom_manager;
 mod serial;
 mod sound;
 mod util;
+
 mod vhd;
 mod vhd_manager;
 mod video;
+mod videocard;
 mod input;
 
-use machine::{Machine, MachineType, VideoType};
-use rom_manager::{RomManager, RomError};
+use machine::{Machine, MachineType};
+use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
 use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use byteinterface::ByteInterface;
 use gui::GuiEvent;
 use sound::SoundPlayer;
+use videocard::VideoType;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
-const WINDOW_HEIGHT: u32 = 800 + EGUI_MENU_BAR * 2;
-const WIDTH: u32 = 640;
-const HEIGHT: u32 = 400;
+const WINDOW_HEIGHT: u32 = 960 + EGUI_MENU_BAR * 2;
+
+const DEFAULT_RENDER_WIDTH: u32 = 640;
+const DEFAULT_RENDER_HEIGHT: u32 = 400;
+
+const MIN_RENDER_WIDTH: u32 = 160;
+const MIN_RENDER_HEIGHT: u32 = 200;
+const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
@@ -155,6 +168,14 @@ impl KeyboardData {
     }
 }
 
+#[derive (Copy, Clone, Default)]
+struct VideoData {
+    render_w: u32,
+    render_h: u32,
+    aspect_w: u32,
+    aspect_h: u32
+}
+
 fn main() -> Result<(), Error> {
 
     env_logger::init();
@@ -164,21 +185,51 @@ fn main() -> Result<(), Error> {
 
     // Defaults
     let mut machine_type = MachineType::IBM_XT_5160;
+    let mut video_type = VideoType::CGA;
+
+    let mut features = Vec::new();
 
     match std::fs::read_to_string("./marty.cfg") {
         Ok(config_string) => {
             match config.read(config_string) {
                 Ok(_) => {
 
-                    let machine_type_s = config.get("machine", "type").unwrap_or("IBM_XT_5160".to_string());
+                    let machine_type_s = config.get("machine", "model").unwrap_or("IBM_XT_5160".to_string());
                     machine_type = match machine_type_s.as_str() {
                         "IBM_PC_5150" => MachineType::IBM_PC_5150,
                         "IBM_XT_5160" => MachineType::IBM_XT_5160,
                         _ => {
-                            log::warn!("Invalid machine type in config: {}", machine_type_s);
+                            log::warn!("Invalid machine type in config: '{}'", machine_type_s);
                             MachineType::IBM_PC_5150
                         }
                     };
+
+                    let video_type_s = config.get("machine", "video").unwrap_or("CGA".to_string());
+                    video_type = match video_type_s.as_str() {
+                        "CGA" => VideoType::CGA,
+                        "EGA" => {
+                            features.push(RomFeature::EGA);
+                            VideoType::EGA
+                        }
+                        "VGA" => {
+                            features.push(RomFeature::VGA);
+                            VideoType::VGA
+                        }                        
+                        _ => {
+                            log::warn!("Invalid video type in config: '{}'", machine_type_s);
+                            VideoType::CGA
+                        }
+                    };
+
+                    let hdc_type_s = config.get("machine", "hdc").unwrap_or("none".to_string());
+                    match hdc_type_s.as_str() {
+                        "xebec" => {
+                            features.push(RomFeature::XebecHDC)
+                        }
+                        _ => {
+                            log::warn!("Invalid hdc type in config: '{}'", hdc_type_s);
+                        }                        
+                    }
 
                 }
                 Err(e) => {
@@ -193,26 +244,36 @@ fn main() -> Result<(), Error> {
         }
     };
 
-
-
-
     // Instantiate the rom manager to load roms for the requested machine type    
-    let mut rom_manager = RomManager::new(machine_type);
+    let mut rom_manager = RomManager::new(machine_type, features);
 
     if let Err(e) = rom_manager.try_load_from_dir("./rom") {
         match e {
             RomError::DirNotFound => {
-                eprintln!("Rom directory not found")
+                eprintln!("ROM directory not found")
             }
             RomError::RomNotFoundForMachine => {
-                eprintln!("No valid rom found for specified machine type")
+                eprintln!("No valid ROM found for specified machine type")
+            }
+            RomError::RomNotFoundForFeature(feature) => {
+                eprintln!("No valid ROM found for requested feature: {:?}", feature)
             }
             _ => {
-                eprintln!("Error loading rom file.")
+                eprintln!("Error loading ROM file.")
             }
         }
         std::process::exit(1);
     }
+
+    // Verify that our ROM prerequisites are met for any machine features
+    //let features = rom_manager.get_available_features();
+    //
+    //if let VideoType::EGA = video_type {
+    //    if !features.contains(&RomFeature::EGA) {
+    //        eprintln!("To enable EGA graphics, an EGA adapter ROM must be present.");
+    //        std::process::exit(1);
+    //    }
+    //}
 
     // Instantiate the floppy manager
     let mut floppy_manager = FloppyManager::new();
@@ -278,11 +339,21 @@ fn main() -> Result<(), Error> {
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
 
+    // Create render buf
+    let mut render_src = vec![0; (DEFAULT_RENDER_WIDTH * DEFAULT_RENDER_HEIGHT * 4) as usize];
+    let mut video_data = VideoData {
+        render_w: DEFAULT_RENDER_WIDTH,
+        render_h: DEFAULT_RENDER_HEIGHT,
+        aspect_w: 640,
+        aspect_h: 480
+    };
+
     let (mut pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        let pixels = Pixels::new(WIDTH, HEIGHT, surface_texture)?;
+        let pixels = 
+            Pixels::new(video_data.aspect_w, video_data.aspect_h, surface_texture)?;
         let framework =
             Framework::new(window_size.width, window_size.height, scale_factor, &pixels, exec_control.clone());
 
@@ -311,7 +382,7 @@ fn main() -> Result<(), Error> {
 
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
-    let mut machine = Machine::new(machine_type, VideoType::CGA, sp, rom_manager, floppy_manager );
+    let mut machine = Machine::new(machine_type, video_type, sp, rom_manager, floppy_manager );
 
     machine.play_sound_buffer();
     
@@ -555,10 +626,51 @@ fn main() -> Result<(), Error> {
                     // Do per-frame updates (Serial port emulation)
                     machine.frame_update();
 
-                    // Draw video memory
+                    // Check if there was a resolution change
+                    let (new_w, new_h) = machine.videocard().borrow().get_display_extents();
+                    if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
+                        if new_w != video_data.render_w || new_h != video_data.render_h {
+                            // Resize buffers
+                            log::info!("Setting internal resolution to ({},{})", new_w, new_h);
+                            // Calculate new aspect ratio (make this option)
+                            video_data.render_w = new_w;
+                            video_data.render_h = new_h;
+                            render_src.resize((new_w * new_h * 4) as usize, 0);
+                            render_src.fill(0);
+
+                            video_data.aspect_w = video_data.render_w;
+                            let aspect_corrected_h = f32::floor(video_data.render_w as f32 * RENDER_ASPECT) as u32;
+                            // Don't make height smaller
+                            let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
+                            video_data.aspect_h = new_height;
+
+                            pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h);
+
+
+                        }
+                    }
+
+                    // -- Draw video memory --
                     let composite_enabled = framework.gui.get_composite_enabled();
+                    let aspect_correct = framework.gui.get_aspect_correct_enabled();
+
                     let render_start = Instant::now();
-                    video.draw(pixels.get_frame(), machine.cga(), machine.bus(), composite_enabled);
+
+                    match aspect_correct {
+                        true => {
+                            video.draw(&mut render_src, machine.videocard(), machine.bus(), composite_enabled);
+                            video::resize_linear(
+                                &render_src, 
+                                video_data.render_w, 
+                                video_data.render_h, 
+                                pixels.get_frame(), 
+                                video_data.aspect_w, 
+                                video_data.aspect_h);                            
+                        }
+                        false => {
+                            video.draw(pixels.get_frame(), machine.videocard(), machine.bus(), composite_enabled);
+                        }
+                    }
                     stat_counter.render_time = Instant::now() - render_start;
 
                     // Update egui data
@@ -625,12 +737,17 @@ fn main() -> Result<(), Error> {
                                 log::info!("Bridging serial port: {}", port_name);
                                 machine.bridge_serial_port(1, port_name);
                             }
+                            Some(GuiEvent::DumpVRAM) => {
+                                machine.videocard().borrow().dump_mem();
+                            }
                             None => break,
                             _ => {
                                 // Unhandled event?
                             }
                         }
                     }
+
+
 
                     // -- Update list of floppies
                     let name_vec = machine.floppy_manager().get_floppy_names();
@@ -678,7 +795,7 @@ fn main() -> Result<(), Error> {
 
                     // Update performance viewer
                     if framework.gui.is_window_open(gui::GuiWindow::PerfViewer) {
-
+                        framework.gui.update_video_data(video_data.clone());
                         framework.gui.update_perf_view(
                             stat_counter.fps,
                             stat_counter.emulation_time.as_millis() as u32,
@@ -728,11 +845,11 @@ fn main() -> Result<(), Error> {
                         let dma_state = machine.dma_state();
                         framework.gui.update_dma_state(dma_state);
                     }
-
-                    // -- Update CRTC viewer
-                    if framework.gui.is_window_open(gui::GuiWindow::CrtcViewer) {
-                        let crtc_state = machine.crtc_state();
-                        framework.gui.update_crtc_state(crtc_state);
+                    
+                    // -- Update VideoCard Viewer (Replace CRTC Viewer)
+                    if framework.gui.is_window_open(gui::GuiWindow::VideoCardViewer) {
+                        let videocard_state = machine.videocard_state();
+                        framework.gui.update_videocard_state(videocard_state);
                     }
 
                     // -- Update Instruction Trace window

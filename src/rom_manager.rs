@@ -1,27 +1,62 @@
-/*
+/*  
+    rom_manager.rs
+    ROM Manager module
 
-    Rom Manager module
+    The ROM Manager is responsible for enumerating roms in the specified folder and making them 
+    available to the emulator, based on machine type and requested features.
 
+    Currently, ROMs to be loaded are just copied into the system's address space with a read-only 
+    flag set.
+    It could be argued a better design would be to make each ROM a memory-mapped device, although
+    adding more entries to the memory map vector might slow down all read/writes.
+
+    The ROM/ROM set definition structures should probably be moved to an external JSON file.
+
+    The ROM manager supports the notion of "Feature ROMs" that are prerequisites for a 
+    certain machine feature. For example, an EGA BIOS ROM should only be loaded if an EGA card
+    is actually configured on the virtual machine, and conversely, if an EGA card is 
+    specified the EGA BIOS ROM is required.
 */
 
+#![allow(dead_code)] 
+
 use std::collections::HashMap;
-use std::ffi::OsString;
+//use std::ffi::OsString;
 use std::mem::discriminant;
 use std::fs;
 use std::path::PathBuf;
 use std::cell::Cell;
 
-use lazy_static::lazy_static;
-
 use crate::machine::{MachineType};
 use crate::bus::BusInterface;
 
 pub const BIOS_READ_CYCLE_COST: u32 = 4;
+
 pub enum RomError {
     DirNotFound,
     RomNotFoundForMachine,
+    RomNotFoundForFeature(RomFeature),
     FileNotFound,
     FileError
+}
+
+pub enum RomInterleave {
+    None,
+    Odd,
+    Even
+}
+
+pub enum RomOrder {
+    Normal,
+    Reversed
+}
+
+#[derive (Copy, Clone, Debug, PartialEq)]
+pub enum RomFeature {
+    XebecHDC,
+    Basic,
+    EGA,
+    VGA
 }
 
 #[derive(Debug)]
@@ -54,9 +89,13 @@ pub struct RomDescriptor {
     present: bool,
     filename: PathBuf, 
     machine_type: MachineType,
+    feature: Option<RomFeature>,
+    order: RomOrder,
+    interleave: RomInterleave,
     optional: bool,
     priority: u32,
     address: u32,
+    offset: u32,
     size: usize,
     cycle_cost: u32,
     patches: Vec<RomPatch>,
@@ -74,11 +113,13 @@ pub struct RomManager {
     patches_active: HashMap<u32, RomPatch>,
     rom_defs: HashMap<&'static str, RomDescriptor>,
     rom_images: HashMap<&'static str, Vec<u8>>,
+    features_available: Vec<RomFeature>,
+    features_requested: Vec<RomFeature>
 }
 
 impl RomManager {
 
-    pub fn new(machine_type: MachineType) -> Self {
+    pub fn new(machine_type: MachineType, features_requested: Vec<RomFeature>) -> Self {
         Self {
             machine_type,
 
@@ -296,6 +337,10 @@ impl RomManager {
                         "fd9ff9cbe0a8f154746ccb0a33f6d3e7", // 5160 BIOS u18 v01/10/86
                         "f051b4bbc3b60c3a14df94a0e4ee720f", // 5160 BIOS u19 v01/10/86
                         "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                        "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
+                        "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
+                        "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed
+                        "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS
                     ]
                 },
                 RomSet {
@@ -307,6 +352,10 @@ impl RomManager {
                         "9696472098999c02217bf922786c1f4a", // 5160 BIOS u18 v05/09/86
                         "df9f29de490d7f269a6405df1fed69b7", // 5160 BIOS u19 v05/09/86
                         "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                        "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
+                        "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
+                        "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed            
+                        "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS        
                     ]
                 }
 
@@ -322,9 +371,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 0,
                     address: 0xFE000,
+                    offset: 0,
                     size: 8192,
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(), 
@@ -361,9 +414,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,     
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 2,
                     address: 0xFE000,
+                    offset: 0,
                     size: 8192,       
                     cycle_cost: BIOS_READ_CYCLE_COST,                         
                     patches: Vec::new(),
@@ -376,9 +433,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,         
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 3,
                     address: 0xFE000,
+                    offset: 0,
                     size: 8192,       
                     cycle_cost: BIOS_READ_CYCLE_COST,                               
                     patches: Vec::new(),
@@ -391,9 +452,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,       
+                    interleave: RomInterleave::None,
                     optional: true,
                     priority: 1,
                     address: 0xF6000,
+                    offset: 0,
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -406,9 +471,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,    
+                    interleave: RomInterleave::None,
                     optional: true,
                     priority: 2,
-                    address: 0xF6000,       
+                    address: 0xF6000,    
+                    offset: 0,   
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     size: 32768,
                     patches: Vec::new(),
@@ -421,9 +490,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,    
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 1,
                     address: 0xF8000,
+                    offset: 0,
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -436,9 +509,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,   
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 1,
                     address: 0xF0000,
+                    offset: 0,
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -451,9 +528,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,       
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 1,
                     address: 0xF8000,
+                    offset: 0,
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -466,9 +547,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,      
+                    interleave: RomInterleave::None,             
                     optional: false,
                     priority: 1,
                     address: 0xF0000,
+                    offset: 0,
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: vec![
@@ -483,7 +568,14 @@ impl RomManager {
                             checkpoint: 0xFE499,
                             address: 0xFE4EA,
                             bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90]
-                        }],                    
+                        },
+                        RomPatch{
+                            desc: "Patch out PIC IMR register test",
+                            checkpoint: 0xFE000,
+                            address: 0xFE36A,
+                            bytes: vec![0x90, 0x90]
+                        }
+                    ],  
                     checkpoints: HashMap::from([
                         (0xfe01a, "RAM Check Routine"),
                         (0xfe05b, "8088 Processor Test"),
@@ -514,9 +606,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_XT_5160,
+                    feature: Some(RomFeature::XebecHDC),
+                    order: RomOrder::Normal,      
+                    interleave: RomInterleave::None,              
                     optional: false,
                     priority: 1,
                     address: 0xC8000,
+                    offset: 0,
                     size: 4096,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -525,25 +621,137 @@ impl RomManager {
                         (0xC8117, "HDC Disk Reset"),
                         (0xC8596, "HDC Status Timeout"),
                         (0xC8192, "HDC Bootstrap Loader"),
-                        (0xC81FF, "HDC Boot From Fixed Disk"),
-                        (0xC8700, "HDC Wait for Interrupt"),
-                        (0xC8746, "HDC Got Interrupt")
+                        (0xC81FF, "HDC Boot From Fixed Disk")
                     ])          
                 }
-            ),(
+            ),
+            (
+                "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA Card ROM
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: Some(RomFeature::EGA),
+                    order: RomOrder::Reversed,  
+                    interleave: RomInterleave::None,                  
+                    optional: true,
+                    priority: 1,
+                    address: 0xC0000,
+                    offset: 0,
+                    size: 16384,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::from([
+                        (0xC0003, "EGA Expansion Init"),
+                        (0xC009B, "EGA DIP Switch Sense"),
+                        (0xC0205, "EGA CD Presence Test"),
+                        (0xC037C, "EGA VBlank Bit Test"),
+                        (0xC0D20, "EGA Error Beep"),
+                        (0xC03F6, "EGA Diagnostic Dot Test"),
+                        (0xC0480, "EGA Mem Test"),
+                        (0xC068F, "EGA How Big Test")
+                    ])         
+                }
+            ),
+            (
+                "2057a38cb472300205132fb9c01d9d85", // IBM VGA Card ROM (32K)
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: Some(RomFeature::VGA),
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,          
+                    optional: true,
+                    priority: 1,
+                    address: 0xC0000,
+                    offset: 0x2000,                 // First 8k is unused
+                    size: 32768,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    /*
+                    patches: vec![
+                        RomPatch {
+                            desc: "Patch VGA vblank test",
+                            checkpoint: 0xC2003,
+                            address: 0xC224E,
+                            bytes: vec![
+                                0x90, 0x90, 0x90, 0x90, 
+                                0x90, 0x90, 0x90, 0x90, 
+                                0x90, 0x90, 0x90, 0x90, 
+                                0x90, 0x90, 0x90, 0x90, 
+                                0x90, 0x90]
+                        }
+                    ],
+                    */
+                    checkpoints: HashMap::from([
+                        (0xC203B, "VGA Expansion Init"),
+                        (0xC21F9, "VGA Vblank Test")
+                    ])         
+                }
+            ),    
+            (
+                "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA Card ROM (24K)
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: Some(RomFeature::VGA),
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,          
+                    optional: true,
+                    priority: 1,
+                    address: 0xC0000,
+                    offset: 0,
+                    size: 24576,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::from([
+                    ])         
+                }
+            ), 
+            (
+                "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: Some(RomFeature::VGA),
+                    order: RomOrder::Normal,  
+                    interleave: RomInterleave::None,                 
+                    optional: true,
+                    priority: 1,
+                    address: 0xC0000,
+                    offset: 0,
+                    size: 24576,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::from([
+                    ])         
+                }
+            ), 
+            (
                 "3a0eacac07f1020b95ce06043982dfd1", // Supersoft PC/XT Diagnostic ROM
                 RomDescriptor {
                     rom_type: RomType::BIOS,
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,        
                     optional: false,
                     priority: 10,
                     address: 0xFE000,
+                    offset: 0,
                     size: 32768,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
-                    checkpoints: HashMap::new()                   
+                    checkpoints: HashMap::new()        
                 }
             ),(
                 "b612305db2df43f88f9fb7f9b42d696e", // add.bin test suite
@@ -552,9 +760,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,   
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -567,9 +779,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,  
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -582,9 +798,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -597,9 +817,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,     
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -612,9 +836,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -627,9 +855,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -642,9 +874,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None, 
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -657,9 +893,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -672,9 +912,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -687,9 +931,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -702,9 +950,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -717,9 +969,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -732,9 +988,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -747,9 +1007,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -762,9 +1026,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -777,9 +1045,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -792,9 +1064,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -807,9 +1083,13 @@ impl RomManager {
                     present: false,
                     filename: PathBuf::new(),
                     machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,
+                    interleave: RomInterleave::None,
                     optional: false,
                     priority: 10,
                     address: 0xF0000,
+                    offset: 0,
                     size: 65536,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: Vec::new(),
@@ -819,7 +1099,9 @@ impl RomManager {
             
             
             ]),
-            rom_images: HashMap::new()
+            rom_images: HashMap::new(),
+            features_available: Vec::new(),
+            features_requested
         }
     }
 
@@ -942,13 +1224,20 @@ impl RomManager {
         for rom_str in &rom_set_active.roms {
 
             let rom_desc = self.get_romdesc(*rom_str).unwrap();
-            let file_vec = match std::fs::read(&rom_desc.filename) {
+            let mut file_vec = match std::fs::read(&rom_desc.filename) {
                 Ok(vec) => vec,
                 Err(e) => {
                     eprintln!("Error opening filename {:?}: {}", rom_desc.filename, e);
                     return Err(RomError::FileNotFound);
                 }               
             };
+
+            // Reverse the rom if required
+            if let RomOrder::Reversed = rom_desc.order {
+
+                file_vec = file_vec.into_iter().rev().collect();
+            }
+
             self.rom_images.insert(*rom_str, file_vec);
         }
 
@@ -987,6 +1276,31 @@ impl RomManager {
             self.patches_active.extend(patch_map);
         }
 
+        // Load features from active rom set 
+        for rom_str in &rom_set_active.roms {
+            let rom_desc = self.get_romdesc(*rom_str).unwrap();
+
+            match rom_desc.feature {
+                Some(RomFeature::XebecHDC) => {
+                    self.features_available.push(RomFeature::XebecHDC);
+                },
+                Some(RomFeature::EGA) => {
+                    self.features_available.push(RomFeature::EGA);
+                },
+                Some(RomFeature::VGA) => {
+                    self.features_available.push(RomFeature::VGA);
+                },                
+                _ => {}
+            }
+        }
+
+        // Check that all requested features are avaialble
+        for feature in &self.features_requested {
+            if !self.features_available.contains(&feature) {
+                return Err(RomError::RomNotFoundForFeature(feature.clone()));
+            }
+        }
+
         // Store active rom set 
         self.rom_set_active = Some(rom_set_active);
 
@@ -1002,6 +1316,8 @@ impl RomManager {
         self.rom_defs.get_mut(key)
     }
 
+    /// Copy each from the active ROM set into memory.
+    /// Only copy Feature ROMs if they match the list of requested features.
     pub fn copy_into_memory(&self, bus: &mut BusInterface) -> bool {
 
         if self.rom_sets_complete.len() == 0 {
@@ -1011,12 +1327,45 @@ impl RomManager {
         for rom_str in &self.rom_set_active.as_ref().unwrap().roms {
 
             let rom_desc = self.get_romdesc(rom_str).unwrap();
-            log::debug!("Mounting rom {:?} at location {:04X}", 
-                rom_desc.filename.as_os_str(),
-                rom_desc.address);
+
+            let load_rom = match rom_desc.feature {
+                None => {
+                    // ROMs not associated with a specific feature are always loaded
+                    true
+                }
+                Some(feature) => {
+                    if self.features_requested.contains(&feature) {
+                        // This ROM provides a requested feature
+                        true
+                    }
+                    else {
+                        false
+                    }
+                }
+            };
 
             let rom_image_vec = self.rom_images.get(*rom_str).unwrap();
-            bus.copy_from(rom_image_vec, rom_desc.address as usize, rom_desc.cycle_cost, true);
+
+            if load_rom {
+                match bus.copy_from(
+                    &rom_image_vec[(rom_desc.offset as usize)..], 
+                    rom_desc.address as usize, 
+                    rom_desc.cycle_cost, 
+                    true) {
+
+                    Ok(_) => {
+                        log::debug!("Mounted rom {:?} at location {:06X}", 
+                            rom_desc.filename.as_os_str(),
+                            rom_desc.address);
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to mount rom {:?} at location {:06X}: {}", 
+                            rom_desc.filename.as_os_str(),
+                            rom_desc.address,
+                            e);
+                    }
+                }
+            }
         }
 
         true
@@ -1029,8 +1378,15 @@ impl RomManager {
                 if let Some(rom_desc) = self.get_romdesc(rom_str) {
                     log::debug!("Found {} patches for ROM {}", rom_desc.patches.len(), rom_str );
                     for patch in &rom_desc.patches {
-                        log::debug!("Installing patch '{}' at address {:06X}", patch.desc, patch.address);
-                        bus.patch_from(&patch.bytes, patch.address as usize);
+                        
+                        match bus.patch_from(&patch.bytes, patch.address as usize) {
+                            Ok(_) => {
+                                log::debug!("Installed patch '{}' at address {:06X}", patch.desc, patch.address);
+                            },
+                            Err(e) => {
+                                log::debug!("Error installing patch '{}' at address {:06X}; {}", patch.desc, patch.address, e);
+                            }
+                        }
                     }
                 }
             }
@@ -1058,4 +1414,9 @@ impl RomManager {
     pub fn get_checkpoint(&self, addr: u32) -> Option<&&str> {
         self.checkpoints_active.get(&addr)
     }
+
+    pub fn get_available_features(&self) -> &Vec<RomFeature> {
+        &self.features_available
+    }
+
 }

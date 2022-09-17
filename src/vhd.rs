@@ -302,7 +302,7 @@ impl VirtualHardDisk {
 
         let lba: usize = ((cylinder as u32 * self.max_heads + (head as u32)) * self.max_sectors + (sector as u32)) as usize;
 
-        log::trace!(">>>>>>>>>> Computed offset for c: {} h: {} s: {} of {:08X}", cylinder, head, sector, lba * SECTOR_SIZE);
+        //log::trace!(">>>>>>>>>> Computed offset for c: {} h: {} s: {} of {:08X}", cylinder, head, sector, lba * SECTOR_SIZE);
         lba * SECTOR_SIZE
     }    
 

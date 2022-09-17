@@ -99,6 +99,7 @@ pub enum CallStackEntry {
 
 /// Representation of the state of a REPeated string instruction, saved on interrupt
 pub enum RepState {
+    NoState,
     StosbState(u16, u16, u16), // dst: [es:di], cx
     StoswState(u16, u16, u16), // dst: [es:di], cx
     LodsbState(Register16, u16, u16, u16), // src: [ds*:si], cx
@@ -785,20 +786,12 @@ impl Cpu {
         let ip = self.ip.wrapping_add(2);
         self.push_u16(bus, ip);
         
-        if interrupt == 0x10 && self.ah==0x02 {
-            //log::trace!("CPU: Software Interrupt: {:02X} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
-        }
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
         let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
         self.cs = new_cs;
-
-        if interrupt == 0x10 {
-            //self.log_interrupt(interrupt);
-            //log::trace!("CPU: Software Interrupt: {:02X} AH: {:02X} AL: {:02X} Jumping to IV [{:04X}:{:04X}]", interrupt, self.ah, self.al,  new_cs, new_ip);
-        }
 
         if interrupt == 0x13 {
             // Disk interrupts
@@ -818,6 +811,10 @@ impl Cpu {
                 
             }
         }
+
+        if interrupt == 0x10 && self.ah==0x00 {
+            log::trace!("CPU: int10h: Set Mode {:02X} Return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
+        }        
     }
 
     /// Handle a CPU exception
@@ -936,7 +933,8 @@ impl Cpu {
                     RepState::ScaswState(self.es, self.di, self.cx)
                 }
                 _=> {
-                    panic!("Invalid instruction saving REP state: {:?}", self.current_instruction.mnemonic);
+                    log::warn!("Invalid instruction saving REP state: {:?}", self.current_instruction.mnemonic);
+                    RepState::NoState
                 }
             };
 

@@ -11,11 +11,19 @@ use std::{
     rc::Rc
 };
 
-use egui::{ClippedMesh, Context, ColorImage, ImageData, TexturesDelta};
+use egui::{
+    ClippedMesh, 
+    CollapsingHeader,
+    Context, 
+    ColorImage, 
+    ImageData, 
+    TexturesDelta
+};
 use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
 use winit::{window::Window};
+use super::VideoData;
 
 use serialport::SerialPortInfo;
 
@@ -30,6 +38,7 @@ use crate::{
     pit::PitStringState, 
     pic::PicStringState,
     ppi::PpiStringState, 
+    videocard::VideoCardState
     
 };
 
@@ -46,7 +55,8 @@ pub(crate) enum GuiWindow {
     PicViewer,
     PpiViewer,
     DmaViewer,
-    CrtcViewer,
+    VideoCardViewer,
+    VideoMemViewer,
     CallStack,
     VHDCreator,
 }
@@ -56,7 +66,8 @@ pub(crate) enum GuiEvent {
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, OsString),
     EjectFloppy(usize),
-    BridgeSerialPort(String)
+    BridgeSerialPort(String),
+    DumpVRAM
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -92,10 +103,14 @@ pub(crate) struct GuiState {
     pic_viewer_open: bool,
     ppi_viewer_open: bool,
     dma_viewer_open: bool,
-    crtc_viewer_open: bool,
+    videocard_viewer_open: bool,
+    video_mem_viewer_open: bool,
     call_stack_open: bool,
     vhd_creator_open: bool,
     
+    video_mem: ColorImage,
+
+    video_data: VideoData,
     current_fps: u32,
     emulation_ms: u32,
     render_ms: u32,
@@ -134,6 +149,8 @@ pub(crate) struct GuiState {
     pub ppi_state: PpiStringState,
     pub dma_state: DMAControllerStringState,
     pub crtc_state: Vec<(String, String)>,
+    pub videocard_state: VideoCardState,
+    videocard_set_select: String,
     dma_channel_select: u32,
     dma_channel_select_str: String,
     memory_viewer_dump: String,
@@ -142,6 +159,7 @@ pub(crate) struct GuiState {
     trace_string: String,
     call_stack_string: String,
 
+    aspect_correct: bool,
     composite: bool
 }
 
@@ -252,6 +270,7 @@ impl Framework {
 impl GuiState {
     /// Create a struct representing the state of the GUI.
     fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
+
         Self { 
 
             texture: None,
@@ -268,10 +287,14 @@ impl GuiState {
             pic_viewer_open: false,
             ppi_viewer_open: false,
             dma_viewer_open: false,
-            crtc_viewer_open: false,
+            videocard_viewer_open: false,
+            video_mem_viewer_open: false,
             call_stack_open: false,
             vhd_creator_open: false,
             
+            video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
+
+            video_data: Default::default(),
             current_fps: 0,
             emulation_ms: 0,
             render_ms: 0,
@@ -310,12 +333,17 @@ impl GuiState {
             dma_channel_select: 0,
             dma_channel_select_str: String::new(),
             crtc_state: Default::default(),
+            videocard_state: Default::default(),
+            videocard_set_select: String::new(),
             disassembly_viewer_string: String::new(),
             disassembly_viewer_address: "cs:ip".to_string(),
             trace_string: String::new(),
             call_stack_string: String::new(),
 
+            // Options menu items
+            aspect_correct: false,
             composite: false
+
 
         }
     }
@@ -354,7 +382,8 @@ impl GuiState {
             GuiWindow::PicViewer => self.pic_viewer_open,
             GuiWindow::PpiViewer => self.ppi_viewer_open,
             GuiWindow::DmaViewer => self.dma_viewer_open,
-            GuiWindow::CrtcViewer => self.crtc_viewer_open,
+            GuiWindow::VideoCardViewer => self.videocard_viewer_open,
+            GuiWindow::VideoMemViewer => self.video_mem_viewer_open,
             GuiWindow::CallStack => self.call_stack_open,
             GuiWindow::VHDCreator => self.vhd_creator_open,
         }
@@ -421,6 +450,10 @@ impl GuiState {
         &self.disassembly_viewer_address
     }
 
+    pub fn get_aspect_correct_enabled(&self) -> bool {
+        self.aspect_correct
+    }   
+
     pub fn get_composite_enabled(&self) -> bool {
         self.composite
     }
@@ -475,16 +508,27 @@ impl GuiState {
         self.render_ms = render_ms;
     }
 
+    pub fn update_video_data(&mut self, video_data: VideoData) {
+        self.video_data = video_data;
+    }
+
     pub fn update_crtc_state(&mut self, state: Vec<(String, String)>) {
         self.crtc_state = state;
+    }
+
+    pub fn update_videocard_state(&mut self, state: HashMap<String,Vec<(String,String)>>) {
+        self.videocard_state = state;
+    }
+
+    pub fn update_videomem_state(&mut self, mem: Vec<u8>, w: u32, h: u32) {
+
+        self.video_mem = ColorImage::from_rgba_unmultiplied([w as usize, h as usize],&mem);
     }
 
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-
-                let font_size = 20.0;
 
                 ui.menu_button("Emulator", |ui| {
                     if ui.button("Performance...").clicked() {
@@ -554,6 +598,12 @@ impl GuiState {
                     
                 });
                 ui.menu_button("Debug", |ui| {
+                    ui.menu_button("Dump Memory", |ui| {
+                        if ui.button("Video Memory").clicked() {
+                            self.event_queue.push_back(GuiEvent::DumpVRAM);
+                            ui.close_menu();
+                        }
+                    });
                     if ui.button("CPU Control...").clicked() {
                         self.cpu_control_dialog_open = true;
                         ui.close_menu();
@@ -594,14 +644,17 @@ impl GuiState {
                         self.dma_viewer_open = true;
                         ui.close_menu();
                     }
-                    if ui.button("CRTC...").clicked() {
-                        self.crtc_viewer_open = true;
+                    if ui.button("Video Card...").clicked() {
+                        self.videocard_viewer_open = true;
                         ui.close_menu();
                     }
                 
                 });
                 ui.menu_button("Options", |ui| {
-                    if ui.checkbox(&mut self.composite, "Composite").clicked() {
+                    if ui.checkbox(&mut self.aspect_correct, "Correct Aspect Ratio").clicked() {
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {
                         ui.close_menu();
                     }
                     ui.menu_button("Attach COM2: ...", |ui| {
@@ -618,7 +671,7 @@ impl GuiState {
             });
         });
 
-        let texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
+        let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
             ctx.load_texture(
                 "logo",
                 get_ui_image(UiImage::Logo),
@@ -629,7 +682,7 @@ impl GuiState {
             .open(&mut self.about_window_open)
             .show(ctx, |ui| {
 
-                ui.image(texture, texture.size_vec2());
+                ui.image(about_texture, about_texture.size_vec2());
                 ui.separator();
 
                 ui.label("Marty is free software.");
@@ -643,6 +696,32 @@ impl GuiState {
                 ui.separator();
 
             });
+
+        //let video_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
+        //        ctx.load_texture(
+        //            "video_mem",
+        //            self.video_mem,
+        //        )
+        //    });
+
+        egui::Window::new("Video Mem")
+            .open(&mut self.video_mem_viewer_open)
+            .show(ctx, |ui| {
+
+                ui.image(about_texture, about_texture.size_vec2());
+                ui.separator();
+
+                ui.label("Marty is free software.");
+
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x /= 2.0;
+                    ui.label("Github:");
+                    ui.hyperlink("https://github.com/dbalsom/marty");
+                });
+
+                ui.separator();
+
+            });            
 
         egui::Window::new("Error")
             .open(&mut self.error_dialog_open)
@@ -661,6 +740,18 @@ impl GuiState {
                     .striped(true)
                     .min_col_width(100.0)
                     .show(ui, |ui| {
+                        ui.label("Internal resolution: ");
+                        ui.label(egui::RichText::new(format!("{}, {}", 
+                            self.video_data.render_w, 
+                            self.video_data.render_h))
+                            .background_color(egui::Color32::BLACK));
+                        ui.end_row();
+                        ui.label("Display buffer resolution: ");
+                        ui.label(egui::RichText::new(format!("{}, {}", 
+                            self.video_data.aspect_w, 
+                            self.video_data.aspect_h))
+                            .background_color(egui::Color32::BLACK));
+                        ui.end_row();
 
                         ui.label("FPS: ");
                         ui.label(egui::RichText::new(format!("{}", self.current_fps)).background_color(egui::Color32::BLACK));
@@ -968,6 +1059,10 @@ impl GuiState {
                     ui.label(egui::RichText::new("#0 Reload Val:  ").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_reload_value).font(egui::TextStyle::Monospace));
                     ui.end_row();
+
+                    ui.label(egui::RichText::new("#0 Output Signal:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_channel_output).font(egui::TextStyle::Monospace));
+                    ui.end_row();                    
                     
                     ui.label(egui::RichText::new("#1 Access Mode: ").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_access_mode).font(egui::TextStyle::Monospace));
@@ -984,6 +1079,10 @@ impl GuiState {
                     ui.label(egui::RichText::new("#1 Reload Val:  ").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_reload_value).font(egui::TextStyle::Monospace));
                     ui.end_row();  
+
+                    ui.label(egui::RichText::new("#1 Output Signal:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_channel_output).font(egui::TextStyle::Monospace));
+                    ui.end_row();                                    
                     
                     ui.label(egui::RichText::new("#2 Access Mode: ").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_access_mode).font(egui::TextStyle::Monospace));
@@ -1000,6 +1099,10 @@ impl GuiState {
                     ui.label(egui::RichText::new("#2 Reload Val:  ").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_reload_value).font(egui::TextStyle::Monospace));
                     ui.end_row();  
+
+                    ui.label(egui::RichText::new("#2 Output Signal:  ").text_style(egui::TextStyle::Monospace));
+                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_channel_output).font(egui::TextStyle::Monospace));
+                    ui.end_row();                
 
                     ui.label(egui::RichText::new("#2 Gate Status: ").text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_gate_status).font(egui::TextStyle::Monospace));
@@ -1189,27 +1292,222 @@ impl GuiState {
 
 
                 });
-            });            
+            });                       
 
-            egui::Window::new("CRTC View")
-            .open(&mut self.crtc_viewer_open)
+            egui::Window::new("Video Card View")
+            .open(&mut self.videocard_viewer_open)
             .resizable(false)
-            .default_width(200.0)
+            .default_width(300.0)
             .show(ctx, |ui| {
-                egui::Grid::new("crtc_view")
-                    .num_columns(2)
-                    .striped(true)
-                    .min_col_width(50.0)
-                    .show(ui, |ui| {
+                egui::Grid::new("videocard_view1")
+                .num_columns(2)
+                .striped(false)
+                .show(ui, |ui| {
 
-                    for register in &self.crtc_state {   
-
-                        ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                        ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                        ui.end_row();
+                    if self.videocard_state.contains_key("General") {
+                        ui.horizontal(|ui| {
+                            egui::Grid::new("videocard_view0")
+                                .num_columns(2)
+                                .striped(true)
+                                .min_col_width(50.0)
+                                .show(ui, |ui| {                                    
+                                let register_file = &self.videocard_state.get("General");
+                                match register_file {
+                                    Some(file) => {
+                                        for register in *file {   
+                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                                            ui.end_row();
+                                        }
+                                    }
+                                    None => {}
+                                }
+                            });                   
+                        });
                     }
-                });
-            });            
+
+                    ui.end_row();
+                    if self.videocard_state.contains_key("CRTC") {
+                        ui.vertical(|ui| {
+                            ui.label(egui::RichText::new("CRTC Registers").color(egui::Color32::LIGHT_BLUE));
+                            ui.horizontal(|ui| {
+                                ui.group(|ui| {
+                                    egui::Grid::new("videocard_view2")
+                                        .num_columns(2)
+                                        .striped(true)
+                                        .min_col_width(50.0)
+                                        .show(ui, |ui| {                                    
+                                        let register_file = &self.videocard_state.get("CRTC");
+                                        match register_file {
+                                            Some(file) => {
+                                                for register in *file {   
+                                                    ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                    ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                                                    ui.end_row();
+                                                }
+                                            }
+                                            None => {}
+                                        }
+                                    });
+                                });                    
+                            });
+                        });
+                    }
+
+                    ui.vertical(|ui| {
+                        if self.videocard_state.contains_key("External") {
+                            CollapsingHeader::new("External Registers")
+                            .default_open(false)
+                            .show(ui,  |ui| {
+                                ui.vertical(|ui| {
+                                    //ui.label(egui::RichText::new("External Registers").color(egui::Color32::LIGHT_BLUE));
+                                    ui.horizontal(|ui| {
+                                        ui.group(|ui| {
+                                            egui::Grid::new("videocard_view13")
+                                                .num_columns(2)
+                                                .striped(true)
+                                                .min_col_width(60.0)
+                                                .show(ui, |ui| {                                    
+                                                let register_file = &self.videocard_state.get("External");
+                                                match register_file {
+                                                    Some(file) => {
+                                                        for register in *file {   
+                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                                                            ui.end_row();
+                                                        }
+                                                    }
+                                                    None => {}
+                                                }
+                                            });
+                                        });                    
+                                    });
+                                });
+                            });
+                        }                        
+                        if self.videocard_state.contains_key("Sequencer") {
+                            CollapsingHeader::new("Sequencer Registers")
+                            .default_open(false)
+                            .show(ui,  |ui| {
+                                ui.vertical(|ui| {
+                                    //ui.label(egui::RichText::new("Sequencer Registers").color(egui::Color32::LIGHT_BLUE));
+                                    ui.horizontal(|ui| {
+                                        ui.group(|ui| {
+                                            egui::Grid::new("videocard_view3")
+                                                .num_columns(2)
+                                                .striped(true)
+                                                .min_col_width(60.0)
+                                                .show(ui, |ui| {                                    
+                                                let register_file = &self.videocard_state.get("Sequencer");
+                                                match register_file {
+                                                    Some(file) => {
+                                                        for register in *file {   
+                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                                                            ui.end_row();
+                                                        }
+                                                    }
+                                                    None => {}
+                                                }
+                                            });
+                                        });                    
+                                    });
+                                });
+                            });
+                        }
+                        if self.videocard_state.contains_key("Graphics") {
+                            CollapsingHeader::new("Graphics Registers")
+                            .default_open(false)
+                            .show(ui,  |ui| {
+                                ui.vertical(|ui| {
+                                    //ui.label(egui::RichText::new("Graphics Registers").color(egui::Color32::LIGHT_BLUE));
+                                    ui.horizontal(|ui| {
+                                        ui.group(|ui| {
+                                            egui::Grid::new("videocard_view4")
+                                                .num_columns(2)
+                                                .striped(true)
+                                                .min_col_width(50.0)
+                                                .show(ui, |ui| {                                    
+                                                let register_file = &self.videocard_state.get("Graphics");
+                                                match register_file {
+                                                    Some(file) => {
+                                                        for register in *file {   
+                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                                                            ui.end_row();
+                                                        }
+                                                    }
+                                                    None => {}
+                                                }
+                                            });
+                                        });                    
+                                    });
+                                });
+                            });
+                        }
+                        if self.videocard_state.contains_key("AttributePalette") {
+                            CollapsingHeader::new("Attribute Palette Registers")
+                            .default_open(false)
+                            .show(ui,  |ui| {                            
+                                ui.vertical(|ui| {
+                                    //ui.label(egui::RichText::new("Attribute Palette Registers").color(egui::Color32::LIGHT_BLUE));
+                                    ui.horizontal(|ui| {
+                                        ui.group(|ui| {
+                                            egui::Grid::new("videocard_view6")
+                                                .num_columns(2)
+                                                .striped(true)
+                                                .min_col_width(50.0)
+                                                .show(ui, |ui| {                                    
+                                                let register_file = &self.videocard_state.get("AttributePalette");
+                                                match register_file {
+                                                    Some(file) => {
+                                                        for register in *file {   
+                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                                                            ui.end_row();
+                                                        }
+                                                    }
+                                                    None => {}
+                                                }
+                                            });
+                                        });                    
+                                    });
+                                });
+                            });
+                        }                          
+                        if self.videocard_state.contains_key("Attribute") {
+                            CollapsingHeader::new("Attribute Registers")
+                            .default_open(false)
+                            .show(ui,  |ui| {                            
+                                ui.vertical(|ui| {
+                                    //ui.label(egui::RichText::new("Attribute Registers").color(egui::Color32::LIGHT_BLUE));
+                                    ui.horizontal(|ui| {
+                                        ui.group(|ui| {
+                                            egui::Grid::new("videocard_view7")
+                                                .num_columns(2)
+                                                .striped(true)
+                                                .min_col_width(50.0)
+                                                .show(ui, |ui| {                                    
+                                                let register_file = &self.videocard_state.get("Attribute");
+                                                match register_file {
+                                                    Some(file) => {
+                                                        for register in *file {   
+                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
+                                                            ui.end_row();
+                                                        }
+                                                    }
+                                                    None => {}
+                                                }
+                                            });
+                                        });                    
+                                    });
+                                });
+                            });
+                        }                        
+                    });
+                }); 
+            });         
 
             egui::Window::new("Create VHD")
                 .open(&mut self.vhd_creator_open)

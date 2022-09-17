@@ -17,15 +17,18 @@ image = "0.24.2"
 lazy_static = "1.4.0"
 log = "0.4"
 md5 = "0.7.0"
+modular-bitfield = "0.11.2"
 pixels = "0.9.0"
 rand = "0.8.5"
 regex = "1.5.5"
+resize = "0.7.4"
+rgb = "0.8.33"
 ringbuf = "0.2.8"
 serialport = "4.2.0"
 uuid = { version = "1.1.2", features = ["v4"]}
 winit = "0.26"
 winit_input_helper = "0.12"
 
-
-
+[profile.dev.package."*"]
+opt-level = 3
 

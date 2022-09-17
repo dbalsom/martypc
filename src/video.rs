@@ -5,7 +5,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::cga::{self, CGACard, CGAColor, CGAPalette, DisplayMode, CursorInfo};
+use crate::videocard::{VideoCard, VideoType, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
+use crate::cga::{self, CGACard };
 use crate::bus::BusInterface;
 
 extern crate rand; 
@@ -24,21 +25,29 @@ pub const ATTR_RED_BG: u8 = 0b0100_0000;
 pub const ATTR_BRIGHT_BG: u8 = 0b1000_0000;
 
 // Font is encoded as a bit pattern with a span of 256 bits per row
-static CGA_FONT: &'static [u8; 2048] = include_bytes!("cga_font.bin");
+//static CGA_FONT: &'static [u8; 2048] = include_bytes!("cga_font.bin");
 
 const CGA_FIELD_OFFSET: u32 = 8192;
 
 const FONT_SPAN: u32 = 32;
-const FONT_W: u32 = 8;
-const FONT_H: u32 = 8;
+//const FONT_W: u32 = 8;
+//const FONT_H: u32 = 8;
 
-const HIRES_GFX_W: u32 = 640;
-const HIRES_GFX_H: u32 = 200;
-const GFX_W: u32 = 320;
-const GFX_H: u32 = 200;
+const CGA_HIRES_GFX_W: u32 = 640;
+const CGA_HIRES_GFX_H: u32 = 200;
+const CGA_GFX_W: u32 = 320;
+const CGA_GFX_H: u32 = 200;
 
-const FRAME_W: u32 = 640;
-const FRAME_H: u32 = 400;
+const EGA_LORES_GFX_W: u32 = 320;
+const EGA_LORES_GFX_H: u32 = 200;
+const EGA_HIRES_GFX_W: u32 = 640;
+const EGA_HIRES_GFX_H: u32 = 350;
+
+const VGA_LORES_GFX_W: u32 = 320;
+const VGA_LORES_GFX_H: u32 = 200;
+
+//const frame_w: u32 = 640;
+//const frame_h: u32 = 400;
 
 
 
@@ -71,7 +80,7 @@ impl Distribution<CGAColor> for Standard {
 pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {
     
     match color {
-        CGAColor::Black         => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8],
+        CGAColor::Black         => &[0x10u8, 0x10u8, 0x10u8, 0xFFu8], // Make slightly visible for debugging
         CGAColor::Blue          => &[0x00u8, 0x00u8, 0xAAu8, 0xFFu8],
         CGAColor::Green         => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8],
         CGAColor::Cyan          => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8],
@@ -87,6 +96,100 @@ pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {
         CGAColor::MagentaBright => &[0xFFu8, 0x55u8, 0xFFu8, 0xFFu8],
         CGAColor::Yellow        => &[0xFFu8, 0xFFu8, 0x55u8, 0xFFu8],
         CGAColor::WhiteBright   => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8],
+    }
+}
+
+pub fn get_ega_gfx_color16(bits: u8) -> &'static [u8; 4] {
+
+    match bits & 0b010_111 {
+        0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
+        0b000_001 => &[0x00, 0x00, 0xAA, 0xFF],
+        0b000_010 => &[0x00, 0xAA, 0x00, 0xFF],
+        0b000_011 => &[0x00, 0xAA, 0xAA, 0xFF],
+        0b000_100 => &[0xAA, 0x00, 0x00, 0xFF],
+        0b000_101 => &[0xAA, 0x00, 0xAA, 0xFF],
+        0b000_110 => &[0xAA, 0x55, 0x00, 0xFF], // Brown instead of dark yellow
+        0b000_111 => &[0xAA, 0xAA, 0xAA, 0xFF],
+        0b010_000 => &[0x55, 0x55, 0x55, 0xFF],
+        0b010_001 => &[0x55, 0x55, 0xFF, 0xFF],
+        0b010_010 => &[0x55, 0xFF, 0x55, 0xFF],
+        0b010_011 => &[0x55, 0xFF, 0xFF, 0xFF],
+        0b010_100 => &[0xFF, 0x55, 0x55, 0xFF],
+        0b010_101 => &[0xFF, 0x55, 0xFF, 0xFF],
+        0b010_110 => &[0xFF, 0xFF, 0x55, 0xFF],
+        0b010_111 => &[0xFF, 0xFF, 0xFF, 0xFF],
+        _ => &[0x00, 0x00, 0x00, 0xFF], // Default black
+    }
+}
+
+pub fn get_ega_gfx_color64(bits: u8) -> &'static [u8; 4] {
+
+    match bits {
+        0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
+        0b000_001 => &[0x00, 0x00, 0xAA, 0xFF],
+        0b000_010 => &[0x00, 0xAA, 0x00, 0xFF],
+        0b000_011 => &[0x00, 0xAA, 0xAA, 0xFF],
+        0b000_100 => &[0xAA, 0x00, 0x00, 0xFF],
+        0b000_101 => &[0xAA, 0x00, 0xAA, 0xFF],
+        0b000_110 => &[0xAA, 0xAA, 0x00, 0xFF], 
+        0b000_111 => &[0xAA, 0xAA, 0xAA, 0xFF],
+        0b001_000 => &[0x00, 0x00, 0x55, 0xFF],
+        0b001_001 => &[0x00, 0x00, 0xFF, 0xFF],
+        0b001_010 => &[0x00, 0xAA, 0x55, 0xFF],
+        0b001_011 => &[0x00, 0xAA, 0xFF, 0xFF],
+        0b001_100 => &[0xAA, 0x00, 0x55, 0xFF],
+        0b001_101 => &[0xAA, 0x00, 0xFF, 0xFF],
+        0b001_110 => &[0xAA, 0xAA, 0x55, 0xFF],
+        0b001_111 => &[0xAA, 0xAA, 0xFF, 0xFF],
+        0b010_000 => &[0x00, 0x55, 0x00, 0xFF],
+        0b010_001 => &[0x00, 0x55, 0xAA, 0xFF],
+        0b010_010 => &[0x00, 0xFF, 0x00, 0xFF],
+        0b010_011 => &[0x00, 0xFF, 0xAA, 0xFF],
+        0b010_100 => &[0xAA, 0x55, 0x00, 0xFF],
+        0b010_101 => &[0xAA, 0x55, 0xAA, 0xFF],
+        0b010_110 => &[0xAA, 0xFF, 0x00, 0xFF],
+        0b010_111 => &[0xAA, 0xFF, 0xAA, 0xFF],
+        0b011_000 => &[0x00, 0x55, 0x55, 0xFF],
+        0b011_001 => &[0x00, 0x55, 0xFF, 0xFF],
+        0b011_010 => &[0x00, 0xFF, 0x55, 0xFF],
+        0b011_011 => &[0x00, 0xFF, 0xFF, 0xFF],
+        0b011_100 => &[0xAA, 0x55, 0x55, 0xFF],
+        0b011_101 => &[0xAA, 0x55, 0xFF, 0xFF],
+        0b011_110 => &[0xAA, 0xFF, 0x55, 0xFF],
+        0b011_111 => &[0xAA, 0xFF, 0xFF, 0xFF],
+        0b100_000 => &[0x55, 0x00, 0x00, 0xFF],
+        0b100_001 => &[0x55, 0x00, 0xAA, 0xFF],
+        0b100_010 => &[0x55, 0xAA, 0x00, 0xFF],
+        0b100_011 => &[0x55, 0xAA, 0xAA, 0xFF],
+        0b100_100 => &[0xFF, 0x00, 0x00, 0xFF],
+        0b100_101 => &[0xFF, 0x00, 0xAA, 0xFF],
+        0b100_110 => &[0xFF, 0xAA, 0x00, 0xFF],
+        0b100_111 => &[0xFF, 0xAA, 0xAA, 0xFF],
+        0b101_000 => &[0x55, 0x00, 0x55, 0xFF],
+        0b101_001 => &[0x55, 0x00, 0xFF, 0xFF],
+        0b101_010 => &[0x55, 0xAA, 0x55, 0xFF],
+        0b101_011 => &[0x55, 0xAA, 0xFF, 0xFF],
+        0b101_100 => &[0xFF, 0x00, 0x55, 0xFF],
+        0b101_101 => &[0xFF, 0x00, 0xFF, 0xFF],
+        0b101_110 => &[0xFF, 0xAA, 0x55, 0xFF],
+        0b101_111 => &[0xFF, 0xAA, 0xFF, 0xFF],
+        0b110_000 => &[0x55, 0x55, 0x00, 0xFF],
+        0b110_001 => &[0x55, 0x55, 0xAA, 0xFF],
+        0b110_010 => &[0x55, 0xFF, 0x00, 0xFF],
+        0b110_011 => &[0x55, 0xFF, 0xAA, 0xFF],
+        0b110_100 => &[0xFF, 0x55, 0x00, 0xFF],
+        0b110_101 => &[0xFF, 0x55, 0xAA, 0xFF],
+        0b110_110 => &[0xFF, 0xFF, 0x00, 0xFF],
+        0b110_111 => &[0xFF, 0xFF, 0xAA, 0xFF],
+        0b111_000 => &[0x55, 0x55, 0x55, 0xFF],
+        0b111_001 => &[0x55, 0x55, 0xFF, 0xFF],
+        0b111_010 => &[0x55, 0xFF, 0x55, 0xFF],
+        0b111_011 => &[0x55, 0xFF, 0xFF, 0xFF],
+        0b111_100 => &[0xFF, 0x55, 0x55, 0xFF],
+        0b111_101 => &[0xFF, 0x55, 0xFF, 0xFF],
+        0b111_110 => &[0xFF, 0xFF, 0x55, 0xFF],
+        0b111_111 => &[0xFF, 0xFF, 0xFF, 0xFF],
+        _ => &[0x10, 0x10, 0x10, 0xFF], // Default black
     }
 }
 
@@ -186,59 +289,86 @@ impl Video {
         }
     }
 
-    pub fn draw(&self, frame: &mut [u8], cga: Rc<RefCell<CGACard>>, bus: &BusInterface, composite: bool) {
+    pub fn draw(&self, frame: &mut [u8], video: Rc<RefCell<dyn VideoCard>>, bus: &BusInterface, composite: bool) {
 
-        let cga_card = cga.borrow();        
-        let start_address = cga_card.get_start_address() as usize;
-        let mode_40_cols = cga_card.is_40_columns();
+        let video_card = video.borrow();        
+        let start_address = video_card.get_start_address() as usize;
+        let mode_40_cols = video_card.is_40_columns();
 
-        match cga_card.get_display_mode() {
+        let (frame_w, frame_h) = video_card.get_display_extents();
+
+        match video_card.get_display_mode() {
             DisplayMode::Disabled => {
                 // Blank screen here?
                 return
             }
             DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 | DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
-                let cursor = cga_card.get_cursor_info();
-                let char_height = cga_card.get_character_height();
+                let video_type = video_card.get_video_type();
+                let cursor = video_card.get_cursor_info();
+                let char_height = video_card.get_character_height();
     
                 // Start address is multiplied by two due to 2 bytes per character (char + attr)
                 let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+                
+                // Get font info from adapter
+                let font_info = video_card.get_current_font();
 
-                self.draw_text_mode(cursor, frame, FRAME_W, FRAME_H, video_mem, char_height, mode_40_cols );
+                self.draw_text_mode(
+                    video_type, 
+                    cursor, 
+                    frame, 
+                    frame_w, 
+                    frame_h, 
+                    video_mem, 
+                    char_height, 
+                    mode_40_cols, 
+                    &font_info );
             }
             DisplayMode::Mode4LowResGraphics | DisplayMode::Mode5LowResAltPalette => {
-                let (palette, intensity) = cga_card.get_palette();
+                let (palette, intensity) = video_card.get_cga_palette();
 
                 let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
-                    draw_gfx_mode2x(frame, FRAME_W, FRAME_H, video_mem, palette, intensity);
+                    //draw_cga_gfx_mode2x(frame, frame_w, frame_h, video_mem, palette, intensity);
+                    draw_cga_gfx_mode(frame, frame_w, frame_h, video_mem, palette, intensity);
                 }
                 else {
-                    draw_gfx_mode2x_composite(frame, FRAME_W, FRAME_H, video_mem, palette, intensity);
+                    //draw_gfx_mode2x_composite(frame, frame_w, frame_h, video_mem, palette, intensity);
                 }
             }
             DisplayMode::Mode6HiResGraphics => {
-                let (palette, intensity) = cga_card.get_palette();
+                let (palette, intensity) = video_card.get_cga_palette();
 
                 let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
-                    draw_gfx_mode_highres2x(frame, FRAME_W, FRAME_H, video_mem, palette);
+                    //draw_cga_gfx_mode_highres2x(frame, frame_w, frame_h, video_mem, palette);
+                    draw_cga_gfx_mode_highres(frame, frame_w, frame_h, video_mem, palette);
                 }
                 else {
-                    draw_gfx_mode2x_composite(frame, FRAME_W, FRAME_H, video_mem, palette, intensity);
+                    //draw_gfx_mode2x_composite(frame, frame_w, frame_h, video_mem, palette, intensity);
                 }
                 
             }
             DisplayMode::Mode7LowResComposite => {
-                let (palette, intensity) = cga_card.get_palette();
+                let (palette, intensity) = video_card.get_cga_palette();
 
                 let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
-                    draw_gfx_mode_highres2x(frame, FRAME_W, FRAME_H, video_mem, palette);
+                    //draw_cga_gfx_mode_highres2x(frame, frame_w, frame_h, video_mem, palette);
+                    draw_cga_gfx_mode_highres(frame, frame_w, frame_h, video_mem, palette);
                 }
                 else {
-                    draw_gfx_mode2x_composite(frame, FRAME_W, FRAME_H, video_mem, palette, intensity);
+                    //draw_gfx_mode2x_composite(frame, frame_w, frame_h, video_mem, palette, intensity);
                 }                
+            }
+            DisplayMode::ModeDEGALowResGraphics => {
+                draw_ega_lowres_gfx_mode(&video, frame, frame_w, frame_h);
+            }
+            DisplayMode::Mode10EGAHiResGraphics => {
+                draw_ega_hires_gfx_mode(&video, frame, frame_w, frame_h);
+            }
+            DisplayMode::Mode13VGALowRes256 => {
+                draw_vga_mode13h(&video, frame, frame_w, frame_h);
             }
             _ => {
                 // blank screen here?
@@ -247,18 +377,26 @@ impl Video {
     }
 
     pub fn draw_text_mode(
-        &self, cursor: CursorInfo, 
+        &self, 
+        video_type: VideoType,
+        cursor: CursorInfo, 
         frame: &mut [u8], 
         frame_w: u32, 
         frame_h: u32, 
         mem: &[u8], 
         char_height: u8, 
-        lowres: bool) {
+        lowres: bool,
+        font: &FontInfo ) {
 
         let mem_span = match lowres {
             true => 40,
             false => 80
         };
+
+        // Avoid drawing weird sizes during BIOS setup
+        if frame_h < 200 {
+            return
+        }
 
         if char_height < 2 {
             return
@@ -280,38 +418,134 @@ impl Video {
 
             let (fg_color, bg_color) = get_colors_from_attr_byte(char[1]);
 
-            match lowres {
-                true => draw_glyph4x(char[0], fg_color, bg_color, frame, frame_w, frame_h, char_height, x * 8, y * char_height),
-                false => draw_glyph2x(char[0], fg_color, bg_color, frame, frame_w, frame_h, char_height, x * 8, y * char_height)
+            match (video_type, lowres) {
+                (VideoType::CGA, true) => {
+                    draw_glyph4x(char[0], fg_color, bg_color, frame, frame_w, frame_h, char_height, x * 8, y * char_height, font)
+                }
+                (VideoType::CGA, false) => {
+                    //draw_glyph2x(char[0], fg_color, bg_color, frame, frame_w, frame_h, char_height, x * 8, y * char_height, font)
+                    draw_glyph1x1(char[0], fg_color, bg_color, frame, frame_w, frame_h, char_height, x * 8, y * char_height, font)
+                }
+                (VideoType::EGA, true) => {
+                    draw_glyph2x1(
+                        char[0], 
+                        fg_color, 
+                        bg_color, 
+                        frame, 
+                        frame_w, 
+                        frame_h, 
+                        char_height, 
+                        x * 8 * 2, 
+                        y * char_height, 
+                        font)
+                }
+                (VideoType::EGA, false) => {
+                    draw_glyph1x1(
+                        char[0], 
+                        fg_color, 
+                        bg_color, 
+                        frame, 
+                        frame_w, 
+                        frame_h, 
+                        char_height, 
+                        x * 8, 
+                        y * char_height, 
+                        font)                    
+                }
+                (VideoType::VGA, false) => {
+                    draw_glyph1x1(
+                        char[0], 
+                        fg_color, 
+                        bg_color, 
+                        frame, 
+                        frame_w, 
+                        frame_h, 
+                        char_height, 
+                        x * 8, 
+                        y * char_height, 
+                        font)                    
+                }
+                _=> {}
             }
 
         }
 
-        match lowres {
-            true => draw_cursor4x(cursor, frame, FRAME_W, FRAME_H, mem ),
-            false => draw_cursor2x(cursor, frame, FRAME_W, FRAME_H, mem )
+        match (video_type, lowres) {
+            (VideoType::CGA, true) => draw_cursor4x(cursor, frame, frame_w, frame_h, mem, font ),
+            (VideoType::CGA, false) => {
+                //draw_cursor2x(cursor, frame, frame_w, frame_h, mem, font ),
+                draw_cursor(cursor, frame, frame_w, frame_h, mem, font )
+            }
+            (VideoType::EGA, true) | (VideoType::EGA, false) => {
+                draw_cursor(cursor, frame, frame_w, frame_h, mem, font )
+            }
+            _=> {}
         }
     }
 
 
 }
 
-pub fn draw_gfx_mode2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
+pub fn draw_cga_gfx_mode(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
+    // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
+    let mut field_src_offset = 0;
+    let mut field_dst_offset = 0;
+    for _field in 0..2 {
+        for draw_y in 0..(CGA_GFX_H / 2) {
+
+            // CGA gfx mode = 2 bits (4 pixels per byte). Double line count to skip every other line
+            let src_y_idx = draw_y * (CGA_GFX_W / 4) + field_src_offset; 
+            let dst_span = frame_w * 4;
+            let dst1_y_idx = draw_y * dst_span * 2 + field_dst_offset;  // RBGA = 4 bytes
+
+            // Draw 4 pixels at a time
+            for draw_x in 0..(CGA_GFX_W / 4) {
+
+                let dst1_x_idx = (draw_x * 4) * 4;
+                //let dst2_x_idx = dst1_x_idx + 4;
+
+                let cga_byte: u8 = mem[(src_y_idx + draw_x) as usize];
+
+                // Four pixels in a byte
+                for pix_n in 0..4 {
+                    // Mask the pixel bits, right-to-left
+                    let shift_ct = 8 - (pix_n * 2) - 2;
+                    let pix_bits = cga_byte >> shift_ct & 0x03;
+                    // Get the RGBA for this pixel
+                    let color = get_cga_gfx_color(pix_bits, &pal, intensity);
+
+                    let draw_offset = (dst1_y_idx + dst1_x_idx + (pix_n * 4)) as usize;
+                    if draw_offset + 3 < frame.len() {
+                        frame[draw_offset]     = color[0];
+                        frame[draw_offset + 1] = color[1];
+                        frame[draw_offset + 2] = color[2];
+                        frame[draw_offset + 3] = color[3];
+                    }                       
+                }
+            }
+        }
+        // Switch fields
+        field_src_offset += CGA_FIELD_OFFSET;
+        field_dst_offset += frame_w * 4;
+    }
+}
+
+pub fn draw_cga_gfx_mode2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     
     let mut field_src_offset = 0;
     let mut field_dst_offset = 0;
     for _field in 0..2 {
-        for draw_y in 0..(GFX_H / 2) {
+        for draw_y in 0..(CGA_GFX_H / 2) {
 
             // CGA gfx mode = 2 bits (4 pixels per byte). Double line count to skip every other line
-            let src_y_idx = draw_y * (GFX_W / 4) + field_src_offset; 
-            let dst_span = (FRAME_W) * 4;
+            let src_y_idx = draw_y * (CGA_GFX_W / 4) + field_src_offset; 
+            let dst_span = (frame_w) * 4;
             let dst1_y_idx = draw_y * (dst_span * 4) + field_dst_offset;  // RBGA = 4 bytes x 2x pixels
             let dst2_y_idx = draw_y * (dst_span * 4) + dst_span + field_dst_offset;  // One scanline down
 
             // Draw 4 pixels at a time
-            for draw_x in 0..(GFX_W / 4) {
+            for draw_x in 0..(CGA_GFX_W / 4) {
 
                 let dst1_x_idx = (draw_x * 4) * 4 * 2;
                 let dst2_x_idx = dst1_x_idx + 4;
@@ -350,28 +584,72 @@ pub fn draw_gfx_mode2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8],
             }
         }
         field_src_offset += CGA_FIELD_OFFSET;
-        field_dst_offset += (FRAME_W) * 4 * 2;
+        field_dst_offset += (frame_w) * 4 * 2;
     }
 }
 
-pub fn draw_gfx_mode_highres2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette) {
+pub fn draw_cga_gfx_mode_highres(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     
     let mut field_src_offset = 0;
     let mut field_dst_offset = 0;
     for _field in 0..2 {
-        for draw_y in 0..(HIRES_GFX_H / 2) {
+        for draw_y in 0..(CGA_HIRES_GFX_H / 2) {
+
+            // CGA hi-res gfx mode = 1 bpp (8 pixels per byte).
+            let src_y_idx = draw_y * (CGA_HIRES_GFX_W / 8) + field_src_offset; 
+            let dst_span = frame_w * 4;
+            let dst1_y_idx = draw_y * dst_span * 2 + field_dst_offset;  // RBGA = 4 bytes
+            //let dst2_y_idx = draw_y * (dst_span * 4) + dst_span + field_dst_offset;  // One scanline down
+
+            // Draw 8 pixels at a time
+            for draw_x in 0..(CGA_HIRES_GFX_W / 8) {
+
+                let dst1_x_idx = (draw_x * 8) * 4;
+
+                let cga_byte: u8 = mem[(src_y_idx + draw_x) as usize];
+
+                // Eight pixels in a byte
+                for pix_n in 0..8 {
+                    // Mask the pixel bits, right-to-left
+                    let shift_ct = 8 - pix_n - 1;
+                    let pix_bit = cga_byte >> shift_ct & 0x01;
+                    // Get the RGBA for this pixel
+                    let color = get_cga_gfx_color(pix_bit, &pal, false);
+                    // Draw first row of pixel
+                    let draw_offset = (dst1_y_idx + dst1_x_idx + (pix_n * 4)) as usize;
+                    if draw_offset + 3 < frame.len() {
+                        frame[draw_offset + 0] = color[0];
+                        frame[draw_offset + 1] = color[1];
+                        frame[draw_offset + 2] = color[2];
+                        frame[draw_offset + 3] = color[3];
+                    }     
+                }
+            }
+        }
+        field_src_offset += CGA_FIELD_OFFSET;
+        field_dst_offset += frame_w * 4;
+    }
+}
+
+pub fn draw_cga_gfx_mode_highres2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette) {
+    // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
+    
+    let mut field_src_offset = 0;
+    let mut field_dst_offset = 0;
+    for _field in 0..2 {
+        for draw_y in 0..(CGA_HIRES_GFX_H / 2) {
 
             // CGA hi-res gfx mode = 1 bpp (8 pixels per byte).
 
-            let src_y_idx = draw_y * (HIRES_GFX_W / 8) + field_src_offset; 
+            let src_y_idx = draw_y * (CGA_HIRES_GFX_W / 8) + field_src_offset; 
 
-            let dst_span = FRAME_W * 4;
+            let dst_span = frame_w * 4;
             let dst1_y_idx = draw_y * (dst_span * 4) + field_dst_offset;  // RBGA = 4 bytes x 2x pixels
             let dst2_y_idx = draw_y * (dst_span * 4) + dst_span + field_dst_offset;  // One scanline down
 
             // Draw 8 pixels at a time
-            for draw_x in 0..(HIRES_GFX_W / 8) {
+            for draw_x in 0..(CGA_HIRES_GFX_W / 8) {
 
                 let dst1_x_idx = (draw_x * 8) * 4;
 
@@ -399,7 +677,7 @@ pub fn draw_gfx_mode_highres2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem
             }
         }
         field_src_offset += CGA_FIELD_OFFSET;
-        field_dst_offset += (FRAME_W) * 4 * 2;
+        field_dst_offset += (frame_w) * 4 * 2;
     }
 }
 
@@ -410,16 +688,16 @@ pub fn draw_gfx_mode2x_composite(frame: &mut [u8], frame_w: u32, frame_h: u32, m
     let mut field_src_offset = 0;
     let mut field_dst_offset = 0;
     for _field in 0..2 {
-        for draw_y in 0..(GFX_H / 2) {
+        for draw_y in 0..(CGA_GFX_H / 2) {
 
             // CGA gfx mode = 2 bits (4 pixels per byte). Double line count to skip every other line
-            let src_y_idx = draw_y * (GFX_W / 4) + field_src_offset; 
-            let dst_span = (FRAME_W) * 4;
+            let src_y_idx = draw_y * (CGA_GFX_W / 4) + field_src_offset; 
+            let dst_span = (frame_w) * 4;
             let dst1_y_idx = draw_y * (dst_span * 4) + field_dst_offset;  // RBGA = 4 bytes x 2x pixels
             let dst2_y_idx = draw_y * (dst_span * 4) + dst_span + field_dst_offset;  // One scanline down
 
             // Draw 4 pixels at a time
-            for draw_x in 0..(GFX_W / 4) {
+            for draw_x in 0..(CGA_GFX_W / 4) {
 
                 let dst1_x_idx = (draw_x * 4) * 4 * 2;
                 let dst2_x_idx = dst1_x_idx + 4;
@@ -480,7 +758,7 @@ pub fn draw_gfx_mode2x_composite(frame: &mut [u8], frame_w: u32, frame_h: u32, m
             }
         }
         field_src_offset += CGA_FIELD_OFFSET;
-        field_dst_offset += (FRAME_W) * 4 * 2;
+        field_dst_offset += (frame_w) * 4 * 2;
     }
 }
 
@@ -528,27 +806,31 @@ pub fn draw_glyph4x(
     frame_h: u32, 
     char_height: u32,
     pos_x: u32, 
-    pos_y: u32 ) -> () {
+    pos_y: u32,
+    font: &FontInfo ) -> () {
 
     // Do not draw glyph off screen
-    if (pos_x + (FONT_W * 2) > frame_w) || (pos_y * 2 + (FONT_H * 2 ) > frame_h) {
+    if (pos_x + (font.w * 2) > frame_w) || (pos_y * 2 + (font.h * 2 ) > frame_h) {
         return
     }
 
     // Find the source position of the glyph
-    let glyph_offset_src_x = glyph as u32 % FONT_SPAN;
-    let glyph_offset_src_y = (glyph as u32 / FONT_SPAN) * (FONT_H * FONT_SPAN); 
+    //let glyph_offset_src_x = glyph as u32 % FONT_SPAN;
+    //let glyph_offset_src_y = (glyph as u32 / FONT_SPAN) * (FONT_H * FONT_SPAN); 
+    let glyph_offset_src_x = glyph as u32;
+    let glyph_offset_src_y = 0;
 
-    for draw_glyph_y in 0..char_height {
+    let max_char_height = std::cmp::min(font.h, char_height);
+    for draw_glyph_y in 0..max_char_height {
 
         let dst_row_offset = frame_w * 4 * ((pos_y * 2) + (draw_glyph_y*2));
         let dst_row_offset2 = dst_row_offset + (frame_w * 4);
         
-        let glyph_offset = glyph_offset_src_y + (draw_glyph_y * FONT_SPAN) + glyph_offset_src_x;
+        let glyph_offset = glyph_offset_src_y + (draw_glyph_y * 256) + glyph_offset_src_x;
 
-        let glyph_byte: u8 = CGA_FONT[glyph_offset as usize];
+        let glyph_byte: u8 = font.font_data[glyph_offset as usize];
 
-        for draw_glyph_x in 0..FONT_W {
+        for draw_glyph_x in 0..font.w {
         
             let test_bit: u8 = 0x80u8 >> draw_glyph_x;
 
@@ -595,30 +877,35 @@ pub fn draw_glyph2x(
     frame_h: u32, 
     char_height: u32,
     pos_x: u32, 
-    pos_y: u32 ) -> () {
+    pos_y: u32,
+    font: &FontInfo ) -> () {
 
     // Do not draw glyph off screen
-    if pos_x + FONT_W > frame_w {
+    if pos_x + font.w > frame_w {
         return
     }
-    if pos_y * 2 + (FONT_H * 2 ) > frame_h {
+    if pos_y * 2 + (font.h * 2 ) > frame_h {
         return
     }
 
     // Find the source position of the glyph
-    let glyph_offset_src_x = glyph as u32 % FONT_SPAN;
-    let glyph_offset_src_y = (glyph as u32 / FONT_SPAN) * (FONT_H * FONT_SPAN); 
 
-    for draw_glyph_y in 0..char_height {
+    //let glyph_offset_src_x = glyph as u32 % FONT_SPAN;
+    //let glyph_offset_src_y = (glyph as u32 / FONT_SPAN) * (FONT_H * FONT_SPAN); 
+    let glyph_offset_src_x = glyph as u32;
+    let glyph_offset_src_y = 0;
+
+    let max_char_height = std::cmp::min(font.h, char_height);
+    for draw_glyph_y in 0..max_char_height {
 
         let dst_row_offset = frame_w * 4 * ((pos_y * 2) + (draw_glyph_y*2));
         let dst_row_offset2 = dst_row_offset + (frame_w * 4);
         
-        let glyph_offset = glyph_offset_src_y + (draw_glyph_y * FONT_SPAN) + glyph_offset_src_x;
+        let glyph_offset = glyph_offset_src_y + (draw_glyph_y * 256) + glyph_offset_src_x;
 
-        let glyph_byte: u8 = CGA_FONT[glyph_offset as usize];
+        let glyph_byte: u8 = font.font_data[glyph_offset as usize];
 
-        for draw_glyph_x in 0..FONT_W {
+        for draw_glyph_x in 0..font.w {
         
             let test_bit: u8 = 0x80u8 >> draw_glyph_x;
 
@@ -644,7 +931,7 @@ pub fn draw_glyph2x(
     }     
 }
 
-pub fn draw_cursor4x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8] ) {
+pub fn draw_cursor4x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], font: &FontInfo ) {
         
     // First off, is cursor even visible?
     if !cursor.visible {
@@ -652,9 +939,9 @@ pub fn draw_cursor4x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h
     }
     
     // Do not draw cursor off screen
-    let pos_x = cursor.pos_x * 8;
-    let pos_y = cursor.pos_y * 8;
-    if (pos_x + (FONT_W * 2) > frame_w) || (pos_y * 2 + (FONT_H * 2 ) > frame_h) {
+    let pos_x = cursor.pos_x * font.w;
+    let pos_y = cursor.pos_y * font.h;
+    if (pos_x + (font.w * 2) > frame_w) || (pos_y * 2 + (font.h * 2 ) > frame_h) {
         return
     }
 
@@ -685,7 +972,7 @@ pub fn draw_cursor4x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h
         let dst_row_offset = frame_w * 4 * ((pos_y * 2) + (draw_glyph_y*2));
         let dst_row_offset2 = dst_row_offset + (frame_w * 4);
         
-        for draw_glyph_x in 0..FONT_W {
+        for draw_glyph_x in 0..font.w {
         
             let dst_offset = dst_row_offset + ((pos_x * 2) + (draw_glyph_x*2)) * 4;
             frame[dst_offset as usize] = color[0];
@@ -713,7 +1000,7 @@ pub fn draw_cursor4x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h
 }
 
 /// Draw the cursor as a character cell into the specified framebuffer with 2x height
-pub fn draw_cursor2x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8] ) {
+pub fn draw_cursor2x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8] , font: &FontInfo ) {
     
     // First off, is cursor even visible?
     if !cursor.visible {
@@ -721,11 +1008,11 @@ pub fn draw_cursor2x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h
     }
     
     // Do not draw cursor off screen
-    let pos_x = cursor.pos_x * 8;
-    let pos_y = cursor.pos_y * 8;
+    let pos_x = cursor.pos_x * font.w;
+    let pos_y = cursor.pos_y * font.h;
 
-    let max_pos_x = pos_x + FONT_W; 
-    let max_pos_y = pos_y * 2 + (FONT_H * 2);  
+    let max_pos_x = pos_x + font.w; 
+    let max_pos_y = pos_y * 2 + (font.h * 2);  
     if max_pos_x > frame_w || max_pos_y > frame_h {
         return
     }
@@ -757,7 +1044,7 @@ pub fn draw_cursor2x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h
         let dst_row_offset = frame_w * 4 * ((pos_y * 2) + (draw_glyph_y*2));
         let dst_row_offset2 = dst_row_offset + (frame_w * 4);
                                     
-        for draw_glyph_x in 0..FONT_W {
+        for draw_glyph_x in 0..font.w {
         
             let dst_offset = dst_row_offset + (pos_x + draw_glyph_x) * 4;
             frame[dst_offset as usize] = color[0];
@@ -773,10 +1060,64 @@ pub fn draw_cursor2x(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h
 
         }
     }                 
-}    
+}
 
-// Draw a CGA font glyph at an arbitrary location
-pub fn draw_glyph( 
+/// Draw the cursor as a character cell into the specified framebuffer at native height
+pub fn draw_cursor(cursor: CursorInfo, frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8] , font: &FontInfo ) {
+    
+    // First off, is cursor even visible?
+    if !cursor.visible {
+        return
+    }
+    
+    // Do not draw cursor off screen
+    let pos_x = cursor.pos_x * font.w;
+    let pos_y = cursor.pos_y * font.h;
+
+    let max_pos_x = pos_x + font.w; 
+    let max_pos_y = pos_y + font.h;  
+    if max_pos_x > frame_w || max_pos_y > frame_h {
+        return
+    }
+
+    // Cursor start register can be greater than end register, in this case no cursor is shown
+    if cursor.line_start > cursor.line_end {
+        return
+    }
+
+    let line_start = cursor.line_start as u32;
+    let mut line_end = cursor.line_end as u32;
+
+    // Clip cursor if at bottom of screen and cursor.line_end > FONT_H
+    if pos_y + line_end >= frame_h {
+        line_end -= frame_h - (pos_y + line_end) + 1;
+    }
+
+    // Is character attr in mem range?
+    let attr_addr = (cursor.addr * 2 + 1) as usize;
+    if attr_addr > mem.len() {
+        return
+    }
+    let cursor_attr: u8 = mem[attr_addr];
+    let (fg_color, _bg_color) = get_colors_from_attr_byte(cursor_attr);
+    let color = color_enum_to_rgba(&fg_color);
+
+    for draw_glyph_y in line_start..=line_end {
+
+        let dst_row_offset = frame_w * 4 * (pos_y + draw_glyph_y);
+        for draw_glyph_x in 0..font.w {
+        
+            let dst_offset = dst_row_offset + (pos_x + draw_glyph_x) * 4;
+            frame[dst_offset as usize] = color[0];
+            frame[dst_offset as usize + 1] = color[1];
+            frame[dst_offset as usize + 2] = color[2];
+            frame[dst_offset as usize + 3] = color[3];
+        }
+    }                 
+}
+
+// Draw a font glyph at an arbitrary location at 2x horizontal resolution
+pub fn draw_glyph2x1( 
     glyph: u8,
     fg_color: CGAColor,
     bg_color: CGAColor,
@@ -785,28 +1126,94 @@ pub fn draw_glyph(
     frame_h: u32, 
     char_height: u32,
     pos_x: u32, 
-    pos_y: u32 ) -> () {
+    pos_y: u32,
+    font: &FontInfo ) -> () {
 
-    // Do not draw glyph off screen
-    if pos_x + FONT_W > frame_w {
+    // Do not draw a glyph off screen
+    if pos_x + (font.w * 2) > frame_w {
         return
     }
-    if pos_y + FONT_H > frame_h {
+    if pos_y + font.h > frame_h {
         return
     }
 
     // Find the source position of the glyph
-    let glyph_offset_src_x = glyph as u32 % FONT_SPAN;
-    let glyph_offset_src_y = (glyph as u32 / FONT_SPAN) * (FONT_H * FONT_SPAN); 
+    //let glyph_offset_src_x = glyph as u32 % FONT_SPAN;
+    //let glyph_offset_src_y = (glyph as u32 / FONT_SPAN) * (FONT_H * FONT_SPAN); 
+    let glyph_offset_src_x = glyph as u32;
+    let glyph_offset_src_y = 0;
 
-    for draw_glyph_y in 0..FONT_H {
+    let max_char_height = std::cmp::min(font.h, char_height);
+    for draw_glyph_y in 0..max_char_height {
 
         let dst_row_offset = frame_w * 4 * (pos_y + draw_glyph_y);
-        let glyph_offset = glyph_offset_src_y + (draw_glyph_y * FONT_SPAN) + glyph_offset_src_x;
+        //let glyph_offset = glyph_offset_src_y + (draw_glyph_y * FONT_SPAN) + glyph_offset_src_x;
+        let glyph_offset = glyph_offset_src_y + (draw_glyph_y * 256) + glyph_offset_src_x;
 
-        let glyph_byte: u8 = CGA_FONT[glyph_offset as usize];
+        let glyph_byte: u8 = font.font_data[glyph_offset as usize];
 
-        for draw_glyph_x in 0..FONT_W {
+        for draw_glyph_x in 0..font.w {
+        
+            let test_bit: u8 = 0x80u8 >> draw_glyph_x;
+
+            let color = if test_bit & glyph_byte > 0 {
+                color_enum_to_rgba(&fg_color)
+            }
+            else {
+                color_enum_to_rgba(&bg_color)
+            };
+
+            let dst_offset = dst_row_offset + (pos_x + draw_glyph_x * 2) * 4;
+            frame[dst_offset as usize + 0] = color[0];
+            frame[dst_offset as usize + 1] = color[1];
+            frame[dst_offset as usize + 2] = color[2];
+            frame[dst_offset as usize + 3] = color[3];
+
+            frame[dst_offset as usize + 4] = color[0];
+            frame[dst_offset as usize + 5] = color[1];
+            frame[dst_offset as usize + 6] = color[2];
+            frame[dst_offset as usize + 7] = color[3];            
+        }
+    }
+}
+
+// Draw a font glyph at an arbitrary location at normal resolution
+pub fn draw_glyph1x1( 
+    glyph: u8,
+    fg_color: CGAColor,
+    bg_color: CGAColor,
+    frame: &mut [u8], 
+    frame_w: u32, 
+    frame_h: u32, 
+    char_height: u32,
+    pos_x: u32, 
+    pos_y: u32,
+    font: &FontInfo ) -> () {
+
+    // Do not draw glyph off screen
+    if pos_x + font.w > frame_w {
+        return
+    }
+    if pos_y + font.h > frame_h {
+        return
+    }
+
+    // Find the source position of the glyph
+    //let glyph_offset_src_x = glyph as u32 % FONT_SPAN;
+    //let glyph_offset_src_y = (glyph as u32 / FONT_SPAN) * (FONT_H * FONT_SPAN); 
+    let glyph_offset_src_x = glyph as u32;
+    let glyph_offset_src_y = 0;
+
+    let max_char_height = std::cmp::min(font.h, char_height);
+    for draw_glyph_y in 0..max_char_height {
+
+        let dst_row_offset = frame_w * 4 * (pos_y + draw_glyph_y);
+        //let glyph_offset = glyph_offset_src_y + (draw_glyph_y * FONT_SPAN) + glyph_offset_src_x;
+        let glyph_offset = glyph_offset_src_y + (draw_glyph_y * 256) + glyph_offset_src_x;
+
+        let glyph_byte: u8 = font.font_data[glyph_offset as usize];
+
+        for draw_glyph_x in 0..font.w {
         
             let test_bit: u8 = 0x80u8 >> draw_glyph_x;
 
@@ -822,6 +1229,128 @@ pub fn draw_glyph(
             frame[dst_offset as usize + 1] = color[1];
             frame[dst_offset as usize + 2] = color[2];
             frame[dst_offset as usize + 3] = color[3];
+        }
+    }
+}
+
+
+
+/// Performs a linear resize of the specified src into dst. 
+/// 
+/// Since we are only doing this for aspect correction, we don't need a bi-linear filter
+pub fn resize_linear(src: &[u8], src_w: u32, src_h: u32, dst: &mut[u8], dst_w: u32, dst_h: u32) {
+
+    let ratio: f64 = (src_h - 1) as f64 / (dst_h - 1) as f64;
+
+    for y in 0..dst_h {
+
+        let low = f64::floor(ratio * y as f64) as u32;
+        let high = f64::ceil(ratio * y as f64) as u32;
+        let weight: f64 = (ratio * y as f64) - low as f64;
+
+        let y_off_low = (low * src_w * 4) as usize;
+        let y_off_high = (high * src_w * 4) as usize;
+
+        let dy_offset = (y * dst_w * 4) as usize;
+        for x in 0..dst_w {
+            
+            let low_off: usize = y_off_low + (x as usize * 4);
+            let high_off: usize = y_off_high + (x as usize * 4);
+
+            let r = (src[low_off+0] as f64 * (1.0 - weight) + src[high_off + 0] as f64 * weight) as u8;
+            let g = (src[low_off+1] as f64 * (1.0 - weight) + src[high_off + 1] as f64 * weight) as u8;
+            let b = (src[low_off+2] as f64 * (1.0 - weight) + src[high_off + 2] as f64 * weight) as u8;
+
+            dst[dy_offset + x as usize * 4 + 0] = r;
+            dst[dy_offset + x as usize * 4 + 1] = g;
+            dst[dy_offset + x as usize * 4 + 2] = b;
+            dst[dy_offset + x as usize * 4 + 3] = 255;
+        }
+    }
+}
+
+
+pub fn draw_ega_lowres_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+
+    let ega = video.borrow();
+
+    for draw_y in 0..EGA_LORES_GFX_H {
+
+        let dst_span = frame_w * 4;
+        let dst1_y_idx = draw_y * dst_span;
+
+        for draw_x in 0..EGA_LORES_GFX_W {
+
+            let dst1_x_idx = draw_x * 4;
+
+            let ega_bits = ega.get_pixel_raw(draw_x, draw_y);
+            //if ega_bits != 0 {
+            //  log::trace!("ega bits: {:06b}", ega_bits);
+            //}
+            let color = get_ega_gfx_color16(ega_bits);
+
+            let draw_offset = (dst1_y_idx + dst1_x_idx) as usize;
+            if draw_offset + 3 < frame.len() {
+                frame[draw_offset + 0] = color[0];
+                frame[draw_offset + 1] = color[1];
+                frame[draw_offset + 2] = color[2];
+                frame[draw_offset + 3] = color[3];
+            }
+        }
+    }
+}
+
+pub fn draw_ega_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+
+    let ega = video.borrow();
+
+    for draw_y in 0..EGA_HIRES_GFX_H {
+
+        let dst_span = frame_w * 4;
+        let dst1_y_idx = draw_y * dst_span;
+
+        for draw_x in 0..EGA_HIRES_GFX_W {
+
+            let dst1_x_idx = draw_x * 4;
+
+            let ega_bits = ega.get_pixel_raw(draw_x, draw_y);
+
+            // High resolution mode offers the entire 64 color palette
+            let color = get_ega_gfx_color64(ega_bits);
+
+            let draw_offset = (dst1_y_idx + dst1_x_idx) as usize;
+            if draw_offset + 3 < frame.len() {
+                frame[draw_offset + 0] = color[0];
+                frame[draw_offset + 1] = color[1];
+                frame[draw_offset + 2] = color[2];
+                frame[draw_offset + 3] = color[3];
+            }
+        }
+    }
+}
+
+pub fn draw_vga_mode13h(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+
+    let vga = video.borrow();
+
+    for draw_y in 0..VGA_LORES_GFX_H {
+
+        let dst_span = frame_w * 4;
+        let dst1_y_idx = draw_y * dst_span;
+
+        for draw_x in 0..VGA_LORES_GFX_W {
+
+            let dst1_x_idx = draw_x * 4;
+
+            let color = vga.get_pixel(draw_x, draw_y);
+
+            let draw_offset = (dst1_y_idx + dst1_x_idx) as usize;
+            if draw_offset + 3 < frame.len() {
+                frame[draw_offset + 0] = color[0];
+                frame[draw_offset + 1] = color[1];
+                frame[draw_offset + 2] = color[2];
+                frame[draw_offset + 3] = 0xFF;
+            }
         }
     }
 }

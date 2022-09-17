@@ -9,7 +9,8 @@
 #![allow(dead_code)]
 
 use crate::io::{IoDevice};
-use crate::machine::{MachineType, VideoType};
+use crate::machine::MachineType;
+use crate::videocard::VideoType;
 use crate::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
@@ -165,8 +166,28 @@ impl Ppi {
             kb_byte: 0,
             clear_keyboard: false,
             dip_sw1: match machine_type {
-                MachineType::IBM_PC_5150 => SW1_HAVE_CGA_HIRES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS,
-                MachineType::IBM_XT_5160 => SW1_HAVE_CGA_HIRES | SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS
+                MachineType::IBM_PC_5150 => {
+                    let mut byte = SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS;
+                    byte |= match video_type {
+                        VideoType::MDA => SW1_HAVE_MDA,
+                        VideoType::CGA => SW1_HAVE_CGA_HIRES,
+                        VideoType::EGA | VideoType::VGA => SW1_HAVE_EXPANSION
+                    };
+                    byte
+                },
+                MachineType::IBM_XT_5160 => {
+                    let mut byte = SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS;
+                    byte |= match video_type {
+                        VideoType::MDA => SW1_HAVE_MDA,
+                        VideoType::CGA => SW1_HAVE_CGA_HIRES,
+                        VideoType::EGA | VideoType::VGA => SW1_HAVE_EXPANSION
+                    };
+                    byte                    
+                }
+                _ => {
+                    log::error!("Machine type: {:?} has no PPI", machine_type);
+                    0
+                }
             },
             dip_sw2: SW2_RAM_TEST,
             timer_in: false,
