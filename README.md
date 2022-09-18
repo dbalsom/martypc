@@ -24,6 +24,7 @@ Currently Marty will emulate an original IBM 5150 PC or 5160 XT if supplied the 
 
 The following devices are at least partially implemented:
 * CGA Card - Basic graphics and text modes are supported. I would like to rewrite this to do proper CRTC emulation.
+* EGA/VGA Cards - Basic graphics modes are supported, 320x200 and 640x350 16color, and Mode13 (320x200 /w 256 colors)
 * µPD764 Floppy Disk Controller - Enough FDC commands are implemented to make DOS happy.
 * IBM 20MB Fixed Disk Controller - Emulated with basic VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
 * 8255 PPI - Dip switches, speaker gate, keyboard input.
@@ -59,6 +60,7 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 ## Screenshots
 ![tools](https://user-images.githubusercontent.com/7229541/173169915-58b0bb5f-663c-41de-be3c-66952297558e.png)
+![monkey_ega](https://user-images.githubusercontent.com/7229541/190879975-6ecba7c4-0529-4e34-ac6b-53827944e288.PNG)
 ![keen4](https://user-images.githubusercontent.com/7229541/182751737-85f2b9d1-d3b4-4b96-888c-3e8762c6c458.PNG)
 ![cat](https://user-images.githubusercontent.com/7229541/173169921-32b5dbad-0cb7-4cfa-921f-09ba7f946e85.png)
 
