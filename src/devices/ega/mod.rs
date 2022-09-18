@@ -314,6 +314,7 @@ pub struct EGACard {
 
 
 #[bitfield]
+#[derive (Copy, Clone) ]
 struct EMiscellaneousOutputRegister {
     #[bits = 1]
     io_address_select: IoAddressSelect,
@@ -830,23 +831,33 @@ impl EGACard {
     fn pixel_op_compare(&self) -> u8 {
 
         let mut comparison = 0;
+        
+        for i in 0..8 {
+            let mut plane_comp = 0;
 
-        // Bits normally set to 1 in the Color Don't Care register mean to ignore the bit in 
-        // comparison. By OR'ing the Color Don't Care with the Color Comparison & Src pixel
-        // we can effectively force them to match and thus 'don't care'
-        let color_compare = self.graphics_color_compare | self.graphics_color_dont_care;
+            plane_comp |= match self.planes[0].latch & (0x01 << i) != 0 {
+                true => 0x01,
+                false => 0x00
+            };
+            plane_comp |= match self.planes[1].latch & (0x01 << i) != 0 {
+                true => 0x02,
+                false => 0x00
+            };
+            plane_comp |= match self.planes[2].latch & (0x01 << i) != 0 {
+                true => 0x04,
+                false => 0x00
+            };
+            plane_comp |= match self.planes[3].latch & (0x01 << i) != 0 {
+                true => 0x08,
+                false => 0x00
+            };                       
+            
+            let masked_cmp = self.graphics_color_compare & self.graphics_color_dont_care;
 
-        let mut bit;
-        for p in 0..8 {
-            if color_compare == self.pixel_buf[p] | self.graphics_color_dont_care {
-                bit = 1;
+            if (plane_comp & self.graphics_color_dont_care) == masked_cmp {
+                comparison |= 0x01 << i
             }
-            else {
-                bit = 0;
-            }
-            comparison |= bit << (7-p);
         }
-
         comparison
     }
 
@@ -1134,6 +1145,7 @@ impl VideoCard for EGACard {
         map.insert("CRTC".to_string(), crtc_vec);
 
         let mut external_vec = Vec::new();
+        external_vec.push((format!("Misc Output"), format!("{:08b}", self.misc_output_register.into_bytes()[0])));
         external_vec.push((format!("Misc Output [ios]"), format!("{:?}", self.misc_output_register.io_address_select())));
         external_vec.push((format!("Misc Output [er]"), format!("{:?}", self.misc_output_register.enable_ram())));
         external_vec.push((format!("Misc Output [cs]"), format!("{:?}", self.misc_output_register.clock_select())));
@@ -1145,6 +1157,8 @@ impl VideoCard for EGACard {
 
         let mut sequencer_vec = Vec::new();
         sequencer_vec.push((format!("{:?}", SequencerRegister::Reset), format!("{:02b}", self.sequencer_reset)));
+        sequencer_vec.push((format!("{:?}", SequencerRegister::ClockingMode), 
+            format!("{:08b}", self.sequencer_clocking_mode.into_bytes()[0])));           
         sequencer_vec.push((format!("{:?} [cc]", SequencerRegister::ClockingMode), 
             format!("{:?}", self.sequencer_clocking_mode.character_clock())));
         sequencer_vec.push((format!("{:?} [bw]", SequencerRegister::ClockingMode), 
@@ -1308,13 +1322,21 @@ impl VideoCard for EGACard {
 
 
         // Get the current width of screen + offset
-        //let span = (self.crtc_horizontal_display_end + 1 + 64) as u32;
+        // let span = (self.crtc_horizontal_display_end + 1 + 64) as u32;
         let span = self.crtc_offset as u32 * 2;
 
         let y_offset = y * span;
 
-        // Get total offset, adding CRTC start address
-        let read_offset = (y_offset + x_byte_offset + self.crtc_start_address as u32 ) as usize;
+        // The line compare register resets the CRTC Start Address and line counter to 0 at the 
+        // specified scanline. 
+        // If we are above the value in Line Compare calculate the read offset as normal.
+        let read_offset;
+        if y >= self.crtc_line_compare as u32 {
+            read_offset = (((y - self.crtc_line_compare as u32) * span) + x_byte_offset) as usize;
+        }
+        else {
+            read_offset = (y_offset + x_byte_offset + self.crtc_start_address as u32 ) as usize;
+        }
         
         if read_offset < self.planes[0].buf.len() {
 

@@ -18,6 +18,7 @@ pub enum SequencerRegister {
 }
 
 #[bitfield]
+#[derive(Copy, Clone)]
 pub struct SClockingModeRegister {
     #[bits = 1]
     pub character_clock: CharacterClock,

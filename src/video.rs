@@ -1329,6 +1329,9 @@ pub fn draw_ega_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [
     }
 }
 
+/// Draw Video memory in VGA Mode 13h (320x200@256 colors)
+/// 
+/// This mode is actually 640x400, double-scanned horizontally and vertically
 pub fn draw_vga_mode13h(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
 
     let vga = video.borrow();
@@ -1336,20 +1339,36 @@ pub fn draw_vga_mode13h(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], fr
     for draw_y in 0..VGA_LORES_GFX_H {
 
         let dst_span = frame_w * 4;
-        let dst1_y_idx = draw_y * dst_span;
+        let dst1_y_idx = draw_y * 2 * dst_span;
+        let dst2_y_idx = dst1_y_idx + dst_span;
 
         for draw_x in 0..VGA_LORES_GFX_W {
 
-            let dst1_x_idx = draw_x * 4;
+            let dst1_x_idx = draw_x * 4 * 2;
 
             let color = vga.get_pixel(draw_x, draw_y);
 
             let draw_offset = (dst1_y_idx + dst1_x_idx) as usize;
-            if draw_offset + 3 < frame.len() {
+            let draw_offset2 = (dst2_y_idx + dst1_x_idx) as usize;
+            if draw_offset2 + 3 < frame.len() {
+
                 frame[draw_offset + 0] = color[0];
                 frame[draw_offset + 1] = color[1];
                 frame[draw_offset + 2] = color[2];
                 frame[draw_offset + 3] = 0xFF;
+                frame[draw_offset + 4] = color[0];
+                frame[draw_offset + 5] = color[1];
+                frame[draw_offset + 6] = color[2];
+                frame[draw_offset + 7] = 0xFF;
+
+                frame[draw_offset2 + 0] = color[0];
+                frame[draw_offset2 + 1] = color[1];
+                frame[draw_offset2 + 2] = color[2];
+                frame[draw_offset2 + 3] = 0xFF;  
+                frame[draw_offset2 + 4] = color[0];
+                frame[draw_offset2 + 5] = color[1];
+                frame[draw_offset2 + 6] = color[2];
+                frame[draw_offset2 + 7] = 0xFF;                                 
             }
         }
     }

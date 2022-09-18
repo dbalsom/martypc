@@ -123,9 +123,6 @@ pub const ATTRIBUTE_REGISTER: u16           = 0x3C0;
    See: https://www.vogons.org/viewtopic.php?f=9&t=82050&start=60 
 */
 pub const ATTRIBUTE_REGISTER_ALT: u16       = 0x3C1;
-//ub const ATTRIBUTE_ADDRESS_REGISTER: u16   = 0x3C0; 
-//pub const ATTRIBUTE_DATA_REGISTER: u16      = 0x3C0;
-
 pub const MISC_OUTPUT_REGISTER_READ: u16    = 0x3CC;    // Read address differs for EGA back compat.
 pub const MISC_OUTPUT_REGISTER_WRITE: u16   = 0x3C2;    // Write-only to 3C2
 pub const INPUT_STATUS_REGISTER_0: u16      = 0x3C2;    // Read-only from 3C2
@@ -186,6 +183,10 @@ const CC_BRIGHT_BIT: u8         = 0b0001_0000;
 // Controls primary palette between magenta/cyan and red/green
 const CC_PALETTE_BIT: u8        = 0b0010_0000;
 
+/* This lookup table holds the values for the first color register that should
+   trigger the switch sense bit to be set. I am not sure of the actual triggering
+   condition, but we model what the BIOS expects
+*/
 static SWITCH_SENSE_LUT: [[u8; 3]; 6] = 
     [[0x14, 0x14, 0x14],
     [0x04, 0x12, 0x04],
@@ -984,14 +985,12 @@ impl VGACard {
     /// Compare the pixels in pixel_buf with the Color Compare and Color Don't Care registers.
     fn pixel_op_compare(&self) -> u8 {
 
-        let mut comparison = 0;
-
         /*
             There is conflicting documentation on the meaning of a set bit in the Color Don't
             care register. Some sources state a 1 bit means ignore the plane in the comparison,
             others specify that 0 means ignore the plane. 
 
-            I suppose the BIOS would be authoritative - it writes 0xAA to 64k of video
+            I suppose the VGA BIOS would be authoritative - it writes 0xAA to 64k of video
             RAM and then reads it back in Read Mode 1 with Color Don't Care set to 0x0F.  It
             expects to get 0xAA back, but this only works if bit 1 in Color Don't Care means 
             that the plane counts in the comparision.
@@ -1003,7 +1002,7 @@ impl VGACard {
         // we can effectively force them to match and thus 'don't care'
 
         //let color_compare = self.graphics_color_compare | self.graphics_color_dont_care;
-//
+        //
         //let mut bit;
         //for p in 0..8 {
         //    if color_compare == self.pixel_buf[p] | self.graphics_color_dont_care {
@@ -1470,6 +1469,8 @@ impl VideoCard for VGACard {
 
         let mut sequencer_vec = Vec::new();
         sequencer_vec.push((format!("{:?}", SequencerRegister::Reset), format!("{:02b}", self.sequencer_reset)));
+        sequencer_vec.push((format!("{:?}", SequencerRegister::ClockingMode), 
+            format!("{:08b}", self.sequencer_clocking_mode.into_bytes()[0])));        
         sequencer_vec.push((format!("{:?} [cc]", SequencerRegister::ClockingMode), 
             format!("{:?}", self.sequencer_clocking_mode.character_clock())));
         sequencer_vec.push((format!("{:?} [bw]", SequencerRegister::ClockingMode), 
@@ -1641,8 +1642,16 @@ impl VideoCard for VGACard {
 
             let y_offset = y * span;
 
-            // Get total offset, adding CRTC start address
-            let read_offset = (y_offset + x_byte_offset + self.crtc_start_address as u32 ) as usize;
+            // The line compare register resets the CRTC Start Address and line counter to 0 at the 
+            // specified scanline. 
+            // If we are above the value in Line Compare calculate the read offset as normal.
+            let read_offset;
+            if y >= self.crtc_line_compare as u32 {
+                read_offset = (((y - self.crtc_line_compare as u32) * span) + x_byte_offset) as usize;
+            }
+            else {
+                read_offset = (y_offset + x_byte_offset + self.crtc_start_address as u32 ) as usize;
+            }
             
             if read_offset < self.planes[0].buf.len() {
 

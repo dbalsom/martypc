@@ -644,9 +644,8 @@ fn main() -> Result<(), Error> {
                             let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
                             video_data.aspect_h = new_height;
 
+                            pixels.get_frame().fill(0);
                             pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h);
-
-
                         }
                     }
 
