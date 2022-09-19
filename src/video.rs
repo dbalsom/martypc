@@ -45,6 +45,9 @@ const EGA_HIRES_GFX_H: u32 = 350;
 
 const VGA_LORES_GFX_W: u32 = 320;
 const VGA_LORES_GFX_H: u32 = 200;
+const VGA_HIRES_GFX_W: u32 = 640;
+const VGA_HIRES_GFX_H: u32 = 480;
+
 
 //const frame_w: u32 = 640;
 //const frame_h: u32 = 400;
@@ -367,9 +370,13 @@ impl Video {
             DisplayMode::Mode10EGAHiResGraphics => {
                 draw_ega_hires_gfx_mode(&video, frame, frame_w, frame_h);
             }
+            DisplayMode::Mode12VGAHiResGraphics => {
+                draw_vga_hires_gfx_mode(&video, frame, frame_w, frame_h)
+            }            
             DisplayMode::Mode13VGALowRes256 => {
                 draw_vga_mode13h(&video, frame, frame_w, frame_h);
             }
+
             _ => {
                 // blank screen here?
             }
@@ -1328,6 +1335,36 @@ pub fn draw_ega_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [
         }
     }
 }
+
+pub fn draw_vga_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+
+    let vga = video.borrow();
+
+    for draw_y in 0..VGA_HIRES_GFX_H {
+
+        let dst_span = frame_w * 4;
+        let dst1_y_idx = draw_y * dst_span;
+
+        for draw_x in 0..VGA_HIRES_GFX_W {
+
+            let dst1_x_idx = draw_x * 4;
+
+            let ega_bits = vga.get_pixel_raw(draw_x, draw_y);
+
+            // High resolution mode offers the entire 64 color palette
+            let color = get_ega_gfx_color64(ega_bits);
+
+            let draw_offset = (dst1_y_idx + dst1_x_idx) as usize;
+            if draw_offset + 3 < frame.len() {
+                frame[draw_offset + 0] = color[0];
+                frame[draw_offset + 1] = color[1];
+                frame[draw_offset + 2] = color[2];
+                frame[draw_offset + 3] = color[3];
+            }
+        }
+    }
+}
+
 
 /// Draw Video memory in VGA Mode 13h (320x200@256 colors)
 /// 

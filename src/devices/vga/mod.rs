@@ -911,7 +911,8 @@ impl VGACard {
                             match self.crtc_vertical_display_end {
 
                                 349 => DisplayMode::Mode10EGAHiResGraphics,
-                                _ =>  DisplayMode::Mode10EGAHiResGraphics
+                                479 => DisplayMode::Mode12VGAHiResGraphics,
+                                _ => DisplayMode::Mode12VGAHiResGraphics
                             }
                         }
 

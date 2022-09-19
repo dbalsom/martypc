@@ -190,8 +190,9 @@ pub struct Cpu {
     call_stack: VecDeque<CallStackEntry>,
     interrupt_inhibit: bool,
     reset_seg: u16,
-    reset_offset: u16
+    reset_offset: u16,
     
+    opcode0_counter: u32
 }
 
 pub struct CpuRegisterState {

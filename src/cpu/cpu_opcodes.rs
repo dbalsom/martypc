@@ -131,6 +131,21 @@ impl Cpu {
         // Reset the wait cycle after STI
         self.interrupt_inhibit = false;
 
+        // Keep a tally of how many Opcode 0's we've executed in a row. Too many likely means we've run 
+        // off the rails, whereupon we halt so we can check things out.
+        if i.opcode == 0x00 {
+            self.opcode0_counter = self.opcode0_counter.wrapping_add(1);
+
+            if self.opcode0_counter > 5 {
+                self.clear_flag(Flag::Interrupt);
+                self.halted = true;
+            }
+        }
+        else {
+            self.opcode0_counter = 0;
+        }
+
+
         match i.opcode {
             0x00 | 0x02 | 0x04 => {
                 // ADD r/m8, r8 | r8, r/m8 | al, imm8
