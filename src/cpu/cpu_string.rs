@@ -161,7 +161,7 @@ impl Cpu {
                 }
             }
             Opcode::SCASW => {
-                // SCASB: Compare word from [es:di] with value in AX.  
+                // SCASW: Compare word from [es:di] with value in AX.  
                 // Flags: o..szapc
                 // Override: ES cannot be overridden                
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);

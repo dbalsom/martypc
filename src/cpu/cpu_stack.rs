@@ -89,7 +89,7 @@ impl Cpu {
         self.sp = self.sp.wrapping_sub(2);
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        let _cost = bus.write_u16(stack_addr as usize, self.eflags).unwrap();
+        let _cost = bus.write_u16(stack_addr as usize, self.flags).unwrap();
     }
 
     pub fn pop_flags(&mut self, bus: &mut BusInterface) {
@@ -98,8 +98,8 @@ impl Cpu {
         let (result, _cost) = bus.read_u16(stack_addr as usize).unwrap();
 
         // Ensure state of reserved flag bits
-        self.eflags = result & cpu::EFLAGS_POP_MASK;
-        self.eflags |= CPU_FLAG_RESERVED1;
+        self.flags = result & cpu::EFLAGS_POP_MASK;
+        self.flags |= CPU_FLAG_RESERVED1;
 
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_add(2);

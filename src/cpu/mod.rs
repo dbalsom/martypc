@@ -172,7 +172,7 @@ pub struct Cpu {
     ss: u16,
     es: u16,
     ip: u16,
-    eflags: u16,
+    flags: u16,
     halted: bool,
     is_running: bool,
     is_single_step: bool,
@@ -217,7 +217,7 @@ pub struct CpuRegisterState {
     ss: u16,
     es: u16,
     ip: u16,
-    eflags: u16,
+    flags: u16,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -278,7 +278,7 @@ impl Cpu {
     pub fn new(cpu_type: CpuType, piq_capacity: u32) -> Self {
         let mut cpu: Cpu = Default::default();
         cpu.cpu_type = cpu_type;
-        cpu.eflags = CPU_FLAG_RESERVED1;
+        cpu.flags = CPU_FLAG_RESERVED1;
         cpu.piq_capacity = piq_capacity;
         cpu.instruction_history = VecDeque::with_capacity(16);
         cpu.reset_seg = 0xFFFF;
@@ -305,7 +305,7 @@ impl Cpu {
             //}
         }
 
-        self.eflags |= match flag {
+        self.flags |= match flag {
             Flag::Carry => CPU_FLAG_CARRY,
             Flag::Parity => CPU_FLAG_PARITY,
             Flag::AuxCarry => CPU_FLAG_AUX_CARRY,
@@ -319,7 +319,7 @@ impl Cpu {
     }
 
     pub fn clear_flag(&mut self, flag: Flag) {
-        self.eflags &= match flag {
+        self.flags &= match flag {
             Flag::Carry => !CPU_FLAG_CARRY,
             Flag::Parity => !CPU_FLAG_PARITY,
             Flag::AuxCarry => !CPU_FLAG_AUX_CARRY,
@@ -346,20 +346,20 @@ impl Cpu {
 
         // Clear SF, ZF, AF, PF & CF flags
         let flag_mask = !(CPU_FLAG_CARRY | CPU_FLAG_PARITY | CPU_FLAG_AUX_CARRY | CPU_FLAG_ZERO | CPU_FLAG_SIGN);
-        self.eflags &= flag_mask;
+        self.flags &= flag_mask;
 
         // Copy flag state
-        self.eflags |= bits & !flag_mask;
+        self.flags |= bits & !flag_mask;
     }
 
     pub fn load_flags(&mut self) -> u16 {
         // Return 8 LO bits of eFlags register
-        self.eflags & 0x00FF
+        self.flags & 0x00FF
     }
 
     #[inline]
     pub fn get_flag(&self, flag: Flag) -> bool {
-        let mut flags = self.eflags;
+        let mut flags = self.flags;
         flags &= match flag {
             Flag::Carry => CPU_FLAG_CARRY,
             Flag::Parity => CPU_FLAG_PARITY,
@@ -558,7 +558,7 @@ impl Cpu {
         self.set_register16(Register16::CS, self.reset_seg);
         self.set_register16(Register16::IP, self.reset_offset);
 
-        self.eflags = CPU_FLAG_RESERVED1;
+        self.flags = CPU_FLAG_RESERVED1;
         self.instruction_count = 0;
 
         self.in_rep = false;
@@ -598,7 +598,7 @@ impl Cpu {
             ss: self.ss,
             es: self.es,
             ip: self.ip,
-            eflags: self.eflags
+            flags: self.flags
         }
     }
 
@@ -626,43 +626,43 @@ impl Cpu {
             es: format!("{:04x}", self.es),
             ip: format!("{:04x}", self.ip),
             c_fl: {
-                let fl = self.eflags & CPU_FLAG_CARRY > 0;
+                let fl = self.flags & CPU_FLAG_CARRY > 0;
                 format!("{:1}", fl as u8)
             },
             p_fl: {
-                let fl = self.eflags & CPU_FLAG_PARITY > 0;
+                let fl = self.flags & CPU_FLAG_PARITY > 0;
                 format!("{:1}", fl as u8)
             },
             a_fl: {
-                let fl = self.eflags & CPU_FLAG_AUX_CARRY > 0;
+                let fl = self.flags & CPU_FLAG_AUX_CARRY > 0;
                 format!("{:1}", fl as u8)
             },
             z_fl: {
-                let fl = self.eflags & CPU_FLAG_ZERO > 0;
+                let fl = self.flags & CPU_FLAG_ZERO > 0;
                 format!("{:1}", fl as u8)
             },
             s_fl: {
-                let fl = self.eflags & CPU_FLAG_SIGN > 0;
+                let fl = self.flags & CPU_FLAG_SIGN > 0;
                 format!("{:1}", fl as u8)
             },
             t_fl: {
-                let fl = self.eflags & CPU_FLAG_TRAP > 0;
+                let fl = self.flags & CPU_FLAG_TRAP > 0;
                 format!("{:1}", fl as u8)
             },
             i_fl: {
-                let fl = self.eflags & CPU_FLAG_INT_ENABLE > 0;
+                let fl = self.flags & CPU_FLAG_INT_ENABLE > 0;
                 format!("{:1}", fl as u8)
             },
             d_fl: {
-                let fl = self.eflags & CPU_FLAG_DIRECTION > 0;
+                let fl = self.flags & CPU_FLAG_DIRECTION > 0;
                 format!("{:1}", fl as u8)
             },
             o_fl: {
-                let fl = self.eflags & CPU_FLAG_OVERFLOW > 0;
+                let fl = self.flags & CPU_FLAG_OVERFLOW > 0;
                 format!("{:1}", fl as u8)
             },
             
-            flags: format!("{:04}", self.eflags),
+            flags: format!("{:04}", self.flags),
             instruction_count: format!("{}", self.instruction_count)
         }
     }
