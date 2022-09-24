@@ -20,7 +20,7 @@ use crate::bus::BusInterface;
 use crate::byteinterface::ByteInterface;
 use crate::io::IoBusInterface;
 
-use crate::arch::{OperandType, Instruction, Opcode, SegmentOverride, decode, RepType, Register8, Register16};
+use crate::arch::{Instruction, Opcode, SegmentOverride, decode, RepType, Register8, Register16};
 
 pub const CPU_MHZ: f64 = 4.77272666;
 const CPU_HISTORY_LEN: usize = 32;

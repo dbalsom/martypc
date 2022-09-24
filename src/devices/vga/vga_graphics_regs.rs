@@ -26,11 +26,12 @@ pub struct GDataRotateRegister {
     pub count: B3,
     #[bits = 2]
     pub function: RotateFunction,
-    pub unused: B3
+    #[skip]
+    unused: B3
 }
 
 #[bitfield]
-pub(crate) struct GModeRegister {
+pub struct GModeRegister {
     #[bits = 2]
     pub write_mode: WriteMode,
     pub test_condition: bool,
@@ -47,7 +48,8 @@ pub struct GMiscellaneousRegister {
     pub graphics_mode: bool,    
     pub chain_odd_maps: bool,
     pub memory_map: MemoryMap,
-    pub unused: B4
+    #[skip]
+    unused: B4
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]

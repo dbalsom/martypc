@@ -68,7 +68,7 @@ impl ByteBuf {
     pub fn from_file(mut file: File, size: usize) -> Result<ByteBuf, ByteBufError> {
         let mut buffer = Vec::new();
 
-        let bytes_read = file.read_to_end(&mut buffer).unwrap();
+        let _bytes_read = file.read_to_end(&mut buffer).unwrap();
         buffer.resize(size, 0u8);
         Ok(ByteBuf {
             size: size,
@@ -482,18 +482,18 @@ mod tests {
         let a7: i16 = -1;
         let a8: i16 = -30000;
 
-        buf.write_u16_le(a1);
-        buf.write_u16_le(a2);
-        buf.write_u16_le(a3 as u16);
-        buf.write_u16_le(a4 as u16);
+        buf.write_u16_le(a1).unwrap();
+        buf.write_u16_le(a2).unwrap();
+        buf.write_u16_le(a3 as u16).unwrap();
+        buf.write_u16_le(a4 as u16).unwrap();
 
-        buf.write_u16_be(a5);
-        buf.write_u16_be(a6);
-        buf.write_u16_be(a7 as u16);
-        buf.write_u16_be(a8 as u16);
+        buf.write_u16_be(a5).unwrap();
+        buf.write_u16_be(a6).unwrap();
+        buf.write_u16_be(a7 as u16).unwrap();
+        buf.write_u16_be(a8 as u16).unwrap();
 
         assert_eq!(buf.tell(), 16);
-        buf.seek_back(16);
+        buf.seek_back(16).unwrap();
 
         let b1 = buf.read_u16_le().unwrap();
         let b2 = buf.read_u16_le().unwrap();
@@ -526,11 +526,11 @@ mod tests {
         let a3: i32 = i32::MAX;
         let a4: i32 = i32::MIN;
 
-        buf.write_u32_le(a1);
-        buf.write_u32_le(a2);
-        buf.write_u32_le(a3 as u32);
-        buf.write_u32_le(a4 as u32);
-        buf.seek_back(8);
+        buf.write_u32_le(a1).unwrap();
+        buf.write_u32_le(a2).unwrap();
+        buf.write_u32_le(a3 as u32).unwrap();
+        buf.write_u32_le(a4 as u32).unwrap();
+        buf.seek_back(8).unwrap();
 
         let b1 = buf.read_u32_le().unwrap();
         let b2 = buf.read_u32_le().unwrap();

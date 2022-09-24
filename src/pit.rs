@@ -412,7 +412,6 @@ impl ProgrammableIntervalTimer {
 
     pub fn run(
         &mut self, 
-        io_bus: &mut IoBusInterface, 
         bus: &mut BusInterface, 
         pic: &mut pic::Pic, 
         dma: &mut dma::DMAController,

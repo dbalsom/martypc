@@ -5,9 +5,6 @@
 
 */
 
-
-use std::ops::Add;
-
 use crate::io::{IoBusInterface, IoDevice};
 use crate::bus::BusInterface;
 
@@ -612,7 +609,7 @@ impl DMAController {
 
     /// Get the state of the DACK line for the specified DMA channel. 
     /// DACK signals whether the requestin device can be serviced.
-    pub fn read_dma_acknowledge(&self, channel: usize) -> bool {
+    pub fn read_dma_acknowledge(&self, _channel: usize) -> bool {
 
         true
     }
@@ -698,7 +695,7 @@ impl DMAController {
                     
                     // Don't transfer anything if in Verify mode
                     if let TransferType::Write = self.channels[channel].transfer_type {
-                        bus.write_u8(bus_address, data);
+                        bus.write_u8(bus_address, data).unwrap();
                     }
                     
                     self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
@@ -710,7 +707,7 @@ impl DMAController {
                     
                     // Transfer one more on a 0 count, then set TC
                     if let TransferType::Write = self.channels[channel].transfer_type {
-                        bus.write_u8(bus_address, data);
+                        bus.write_u8(bus_address, data).unwrap();
                     }
                     //self.channels[channel].current_address_reg += 1;
 
@@ -731,7 +728,7 @@ impl DMAController {
         }        
     }
 
-    pub fn run(&mut self, io_bus: &mut IoBusInterface) {
+    pub fn run(&mut self, _io_bus: &mut IoBusInterface) {
 
 
     }

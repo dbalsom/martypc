@@ -35,7 +35,7 @@
 
 use std::collections::HashMap;
 
-pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
+//pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
 
 pub type VideoCardState = HashMap<String, Vec<(String,String)>>;
 

@@ -1,7 +1,6 @@
 use crate::cpu::{Cpu, Flag};
 use crate::bus::{BusInterface};
 use crate::arch::{Opcode, Register8, Register16, SegmentOverride};
-use crate::util;
 
 impl Cpu {
     pub fn string_op(&mut self, bus: &mut BusInterface, opcode: Opcode, segment: SegmentOverride) {

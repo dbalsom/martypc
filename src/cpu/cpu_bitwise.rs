@@ -1,5 +1,5 @@
 use crate::cpu::{Cpu, CpuType, Flag};
-use crate::arch::{Opcode, Register8, Register16};
+use crate::arch::Opcode;
 
 impl Cpu {
 
@@ -214,7 +214,7 @@ impl Cpu {
 
         // All processors after 8086 mask the rotation count to 5 bits (31 maximum)
         let rot_count = match self.cpu_type {
-            CpuType::Cpu8088 | CpuType::Cpu8088 => operand2,
+            CpuType::Cpu8088 | CpuType::Cpu8086 => operand2,
             _=> operand2 & 0x1F
         };
 

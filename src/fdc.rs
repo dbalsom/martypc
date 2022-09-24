@@ -7,9 +7,9 @@
 use std::collections::{VecDeque, HashMap};
 use lazy_static::lazy_static;
 
-use crate::io::{IoDevice};
+use crate::io::IoDevice;
 use crate::dma;
-use crate::bus::{BusInterface};
+use crate::bus::BusInterface;
 use crate::pic;
 
 pub const FDC_IRQ: u8 = 0x06;
@@ -633,7 +633,7 @@ impl FloppyController {
     }
 
     /// Generate the value of the ST2 Status Register in response to a command
-    pub fn make_st2_byte(&self, drive_select: usize) -> u8 {
+    pub fn make_st2_byte(&self, _drive_select: usize) -> u8 {
         // The ST2 status register contains mostly error codes, so for now we can just always return success
         // by returning 0 until we handle possible errors.
         0

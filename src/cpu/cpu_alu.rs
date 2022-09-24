@@ -1,4 +1,4 @@
-use crate::cpu::{Cpu, CpuType, Flag};
+use crate::cpu::{Cpu, Flag};
 use crate::arch::{Opcode, Register8, Register16};
 
 const PARITY_TABLE: [bool; 256] = {
@@ -651,7 +651,7 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::cpu::CpuType;
 
     #[test]
     

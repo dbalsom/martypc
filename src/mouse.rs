@@ -11,6 +11,8 @@ use std::{
 
 use crate::serial::SerialPortController;
 
+// Scale factor for real vs emulated mouse deltas. Need to play with
+// this value until it feels right.
 const MOUSE_SCALE: f64 = 0.25;
 
 // Mouse port is always attached to COM1
@@ -22,12 +24,14 @@ const MOUSE_RESET_TIME: f64 = 10_000.0;
 // Mouse sends this byte when RTS is held low for MOUSE_RESET_TIME
 // 0x4D = Ascii 'M' (For 'Microsoft' perhaps?)
 const MOUSE_RESET_ACK_BYTE: u8 = 0x4D;
+
 const MOUSE_UPDATE_STARTBIT: u8 = 0b0100_0000;
 const MOUSE_UPDATE_LBUTTON: u8 = 0b0010_0000;
 const MOUSE_UPDATE_RBUTTON: u8 = 0b0001_0000;
 const MOUSE_UPDATE_HO_BITS: u8 = 0b1100_0000;
 const MOUSE_UPDATE_LO_BITS: u8 = 0b0011_1111;
 
+#[allow(dead_code)]
 pub struct Mouse {
 
     serial_ctrl: Rc<RefCell<SerialPortController>>,

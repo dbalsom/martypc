@@ -61,14 +61,12 @@ const DIVISOR_LATCH_ACCESS_BIT: u8 = 0b1000_0000;
 
 // Line Status Register constants
 const STATUS_DATA_READY: u8 = 0b0000_0001;
-const STATUS_OVERRUN_ERROR: u8 = 0b0000_0010;
-const STATUS_PARITY_ERROR: u8 = 0b0000_0100;
-const STATUS_FRAMING_ERROR: u8 = 0b0000_1000;
-const STATUS_BREAK_INTERRUPT: u8 = 0b0001_0000;
+//const STATUS_OVERRUN_ERROR: u8 = 0b0000_0010;
+//const STATUS_PARITY_ERROR: u8 = 0b0000_0100;
+//const STATUS_FRAMING_ERROR: u8 = 0b0000_1000;
+//const STATUS_BREAK_INTERRUPT: u8 = 0b0001_0000;
 const STATUS_TRANSMIT_EMPTY: u8 = 0b0010_0000;
-const STATUS_TX_SHIFT_EMPTY: u8 = 0b0100_0000;
-
-
+//const STATUS_TX_SHIFT_EMPTY: u8 = 0b0100_0000;
 
 const INTERRUPT_ID_MASK: u8 = 0b0000_0011;
 
@@ -77,11 +75,11 @@ const INTERRUPT_TX_EMPTY: u8 = 0b0000_0010;
 const INTERRUPT_RX_LINE_STATUS: u8 = 0b0000_0100;
 const INTERRUPT_MODEM_STATUS: u8 = 0b0000_1000;
 
-const INTERRUPT_PRIORITY_0: u8 = 0b0000_0001;
-const INTERRUPT_PRIORITY_1: u8 = 0b0000_0010;
-const INTERRUPT_PRIORITY_2: u8 = 0b0000_0100;
-const INTERRUPT_PRIORITY_3: u8 = 0b0000_1000;
-const INTERRUPT_PRIORITY_MASK: u8 = 0b0000_1111;
+//const INTERRUPT_PRIORITY_0: u8 = 0b0000_0001;
+//const INTERRUPT_PRIORITY_1: u8 = 0b0000_0010;
+//const INTERRUPT_PRIORITY_2: u8 = 0b0000_0100;
+//const INTERRUPT_PRIORITY_3: u8 = 0b0000_1000;
+//const INTERRUPT_PRIORITY_MASK: u8 = 0b0000_1111;
 
 // Modem Control Register bits
 const MODEM_CONTROL_DTR: u8 = 0b0000_0001;
@@ -92,8 +90,8 @@ const MODEM_CONTROL_LOOP: u8 = 0b0001_0000;
 
 const MODEM_STATUS_DCTS: u8 = 0b0000_0001;
 const MODEM_STATUS_DDSR: u8 = 0b0000_0010;
-const MODEM_STATUS_TERI: u8 = 0b0000_0100;
-const MODEM_STATUS_DRLSD: u8 = 0b0000_1000;
+//const MODEM_STATUS_TERI: u8 = 0b0000_0100;
+//const MODEM_STATUS_DRLSD: u8 = 0b0000_1000;
 const MODEM_STATUS_CTS: u8 = 0b0001_0000;
 const MODEM_STATUS_DSR: u8 = 0b0010_0000;
 const MODEM_STATUS_RI: u8 = 0b0100_0000;
@@ -101,7 +99,7 @@ const MODEM_STATUS_RLSD: u8 = 0b1000_0000;
 
 impl IoDevice for SerialPortController {
     fn read_u8(&mut self, port: u16) -> u8 {
-        let mut byte;
+        let byte;
         byte = match port {
             SERIAL1_RX_TX_BUFFER => self.port[0].rx_buffer_read(),
             SERIAL2_RX_TX_BUFFER => self.port[1].rx_buffer_read(),
@@ -502,7 +500,7 @@ impl SerialPort {
 
     fn bridge_port(&mut self, port_name: String) -> anyhow::Result<bool> {
 
-        let mut port_result = serialport::new(port_name.clone(), 9600)
+        let port_result = serialport::new(port_name.clone(), 9600)
             .timeout(std::time::Duration::from_millis(5))
             .stop_bits(serialport::StopBits::One)
             .parity(serialport::Parity::None)
@@ -513,15 +511,14 @@ impl SerialPort {
                 log::trace!("Successfully opened host port {}", port_name);
                 self.bridge_port = Some(bridge_port);
                 self.set_modem_status_connected();
+                Ok(true)
             }
             Err(e) => {
                 log::trace!("Error opening host port: {}", e);
+                anyhow::bail!("Error opening host port: {}", e)
             }
         }
-
-        Ok(true)
     }
-   
 }
 
 
@@ -540,13 +537,13 @@ impl SerialPortController {
         }
     }
 
-
     /// Get status of specified serial port's RTS line
     pub fn get_rts(&self, port: usize) -> bool {
         self.port[port].modem_control_reg & MODEM_CONTROL_RTS != 0
     }
 
     /// Get status of the specified serial port's DTR line
+    #[allow(dead_code)]
     pub fn get_dtr(&self, port: usize) -> bool {
         self.port[port].modem_control_reg & MODEM_CONTROL_DTR != 0
     }
@@ -557,8 +554,8 @@ impl SerialPortController {
     } 
 
     /// Bridge the specified serial port
-    pub fn bridge_port(&mut self, port: usize, port_name: String) {
-        self.port[port].bridge_port(port_name);
+    pub fn bridge_port(&mut self, port: usize, port_name: String) -> anyhow::Result<bool> {
+        self.port[port].bridge_port(port_name)
     }
 
     /// Run the serial ports for the specified number of microseconds
@@ -677,7 +674,7 @@ impl SerialPortController {
                                 //log::trace!("Wrote byte : {:02X} to buf", byte);
                             }
                         },
-                        Err(e) => {
+                        Err(_) => {
                             //log::error!("Error reading serial device: {}", e);
                         }
                     }

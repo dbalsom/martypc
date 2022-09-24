@@ -13,7 +13,7 @@ use std::str;
 use core::fmt::Display;
 
 use anyhow::{Context, Result, bail};
-use uuid::{uuid, Uuid};
+use uuid::Uuid;
 
 use crate::hdc::{SECTOR_SIZE};
 use crate::bytebuf::{ByteBuf, ByteBufWriter};

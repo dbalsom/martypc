@@ -1,7 +1,6 @@
-use crate::cpu::{self, Cpu, ExecutionResult, Flag};
-use crate::bus::{BusInterface};
-use crate::arch::{Register8, Register16};
-use crate::util;
+use crate::cpu::{self, Cpu};
+use crate::bus::BusInterface;
+use crate::arch::Register16;
 
 use super::CPU_FLAG_RESERVED1;
 

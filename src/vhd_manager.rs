@@ -27,6 +27,8 @@ impl Display for VHDManagerError {
         }
     }
 }
+
+#[allow(dead_code)]
 pub struct VHDFile {
     path: PathBuf,
     size: u64
@@ -88,7 +90,7 @@ impl VHDManager {
 
         if let Some(vhd) = self.file_map.get(name) {
 
-            let mut vhd_file_result = File::options()
+            let vhd_file_result = File::options()
                 .read(true)
                 .write(true)
                 .open(&vhd.path);

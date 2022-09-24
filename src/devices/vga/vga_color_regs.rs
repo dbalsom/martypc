@@ -5,7 +5,6 @@
 
 */
 
-use modular_bitfield::prelude::*;
 use crate::vga::VGACard;
 
 pub const DAC_STATE_READ: u8 = 0;

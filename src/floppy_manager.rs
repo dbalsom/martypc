@@ -14,6 +14,7 @@ pub enum FloppyError {
     FileReadError,
 }
 
+#[allow(dead_code)]
 pub struct FloppyImage {
     path: PathBuf,
     size: u64
