@@ -779,13 +779,9 @@ impl Cpu {
 
         self.push_flags(bus);
 
-        // Push return address of next instruction onto stack
+        // Push return address of next instruction onto stack (INT instructions should increment IP on execute)
         self.push_register16(bus, Register16::CS);
-        
-        // We need to push the address past the current instruction (skip size of INT)
-        // INT instruction = two bytes
-        let ip = self.ip.wrapping_add(2);
-        self.push_u16(bus, ip);
+        self.push_register16(bus, Register16::IP);
         
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);

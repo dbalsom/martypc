@@ -1035,6 +1035,7 @@ impl Cpu {
             0xCC => {
                 // INT 3 - Software Interrupt 3
                 // This is a special form of INT which assumes IRQ 3 always. Most assemblers will not generate this form
+                self.ip = self.ip.wrapping_add(1);
                 self.do_sw_interrupt(bus, 3);
 
                 jump = true;    
@@ -1046,11 +1047,13 @@ impl Cpu {
 
                 // Get IRQ number
                 let irq = self.read_operand8(bus, i.operand1_type, arch::SegmentOverride::NoOverride).unwrap();
+                self.ip = self.ip.wrapping_add(2);
                 self.do_sw_interrupt(bus, irq );
                 jump = true;
             }
             0xCE => {
                 // INTO - Call Overflow Interrupt Handler
+                self.ip = self.ip.wrapping_add(1);
                 self.do_sw_interrupt(bus, 4);
             
                 jump = true;
