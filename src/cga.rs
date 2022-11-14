@@ -74,7 +74,7 @@ const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
 const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
 const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 
-static CGA_FONT: &'static [u8; 2048] = include_bytes!("..\\assets\\cga_8by8.bin");
+static CGA_FONT: &'static [u8; 2048] = include_bytes!("../assets/cga_8by8.bin");
 const CGA_FONT_W: u32 = 8;
 const CGA_FONT_H: u32 = 8;
 

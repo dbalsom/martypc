@@ -225,14 +225,14 @@ static EGA_FONTS: [EGAFont; 2] = [
         w: 8,
         h: 8,
         span: 256,
-        data: include_bytes!("..\\..\\..\\assets\\ega_8by8.bin"),
+        data: include_bytes!("../../../assets/ega_8by8.bin"),
         
     },
     EGAFont {
         w: 8,
         h: 14,
         span: 256,
-        data: include_bytes!("..\\..\\..\\assets\\ega_8by14.bin"),
+        data: include_bytes!("../../../assets/ega_8by14.bin"),
     }
 ];
 
@@ -1878,7 +1878,7 @@ impl MemoryMappedDevice for VGACard {
                     };
 
                     // Use the mask calculated earlier to mask the identical bits from the set/reset register
-                    self.planes[i].buf[offset] = all_bits & mask;
+                    self.planes[i].buf[offset] = (self.planes[i].buf[offset] & !mask) | (all_bits & mask);
                 }
             }
         }
