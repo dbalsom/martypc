@@ -6,7 +6,8 @@ use std::{
     time::{Duration, Instant},
     cell::RefCell,
     rc::Rc,
-    path::Path
+    path::Path,
+    ffi::OsString
 };
 
 use crate::gui::Framework;
@@ -188,6 +189,7 @@ fn main() -> Result<(), Error> {
     let mut video_type = VideoType::CGA;
 
     let mut features = Vec::new();
+    let mut cfg_load_vhd_name;
 
     match std::fs::read_to_string("./marty.cfg") {
         Ok(config_string) => {
@@ -230,6 +232,8 @@ fn main() -> Result<(), Error> {
                             log::warn!("Invalid hdc type in config: '{}'", hdc_type_s);
                         }                        
                     }
+
+                    cfg_load_vhd_name = config.get("vhd", "drive0");
 
                 }
                 Err(e) => {
@@ -384,6 +388,34 @@ fn main() -> Result<(), Error> {
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(machine_type, video_type, sp, rom_manager, floppy_manager );
 
+    // Try to load default vhd
+    if let Some(vhd_name) = cfg_load_vhd_name {
+        let vhd_os_name: OsString = vhd_name.into();
+        match vhd_manager.get_vhd_file(&vhd_os_name) {
+            Ok(vhd_file) => {
+                match VirtualHardDisk::from_file(vhd_file) {
+                    Ok(vhd) => {
+                        match machine.hdc().borrow_mut().set_vhd(0 as usize, vhd) {
+                            Ok(_) => {
+                                log::info!("VHD image {:?} successfully loaded into virtual drive: {}", vhd_os_name, 0);
+                            }
+                            Err(err) => {
+                                log::error!("Error mounting VHD: {}", err);
+                            }
+                        }
+                    },
+                    Err(err) => {
+                        log::error!("Error loading VHD: {}", err);
+                    }
+                }
+            }
+            Err(err) => {
+                log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
+            }                                
+        }    
+    }   
+
+    // Start buffer playback
     machine.play_sound_buffer();
     
     // Run the winit event loop
