@@ -158,8 +158,8 @@ impl Cpu {
                 handled_override = true;
             }
             0x01 | 0x03 | 0x05 => {
-                // OR r/m16, r16 | r16, r/m16 | ax, imm16
-                // 16 bit OR variants
+                // ADD r/m16, r16 | r16, r/m16 | ax, imm16
+                // 16 bit ADD variants
                 let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
                 let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
                 // math_op8 handles flags
