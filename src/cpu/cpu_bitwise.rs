@@ -406,7 +406,7 @@ impl Cpu {
                 if operand2 == 1 {
                     // Only time SHR sets overflow is if HO was 1 and becomes 0, which it always will,
                     // so set overflow flag if it was set. 
-                    self.set_flag_state(Flag::Overflow, operand1 & 0x80 != 0 );
+                    self.set_flag_state(Flag::Overflow, operand1 & 0x8000 != 0 );
                 }
                 self.set_flags_from_result_u16(result);
             }
