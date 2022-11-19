@@ -787,8 +787,6 @@ impl Cpu {
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
         let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
-        self.ip = new_ip;
-        self.cs = new_cs;
 
         if interrupt == 0x13 {
             // Disk interrupts
@@ -812,6 +810,16 @@ impl Cpu {
         if interrupt == 0x10 && self.ah==0x00 {
             log::trace!("CPU: int10h: Set Mode {:02X} Return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
         }        
+
+        if interrupt == 0x21 {
+            //log::trace!("CPU: int21h: AH: {:02X} [{:04X}:{:04X}]", self.ah, self.cs, self.ip);
+            if self.ah == 0x4B {
+                log::trace!("EXEC/Load and Execute Program");
+            }
+        }         
+
+        self.ip = new_ip;
+        self.cs = new_cs;        
     }
 
     /// Handle a CPU exception
