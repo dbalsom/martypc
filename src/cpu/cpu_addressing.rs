@@ -1,8 +1,34 @@
-
-
-use crate::cpu::Cpu;
+use crate::cpu::*;
 use crate::bus::BusInterface;
-use crate::arch::{OperandType, AddressingMode, SegmentOverride, Displacement, Register8, Register16};
+
+#[derive(Copy, Clone)]
+pub enum AddressingMode {
+    BxSi,
+    BxDi,
+    BpSi,
+    BpDi,
+    Si,
+    Di,
+    Disp16(Displacement),
+    Bx,
+    BxSiDisp8(Displacement),
+    BxDiDisp8(Displacement),
+    BpSiDisp8(Displacement),
+    BpDiDisp8(Displacement),
+    SiDisp8(Displacement),
+    DiDisp8(Displacement),
+    BpDisp8(Displacement),
+    BxDisp8(Displacement),
+    BxSiDisp16(Displacement),
+    BxDiDisp16(Displacement),
+    BpSiDisp16(Displacement),
+    BpDiDisp16(Displacement),
+    SiDisp16(Displacement),
+    DiDisp16(Displacement),
+    BpDisp16(Displacement),
+    BxDisp16(Displacement),
+    RegisterMode
+}
 
 impl Cpu {
 
@@ -111,7 +137,7 @@ impl Cpu {
 
     /// Return the value of an 8-bit Operand
     // TODO: implement cycle cost
-    pub fn read_operand8(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride) -> Option<u8> {
+    pub fn read_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<u8> {
 
         match operand {
             OperandType::Immediate8(imm8) => Some(imm8),
@@ -124,7 +150,7 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
-                let (byte, _read_cost) = bus.read_u8(flat_addr as usize).unwrap();
+                let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
                 Some(byte)
             },
             OperandType::Register8(reg8) => {
@@ -142,7 +168,7 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let (byte, _read_cost) = bus.read_u8(flat_addr as usize).unwrap();
+                let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
                 Some(byte)
             }
             OperandType::NearAddress(_u16) => None,
@@ -155,7 +181,7 @@ impl Cpu {
 
     /// Return the value of a 16-bit Operand
     // TODO: implement cycle cost
-    pub fn read_operand16(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride) -> Option<u16> {
+    pub fn read_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<u16> {
 
         match operand {
             OperandType::Immediate16(imm16) => Some(imm16),
@@ -168,7 +194,7 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
-                let (word, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
+                let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
                 Some(word)
             }
             OperandType::Register16(reg16) => {
@@ -191,7 +217,7 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let (word, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
+                let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
                 Some(word)
             }
             OperandType::NearAddress(_u16) => None,
@@ -202,14 +228,14 @@ impl Cpu {
         }
     }    
 
-    pub fn read_operand_farptr(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride) -> Option<(u16, u16)> {
+    pub fn read_operand_farptr(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<(u16, u16)> {
 
         match operand {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let (offset, _read_cost) = bus.read_u16(flat_addr as usize).unwrap();
-                let (segment, _read_cost) = bus.read_u16( (flat_addr + 2) as usize ).unwrap();
+                let (offset, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
+                let (segment, _read_cost) = self.bus.read_u16( (flat_addr + 2) as usize ).unwrap();
                 Some((segment, offset))
             }
             _ => None
@@ -217,7 +243,7 @@ impl Cpu {
     }    
 
     // TODO: implement cycle cost
-    pub fn write_operand8(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride, value: u8) {
+    pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8) {
 
         match operand {
             OperandType::Immediate8(imm8) => {}
@@ -232,7 +258,7 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
-                let write_cost = bus.write_u8(flat_addr as usize, value);
+                let write_cost = self.bus.write_u8(flat_addr as usize, value);
             }
             OperandType::Offset16(offset16) => {}
             OperandType::Register8(reg8) => {
@@ -251,7 +277,7 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let write_cost = bus.write_u8(flat_addr as usize, value).unwrap();
+                let write_cost = self.bus.write_u8(flat_addr as usize, value).unwrap();
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}
@@ -261,7 +287,7 @@ impl Cpu {
     }
 
     // TODO: implement cycle cost
-    pub fn write_operand16(&mut self, bus: &mut BusInterface, operand: OperandType, seg_override: SegmentOverride, value: u16) {
+    pub fn write_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u16) {
 
         match operand {
             OperandType::Immediate8(imm8) => {}
@@ -277,7 +303,7 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
-                let write_cost = bus.write_u16(flat_addr as usize, value);
+                let write_cost = self.bus.write_u16(flat_addr as usize, value);
             }
             OperandType::Register8(reg8) => {}
             OperandType::Register16(reg16) => {
@@ -305,7 +331,7 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let write_cost = bus.write_u16(flat_addr as usize, value).unwrap();
+                let write_cost = self.bus.write_u16(flat_addr as usize, value).unwrap();
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}

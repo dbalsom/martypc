@@ -1,7 +1,7 @@
-use crate::arch;
-use crate::arch::{OperandType, Opcode, Instruction, Register8, Register16, RepType, SegmentOverride};
-use crate::cpu::{Cpu, ExecutionResult, CpuException, Flag, CallStackEntry, RepState};
-use crate::bus::{BusInterface};
+
+use crate::cpu::*;
+
+use crate::bus::BusInterface;
 use crate::io::IoBusInterface;
 
 use crate::util;
@@ -10,7 +10,7 @@ use super::CPU_CALL_STACK_LEN;
 
 impl Cpu {
 
-    pub fn execute_instruction(&mut self, i: &Instruction, bus: &mut BusInterface, io_bus: &mut IoBusInterface) -> ExecutionResult {
+    pub fn execute_instruction(&mut self, i: &Instruction, io_bus: &mut IoBusInterface) -> ExecutionResult {
 
         let mut unhandled: bool = false;
         let mut jump: bool = false;
@@ -23,18 +23,18 @@ impl Cpu {
         };
 
         // Check for REPx prefixes
-        if (i.prefixes & arch::OPCODE_PREFIX_REP1 != 0) || (i.prefixes & arch::OPCODE_PREFIX_REP2 != 0) {
+        if (i.prefixes & OPCODE_PREFIX_REP1 != 0) || (i.prefixes & OPCODE_PREFIX_REP2 != 0) {
             // A REPx prefix was set
             
             let mut invalid_rep = false;
 
             match i.mnemonic {
-                Opcode::STOSB | Opcode::STOSW | Opcode::LODSB | Opcode::LODSW | Opcode::MOVSB | Opcode::MOVSW => {
+                Mnemonic::STOSB | Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::MOVSB | Mnemonic::MOVSW => {
                     self.rep_type = RepType::Rep;
                 }
-                Opcode::SCASB | Opcode::SCASW | Opcode::CMPSB | Opcode::CMPSW => {
+                Mnemonic::SCASB | Mnemonic::SCASW | Mnemonic::CMPSB | Mnemonic::CMPSW => {
                     // Valid string ops with REP prefix
-                    if i.prefixes & arch::OPCODE_PREFIX_REP1 != 0 {
+                    if i.prefixes & OPCODE_PREFIX_REP1 != 0 {
                         self.rep_type = RepType::Repne;
                     }
                     else {
@@ -137,6 +137,7 @@ impl Cpu {
             self.opcode0_counter = self.opcode0_counter.wrapping_add(1);
 
             if self.opcode0_counter > 5 {
+                // Halt permanently by clearing interrupt flag
                 self.clear_flag(Flag::Interrupt);
                 self.halted = true;
             }
@@ -145,46 +146,45 @@ impl Cpu {
             self.opcode0_counter = 0;
         }
 
-
         match i.opcode {
             0x00 | 0x02 | 0x04 => {
                 // ADD r/m8, r8 | r8, r/m8 | al, imm8
                 // 8 bit ADD variants
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();            
-                // math_op8 handles flags
-                let result = self.math_op8(Opcode::ADD, op1_value, op2_value);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();            
+                
+                let result = self.math_op8(Mnemonic::ADD, op1_value, op2_value);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x01 | 0x03 | 0x05 => {
                 // ADD r/m16, r16 | r16, r/m16 | ax, imm16
                 // 16 bit ADD variants
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
-                // math_op8 handles flags
-                let result = self.math_op16(Opcode::ADD, op1_value, op2_value);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);       
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
+                
+                let result = self.math_op16(Mnemonic::ADD, op1_value, op2_value);
+                self.write_operand16(i.operand1_type, i.segment_override, result);       
                 handled_override = true;         
             }
             0x06 => {
                 // PUSH es
                 // Flags: None
-                self.push_register16(bus, Register16::ES);
+                self.push_register16(Register16::ES);
             }
             0x07 => {
                 // POP es
                 // Flags: None
-                self.pop_register16(bus, Register16::ES);
+                self.pop_register16(Register16::ES);
             }
             0x08 | 0x0A | 0x0C => {
                 // OR r/m8, r8 | r8, r/m8 | al, imm8
                 // 8 bit OR variants
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
                 
                 let result = op1_value | op2_value;
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
 
                 // Clear carry & overflow flags
                 // AoA 6.6.1
@@ -196,11 +196,11 @@ impl Cpu {
             0x09 | 0x0B | 0x0D => {
                 // OR r/m16, r16 | r16, r/m16 | ax, imm16
                 // 16 bit OR variants
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
                 
                 let result = op1_value | op2_value;
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
 
                 // Clear carry & overflow flags
                 // AoA 6.6.1
@@ -212,97 +212,95 @@ impl Cpu {
             0x0E => {
                 // PUSH cs
                 // Flags: None
-                self.push_register16(bus, Register16::CS);
+                self.push_register16( Register16::CS);
             }
             0x0F => {
                 // POP cs
                 // Flags: None
-                self.pop_register16(bus, Register16::CS);
+                self.pop_register16(Register16::CS);
             }
             0x10 | 0x12 | 0x14 => {
                 // ADC r/m8,r8 | r8, r/m8 | al,imm8 
                 // ADC 8-bit variants
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
-
-                // math_op8 handles flags
-                let result = self.math_op8(Opcode::ADC,  op1_value,  op2_value);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
+                
+                let result = self.math_op8(Mnemonic::ADC,  op1_value,  op2_value);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x11 | 0x13 | 0x15 => {
                 // ADC r/m16,r16 | r16, r/m16 | ax,imm16 
                 // ADC 16-bit variants
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op16(Opcode::ADC,  op1_value,  op2_value);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                let result = self.math_op16(Mnemonic::ADC,  op1_value,  op2_value);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x16 => {
                 // PUSH ss
                 // Flags: None
-                self.push_register16(bus, Register16::SS);
+                self.push_register16(Register16::SS);
             }
             0x17 => {
                 // POP ss
                 // Flags: None
-                self.pop_register16(bus, Register16::SS);
+                self.pop_register16(Register16::SS);
             }
             0x18 | 0x1A | 0x1C => {
                 // SBB r/m8,r8 | r8, r/m8 | al,imm8 
                 // SBB 8-bit variants
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op8(Opcode::SBB,  op1_value,  op2_value);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                
+                let result = self.math_op8(Mnemonic::SBB,  op1_value,  op2_value);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x19 | 0x1B | 0x1D => {
                 // SBB r/m16,r16 | r16, r/m16 | ax,imm16 
                 // SBB 16-bit variants
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op16(Opcode::SBB,  op1_value,  op2_value);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                
+                let result = self.math_op16(Mnemonic::SBB,  op1_value,  op2_value);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x1E => {
                 // PUSH ds
                 // Flags: None
-                self.push_register16(bus, Register16::DS);
+                self.push_register16(Register16::DS);
             }
             0x1F => {
                 // POP ds
                 // Flags: None
-                self.pop_register16(bus, Register16::DS);
+                self.pop_register16(Register16::DS);
             }
             0x20 | 0x22 | 0x24 => {
                 // AND r/m8,r8 | r8, r/m8 | al,imm8 
                 // AND 8-bit variants
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op8(Opcode::AND,  op1_value,  op2_value);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                
+                let result = self.math_op8(Mnemonic::AND,  op1_value,  op2_value);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x21 | 0x23 | 0x25 => {
                 // AND r/m16,r16 | r16, r/m16 | ax,imm16 
                 // AND 16-bit variants
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op16(Opcode::AND,  op1_value,  op2_value);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                
+                let result = self.math_op16(Mnemonic::AND,  op1_value,  op2_value);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x26 => {
@@ -315,23 +313,23 @@ impl Cpu {
             0x28 | 0x2A | 0x2C => {
                 // SUB r/m8,r8 | r8, r/m8 | al,imm8 
                 // SUB 8-bit variants
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op8(Opcode::SUB,  op1_value,  op2_value);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                
+                let result = self.math_op8(Mnemonic::SUB,  op1_value,  op2_value);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x29 | 0x2B | 0x2D => {
                 // SUB r/m16,r16 | r16, r/m16 | ax,imm16 
                 // SUB 16-bit variants
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
 
                 // math_op16 handles flags
-                let result = self.math_op16(Opcode::SUB,  op1_value,  op2_value);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                let result = self.math_op16(Mnemonic::SUB,  op1_value,  op2_value);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x2E => {
@@ -343,11 +341,11 @@ impl Cpu {
             }
             0x30 | 0x32 | 0x34 => {
                 // XOR r/m8, r8  |  XOR r8, r/m8
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
                 
                 let result = op1_value ^ op2_value;
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
 
                 // Clear carry & overflow flags
                 self.clear_flag(Flag::Carry);
@@ -357,11 +355,11 @@ impl Cpu {
             }
             0x31 | 0x33 | 0x35 => {
                 // XOR r/m16, r16 |  XOR r16, r/m16
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
                 
                 let result = op1_value ^ op2_value;
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
 
                 // Clear carry & overflow flags
                 self.clear_flag(Flag::Carry);
@@ -379,23 +377,23 @@ impl Cpu {
             0x38 | 0x3A | 0x3C => {
                 // CMP r/m8,r8 | r8, r/m8 | al,imm8 
                 // CMP 8-bit variants
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op8(Opcode::CMP,  op1_value,  op2_value);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                
+                let result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x39 | 0x3B | 0x3D => {
                 // CMP r/m16,r16 | r16, r/m16 | ax,imm16 
                 // CMP 16-bit variants
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
 
-                // math_op8 handles flags
-                let result = self.math_op16(Opcode::CMP,  op1_value,  op2_value);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                
+                let result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x3E => {
@@ -407,91 +405,91 @@ impl Cpu {
             }
             0x40..=0x47 => {
                 // INC r16 register-encoded operands
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                 // math_op16 handles flags
-                let result = self.math_op16(Opcode::INC, op1_value, 0);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                let result = self.math_op16(Mnemonic::INC, op1_value, 0);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x48..=0x4F => {
                 // DEC r16 register-encoded operands
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                 // math_op16 handles flags
-                let result = self.math_op16(Opcode::DEC, op1_value, 0);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                let result = self.math_op16(Mnemonic::DEC, op1_value, 0);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;           
             }
             0x50 => {
                 // PUSH ax
                 // Flags: None                
-                self.push_register16(bus, Register16::AX);
+                self.push_register16(Register16::AX);
             }
             0x51 => {
                 // PUSH cx
                 // Flags: None                
-                self.push_register16(bus, Register16::CX);
+                self.push_register16(Register16::CX);
             }
             0x52 => {
                 // PUSH dx
                 // Flags: None                
-                self.push_register16(bus, Register16::DX);
+                self.push_register16(Register16::DX);
             }
             0x53 => {
                 // PUSH bx
                 // Flags: None
-                self.push_register16(bus, Register16::BX);
+                self.push_register16(Register16::BX);
             }
             0x54 => {
                 // PUSH sp
                 // Flags: None
-                self.push_register16(bus, Register16::SP);
+                self.push_register16(Register16::SP);
             }
             0x55 => {
                 // PUSH bp
                 // Flags: None             
-                self.push_register16(bus, Register16::BP);
+                self.push_register16(Register16::BP);
             }
             0x56 => {
                 // PUSH si
                 // Flags: None                
-                self.push_register16(bus, Register16::SI);
+                self.push_register16(Register16::SI);
             }
             0x57 => {
                 // PUSH di
                 // Flags: None
-                self.push_register16(bus, Register16::DI);                 
+                self.push_register16(Register16::DI);                 
             }
             0x58 => {
                 // POP ax
-                self.pop_register16(bus, Register16::AX);
+                self.pop_register16(Register16::AX);
             }
             0x59 => {
                 // POP cx
-                self.pop_register16(bus, Register16::CX);
+                self.pop_register16(Register16::CX);
             }
             0x5A => {
                 // POP dx
-                self.pop_register16(bus, Register16::DX);
+                self.pop_register16(Register16::DX);
             }
             0x5B => {
                 // POP bx
-                self.pop_register16(bus, Register16::BX);
+                self.pop_register16(Register16::BX);
             }
             0x5C => {
                 // POP sp
-                self.pop_register16(bus, Register16::SP);
+                self.pop_register16(Register16::SP);
             }
             0x5D => {
                 // POP bp
-                self.pop_register16(bus, Register16::BP);
+                self.pop_register16(Register16::BP);
             }
             0x5E => {
                 // POP si
-                self.pop_register16(bus, Register16::SI);
+                self.pop_register16(Register16::SI);
             }
             0x5F => {
                 // POP di
-                self.pop_register16(bus, Register16::DI);
+                self.pop_register16(Register16::DI);
             }
             0x60..=0x7F => {
                 // JMP rel8 variants
@@ -523,85 +521,85 @@ impl Cpu {
             }
             0x80 | 0x82 => {
                 // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m8, imm8
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
-                // math_op8 handles flags
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
+                
                 let result = self.math_op8(i.mnemonic, op1_value, op2_value);
 
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x81 => {
                 // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m16, imm16
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
                 // math_op16 handles flags
                 let result = self.math_op16(i.mnemonic, op1_value, op2_value);
 
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x83 => {
                 // ADD/ADC/SBB/SUB/CMP r/m16, imm_i8
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
 
                 // imm_i8 gets sign-extended
                 let op2_extended = util::sign_extend_u8_to_u16(op2_value);
 
                 // math_op16 handles flags
                 let result = self.math_op16(i.mnemonic, op1_value, op2_extended);      
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0x84 => {
                 // TEST r/m8, r8
                 // Flags: o..sz.pc
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
-                // math_op8 handles flags
-                self.math_op8(Opcode::TEST, op1_value, op2_value);
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
+                
+                self.math_op8(Mnemonic::TEST, op1_value, op2_value);
                 handled_override = true;
             }
             0x85 => {
                 // TEST r/m16, r16
                 // Flags: o..sz.pc                
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
                 // math_op16 handles flags
-                self.math_op16(Opcode::TEST, op1_value, op2_value);
+                self.math_op16(Mnemonic::TEST, op1_value, op2_value);
                 handled_override = true;
             }
             0x86 => {
                 // XCHG r8, r/m8
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
 
                 // Exchange values
-                self.write_operand8(bus, i.operand1_type, i.segment_override, op2_value);
-                self.write_operand8(bus, i.operand2_type, i.segment_override, op1_value);
+                self.write_operand8(i.operand1_type, i.segment_override, op2_value);
+                self.write_operand8(i.operand2_type, i.segment_override, op1_value);
                 handled_override = true;
             }
             0x87 => {
                 // XCHG r16, r/m16
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
 
                 // Exchange values
-                self.write_operand16(bus, i.operand1_type, i.segment_override, op2_value);
-                self.write_operand16(bus, i.operand2_type, i.segment_override, op1_value);
+                self.write_operand16(i.operand1_type, i.segment_override, op2_value);
+                self.write_operand16(i.operand2_type, i.segment_override, op1_value);
                 handled_override = true;
             }
             0x88 | 0x8A => {
                 // MOV r/m8, r8  |  MOV r8, r/m8
-                let op_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
-                self.write_operand8(bus, i.operand1_type, i.segment_override, op_value);
+                let op_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
+                self.write_operand8(i.operand1_type, i.segment_override, op_value);
                 handled_override = true;
             }
             0x89 | 0x8B => {
                 // MOV r/m16, r16  |  MOV r16, r/m16
-                let op_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
-                self.write_operand16(bus, i.operand1_type, i.segment_override, op_value);
+                let op_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
+                self.write_operand16(i.operand1_type, i.segment_override, op_value);
                 handled_override = true;
             }
             0x8C | 0x8E => {
@@ -612,20 +610,20 @@ impl Cpu {
                         println!("Whoops!")
                     }
                 }                
-                let op_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
-                self.write_operand16(bus, i.operand1_type, i.segment_override, op_value);
+                let op_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
+                self.write_operand16(i.operand1_type, i.segment_override, op_value);
                 handled_override = true;
             }
             0x8D => {
                 // LEA - Load Effective Address
 
                 let value = self.load_effective_address(i.operand2_type).unwrap();
-                self.write_operand16(bus, i.operand1_type, SegmentOverride::NoOverride, value);
+                self.write_operand16(i.operand1_type, SegmentOverride::NoOverride, value);
             }
             0x8F => {
                 // POP r/m16
-                let value = self.pop_u16(bus);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, value);
+                let value = self.pop_u16();
+                self.write_operand16(i.operand1_type, i.segment_override, value);
                 handled_override = true;
             }
             0x90 => {
@@ -702,9 +700,9 @@ impl Cpu {
                 // CALLF - Call Far
 
                 // Push return address of next instruction
-                self.push_register16(bus, Register16::CS);
+                self.push_register16(Register16::CS);
                 let next_i = self.ip + (i.size as u16);
-                self.push_u16(bus, next_i);
+                self.push_u16(next_i);
 
                 if let OperandType::FarAddress(segment, offset) = i.operand1_type {        
                     
@@ -724,11 +722,11 @@ impl Cpu {
             }
             0x9C => {
                 // PUSHF - Push Flags
-                self.push_flags(bus);
+                self.push_flags();
             }
             0x9D => {
                 // POPF - Pop Flags
-                self.pop_flags(bus);
+                self.pop_flags();
             }
             0x9E => {
                 // SAHF - Store AH into Flags
@@ -744,14 +742,14 @@ impl Cpu {
             0xA0 => {
                 // MOV al, offset8
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
                 self.set_register8(Register8::AL, op2_value);
                 handled_override = true;
             }
             0xA1 => {
                 // MOV AX, offset16
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
                 self.set_register16(Register16::AX, op2_value);                
                 handled_override = true;
             }
@@ -759,20 +757,20 @@ impl Cpu {
                 // MOV offset8, Al
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
                 let op2_value = self.al;
-                self.write_operand8(bus, i.operand1_type, i.segment_override, op2_value);
+                self.write_operand8(i.operand1_type, i.segment_override, op2_value);
                 handled_override = true;
             }
             0xA3 => {
                 // MOV offset16, AX
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
                 let op2_value = self.ax;
-                self.write_operand16(bus, i.operand1_type, i.segment_override, op2_value);
+                self.write_operand16(i.operand1_type, i.segment_override, op2_value);
                 handled_override = true;        
             }
             0xA4 => {
                 // MOVSB
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, Opcode::MOVSB, i.segment_override);
+                    self.string_op(Mnemonic::MOVSB, i.segment_override);
                 }
 
                 // Check for end condition (CX==0)
@@ -790,7 +788,7 @@ impl Cpu {
             0xA5 => {
                 // MOVSW
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, Opcode::MOVSW, i.segment_override);
+                    self.string_op(Mnemonic::MOVSW, i.segment_override);
                 }
 
                 // Check for end condition (CX==0)
@@ -810,7 +808,7 @@ impl Cpu {
                 // Segment override: DS overridable
                 // Flags: All
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, i.mnemonic, i.segment_override);       
+                    self.string_op(i.mnemonic, i.segment_override);       
                 }
 
                 // Check for REP end condition #1 (CX==0)
@@ -847,22 +845,22 @@ impl Cpu {
                 // TEST al, imm8
                 // Flags: o..sz.pc
                 let op1_value = self.al;
-                let op2_value = self.read_operand8(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, SegmentOverride::NoOverride).unwrap();
                 
-                self.math_op8(Opcode::TEST,  op1_value, op2_value);
+                self.math_op8(Mnemonic::TEST,  op1_value, op2_value);
             }
             0xA9 => {
                 // TEST ax, imm16
                 // Flags: o..sz.pc
                 let op1_value = self.ax;
-                let op2_value = self.read_operand16(bus, i.operand2_type, SegmentOverride::NoOverride).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, SegmentOverride::NoOverride).unwrap();
                 
-                self.math_op16(Opcode::TEST,  op1_value, op2_value);
+                self.math_op16(Mnemonic::TEST,  op1_value, op2_value);
             }
             0xAA | 0xAB => {
                 // STOSB & STOSW
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
+                    self.string_op(i.mnemonic, SegmentOverride::NoOverride);
                 }
 
                 // Check for end condition (CX==0)
@@ -882,7 +880,7 @@ impl Cpu {
 
                 // Although LODSx is not typically used with a REP prefix, it can be
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, i.mnemonic, i.segment_override);
+                    self.string_op(i.mnemonic, i.segment_override);
                 }
                 
                 // Check for REP end condition #1 (CX==0)
@@ -901,7 +899,7 @@ impl Cpu {
                 // SCASB & SCASW
                 // Flags: ALL
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(bus, i.mnemonic, SegmentOverride::NoOverride);
+                    self.string_op(i.mnemonic, SegmentOverride::NoOverride);
                 }
 
                 // Check for REP end condition #1 (CX==0)
@@ -954,10 +952,10 @@ impl Cpu {
                 // RETN imm16 - Return from call w/ release
                 // 0xC0 undocumented alias for 0xC2
                 // Flags: None
-                let new_ip = self.pop_u16(bus);
+                let new_ip = self.pop_u16();
                 self.ip = new_ip;
                 
-                let stack_disp = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let stack_disp = self.read_operand16(i.operand1_type, SegmentOverride::NoOverride).unwrap();
                 self.release(stack_disp);                
 
                 // Pop call stack
@@ -970,7 +968,7 @@ impl Cpu {
                 // 0xC1 undocumented alias for 0xC3
                 // Flags: None
                 // Effectively, this instruction is pop ip
-                let new_ip = self.pop_u16(bus);
+                let new_ip = self.pop_u16();
                 self.ip = new_ip;
                 
                 // Pop call stack
@@ -981,41 +979,41 @@ impl Cpu {
             0xC4 => {
                 // LES - Load ES from Pointer
                 // Operand 2 is far pointer
-                let (les_segment, les_offset) = self.read_operand_farptr(bus, i.operand2_type, i.segment_override).unwrap();
+                let (les_segment, les_offset) = self.read_operand_farptr(i.operand2_type, i.segment_override).unwrap();
 
                 //log::trace!("LES instruction: Loaded {:04X}:{:04X}", les_segment, les_offset);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, les_offset);
+                self.write_operand16(i.operand1_type, i.segment_override, les_offset);
                 self.es = les_segment;
                 handled_override = true;
             }
             0xC5 => {
                 // LDS - Load DS from Pointer
                 // Operand 2 is far pointer
-                let (lds_segment, lds_offset) = self.read_operand_farptr(bus, i.operand2_type, i.segment_override).unwrap();
+                let (lds_segment, lds_offset) = self.read_operand_farptr(i.operand2_type, i.segment_override).unwrap();
 
                 //log::trace!("LDS instruction: Loaded {:04X}:{:04X}", lds_segment, lds_offset);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, lds_offset);
+                self.write_operand16(i.operand1_type, i.segment_override, lds_offset);
                 self.ds = lds_segment;
                 handled_override = true;
             }
             0xC6 => {
                 // MOV r/m8, imm8
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
-                self.write_operand8(bus, i.operand1_type, i.segment_override, op2_value);
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
+                self.write_operand8(i.operand1_type, i.segment_override, op2_value);
                 handled_override = true;
             }
             0xC7 => {
                 // MOV r/m16, imm16
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
-                self.write_operand16(bus, i.operand1_type, i.segment_override, op2_value);
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
+                self.write_operand16(i.operand1_type, i.segment_override, op2_value);
                 handled_override = true;
             }
             0xC8 | 0xCA => {
                 // RETF imm16 - Far Return w/ release 
                 // 0xC8 undocumented alias for 0xCA
-                self.pop_register16(bus, Register16::IP);
-                self.pop_register16(bus, Register16::CS);
-                let stack_disp = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                self.pop_register16(Register16::IP);
+                self.pop_register16(Register16::CS);
+                let stack_disp = self.read_operand16(i.operand1_type, SegmentOverride::NoOverride).unwrap();
                 self.release(stack_disp);
 
                 // Pop call stack
@@ -1025,8 +1023,8 @@ impl Cpu {
             0xC9 | 0xCB => {
                 // RETF - Far Return
                 // 0xC9 undocumented alias for 0xCB
-                self.pop_register16(bus, Register16::IP);
-                self.pop_register16(bus, Register16::CS);
+                self.pop_register16(Register16::IP);
+                self.pop_register16(Register16::CS);
 
                 // Pop call stack
                 self.call_stack.pop_back();                
@@ -1036,7 +1034,7 @@ impl Cpu {
                 // INT 3 - Software Interrupt 3
                 // This is a special form of INT which assumes IRQ 3 always. Most assemblers will not generate this form
                 self.ip = self.ip.wrapping_add(1);
-                self.do_sw_interrupt(bus, 3);
+                self.do_sw_interrupt(3);
 
                 jump = true;    
             }
@@ -1046,60 +1044,60 @@ impl Cpu {
                 // generated by the INT instruction. 
 
                 // Get IRQ number
-                let irq = self.read_operand8(bus, i.operand1_type, arch::SegmentOverride::NoOverride).unwrap();
+                let irq = self.read_operand8(i.operand1_type, SegmentOverride::NoOverride).unwrap();
                 self.ip = self.ip.wrapping_add(2);
-                self.do_sw_interrupt(bus, irq );
+                self.do_sw_interrupt(irq );
                 jump = true;
             }
             0xCE => {
                 // INTO - Call Overflow Interrupt Handler
                 self.ip = self.ip.wrapping_add(1);
-                self.do_sw_interrupt(bus, 4);
+                self.do_sw_interrupt(4);
             
                 jump = true;
             }
             0xCF => {
                 // IRET instruction
-                self.end_interrupt(bus);
+                self.end_interrupt();
                 jump = true;
             }
             0xD0 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m8, 0x01
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                 let result = self.bitshift_op8(i.mnemonic, op1_value, 1);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 // TODO: Cost
                 handled_override = true;
             }
             0xD1 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, 0x01
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                 let result = self.bitshift_op16(i.mnemonic, op1_value, 1);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 handled_override = true;
             }
             0xD2 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m8, cl
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
                 let result = self.bitshift_op8(i.mnemonic, op1_value, op2_value);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 // TODO: Cost
                 handled_override = true;
             }
             0xD3 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, cl
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
                 let result = self.bitshift_op16(i.mnemonic, op1_value, op2_value);
-                self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand16(i.operand1_type, i.segment_override, result);
                 // TODO: Cost
                 handled_override = true;
             }
             0xD4 => {
                 // AAM - Ascii adjust AX after Multiply
                 // Get imm8 value
-                let op1_value = self.read_operand8(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, SegmentOverride::NoOverride).unwrap();
                 
                 if op1_value == 0 {
                     exception = CpuException::DivideError;
@@ -1110,7 +1108,7 @@ impl Cpu {
             }
             0xD5 => {
                 // AAD - Ascii Adjust before Division
-                let op1_value = self.read_operand8(bus, i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let op1_value = self.read_operand8(i.operand1_type, SegmentOverride::NoOverride).unwrap();
                 self.aad(op1_value);
             }
             0xD6 => {
@@ -1139,7 +1137,7 @@ impl Cpu {
                 let disp16: u16 = self.bx.wrapping_add(self.al as u16);
 
                 let addr = Cpu::calc_linear_address(segment_base_default_ds, disp16);
-                let (value, _cost) = bus.read_u8(addr as usize).unwrap();
+                let (value, _cost) = self.bus.read_u8(addr as usize).unwrap();
                 self.set_register8(Register8::AL, value as u8);
                 handled_override = true;
             }
@@ -1147,7 +1145,7 @@ impl Cpu {
                 // ESC - FPU instructions. 
                 
                 // Perform dummy read if memory operand
-                let _op1_value = self.read_operand16(bus, i.operand1_type, SegmentOverride::NoOverride);
+                let _op1_value = self.read_operand16(i.operand1_type, SegmentOverride::NoOverride);
             }
             0xE0 => {
                 // LOOPNE - Decrement CX, Jump short if count!=0 and ZF=0
@@ -1199,7 +1197,7 @@ impl Cpu {
             }
             0xE4 => {
                 // IN al, imm8
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap(); 
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap(); 
                 
                 let in_byte = io_bus.read_u8(op2_value as u16);
                 self.set_register8(Register8::AL, in_byte);
@@ -1207,14 +1205,14 @@ impl Cpu {
             }
             0xE5 => {
                 // IN ax, imm8
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap(); 
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap(); 
                 let in_byte = io_bus.read_u8(op2_value as u16);
                 self.set_register16(Register16::AX, in_byte as u16);
             }
             0xE6 => {
                 // OUT imm8, al
-                let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();                
+                let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();                
 
                 // Write to port
                 io_bus.write_u8(op1_value as u16, op2_value);
@@ -1231,10 +1229,10 @@ impl Cpu {
                 let cs = self.get_register16(Register16::CS);
                 let ip = self.get_register16(Register16::IP);
                 let next_i = ip + 3;
-                self.push_u16(bus, next_i);
+                self.push_u16(next_i);
 
                 // Add rel16 to ip
-                let rel16 = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                let rel16 = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                 self.ip = util::relative_offset_u16(self.ip, rel16 as i16 + i.size as i16 );
                 jump = true;
 
@@ -1270,20 +1268,20 @@ impl Cpu {
             }
             0xEC => {
                 // IN al, dx
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap(); 
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap(); 
                 let in_byte = io_bus.read_u8(op2_value);
                 self.set_register8(Register8::AL, in_byte);
             }
             0xED => {
                 // IN ax, dx
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap(); 
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap(); 
                 let in_byte = io_bus.read_u8(op2_value);
                 self.set_register16(Register16::AX, in_byte as u16);
             }
             0xEE => {
                 // OUT dx, al
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();                
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();                
 
                 io_bus.write_u8(op1_value as u16, op2_value);
                 //println!("OUT: Would output {:02X} to Port {:#04X}", op2_value, op1_value);                
@@ -1291,8 +1289,8 @@ impl Cpu {
             0xEF => {
                 // OUT dx, ax
                 // On the 8088, this does two writes to successive port #'s 
-                let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
 
                 // Write first 8 bits to first port
                 io_bus.write_u8(op1_value, (op2_value & 0xFF) as u8);
@@ -1325,34 +1323,34 @@ impl Cpu {
                 // Miscellaneous Opcode Extensions, r/m8, imm8
                 match i.mnemonic {
 
-                    Opcode::TEST => {
-                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
-                        let op2_value = self.read_operand8(bus, i.operand2_type, i.segment_override).unwrap();
+                    Mnemonic::TEST => {
+                        let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
+                        let op2_value = self.read_operand8(i.operand2_type, i.segment_override).unwrap();
                         // Don't use result, just set flags
                         let _result = self.math_op8(i.mnemonic, op1_value, op2_value);
                     }
-                    Opcode::NOT => {
-                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::NOT => {
+                        let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                         let result = self.math_op8(i.mnemonic, op1_value, 0);
-                        self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                        self.write_operand8(i.operand1_type, i.segment_override, result);
                     }
-                    Opcode::NEG => {
-                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::NEG => {
+                        let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                         let result = self.math_op8(i.mnemonic, op1_value, 0);
-                        self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                        self.write_operand8(i.operand1_type, i.segment_override, result);
                     }
-                    Opcode::MUL => {
-                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::MUL => {
+                        let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                         // Multiply handles writing to ax
                         self.multiply_u8(op1_value);
                     }
-                    Opcode::IMUL => {
-                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::IMUL => {
+                        let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                         // Multiply handles writing to ax
                         self.multiply_i8(op1_value as i8);
                     }                    
-                    Opcode::DIV => {
-                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::DIV => {
+                        let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                         // Divide handles writing to dx:ax
                         let success = self.divide_u8(op1_value);
                         if !success {
@@ -1360,8 +1358,8 @@ impl Cpu {
                         }
                         // TODO: Handle DIV exceptions
                     }          
-                    Opcode::IDIV => {
-                        let op1_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::IDIV => {
+                        let op1_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                         // Divide handles writing to dx:ax
                         let success = self.divide_i8(op1_value);
                         if !success {
@@ -1377,34 +1375,34 @@ impl Cpu {
                 // Miscellaneous Opcode Extensions, r/m16, imm16
                 match i.mnemonic {
 
-                    Opcode::TEST => {
-                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                        let op2_value = self.read_operand16(bus, i.operand2_type, i.segment_override).unwrap();
+                    Mnemonic::TEST => {
+                        let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                        let op2_value = self.read_operand16(i.operand2_type, i.segment_override).unwrap();
                         // Don't use result, just set flags
                         let _result = self.math_op16(i.mnemonic, op1_value, op2_value);
                     }
-                    Opcode::NOT => {
-                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::NOT => {
+                        let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         let result = self.math_op16(i.mnemonic, op1_value, 0);
-                        self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                        self.write_operand16(i.operand1_type, i.segment_override, result);
                     }
-                    Opcode::NEG => {
-                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::NEG => {
+                        let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         let result = self.math_op16(i.mnemonic, op1_value, 0);
-                        self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                        self.write_operand16(i.operand1_type, i.segment_override, result);
                     }
-                    Opcode::MUL => {
-                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::MUL => {
+                        let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         // Multiply handles writing to ax
                         self.multiply_u16(op1_value);
                     }
-                    Opcode::IMUL => {
-                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::IMUL => {
+                        let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         // Multiply handles writing to dx:ax
                         self.multiply_i16(op1_value as i16);
                     }
-                    Opcode::DIV => {
-                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::DIV => {
+                        let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         // Divide handles writing to dx:ax
                         let success = self.divide_u16(op1_value);
                         if !success {
@@ -1412,8 +1410,8 @@ impl Cpu {
                         }
                         // TODO: Handle DIV exceptions
                     }
-                    Opcode::IDIV => {
-                        let op1_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::IDIV => {
+                        let op1_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         // Divide handles writing to dx:ax
                         let success = self.divide_i16(op1_value);
                         if !success {
@@ -1455,9 +1453,9 @@ impl Cpu {
             }
             0xFE => {
                 // INC/DEC r/m8
-                let op_value = self.read_operand8(bus, i.operand1_type, i.segment_override).unwrap();
+                let op_value = self.read_operand8(i.operand1_type, i.segment_override).unwrap();
                 let result = self.math_op8(i.mnemonic, op_value, 0);
-                self.write_operand8(bus, i.operand1_type, i.segment_override, result);
+                self.write_operand8(i.operand1_type, i.segment_override, result);
                 // cycles ?
                 handled_override = true;
             }
@@ -1465,27 +1463,27 @@ impl Cpu {
                 // Several opcode extensions here
                 match i.mnemonic {
                     // INC/DEC r/m16
-                    Opcode::INC | Opcode::DEC => {
-                        let op_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::INC | Mnemonic::DEC => {
+                        let op_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         let result = self.math_op16(i.mnemonic, op_value, 0);
-                        self.write_operand16(bus, i.operand1_type, i.segment_override, result);
+                        self.write_operand16(i.operand1_type, i.segment_override, result);
                     },
                     // Push Word onto stack
-                    Opcode::PUSH => {
-                        let op_value = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
-                        self.push_u16(bus, op_value);
+                    Mnemonic::PUSH => {
+                        let op_value = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
+                        self.push_u16(op_value);
                     }
                     // Jump to memory r/m16
-                    Opcode::JMP => {
-                        let ptr16 = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::JMP => {
+                        let ptr16 = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
 
                         self.ip = ptr16;
                         jump = true;
                     }
                     // Jump Far
-                    Opcode::JMPF => {
+                    Mnemonic::JMPF => {
 
-                        let (segment, offset) = self.read_operand_farptr(bus, i.operand1_type, i.segment_override).unwrap();
+                        let (segment, offset) = self.read_operand_farptr(i.operand1_type, i.segment_override).unwrap();
 
                         self.cs = segment;
                         self.ip = offset;
@@ -1494,13 +1492,13 @@ impl Cpu {
                         //log::trace!("JMPF: Destination [{:04X}:{:04X}]", segment, offset);
                     }
                     // Call Near
-                    Opcode::CALL => {
-                        let ptr16 = self.read_operand16(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::CALL => {
+                        let ptr16 = self.read_operand16(i.operand1_type, i.segment_override).unwrap();
                         //log::trace!("CALL: Destination [{:04X}]", ptr16);
                         
                         // Push return address (next instruction offset) onto stack
                         let next_i = self.ip + (i.size as u16);
-                        self.push_u16(bus, next_i);
+                        self.push_u16(next_i);
 
                         // Add to call stack
                         if self.call_stack.len() == CPU_CALL_STACK_LEN {
@@ -1512,13 +1510,13 @@ impl Cpu {
                         jump = true;
                     }
                     // Call Far
-                    Opcode::CALLF => {
-                        let (segment, offset) = self.read_operand_farptr(bus, i.operand1_type, i.segment_override).unwrap();
+                    Mnemonic::CALLF => {
+                        let (segment, offset) = self.read_operand_farptr(i.operand1_type, i.segment_override).unwrap();
 
                         // Push return address of next instruction
-                        self.push_register16(bus, Register16::CS);
+                        self.push_register16(Register16::CS);
                         let next_i = self.ip + (i.size as u16);
-                        self.push_u16(bus, next_i);
+                        self.push_u16(next_i);
 
                         // Add to call stack
                         if self.call_stack.len() == CPU_CALL_STACK_LEN {

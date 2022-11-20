@@ -1,5 +1,5 @@
-use crate::cpu::{Cpu, CpuType, Flag};
-use crate::arch::Opcode;
+use crate::cpu::*;
+use crate::cpu::cpu_mnemonic::Mnemonic;
 
 impl Cpu {
 
@@ -201,7 +201,7 @@ impl Cpu {
     }
 
     /// Perform various 8-bit binary shift operations
-    pub fn bitshift_op8(&mut self, opcode: Opcode, operand1: u8, operand2: u8) -> u8 {
+    pub fn bitshift_op8(&mut self, opcode: Mnemonic, operand1: u8, operand2: u8) -> u8 {
 
         // Operand2 will either be 1 or value of CL register on 8088
         if operand2 == 0 {
@@ -219,7 +219,7 @@ impl Cpu {
         };
 
         match opcode {
-            Opcode::ROL => {
+            Mnemonic::ROL => {
                 (result, carry) = Cpu::rol_u8_with_carry(operand1, rot_count);
                 self.set_flag_state(Flag::Carry, carry);
                 // Only set overflow on ROL of 1
@@ -228,7 +228,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((result & 0x80) != 0) ^ carry);
                 }
             }
-            Opcode::ROR => {
+            Mnemonic::ROR => {
                 (result, carry) = Cpu::ror_u8_with_carry(operand1, rot_count);
                 self.set_flag_state(Flag::Carry, carry);
                 // Only set overflow on ROR of 1
@@ -237,7 +237,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((result & 0x80) != 0) ^ ((result & 0x40) != 0));
                 }          
             }
-            Opcode::RCL => {
+            Mnemonic::RCL => {
                 // Rotate with Carry Left
                 // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate) 
                 // and the most-significant bit of the result. 
@@ -250,7 +250,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((result & 0x80) != 0) ^ carry);
                 }             
             }
-            Opcode::RCR => {
+            Mnemonic::RCR => {
                 let existing_carry = self.get_flag(Flag::Carry);
                 // Only set overflow on SHL of 1
                 if rot_count == 1 {
@@ -261,7 +261,7 @@ impl Cpu {
                 (result, carry) = Cpu::rcr_u8_with_carry(operand1, rot_count, existing_carry);
                 self.set_flag_state(Flag::Carry, carry);
             }
-            Opcode::SHL => {
+            Mnemonic::SHL => {
                 (result, carry) = Cpu::shl_u8_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
@@ -275,7 +275,7 @@ impl Cpu {
                 
                 self.set_flags_from_result_u8(result);
             }
-            Opcode::SHR => {
+            Mnemonic::SHR => {
                 (result, carry) = Cpu::shr_u8_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
@@ -288,7 +288,7 @@ impl Cpu {
                 }
                 self.set_flags_from_result_u8(result);
             }
-            Opcode::SAR => {
+            Mnemonic::SAR => {
                 (result, carry) = Cpu::sar_u8_with_carry(operand1, operand2);
                 // Set Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
@@ -308,7 +308,7 @@ impl Cpu {
     }
 
     /// Peform various 16-bit binary shift operations
-    pub fn bitshift_op16(&mut self, opcode: Opcode, operand1: u16, operand2: u8) -> u16 {
+    pub fn bitshift_op16(&mut self, opcode: Mnemonic, operand1: u16, operand2: u8) -> u16 {
 
         // Operand2 will either be 1 or value of CL register on 8088
         if operand2 == 0 {
@@ -326,7 +326,7 @@ impl Cpu {
         };
 
         match opcode {
-            Opcode::ROL => {
+            Mnemonic::ROL => {
                 // Rotate Left
                 // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate) 
                 // and the most-significant bit of the result. 
@@ -339,7 +339,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((result & 0x8000) != 0) ^ carry);
                 }
             }
-            Opcode::ROR => {
+            Mnemonic::ROR => {
                 // Rotate Right
                 // Flags: For right rotates, the OF flag is set to the exclusive OR of the two most-significant bits of the result.
                 (result, carry) = Cpu::ror_u16_with_carry(operand1, rot_count);
@@ -351,7 +351,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((result & 0x8000) != 0) ^ ((result & 0x4000) != 0));
                 }
             }
-            Opcode::RCL => {
+            Mnemonic::RCL => {
                 // Rotate with Carry Left
                 // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate) 
                 // and the most-significant bit of the result. 
@@ -365,7 +365,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((result & 0x8000) != 0) ^ carry);
                 }
             }
-            Opcode::RCR => {
+            Mnemonic::RCR => {
                 // Rotate with Carry Right
                 // Flags: For right rotates, the OF flag is set to the exclusive OR of the two most-significant bits of the result.
 
@@ -384,7 +384,7 @@ impl Cpu {
                 // The rcr instruction does not affect the zero, sign, parity, or auxiliary carry flags.
                 // AoA 6.6.3.2
             }
-            Opcode::SHL => {
+            Mnemonic::SHL => {
                 (result, carry) = Cpu::shl_u16_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
@@ -397,7 +397,7 @@ impl Cpu {
                 }
                 self.set_flags_from_result_u16(result);
             }
-            Opcode::SHR => {
+            Mnemonic::SHR => {
                 (result, carry) = Cpu::shr_u16_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
@@ -410,7 +410,7 @@ impl Cpu {
                 }
                 self.set_flags_from_result_u16(result);
             }
-            Opcode::SAR => {
+            Mnemonic::SAR => {
                 (result, carry) = Cpu::sar_u16_with_carry(operand1, operand2);
                 // Set Carry Flag
                 self.set_flag_state(Flag::Carry, carry);

@@ -2,7 +2,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::byteinterface::ByteInterface;
+use crate::bytequeue::ByteQueue;
+
 use crate::memerror::MemError;
 
 const ADDRESS_SPACE: usize = 1_048_576;
@@ -45,89 +46,64 @@ pub struct BusInterface {
     cursor: usize
 }
 
-impl ByteInterface for BusInterface {
-    fn set_cursor(&mut self, pos: usize) {
+impl ByteQueue for BusInterface {
+    fn seek(&mut self, pos: usize) {
         self.cursor = pos;
     }
+
     fn tell(&self) -> usize {
         self.cursor
     }
-    fn read_u8(&mut self, cost: &mut u32) -> u8 {
+
+    fn q_read_u8(&mut self) -> u8 {
         if self.cursor < self.memory.len() {
             let b: u8 = self.memory[self.cursor];
-            *cost += DEFAULT_CYCLE_COST;
             self.cursor += 1;
             return b
         }
-        *cost += DEFAULT_CYCLE_COST;
         0xffu8
     }
-    fn read_i8(&mut self, cost: &mut u32) -> i8 {
+
+    fn q_read_i8(&mut self) -> i8 {
         if self.cursor < self.memory.len() {
             let b: i8 = self.memory[self.cursor] as i8;
-            *cost += DEFAULT_CYCLE_COST;
             self.cursor += 1;
             return b
         }
-        *cost += DEFAULT_CYCLE_COST;
         -1i8       
     }
-    fn write_u8(&mut self, data: u8, cost: &mut u32) {
-        if self.cursor < self.memory.len() {
-            self.memory[self.cursor] = data;
-            *cost += DEFAULT_CYCLE_COST;
-            self.cursor += 1;
-        }
-        *cost += DEFAULT_CYCLE_COST;
-    }
-    fn write_i8(&mut self, data: i8, cost: &mut u32) {
-        if self.cursor < self.memory.len() {
-            self.memory[self.cursor] = data as u8;
-            *cost += DEFAULT_CYCLE_COST;
-            self.cursor += 1;
-        }
-        *cost += DEFAULT_CYCLE_COST;
-    }    
-    fn read_u16(&mut self, cost: &mut u32) -> u16 {
+
+    fn q_read_u16(&mut self) -> u16 {
         if self.cursor < self.memory.len() - 1 {
             let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
-            *cost += DEFAULT_CYCLE_COST * 2;
             self.cursor += 2;
             return w
         }
-        *cost += DEFAULT_CYCLE_COST * 2;
         0xffffu16   
     }
-    fn read_i16(&mut self, cost: &mut u32) -> i16 {
+
+    fn q_read_i16(&mut self) -> i16 {
         if self.cursor < self.memory.len() - 1 {
             let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
-            *cost += DEFAULT_CYCLE_COST * 2;
             self.cursor += 2;
             return w
         }
-        *cost += DEFAULT_CYCLE_COST * 2;
         -1i16
-    }
-    fn write_u16(&mut self, data: u16, cost: &mut u32) {
-        if self.cursor < self.memory.len() - 1 {
-            // Little Endian is LO byte first
-            self.memory[self.cursor] |= (data & 0xFF) as u8;
-            self.memory[self.cursor + 1] |= (data >> 8) as u8; 
-            *cost += DEFAULT_CYCLE_COST * 2;
-            self.cursor += 2;
-        }
-        *cost += DEFAULT_CYCLE_COST * 2; 
     }    
-    fn write_i16(&mut self, data: i16, cost: &mut u32) {
-        if self.cursor < self.memory.len() - 1 {
-            // Little Endian is LO byte first
-            self.memory[self.cursor] |= ((data as u16) & 0xFF) as u8;
-            self.memory[self.cursor + 1] |= ((data as u16) >> 8) as u8;
-            *cost += DEFAULT_CYCLE_COST * 2;
-            self.cursor += 2;
-        }
-        *cost += DEFAULT_CYCLE_COST * 2; 
-    }     
+}
+
+impl Default for BusInterface {
+    fn default() -> Self {
+        BusInterface {
+            memory: vec![0; ADDRESS_SPACE],
+            memory_mask: vec![0; ADDRESS_SPACE],
+            desc_vec: Vec::new(),
+            map: Vec::new(),
+            cursor: 0,
+            first_map: 0,
+            last_map: 0
+        }        
+    }
 }
 
 impl BusInterface {

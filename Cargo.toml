@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.58"
+arraydeque = "0.4.5"
 configparser = "3.0.1"
 cpal = "0.13.5"
 egui = { version = "0.17"}

@@ -33,10 +33,9 @@ mod ega;
 #[path = "./devices/vga/mod.rs"]
 mod vga;
 
-mod arch;
 mod bus;
 mod bytebuf;
-mod byteinterface;
+mod bytequeue;
 mod cga;
 mod cpu;
 mod dma;
@@ -64,11 +63,12 @@ mod videocard;
 mod input;
 
 use machine::{Machine, MachineType};
+use cpu::Cpu;
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
 use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
-use byteinterface::ByteInterface;
+use bytequeue::ByteQueue;
 use gui::GuiEvent;
 use sound::SoundPlayer;
 use videocard::VideoType;
@@ -903,15 +903,15 @@ fn main() -> Result<(), Error> {
                             None => 0
                         };
 
-                        let bus = machine.mut_bus();
-                        bus.set_cursor(disassembly_addr as usize);
+                        let bus = machine.bus_mut();
+                        bus.seek(disassembly_addr as usize);
                         let mut disassembly_string = String::new();
                         for _ in 0..24 {
 
                             let address = bus.tell();
                             if address < machine::MAX_MEMORY_ADDRESS {
 
-                                let decode_str: String = match arch::decode(bus) {
+                                let decode_str: String = match Cpu::decode(bus) {
                                     Ok(i) => {
                                     
                                         let instr_slice = bus.get_slice_at(address, i.size as usize);

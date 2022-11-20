@@ -1,9 +1,8 @@
-use crate::cpu::{Cpu, Flag};
-use crate::bus::{BusInterface};
-use crate::arch::{Opcode, Register8, Register16, SegmentOverride};
+use crate::cpu::*;
+use crate::bus::BusInterface;
 
 impl Cpu {
-    pub fn string_op(&mut self, bus: &mut BusInterface, opcode: Opcode, segment: SegmentOverride) {
+    pub fn string_op(&mut self, opcode: Mnemonic, segment: SegmentOverride) {
 
         let segment_base_default_ds: u16 = match segment {
             SegmentOverride::NoOverride => self.ds,
@@ -14,13 +13,13 @@ impl Cpu {
         };
 
         match opcode {
-            Opcode::STOSB => {
+            Mnemonic::STOSB => {
                 // STOSB - Write AL to [es:di]  (ES prefix cannot be overridden)
                 // No flags affected
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
                 // Write AL to [es:di]
-                bus.write_u8(dest_addr as usize, self.al).unwrap();
+                self.bus.write_u8(dest_addr as usize, self.al).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -33,13 +32,13 @@ impl Cpu {
                     }
                 }
             }
-            Opcode::STOSW => {
+            Mnemonic::STOSW => {
                 // STOSW - Write AX to [es:di] (ES prefix cannot be overridden)
                 // No flags affected
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
                 // Write AX to [es:di]
-                bus.write_u16(dest_addr as usize, self.ax).unwrap();
+                self.bus.write_u16(dest_addr as usize, self.ax).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -52,12 +51,12 @@ impl Cpu {
                     }
                 }                
             }
-            Opcode::LODSB => {
+            Mnemonic::LODSB => {
                 // LODSB affects no flags
                 // Store byte [ds:si] in AL   (Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
 
-                let (data, _cost) = bus.read_u8(src_addr as usize).unwrap();
+                let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
                 self.set_register8(Register8::AL, data);
 
                 // Increment or Decrement SI according to Direction flag
@@ -72,12 +71,12 @@ impl Cpu {
                     }
                 }    
             }
-            Opcode::LODSW => {
+            Mnemonic::LODSW => {
                 // LODSW affects no flags
                 // Store word [ds:si] in AX   (Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
 
-                let (data, _cost) = bus.read_u16(src_addr as usize).unwrap();
+                let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
                 self.set_register16(Register16::AX, data);  
 
                 // Increment or Decrement SI according to Direction flag
@@ -92,13 +91,13 @@ impl Cpu {
                     }
                 }                   
             }            
-            Opcode::MOVSB => {
+            Mnemonic::MOVSB => {
                 // Store byte from [ds:si] in [es:di]  (DS Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                let (data, _cost) = bus.read_u8(src_addr as usize).unwrap();
-                bus.write_u8(dst_addr as usize, data).unwrap();
+                let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
+                self.bus.write_u8(dst_addr as usize, data).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -113,13 +112,13 @@ impl Cpu {
                     }
                 }                    
             }
-            Opcode::MOVSW => {
+            Mnemonic::MOVSW => {
                 // Store word from [ds:si] in [es:di] (DS Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                let (data, _cost) = bus.read_u16(src_addr as usize).unwrap();
-                bus.write_u16(dst_addr as usize, data).unwrap();
+                let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
+                self.bus.write_u16(dst_addr as usize, data).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -134,12 +133,12 @@ impl Cpu {
                     }
                 }                   
             }
-            Opcode::SCASB => {
+            Mnemonic::SCASB => {
                 // SCASB: Compare byte from [es:di] with value in AL.  
                 // Flags: o..szapc
                 // Override: ES cannot be overridden
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);
-                let (byte, _cost) = bus.read_u8(scan_addr as usize).unwrap();
+                let (byte, _cost) = self.bus.read_u8(scan_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, byte, false );
                 // Test operation behaves like CMP
@@ -159,12 +158,12 @@ impl Cpu {
                     }
                 }
             }
-            Opcode::SCASW => {
+            Mnemonic::SCASW => {
                 // SCASW: Compare word from [es:di] with value in AX.  
                 // Flags: o..szapc
                 // Override: ES cannot be overridden                
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);
-                let (word, _cost) = bus.read_u16(scan_addr as usize).unwrap();
+                let (word, _cost) = self.bus.read_u16(scan_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, word, false );
                 // Test operation behaves like CMP
@@ -184,15 +183,15 @@ impl Cpu {
                     }
                 }                 
             }
-            Opcode::CMPSB => {
+            Mnemonic::CMPSB => {
                 // CMPSB: Compare bytes from [es:di] to [ds:si]
                 // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
                 // Override: DS can be overridden
                 let dssi_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
                 
-                let (dssi_op, _cost2) = bus.read_u8(dssi_addr as usize).unwrap();
-                let (esdi_op, _cost1) = bus.read_u8(esdi_addr as usize).unwrap();
+                let (dssi_op, _cost2) = self.bus.read_u8(dssi_addr as usize).unwrap();
+                let (esdi_op, _cost1) = self.bus.read_u8(esdi_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(dssi_op, esdi_op, false);
 
@@ -215,15 +214,15 @@ impl Cpu {
                     }
                 }
             }
-            Opcode::CMPSW => {
+            Mnemonic::CMPSW => {
                 // CMPSW: Compare words from [es:di] to [ds:si]
                 // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
                 // Override: DS can be overridden
                 let dssi_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
                 
-                let (dssi_op, _cost2) = bus.read_u16(dssi_addr as usize).unwrap();
-                let (esdi_op, _cost1) = bus.read_u16(esdi_addr as usize).unwrap();
+                let (dssi_op, _cost2) = self.bus.read_u16(dssi_addr as usize).unwrap();
+                let (esdi_op, _cost1) = self.bus.read_u16(esdi_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(dssi_op, esdi_op, false);
 

@@ -1,28 +1,38 @@
 #![allow(dead_code)]
 use std::error::Error;
+use std::fmt;
 use core::fmt::Display;
 use std::collections::VecDeque;
+use arraydeque::ArrayDeque;
 
 use lazy_static::lazy_static;
 use regex::Regex;
 
 // Pull in all CPU module components
-mod cpu_opcodes;
 mod cpu_addressing;
-mod cpu_stack;
-mod cpu_bitwise;
 mod cpu_alu;
-mod cpu_string;
 mod cpu_bcd;
+mod cpu_bitwise;
+mod cpu_biu;
+mod cpu_decode;
+mod cpu_display;
+mod cpu_execute;
+mod cpu_modrm;
+mod cpu_mnemonic;
+mod cpu_stack;
+mod cpu_string;
 
+use crate::cpu::cpu_mnemonic::Mnemonic;
+use crate::cpu::cpu_addressing::AddressingMode;
 
 use crate::bus::BusInterface;
-use crate::byteinterface::ByteInterface;
+use crate::bytequeue::ByteQueue;
 use crate::io::IoBusInterface;
 
-use crate::arch::{Instruction, Opcode, SegmentOverride, decode, RepType, Register8, Register16};
-
 pub const CPU_MHZ: f64 = 4.77272666;
+
+const PIQ_MAX: usize = 6;
+
 const CPU_HISTORY_LEN: usize = 32;
 const CPU_CALL_STACK_LEN: usize = 16;
 
@@ -46,17 +56,78 @@ const CPU_FLAG_RESERVED13: u16 = 0b0010_0000_0000_0000;
 const CPU_FLAG_RESERVED14: u16 = 0b0100_0000_0000_0000;
 const CPU_FLAG_RESERVED15: u16 = 0b1000_0000_0000_0000;
 
-const EFLAGS_POP_MASK: u16     = 0b0000_1111_1101_0101;
+const FLAGS_POP_MASK: u16      = 0b0000_1111_1101_0101;
 
 const REGISTER_HI_MASK: u16    = 0b0000_0000_1111_1111;
 const REGISTER_LO_MASK: u16    = 0b1111_1111_0000_0000;
 
+pub const MAX_INSTRUCTION_SIZE: usize = 15;
+
+const OPCODE_REGISTER_SELECT_MASK: u8 = 0b0000_0111;
+
+const MODRM_REG_MASK:          u8 = 0b00_111_000;
+const MODRM_ADDR_MASK:         u8 = 0b11_000_111;
+const MODRM_MOD_MASK:          u8 = 0b11_000_000;
+
+const MODRM_ADDR_BX_SI:        u8 = 0b00_000_000;
+const MODRM_ADDR_BX_DI:        u8 = 0b00_000_001;
+const MODRM_ADDR_BP_SI:        u8 = 0b00_000_010;
+const MODRM_ADDR_BP_DI:        u8 = 0b00_000_011;
+const MODRM_ADDR_SI:           u8 = 0b00_000_100;
+const MODRM_ADDR_DI:           u8 = 0b00_000_101;
+const MODRM_ADDR_DISP16:       u8 = 0b00_000_110;
+const MODRM_ADDR_BX:           u8 = 0b00_000_111;
+
+const MODRM_ADDR_BX_SI_DISP8:  u8 = 0b01_000_000;
+const MODRM_ADDR_BX_DI_DISP8:  u8 = 0b01_000_001;
+const MODRM_ADDR_BP_SI_DISP8:  u8 = 0b01_000_010;
+const MODRM_ADDR_BP_DI_DISP8:  u8 = 0b01_000_011;
+const MODRM_ADDR_SI_DI_DISP8:  u8 = 0b01_000_100;
+const MODRM_ADDR_DI_DISP8:     u8 = 0b01_000_101;
+const MODRM_ADDR_BP_DISP8:     u8 = 0b01_000_110;
+const MODRM_ADDR_BX_DISP8:     u8 = 0b01_000_111;
+
+const MODRM_ADDR_BX_SI_DISP16: u8 = 0b10_000_000;
+const MODRM_ADDR_BX_DI_DISP16: u8 = 0b10_000_001;
+const MODRM_ADDR_BP_SI_DISP16: u8 = 0b10_000_010;
+const MODRM_ADDR_BP_DI_DISP16: u8 = 0b10_000_011;
+const MODRM_ADDR_SI_DI_DISP16: u8 = 0b10_000_100;
+const MODRM_ADDR_DI_DISP16:    u8 = 0b10_000_101;
+const MODRM_ADDR_BP_DISP16:    u8 = 0b10_000_110;
+const MODRM_ADDR_BX_DISP16:    u8 = 0b10_000_111;
+
+const MODRM_EG_AX_OR_AL:       u8 = 0b00_000_000;
+const MODRM_REG_CX_OR_CL:      u8 = 0b00_000_001;
+const MODRM_REG_DX_OR_DL:      u8 = 0b00_000_010;
+const MODRM_REG_BX_OR_BL:      u8 = 0b00_000_011;
+const MODRM_REG_SP_OR_AH:      u8 = 0b00_000_100;
+const MODRM_REG_BP_OR_CH:      u8 = 0b00_000_101;
+const MODRM_REG_SI_OR_DH:      u8 = 0b00_000_110;
+const MODRM_RED_DI_OR_BH:      u8 = 0b00_000_111;
+
+// Instruction flags
+const INSTRUCTION_USES_MEM:    u32 = 0b0000_0001;
+const INSTRUCTION_HAS_MODRM:   u32 = 0b0000_0010;
+const INSTRUCTION_LOCKABLE:    u32 = 0b0000_0100;
+const INSTRUCTION_REL_JUMP:    u32 = 0b0000_1000;
+
+// Instruction prefixes
+pub const OPCODE_PREFIX_ES_OVERRIDE: u32     = 0b_0000_0000_0001;
+pub const OPCODE_PREFIX_CS_OVERRIDE: u32     = 0b_0000_0000_0010;
+pub const OPCODE_PREFIX_SS_OVERRIDE: u32     = 0b_0000_0000_0100;
+pub const OPCODE_PREFIX_DS_OVERRIDE: u32     = 0b_0000_0000_1000;
+pub const OPCODE_PREFIX_OPERAND_OVERIDE: u32 = 0b_0000_0001_0000;
+pub const OPCODE_PREFIX_ADDRESS_OVERIDE: u32 = 0b_0000_0010_0000;
+pub const OPCODE_PREFIX_WAIT: u32            = 0b_0000_0100_0000;
+pub const OPCODE_PREFIX_LOCK: u32            = 0b_0000_1000_0000;
+pub const OPCODE_PREFIX_REP1: u32            = 0b_0001_0000_0000;
+pub const OPCODE_PREFIX_REP2: u32            = 0b_0010_0000_0000;
 
 pub enum CpuType {
     Cpu8088,
     Cpu8086,
-    Cpu8186
 }
+
 impl Default for CpuType {
     fn default() -> Self { CpuType::Cpu8088 }
 }
@@ -148,6 +219,168 @@ pub enum Register {
     IP,
 }
 
+#[derive(Copy, Clone)]
+#[derive(PartialEq)]
+pub enum Register8 {
+    AL,
+    CL,
+    DL,
+    BL,
+    AH,
+    CH,
+    DH,
+    BH
+}
+
+#[derive(Copy, Clone)]
+#[derive(PartialEq)]
+pub enum Register16 {
+    AX, 
+    CX,
+    DX,
+    BX,
+    SP,
+    BP,
+    SI,
+    DI,
+    ES,
+    CS,
+    SS,
+    DS,
+    IP,
+    InvalidRegister
+}
+
+#[derive(Copy, Clone)]
+pub enum OperandType {
+    Immediate8(u8),
+    Immediate16(u16),
+    Relative8(i8),
+    Relative16(i16),
+    Offset8(u16),
+    Offset16(u16),
+    Register8(Register8),
+    Register16(Register16),
+    AddressingMode(AddressingMode),
+    NearAddress(u16),
+    FarAddress(u16,u16),
+    NoOperand,
+    InvalidOperand
+}
+
+#[derive(Copy, Clone)]
+pub enum DispType {
+    NoDisp,
+    Disp8,
+    Disp16,
+}
+
+#[derive(Copy, Clone)]
+pub enum Displacement {
+    NoDisp,
+    Disp8(i8),
+    Disp16(i16),
+}
+
+impl Displacement {
+    pub fn get_i16(&self) -> i16 {
+        match self {
+            Displacement::NoDisp => 0,
+            Displacement::Disp8(disp) => *disp as i16,
+            Displacement::Disp16(disp) => *disp
+        }
+    }
+    pub fn get_u16(&self) -> u16 {
+        match self {
+            Displacement::NoDisp => 0,
+            Displacement::Disp8(disp) => (*disp as i16) as u16,
+            Displacement::Disp16(disp) => *disp as u16
+        }        
+    }
+}
+
+impl fmt::Display for Displacement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Displacement::NoDisp => write!(f,"Invalid Displacement"),
+            Displacement::Disp8(i) => write!(f,"{:#04x}", i),
+            Displacement::Disp16(i) => write!(f,"{:#06x}", i),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum RepType {
+    NoRep,
+    Rep,
+    Repne,
+    Repe
+}
+impl Default for RepType {
+    fn default() -> Self { RepType::NoRep }
+}
+// pub enum RepDirection {
+//     RepForward,
+//     RepReverse
+// }
+
+
+#[derive(Copy, Clone)]
+pub enum SegmentOverride {
+    NoOverride,
+    SegmentES,
+    SegmentCS,
+    SegmentSS,
+    SegmentDS
+}
+
+#[derive(Copy, Clone)]
+pub enum OperandSize {
+    NoOperand,
+    NoSize,
+    Operand8,
+    Operand16
+}
+
+#[derive (Copy, Clone)]
+pub struct Instruction {
+    pub(crate) opcode: u8,
+    pub(crate) flags: u32,
+    pub(crate) prefixes: u32,
+    pub(crate) address: u32,
+    pub(crate) size: u32,
+    pub(crate) mnemonic: Mnemonic,
+    pub(crate) segment_override: SegmentOverride,
+    pub(crate) operand1_type: OperandType,
+    pub(crate) operand1_size: OperandSize,
+    //pub(crate) operand1: u16,
+    pub(crate) operand2_type: OperandType,
+    pub(crate) operand2_size: OperandSize,
+    //pub(crate) operand2: u16,
+    pub(crate) is_location: bool
+}
+
+impl Default for Instruction {
+    fn default() -> Self {
+        Self {
+            opcode:   0,
+            flags:    0,
+            prefixes: 0,
+            address:  0,
+            size:     1,
+            mnemonic: Mnemonic::NOP,
+            segment_override: SegmentOverride::NoOverride,
+            operand1_type: OperandType::NoOperand,
+            operand1_size: OperandSize::NoOperand,
+            //operand1: 0,
+            operand2_type: OperandType::NoOperand,
+            operand2_size: OperandSize::NoOperand,
+            //operand2: 0,
+            is_location: false,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Cpu {
     cpu_type: CpuType,
@@ -173,17 +406,25 @@ pub struct Cpu {
     es: u16,
     ip: u16,
     flags: u16,
+    // BIU
+    bus: BusInterface,
+    pc: u32, // Program counter points to the next instruction to be fetched
+    piq: ArrayDeque<[u8; PIQ_MAX]>,
+    piq_len: usize,
+    piq_size: usize,
+    bus_state: BusState,
+    bus_status: BusStatus,
+    // Bookkeeping
     halted: bool,
     is_running: bool,
     is_single_step: bool,
     is_error: bool,
     in_rep: bool,
-    rep_mnemonic: Opcode,
+    rep_mnemonic: Mnemonic,
     rep_type: RepType,
     rep_state: Vec<(u16, u16, RepState)>,
-    piq_len: u32,
-    piq_capacity: u32,
     error_string: String,
+    cycle_count: u64,
     instruction_count: u64,
     current_instruction: Instruction,
     instruction_history: VecDeque<Instruction>,
@@ -273,17 +514,142 @@ pub enum ExecutionResult {
     Halt
 }
 
+#[derive (PartialEq)]
+pub enum BusState {
+    T1,
+    T2,
+    T3,
+    Tw,
+    T4
+}
+
+impl Default for BusState {
+    fn default() -> BusState {
+        BusState::T1
+    }
+}
+
+#[derive (PartialEq)]
+pub enum BusStatus {
+    Read,
+    Write,
+    Fetch,
+    Idle
+}
+
+impl Default for BusStatus {
+    fn default() ->  BusStatus {
+        BusStatus::Idle
+    }
+}
+
 impl Cpu {
 
-    pub fn new(cpu_type: CpuType, piq_capacity: u32) -> Self {
+    pub fn new(cpu_type: CpuType) -> Self {
         let mut cpu: Cpu = Default::default();
+        
+        match cpu_type {
+            CpuType::Cpu8088 => {
+                cpu.piq_size = 4;
+            }
+            CpuType::Cpu8086 => {
+                cpu.piq_size = 6;
+            }
+        }
         cpu.cpu_type = cpu_type;
-        cpu.flags = CPU_FLAG_RESERVED1;
-        cpu.piq_capacity = piq_capacity;
         cpu.instruction_history = VecDeque::with_capacity(16);
         cpu.reset_seg = 0xFFFF;
         cpu.reset_offset = 0x0000;
+        cpu.reset();
         cpu
+    }
+
+    pub fn reset(&mut self) {
+        self.set_register16(Register16::AX, 0);
+        self.set_register16(Register16::BX, 0);
+        self.set_register16(Register16::CX, 0);
+        self.set_register16(Register16::DX, 0);
+        self.set_register16(Register16::SP, 0);
+        self.set_register16(Register16::BP, 0);
+        self.set_register16(Register16::SI, 0);
+        self.set_register16(Register16::DI, 0);
+        self.set_register16(Register16::ES, 0);
+        
+        self.set_register16(Register16::SS, 0);
+        self.set_register16(Register16::DS, 0);
+        
+        self.set_register16(Register16::CS, self.reset_seg);
+        self.set_register16(Register16::IP, self.reset_offset);
+
+        self.flags = CPU_FLAG_RESERVED1;
+        
+        // Reset BIU
+        self.piq.clear();
+        self.piq_len = 0;
+        self.pc = Cpu::calc_linear_address(self.reset_seg, self.reset_offset);
+        self.bus_state = BusState::T1;
+        
+        self.instruction_count = 0; 
+        self.cycle_count = 6; // Reset microcode takes 6 cycles
+        self.in_rep = false;
+        self.rep_state.clear();
+        self.halted = false;
+        self.interrupt_inhibit = false;
+        self.is_error = false;
+        self.instruction_history.clear();
+        self.call_stack.clear();
+    }
+
+    pub fn bus(&self) -> &BusInterface {
+        &self.bus
+    }
+
+    pub fn bus_mut(&mut self) -> &mut BusInterface {
+        &mut self.bus
+    }
+
+    pub fn cycle(&mut self, bus: &mut BusInterface) {
+
+        if self.bus_status == BusStatus::Idle {
+            // If idle and room in PIQ, fetch byte into PIQ
+            if !self.biu_queue_full() {
+                self.bus_status = BusStatus::Fetch;
+            }
+        }
+
+        self.bus_state = match self.bus_status {
+            BusStatus::Idle => {
+                // Sit in T1 until something happens
+                BusState::T1
+            }
+            BusStatus::Read | BusStatus::Write | BusStatus::Fetch => {
+                match self.bus_state {
+                    BusState::T1 => BusState::T2,
+                    BusState::T2 => BusState::T3,
+                    BusState::T3 => {
+                        // TODO: Handle wait states
+                        BusState::T4
+                    }
+                    BusState::Tw => {
+                        // TODO: Handle wait states
+                        BusState::T4
+                    }
+                    BusState::T4 => {
+                        // Completed bus cycle
+                        self.bus_status = BusStatus::Idle;
+                        BusState::T1
+                    }
+                }
+            }
+        };
+
+        self.cycle_count += 1;
+    }
+
+    pub fn cycles(&mut self, ct: u32, bus: &mut BusInterface) {
+        for _ in 0..ct {
+            self.cycle(bus);
+        }
     }
 
     pub fn is_error(&self) -> bool {
@@ -353,7 +719,7 @@ impl Cpu {
     }
 
     pub fn load_flags(&mut self) -> u16 {
-        // Return 8 LO bits of eFlags register
+        // Return 8 LO bits of flags register
         self.flags & 0x00FF
     }
 
@@ -541,35 +907,7 @@ impl Cpu {
         self.ip = self.reset_offset;
     }
 
-    pub fn reset(&mut self) {
-        self.set_register16(Register16::AX, 0);
-        self.set_register16(Register16::BX, 0);
-        self.set_register16(Register16::CX, 0);
-        self.set_register16(Register16::DX, 0);
-        self.set_register16(Register16::SP, 0);
-        self.set_register16(Register16::BP, 0);
-        self.set_register16(Register16::SI, 0);
-        self.set_register16(Register16::DI, 0);
-        self.set_register16(Register16::ES, 0);
-        
-        self.set_register16(Register16::SS, 0);
-        self.set_register16(Register16::DS, 0);
-        
-        self.set_register16(Register16::CS, self.reset_seg);
-        self.set_register16(Register16::IP, self.reset_offset);
 
-        self.flags = CPU_FLAG_RESERVED1;
-        self.instruction_count = 0;
-
-        self.in_rep = false;
-        self.rep_state.clear();
-        self.piq_len = 0;
-        self.halted = false;
-        self.interrupt_inhibit = false;
-        self.is_error = false;
-        self.instruction_history.clear();
-        self.call_stack.clear();
-    }
 
     pub fn get_linear_ip(&self) -> u32 {
         Cpu::calc_linear_address(self.cs, self.ip)
@@ -759,16 +1097,16 @@ impl Cpu {
 
     }
 
-    pub fn end_interrupt(&mut self, bus: &mut BusInterface) {
+    pub fn end_interrupt(&mut self) {
 
-        self.pop_register16(bus, Register16::IP);
-        self.pop_register16(bus, Register16::CS);
+        self.pop_register16(Register16::IP);
+        self.pop_register16(Register16::CS);
         //log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
-        self.pop_flags(bus);
+        self.pop_flags();
     }
 
     /// Perform a software interrupt
-    pub fn do_sw_interrupt(&mut self, bus: &mut BusInterface, interrupt: u8) {
+    pub fn do_sw_interrupt(&mut self, interrupt: u8) {
 
         // When an interrupt occurs the following happens:
         // 1. CPU pushes flags register to stack
@@ -777,16 +1115,16 @@ impl Cpu {
         // 4. CPU transfers control to the routine specified by the interrupt vector
         // (AoA 17.1)
 
-        self.push_flags(bus);
+        self.push_flags();
 
         // Push return address of next instruction onto stack (INT instructions should increment IP on execute)
-        self.push_register16(bus, Register16::CS);
-        self.push_register16(bus, Register16::IP);
+        self.push_register16(Register16::CS);
+        self.push_register16(Register16::IP);
         
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
-        let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
+        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
+        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
 
         if interrupt == 0x13 {
             // Disk interrupts
@@ -823,24 +1161,24 @@ impl Cpu {
     }
 
     /// Handle a CPU exception
-    pub fn handle_exception(&mut self, bus: &mut BusInterface, exception: u8) {
+    pub fn handle_exception(&mut self, exception: u8) {
 
         // 
-        self.push_flags(bus);
+        self.push_flags();
 
         // Push return address of next instruction onto stack
-        self.push_register16(bus, Register16::CS);
+        self.push_register16(Register16::CS);
 
         // Don't push address of next instruction
-        self.push_u16(bus, self.ip);
+        self.push_u16(self.ip);
         
         if exception == 0x0 {
             log::trace!("CPU Exception: {:02X} Saving return: {:04X}:{:04X}", exception, self.cs, self.ip);
         }
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
-        let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
+        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
+        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
         self.cs = new_cs;
     }    
@@ -883,7 +1221,7 @@ impl Cpu {
     }
 
     /// Perform a hardware interrupt
-    pub fn do_hw_interrupt(&mut self, bus: &mut BusInterface, interrupt: u8) {
+    pub fn do_hw_interrupt(&mut self, interrupt: u8) {
 
         // When an interrupt occurs the following happens:
         // 1. CPU pushes flags register to stack
@@ -892,10 +1230,10 @@ impl Cpu {
         // 4. CPU transfers control to the routine specified by the interrupt vector
         // (AoA 17.1)
 
-        self.push_flags(bus);
+        self.push_flags();
         // Push cs:ip return address to stack
-        self.push_register16(bus, Register16::CS);
-        self.push_register16(bus, Register16::IP);
+        self.push_register16(Register16::CS);
+        self.push_register16(Register16::IP);
 
         // If we are in a repeated string instruction (REP prefix) we need to save the state of the REP instruction
         if self.in_rep {
@@ -907,34 +1245,34 @@ impl Cpu {
             };
 
             let state: RepState = match self.current_instruction.mnemonic {
-                Opcode::LODSB => {
+                Mnemonic::LODSB => {
                     RepState::LodsbState(src_reg, src_reg_val, self.si, self.cx)
                 }
-                Opcode::LODSW => {
+                Mnemonic::LODSW => {
                     RepState::LodswState(src_reg, src_reg_val, self.si, self.cx)
                 } 
-                Opcode::MOVSB => {
+                Mnemonic::MOVSB => {
                     RepState::MovsbState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
                 } 
-                Opcode::MOVSW => {
+                Mnemonic::MOVSW => {
                     RepState::MovswState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
                 } 
-                Opcode::CMPSB => {
+                Mnemonic::CMPSB => {
                     RepState::CmpsbState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
                 } 
-                Opcode::CMPSW => {
+                Mnemonic::CMPSW => {
                     RepState::CmpswState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
                 }
-                Opcode::STOSB => {
+                Mnemonic::STOSB => {
                     RepState::StosbState(self.es, self.di, self.cx)
                 } 
-                Opcode::STOSW => {
+                Mnemonic::STOSW => {
                     RepState::StoswState(self.es, self.di, self.cx)
                 } 
-                Opcode::SCASB => {
+                Mnemonic::SCASB => {
                     RepState::ScasbState(self.es, self.di, self.cx)
                 } 
-                Opcode::SCASW => {
+                Mnemonic::SCASW => {
                     RepState::ScaswState(self.es, self.di, self.cx)
                 }
                 _=> {
@@ -949,8 +1287,8 @@ impl Cpu {
 
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = BusInterface::read_u16(&bus, ivt_addr as usize).unwrap();
-        let (new_cs, _cost) = BusInterface::read_u16(&bus, (ivt_addr + 2) as usize ).unwrap();
+        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
+        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
         self.cs = new_cs;
 
@@ -976,7 +1314,7 @@ impl Cpu {
         self.halted = false;
     }
 
-    pub fn step(&mut self, bus: &mut BusInterface, io_bus: &mut IoBusInterface) -> Result<(), CpuError> {
+    pub fn step(&mut self, io_bus: &mut IoBusInterface) -> Result<(), CpuError> {
 
         // When halted, the CPU waits for an interrupt to fire before resuming execution
         if self.halted {
@@ -985,12 +1323,12 @@ impl Cpu {
 
         let instruction_address = Cpu::calc_linear_address(self.cs, self.ip);
 
-        bus.set_cursor(instruction_address as usize);
+        self.bus.seek(instruction_address as usize);
 
-        match decode(bus) {
+        match Cpu::decode(&mut self.bus) {
             Ok(mut i) => {
                 self.current_instruction = i;
-                match self.execute_instruction(&i, bus, io_bus) {
+                match self.execute_instruction(&i, io_bus) {
 
                     ExecutionResult::Okay => {
                         // Normal non-jump instruction updates CS:IP to next instruction
@@ -1053,7 +1391,7 @@ impl Cpu {
                         // Handle DIV by 0 here
                         match exception {
                             CpuException::DivideError => {
-                                self.handle_exception(bus, 0);
+                                self.handle_exception(0);
                                 Ok(())
                             }
                             _ => {

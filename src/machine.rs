@@ -113,7 +113,7 @@ pub struct Machine {
     sound_player: SoundPlayer,
     rom_manager: RomManager,
     floppy_manager: FloppyManager,
-    bus: BusInterface,
+    //bus: BusInterface,
     io_bus: IoBusInterface,
     cpu: Cpu,
     dma_controller: Rc<RefCell<dma::DMAController>>,
@@ -146,10 +146,10 @@ impl Machine {
         floppy_manager: FloppyManager,
         ) -> Machine {
 
-        let mut bus = BusInterface::new();
+        
         let mut io_bus = IoBusInterface::new();
         
-        let mut cpu = Cpu::new(CpuType::Cpu8186, 4);
+        let mut cpu = Cpu::new(CpuType::Cpu8088);
         cpu.reset();        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
@@ -289,7 +289,7 @@ impl Machine {
                     video.clone()
                 );
                 let mem_descriptor = MemRangeDescriptor::new(0xA0000, 65536, false );
-                bus.register_map(video.clone(), mem_descriptor);
+                cpu.bus_mut().register_map(video.clone(), mem_descriptor);
                 video
             }
             VideoType::VGA => {
@@ -319,14 +319,14 @@ impl Machine {
                     video.clone()
                 );
                 let mem_descriptor = MemRangeDescriptor::new(0xA0000, 65536, false );
-                bus.register_map(video.clone(), mem_descriptor);
+                cpu.bus_mut().register_map(video.clone(), mem_descriptor);
                 video
             }
             _=> panic!("Unsupported video card type.")
         };
 
         // Load BIOS ROM images
-        rom_manager.copy_into_memory(&mut bus);
+        rom_manager.copy_into_memory(cpu.bus_mut());
 
         // Set entry point for ROM (mostly used for diagnostic ROMs that don't have a FAR JUMP reset vector)
         let rom_entry_point = rom_manager.get_entrypoint();
@@ -339,7 +339,7 @@ impl Machine {
             sound_player,
             rom_manager,
             floppy_manager,
-            bus: bus,
+            //bus: bus,
             io_bus: io_bus,
             cpu: cpu,
             dma_controller: dma,
@@ -365,11 +365,11 @@ impl Machine {
     }
 
     pub fn bus(&self) -> &BusInterface {
-        &self.bus
+        self.cpu.bus()
     }
 
-    pub fn mut_bus(&mut self) -> &mut BusInterface {
-        &mut self.bus
+    pub fn bus_mut(&mut self) -> &mut BusInterface {
+        self.cpu.bus_mut()
     }
 
     //pub fn cga(&self) -> Rc<RefCell<CGACard>> {
@@ -457,10 +457,10 @@ impl Machine {
         self.cpu.reset();
 
         // Clear RAM
-        self.bus.reset();
+        self.cpu.bus_mut().reset();
 
         // Reload BIOS ROM images
-        self.rom_manager.copy_into_memory(&mut self.bus);
+        self.rom_manager.copy_into_memory(self.cpu.bus_mut());
 
         // Re-install ROM patches if any
         //self.rom_manager.install_patches(&mut self.bus);
@@ -530,10 +530,10 @@ impl Machine {
                 // Check for patching checkpoint & install patches
                 if self.rom_manager.is_patch_checkpoint(flat_address) {
                     log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
-                    self.rom_manager.install_patches(&mut self.bus);
+                    self.rom_manager.install_patches(self.cpu.bus_mut());
                 }
 
-                match self.cpu.step(&mut self.bus, &mut self.io_bus) {
+                match self.cpu.step(&mut self.io_bus) {
                     Ok(()) => {
                     },
                     Err(err) => {
@@ -550,7 +550,7 @@ impl Machine {
                     if pic.query_interrupt_line() {
                         match pic.get_interrupt_vector() {
                             Some(irq) => {
-                                self.cpu.do_hw_interrupt(&mut self.bus, irq);
+                                self.cpu.do_hw_interrupt(irq);
                                 self.cpu.resume();
                             },
                             None => {}
@@ -582,7 +582,7 @@ impl Machine {
 
                 // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh, PPI for timer gate & speaker data
                 self.pit.borrow_mut().run(
-                    &mut self.bus,
+                    self.cpu.bus_mut(),
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     &mut self.ppi.borrow_mut(),
@@ -610,14 +610,14 @@ impl Machine {
                 self.fdc.borrow_mut().run(
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
-                    &mut self.bus,
+                    self.cpu.bus_mut(),
                     fake_cycles);
 
                 // HDC needs PIC to issue controller interrupts, DMA to request DMA stransfers, and Memory Bus to read/write to via DMA                    
                 self.hdc.borrow_mut().run(
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
-                    &mut self.bus,
+                    self.cpu.bus_mut(),
                     fake_cycles);         
                     
                 // Serial port needs PIC to issue interrupts

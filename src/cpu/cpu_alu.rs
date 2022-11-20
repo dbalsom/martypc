@@ -1,5 +1,5 @@
-use crate::cpu::{Cpu, Flag};
-use crate::arch::{Opcode, Register8, Register16};
+use crate::cpu::*;
+use crate::cpu::cpu_mnemonic::Mnemonic;
 
 const PARITY_TABLE: [bool; 256] = {
     let mut table = [false; 256];
@@ -398,10 +398,10 @@ impl Cpu {
     }
 
     /// Perform various 8-bit math operations
-    pub fn math_op8(&mut self, opcode: Opcode, operand1: u8, operand2: u8) -> u8 {
+    pub fn math_op8(&mut self, opcode: Mnemonic, operand1: u8, operand2: u8) -> u8 {
 
         match opcode {
-            Opcode::ADD => {
+            Mnemonic::ADD => {
                 let (result, carry, overflow, aux_carry) = Cpu::add_u8(operand1, operand2, false);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -409,7 +409,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }
-            Opcode::ADC => {
+            Mnemonic::ADC => {
                 // Get value of carry flag
                 let carry_in = self.get_flag(Flag::Carry);
                 // And pass it to ADC
@@ -420,7 +420,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }
-            Opcode::SUB => {
+            Mnemonic::SUB => {
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, false );
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -428,7 +428,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result                
             }
-            Opcode::SBB => {
+            Mnemonic::SBB => {
                 // Get value of carry flag
                 let carry_in = self.get_flag(Flag::Carry);
                 // And pass it to SBB                
@@ -439,7 +439,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result    
             }
-            Opcode::NEG => {
+            Mnemonic::NEG => {
                 // Compute (0-operand)
                 // Flags: The CF flag set to 0 if the source operand is 0; otherwise it is set to 1. 
                 // The OF, SF, ZF, AF, and PF flags are set according to the result.
@@ -452,7 +452,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }
-            Opcode::INC => {
+            Mnemonic::INC => {
                 // INC acts like add xx, 1, however does not set carry flag
                 let (result, _carry, overflow, aux_carry) = Cpu::add_u8(operand1, 1, false);
                 // DO NOT set carry Flag
@@ -461,7 +461,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }
-            Opcode::DEC => {
+            Mnemonic::DEC => {
                 // DEC acts like sub xx, 1, however does not set carry flag
                 let (result, _carry, overflow, aux_carry) = Cpu::sub_u8(operand1, 1, false);
                 // DEC does NOT set carry Flag
@@ -470,7 +470,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }              
-            Opcode::OR => {
+            Mnemonic::OR => {
                 let result = operand1 | operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -478,7 +478,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }
-            Opcode::AND => {
+            Mnemonic::AND => {
                 let result = operand1 & operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -486,7 +486,7 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }
-            Opcode::TEST => {
+            Mnemonic::TEST => {
                 let result = operand1 & operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -495,7 +495,7 @@ impl Cpu {
                 // TEST does not modify operand1
                 operand1
             }
-            Opcode::XOR => {
+            Mnemonic::XOR => {
                 let result = operand1 ^ operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -503,12 +503,12 @@ impl Cpu {
                 self.set_flags_from_result_u8(result);
                 result
             }
-            Opcode::NOT => {
+            Mnemonic::NOT => {
                 // Flags: None
                 let result = !operand1;
                 result
             }
-            Opcode::CMP => {
+            Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, false );
                 self.set_flag_state(Flag::Carry, carry);
@@ -523,10 +523,10 @@ impl Cpu {
     }
 
     /// Perform various 16-bit math operations
-    pub fn math_op16(&mut self, opcode: Opcode, operand1: u16, operand2: u16) -> u16 {
+    pub fn math_op16(&mut self, opcode: Mnemonic, operand1: u16, operand2: u16) -> u16 {
 
         match opcode {
-            Opcode::ADD => {
+            Mnemonic::ADD => {
                 let (result, carry, overflow, aux_carry) = Cpu::add_u16(operand1, operand2, false);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -534,7 +534,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }
-            Opcode::ADC => {
+            Mnemonic::ADC => {
                 // Get value of carry flag
                 let carry_in = self.get_flag(Flag::Carry);
                 // And pass it to ADC
@@ -545,7 +545,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }
-            Opcode::SUB => {
+            Mnemonic::SUB => {
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, false );
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -553,7 +553,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result                
             }
-            Opcode::SBB => {
+            Mnemonic::SBB => {
                 // Get value of carry flag
                 let carry_in = self.get_flag(Flag::Carry);
                 // And pass it to SBB                
@@ -564,7 +564,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result    
             }
-            Opcode::NEG => {
+            Mnemonic::NEG => {
                 // Compute (0-operand)
                 // Flags: The CF flag set to 0 if the source operand is 0; otherwise it is set to 1. 
                 // The OF, SF, ZF, AF, and PF flags are set according to the result.
@@ -576,7 +576,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }            
-            Opcode::INC => {
+            Mnemonic::INC => {
                 // INC acts like add xx, 1, however does not set carry flag
                 let (result, _carry, overflow, aux_carry) = Cpu::add_u16(operand1, 1, false);
                 // INC does NOT set carry Flag
@@ -585,7 +585,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }
-            Opcode::DEC => {
+            Mnemonic::DEC => {
                 // DEC acts like sub xx, 1, however does not set carry flag
                 let (result, _carry, overflow, aux_carry) = Cpu::sub_u16(operand1, 1, false);
                 // DEC does NOT set carry Flag
@@ -594,7 +594,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }            
-            Opcode::OR => {
+            Mnemonic::OR => {
                 let result = operand1 | operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -602,7 +602,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }
-            Opcode::AND => {
+            Mnemonic::AND => {
                 let result = operand1 & operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -610,7 +610,7 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }        
-            Opcode::TEST => {
+            Mnemonic::TEST => {
                 let result = operand1 & operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -619,7 +619,7 @@ impl Cpu {
                 // Do not modify operand
                 operand1  
             }    
-            Opcode::XOR => {
+            Mnemonic::XOR => {
                 let result = operand1 ^ operand2;
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
@@ -627,12 +627,12 @@ impl Cpu {
                 self.set_flags_from_result_u16(result);
                 result
             }
-            Opcode::NOT => {
+            Mnemonic::NOT => {
                 // Flags: None
                 let result = !operand1;
                 result
             }            
-            Opcode::CMP => {
+            Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, false );
                 self.set_flag_state(Flag::Carry, carry);
@@ -656,7 +656,7 @@ mod tests {
     #[test]
     
     fn test_mul() {
-        let mut cpu = Cpu::new(CpuType::Cpu8088, 0);
+        let mut cpu = Cpu::new(CpuType::Cpu8088);
 
         cpu.set_register16(Register16::AX, 1);
 

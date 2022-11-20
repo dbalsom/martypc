@@ -1,5 +1,4 @@
-use crate::arch::{Register8, Register16};
-use crate::cpu::{Cpu, Flag};
+use crate::cpu::*;
 
 impl Cpu {
 
