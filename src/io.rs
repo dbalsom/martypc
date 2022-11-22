@@ -26,18 +26,6 @@ impl IoHandler {
     }
 }
 
-enum IoMessage {
-    IoMessage8(u8),
-    IoMessage16(u16)
-}
-
-struct IoMessageSlot {
-    from_cpu_new: bool,
-    from_cpu: IoMessage,
-    to_cpu_new: bool,
-    to_cpu: IoMessage
-}
-
 pub struct IoBusInterface {
     handlers: HashMap<u16, IoHandler>,
 }
