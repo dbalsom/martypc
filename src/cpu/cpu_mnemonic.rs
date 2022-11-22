@@ -1,4 +1,4 @@
-#[derive(Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Mnemonic {
     InvalidOpcode,
     NOP,

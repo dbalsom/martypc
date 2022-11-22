@@ -377,8 +377,8 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 
-                let result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                let _result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
+                //self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
                 handled_override = true;
             }
             0x39 | 0x3B | 0x3D => {
@@ -388,8 +388,8 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 
-                let result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                let _result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
+                //self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
                 handled_override = true;
             }
             0x3E => {
@@ -522,7 +522,9 @@ impl Cpu {
                 
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
 
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                if self.i.mnemonic != Mnemonic::CMP {
+                    self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                }
                 handled_override = true;
             }
             0x81 => {
@@ -532,7 +534,9 @@ impl Cpu {
                 // math_op16 handles flags
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
 
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                if self.i.mnemonic != Mnemonic::CMP {
+                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                }
                 handled_override = true;
             }
             0x83 => {
@@ -544,8 +548,11 @@ impl Cpu {
                 let op2_extended = util::sign_extend_u8_to_u16(op2_value);
 
                 // math_op16 handles flags
-                let result = self.math_op16(self.i.mnemonic, op1_value, op2_extended);      
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                let result = self.math_op16(self.i.mnemonic, op1_value, op2_extended);   
+                
+                if self.i.mnemonic != Mnemonic::CMP {
+                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                }
                 handled_override = true;
             }
             0x84 => {
@@ -612,7 +619,6 @@ impl Cpu {
             }
             0x8D => {
                 // LEA - Load Effective Address
-
                 let value = self.load_effective_address(self.i.operand2_type).unwrap();
                 self.write_operand16(self.i.operand1_type, SegmentOverride::NoOverride, value);
             }
