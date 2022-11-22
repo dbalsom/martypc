@@ -375,7 +375,6 @@ impl Pic {
 
     pub fn get_interrupt_vector(&mut self) -> Option<u8> {
 
-        // Only handling timer interrupts for now
         // Return the highest priority vector not currently masked from the IRR
         let mut ir_bit: u8 = 0x01;
         for irq in 0..8 {

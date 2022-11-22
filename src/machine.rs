@@ -10,7 +10,8 @@ use log;
 
 use std::{
     rc::Rc,
-    cell::{Cell, RefCell}, collections::VecDeque,
+    cell::{Cell, RefCell}, 
+    collections::VecDeque,
     fs::File,
     io::Write
 };
@@ -533,7 +534,7 @@ impl Machine {
                     self.rom_manager.install_patches(self.cpu.bus_mut());
                 }
 
-                match self.cpu.step(&mut self.io_bus) {
+                match self.cpu.step(&mut self.io_bus, self.pic.clone()) {
                     Ok(()) => {
                     },
                     Err(err) => {
@@ -541,21 +542,6 @@ impl Machine {
                         self.error_str = format!("{}", err);
                         log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
                     } 
-                }
-
-                // Check for hardware interrupts if Interrupt Flag is set and not in wait cycle
-                if self.cpu.interrupts_enabled() {
-
-                    let mut pic = self.pic.borrow_mut();
-                    if pic.query_interrupt_line() {
-                        match pic.get_interrupt_vector() {
-                            Some(irq) => {
-                                self.cpu.do_hw_interrupt(irq);
-                                self.cpu.resume();
-                            },
-                            None => {}
-                        }
-                    }
                 }
 
                 // Convert cycles into elapsed microseconds

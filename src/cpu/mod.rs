@@ -1,8 +1,13 @@
 #![allow(dead_code)]
-use std::error::Error;
-use std::fmt;
+use std::{
+    rc::Rc,
+    cell::RefCell,
+    collections::VecDeque,
+    error::Error,
+    fmt
+};
+
 use core::fmt::Display;
-use std::collections::VecDeque;
 use arraydeque::ArrayDeque;
 
 use lazy_static::lazy_static;
@@ -26,6 +31,7 @@ use crate::cpu::cpu_mnemonic::Mnemonic;
 use crate::cpu::cpu_addressing::AddressingMode;
 
 use crate::bus::BusInterface;
+use crate::pic::Pic;
 use crate::bytequeue::ByteQueue;
 use crate::io::IoBusInterface;
 
@@ -426,7 +432,7 @@ pub struct Cpu {
     error_string: String,
     cycle_count: u64,
     instruction_count: u64,
-    current_instruction: Instruction,
+    i: Instruction,
     instruction_history: VecDeque<Instruction>,
     call_stack: VecDeque<CallStackEntry>,
     interrupt_inhibit: bool,
@@ -608,7 +614,7 @@ impl Cpu {
         &mut self.bus
     }
 
-    pub fn cycle(&mut self, bus: &mut BusInterface) {
+    pub fn cycle(&mut self) {
 
         if self.bus_status == BusStatus::Idle {
             // If idle and room in PIQ, fetch byte into PIQ
@@ -646,9 +652,9 @@ impl Cpu {
         self.cycle_count += 1;
     }
 
-    pub fn cycles(&mut self, ct: u32, bus: &mut BusInterface) {
+    pub fn cycles(&mut self, ct: u32) {
         for _ in 0..ct {
-            self.cycle(bus);
+            self.cycle();
         }
     }
 
@@ -1106,7 +1112,7 @@ impl Cpu {
     }
 
     /// Perform a software interrupt
-    pub fn do_sw_interrupt(&mut self, interrupt: u8) {
+    pub fn sw_interrupt(&mut self, interrupt: u8) {
 
         // When an interrupt occurs the following happens:
         // 1. CPU pushes flags register to stack
@@ -1158,6 +1164,10 @@ impl Cpu {
 
         self.ip = new_ip;
         self.cs = new_cs;        
+
+        // Flush queue
+        self.biu_queue_flush();
+        self.biu_update_pc();                
     }
 
     /// Handle a CPU exception
@@ -1181,6 +1191,10 @@ impl Cpu {
         let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
         self.cs = new_cs;
+
+        // Flush queue
+        self.biu_queue_flush();
+        self.biu_update_pc();        
     }    
 
     pub fn log_interrupt(&self, interrupt: u8) {
@@ -1221,7 +1235,7 @@ impl Cpu {
     }
 
     /// Perform a hardware interrupt
-    pub fn do_hw_interrupt(&mut self, interrupt: u8) {
+    pub fn hw_interrupt(&mut self, interrupt: u8) {
 
         // When an interrupt occurs the following happens:
         // 1. CPU pushes flags register to stack
@@ -1237,14 +1251,14 @@ impl Cpu {
 
         // If we are in a repeated string instruction (REP prefix) we need to save the state of the REP instruction
         if self.in_rep {
-            let (src_reg, src_reg_val) = match self.current_instruction.segment_override {
+            let (src_reg, src_reg_val) = match self.i.segment_override {
                 SegmentOverride::SegmentCS => (Register16::CS, self.cs),
                 SegmentOverride::SegmentES => (Register16::ES, self.es),
                 SegmentOverride::SegmentSS => (Register16::SS, self.ss),
                 _=> (Register16::DS, self.ds)
             };
 
-            let state: RepState = match self.current_instruction.mnemonic {
+            let state: RepState = match self.i.mnemonic {
                 Mnemonic::LODSB => {
                     RepState::LodsbState(src_reg, src_reg_val, self.si, self.cx)
                 }
@@ -1276,7 +1290,7 @@ impl Cpu {
                     RepState::ScaswState(self.es, self.di, self.cx)
                 }
                 _=> {
-                    log::warn!("Invalid instruction saving REP state: {:?}", self.current_instruction.mnemonic);
+                    log::warn!("Invalid instruction saving REP state: {:?}", self.i.mnemonic);
                     RepState::NoState
                 }
             };
@@ -1291,6 +1305,10 @@ impl Cpu {
         let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
         self.ip = new_ip;
         self.cs = new_cs;
+
+        // Flush queue
+        self.biu_queue_flush();
+        self.biu_update_pc();
 
         // timer interrupt to noisy to log
         if interrupt != 8 {
@@ -1314,7 +1332,7 @@ impl Cpu {
         self.halted = false;
     }
 
-    pub fn step(&mut self, io_bus: &mut IoBusInterface) -> Result<(), CpuError> {
+    pub fn step(&mut self, io_bus: &mut IoBusInterface, pic_ref: Rc<RefCell<Pic>>) -> Result<(), CpuError> {
 
         // When halted, the CPU waits for an interrupt to fire before resuming execution
         if self.halted {
@@ -1322,92 +1340,117 @@ impl Cpu {
         }
 
         let instruction_address = Cpu::calc_linear_address(self.cs, self.ip);
+        self.seek(instruction_address as usize);
 
-        self.bus.seek(instruction_address as usize);
+        // Fetch the next instruction unless we are executing a REP
+        if !self.in_rep {
+            self.i = match Cpu::decode(self) {
+                Ok(i) => i,
+                Err(_) => {
+                    self.is_running = false;
+                    self.is_error = true;
+                    return Err(CpuError::InstructionDecodeError(instruction_address))
+                }                
+            }
+        }
 
-        match Cpu::decode(&mut self.bus) {
-            Ok(mut i) => {
-                self.current_instruction = i;
-                match self.execute_instruction(&i, io_bus) {
+        self.i.address = instruction_address;
 
-                    ExecutionResult::Okay => {
-                        // Normal non-jump instruction updates CS:IP to next instruction
-                        self.assert_state();
-                        self.ip = self.ip.wrapping_add(i.size as u16);
+        let mut check_interrupts = false;
 
-                        i.address = instruction_address;
-                        if self.instruction_history.len() == CPU_HISTORY_LEN {
-                            self.instruction_history.pop_front();
-                        }
-                        self.instruction_history.push_back(i);
-                        self.instruction_count += 1;
+        let exec_result = match self.execute_instruction(io_bus) {
+
+            ExecutionResult::Okay => {
+                // Normal non-jump instruction updates CS:IP to next instruction
+                self.ip = self.ip.wrapping_add(self.i.size as u16);
+
+                if self.instruction_history.len() == CPU_HISTORY_LEN {
+                    self.instruction_history.pop_front();
+                }
+                self.instruction_history.push_back(self.i);
+                self.instruction_count += 1;
+                check_interrupts = true;
+                Ok(())
+            }
+            ExecutionResult::OkayJump => {
+
+                // Flush PIQ on jump
+                self.biu_queue_flush();
+                self.biu_update_pc();
+
+                if self.instruction_history.len() == CPU_HISTORY_LEN {
+                    self.instruction_history.pop_front();
+                }
+                self.instruction_history.push_back(self.i);
+                self.instruction_count += 1;
+                check_interrupts = true;
+                Ok(())
+            }
+            ExecutionResult::OkayRep => {
+                // We are in a REPx-prefixed instruction.
+                // The ip will not increment until the instruction has completed
+                // But process interrupts
+                if self.instruction_history.len() == CPU_HISTORY_LEN {
+                    self.instruction_history.pop_front();
+                }
+                self.instruction_history.push_back(self.i);
+                self.instruction_count += 1;
+                check_interrupts = true;
+                Ok(())
+            }                    
+            ExecutionResult::UnsupportedOpcode(o) => {
+                self.is_running = false;
+                self.is_error = true;
+                Err(CpuError::UnhandledInstructionError(o, instruction_address))
+            }
+            ExecutionResult::ExecutionError(e) => {
+                self.is_running = false;
+                self.is_error = true;
+                Err(CpuError::ExecutionError(instruction_address, e))
+            }
+            ExecutionResult::Halt => {
+                // Specifically, this error condition is a halt with interrupts disabled -
+                // execution cannot continue. This state is most encountered during BIOS
+                // initialization.
+                self.is_running = false;
+                self.is_error = true;
+                Err(CpuError::CpuHaltedError(instruction_address))
+            }
+            ExecutionResult::ExceptionError(exception) => {
+                // Handle DIV by 0 here
+                match exception {
+                    CpuException::DivideError => {
+                        self.handle_exception(0);
                         Ok(())
                     }
-                    ExecutionResult::OkayJump => {
-                        self.assert_state();
-                        // Flush PIQ on jump
-                        self.piq_len = 0;
-
-                        i.address = instruction_address;
-                        if self.instruction_history.len() == CPU_HISTORY_LEN {
-                            self.instruction_history.pop_front();
-                        }
-                        self.instruction_history.push_back(i);
-                        self.instruction_count += 1;
-                        Ok(())
-                    }
-                    ExecutionResult::OkayRep => {
-                        // We are in a REPx-prefixed instruction.
-                        // The ip will not increment until the instruction has completed
-                        // But process interrupts
-                        self.assert_state();
-                        i.address = instruction_address;
-                        if self.instruction_history.len() == CPU_HISTORY_LEN {
-                            self.instruction_history.pop_front();
-                        }
-                        self.instruction_history.push_back(i);
-                        self.instruction_count += 1;
-                        Ok(())
-                    }                    
-                    ExecutionResult::UnsupportedOpcode(o) => {
-                        self.is_running = false;
-                        self.is_error = true;
-                        Err(CpuError::UnhandledInstructionError(o, instruction_address))
-                    }
-                    ExecutionResult::ExecutionError(e) => {
-                        self.is_running = false;
-                        self.is_error = true;
-                        Err(CpuError::ExecutionError(instruction_address, e))
-                    }
-                    ExecutionResult::Halt => {
-                        // Specifically, this error condition is a halt with interrupts disabled -
-                        // execution cannot continue. This state is most encountered during BIOS
-                        // initialization.
-                        self.is_running = false;
-                        self.is_error = true;
-                        Err(CpuError::CpuHaltedError(instruction_address))
-                    }
-                    ExecutionResult::ExceptionError(exception) => {
-                        // Handle DIV by 0 here
-                        match exception {
-                            CpuException::DivideError => {
-                                self.handle_exception(0);
-                                Ok(())
-                            }
-                            _ => {
-                                // Unhandled exception?
-                                Err(CpuError::ExceptionError(exception))
-                            }
-                        }
+                    _ => {
+                        // Unhandled exception?
+                        Err(CpuError::ExceptionError(exception))
                     }
                 }
             }
-            Err(_) => {
-                self.is_running = false;
-                self.is_error = true;
-                Err(CpuError::InstructionDecodeError(instruction_address))
+        };
+
+        if check_interrupts {
+            // Check for hardware interrupts if Interrupt Flag is set and not in wait cycle
+            if self.interrupts_enabled() {
+                let mut pic = pic_ref.borrow_mut();
+                if pic.query_interrupt_line() {
+                    match pic.get_interrupt_vector() {
+                        Some(irq) => {
+                            self.hw_interrupt(irq);
+                            self.resume();
+                        },
+                        None => {}
+                    }
+                }
             }
         }
+
+        #[cfg(debug_assertions)]        
+        self.assert_state();
+
+        exec_result
     }
 
     pub fn dump_instruction_history(&self) -> String {
