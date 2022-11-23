@@ -62,7 +62,7 @@ mod video;
 mod videocard;
 mod input;
 
-use machine::{Machine, MachineType};
+use machine::{Machine, MachineType, ExecutionState};
 use cpu::Cpu;
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
@@ -189,6 +189,7 @@ fn main() -> Result<(), Error> {
     let mut video_type = VideoType::CGA;
 
     let mut features = Vec::new();
+    let mut machine_autostart = Some(false);
     let mut cfg_load_vhd_name;
 
     match std::fs::read_to_string("./marty.cfg") {
@@ -232,6 +233,8 @@ fn main() -> Result<(), Error> {
                             log::warn!("Invalid hdc type in config: '{}'", hdc_type_s);
                         }                        
                     }
+
+                    machine_autostart = config.getbool("machine", "autostart").unwrap_or(Some(false));
 
                     cfg_load_vhd_name = config.get("vhd", "drive0");
 
@@ -342,6 +345,13 @@ fn main() -> Result<(), Error> {
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
+
+    // Set machine state to Running if autostart option was set in config
+    if let Some(autostart) = machine_autostart {
+        if autostart {
+            exec_control.borrow_mut().set_state(ExecutionState::Running);
+        }
+    }
 
     // Create render buf
     let mut render_src = vec![0; (DEFAULT_RENDER_WIDTH * DEFAULT_RENDER_HEIGHT * 4) as usize];
