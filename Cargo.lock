@@ -1193,6 +1193,7 @@ dependencies = [
  "rgb",
  "ringbuf",
  "serialport",
+ "sysfs_gpio",
  "uuid",
  "winit",
  "winit_input_helper",
@@ -2047,6 +2048,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-xid",
+]
+
+[[package]]
+name = "sysfs_gpio"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ef9c9bcbfeb596ce4da59b2c59736235f35dcd516f03958ea10834473224157"
+dependencies = [
+ "nix 0.23.1",
 ]
 
 [[package]]

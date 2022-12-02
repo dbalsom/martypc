@@ -26,6 +26,7 @@ resize = "0.7.4"
 rgb = "0.8.33"
 ringbuf = "0.2.8"
 serialport = "4.2.0"
+sysfs_gpio = { version = "0.6.1", optional = true }
 uuid = { version = "1.1.2", features = ["v4"]}
 winit = "0.26"
 winit_input_helper = "0.12"
@@ -33,3 +34,5 @@ winit_input_helper = "0.12"
 [profile.dev.package."*"]
 opt-level = 3
 
+[features]
+cpu_validator = ["dep:sysfs_gpio"]

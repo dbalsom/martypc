@@ -35,7 +35,8 @@ use crate::{
     rom_manager::RomManager,
     serial::{self, SerialPortController},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
-    videocard::{VideoCard, VideoType, VideoCardState}
+    videocard::{VideoCard, VideoType, VideoCardState},
+    cpu_validator::ValidatorType,
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
@@ -145,6 +146,7 @@ impl Machine {
         sound_player: SoundPlayer,
         rom_manager: RomManager,
         floppy_manager: FloppyManager,
+        validator_type: ValidatorType,
         ) -> Machine {
 
         

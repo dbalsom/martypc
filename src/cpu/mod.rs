@@ -35,6 +35,9 @@ use crate::pic::Pic;
 use crate::bytequeue::ByteQueue;
 use crate::io::IoBusInterface;
 
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator;
+
 pub const CPU_MHZ: f64 = 4.77272666;
 
 const PIQ_MAX: usize = 6;

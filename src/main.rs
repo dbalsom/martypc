@@ -59,8 +59,11 @@ mod util;
 mod vhd;
 mod vhd_manager;
 mod video;
-mod videocard;
+mod videocard; // VideoCard trait
 mod input;
+
+mod cpu_validator; // CpuValidator trait
+
 
 use machine::{Machine, MachineType, ExecutionState};
 use cpu::Cpu;
@@ -72,6 +75,7 @@ use bytequeue::ByteQueue;
 use gui::GuiEvent;
 use sound::SoundPlayer;
 use videocard::VideoType;
+use cpu_validator::ValidatorType;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -187,6 +191,7 @@ fn main() -> Result<(), Error> {
     // Defaults
     let mut machine_type = MachineType::IBM_XT_5160;
     let mut video_type = VideoType::CGA;
+    let mut validator_type = ValidatorType::NoValidator;
 
     let mut features = Vec::new();
     let mut machine_autostart = Some(false);
@@ -235,6 +240,17 @@ fn main() -> Result<(), Error> {
                     }
 
                     machine_autostart = config.getbool("machine", "autostart").unwrap_or(Some(false));
+
+                    let validator_type_s = config.get("validator", "type").unwrap_or("none".to_string());
+                    validator_type = match validator_type_s.as_str() {
+                        "pi" => {
+                            ValidatorType::PiValidator
+                        }
+                        _ => {
+                            log::warn!("Invalid validator type in config: '{}'", validator_type_s);
+                            ValidatorType::NoValidator
+                        }                        
+                    };
 
                     cfg_load_vhd_name = config.get("vhd", "drive0");
 
@@ -396,7 +412,14 @@ fn main() -> Result<(), Error> {
 
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
-    let mut machine = Machine::new(machine_type, video_type, sp, rom_manager, floppy_manager );
+    let mut machine = Machine::new(
+        machine_type, 
+        video_type, 
+        sp, 
+        rom_manager, 
+        floppy_manager,
+        validator_type 
+    );
 
     // Try to load default vhd
     if let Some(vhd_name) = cfg_load_vhd_name {
