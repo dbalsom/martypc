@@ -1139,7 +1139,10 @@ impl Cpu {
                 let disp16: u16 = self.bx.wrapping_add(self.al as u16);
 
                 let addr = Cpu::calc_linear_address(segment_base_default_ds, disp16);
-                let (value, _cost) = self.bus.read_u8(addr as usize).unwrap();
+                
+                //let (value, _cost) = self.bus.read_u8(addr as usize).unwrap();
+                let value = self.biu_read_u8(addr);
+                
                 self.set_register8(Register8::AL, value as u8);
                 handled_override = true;
             }
