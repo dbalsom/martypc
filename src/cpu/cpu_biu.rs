@@ -109,8 +109,96 @@ impl Cpu {
                 panic!("Overlapping read/write!");
             }
         }
-
-
         byte
     }
+
+    pub fn biu_write_u8(&mut self, addr: u32, value: u8) {
+
+        let _result;
+
+        match self.bus_status {
+            BusStatus::Fetch => {
+                // Abort fetch
+                self.bus_status = BusStatus::Idle;        
+                self.cycle();
+
+                self.bus_status = BusStatus::Write;
+                _result = self.bus.write_u8(addr as usize, value).unwrap();
+                // TODO: Handle wait states here
+                self.cycles(4);
+                self.bus_status = BusStatus::Idle;
+            }
+            BusStatus::Idle => {
+                self.bus_status = BusStatus::Write;
+                _result = self.bus.write_u8(addr as usize, value).unwrap();
+                // TODO: Handle wait states here
+                self.cycles(4);
+                self.bus_status = BusStatus::Idle;
+            }
+            BusStatus::Read | BusStatus::Write => {
+                panic!("Overlapping read/write state!");
+            }
+        }
+    }
+
+    pub fn biu_read_u16(&mut self, addr: u32) -> u16 {
+
+        let word;
+        let _cost;
+
+        match self.bus_status {
+            BusStatus::Fetch => {
+                // Abort fetch
+                self.bus_status = BusStatus::Idle;        
+                self.cycle();
+
+                self.bus_status = BusStatus::Read;
+                (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
+                // TODO: Handle wait states here
+                self.cycles(8);
+                self.bus_status = BusStatus::Idle;
+            }
+            BusStatus::Idle => {
+                self.bus_status = BusStatus::Read;
+                (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
+                // TODO: Handle wait states here
+                self.cycles(8);
+                self.bus_status = BusStatus::Idle;
+            }
+            BusStatus::Read | BusStatus::Write => {
+                panic!("Overlapping read/write!");
+            }
+        }
+        word
+    }
+
+    pub fn biu_write_u16(&mut self, addr: u32, value: u16) {
+
+        let _result;
+
+        match self.bus_status {
+            BusStatus::Fetch => {
+                // Abort fetch
+                self.bus_status = BusStatus::Idle;        
+                self.cycle();
+
+                self.bus_status = BusStatus::Write;
+                _result = self.bus.write_u16(addr as usize, value).unwrap();
+                // TODO: Handle wait states here
+                self.cycles(8);
+                self.bus_status = BusStatus::Idle;
+            }
+            BusStatus::Idle => {
+                self.bus_status = BusStatus::Write;
+                _result = self.bus.write_u16(addr as usize, value).unwrap();
+                // TODO: Handle wait states here
+                self.cycles(8);
+                self.bus_status = BusStatus::Idle;
+            }
+            BusStatus::Read | BusStatus::Write => {
+                panic!("Overlapping read/write state!");
+            }
+        }
+    }    
+
 }

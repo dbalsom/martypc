@@ -11,15 +11,18 @@ impl Cpu {
         self.sp = self.sp.wrapping_sub(2);
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
+        //let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
+        self.biu_write_u16(stack_addr, data);
     }
 
     pub fn pop_u16(&mut self) -> u16 {
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        let (result, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
         
-        // Stack pointer grows downwards
+        //let (result, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
+        let result = self.biu_read_u16(stack_addr);
+        
+        // Stack pointer shrinks upwards
         self.sp = self.sp.wrapping_add(2);
         result
     }
@@ -47,14 +50,19 @@ impl Cpu {
         };
         
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
+
+        //let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
+        self.biu_write_u16(stack_addr, data);
 
     }
 
     pub fn pop_register16(&mut self, reg: Register16) {
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        let (data, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
+        
+        //let (data, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
+        let data = self.biu_read_u16(stack_addr);
+
         match reg {
             Register16::AX => self.set_register16(reg, data),
             Register16::BX => self.set_register16(reg, data),
@@ -87,13 +95,16 @@ impl Cpu {
         self.sp = self.sp.wrapping_sub(2);
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        let _cost = self.bus.write_u16(stack_addr as usize, self.flags).unwrap();
+
+        //let _cost = self.bus.write_u16(stack_addr as usize, self.flags).unwrap();
+        self.biu_write_u16(stack_addr, self.flags);
     }
 
     pub fn pop_flags(&mut self) {
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        let (result, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
+        //let (result, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
+        let result = self.biu_read_u16(stack_addr);
 
         // Ensure state of reserved flag bits
         self.flags = result & FLAGS_POP_MASK;

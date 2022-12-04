@@ -150,7 +150,9 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
-                let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
+
+                //let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
+                let byte = self.biu_read_u8(flat_addr);
                 Some(byte)
             },
             OperandType::Register8(reg8) => {
@@ -168,7 +170,9 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
+
+                //let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
+                let byte = self.biu_read_u8(flat_addr);
                 Some(byte)
             }
             OperandType::NearAddress(_u16) => None,
@@ -194,7 +198,10 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
-                let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
+
+                //let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
+                let word = self.biu_read_u16(flat_addr);
+
                 Some(word)
             }
             OperandType::Register16(reg16) => {
@@ -217,7 +224,10 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
+
+                //let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
+                let word = self.biu_read_u16(flat_addr);
+                
                 Some(word)
             }
             OperandType::NearAddress(_u16) => None,
@@ -242,7 +252,7 @@ impl Cpu {
         }
     }    
 
-    // TODO: implement cycle cost
+    /// Write an 8-bit value to the specified destination operand
     pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8) {
 
         match operand {
@@ -258,7 +268,9 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
-                let write_cost = self.bus.write_u8(flat_addr as usize, value);
+
+                //let write_cost = self.bus.write_u8(flat_addr as usize, value);
+                self.biu_write_u8(flat_addr, value);
             }
             OperandType::Offset16(offset16) => {}
             OperandType::Register8(reg8) => {
@@ -277,7 +289,9 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let write_cost = self.bus.write_u8(flat_addr as usize, value).unwrap();
+
+                //let write_cost = self.bus.write_u8(flat_addr as usize, value).unwrap();
+                self.biu_write_u8(flat_addr, value);
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}
@@ -303,7 +317,9 @@ impl Cpu {
                     _ => self.ds
                 };
                 let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
-                let write_cost = self.bus.write_u16(flat_addr as usize, value);
+                
+                //let write_cost = self.bus.write_u16(flat_addr as usize, value);
+                self.biu_write_u16(flat_addr, value);
             }
             OperandType::Register8(reg8) => {}
             OperandType::Register16(reg16) => {
@@ -331,7 +347,9 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let write_cost = self.bus.write_u16(flat_addr as usize, value).unwrap();
+                
+                //let write_cost = self.bus.write_u16(flat_addr as usize, value).unwrap();
+                self.biu_write_u16(flat_addr, value);
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}
