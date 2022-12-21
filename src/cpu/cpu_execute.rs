@@ -1206,13 +1206,19 @@ impl Cpu {
                 
                 let in_byte = io_bus.read_u8(op2_value as u16);
                 self.set_register8(Register8::AL, in_byte);
-                //println!("IN: Would input value from port {:#02X}", op2_value);                
+                //println!("IN: Would input value from port {:#02X}", op2_value);  
+                
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();
             }
             0xE5 => {
                 // IN ax, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 let in_byte = io_bus.read_u8(op2_value as u16);
                 self.set_register16(Register16::AX, in_byte as u16);
+
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();
             }
             0xE6 => {
                 // OUT imm8, al
@@ -1223,10 +1229,15 @@ impl Cpu {
                 io_bus.write_u8(op1_value as u16, op2_value);
                 //println!("OUT: Would output {:02X} to Port {:#02X}", op2_value, op1_value);
 
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();
             }
             0xE7 => {
                 // OUT imm16
                 unhandled = true;
+
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();
             }
             0xE8 => {
                 // CALL rel16
@@ -1282,6 +1293,9 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 let in_byte = io_bus.read_u8(op2_value);
                 self.set_register16(Register16::AX, in_byte as u16);
+
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();
             }
             0xEE => {
                 // OUT dx, al
@@ -1289,7 +1303,9 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
 
                 io_bus.write_u8(op1_value as u16, op2_value);
-                //println!("OUT: Would output {:02X} to Port {:#04X}", op2_value, op1_value);                
+
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();          
             }
             0xEF => {
                 // OUT dx, ax
@@ -1301,6 +1317,9 @@ impl Cpu {
                 io_bus.write_u8(op1_value, (op2_value & 0xFF) as u8);
                 // Write next 8 bits to port + 1
                 io_bus.write_u8(op1_value + 1, (op2_value >> 8 & 0xFF) as u8);
+
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();
             }
             0xF0 => {
                 unhandled = true;

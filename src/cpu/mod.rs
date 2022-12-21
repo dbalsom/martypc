@@ -36,7 +36,9 @@ use crate::bytequeue::ByteQueue;
 use crate::io::IoBusInterface;
 
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator;
+use crate::cpu_validator::{CpuValidator, ValidatorType, VRegisters};
+#[cfg(feature = "pi_validator")]
+use crate::pi_cpu_validator::{PiValidator};
 
 pub const CPU_MHZ: f64 = 4.77272666;
 
@@ -442,7 +444,9 @@ pub struct Cpu {
     reset_seg: u16,
     reset_offset: u16,
     
-    opcode0_counter: u32
+    opcode0_counter: u32,
+    
+    validator: Option<Box<dyn CpuValidator>>
 }
 
 pub struct CpuRegisterState {
@@ -554,7 +558,7 @@ impl Default for BusStatus {
 
 impl Cpu {
 
-    pub fn new(cpu_type: CpuType) -> Self {
+    pub fn new(cpu_type: CpuType, validator_type: ValidatorType) -> Self {
         let mut cpu: Cpu = Default::default();
         
         match cpu_type {
@@ -565,6 +569,20 @@ impl Cpu {
                 cpu.piq_size = 6;
             }
         }
+
+        cpu.validator = match validator_type {
+            ValidatorType::NoValidator => {
+                None
+            }
+            ValidatorType::PiValidator => {
+
+                Some(Box::new(PiValidator::new()))
+            }
+            ValidatorType::ArduinoValidator => {
+                None
+            }
+        };
+
         cpu.cpu_type = cpu_type;
         cpu.instruction_history = VecDeque::with_capacity(16);
         cpu.reset_seg = 0xFFFF;
@@ -752,6 +770,33 @@ impl Cpu {
         }
         else {
             false
+        }
+    }
+ 
+    pub fn get_vregisters(&self) -> VRegisters {
+        VRegisters {
+            ax: self.ax,
+            ah: self.ah,
+            al: self.al,
+            bx: self.bx,
+            bh: self.bh,
+            bl: self.bl,
+            cx: self.cx,
+            ch: self.ch,
+            cl: self.cl,
+            dx: self.dx,
+            dh: self.dh,
+            dl: self.dl,
+            cs: self.cs,
+            ss: self.ss,
+            ds: self.ds,
+            es: self.es,
+            sp: self.sp,
+            bp: self.bp,
+            si: self.si,
+            di: self.di,
+            ip: self.ip,
+            flags: self.flags
         }
     }
 
@@ -1347,6 +1392,16 @@ impl Cpu {
 
         // Fetch the next instruction unless we are executing a REP
         if !self.in_rep {
+            
+            #[cfg(feature = "cpu_validator")]
+            {
+                // Begin validation of current instruction
+                let vregs = self.get_vregisters();
+                if let Some(ref mut validator) = self.validator {
+                    validator.begin(&vregs);
+                }
+            }
+
             self.i = match Cpu::decode(self) {
                 Ok(i) => i,
                 Err(_) => {
@@ -1354,7 +1409,7 @@ impl Cpu {
                     self.is_error = true;
                     return Err(CpuError::InstructionDecodeError(instruction_address))
                 }                
-            }
+            };
         }
 
         self.i.address = instruction_address;
@@ -1373,6 +1428,21 @@ impl Cpu {
                 self.instruction_history.push_back(self.i);
                 self.instruction_count += 1;
                 check_interrupts = true;
+
+                #[cfg(feature = "cpu_validator")]
+                {
+                    // End validation of current instruction
+                    let vregs = self.get_vregisters();
+                    if let Some(ref mut validator) = self.validator {
+                        validator.end(
+                            self.i.mnemonic.to_string(), 
+                            self.i.opcode,
+                            self.i.flags & INSTRUCTION_HAS_MODRM != 0,
+                            0,
+                            &vregs);
+                    }
+                }
+
                 Ok(())
             }
             ExecutionResult::OkayJump => {
@@ -1387,6 +1457,21 @@ impl Cpu {
                 self.instruction_history.push_back(self.i);
                 self.instruction_count += 1;
                 check_interrupts = true;
+
+                #[cfg(feature = "cpu_validator")]
+                {
+                    // End validation of current instruction
+                    let vregs = self.get_vregisters();
+                    if let Some(ref mut validator) = self.validator {
+                        validator.end(
+                            self.i.mnemonic.to_string(), 
+                            self.i.opcode,
+                            self.i.flags & INSTRUCTION_HAS_MODRM != 0,
+                            0,
+                            &vregs);
+                    }
+                }
+
                 Ok(())
             }
             ExecutionResult::OkayRep => {

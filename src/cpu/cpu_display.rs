@@ -118,6 +118,12 @@ fn mnemonic_to_str(op: Mnemonic) -> &'static str {
     }
 }
 
+impl fmt::Display for Mnemonic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", mnemonic_to_str(*self))
+    }
+}
+
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 

@@ -35,6 +35,7 @@ use crate::{
     rom_manager::RomManager,
     serial::{self, SerialPortController},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
+
     videocard::{VideoCard, VideoType, VideoCardState},
     cpu_validator::ValidatorType,
 };
@@ -152,7 +153,7 @@ impl Machine {
         
         let mut io_bus = IoBusInterface::new();
         
-        let mut cpu = Cpu::new(CpuType::Cpu8088);
+        let mut cpu = Cpu::new(CpuType::Cpu8088, validator_type);
         cpu.reset();        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker

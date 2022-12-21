@@ -1,4 +1,6 @@
 
+
+#[derive (PartialEq, Copy, Clone)]
 pub enum ValidatorType {
     NoValidator,
     PiValidator,
@@ -33,7 +35,7 @@ pub struct VRegisters {
 }
 pub trait CpuValidator {
 
-    fn new(path: &str);
+    //fn new(path: &str);
     fn begin(&mut self, regs: &VRegisters );
     fn end(&mut self, name: String, opcode: u8, modregrm: bool, cycles: i32, regs: &VRegisters);
     fn emu_read_byte(&mut self, addr: u32, data: u8);

@@ -63,7 +63,8 @@ mod videocard; // VideoCard trait
 mod input;
 
 mod cpu_validator; // CpuValidator trait
-
+#[cfg(feature = "pi_validator")]
+mod pi_cpu_validator;
 
 use machine::{Machine, MachineType, ExecutionState};
 use cpu::Cpu;
@@ -251,6 +252,12 @@ fn main() -> Result<(), Error> {
                             ValidatorType::NoValidator
                         }                        
                     };
+
+                    #[cfg(feature = "cpu_validator")]
+                    if validator_type == ValidatorType::NoValidator {
+                        eprintln!("Compiled with validator but no validator specified" );
+                        std::process::exit(1);
+                    }
 
                     cfg_load_vhd_name = config.get("vhd", "drive0");
 
@@ -972,6 +979,7 @@ fn main() -> Result<(), Error> {
                         context.scaling_renderer.render(encoder, render_target);
 
                         // Render egui
+                        #[cfg(not(feature = "pi_validator"))]
                         framework.render(encoder, render_target, context)?;
 
                         Ok(())

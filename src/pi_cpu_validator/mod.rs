@@ -33,8 +33,12 @@ use log;
 use sysfs_gpio::{Direction, Pin};
 
 mod udmask;
-
 use udmask::{FLAG_MASK_LOOKUP};
+
+use crate::cpu_validator::{CpuValidator, VRegisters};
+
+static PROGRAM_LOAD: &'static [u8; 62] = include_bytes!("load.bin");
+static PROGRAM_STORE: &'static [u8; 63] = include_bytes!("store.bin");
 
 pub const VFLAG_CARRY: u16     = 0x001;
 pub const VFLAG_PARITY: u16    = 0x004;
@@ -118,7 +122,7 @@ impl Frame {
     }
 }
 
-pub struct Validator {
+pub struct PiValidator {
 
     current_frame: Frame,
     state: ValidatorState,
@@ -195,7 +199,7 @@ pub fn open_output_pin(pin_no: u64) -> Pin {
 
     match new_pin.set_direction(Direction::Out) {
         Ok(()) => {},
-        Err(e) => panic!("Couldn't set pin direction: {}", e)
+        Err(e) => panic!("Couldn't set pin {} direction: {}", pin_no, e)
     };
 
     new_pin
@@ -249,38 +253,220 @@ pub fn make_pointer(base: u16, offset: u16) -> u32 {
     return (((base as u32) << 4) + offset as u32 ) & 0xFFFFF;
 }
 
-impl Validator {
+impl CpuValidator for PiValidator {
 
-    pub fn new(path: &str) -> Self {
+    fn begin(&mut self, regs: &VRegisters ) {
 
-        log::info!("Loading programs...");
+        self.current_frame.discard = false;
+        self.current_frame.regs[0] = regs.clone();
+
+        let ip_addr = make_pointer(regs.cs, regs.ip);
+
+        //println!("{} : {}", self.trigger_addr, ip_addr);
+        if self.trigger_addr == ip_addr {
+            log::info!("Trigger address hit, begin validation...");
+            self.trigger_addr = V_INVALID_POINTER;
+        }
+
+        if (self.trigger_addr != V_INVALID_POINTER) 
+            || (self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize]) {
+            self.current_frame.discard = true;
+            return;
+        }
+
+        self.current_frame.reads.fill(MemOp::default());
+        self.current_frame.writes.fill(MemOp::default());
+    }    
+
+
+    fn end(&mut self, name: String, opcode: u8, modregrm: bool, cycles: i32, regs: &VRegisters) {
+
+        let ip_addr = make_pointer(self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
+
+        if (self.trigger_addr != V_INVALID_POINTER) 
+            || (self.visit_once && ip_addr >= UPPER_MEMORY &&  self.visited[ip_addr as usize]) {
+            return
+        }
+
+        self.visited[ip_addr as usize] = true;
+
+        self.current_frame.name = name.clone();
+        self.current_frame.opcode = opcode;
+        self.current_frame.ext_opcode = 0xFF;
+        self.current_frame.modregrm = modregrm;
+        self.current_frame.num_nop = 0;
+        self.current_frame.next_fetch = false;
+        self.current_frame.regs[1] = *regs;
+
+        // Set opcode extension if modrm
+        if modregrm {
+            for i in 0..(NUM_MEM_OPS - 1) {
+                if self.current_frame.reads[i].data == opcode {
+                    self.current_frame.ext_opcode = (self.current_frame.reads[i + 1].data >> 3) & 0x07;
+                    break;
+                }
+            }
+        }
+
+        // We must discard the first instructions after boot.
+        if ((ip_addr >= 0xFFFF0) || (ip_addr <= 0xFF)) {
+            log::debug!("Instruction out of range: Discarding...");
+            self.current_frame.discard = true;
+        }
+
+        let discard_or_validate = match self.current_frame.discard {
+            true => "DISCARD",
+            false => "VALIDATE"
+        };
+
+        log::debug!("{}: {} (0x{:02X}) @ [{:04X}:{:04X}]", discard_or_validate, name, opcode, self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
+        if self.current_frame.discard {
+            return;
+        }
+
+        // memset prefetch
+        self.current_frame.prefetch_addr.fill(0);
+
+        // Create scratchpad
+        self.scratchpad.fill(0);
+        
+        // Load 'load' procedure into scratchpad
+        for i in 0..self.load_code.len() {
+            self.scratchpad[i] = self.load_code[i];
+        }
+
+        // Patch load procedure with current register values
+        let r = self.current_frame.regs[0];
+
+        self.write_u16_scratch(0x00, r.flags);
+        
+        self.write_u16_scratch(0x0B, r.bx);
+        self.write_u16_scratch(0x0E, r.cx);
+        self.write_u16_scratch(0x11, r.dx);
+
+        self.write_u16_scratch(0x14, r.ss);
+        self.write_u16_scratch(0x19, r.ds);
+        self.write_u16_scratch(0x1E, r.es);
+        self.write_u16_scratch(0x23, r.sp);
+        self.write_u16_scratch(0x28, r.bp);
+        self.write_u16_scratch(0x2D, r.si);
+        self.write_u16_scratch(0x32, r.di);
+
+        self.write_u16_scratch(0x37, r.ax);
+        self.write_u16_scratch(0x3A, r.ip);
+        self.write_u16_scratch(0x3C, r.cs);
+
+        // JMP 0:2
+        let jmp: Vec<u8> = vec![0xEA, 0x02, 0x00, 0x00, 0x00];
+        for i in 0..jmp.len() {
+            self.scratchpad[0xFFFF0 + i] = jmp[i];
+        }
+
+        self.code_as_data_skip = false;
+
+        self.reset_sequence();
+
+        self.state = ValidatorState::Setup;
+
+        loop {
+            self.execute_bus_cycle();
+            self.next_bus_cycle();
+
+            if self.state == ValidatorState::Finished {
+                break;
+            }
+        }
+        
+        if self.code_as_data_skip {
+            return
+        }
+
+        for i in 0..NUM_MEM_OPS {
+            //self.validate_mem_op(&self.current_frame.reads[i]);
+            //self.validate_mem_op(&self.current_frame.writes[i]);
+            self.validate_mem_op_read(i);
+            self.validate_mem_op_write(i);
+        }
+
+        self.validate_registers();
+    }
+
+    fn emu_read_byte(&mut self, addr: u32, data: u8) {
+        if self.current_frame.discard {
+            return;
+        }
+
+        for i in 0..NUM_MEM_OPS {
+
+            let op = &self.current_frame.reads[i];
+            if(op.flags == 0 || ((op.flags & MOF_EMULATOR != 0) && (op.addr == addr) && (op.data == data))) {
+                self.current_frame.reads[i].addr = addr;
+                self.current_frame.reads[i].data = data;
+                self.current_frame.reads[i].flags = MOF_EMULATOR;
+
+                log::debug!("EMU read: [{:05X}] -> 0x{:02X}", addr, data);
+                return;
+            }
+        }
+
+        log::error!("read_byte error")
+    }
+
+
+    fn emu_write_byte(&mut self, addr: u32, data: u8) {
+        
+        self.visited[(addr & 0xFFFFF) as usize] = false;
+        
+        if self.current_frame.discard {
+            return;
+        }
+
+        for i in 0..NUM_MEM_OPS {
+
+            let op = &self.current_frame.writes[i];
+            if(op.flags == 0 || ((op.flags & MOF_EMULATOR != 0) && (op.addr == addr) && (op.data == data))) {
+                self.current_frame.writes[i].addr = addr;
+                self.current_frame.writes[i].data = data;
+                self.current_frame.writes[i].flags = MOF_EMULATOR;
+
+                log::debug!("EMU write: [{:05X}] <- 0x{:02X}", addr, data);
+                return;
+            }
+        }
+
+        log::error!("write_byte error")
+    }
+
+    fn discard_op(&mut self) {
+        self.current_frame.discard = true;
+    }
+}
+
+impl PiValidator {
+
+    pub fn new() -> Self {
 
         // Trigger addr is address at which to start validation
         // if trigger_addr == V_INVALID_POINTER then validate
-        //let trigger_addr = V_INVALID_POINTER;
-        let trigger_addr = 0x9d643;
+        
+        let trigger_addr = V_INVALID_POINTER;
+        //let trigger_addr = 0x9d643;
 
-        let mut file_path: String = path.to_string();
-        file_path.push_str("load");
-        let load_vec = match std::fs::read(file_path.clone()) {
-            Ok(file_vec) => file_vec,
-            Err(e) => panic!("Couldn't open program {}: {}", file_path, e)
-        };
-
-        let mut file_path: String = path.to_string();
-        file_path.push_str("store");
-        let store_vec = match std::fs::read(file_path.clone()) {
-            Ok(file_vec) => file_vec,
-            Err(e) => panic!("Couldn't open program {}: {}", file_path, e)
-        };        
+        //let mut file_path: String = path.to_string();
+        //file_path.push_str("load");
+        //let load_vec = match std::fs::read(file_path.clone()) {
+        //    Ok(file_vec) => file_vec,
+        //    Err(e) => panic!("Couldn't open program {}: {}", file_path, e)
+        //};
+        //
+        //let mut file_path: String = path.to_string();
+        //file_path.push_str("store");
+        //let store_vec = match std::fs::read(file_path.clone()) {
+        //    Ok(file_vec) => file_vec,
+        //    Err(e) => panic!("Couldn't open program {}: {}", file_path, e)
+        //};        
 
         log::info!("Initializing GPIO pins...");
-
-        //let clock_line = match gpio::sysfs::SysFsGpioOutput::open(20) {
-        //    Ok(pin) => {},
-        //    Err(e) => panic!("Couldn't open pin: {}", e)
-        //};
-        
 
         // Output pins
         let clock_line = open_output_pin(20);
@@ -309,11 +495,11 @@ impl Validator {
             a_8_19_line.push(new_a);
         }
 
-        Validator {
+        PiValidator {
             current_frame: Frame::new(),
             state: ValidatorState::Setup,
-            load_code: load_vec,
-            store_code: store_vec,
+            load_code: PROGRAM_LOAD.to_vec(),
+            store_code: PROGRAM_STORE.to_vec(),
             clock_line,
             reset_line,
             test_line,
@@ -362,11 +548,14 @@ impl Validator {
 
         log::debug!("Waiting for ALE...");
 
+        let mut ale_cycles = 0;
         while !self.ale_signal {
+            ale_cycles += 1;
             self.pulse_clock(1);
         }
+        println!("It took {} cycles for ALE signal.", ale_cycles);
         log::debug!("CPU initialized!");
-        println!("CPU initialized!");
+        //println!("CPU initialized!");
     }
 
     pub fn pulse_clock(&mut self, ticks: i32 ) {
@@ -383,9 +572,8 @@ impl Validator {
         self.iom_signal = get_bool(&self.iom_line);
         self.ale_signal = get_bool(&self.ale_line);
 
-        assert!((self.rd_signal == false) || (self.ale_signal == false));
-
-        println!("{},{}", self.rd_signal, self.wr_signal);
+        //assert!((self.rd_signal == false) || (self.ale_signal == false));
+        //println!("{},{}", self.rd_signal, self.wr_signal);
         if !self.ale_signal {
             // RD and WR active in T2,T3,T4. Only one should be active at a time
             //assert!(self.rd_signal != self.wr_signal);
@@ -661,28 +849,6 @@ impl Validator {
         }
     }
 
-    pub fn begin(&mut self, regs: &VRegisters ) {
-
-        self.current_frame.discard = false;
-        self.current_frame.regs[0] = regs.clone();
-
-        let ip_addr = make_pointer(regs.cs, regs.ip);
-
-        //println!("{} : {}", self.trigger_addr, ip_addr);
-        if self.trigger_addr == ip_addr {
-            log::info!("Trigger address hit, begin validation...");
-            self.trigger_addr = V_INVALID_POINTER;
-        }
-
-        if (self.trigger_addr != V_INVALID_POINTER) 
-            || (self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize]) {
-            self.current_frame.discard = true;
-            return;
-        }
-
-        self.current_frame.reads.fill(MemOp::default());
-        self.current_frame.writes.fill(MemOp::default());
-    }
 
 
     pub fn validate_mem_op(&mut self, op: &MemOp) {
@@ -856,165 +1022,4 @@ impl Validator {
     }
 
 
-    pub fn end(&mut self, name: String, opcode: u8, modregrm: bool, cycles: i32, regs: &VRegisters) {
-
-        let ip_addr = make_pointer(self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
-
-        if (self.trigger_addr != V_INVALID_POINTER) 
-            || (self.visit_once && ip_addr >= UPPER_MEMORY &&  self.visited[ip_addr as usize]) {
-            return
-        }
-
-        self.visited[ip_addr as usize] = true;
-
-        self.current_frame.name = name.clone();
-        self.current_frame.opcode = opcode;
-        self.current_frame.ext_opcode = 0xFF;
-        self.current_frame.modregrm = modregrm;
-        self.current_frame.num_nop = 0;
-        self.current_frame.next_fetch = false;
-        self.current_frame.regs[1] = *regs;
-
-        // Set opcode extension if modrm
-        if modregrm {
-            for i in 0..(NUM_MEM_OPS - 1) {
-                if self.current_frame.reads[i].data == opcode {
-                    self.current_frame.ext_opcode = (self.current_frame.reads[i + 1].data >> 3) & 0x07;
-                    break;
-                }
-            }
-        }
-
-        // We must discard the first instructions after boot.
-        if ((ip_addr >= 0xFFFF0) || (ip_addr <= 0xFF)) {
-            log::debug!("Instruction out of range: Discarding...");
-            self.current_frame.discard = true;
-        }
-
-        let discard_or_validate = match self.current_frame.discard {
-            true => "DISCARD",
-            false => "VALIDATE"
-        };
-
-        log::debug!("{}: {} (0x{:02X}) @ [{:04X}:{:04X}]", discard_or_validate, name, opcode, self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
-        if self.current_frame.discard {
-            return;
-        }
-
-        // memset prefetch
-        self.current_frame.prefetch_addr.fill(0);
-
-        // Create scratchpad
-        self.scratchpad.fill(0);
-        
-        // Load 'load' procedure into scratchpad
-        for i in 0..self.load_code.len() {
-            self.scratchpad[i] = self.load_code[i];
-        }
-
-        // Patch load procedure with current register values
-        let r = self.current_frame.regs[0];
-
-        self.write_u16_scratch(0x00, r.flags);
-        
-        self.write_u16_scratch(0x0B, r.bx);
-        self.write_u16_scratch(0x0E, r.cx);
-        self.write_u16_scratch(0x11, r.dx);
-
-        self.write_u16_scratch(0x14, r.ss);
-        self.write_u16_scratch(0x19, r.ds);
-        self.write_u16_scratch(0x1E, r.es);
-        self.write_u16_scratch(0x23, r.sp);
-        self.write_u16_scratch(0x28, r.bp);
-        self.write_u16_scratch(0x2D, r.si);
-        self.write_u16_scratch(0x32, r.di);
-
-        self.write_u16_scratch(0x37, r.ax);
-        self.write_u16_scratch(0x3A, r.ip);
-        self.write_u16_scratch(0x3C, r.cs);
-
-        // JMP 0:2
-        let jmp: Vec<u8> = vec![0xEA, 0x02, 0x00, 0x00, 0x00];
-        for i in 0..jmp.len() {
-            self.scratchpad[0xFFFF0 + i] = jmp[i];
-        }
-
-        self.code_as_data_skip = false;
-
-        self.reset_sequence();
-
-        self.state = ValidatorState::Setup;
-
-        loop {
-            self.execute_bus_cycle();
-            self.next_bus_cycle();
-
-            if self.state == ValidatorState::Finished {
-                break;
-            }
-        }
-        
-        if self.code_as_data_skip {
-            return
-        }
-
-        for i in 0..NUM_MEM_OPS {
-            //self.validate_mem_op(&self.current_frame.reads[i]);
-            //self.validate_mem_op(&self.current_frame.writes[i]);
-            self.validate_mem_op_read(i);
-            self.validate_mem_op_write(i);
-        }
-
-        self.validate_registers();
-    }
-
-    pub fn emu_read_byte(&mut self, addr: u32, data: u8) {
-        if self.current_frame.discard {
-            return;
-        }
-
-        for i in 0..NUM_MEM_OPS {
-
-            let op = &self.current_frame.reads[i];
-            if(op.flags == 0 || ((op.flags & MOF_EMULATOR != 0) && (op.addr == addr) && (op.data == data))) {
-                self.current_frame.reads[i].addr = addr;
-                self.current_frame.reads[i].data = data;
-                self.current_frame.reads[i].flags = MOF_EMULATOR;
-
-                log::debug!("EMU read: [{:05X}] -> 0x{:02X}", addr, data);
-                return;
-            }
-        }
-
-        log::error!("read_byte error")
-    }
-
-
-    pub fn emu_write_byte(&mut self, addr: u32, data: u8) {
-        
-        self.visited[(addr & 0xFFFFF) as usize] = false;
-        
-        if self.current_frame.discard {
-            return;
-        }
-
-        for i in 0..NUM_MEM_OPS {
-
-            let op = &self.current_frame.writes[i];
-            if(op.flags == 0 || ((op.flags & MOF_EMULATOR != 0) && (op.addr == addr) && (op.data == data))) {
-                self.current_frame.writes[i].addr = addr;
-                self.current_frame.writes[i].data = data;
-                self.current_frame.writes[i].flags = MOF_EMULATOR;
-
-                log::debug!("EMU write: [{:05X}] <- 0x{:02X}", addr, data);
-                return;
-            }
-        }
-
-        log::error!("write_byte error")
-    }
-
-    pub fn discard_op(&mut self) {
-        self.current_frame.discard = true;
-    }
 }

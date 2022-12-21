@@ -30,7 +30,7 @@
 // 3. This notice may not be removed or altered from any source distribution.
 
 
-use crate::validator::{
+use crate::pi_cpu_validator::{
     VFLAG_CARRY,
     VFLAG_PARITY,
     VFLAG_AUXILIARY,

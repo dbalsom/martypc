@@ -47,6 +47,9 @@ impl Cpu {
         if self.bus_state == BusState::T3 {
             (byte, _cost) = bus.read_u8(self.pc as usize).unwrap();
             // TODO: Handle wait states here
+
+            #[cfg(feature = "cpu_validator")]
+            self.validator.as_mut().unwrap().emu_read_byte(self.pc, byte);
             
             // Proceed to T4 and store byte
             self.cycle();
@@ -76,6 +79,7 @@ impl Cpu {
         else {
             // Queue is empty, fetch directly
             byte = self.biu_read_u8(self.pc);
+
             self.pc = (self.pc + 1) & 0xFFFFFu32;
         }
         byte
@@ -94,6 +98,10 @@ impl Cpu {
 
                 self.bus_status = BusStatus::Read;
                 (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
+                
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().emu_read_byte(addr, byte);
+
                 // TODO: Handle wait states here
                 self.cycles(4);
                 self.bus_status = BusStatus::Idle;
@@ -101,6 +109,10 @@ impl Cpu {
             BusStatus::Idle => {
                 self.bus_status = BusStatus::Read;
                 (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
+                
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().emu_read_byte(addr, byte);
+
                 // TODO: Handle wait states here
                 self.cycles(4);
                 self.bus_status = BusStatus::Idle;
@@ -112,7 +124,7 @@ impl Cpu {
         byte
     }
 
-    pub fn biu_write_u8(&mut self, addr: u32, value: u8) {
+    pub fn biu_write_u8(&mut self, addr: u32, byte: u8) {
 
         let _result;
 
@@ -123,15 +135,24 @@ impl Cpu {
                 self.cycle();
 
                 self.bus_status = BusStatus::Write;
-                _result = self.bus.write_u8(addr as usize, value).unwrap();
+                _result = self.bus.write_u8(addr as usize, byte).unwrap();
                 // TODO: Handle wait states here
+
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().emu_write_byte(addr, byte);
+
+
                 self.cycles(4);
                 self.bus_status = BusStatus::Idle;
             }
             BusStatus::Idle => {
                 self.bus_status = BusStatus::Write;
-                _result = self.bus.write_u8(addr as usize, value).unwrap();
+                _result = self.bus.write_u8(addr as usize, byte).unwrap();
                 // TODO: Handle wait states here
+
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().emu_write_byte(addr, byte);
+
                 self.cycles(4);
                 self.bus_status = BusStatus::Idle;
             }
@@ -155,6 +176,12 @@ impl Cpu {
                 self.bus_status = BusStatus::Read;
                 (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
                 // TODO: Handle wait states here
+
+                #[cfg(feature = "cpu_validator")]
+                {
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8);
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8);
+                }
                 self.cycles(8);
                 self.bus_status = BusStatus::Idle;
             }
@@ -162,6 +189,12 @@ impl Cpu {
                 self.bus_status = BusStatus::Read;
                 (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
                 // TODO: Handle wait states here
+
+                #[cfg(feature = "cpu_validator")]
+                {
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8);
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8);
+                }
                 self.cycles(8);
                 self.bus_status = BusStatus::Idle;
             }
@@ -172,7 +205,7 @@ impl Cpu {
         word
     }
 
-    pub fn biu_write_u16(&mut self, addr: u32, value: u16) {
+    pub fn biu_write_u16(&mut self, addr: u32, word: u16) {
 
         let _result;
 
@@ -183,15 +216,27 @@ impl Cpu {
                 self.cycle();
 
                 self.bus_status = BusStatus::Write;
-                _result = self.bus.write_u16(addr as usize, value).unwrap();
+                _result = self.bus.write_u16(addr as usize, word).unwrap();
                 // TODO: Handle wait states here
+
+                #[cfg(feature = "cpu_validator")]
+                {
+                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word & 0xFF) as u8);
+                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word >> 8) as u8);
+                }
                 self.cycles(8);
                 self.bus_status = BusStatus::Idle;
             }
             BusStatus::Idle => {
                 self.bus_status = BusStatus::Write;
-                _result = self.bus.write_u16(addr as usize, value).unwrap();
+                _result = self.bus.write_u16(addr as usize, word).unwrap();
                 // TODO: Handle wait states here
+
+                #[cfg(feature = "cpu_validator")]
+                {
+                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word & 0xFF) as u8);
+                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word >> 8) as u8);
+                }
                 self.cycles(8);
                 self.bus_status = BusStatus::Idle;
             }

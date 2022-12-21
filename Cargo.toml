@@ -35,4 +35,5 @@ winit_input_helper = "0.12"
 opt-level = 3
 
 [features]
-cpu_validator = ["dep:sysfs_gpio"]
+pi_validator = ["dep:sysfs_gpio"]
+cpu_validator = []

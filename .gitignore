@@ -17,6 +17,7 @@ Thumbs.db
 /dumps
 *.pcm
 *.cfg
+*.log
 
 # Assembly stuff
 /asm
