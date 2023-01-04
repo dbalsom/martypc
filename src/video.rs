@@ -5,7 +5,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::videocard::{VideoCard, VideoType, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
+use crate::config::VideoType;
+use crate::videocard::{VideoCard, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
 use crate::cga::{self, CGACard };
 use crate::bus::BusInterface;
 

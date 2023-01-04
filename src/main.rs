@@ -11,6 +11,8 @@ use std::{
 };
 
 use crate::gui::Framework;
+
+use anyhow::Context;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
@@ -37,6 +39,7 @@ mod bus;
 mod bytebuf;
 mod bytequeue;
 mod cga;
+mod config;
 mod cpu;
 mod dma;
 mod fdc;
@@ -65,8 +68,15 @@ mod input;
 mod cpu_validator; // CpuValidator trait
 #[cfg(feature = "pi_validator")]
 mod pi_cpu_validator;
+#[cfg(feature = "arduino_validator")]
+#[macro_use]
+mod arduino8088_client;
+#[cfg(feature = "arduino_validator")]
+mod arduino8088_validator;
 
-use machine::{Machine, MachineType, ExecutionState};
+use config::{MachineType, VideoType, HardDiskControllerType, ValidatorType};
+
+use machine::{Machine, ExecutionState};
 use cpu::Cpu;
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
@@ -75,8 +85,6 @@ use vhd::{VirtualHardDisk};
 use bytequeue::ByteQueue;
 use gui::GuiEvent;
 use sound::SoundPlayer;
-use videocard::VideoType;
-use cpu_validator::ValidatorType;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -192,12 +200,61 @@ fn main() -> Result<(), Error> {
     // Defaults
     let mut machine_type = MachineType::IBM_XT_5160;
     let mut video_type = VideoType::CGA;
-    let mut validator_type = ValidatorType::NoValidator;
+    let mut validator_type = ValidatorType::None;
 
     let mut features = Vec::new();
     let mut machine_autostart = Some(false);
-    let mut cfg_load_vhd_name;
+    //let mut cfg_load_vhd_name;
 
+    let toml_config = match config::get_config("./marty.toml"){
+        Ok(config) => config,
+        Err(e) => {
+
+            match e.downcast_ref::<std::io::Error>() {
+                Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    eprintln!("Configuration file not found! Please create marty.toml in the emulator directory \
+                               or provide the path to configuration file with --configfile.");
+
+                    std::process::exit(1);
+                }
+                Some(e) => {
+                    eprintln!("Unknown IO error reading configuration file:\n{}", e);
+                    std::process::exit(1);
+                }                
+                None => {
+                    eprintln!("Failed to parse configuration file. There may be a typo or otherwise invalid toml:\n{}", e);
+                    std::process::exit(1);
+                }
+            }
+
+        }
+    };
+
+    // Determine required ROM features
+    match toml_config.machine.video {
+        VideoType::EGA => {
+            features.push(RomFeature::EGA);
+        },
+        VideoType::VGA => {
+            features.push(RomFeature::EGA);
+        },
+        _ => {}
+    }
+
+    match toml_config.machine.hdc {
+        HardDiskControllerType::Xebec => {
+            features.push(RomFeature::XebecHDC);
+        }
+        _ => {}
+    }
+
+    #[cfg(feature = "cpu_validator")]
+    if toml_config.validator.vtype == ValidatorType::None {
+        eprintln!("Compiled with validator but no validator specified" );
+        std::process::exit(1);
+    }
+
+    /*
     match std::fs::read_to_string("./marty.cfg") {
         Ok(config_string) => {
             match config.read(config_string) {
@@ -245,16 +302,19 @@ fn main() -> Result<(), Error> {
                     let validator_type_s = config.get("validator", "type").unwrap_or("none".to_string());
                     validator_type = match validator_type_s.as_str() {
                         "pi" => {
-                            ValidatorType::PiValidator
+                            ValidatorType::Pi8088
+                        }
+                        "arduino" => {
+                            ValidatorType::Arduino8088
                         }
                         _ => {
                             log::warn!("Invalid validator type in config: '{}'", validator_type_s);
-                            ValidatorType::NoValidator
+                            ValidatorType::None
                         }                        
                     };
 
                     #[cfg(feature = "cpu_validator")]
-                    if validator_type == ValidatorType::NoValidator {
+                    if validator_type == ValidatorType::None {
                         eprintln!("Compiled with validator but no validator specified" );
                         std::process::exit(1);
                     }
@@ -273,6 +333,7 @@ fn main() -> Result<(), Error> {
             std::process::exit(1);
         }
     };
+    */
 
     // Instantiate the rom manager to load roms for the requested machine type    
     let mut rom_manager = RomManager::new(machine_type, features);
@@ -429,7 +490,7 @@ fn main() -> Result<(), Error> {
     );
 
     // Try to load default vhd
-    if let Some(vhd_name) = cfg_load_vhd_name {
+    if let Some(vhd_name) = toml_config.machine.drive0 {
         let vhd_os_name: OsString = vhd_name.into();
         match vhd_manager.get_vhd_file(&vhd_os_name) {
             Ok(vhd_file) => {

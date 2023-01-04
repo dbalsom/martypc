@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.58"
 arraydeque = "0.4.5"
+bpaf = { version = "0.7.7", features = ["derive"] }
 configparser = "3.0.1"
 cpal = "0.13.5"
 egui = { version = "0.17"}
@@ -25,15 +26,21 @@ regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
 ringbuf = "0.2.8"
+serde = { version = "1.0.107", features = ["derive"] }
+serde_derive = "1.0.107"
+serde_with = "2.1.0"
 serialport = "4.2.0"
 sysfs_gpio = { version = "0.6.1", optional = true }
+toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"]}
 winit = "0.26"
 winit_input_helper = "0.12"
+
 
 [profile.dev.package."*"]
 opt-level = 3
 
 [features]
 pi_validator = ["dep:sysfs_gpio"]
+arduino_validator = []
 cpu_validator = []

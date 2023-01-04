@@ -27,7 +27,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::cell::Cell;
 
-use crate::machine::{MachineType};
+use crate::config::MachineType;
 use crate::bus::BusInterface;
 
 pub const BIOS_READ_CYCLE_COST: u32 = 4;

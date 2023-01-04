@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 
 use log;
+
+use crate::config::VideoType;
 use crate::io::{IoBusInterface, IoDevice};
 use crate::videocard::{
     VideoCard,
-    VideoType,
     DisplayMode,
     CursorInfo,
     FontInfo,

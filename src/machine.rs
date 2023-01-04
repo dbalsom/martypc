@@ -17,6 +17,8 @@ use std::{
 };
 
 use crate::{
+    config::{MachineType, VideoType, ValidatorType},
+
     bus::{BusInterface, MemRangeDescriptor},
     cga::{self, CGACard},
     ega::{self, EGACard},
@@ -36,8 +38,7 @@ use crate::{
     serial::{self, SerialPortController},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
 
-    videocard::{VideoCard, VideoType, VideoCardState},
-    cpu_validator::ValidatorType,
+    videocard::{VideoCard, VideoCardState},
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
@@ -46,13 +47,6 @@ pub const NUM_FLOPPIES: u32 = 2;
 pub const NUM_HDDS: u32 = 2;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
-
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug)]
-pub enum MachineType {
-    IBM_PC_5150,
-    IBM_XT_5160
-}
 
 #[derive(Copy, Clone, Debug)]
 pub enum ExecutionState {
@@ -150,10 +144,14 @@ impl Machine {
         validator_type: ValidatorType,
         ) -> Machine {
 
-        
         let mut io_bus = IoBusInterface::new();
         
-        let mut cpu = Cpu::new(CpuType::Cpu8088, validator_type);
+        let mut cpu = Cpu::new(
+            CpuType::Cpu8088,
+            #[cfg(feature = "cpu_validator")]
+            validator_type
+        );
+
         cpu.reset();        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker

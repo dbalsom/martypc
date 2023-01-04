@@ -8,9 +8,8 @@
 */
 #![allow(dead_code)]
 
+use crate::config::{MachineType, VideoType};
 use crate::io::{IoDevice};
-use crate::machine::MachineType;
-use crate::videocard::VideoType;
 use crate::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
