@@ -17,7 +17,7 @@ use std::{
 };
 
 use crate::{
-    config::{MachineType, VideoType, ValidatorType},
+    config::{MachineType, VideoType, ValidatorType, TraceMode},
 
     bus::{BusInterface, MemRangeDescriptor},
     cga::{self, CGACard},
@@ -137,6 +137,7 @@ pub struct Machine {
 impl Machine {
     pub fn new(
         machine_type: MachineType,
+        trace_mode: TraceMode,
         video_type: VideoType,
         sound_player: SoundPlayer,
         rom_manager: RomManager,
@@ -148,6 +149,7 @@ impl Machine {
         
         let mut cpu = Cpu::new(
             CpuType::Cpu8088,
+            trace_mode,
             #[cfg(feature = "cpu_validator")]
             validator_type
         );

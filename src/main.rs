@@ -431,10 +431,8 @@ fn main() -> Result<(), Error> {
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
 
     // Set machine state to Running if autostart option was set in config
-    if let Some(autostart) = machine_autostart {
-        if autostart {
-            exec_control.borrow_mut().set_state(ExecutionState::Running);
-        }
+    if toml_config.emulator.autostart {
+        exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
 
     // Create render buf
@@ -481,8 +479,9 @@ fn main() -> Result<(), Error> {
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
-        machine_type, 
-        video_type, 
+        toml_config.machine.model,
+        toml_config.emulator.trace_mode,
+        toml_config.machine.video, 
         sp, 
         rom_manager, 
         floppy_manager,

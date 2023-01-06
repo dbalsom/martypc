@@ -94,13 +94,46 @@ impl FromStr for ValidatorType {
     }
 }
 
+#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
+pub enum TraceMode {
+    None,
+    Cycle,
+    Instruction
+}
+
+impl Default for TraceMode {
+    fn default() -> Self { 
+        TraceMode::None
+    }
+}
+
+impl FromStr for TraceMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(TraceMode::None),
+            "cycle" => Ok(TraceMode::Cycle),
+            "instruction" => Ok(TraceMode::Instruction),
+            _ => Err("Bad value for tracemode".to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Emulator {
     #[serde(default = "_default_true")]
     pub autostart: bool,
 
     #[serde(default = "_default_false")]
-    pub headless: bool
+    pub headless: bool,
+
+    #[serde(default)]
+    pub trace_mode: TraceMode,
+
+    pub trace_file: Option<String>
 }
 
 #[derive(Debug, Deserialize)]
