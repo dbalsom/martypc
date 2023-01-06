@@ -183,14 +183,14 @@ pub struct CmdLineArgs {
 
 impl ConfigFileParams {
     pub fn overlay(&mut self, shell_args: CmdLineArgs) {
-        if shell_args.machine_model.is_some() { 
-            self.machine.model = shell_args.machine_model.unwrap();
+        if let Some(machine_model) = shell_args.machine_model { 
+            self.machine.model = machine_model;
         }
-        if shell_args.headless.is_some() { 
-            self.emulator.headless = shell_args.headless.unwrap()
+        if let Some(headless) = shell_args.headless { 
+            self.emulator.headless = headless
         }
-        if shell_args.autostart.is_some() { 
-            self.emulator.autostart = shell_args.autostart.unwrap()
+        if let Some(autostart) = shell_args.autostart { 
+            self.emulator.autostart = autostart
         }          
     }
 }
@@ -203,18 +203,17 @@ where
     let mut toml_args: ConfigFileParams;
 
     // Allow configuration file path to be overridden by command line argument 'configfile'
-    if shell_args.configfile.is_some() {
-        let config_pathbuf = shell_args.configfile.clone();
-
-        let toml_slice = std::fs::read(config_pathbuf.unwrap())?;
-        toml_args = toml::from_slice(&toml_slice )?;
+    
+    if let Some(configfile_path) = shell_args.configfile.as_ref() {
+        let toml_slice = std::fs::read(configfile_path)?;
+        toml_args = toml::from_slice(&toml_slice)?;
     }
     else {
         let toml_slice = std::fs::read(default_path)?;
         toml_args = toml::from_slice(&toml_slice)?;
     }
     
-    println!("toml: {:?}", toml_args);
+    log::debug!("toml_config: {:?}", toml_args);
 
     // Command line arguments override config file arguments
     toml_args.overlay(shell_args);
