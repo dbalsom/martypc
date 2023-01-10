@@ -656,7 +656,7 @@ mod tests {
     #[test]
     
     fn test_mul() {
-        let mut cpu = Cpu::new(CpuType::Cpu8088);
+        let mut cpu = Cpu::new(CpuType::Cpu8088, TraceMode::None);
 
         cpu.set_register16(Register16::AX, 1);
 

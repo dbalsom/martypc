@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         
         {
             "type": "lldb",
@@ -28,6 +29,30 @@
                 "RUST_BACKTRACE": "1"
             }
         },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'marty' with validator on",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=marty",
+                    "--package=marty",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "marty",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "marty=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },        
         {
             "type": "lldb",
             "request": "launch",

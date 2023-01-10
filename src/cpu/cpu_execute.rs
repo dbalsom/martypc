@@ -1,12 +1,22 @@
 
 use crate::cpu::*;
+use super::CPU_CALL_STACK_LEN;
 
 use crate::bus::BusInterface;
 use crate::io::IoBusInterface;
-
 use crate::util;
 
-use super::CPU_CALL_STACK_LEN;
+macro_rules! get_operand {
+    ($target: expr, $pat: path) => {
+        {
+            if let $pat(a) = $target {
+                a
+            } else {
+                panic!("Unexpected operand type.");
+            }
+        }
+    };
+}
 
 impl Cpu {
 
@@ -18,7 +28,7 @@ impl Cpu {
         let mut cycles = 0;
 
         let mut handled_override = match self.i.segment_override {
-            SegmentOverride::NoOverride => true,
+            SegmentOverride::None => true,
             _ => false,
         };
         
@@ -131,8 +141,8 @@ impl Cpu {
         // Reset the wait cycle after STI
         self.interrupt_inhibit = false;
 
-        // Keep a tally of how many Opcode 0's we've executed in a row. Too many likely means we've run 
-        // off the rails, whereupon we halt so we can check things out.
+        // Keep a tally of how many Opcode 0x00's we've executed in a row. Too many likely means we've run 
+        // off the rails into uninitialized memory, whereupon we halt so we can check things out.
         if self.i.opcode == 0x00 {
             self.opcode0_counter = self.opcode0_counter.wrapping_add(1);
 
@@ -510,9 +520,19 @@ impl Cpu {
                     _ => false
                 };
                 if jump {
-                    if let OperandType::Relative8(rel8) = self.i.operand1_type {
-                        self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-                    }
+
+                    let rel8 = get_operand!(self.i.operand1_type, OperandType::Relative8);
+                    //log::trace!(">>> Calculating jump to new IP: {:04X} + size:{} + rel8:{}", self.ip, self.i.size, rel8);
+                    self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
+                    
+                    self.cycles(2); // Suspend is not immediate and occurs sometime during 9 cycle post-fetch. May need to adjust. 
+                    self.biu_suspend_fetch();
+                    self.cycles(7);
+                    self.biu_queue_flush();
+                    self.cycle();
+                }
+                else {
+                    self.cycle();
                 }
             }
             0x80 | 0x82 => {
@@ -620,7 +640,7 @@ impl Cpu {
             0x8D => {
                 // LEA - Load Effective Address
                 let value = self.load_effective_address(self.i.operand2_type).unwrap();
-                self.write_operand16(self.i.operand1_type, SegmentOverride::NoOverride, value);
+                self.write_operand16(self.i.operand1_type, SegmentOverride::None, value);
             }
             0x8F => {
                 // POP r/m16
@@ -630,7 +650,7 @@ impl Cpu {
             }
             0x90 => {
                 // NOP
-                // Do nothing
+                // XCHG AX, AX
             }
             0x91 => {
                 // XCHG AX, CX
@@ -847,7 +867,7 @@ impl Cpu {
                 // TEST al, imm8
                 // Flags: o..sz.pc
                 let op1_value = self.al;
-                let op2_value = self.read_operand8(self.i.operand2_type, SegmentOverride::NoOverride).unwrap();
+                let op2_value = self.read_operand8(self.i.operand2_type, SegmentOverride::None).unwrap();
                 
                 self.math_op8(Mnemonic::TEST,  op1_value, op2_value);
             }
@@ -855,14 +875,14 @@ impl Cpu {
                 // TEST ax, imm16
                 // Flags: o..sz.pc
                 let op1_value = self.ax;
-                let op2_value = self.read_operand16(self.i.operand2_type, SegmentOverride::NoOverride).unwrap();
+                let op2_value = self.read_operand16(self.i.operand2_type, SegmentOverride::None).unwrap();
                 
                 self.math_op16(Mnemonic::TEST,  op1_value, op2_value);
             }
             0xAA | 0xAB => {
                 // STOSB & STOSW
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(self.i.mnemonic, SegmentOverride::NoOverride);
+                    self.string_op(self.i.mnemonic, SegmentOverride::None);
                 }
 
                 // Check for end condition (CX==0)
@@ -901,7 +921,7 @@ impl Cpu {
                 // SCASB & SCASW
                 // Flags: ALL
                 if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(self.i.mnemonic, SegmentOverride::NoOverride);
+                    self.string_op(self.i.mnemonic, SegmentOverride::None);
                 }
 
                 // Check for REP end condition #1 (CX==0)
@@ -957,7 +977,7 @@ impl Cpu {
                 let new_ip = self.pop_u16();
                 self.ip = new_ip;
                 
-                let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::None).unwrap();
                 self.release(stack_disp);                
 
                 // Pop call stack
@@ -1015,7 +1035,7 @@ impl Cpu {
                 // 0xC8 undocumented alias for 0xCA
                 self.pop_register16(Register16::IP);
                 self.pop_register16(Register16::CS);
-                let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::None).unwrap();
                 self.release(stack_disp);
 
                 // Pop call stack
@@ -1041,14 +1061,14 @@ impl Cpu {
                 jump = true;    
             }
             0xCD => {
-                // INT - Software Interrupt
+                // INT imm8 - Software Interrupt
                 // The Interrupt flag does not affect the handling of non-maskable interrupts (NMIs) or software interrupts
                 // generated by the INT instruction. 
 
                 // Get IRQ number
-                let irq = self.read_operand8(self.i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let irq = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
                 self.ip = self.ip.wrapping_add(2);
-                self.sw_interrupt(irq );
+                self.sw_interrupt(irq);
                 jump = true;
             }
             0xCE => {
@@ -1099,7 +1119,7 @@ impl Cpu {
             0xD4 => {
                 // AAM - Ascii adjust AX after Multiply
                 // Get imm8 value
-                let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
                 
                 if op1_value == 0 {
                     exception = CpuException::DivideError;
@@ -1110,7 +1130,7 @@ impl Cpu {
             }
             0xD5 => {
                 // AAD - Ascii Adjust before Division
-                let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::NoOverride).unwrap();
+                let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
                 self.aad(op1_value);
             }
             0xD6 => {
@@ -1127,21 +1147,14 @@ impl Cpu {
             0xD7 => {
                 // XLAT
                 
-                // Handle segment override
-                let segment_base_default_ds: u16 = match self.i.segment_override {
-                    SegmentOverride::NoOverride => self.ds,
-                    SegmentOverride::SegmentES => self.es,
-                    SegmentOverride::SegmentCS => self.cs,
-                    SegmentOverride::SegmentSS => self.ss,
-                    SegmentOverride::SegmentDS => self.ds
-                };
+                // Handle segment override, default DS
+                let segment = Cpu::segment_override(self.i.segment_override, Segment::DS);
 
                 let disp16: u16 = self.bx.wrapping_add(self.al as u16);
 
-                let addr = Cpu::calc_linear_address(segment_base_default_ds, disp16);
+                let addr = self.calc_linear_address_seg(segment, disp16);
                 
-                //let (value, _cost) = self.bus.read_u8(addr as usize).unwrap();
-                let value = self.biu_read_u8(addr);
+                let value = self.biu_read_u8(segment, addr);
                 
                 self.set_register8(Register8::AL, value as u8);
                 handled_override = true;
@@ -1150,7 +1163,7 @@ impl Cpu {
                 // ESC - FPU instructions. 
                 
                 // Perform dummy read if memory operand
-                let _op1_value = self.read_operand16(self.i.operand1_type, SegmentOverride::NoOverride);
+                let _op1_value = self.read_operand16(self.i.operand1_type, SegmentOverride::None);
             }
             0xE0 => {
                 // LOOPNE - Decrement CX, Jump short if count!=0 and ZF=0
@@ -1186,9 +1199,16 @@ impl Cpu {
                 if dec_cx != 0 {
                     if let OperandType::Relative8(rel8) = self.i.operand1_type {
                         self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
+
+                        self.cycles(2);
+                        self.biu_suspend_fetch();
+                        self.cycles(6);
+                        self.biu_queue_flush();
+                        self.cycles(2);
                         jump = true;
                     }
                 }
+                // Instruction ends at last operand fetch if no jump. (CX is compared before fetch)
             }
             0xE3 => {
                 // JCXZ - Jump if CX == 0
@@ -1268,15 +1288,22 @@ impl Cpu {
             }
             0xEA => {
                 // JMP FAR
+                self.biu_suspend_fetch();
+                self.cycles(4);
+                self.biu_queue_flush();
+
                 if let OperandType::FarAddress(segment, offset) = self.i.operand1_type {                
                     self.cs = segment;
                     self.ip = offset;
                 }
                 jump = true;
-                cycles = 24;
             }
             0xEB => {
                 // JMP rel8
+                self.biu_suspend_fetch();
+                self.cycles(5);
+                self.biu_queue_flush();
+
                 if let OperandType::Relative8(rel8) = self.i.operand1_type {
                     self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
                 }
@@ -1287,6 +1314,8 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 let in_byte = io_bus.read_u8(op2_value);
                 self.set_register8(Register8::AL, in_byte);
+
+                //log::trace!(">>> IO READ : {:02X}", in_byte);
             }
             0xED => {
                 // IN ax, dx
@@ -1568,7 +1597,7 @@ impl Cpu {
         }
 
         match self.i.segment_override {
-            SegmentOverride::NoOverride => {},
+            SegmentOverride::None => {},
             _ => {
                 //Check that we properly handled override. No longer panics as IBM DOS 1.0 has a stray 'cs' override
                 if !handled_override {

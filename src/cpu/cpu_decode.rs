@@ -6,7 +6,7 @@ use crate::cpu::cpu_addressing::AddressingMode;
 use crate::cpu::cpu_modrm::ModRmByte;
 use crate::cpu::cpu_mnemonic::Mnemonic;
 
-use crate::bytequeue::ByteQueue;
+use crate::bytequeue::*;
 
 #[derive(Copy, Clone)]
 #[derive(PartialEq)]
@@ -72,8 +72,8 @@ impl Cpu {
         let mut operand2_size: OperandSize = OperandSize::NoOperand;
 
         let op_address = bytes.tell() as u32;
-
-        let mut opcode = bytes.q_read_u8();
+        bytes.clear_delay();
+        let mut opcode = bytes.q_read_u8(QueueType::First);
 
         let mut mnemonic = Mnemonic::InvalidOpcode;
 
@@ -82,7 +82,7 @@ impl Cpu {
         let mut op_size: u32 = 1;
         let mut op_flags: u32 = 0;
         let mut op_prefixes: u32 = 0;
-        let mut op_segment_override = SegmentOverride::NoOverride;
+        let mut op_segment_override = SegmentOverride::None;
 
         // Read in opcode prefixes until exhausted
         loop {
@@ -92,8 +92,8 @@ impl Cpu {
                 0x2E => OPCODE_PREFIX_CS_OVERRIDE,
                 0x36 => OPCODE_PREFIX_SS_OVERRIDE,
                 0x3E => OPCODE_PREFIX_DS_OVERRIDE,
-                0x66 => OPCODE_PREFIX_OPERAND_OVERIDE,
-                0x67 => OPCODE_PREFIX_ADDRESS_OVERIDE,
+                //0x66 => OPCODE_PREFIX_OPERAND_OVERIDE,
+                //0x67 => OPCODE_PREFIX_ADDRESS_OVERIDE,
                 //0x9B => OPCODE_PREFIX_WAIT,
                 0xF0 => OPCODE_PREFIX_LOCK,
                 0xF2 => OPCODE_PREFIX_REP1,
@@ -104,14 +104,15 @@ impl Cpu {
             };
             // ... but only store the last segment override prefix seen
             op_segment_override = match opcode {
-                0x26 => SegmentOverride::SegmentES,
-                0x2E => SegmentOverride::SegmentCS,
-                0x36 => SegmentOverride::SegmentSS,
-                0x3E => SegmentOverride::SegmentDS,
+                0x26 => SegmentOverride::ES,
+                0x2E => SegmentOverride::CS,
+                0x36 => SegmentOverride::SS,
+                0x3E => SegmentOverride::DS,
                 _=> op_segment_override
             };
 
-            opcode = bytes.q_read_u8();
+            // Reset first-fetch flag on each prefix read
+            opcode = bytes.q_read_u8(QueueType::First);
         }
 
         // Match templatizeable instructions
@@ -330,7 +331,7 @@ impl Cpu {
                     _=>Mnemonic::InvalidOpcode
                 };
                 operand1_size = OperandSize::Operand8;
-                let operand2 = bytes.q_read_u8();
+                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
                 operand2_type = OperandType::Immediate8(operand2);
             }
             0x81 => {
@@ -355,7 +356,7 @@ impl Cpu {
                     _=>Mnemonic::InvalidOpcode
                 };
                 operand1_size = OperandSize::Operand16;
-                let operand2 = bytes.q_read_u16();
+                let operand2 = bytes.q_read_u16(QueueType::Subsequent);
                 operand2_type = OperandType::Immediate16(operand2);
             }
             0x83 => {
@@ -381,7 +382,7 @@ impl Cpu {
                     _=>Mnemonic::InvalidOpcode
                 };
                 operand1_size = OperandSize::Operand16;
-                let operand2 = bytes.q_read_u8();
+                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
                 operand2_type = OperandType::Immediate8(operand2);
             }
             0x8C => {
@@ -437,7 +438,7 @@ impl Cpu {
                     _=>Mnemonic::InvalidOpcode
                 };
 
-                let operand2 = bytes.q_read_u8();
+                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
                 operand2_type = OperandType::Immediate8(operand2);
             }
             0xC1 => {
@@ -464,7 +465,7 @@ impl Cpu {
                     0x07 => Mnemonic::SAR,
                     _=> Mnemonic::InvalidOpcode,
                 };
-                let operand2 = bytes.q_read_u8();
+                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
                 operand2_type = OperandType::Immediate8(operand2);
             }        
             0xD0 => {
@@ -580,7 +581,7 @@ impl Cpu {
                 mnemonic = match op_ext {
                     0x00 | 0x01 => {
                         // TEST is the only opcode extension that has an immediate value
-                        let operand2 = bytes.q_read_u8();
+                        let operand2 = bytes.q_read_u8(QueueType::Subsequent);
                         operand2_type = OperandType::Immediate8(operand2);
                         Mnemonic::TEST
                     }
@@ -609,7 +610,7 @@ impl Cpu {
                 mnemonic = match op_ext {
                     0x00 | 0x01 => {
                         // TEST is the only opcode extension that has an immediate value
-                        let operand2 = bytes.q_read_u16();
+                        let operand2 = bytes.q_read_u16(QueueType::Subsequent);
                         operand2_type = OperandType::Immediate16(operand2);
                         Mnemonic::TEST
                     }
@@ -694,6 +695,19 @@ impl Cpu {
             op_flags |= INSTRUCTION_HAS_MODRM;
             modrm = ModRmByte::read_from(bytes)?;
         }
+        else {
+            // No modrm. Set a one cycle fetch delay. This has no effect when reading from memory.
+            // When fetching from the processor instruction queue, the 2nd byte must be a modrm or 
+            // the fetch is skipped for that cycle.
+            bytes.delay(1);
+        }
+
+        // Handle fetch delays for 0xF0, 0xF1, 0xF2, 0xF3
+        // These instructions decrement and compare CX before fetching their rel8 operand, taking two
+        // additional cycles. This is hacky but necessary to have seperate decode/execute phases.
+        if opcode & 0xFC == 0xF0 {
+            bytes.delay(2);
+        }
 
         // Match templatized operands. We use a closure to avoid duplicating code for each operand
         let mut match_op = |op_template| -> Result<(OperandType, OperandSize), Box<dyn std::error::Error>> {
@@ -702,7 +716,7 @@ impl Cpu {
                 OperandTemplate::ModRM8 => {
                     let addr_mode = modrm.get_addressing_mode();
                     let operand_type = match addr_mode {
-                        AddressingMode::RegisterMode=> OperandType::Register8(modrm.get_op1_reg8()),
+                        AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
                         _=> OperandType::AddressingMode(addr_mode),
                     };
                     Ok((operand_type, OperandSize::Operand8))
@@ -710,28 +724,18 @@ impl Cpu {
                 OperandTemplate::ModRM16 => {
                     let addr_mode = modrm.get_addressing_mode();
                     let operand_type = match addr_mode {
-                        AddressingMode::RegisterMode=> OperandType::Register16(modrm.get_op1_reg16()),
+                        AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
                         _=> OperandType::AddressingMode(addr_mode)
                     };
                     Ok((operand_type, OperandSize::Operand16))
                 }
                 OperandTemplate::Register8 => {
-                    if op_flags & INSTRUCTION_HAS_MODRM != 0 {
-                        let operand_type = OperandType::Register8(modrm.get_op2_reg8());
-                        Ok((operand_type, OperandSize::Operand8))
-                    }
-                    else {
-                        Err(Box::new(InstructionDecodeError::GeneralDecodeError(opcode)))
-                    }
+                    let operand_type = OperandType::Register8(modrm.get_op2_reg8());
+                    Ok((operand_type, OperandSize::Operand8))
                 }
-                OperandTemplate::Register16 => {
-                    if op_flags & INSTRUCTION_HAS_MODRM != 0 {                
-                        let operand_type = OperandType::Register16(modrm.get_op2_reg16());
-                        Ok((operand_type, OperandSize::Operand16))
-                    }
-                    else {
-                        Err(Box::new(InstructionDecodeError::GeneralDecodeError(opcode)))
-                    }             
+                OperandTemplate::Register16 => {              
+                    let operand_type = OperandType::Register16(modrm.get_op2_reg16());
+                    Ok((operand_type, OperandSize::Operand16))       
                 }
                 OperandTemplate::Register8Encoded => {
                     let operand_type = match opcode & OPCODE_REGISTER_SELECT_MASK {
@@ -762,27 +766,27 @@ impl Cpu {
                     Ok((operand_type, OperandSize::Operand16))
                 }
                 OperandTemplate::Immediate8 => {
-                    let operand = bytes.q_read_u8();
+                    let operand = bytes.q_read_u8(QueueType::Subsequent);
                     Ok((OperandType::Immediate8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Immediate16 => {
-                    let operand = bytes.q_read_u16();
+                    let operand = bytes.q_read_u16(QueueType::Subsequent);
                     Ok((OperandType::Immediate16(operand), OperandSize::Operand16))
                 }
                 OperandTemplate::Relative8 => {
-                    let operand = bytes.q_read_i8();
+                    let operand = bytes.q_read_i8(QueueType::Subsequent);
                     Ok((OperandType::Relative8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Relative16 => {
-                    let operand = bytes.q_read_i16();
+                    let operand = bytes.q_read_i16(QueueType::Subsequent);
                     Ok((OperandType::Relative16(operand), OperandSize::Operand16))                
                 }
                 OperandTemplate::Offset8 => {
-                    let operand = bytes.q_read_u16();
+                    let operand = bytes.q_read_u16(QueueType::Subsequent);
                     Ok((OperandType::Offset8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Offset16 => {
-                    let operand = bytes.q_read_u16();
+                    let operand = bytes.q_read_u16(QueueType::Subsequent);
                     Ok((OperandType::Offset16(operand), OperandSize::Operand16))
                 }
                 OperandTemplate::FixedRegister8(r8) => {
@@ -792,12 +796,12 @@ impl Cpu {
                     Ok((OperandType::Register16(r16), OperandSize::Operand16))
                 }
                 OperandTemplate::NearAddress => {
-                    let offset = bytes.q_read_u16();
+                    let offset = bytes.q_read_u16(QueueType::Subsequent);
                     Ok((OperandType::NearAddress(offset), OperandSize::NoSize))
                 }
                 OperandTemplate::FarAddress => {
-                    let offset = bytes.q_read_u16();
-                    let segment = bytes.q_read_u16();
+                    let offset = bytes.q_read_u16(QueueType::Subsequent);
+                    let segment = bytes.q_read_u16(QueueType::Subsequent);
                     Ok((OperandType::FarAddress(segment,offset), OperandSize::NoSize))
                 }
                 _=>Ok((OperandType::NoOperand,OperandSize::NoOperand))

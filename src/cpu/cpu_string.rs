@@ -5,11 +5,11 @@ impl Cpu {
     pub fn string_op(&mut self, opcode: Mnemonic, segment: SegmentOverride) {
 
         let segment_base_default_ds: u16 = match segment {
-            SegmentOverride::NoOverride => self.ds,
-            SegmentOverride::SegmentES => self.es,
-            SegmentOverride::SegmentCS => self.cs,
-            SegmentOverride::SegmentSS => self.ss,
-            SegmentOverride::SegmentDS => self.ds
+            SegmentOverride::None => self.ds,
+            SegmentOverride::ES => self.es,
+            SegmentOverride::CS => self.cs,
+            SegmentOverride::SS => self.ss,
+            SegmentOverride::DS => self.ds
         };
 
         match opcode {

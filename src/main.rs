@@ -74,7 +74,7 @@ mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
 mod arduino8088_validator;
 
-use config::{MachineType, VideoType, HardDiskControllerType, ValidatorType};
+use config::{MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
 
 use machine::{Machine, ExecutionState};
 use cpu::Cpu;
@@ -752,7 +752,12 @@ fn main() -> Result<(), Error> {
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
-                    machine.run(CYCLES_PER_FRAME, &mut exec_control.borrow_mut(), bp_addr);
+
+                    let mut cycle_target = CYCLES_PER_FRAME;
+                    if toml_config.emulator.trace_mode == TraceMode::Cycle {
+                        cycle_target = CYCLES_PER_FRAME / 100;
+                    }
+                    machine.run(cycle_target, &mut exec_control.borrow_mut(), bp_addr);
                     stat_counter.emulation_time = Instant::now() - emulation_start;
 
                     // Do per-frame updates (Serial port emulation)

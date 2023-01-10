@@ -15,8 +15,10 @@ Thumbs.db
 /floppy
 /hdd
 /dumps
+/traces
 *.pcm
 *.cfg
+marty.toml
 *.log
 
 # Assembly stuff

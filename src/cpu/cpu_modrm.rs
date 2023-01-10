@@ -1,7 +1,7 @@
 
 use crate::cpu::*;
 use crate::cpu::cpu_addressing::AddressingMode;
-use crate::bytequeue::ByteQueue;
+use crate::bytequeue::*;
 
 pub struct ModRmByte {
     byte: u8,
@@ -26,7 +26,7 @@ impl Default for ModRmByte {
 impl ModRmByte {
     pub fn read_from(bytes: &mut impl ByteQueue) -> Result<ModRmByte, Box<dyn std::error::Error>> {
         let mut cycle_cost = 0;
-        let byte = bytes.q_read_u8();
+        let byte = bytes.q_read_u8(QueueType::Subsequent);
         let mut displacement = Displacement::NoDisp;
 
         // The 'mod' field is two bits and along with the r/m field, specifies the general addressing mode,
@@ -38,18 +38,18 @@ impl ModRmByte {
             0b00 => {
                 // Addressing mode [disp16] is a single mode of 0b00
                 if byte & MODRM_ADDR_MASK == MODRM_ADDR_DISP16 {
-                    let tdisp = bytes.q_read_i16();
+                    let tdisp = bytes.q_read_i16(QueueType::Subsequent);
                     displacement = Displacement::Disp16(tdisp);
                 }
             },
             0b01 => {
                 // 0b01 signifies an 8 bit displacement (sign-extended to 16)
-                let tdisp = bytes.q_read_i8();
+                let tdisp = bytes.q_read_i8(QueueType::Subsequent);
                 displacement = Displacement::Disp8(tdisp);
             } 
             0b10 => {
                 // 0b10 signifies a 16 bit displacement
-                let tdisp = bytes.q_read_i16();
+                let tdisp = bytes.q_read_i16(QueueType::Subsequent);
                 displacement = Displacement::Disp16(tdisp);
             }
             _ => displacement = Displacement::NoDisp,            
@@ -57,30 +57,30 @@ impl ModRmByte {
 
         // Set the addressing mode based on the cominbation of Mod and R/M bitfields + Displacement
         let addressing_mode = match byte & MODRM_ADDR_MASK {
-            MODRM_ADDR_BX_SI=>       AddressingMode::BxSi,
-            MODRM_ADDR_BX_DI=>       AddressingMode::BxDi,
-            MODRM_ADDR_BP_SI=>       AddressingMode::BpSi,
-            MODRM_ADDR_BP_DI=>       AddressingMode::BpDi,
-            MODRM_ADDR_SI=>          AddressingMode::Si,
-            MODRM_ADDR_DI =>         AddressingMode::Di,
-            MODRM_ADDR_DISP16=>      AddressingMode::Disp16(displacement),
-            MODRM_ADDR_BX =>         AddressingMode::Bx,
-            MODRM_ADDR_BX_SI_DISP8=> AddressingMode::BxSiDisp8(displacement),
-            MODRM_ADDR_BX_DI_DISP8=> AddressingMode::BxDiDisp8(displacement),
-            MODRM_ADDR_BP_SI_DISP8=> AddressingMode::BpSiDisp8(displacement),
-            MODRM_ADDR_BP_DI_DISP8=> AddressingMode::BpDiDisp8(displacement),
-            MODRM_ADDR_SI_DI_DISP8=> AddressingMode::SiDisp8(displacement),
-            MODRM_ADDR_DI_DISP8=>    AddressingMode::DiDisp8(displacement),
-            MODRM_ADDR_BP_DISP8=>    AddressingMode::BpDisp8(displacement),
-            MODRM_ADDR_BX_DISP8=>    AddressingMode::BxDisp8(displacement),
-            MODRM_ADDR_BX_SI_DISP16=>AddressingMode::BxSiDisp16(displacement),
-            MODRM_ADDR_BX_DI_DISP16=>AddressingMode::BxDiDisp16(displacement),
-            MODRM_ADDR_BP_SI_DISP16=>AddressingMode::BpSiDisp16(displacement),
-            MODRM_ADDR_BP_DI_DISP16=>AddressingMode::BpDiDisp16(displacement),
-            MODRM_ADDR_SI_DI_DISP16=>AddressingMode::SiDisp16(displacement),
-            MODRM_ADDR_DI_DISP16=>   AddressingMode::DiDisp16(displacement),
-            MODRM_ADDR_BP_DISP16=>   AddressingMode::BpDisp16(displacement),
-            MODRM_ADDR_BX_DISP16=>   AddressingMode::BxDisp16(displacement),
+            MODRM_ADDR_BX_SI =>        AddressingMode::BxSi,
+            MODRM_ADDR_BX_DI =>        AddressingMode::BxDi,
+            MODRM_ADDR_BP_SI =>        AddressingMode::BpSi,
+            MODRM_ADDR_BP_DI =>        AddressingMode::BpDi,
+            MODRM_ADDR_SI =>           AddressingMode::Si,
+            MODRM_ADDR_DI =>           AddressingMode::Di,
+            MODRM_ADDR_DISP16 =>       AddressingMode::Disp16(displacement),
+            MODRM_ADDR_BX =>           AddressingMode::Bx,
+            MODRM_ADDR_BX_SI_DISP8 =>  AddressingMode::BxSiDisp8(displacement),
+            MODRM_ADDR_BX_DI_DISP8 =>  AddressingMode::BxDiDisp8(displacement),
+            MODRM_ADDR_BP_SI_DISP8 =>  AddressingMode::BpSiDisp8(displacement),
+            MODRM_ADDR_BP_DI_DISP8 =>  AddressingMode::BpDiDisp8(displacement),
+            MODRM_ADDR_SI_DI_DISP8 =>  AddressingMode::SiDisp8(displacement),
+            MODRM_ADDR_DI_DISP8 =>     AddressingMode::DiDisp8(displacement),
+            MODRM_ADDR_BP_DISP8=>      AddressingMode::BpDisp8(displacement),
+            MODRM_ADDR_BX_DISP8 =>     AddressingMode::BxDisp8(displacement),
+            MODRM_ADDR_BX_SI_DISP16 => AddressingMode::BxSiDisp16(displacement),
+            MODRM_ADDR_BX_DI_DISP16 => AddressingMode::BxDiDisp16(displacement),
+            MODRM_ADDR_BP_SI_DISP16 => AddressingMode::BpSiDisp16(displacement),
+            MODRM_ADDR_BP_DI_DISP16 => AddressingMode::BpDiDisp16(displacement),
+            MODRM_ADDR_SI_DI_DISP16 => AddressingMode::SiDisp16(displacement),
+            MODRM_ADDR_DI_DISP16 =>    AddressingMode::DiDisp16(displacement),
+            MODRM_ADDR_BP_DISP16 =>    AddressingMode::BpDisp16(displacement),
+            MODRM_ADDR_BX_DISP16 =>    AddressingMode::BxDisp16(displacement),
             _=> AddressingMode::RegisterMode,
         };        
 

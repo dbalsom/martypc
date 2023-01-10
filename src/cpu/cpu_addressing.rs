@@ -43,83 +43,114 @@ impl Cpu {
         ((segment as u32) << 4) + offset as u32 & 0xFFFFFu32
     }
     
+    pub fn calc_linear_address_seg(&self, segment: Segment, offset: u16) -> u32 {
+
+        let segment_val: u16 = match segment {
+            Segment::None => 0,
+            Segment::ES => self.es,
+            Segment::CS => self.cs,
+            Segment::DS => self.ds,
+            Segment::ES => self.es,
+            Segment::SS => self.ss,
+        };
+        ((segment_val as u32) << 4) + offset as u32 & 0xFFFFFu32
+    }
+
+    pub fn segment_override(seg_override: SegmentOverride, seg_default: Segment) -> Segment {
+        match seg_override {
+            SegmentOverride::None => seg_default,
+            SegmentOverride::ES => Segment::ES,
+            SegmentOverride::CS => Segment::CS,
+            SegmentOverride::SS => Segment::SS,
+            SegmentOverride::DS => Segment::DS
+        }
+    }
+
     /// Calculate the Effective Address for the given AddressingMode enum
-    fn calc_effective_address(&self, mode: AddressingMode, segment: SegmentOverride) -> (u16, u16) {
+    fn calc_effective_address(
+        &self, mode: AddressingMode, 
+        segment_override: SegmentOverride) 
+            -> (u16, Segment, u16) 
+    {
         // Addressing modes that reference BP use the stack segment instead of data segment 
         // unless a segment override is present.
-        // ------------- Mod 0x00
-        // ds:[bx+si]
-        // ds:[bx+di]
-        // ss:[bp+si]
-        // ss:[bp+di]
-        // ds:[si]f
-        // ds:[di]
-        // ds:[{}]
-        // ds:[bx]
-        // -------------- Mod 0x01
-        // ds:[bx+si+{}]
-        // ds:[bx+di+{}]
-        // ss:[bp+si+{}]
-        // ss:[bp+di+{}]
-        // ds:[si+{}]
-        // ds:[di+{}]
-        // ss:[bp+{}]
-        // ds:[bx+{}]
-        // -------------- Mod 0x10
-        // ds:[bx+si+{}]
-        // ds:[bx+di+{}]
-        // ss:[bp+si+{}]
-        // ss:[bp+si+{}]
-        // ds:[si+{}]
-        // ds:[di+{}]
-        // ss:[bp+{}]
-        // ds:[bx+{}]
+
+        // Using a segment override adds 2 cycles per Intel documentation.
+        // Addressing mode calculations are performed on the ALU and are expensive!
+        // -- Mod 0x00 ------ cycles --
+        // ds:[bx+si]        7 cycles
+        // ds:[bx+di]        8 cycles
+        // ss:[bp+si]        8 cycles
+        // ss:[bp+di]        7 cycles
+        // ds:[si]           5 cycles
+        // ds:[di]           5 cycles       
+        // ds:[disp]         6 cycles
+        // ds:[bx]           5 cycles
+        // -- Mod 0x01 ------ cycles --
+        // ds:[bx+si+{disp]  11 cycles
+        // ds:[bx+di+{disp]  12 cycles
+        // ss:[bp+si+{disp]  12 cycles
+        // ss:[bp+di+{disp]  11 cycles
+        // ds:[si+disp]      9 cycles
+        // ds:[di+disp]      9 cycles
+        // ss:[bp+disp]      9 cycles
+        // ds:[bx+disp]      9 cycles
+        // -- Mod 0x10 ------ cycles --
+        // ds:[bx+si+disp]   11 cycles
+        // ds:[bx+di+disp]   12 cycles
+        // ss:[bp+si+disp]   12 cycles
+        // ss:[bp+si+disp]   8 cycles
+        // ds:[si+disp]      
+        // ds:[di+disp]
+        // ss:[bp+disp]
+        // ds:[bx+disp]
+        // Reference: (210912·001, Table 1-15)
 
         // Override default segments based on prefix
-        let segment_base_default_ds: u16 = match segment {
-            SegmentOverride::NoOverride => self.ds,
-            SegmentOverride::SegmentES => self.es,
-            SegmentOverride::SegmentCS => self.cs,
-            SegmentOverride::SegmentSS => self.ss,
-            SegmentOverride::SegmentDS => self.ds
-        };
+        let (segment_value_base_ds, segment_base_ds) = match segment_override {
+            SegmentOverride::None => (self.ds, Segment::DS),
+            SegmentOverride::ES  => (self.es, Segment::ES),
+            SegmentOverride::CS  => (self.cs, Segment::CS),
+            SegmentOverride::SS  => (self.ss, Segment::SS),
+            SegmentOverride::DS  => (self.ds, Segment::DS),
+        };      
 
-        let segment_base_default_ss: u16 = match segment {
-            SegmentOverride::NoOverride => self.ss,
-            SegmentOverride::SegmentES => self.es,
-            SegmentOverride::SegmentCS => self.cs,
-            SegmentOverride::SegmentSS => self.ss,
-            SegmentOverride::SegmentDS => self.ds
+        let (segment_value_base_ss, segment_base_ss) = match segment_override {
+            SegmentOverride::None => (self.ss, Segment::SS),
+            SegmentOverride::ES  => (self.es, Segment::ES),
+            SegmentOverride::CS  => (self.cs, Segment::CS),
+            SegmentOverride::SS  => (self.ss, Segment::SS),
+            SegmentOverride::DS  => (self.ds, Segment::DS),
         };      
 
         match mode {
             // All of this relies on 2's compliment arithmetic for signed displacements
-            AddressingMode::BxSi                => (segment_base_default_ds, self.bx.wrapping_add(self.si)),
-            AddressingMode::BxDi                => (segment_base_default_ds, self.bx.wrapping_add(self.di)),
-            AddressingMode::BpSi                => (segment_base_default_ss, self.bp.wrapping_add(self.si)),  // BP -> SS default seg
-            AddressingMode::BpDi                => (segment_base_default_ss, self.bp.wrapping_add(self.di)),  // BP -> SS default seg
-            AddressingMode::Si                  => (segment_base_default_ds, self.si),
-            AddressingMode::Di                  => (segment_base_default_ds, self.di),
-            AddressingMode::Disp16(disp16)      => (segment_base_default_ds, disp16.get_u16()),
-            AddressingMode::Bx                  => (segment_base_default_ds, self.bx),
+            AddressingMode::BxSi                => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.si)),
+            AddressingMode::BxDi                => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.di)),
+            AddressingMode::BpSi                => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si)),  // BP -> SS default seg
+            AddressingMode::BpDi                => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di)),  // BP -> SS default seg
+            AddressingMode::Si                  => (segment_value_base_ds, segment_base_ds, self.si),
+            AddressingMode::Di                  => (segment_value_base_ds, segment_base_ds, self.di),
+            AddressingMode::Disp16(disp16)      => (segment_value_base_ds, segment_base_ds, disp16.get_u16()),
+            AddressingMode::Bx                  => (segment_value_base_ds, segment_base_ds, self.bx),
             
-            AddressingMode::BxSiDisp8(disp8)    => (segment_base_default_ds, self.bx.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),
-            AddressingMode::BxDiDisp8(disp8)    => (segment_base_default_ds, self.bx.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),
-            AddressingMode::BpSiDisp8(disp8)    => (segment_base_default_ss, self.bp.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
-            AddressingMode::BpDiDisp8(disp8)    => (segment_base_default_ss, self.bp.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
-            AddressingMode::SiDisp8(disp8)      => (segment_base_default_ds, self.si.wrapping_add(disp8.get_u16())),
-            AddressingMode::DiDisp8(disp8)      => (segment_base_default_ds, self.di.wrapping_add(disp8.get_u16())),
-            AddressingMode::BpDisp8(disp8)      => (segment_base_default_ss, self.bp.wrapping_add(disp8.get_u16())),    // BP -> SS default seg
-            AddressingMode::BxDisp8(disp8)      => (segment_base_default_ds, self.bx.wrapping_add(disp8.get_u16())),
+            AddressingMode::BxSiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),
+            AddressingMode::BxDiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),
+            AddressingMode::BpSiDisp8(disp8)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
+            AddressingMode::BpDiDisp8(disp8)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
+            AddressingMode::SiDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.si.wrapping_add(disp8.get_u16())),
+            AddressingMode::DiDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.di.wrapping_add(disp8.get_u16())),
+            AddressingMode::BpDisp8(disp8)      => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(disp8.get_u16())),    // BP -> SS default seg
+            AddressingMode::BxDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(disp8.get_u16())),
             
-            AddressingMode::BxSiDisp16(disp16)  => (segment_base_default_ds, self.bx.wrapping_add(self.si.wrapping_add(disp16.get_u16()))),
-            AddressingMode::BxDiDisp16(disp16)  => (segment_base_default_ds, self.bx.wrapping_add(self.di.wrapping_add(disp16.get_u16()))),
-            AddressingMode::BpSiDisp16(disp16)  => (segment_base_default_ss, self.bp.wrapping_add(self.si.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
-            AddressingMode::BpDiDisp16(disp16)  => (segment_base_default_ss, self.bp.wrapping_add(self.di.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
-            AddressingMode::SiDisp16(disp16)    => (segment_base_default_ds, self.si.wrapping_add(disp16.get_u16())),
-            AddressingMode::DiDisp16(disp16)    => (segment_base_default_ds, self.di.wrapping_add(disp16.get_u16())),
-            AddressingMode::BpDisp16(disp16)    => (segment_base_default_ss, self.bp.wrapping_add(disp16.get_u16())),   // BP -> SS default reg
-            AddressingMode::BxDisp16(disp16)    => (segment_base_default_ds, self.bx.wrapping_add(disp16.get_u16())),
+            AddressingMode::BxSiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.si.wrapping_add(disp16.get_u16()))),
+            AddressingMode::BxDiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.di.wrapping_add(disp16.get_u16()))),
+            AddressingMode::BpSiDisp16(disp16)  => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
+            AddressingMode::BpDiDisp16(disp16)  => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
+            AddressingMode::SiDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.si.wrapping_add(disp16.get_u16())),
+            AddressingMode::DiDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.di.wrapping_add(disp16.get_u16())),
+            AddressingMode::BpDisp16(disp16)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(disp16.get_u16())),   // BP -> SS default reg
+            AddressingMode::BxDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(disp16.get_u16())),
 
             // The instruction decoder should convert ModRM operands that specify Registers to Register type operands, so
             // in theory this shouldn't happen
@@ -129,7 +160,7 @@ impl Cpu {
 
     pub fn load_effective_address(&self, operand: OperandType) -> Option<u16> {
         if let OperandType::AddressingMode(mode) = operand {
-            let (_segment, offset) = self.calc_effective_address(mode, SegmentOverride::NoOverride);
+            let (_segment_value, _segment, offset) = self.calc_effective_address(mode, SegmentOverride::None);
             return Some(offset);
         }
         None
@@ -143,16 +174,10 @@ impl Cpu {
             OperandType::Immediate8(imm8) => Some(imm8),
             OperandType::Relative8(rel8) => Some(rel8 as u8),
             OperandType::Offset8(offset8) => {
-                let segment_base: u16 = match seg_override {
-                    SegmentOverride::SegmentES => self.es,
-                    SegmentOverride::SegmentCS => self.cs,
-                    SegmentOverride::SegmentSS => self.ss,
-                    _ => self.ds
-                };
-                let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
 
-                //let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
-                let byte = self.biu_read_u8(flat_addr);
+                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let flat_addr = self.calc_linear_address_seg(segment, offset8);
+                let byte = self.biu_read_u8(segment, flat_addr);
                 Some(byte)
             },
             OperandType::Register8(reg8) => {
@@ -168,11 +193,9 @@ impl Cpu {
                 }
             },
             OperandType::AddressingMode(mode) => {
-                let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment, offset);
-
-                //let (byte, _read_cost) = self.bus.read_u8(flat_addr as usize).unwrap();
-                let byte = self.biu_read_u8(flat_addr);
+                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
+                let byte = self.biu_read_u8(segment, flat_addr);
                 Some(byte)
             }
             OperandType::NearAddress(_u16) => None,
@@ -191,16 +214,9 @@ impl Cpu {
             OperandType::Immediate16(imm16) => Some(imm16),
             OperandType::Relative16(rel16) => Some(rel16 as u16),
             OperandType::Offset16(offset16) => {
-                let segment_base: u16 = match seg_override {
-                    SegmentOverride::SegmentES => self.es,
-                    SegmentOverride::SegmentCS => self.cs,
-                    SegmentOverride::SegmentSS => self.ss,
-                    _ => self.ds
-                };
-                let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
-
-                //let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
-                let word = self.biu_read_u16(flat_addr);
+                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let flat_addr = self.calc_linear_address_seg(segment, offset16);
+                let word = self.biu_read_u16(segment, flat_addr);
 
                 Some(word)
             }
@@ -222,11 +238,9 @@ impl Cpu {
                 }
             },
             OperandType::AddressingMode(mode) => {
-                let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment, offset);
-
-                //let (word, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
-                let word = self.biu_read_u16(flat_addr);
+                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
+                let word = self.biu_read_u16(segment, flat_addr);
                 
                 Some(word)
             }
@@ -242,10 +256,11 @@ impl Cpu {
 
         match operand {
             OperandType::AddressingMode(mode) => {
-                let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment, offset);
-                let (offset, _read_cost) = self.bus.read_u16(flat_addr as usize).unwrap();
-                let (segment, _read_cost) = self.bus.read_u16( (flat_addr + 2) as usize ).unwrap();
+                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = Cpu::calc_linear_address(segment_val, offset);
+
+                let offset = self.biu_read_u16(segment, flat_addr);
+                let segment = self.biu_read_u16(segment, flat_addr + 2);
                 Some((segment, offset))
             }
             _ => None
@@ -261,16 +276,9 @@ impl Cpu {
             OperandType::Relative8(rel8) => {}
             OperandType::Relative16(rel16) => {}
             OperandType::Offset8(offset8) => {
-                let segment_base: u16 = match seg_override {
-                    SegmentOverride::SegmentES => self.es,
-                    SegmentOverride::SegmentCS => self.cs,
-                    SegmentOverride::SegmentSS => self.ss,
-                    _ => self.ds
-                };
-                let flat_addr = Cpu::calc_linear_address(segment_base, offset8);
-
-                //let write_cost = self.bus.write_u8(flat_addr as usize, value);
-                self.biu_write_u8(flat_addr, value);
+                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let flat_addr = self.calc_linear_address_seg(segment, offset8);
+                self.biu_write_u8(segment, flat_addr, value);
             }
             OperandType::Offset16(offset16) => {}
             OperandType::Register8(reg8) => {
@@ -287,11 +295,10 @@ impl Cpu {
             },
             OperandType::Register16(r16) => {}
             OperandType::AddressingMode(mode) => {
-                let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment, offset);
-
-                //let write_cost = self.bus.write_u8(flat_addr as usize, value).unwrap();
-                self.biu_write_u8(flat_addr, value);
+                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
+                let byte = self.biu_read_u8(segment, flat_addr);
+                self.biu_write_u8(segment, flat_addr, value);
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}
@@ -310,16 +317,9 @@ impl Cpu {
             OperandType::Relative16(rel16) => {}
             OperandType::Offset8(offset8) => {}
             OperandType::Offset16(offset16) => {
-                let segment_base: u16 = match seg_override {
-                    SegmentOverride::SegmentES => self.es,
-                    SegmentOverride::SegmentCS => self.cs,
-                    SegmentOverride::SegmentSS => self.ss,
-                    _ => self.ds
-                };
-                let flat_addr = Cpu::calc_linear_address(segment_base, offset16);
-                
-                //let write_cost = self.bus.write_u16(flat_addr as usize, value);
-                self.biu_write_u16(flat_addr, value);
+                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let flat_addr = self.calc_linear_address_seg(segment, offset16);
+                self.biu_write_u16(segment, flat_addr, value);
             }
             OperandType::Register8(reg8) => {}
             OperandType::Register16(reg16) => {
@@ -345,11 +345,9 @@ impl Cpu {
                 }
             }
             OperandType::AddressingMode(mode) => {
-                let (segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment, offset);
-                
-                //let write_cost = self.bus.write_u16(flat_addr as usize, value).unwrap();
-                self.biu_write_u16(flat_addr, value);
+                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
+                self.biu_write_u16(segment, flat_addr, value);
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}

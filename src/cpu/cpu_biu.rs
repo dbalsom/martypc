@@ -1,32 +1,46 @@
-use crate::cpu::{Cpu, BusStatus, BusState};
+use crate::cpu::*;
 use crate::bus::BusInterface;
+use crate::bytequeue::*;
 
-use crate::bytequeue::ByteQueue;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::ReadType;
 
 impl ByteQueue for Cpu {
-    fn seek(&mut self, pos: usize) {
-
+    fn seek(&mut self, _pos: usize) {
+        // Instruction queue does not support seeking
     }
+
     fn tell(&self) -> usize {
-        self.pc as usize
+        //log::trace!("pc: {:05X} qlen: {}", self.pc, self.queue.len());
+        self.pc as usize - self.queue.len()
     }
 
-    fn q_read_u8(&mut self) -> u8 {
-        self.biu_queue_read()
-    }
-    fn q_read_i8(&mut self) -> i8 {
-        self.biu_queue_read() as i8
+    fn delay(&mut self, delay: u32) {
+        self.fetch_delay += delay;
     }
 
-    fn q_read_u16(&mut self) -> u16 {
-        let lo = self.biu_queue_read();
-        let ho = self.biu_queue_read();
+    fn clear_delay(&mut self) {
+        self.fetch_delay = 0;
+    }
+
+    fn q_read_u8(&mut self, dtype: QueueType) -> u8 {
+        self.biu_queue_read(dtype)
+    }
+
+    fn q_read_i8(&mut self, dtype: QueueType) -> i8 {
+        self.biu_queue_read(dtype) as i8
+    }
+
+    fn q_read_u16(&mut self, dtype: QueueType) -> u16 {
+        let lo = self.biu_queue_read(dtype);
+        let ho = self.biu_queue_read(QueueType::Subsequent);
         
         (ho as u16) << 8 | (lo as u16)
     }
-    fn q_read_i16(&mut self) -> i16 {
-        let lo = self.biu_queue_read();
-        let ho = self.biu_queue_read();
+
+    fn q_read_i16(&mut self, dtype: QueueType) -> i16 {
+        let lo = self.biu_queue_read(dtype);
+        let ho = self.biu_queue_read(QueueType::Subsequent);
         
         ((ho as u16) << 8 | (lo as u16)) as i16
     }
@@ -35,106 +49,197 @@ impl ByteQueue for Cpu {
 
 impl Cpu {
 
-    #[inline(always)]
-    pub fn biu_queue_full(&mut self) -> bool {
-        self.piq.len() >= self.piq_size
+    /// Read a byte from the instruction queue.
+    /// Regardless of 8088 or 8086, the queue is read from one byte at a time.
+    /// Either return a byte currently in the queue, or fetch a byte into the queue and 
+    /// then return it.
+    pub fn biu_queue_read(&mut self, dtype: QueueType) -> u8 {
+        let byte;
+
+        if self.queue.len() > 0 {
+            // The queue is not empty. Return byte from queue.
+
+            // Handle fetch delays.
+            // Delays are set during decode from instructions with no modrm or jcxz, loop & loopne/loope
+            while self.fetch_delay > 0 {
+                log::trace!("Fetch delay skip: {}", self.fetch_delay);
+                self.fetch_delay -= 1;
+                self.cycle();
+            }
+
+            byte = self.queue.pop();
+
+            self.last_queue_op = match dtype {
+                QueueType::First => QueueOp::First,
+                QueueType::Subsequent => QueueOp::Subsequent
+            };
+            self.last_queue_byte = byte;
+            self.cycle();
+        }
+        else {
+            // Queue is empty, first fetch byte
+            byte = self.biu_fetch_u8(self.pc);
+
+            self.last_queue_op = match dtype {
+                QueueType::First => QueueOp::First,
+                QueueType::Subsequent => QueueOp::Subsequent
+            };
+            self.last_queue_byte = byte;
+            self.cycle();            
+        }
+        byte
     }
 
+    /*
     pub fn biu_queue_fetch(&mut self, bus: &mut BusInterface) {
 
+        self.bus_begin(BusStatus::CodeFetch, self.pc, 0, TransferSize::Byte);
+        self.bus_wait_finish();
+        /*
         let byte;
         let _cost;
-        if self.bus_state == BusState::T3 {
+        if self.cycle_state == CycleState::T3 {
             (byte, _cost) = bus.read_u8(self.pc as usize).unwrap();
             // TODO: Handle wait states here
 
             #[cfg(feature = "cpu_validator")]
-            self.validator.as_mut().unwrap().emu_read_byte(self.pc, byte);
-            
+            {
+                // Validator code fetch
+                self.validator.as_mut().unwrap().emu_read_byte(self.pc, byte, ReadType::Code);
+            }
             // Proceed to T4 and store byte
             self.cycle();
-            self.piq.push_back(byte).unwrap();
+            //self.queue.push();
             self.pc += 1;
         }
-        self.bus_status = BusStatus::Idle;
+        self.bus_status = BusStatus::Passive;
+        */
+    }
+    */
+
+    pub fn biu_suspend_fetch(&mut self) {
+        self.prefetch_suspended = true;
+    }
+
+    pub fn biu_resume_fetch(&mut self) {
+        self.prefetch_suspended = false;
     }
 
     pub fn biu_queue_flush(&mut self) {
-        self.pc -= self.piq.len() as u32;
-        self.piq.clear();
+        self.pc -= self.queue.len() as u32;
+        self.queue.flush();
     }
 
     pub fn biu_update_pc(&mut self) {
+        //log::trace!("Resetting PC to CS:IP: {:04X}:{:04X}", self.cs, self.ip);
         self.pc = Cpu::calc_linear_address(self.cs, self.ip);
     }
 
-    pub fn biu_queue_read(&mut self) -> u8 {
+    pub fn biu_fetch_u8(&mut self, addr: u32) -> u8 {
         let byte;
-
-        if self.piq.len() > 0 {
-            // Return byte from queue 
-            byte = self.piq.pop_front().unwrap();
-            self.cycle();
-        }
-        else {
-            // Queue is empty, fetch directly
-            byte = self.biu_read_u8(self.pc);
-
-            self.pc = (self.pc + 1) & 0xFFFFFu32;
-        }
-        byte
-    }
-
-    pub fn biu_read_u8(&mut self, addr: u32) -> u8 {
-
-        let byte;
-        let _cost;
+        let mut cycles_waited: u32 = 0;
+        //let _cost;
 
         match self.bus_status {
-            BusStatus::Fetch => {
-                // Abort fetch
-                self.bus_status = BusStatus::Idle;        
+            BusStatus::CodeFetch => {
+                // Fetch already in progress?
+                // Wait for fetch to complete
+                cycles_waited = self.bus_wait_finish();
+                self.fetch_delay = self.fetch_delay.saturating_sub(cycles_waited);
+                while self.fetch_delay > 0 {
+                    // Wait any more remaining fetch delay cycles                    
+                    self.cycle();
+                    self.fetch_delay -= 1;
+                }
+                // Byte should be in queue now
+                byte = self.queue.pop();
                 self.cycle();
-
-                self.bus_status = BusStatus::Read;
-                (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
-                
-                #[cfg(feature = "cpu_validator")]
-                self.validator.as_mut().unwrap().emu_read_byte(addr, byte);
-
-                // TODO: Handle wait states here
-                self.cycles(4);
-                self.bus_status = BusStatus::Idle;
             }
-            BusStatus::Idle => {
-                self.bus_status = BusStatus::Read;
-                (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
-                
-                #[cfg(feature = "cpu_validator")]
-                self.validator.as_mut().unwrap().emu_read_byte(addr, byte);
-
-                // TODO: Handle wait states here
-                self.cycles(4);
-                self.bus_status = BusStatus::Idle;
+            BusStatus::Passive => {
+                // Begin fetch
+                self.bus_begin(BusStatus::CodeFetch, Segment::CS, self.pc, 0, TransferSize::Byte);
+                cycles_waited = self.bus_wait_finish();
+                self.fetch_delay = self.fetch_delay.saturating_sub(cycles_waited);
+                while self.fetch_delay > 0 {
+                    // Wait any more remaining fetch delay cycles
+                    self.cycle();
+                    self.fetch_delay -= 1;
+                }
+                // Byte should be in queue now
+                byte = self.queue.pop();
+                self.cycle();
             }
-            BusStatus::Read | BusStatus::Write => {
-                panic!("Overlapping read/write!");
-            }
+            _ => {
+                // Handle other states
+                byte = 0;
+            }                
         }
+
         byte
     }
 
-    pub fn biu_write_u8(&mut self, addr: u32, byte: u8) {
+    pub fn biu_read_u8(&mut self, seg: Segment, addr: u32) -> u8 {
 
+        self.bus_begin(BusStatus::MemRead, seg, addr, 0, TransferSize::Byte);
+        let cycles_waited = self.bus_wait_finish();
+        
+        (self.data_bus & 0x00FF) as u8
+        /*
+        match self.bus_status {
+            BusStatus::CodeFetch => {
+                // Abort fetch
+                self.bus_status = BusStatus::Passive;        
+                self.cycle();
+
+                self.bus_status = BusStatus::Passive;
+                (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
+                
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().emu_read_byte(addr, byte, ReadType::Data);
+
+                // TODO: Handle wait states here
+                self.cycles(4);
+                self.bus_status = BusStatus::Passive;
+            }
+            BusStatus::Passive => {
+                self.bus_status = BusStatus::MemRead;
+                (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
+                
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().emu_read_byte(addr, byte, ReadType::Data);
+
+                // TODO: Handle wait states here
+                self.cycles(4);
+                self.bus_status = BusStatus::Passive;
+            }
+            BusStatus::MemRead | BusStatus::MemWrite => {
+                panic!("Overlapping read/write!");
+            }
+            _ => {
+                // Handle other states
+                byte = 0;
+            }
+        }
+        
+        byte
+        */
+    }
+
+    pub fn biu_write_u8(&mut self, seg: Segment, addr: u32, byte: u8) {
+
+        self.bus_begin(BusStatus::MemRead, seg, addr, byte as u16, TransferSize::Byte);
+        let cycles_waited = self.bus_wait_finish();
+        
+        /*
         let _result;
 
         match self.bus_status {
-            BusStatus::Fetch => {
+            BusStatus::CodeFetch => {
                 // Abort fetch
-                self.bus_status = BusStatus::Idle;        
+                self.bus_status = BusStatus::Passive;        
                 self.cycle();
 
-                self.bus_status = BusStatus::Write;
+                self.bus_status = BusStatus::MemWrite;
                 _result = self.bus.write_u8(addr as usize, byte).unwrap();
                 // TODO: Handle wait states here
 
@@ -143,10 +248,10 @@ impl Cpu {
 
 
                 self.cycles(4);
-                self.bus_status = BusStatus::Idle;
+                self.bus_status = BusStatus::Passive;
             }
-            BusStatus::Idle => {
-                self.bus_status = BusStatus::Write;
+            BusStatus::Passive => {
+                self.bus_status = BusStatus::MemWrite;
                 _result = self.bus.write_u8(addr as usize, byte).unwrap();
                 // TODO: Handle wait states here
 
@@ -154,68 +259,119 @@ impl Cpu {
                 self.validator.as_mut().unwrap().emu_write_byte(addr, byte);
 
                 self.cycles(4);
-                self.bus_status = BusStatus::Idle;
+                self.bus_status = BusStatus::Passive;
             }
-            BusStatus::Read | BusStatus::Write => {
+            BusStatus::MemRead | BusStatus::MemWrite => {
                 panic!("Overlapping read/write state!");
             }
+            _ => {
+                // Handle other status            
+            }
         }
+        */
     }
 
-    pub fn biu_read_u16(&mut self, addr: u32) -> u16 {
+    pub fn biu_read_u16(&mut self, seg: Segment, addr: u32) -> u16 {
 
-        let word;
+        let mut word;
+
+
+        match self.cpu_type {
+            CpuType::Cpu8088 => {
+                // 8088 performs two consecutive byte transfers
+                self.bus_begin(BusStatus::MemRead, seg, addr, 0, TransferSize::Byte);
+                self.bus_wait_finish();
+                word = self.data_bus & 0x00FF;
+
+                self.bus_begin(BusStatus::MemRead, seg, addr, 0, TransferSize::Byte);
+                self.bus_wait_finish();
+                word |= (self.data_bus & 0x00FF) << 8;
+
+                word
+            }
+            CpuType::Cpu8086 => {
+                self.bus_begin(BusStatus::MemRead, seg, addr, 0, TransferSize::Word);
+                self.bus_wait_finish();
+
+                self.data_bus
+            }
+        }
+
+        /*
         let _cost;
 
         match self.bus_status {
-            BusStatus::Fetch => {
+            BusStatus::CodeFetch => {
                 // Abort fetch
-                self.bus_status = BusStatus::Idle;        
+                self.bus_status = BusStatus::Passive;        
                 self.cycle();
 
-                self.bus_status = BusStatus::Read;
+                self.bus_status = BusStatus::MemRead;
                 (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
                 // TODO: Handle wait states here
 
                 #[cfg(feature = "cpu_validator")]
                 {
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8);
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8);
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8, ReadType::Data);
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8, ReadType::Data);
                 }
                 self.cycles(8);
-                self.bus_status = BusStatus::Idle;
+                self.bus_status = BusStatus::Passive;
             }
-            BusStatus::Idle => {
-                self.bus_status = BusStatus::Read;
+            BusStatus::Passive => {
+                self.bus_status = BusStatus::MemRead;
                 (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
                 // TODO: Handle wait states here
 
                 #[cfg(feature = "cpu_validator")]
                 {
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8);
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8);
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8, ReadType::Data);
+                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8, ReadType::Data);
                 }
                 self.cycles(8);
-                self.bus_status = BusStatus::Idle;
+                self.bus_status = BusStatus::Passive;
             }
-            BusStatus::Read | BusStatus::Write => {
+            BusStatus::MemRead | BusStatus::MemWrite => {
                 panic!("Overlapping read/write!");
+                
+            }
+            _ => {
+                // Handle other states
+                word = 0;
             }
         }
         word
+        */
     }
 
-    pub fn biu_write_u16(&mut self, addr: u32, word: u16) {
+    pub fn biu_write_u16(&mut self, seg: Segment, addr: u32, word: u16) {
 
+        match self.cpu_type {
+            CpuType::Cpu8088 => {
+                // 8088 performs two consecutive byte transfers
+                self.bus_begin(BusStatus::MemWrite, seg, addr, word & 0x00FF, TransferSize::Byte);
+                self.bus_wait_finish();
+
+                self.bus_begin(BusStatus::MemWrite, seg, addr, (word >> 8) & 0x00FF, TransferSize::Byte);
+                self.bus_wait_finish();
+            }
+            CpuType::Cpu8086 => {
+                self.bus_begin(BusStatus::MemWrite, seg, addr, word, TransferSize::Word);
+                self.bus_wait_finish();
+            }
+        }
+
+
+        /*
         let _result;
 
         match self.bus_status {
-            BusStatus::Fetch => {
+            BusStatus::CodeFetch => {
                 // Abort fetch
-                self.bus_status = BusStatus::Idle;        
+                self.bus_status = BusStatus::Passive;        
                 self.cycle();
 
-                self.bus_status = BusStatus::Write;
+                self.bus_status = BusStatus::MemWrite;
                 _result = self.bus.write_u16(addr as usize, word).unwrap();
                 // TODO: Handle wait states here
 
@@ -225,10 +381,10 @@ impl Cpu {
                     self.validator.as_mut().unwrap().emu_write_byte(addr, (word >> 8) as u8);
                 }
                 self.cycles(8);
-                self.bus_status = BusStatus::Idle;
+                self.bus_status = BusStatus::Passive;
             }
-            BusStatus::Idle => {
-                self.bus_status = BusStatus::Write;
+            BusStatus::Passive => {
+                self.bus_status = BusStatus::MemWrite;
                 _result = self.bus.write_u16(addr as usize, word).unwrap();
                 // TODO: Handle wait states here
 
@@ -238,12 +394,16 @@ impl Cpu {
                     self.validator.as_mut().unwrap().emu_write_byte(addr, (word >> 8) as u8);
                 }
                 self.cycles(8);
-                self.bus_status = BusStatus::Idle;
+                self.bus_status = BusStatus::Passive;
             }
-            BusStatus::Read | BusStatus::Write => {
+            BusStatus::MemRead | BusStatus::MemWrite => {
                 panic!("Overlapping read/write state!");
             }
+            _ => {
+                // Handle other states
+            }
         }
+        */
     }    
 
 }

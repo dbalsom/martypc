@@ -193,13 +193,13 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
         OperandType::Offset8(offset8) => {
             let segment;
             match i.segment_override {
-                SegmentOverride::SegmentES => {
+                SegmentOverride::ES => {
                     segment = "es".to_string();
                 }
-                SegmentOverride::SegmentCS => {
+                SegmentOverride::CS => {
                     segment = "cs".to_string();
                 }
-                SegmentOverride::SegmentSS => {
+                SegmentOverride::SS => {
                     segment = "ss".to_string();
                 }
                 _ => {
@@ -211,13 +211,13 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
         OperandType::Offset16(offset16) => {
             let segment;
             match i.segment_override {
-                SegmentOverride::SegmentES => {
+                SegmentOverride::ES => {
                     segment = "es".to_string();
                 }
-                SegmentOverride::SegmentCS => {
+                SegmentOverride::CS => {
                     segment = "cs".to_string();
                 }
-                SegmentOverride::SegmentSS => {
+                SegmentOverride::SS => {
                     segment = "ss".to_string();
                 }
                 _ => {
@@ -276,19 +276,19 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
 
             // Handle segment override prefixes 
             match i.segment_override {
-                SegmentOverride::SegmentES => {
+                SegmentOverride::ES => {
                     segment1 = "es".to_string();
                     segment2 = "es".to_string();
                 }
-                SegmentOverride::SegmentCS => {
+                SegmentOverride::CS => {
                     segment1 = "cs".to_string();
                     segment2 = "cs".to_string();
                 }
-                SegmentOverride::SegmentSS => {
+                SegmentOverride::SS => {
                     segment1 = "ss".to_string();
                     segment2 = "ss".to_string();
                 }
-                SegmentOverride::SegmentDS => {
+                SegmentOverride::DS => {
                     segment1 = "ds".to_string();
                     segment2 = "ds".to_string();
                 }

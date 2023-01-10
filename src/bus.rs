@@ -2,12 +2,12 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::bytequeue::ByteQueue;
+use crate::bytequeue::*;
 
 use crate::memerror::MemError;
 
 const ADDRESS_SPACE: usize = 1_048_576;
-const DEFAULT_CYCLE_COST: u32 = 4;
+const DEFAULT_WAIT_STATES: u32 = 0;
 const ROM_BIT: u8 = 0b1000_0000;
 
 pub trait MemoryMappedDevice {  
@@ -55,7 +55,10 @@ impl ByteQueue for BusInterface {
         self.cursor
     }
 
-    fn q_read_u8(&mut self) -> u8 {
+    fn delay(&mut self, _delay: u32) {}
+    fn clear_delay(&mut self) {}
+
+    fn q_read_u8(&mut self, dtype: QueueType) -> u8 {
         if self.cursor < self.memory.len() {
             let b: u8 = self.memory[self.cursor];
             self.cursor += 1;
@@ -64,7 +67,7 @@ impl ByteQueue for BusInterface {
         0xffu8
     }
 
-    fn q_read_i8(&mut self) -> i8 {
+    fn q_read_i8(&mut self, dtype: QueueType) -> i8 {
         if self.cursor < self.memory.len() {
             let b: i8 = self.memory[self.cursor] as i8;
             self.cursor += 1;
@@ -73,7 +76,7 @@ impl ByteQueue for BusInterface {
         -1i8       
     }
 
-    fn q_read_u16(&mut self) -> u16 {
+    fn q_read_u16(&mut self, dtype: QueueType) -> u16 {
         if self.cursor < self.memory.len() - 1 {
             let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
             self.cursor += 2;
@@ -82,7 +85,7 @@ impl ByteQueue for BusInterface {
         0xffffu16   
     }
 
-    fn q_read_i16(&mut self) -> i16 {
+    fn q_read_i16(&mut self, dtype: QueueType) -> i16 {
         if self.cursor < self.memory.len() - 1 {
             let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
             self.cursor += 2;
@@ -222,7 +225,7 @@ impl BusInterface {
                 }
             }
             let b: u8 = self.memory[address];
-            return Ok((b, DEFAULT_CYCLE_COST))
+            return Ok((b, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -238,7 +241,7 @@ impl BusInterface {
             }
 
             let b: i8 = self.memory[address] as i8;
-            return Ok((b, DEFAULT_CYCLE_COST))
+            return Ok((b, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -254,7 +257,7 @@ impl BusInterface {
             }
 
             let w: u16 = self.memory[address] as u16 | (self.memory[address+1] as u16) << 8;
-            return Ok((w, DEFAULT_CYCLE_COST))
+            return Ok((w, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -269,7 +272,7 @@ impl BusInterface {
             }
 
             let w: i16 = (self.memory[address] as u16 | (self.memory[address+1] as u16) << 8) as i16;
-            return Ok((w, DEFAULT_CYCLE_COST))
+            return Ok((w, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -288,7 +291,7 @@ impl BusInterface {
             if self.memory_mask[address] & ROM_BIT == 0 {
                 self.memory[address] = data;                
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -306,7 +309,7 @@ impl BusInterface {
             if self.memory_mask[address] & ROM_BIT == 0 {
                 self.memory[address] = data as u8;
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }    
@@ -328,7 +331,7 @@ impl BusInterface {
                 self.memory[address] = (data & 0xFF) as u8;
                 self.memory[address+1] = (data >> 8) as u8;              
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -350,7 +353,7 @@ impl BusInterface {
                 self.memory[address] = (data as u16 & 0xFF) as u8;
                 self.memory[address+1] = (data as u16 >> 8) as u8;
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
