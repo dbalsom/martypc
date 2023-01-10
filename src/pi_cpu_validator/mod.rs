@@ -37,8 +37,8 @@ use udmask::{FLAG_MASK_LOOKUP};
 
 use crate::cpu_validator::{CpuValidator, VRegisters};
 
-static PROGRAM_LOAD: &'static [u8; 62] = include_bytes!("load.bin");
-static PROGRAM_STORE: &'static [u8; 63] = include_bytes!("store.bin");
+static PROGRAM_LOAD: &'static [u8] = include_bytes!("load.bin");
+static PROGRAM_STORE: &'static [u8] = include_bytes!("store.bin");
 
 pub const VFLAG_CARRY: u16     = 0x001;
 pub const VFLAG_PARITY: u16    = 0x004;
