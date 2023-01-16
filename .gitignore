@@ -15,6 +15,9 @@ Thumbs.db
 /floppy
 /hdd
 /dumps
+/builds
+/traces
+marty.toml
 *.pcm
 *.cfg
 
