@@ -28,8 +28,8 @@
 use serialport::ClearBuffer;
 use log;
 
-//pub const ARD8088_BAUD: u32 = 230400;
-pub const ARD8088_BAUD: u32 = 460800;
+pub const ARD8088_BAUD: u32 = 2000000;
+//pub const ARD8088_BAUD: u32 = 460800;
 
 #[derive(Copy, Clone)]
 pub enum ServerCommand {
@@ -45,13 +45,16 @@ pub enum ServerCommand {
     CmdReadDataBus     = 0x09,
     CmdWriteDataBus    = 0x0A,
     CmdFinalize        = 0x0B,
-    CmdStore           = 0x0C,
-    CmdQueueLen        = 0x0D,
-    CmdQueueBytes      = 0x0E,
-    CmdWritePin        = 0x0F,
-    CmdReadPin         = 0x10,
-    CmdGetProgramState = 0x11,
-    CmdInvalid         = 0x12,
+    CmdBeginStore      = 0x0C,
+    CmdStore           = 0x0D,
+    CmdQueueLen        = 0x0E,
+    CmdQueueBytes      = 0x0F,
+    CmdWritePin        = 0x10,
+    CmdReadPin         = 0x11,
+    CmdGetProgramState = 0x12,
+    CmdGetLastError    = 0x13,
+    CmdGetCycleState   = 0x14,
+    CmdInvalid         = 0x15,
 }
 
 #[derive(Debug, PartialEq)]
@@ -64,6 +67,7 @@ pub enum ProgramState {
     ExecuteFinalize,
     ExecuteDone,
     Store,
+    StoreDone,
     Done
 }
 
@@ -83,7 +87,7 @@ pub enum QueueOp {
     Subsequent,
 }
 
-#[derive (PartialEq)]
+#[derive (Debug, PartialEq)]
 pub enum BusState {
     IRQA = 0,   // IRQ Acknowledge
     IOR  = 1,   // IO Read
@@ -97,13 +101,15 @@ pub enum BusState {
 
 pub const REQUIRED_PROTOCOL_VER: u8 = 0x01;
 
-pub const COMMAND_ALE_BIT: u8   = 0b1000_0000;
+
 pub const COMMAND_MRDC_BIT: u8  = 0b0000_0001;
 pub const COMMAND_AMWC_BIT: u8  = 0b0000_0010;
 pub const COMMAND_MWTC_BIT: u8  = 0b0000_0100;
 pub const COMMAND_IORC_BIT: u8  = 0b0000_1000;
 pub const COMMAND_AIOWC_BIT: u8 = 0b0001_0000;
 pub const COMMAND_IOWC_BIT: u8  = 0b0010_0000;
+pub const COMMAND_INTA_BIT: u8  = 0b0100_0000;
+pub const COMMAND_ALE_BIT: u8   = 0b1000_0000;
 
 pub const STATUS_SEG_BITS: u8   = 0b0001_1000;
 
@@ -357,7 +363,7 @@ impl CpuClient {
             Ok(bytes) => {
                 if bytes != buf.len() {
                     // We didn't read entire buffer worth of data, fail
-                    log::error!("Only read {} bytes of 28.", bytes);
+                    log::error!("Only read {} bytes of {}.", bytes, buf.len());
                     Err(CpuClientError::ReadFailure)
                 }
                 else {
@@ -365,11 +371,23 @@ impl CpuClient {
                 }
                 
             },
+            Err(e) => {
+                log::error!("Read Error: {}", e);
+                Err(CpuClientError::ReadFailure)
+            }
+        }
+    }
+
+    pub fn recv_dyn_buf(&mut self, buf: &mut [u8]) -> Result<usize, CpuClientError> {
+        match self.port.borrow_mut().read(buf) {
+            Ok(bytes) => {
+                Ok(bytes)
+            },
             Err(_) => {
                 Err(CpuClientError::ReadFailure)
             }
         }
-    }    
+    }
 
     /// Server command - Load
     /// Load the specified register state into the CPU.
@@ -381,6 +399,11 @@ impl CpuClient {
     pub fn load_registers_from_buf(&mut self, reg_data: &[u8]) -> Result<bool, CpuClientError> {
         self.send_command_byte(ServerCommand::CmdLoad)?;
         self.send_buf(reg_data)?;
+        self.read_result_code()
+    }
+
+    pub  fn begin_store(&mut self) -> Result<bool, CpuClientError> {
+        self.send_command_byte(ServerCommand::CmdBeginStore)?;
         self.read_result_code()
     }
 
@@ -445,7 +468,6 @@ impl CpuClient {
     pub fn write_data_bus(&mut self, data: u8) -> Result<bool, CpuClientError> {
         let mut buf: [u8; 1] = [0; 1];
         self.send_command_byte(ServerCommand::CmdWriteDataBus)?;
-
         buf[0] = data;
         self.send_buf(&mut buf)?;
         self.read_result_code()?;
@@ -473,9 +495,47 @@ impl CpuClient {
             0x05 => Ok(ProgramState::ExecuteFinalize),
             0x06 => Ok(ProgramState::ExecuteDone),
             0x07 => Ok(ProgramState::Store),
-            0x08 => Ok(ProgramState::Done),
+            0x08 => Ok(ProgramState::StoreDone),
+            0x09 => Ok(ProgramState::Done),
             _ => Err(CpuClientError::BadValue)
         }
     }
 
+    pub fn get_last_error(&mut self) -> Result<String, CpuClientError> {
+        //let mut cmdbuf: [u8; 1] = [0; 1];
+        let mut errbuf: [u8; 50] = [0; 50];
+        self.send_command_byte(ServerCommand::CmdGetLastError)?;
+        let bytes = self.recv_dyn_buf(&mut errbuf)?;
+        let err_string = str::from_utf8(&errbuf[..bytes-1]).unwrap();
+
+        Ok(err_string.to_string())
+    }
+
+    pub fn get_cycle_state(&mut self) -> Result<(ProgramState, u8, u8, u8, u8), CpuClientError> {
+        let mut buf: [u8; 4] = [0; 4];
+        self.send_command_byte(ServerCommand::CmdGetCycleState)?;
+        self.recv_buf(&mut buf)?;
+        self.read_result_code()?;
+
+        let state_bits: u8 = buf[0] >> 4;
+        let state: ProgramState = match state_bits {
+            0x00 => ProgramState::Reset,
+            0x01 => ProgramState::JumpVector,
+            0x02 => ProgramState::Load,
+            0x03 => ProgramState::LoadDone,
+            0x04 => ProgramState::Execute,
+            0x05 => ProgramState::ExecuteFinalize,
+            0x06 => ProgramState::ExecuteDone,
+            0x07 => ProgramState::Store,
+            0x08 => ProgramState::StoreDone,
+            0x09 => ProgramState::Done,
+            _ => {
+                return Err(CpuClientError::BadValue);
+            }
+        };
+
+        let control_bits = buf[0] & 0x0F;
+
+        Ok((state, control_bits, buf[1], buf[2], buf[3]))
+    }
 }

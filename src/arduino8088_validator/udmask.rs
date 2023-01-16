@@ -16,6 +16,7 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+#![allow(dead_code)]
 
 use crate::arduino8088_validator::ArduinoValidator;
 
@@ -358,7 +359,7 @@ impl ArduinoValidator {
         else {
             // Is group opcode, look up from group table.
             let grp_op = ((modrm >> 3) & 0x07) as usize;
-            masked_flags &= !FLAG_MASK_GROUP_LOOKUP[grp][grp_op].mask;
+            masked_flags &= !FLAG_MASK_GROUP_LOOKUP[grp-1][grp_op].mask;
         }
 
         masked_flags

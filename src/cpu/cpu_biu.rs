@@ -5,7 +5,35 @@ use crate::bytequeue::*;
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ReadType;
 
-impl ByteQueue for Cpu {
+
+macro_rules! validate_read_u8 {
+    ($myself: expr, $addr: expr, $data: expr, $rtype: expr) => {
+        {
+            #[cfg(feature = "cpu_validator")]
+            if let Some(ref mut validator) = &mut $myself.validator {
+                validator.emu_read_byte($addr, $data, $rtype)
+            }
+        }
+    };
+}
+
+macro_rules! validate_write_u8 {
+    ($myself: expr, $addr: expr, $data: expr) => {
+        {
+            #[cfg(feature = "cpu_validator")]
+            if let Some(ref mut validator) = &mut $myself.validator {
+                validator.emu_write_byte($addr, $data)
+            }
+        }
+    };
+}
+
+pub enum WriteFlag {
+    Normal,
+    RNI
+}
+
+impl ByteQueue for Cpu<'_> {
     fn seek(&mut self, _pos: usize) {
         // Instruction queue does not support seeking
     }
@@ -47,7 +75,7 @@ impl ByteQueue for Cpu {
 }
 
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
     /// Read a byte from the instruction queue.
     /// Regardless of 8088 or 8086, the queue is read from one byte at a time.
@@ -171,7 +199,18 @@ impl Cpu {
             }
             _ => {
                 // Handle other states
-                byte = 0;
+                self.bus_wait_finish();
+                self.bus_begin(BusStatus::CodeFetch, Segment::CS, self.pc, 0, TransferSize::Byte);
+                cycles_waited = self.bus_wait_finish();
+                self.fetch_delay = self.fetch_delay.saturating_sub(cycles_waited);
+                while self.fetch_delay > 0 {
+                    // Wait any more remaining fetch delay cycles
+                    self.cycle();
+                    self.fetch_delay -= 1;
+                }
+                // Byte should be in queue now
+                byte = self.queue.pop();
+                self.cycle();                
             }                
         }
 
@@ -183,6 +222,8 @@ impl Cpu {
         self.bus_begin(BusStatus::MemRead, seg, addr, 0, TransferSize::Byte);
         let cycles_waited = self.bus_wait_finish();
         
+        validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
+
         (self.data_bus & 0x00FF) as u8
         /*
         match self.bus_status {
@@ -225,11 +266,16 @@ impl Cpu {
         */
     }
 
-    pub fn biu_write_u8(&mut self, seg: Segment, addr: u32, byte: u8) {
+    pub fn biu_write_u8(&mut self, seg: Segment, addr: u32, byte: u8, flag: WriteFlag) {
 
-        self.bus_begin(BusStatus::MemRead, seg, addr, byte as u16, TransferSize::Byte);
-        let cycles_waited = self.bus_wait_finish();
+        self.bus_begin(BusStatus::MemWrite, seg, addr, byte as u16, TransferSize::Byte);
+        match flag {
+            WriteFlag::Normal => self.bus_wait_finish(),
+            WriteFlag::RNI => self.bus_wait_until(CycleState::T2)
+        };
         
+        validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
+
         /*
         let _result;
 
@@ -283,10 +329,13 @@ impl Cpu {
                 self.bus_wait_finish();
                 word = self.data_bus & 0x00FF;
 
-                self.bus_begin(BusStatus::MemRead, seg, addr, 0, TransferSize::Byte);
+                validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
+
+                self.bus_begin(BusStatus::MemRead, seg, addr + 1, 0, TransferSize::Byte);
                 self.bus_wait_finish();
                 word |= (self.data_bus & 0x00FF) << 8;
 
+                validate_read_u8!(self, addr + 1, (self.data_bus & 0x00FF) as u8, ReadType::Data);
                 word
             }
             CpuType::Cpu8086 => {
@@ -344,20 +393,32 @@ impl Cpu {
         */
     }
 
-    pub fn biu_write_u16(&mut self, seg: Segment, addr: u32, word: u16) {
+    pub fn biu_write_u16(&mut self, seg: Segment, addr: u32, word: u16, flag: WriteFlag) {
 
         match self.cpu_type {
             CpuType::Cpu8088 => {
                 // 8088 performs two consecutive byte transfers
                 self.bus_begin(BusStatus::MemWrite, seg, addr, word & 0x00FF, TransferSize::Byte);
+
+                validate_write_u8!(self, addr, (word & 0x00FF) as u8);
+
                 self.bus_wait_finish();
 
-                self.bus_begin(BusStatus::MemWrite, seg, addr, (word >> 8) & 0x00FF, TransferSize::Byte);
-                self.bus_wait_finish();
+                self.bus_begin(BusStatus::MemWrite, seg, addr + 1, (word >> 8) & 0x00FF, TransferSize::Byte);
+
+                validate_write_u8!(self, addr + 1, ((word >> 8) & 0x00FF) as u8);
+
+                match flag {
+                    WriteFlag::Normal => self.bus_wait_finish(),
+                    WriteFlag::RNI => self.bus_wait_until(CycleState::T2)
+                };
             }
             CpuType::Cpu8086 => {
                 self.bus_begin(BusStatus::MemWrite, seg, addr, word, TransferSize::Word);
-                self.bus_wait_finish();
+                match flag {
+                    WriteFlag::Normal => self.bus_wait_finish(),
+                    WriteFlag::RNI => self.bus_wait_until(CycleState::T2)
+                };
             }
         }
 

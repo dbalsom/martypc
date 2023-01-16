@@ -1,18 +1,17 @@
 use crate::cpu::*;
-use crate::bus::BusInterface;
-
+use crate::cpu::cpu_biu::*;
 use super::CPU_FLAG_RESERVED1;
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
-    pub fn push_u16(&mut self, data: u16) {
+    pub fn push_u16(&mut self, data: u16, flag: WriteFlag) {
 
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
         //let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
-        self.biu_write_u16(Segment::SS, stack_addr, data);
+        self.biu_write_u16(Segment::SS, stack_addr, data, flag);
     }
 
     pub fn pop_u16(&mut self) -> u16 {
@@ -27,7 +26,7 @@ impl Cpu {
         result
     }
 
-    pub fn push_register16(&mut self, reg: Register16) {
+    pub fn push_register16(&mut self, reg: Register16, flag: WriteFlag) {
         
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
@@ -52,7 +51,7 @@ impl Cpu {
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
 
         //let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
-        self.biu_write_u16(Segment::SS, stack_addr, data);
+        self.biu_write_u16(Segment::SS, stack_addr, data, flag);
 
     }
 
@@ -63,12 +62,16 @@ impl Cpu {
         //let (data, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
         let data = self.biu_read_u16(Segment::SS, stack_addr);
 
+        let mut update_sp = true;
         match reg {
             Register16::AX => self.set_register16(reg, data),
             Register16::BX => self.set_register16(reg, data),
             Register16::CX => self.set_register16(reg, data),
             Register16::DX => self.set_register16(reg, data),
-            Register16::SP => self.sp = data,
+            Register16::SP => {
+                self.sp = data;
+                update_sp = false;
+            }
             Register16::BP => self.bp = data,
             Register16::SI => self.si = data,
             Register16::DI => self.di = data,
@@ -84,10 +87,12 @@ impl Cpu {
             _ => panic!("Invalid register")            
         };
         // Stack pointer grows downwards
-        self.sp = self.sp.wrapping_add(2);
+        if update_sp {
+            self.sp = self.sp.wrapping_add(2);
+        }
     }
 
-    pub fn push_flags(&mut self) {
+    pub fn push_flags(&mut self, wflag: WriteFlag) {
 
         // TODO: Handle stack exception per Intel manual when SP==1
 
@@ -97,7 +102,7 @@ impl Cpu {
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
 
         //let _cost = self.bus.write_u16(stack_addr as usize, self.flags).unwrap();
-        self.biu_write_u16(Segment::SS, stack_addr, self.flags);
+        self.biu_write_u16(Segment::SS, stack_addr, self.flags, wflag);
     }
 
     pub fn pop_flags(&mut self) {
@@ -108,7 +113,7 @@ impl Cpu {
 
         // Ensure state of reserved flag bits
         self.flags = result & FLAGS_POP_MASK;
-        self.flags |= CPU_FLAG_RESERVED1;
+        self.flags |= CPU_FLAGS_RESERVED_ON;
 
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_add(2);

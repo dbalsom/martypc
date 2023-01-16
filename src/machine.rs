@@ -13,11 +13,12 @@ use std::{
     cell::{Cell, RefCell}, 
     collections::VecDeque,
     fs::File,
-    io::Write
+    io::{BufWriter, Write},
+    
 };
 
 use crate::{
-    config::{MachineType, VideoType, ValidatorType, TraceMode},
+    config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
 
     bus::{BusInterface, MemRangeDescriptor},
     cga::{self, CGACard},
@@ -104,7 +105,7 @@ impl ExecutionControl {
         self.do_reset.set(true)
     }
 }
-pub struct Machine {
+pub struct Machine<'a> {
     machine_type: MachineType,
     video_type: VideoType,
     sound_player: SoundPlayer,
@@ -112,7 +113,7 @@ pub struct Machine {
     floppy_manager: FloppyManager,
     //bus: BusInterface,
     io_bus: IoBusInterface,
-    cpu: Cpu,
+    cpu: Cpu<'a>,
     dma_controller: Rc<RefCell<dma::DMAController>>,
     pit: Rc<RefCell<pit::Pit>>,
     pit_buffer_producer: Producer<u8>,
@@ -134,24 +135,40 @@ pub struct Machine {
     cpu_cycles: u64,
 }
 
-impl Machine {
+impl<'a> Machine<'a> {
     pub fn new(
+        config: &ConfigFileParams,
         machine_type: MachineType,
         trace_mode: TraceMode,
         video_type: VideoType,
         sound_player: SoundPlayer,
         rom_manager: RomManager,
         floppy_manager: FloppyManager,
-        validator_type: ValidatorType,
-        ) -> Machine {
+        ) -> Machine<'a> {
 
         let mut io_bus = IoBusInterface::new();
         
+        let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
+        if config.emulator.trace_mode != TraceMode::None {
+            // Open the trace file if specified
+            if let Some(filename) = &config.emulator.trace_file {
+                match File::create(filename) {
+                    Ok(file) => {
+                        trace_file_option = Box::new(BufWriter::new(file));
+                    },
+                    Err(e) => {
+                        eprintln!("Couldn't create specified tracelog file: {}", e);
+                    }
+                }
+            }
+        }
+
         let mut cpu = Cpu::new(
             CpuType::Cpu8088,
             trace_mode,
+            Some(trace_file_option),
             #[cfg(feature = "cpu_validator")]
-            validator_type
+            config.validator.vtype.unwrap()
         );
 
         cpu.reset();        
@@ -454,7 +471,9 @@ impl Machine {
     }
 
     pub fn bridge_serial_port(&mut self, port_num: usize, port_name: String) {
-        self.serial_controller.borrow_mut().bridge_port(port_num, port_name);
+        if let Err(e) = self.serial_controller.borrow_mut().bridge_port(port_num, port_name) {
+            log::error!("Failed to bridge serial port: {}", e );
+        }
     }
 
     pub fn reset(&mut self) {

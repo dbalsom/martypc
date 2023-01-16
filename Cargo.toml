@@ -9,7 +9,6 @@ edition = "2021"
 anyhow = "1.0.58"
 arraydeque = "0.4.5"
 bpaf = { version = "0.7.7", features = ["derive"] }
-configparser = "3.0.1"
 cpal = "0.13.5"
 egui = { version = "0.17"}
 egui_wgpu_backend = "0.17"

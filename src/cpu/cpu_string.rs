@@ -1,16 +1,16 @@
 use crate::cpu::*;
 use crate::bus::BusInterface;
 
-impl Cpu {
-    pub fn string_op(&mut self, opcode: Mnemonic, segment: SegmentOverride) {
+impl<'a> Cpu<'a> {
+    pub fn string_op(&mut self, opcode: Mnemonic, segment_override: SegmentOverride) {
 
-        let segment_base_default_ds: u16 = match segment {
-            SegmentOverride::None => self.ds,
-            SegmentOverride::ES => self.es,
-            SegmentOverride::CS => self.cs,
-            SegmentOverride::SS => self.ss,
-            SegmentOverride::DS => self.ds
-        };
+        let (segment_value_base_ds, segment_base_ds) = match segment_override {
+            SegmentOverride::None => (self.ds, Segment::DS),
+            SegmentOverride::ES  => (self.es, Segment::ES),
+            SegmentOverride::CS  => (self.cs, Segment::CS),
+            SegmentOverride::SS  => (self.ss, Segment::SS),
+            SegmentOverride::DS  => (self.ds, Segment::DS),
+        };   
 
         match opcode {
             Mnemonic::STOSB => {
@@ -19,7 +19,8 @@ impl Cpu {
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
                 // Write AL to [es:di]
-                self.bus.write_u8(dest_addr as usize, self.al).unwrap();
+                self.biu_write_u8(segment_base_ds, dest_addr, self.al, WriteFlag::Normal);
+                //self.bus.write_u8(dest_addr as usize, self.al).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -38,7 +39,8 @@ impl Cpu {
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
                 // Write AX to [es:di]
-                self.bus.write_u16(dest_addr as usize, self.ax).unwrap();
+                self.biu_write_u16(segment_base_ds, dest_addr, self.ax, WriteFlag::Normal);
+                //self.bus.write_u16(dest_addr as usize, self.ax).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -54,9 +56,10 @@ impl Cpu {
             Mnemonic::LODSB => {
                 // LODSB affects no flags
                 // Store byte [ds:si] in AL   (Segment overrideable)
-                let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
+                let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
-                let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
+                let data = self.biu_read_u8(segment_base_ds, src_addr);
+                //let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
                 self.set_register8(Register8::AL, data);
 
                 // Increment or Decrement SI according to Direction flag
@@ -74,10 +77,15 @@ impl Cpu {
             Mnemonic::LODSW => {
                 // LODSW affects no flags
                 // Store word [ds:si] in AX   (Segment overrideable)
-                let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
+                let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
-                let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
+                let data = self.biu_read_u16(segment_base_ds, src_addr);
+                //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
                 self.set_register16(Register16::AX, data);  
+
+                if data == 0xFFFF {
+                    log::trace!("Hmm...");
+                }
 
                 // Increment or Decrement SI according to Direction flag
                 match self.get_flag(Flag::Direction) {
@@ -93,11 +101,13 @@ impl Cpu {
             }            
             Mnemonic::MOVSB => {
                 // Store byte from [ds:si] in [es:di]  (DS Segment overrideable)
-                let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
+                let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
-                self.bus.write_u8(dst_addr as usize, data).unwrap();
+                let data = self.biu_read_u8(segment_base_ds, src_addr);
+                self.biu_write_u8(segment_base_ds, dst_addr, data, WriteFlag::Normal);
+                //let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
+                //self.bus.write_u8(dst_addr as usize, data).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -114,11 +124,13 @@ impl Cpu {
             }
             Mnemonic::MOVSW => {
                 // Store word from [ds:si] in [es:di] (DS Segment overrideable)
-                let src_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
+                let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
-                self.bus.write_u16(dst_addr as usize, data).unwrap();
+                let data = self.biu_read_u16(segment_base_ds, src_addr);
+                self.biu_write_u16(segment_base_ds, dst_addr, data, WriteFlag::Normal);
+                //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
+                //self.bus.write_u16(dst_addr as usize, data).unwrap();
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -138,9 +150,11 @@ impl Cpu {
                 // Flags: o..szapc
                 // Override: ES cannot be overridden
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);
-                let (byte, _cost) = self.bus.read_u8(scan_addr as usize).unwrap();
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, byte, false );
+                let data = self.biu_read_u8(Segment::ES, scan_addr);
+                //let (byte, _cost) = self.bus.read_u8(scan_addr as usize).unwrap();
+
+                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, data, false );
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -163,9 +177,11 @@ impl Cpu {
                 // Flags: o..szapc
                 // Override: ES cannot be overridden                
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);
-                let (word, _cost) = self.bus.read_u16(scan_addr as usize).unwrap();
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, word, false );
+                let data = self.biu_read_u16(Segment::ES, scan_addr);
+                //let (word, _cost) = self.bus.read_u16(scan_addr as usize).unwrap();
+
+                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, data, false );
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -187,11 +203,13 @@ impl Cpu {
                 // CMPSB: Compare bytes from [es:di] to [ds:si]
                 // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
                 // Override: DS can be overridden
-                let dssi_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
+                let dssi_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
                 
-                let (dssi_op, _cost2) = self.bus.read_u8(dssi_addr as usize).unwrap();
-                let (esdi_op, _cost1) = self.bus.read_u8(esdi_addr as usize).unwrap();
+                let dssi_op = self.biu_read_u8(segment_base_ds, dssi_addr);
+                let esdi_op = self.biu_read_u8(Segment::ES, esdi_addr);
+                //let (dssi_op, _cost2) = self.bus.read_u8(dssi_addr as usize).unwrap();
+                //let (esdi_op, _cost1) = self.bus.read_u8(esdi_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(dssi_op, esdi_op, false);
 
@@ -218,11 +236,14 @@ impl Cpu {
                 // CMPSW: Compare words from [es:di] to [ds:si]
                 // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
                 // Override: DS can be overridden
-                let dssi_addr = Cpu::calc_linear_address(segment_base_default_ds, self.si);
+                let dssi_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
                 
-                let (dssi_op, _cost2) = self.bus.read_u16(dssi_addr as usize).unwrap();
-                let (esdi_op, _cost1) = self.bus.read_u16(esdi_addr as usize).unwrap();
+                let dssi_op = self.biu_read_u16(segment_base_ds, dssi_addr);
+                let esdi_op = self.biu_read_u16(Segment::ES, esdi_addr);
+
+                //let (dssi_op, _cost2) = self.bus.read_u16(dssi_addr as usize).unwrap();
+                //let (esdi_op, _cost1) = self.bus.read_u16(esdi_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(dssi_op, esdi_op, false);
 

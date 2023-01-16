@@ -91,6 +91,8 @@ pub enum Mnemonic {
     SBB,
     SCASB,
     SCASW,
+    SETMO,
+    SETMOC,
     SHL,
     SHR,
     STC,

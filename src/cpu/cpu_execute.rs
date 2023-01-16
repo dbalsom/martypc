@@ -1,8 +1,8 @@
 
 use crate::cpu::*;
+use crate::cpu::cpu_biu::*;
 use super::CPU_CALL_STACK_LEN;
 
-use crate::bus::BusInterface;
 use crate::io::IoBusInterface;
 use crate::util;
 
@@ -18,7 +18,7 @@ macro_rules! get_operand {
     };
 }
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
     pub fn execute_instruction(&mut self, io_bus: &mut IoBusInterface) -> ExecutionResult {
 
@@ -164,7 +164,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();            
                 
                 let result = self.math_op8(Mnemonic::ADD, op1_value, op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x01 | 0x03 | 0x05 => {
@@ -174,13 +174,13 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 let result = self.math_op16(Mnemonic::ADD, op1_value, op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);       
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);       
                 handled_override = true;         
             }
             0x06 => {
                 // PUSH es
                 // Flags: None
-                self.push_register16(Register16::ES);
+                self.push_register16(Register16::ES, WriteFlag::RNI);
             }
             0x07 => {
                 // POP es
@@ -194,7 +194,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 let result = op1_value | op2_value;
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
 
                 // Clear carry & overflow flags
                 // AoA 6.6.1
@@ -210,7 +210,7 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 let result = op1_value | op2_value;
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
 
                 // Clear carry & overflow flags
                 // AoA 6.6.1
@@ -222,7 +222,7 @@ impl Cpu {
             0x0E => {
                 // PUSH cs
                 // Flags: None
-                self.push_register16( Register16::CS);
+                self.push_register16( Register16::CS, WriteFlag::RNI);
             }
             0x0F => {
                 // POP cs
@@ -236,7 +236,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 let result = self.math_op8(Mnemonic::ADC,  op1_value,  op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x11 | 0x13 | 0x15 => {
@@ -246,13 +246,13 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 let result = self.math_op16(Mnemonic::ADC,  op1_value,  op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x16 => {
                 // PUSH ss
                 // Flags: None
-                self.push_register16(Register16::SS);
+                self.push_register16(Register16::SS, WriteFlag::RNI);
             }
             0x17 => {
                 // POP ss
@@ -267,7 +267,7 @@ impl Cpu {
 
                 
                 let result = self.math_op8(Mnemonic::SBB,  op1_value,  op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x19 | 0x1B | 0x1D => {
@@ -278,13 +278,13 @@ impl Cpu {
 
                 
                 let result = self.math_op16(Mnemonic::SBB,  op1_value,  op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x1E => {
                 // PUSH ds
                 // Flags: None
-                self.push_register16(Register16::DS);
+                self.push_register16(Register16::DS, WriteFlag::RNI);
             }
             0x1F => {
                 // POP ds
@@ -298,7 +298,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 let result = self.math_op8(Mnemonic::AND,  op1_value,  op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x21 | 0x23 | 0x25 => {
@@ -308,7 +308,7 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 let result = self.math_op16(Mnemonic::AND,  op1_value,  op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x26 => {
@@ -325,7 +325,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 let result = self.math_op8(Mnemonic::SUB,  op1_value,  op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x29 | 0x2B | 0x2D => {
@@ -335,7 +335,7 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 let result = self.math_op16(Mnemonic::SUB,  op1_value,  op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x2E => {
@@ -351,7 +351,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 let result = op1_value ^ op2_value;
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
 
                 // Clear carry & overflow flags
                 self.clear_flag(Flag::Carry);
@@ -365,7 +365,7 @@ impl Cpu {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 let result = op1_value ^ op2_value;
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
 
                 // Clear carry & overflow flags
                 self.clear_flag(Flag::Carry);
@@ -414,7 +414,7 @@ impl Cpu {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 // math_op16 handles flags
                 let result = self.math_op16(Mnemonic::INC, op1_value, 0);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0x48..=0x4F => {
@@ -422,80 +422,20 @@ impl Cpu {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 // math_op16 handles flags
                 let result = self.math_op16(Mnemonic::DEC, op1_value, 0);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;           
             }
-            0x50 => {
-                // PUSH ax
-                // Flags: None                
-                self.push_register16(Register16::AX);
-            }
-            0x51 => {
-                // PUSH cx
-                // Flags: None                
-                self.push_register16(Register16::CX);
-            }
-            0x52 => {
-                // PUSH dx
-                // Flags: None                
-                self.push_register16(Register16::DX);
-            }
-            0x53 => {
-                // PUSH bx
+            0x50..=0x57 => {
+                // PUSH reg16
                 // Flags: None
-                self.push_register16(Register16::BX);
+                let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
+                self.push_register16(reg, WriteFlag::RNI);
             }
-            0x54 => {
-                // PUSH sp
+            0x58..=0x5F => {
+                // POP reg16
                 // Flags: None
-                self.push_register16(Register16::SP);
-            }
-            0x55 => {
-                // PUSH bp
-                // Flags: None             
-                self.push_register16(Register16::BP);
-            }
-            0x56 => {
-                // PUSH si
-                // Flags: None                
-                self.push_register16(Register16::SI);
-            }
-            0x57 => {
-                // PUSH di
-                // Flags: None
-                self.push_register16(Register16::DI);                 
-            }
-            0x58 => {
-                // POP ax
-                self.pop_register16(Register16::AX);
-            }
-            0x59 => {
-                // POP cx
-                self.pop_register16(Register16::CX);
-            }
-            0x5A => {
-                // POP dx
-                self.pop_register16(Register16::DX);
-            }
-            0x5B => {
-                // POP bx
-                self.pop_register16(Register16::BX);
-            }
-            0x5C => {
-                // POP sp
-                self.pop_register16(Register16::SP);
-            }
-            0x5D => {
-                // POP bp
-                self.pop_register16(Register16::BP);
-            }
-            0x5E => {
-                // POP si
-                self.pop_register16(Register16::SI);
-            }
-            0x5F => {
-                // POP di
-                self.pop_register16(Register16::DI);
+                let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
+                self.pop_register16(reg);
             }
             0x60..=0x7F => {
                 // JMP rel8 variants
@@ -543,7 +483,7 @@ impl Cpu {
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
 
                 if self.i.mnemonic != Mnemonic::CMP {
-                    self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                    self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 }
                 handled_override = true;
             }
@@ -555,7 +495,7 @@ impl Cpu {
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
 
                 if self.i.mnemonic != Mnemonic::CMP {
-                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 }
                 handled_override = true;
             }
@@ -571,7 +511,7 @@ impl Cpu {
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_extended);   
                 
                 if self.i.mnemonic != Mnemonic::CMP {
-                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 }
                 handled_override = true;
             }
@@ -598,9 +538,9 @@ impl Cpu {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                // Exchange values
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value);
-                self.write_operand8(self.i.operand2_type, self.i.segment_override, op1_value);
+                // Exchange values. Write operand2 first so we don't affect EA calculation if EA includes register being swapped.
+                self.write_operand8(self.i.operand2_type, self.i.segment_override, op1_value, WriteFlag::RNI);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, WriteFlag::Normal);
                 handled_override = true;
             }
             0x87 => {
@@ -608,21 +548,21 @@ impl Cpu {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                // Exchange values
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value);
-                self.write_operand16(self.i.operand2_type, self.i.segment_override, op1_value);
+                // Exchange values. Write operand2 first so we don't affect EA calculation if EA includes register being swapped.
+                self.write_operand16(self.i.operand2_type, self.i.segment_override, op1_value, WriteFlag::RNI);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, WriteFlag::Normal);
                 handled_override = true;
             }
             0x88 | 0x8A => {
                 // MOV r/m8, r8  |  MOV r8, r/m8
                 let op_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, op_value);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, op_value, WriteFlag::RNI);
                 handled_override = true;
             }
             0x89 | 0x8B => {
                 // MOV r/m16, r16  |  MOV r16, r/m16
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, WriteFlag::RNI);
                 handled_override = true;
             }
             0x8C | 0x8E => {
@@ -634,79 +574,40 @@ impl Cpu {
                     }
                 }                
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, WriteFlag::RNI);
                 handled_override = true;
             }
             0x8D => {
                 // LEA - Load Effective Address
-                let value = self.load_effective_address(self.i.operand2_type).unwrap();
-                self.write_operand16(self.i.operand1_type, SegmentOverride::None, value);
+                let ea = self.load_effective_address(self.i.operand2_type);
+                match ea {
+                    Some(value) => {
+                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, value, WriteFlag::Normal);
+                    }
+                    None => {
+                        // In the event of an invalid (Register) operand2, operand1 is set to the last EA calculated by an instruction.
+                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, self.last_ea, WriteFlag::Normal);
+                        self.cycles(3);
+                    }
+                }
+                
             }
             0x8F => {
                 // POP r/m16
                 let value = self.pop_u16();
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, value);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, value, WriteFlag::RNI);
                 handled_override = true;
             }
-            0x90 => {
-                // NOP
-                // XCHG AX, AX
-            }
-            0x91 => {
-                // XCHG AX, CX
+            0x90..=0x97 => {
+                // XCHG AX, r
+                // Cycles: 3 (1 Fetch + 2 EU)
                 // Flags: None
+                let op_reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
                 let ax_value = self.ax;
-                let cx_value = self.cx;
-                self.set_register16(Register16::AX, cx_value);
-                self.set_register16(Register16::CX, ax_value);
-            }
-            0x92 => {
-                // XCHG AX, DX
-                // Flags: None
-                let ax_value = self.ax;
-                let dx_value = self.dx;
-                self.set_register16(Register16::AX, dx_value);
-                self.set_register16(Register16::DX, ax_value);
-            }
-            0x93 => {
-                // XCHG AX, BX
-                // Flags: None
-                let ax_value = self.ax;
-                let bx_value = self.bx;
-                self.set_register16(Register16::AX, bx_value);
-                self.set_register16(Register16::BX, ax_value);
-            }
-            0x94 => {
-                // XCHG AX, SP
-                // Flags: None
-                let ax_value = self.ax;
-                let sp_value = self.sp;
-                self.set_register16(Register16::AX, sp_value);
-                self.set_register16(Register16::SP, ax_value);
-            }
-            0x95 => {
-                // XCHG AX, BP
-                // Flags: None
-                let ax_value = self.ax;
-                let bp_value = self.bp;
-                self.set_register16(Register16::AX, bp_value);
-                self.set_register16(Register16::BP, ax_value);
-            }
-            0x96 => {
-                // XCHG AX, SI
-                // Flags: None
-                let ax_value = self.ax;
-                let si_value = self.si;
-                self.set_register16(Register16::AX, si_value);
-                self.set_register16(Register16::SI, ax_value);
-            }
-            0x97 => {
-                // XCHG AX, DI
-                // Flags: None
-                let ax_value = self.ax;
-                let di_value = self.di;
-                self.set_register16(Register16::AX, di_value);
-                self.set_register16(Register16::DI, ax_value);
+                let op_reg_value = self.get_register16(op_reg);
+                self.set_register16(Register16::AX, op_reg_value);
+                self.set_register16(op_reg, ax_value);
+                self.cycles(2);
             }
             0x98 => {
                 // CBW - Convert Byte to Word
@@ -722,9 +623,9 @@ impl Cpu {
                 // CALLF - Call Far
 
                 // Push return address of next instruction
-                self.push_register16(Register16::CS);
+                self.push_register16(Register16::CS, WriteFlag::Normal);
                 let next_i = self.ip + (self.i.size as u16);
-                self.push_u16(next_i);
+                self.push_u16(next_i, WriteFlag::RNI);
 
                 if let OperandType::FarAddress(segment, offset) = self.i.operand1_type {        
                     
@@ -744,7 +645,7 @@ impl Cpu {
             }
             0x9C => {
                 // PUSHF - Push Flags
-                self.push_flags();
+                self.push_flags(WriteFlag::RNI);
             }
             0x9D => {
                 // POPF - Pop Flags
@@ -779,14 +680,14 @@ impl Cpu {
                 // MOV offset8, Al
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
                 let op2_value = self.al;
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, WriteFlag::RNI);
                 handled_override = true;
             }
             0xA3 => {
                 // MOV offset16, AX
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
                 let op2_value = self.ax;
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, WriteFlag::RNI);
                 handled_override = true;        
             }
             0xA4 => {
@@ -991,6 +892,10 @@ impl Cpu {
                 // Flags: None
                 // Effectively, this instruction is pop ip
                 let new_ip = self.pop_u16();
+                self.biu_suspend_fetch();
+                self.cycle();
+                self.biu_queue_flush();
+                self.cycles(2);                
                 self.ip = new_ip;
                 
                 // Pop call stack
@@ -1004,7 +909,7 @@ impl Cpu {
                 let (les_segment, les_offset) = self.read_operand_farptr(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 //log::trace!("LES instruction: Loaded {:04X}:{:04X}", les_segment, les_offset);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, les_offset);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, les_offset, WriteFlag::Normal);
                 self.es = les_segment;
                 handled_override = true;
             }
@@ -1014,20 +919,20 @@ impl Cpu {
                 let (lds_segment, lds_offset) = self.read_operand_farptr(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 //log::trace!("LDS instruction: Loaded {:04X}:{:04X}", lds_segment, lds_offset);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, lds_offset);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, lds_offset, WriteFlag::Normal);
                 self.ds = lds_segment;
                 handled_override = true;
             }
             0xC6 => {
                 // MOV r/m8, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, WriteFlag::RNI);
                 handled_override = true;
             }
             0xC7 => {
                 // MOV r/m16, imm16
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, WriteFlag::RNI);
                 handled_override = true;
             }
             0xC8 | 0xCA => {
@@ -1087,15 +992,14 @@ impl Cpu {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m8, 0x01
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, 1);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
-                // TODO: Cost
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0xD1 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, 0x01
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let result = self.bitshift_op16(self.i.mnemonic, op1_value, 1);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 handled_override = true;
             }
             0xD2 => {
@@ -1103,7 +1007,7 @@ impl Cpu {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 // TODO: Cost
                 handled_override = true;
             }
@@ -1112,7 +1016,7 @@ impl Cpu {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 // TODO: Cost
                 handled_override = true;
             }
@@ -1253,19 +1157,25 @@ impl Cpu {
                 self.validator.as_mut().unwrap().discard_op();
             }
             0xE7 => {
-                // OUT imm16
-                unhandled = true;
+                // OUT imm8, ax
+                let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();                
+
+                // Write first 8 bits to first port
+                io_bus.write_u8(op1_value as u16, (op2_value & 0xFF) as u8);
+                // Write next 8 bits to port + 1
+                io_bus.write_u8((op1_value + 1) as u16, (op2_value >> 8 & 0xFF) as u8);
 
                 #[cfg(feature = "cpu_validator")]
                 self.validator.as_mut().unwrap().discard_op();
             }
             0xE8 => {
                 // CALL rel16
-                // Push offset of next instruction (CALL rel16 is 3 bytes)
+                // Push offset of next instruction
                 let cs = self.get_register16(Register16::CS);
                 let ip = self.get_register16(Register16::IP);
-                let next_i = ip + 3;
-                self.push_u16(next_i);
+                let next_i = ip.wrapping_add(self.i.size as u16);
+                self.push_u16(next_i, WriteFlag::Normal);
 
                 // Add rel16 to ip
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1280,33 +1190,50 @@ impl Cpu {
             }
             0xE9 => {
                 // JMP rel16
+                // Cycles: 10 (4 fetch + 6 EU)
+                
+                let rel16 = get_operand!(self.i.operand1_type, OperandType::Relative16);
+                self.ip = Cpu::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
+                /*
                 if let OperandType::Relative16(rel16) = self.i.operand1_type {
                     self.ip = util::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
                 }
-                jump = true;
-                // cycles? 
-            }
-            0xEA => {
-                // JMP FAR
-                self.biu_suspend_fetch();
+                */
+                self.biu_suspend_fetch(); // Immediately suspend.
                 self.cycles(4);
                 self.biu_queue_flush();
-
+                self.cycles(2);
+                jump = true;
+            }
+            0xEA => {
+                // JMP FAR [ptr16:16]
+                // This instruction is longer than the 8088 instruction queue.
+                // Cycles (8088): 14 (8 Fetch + 6 EU)
                 if let OperandType::FarAddress(segment, offset) = self.i.operand1_type {                
                     self.cs = segment;
                     self.ip = offset;
                 }
+                self.biu_suspend_fetch();
+                self.cycles(4);
+                self.biu_queue_flush();
+                self.cycles(2);
                 jump = true;
             }
             0xEB => {
                 // JMP rel8
-                self.biu_suspend_fetch();
-                self.cycles(5);
-                self.biu_queue_flush();
+                // Cycles: 10 (3 fetch + 7 EU)
 
+                let rel8 = get_operand!(self.i.operand1_type, OperandType::Relative8);
+                self.ip = Cpu::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
+                /*
                 if let OperandType::Relative8(rel8) = self.i.operand1_type {
                     self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-                }
+                }*/
+
+                self.biu_suspend_fetch(); // Immediately suspend
+                self.cycles(5);
+                self.biu_queue_flush();
+                self.cycles(2);
                 jump = true
             }
             0xEC => {
@@ -1315,7 +1242,8 @@ impl Cpu {
                 let in_byte = io_bus.read_u8(op2_value);
                 self.set_register8(Register8::AL, in_byte);
 
-                //log::trace!(">>> IO READ : {:02X}", in_byte);
+                #[cfg(feature = "cpu_validator")]
+                self.validator.as_mut().unwrap().discard_op();
             }
             0xED => {
                 // IN ax, dx
@@ -1354,7 +1282,8 @@ impl Cpu {
                 unhandled = true;
             }
             0xF1 => {
-                unhandled = true;
+                // Does nothing?
+                self.cycle();
             }
             0xF2 => {
                 unhandled = true;
@@ -1385,12 +1314,12 @@ impl Cpu {
                     Mnemonic::NOT => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
-                        self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                        self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                     }
                     Mnemonic::NEG => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
-                        self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                        self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                     }
                     Mnemonic::MUL => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1437,12 +1366,12 @@ impl Cpu {
                     Mnemonic::NOT => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
-                        self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                        self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                     }
                     Mnemonic::NEG => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
-                        self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                        self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                     }
                     Mnemonic::MUL => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1478,37 +1407,38 @@ impl Cpu {
             0xF8 => {
                 // CLC - Clear Carry Flag
                 self.clear_flag(Flag::Carry);
-                cycles = 2;
+                self.cycle()
             }
             0xF9 => {
                 // STC - Set Carry Flag
                 self.set_flag(Flag::Carry);
+                self.cycle()
             }
             0xFA => {
                 // CLI - Clear Interrupt Flag
                 self.clear_flag(Flag::Interrupt);
-                cycles = 2;
+                self.cycle()
             }
             0xFB => {
                 // STI - Set Interrupt Flag
                 self.set_flag(Flag::Interrupt);
-                cycles = 2;
+                self.cycle()
             }
             0xFC => {
                 // CLD - Clear Direction Flag
                 self.clear_flag(Flag::Direction);
-                cycles = 2;
+                self.cycle()
             }
             0xFD => {
                 // STD = Set Direction Flag
                 self.set_flag(Flag::Direction);
-                cycles = 2;
+                self.cycle()
             }
             0xFE => {
                 // INC/DEC r/m8
                 let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let result = self.math_op8(self.i.mnemonic, op_value, 0);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                 // cycles ?
                 handled_override = true;
             }
@@ -1519,12 +1449,12 @@ impl Cpu {
                     Mnemonic::INC | Mnemonic::DEC => {
                         let op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op_value, 0);
-                        self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
+                        self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                     },
                     // Push Word onto stack
                     Mnemonic::PUSH => {
                         let op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                        self.push_u16(op_value);
+                        self.push_u16(op_value, WriteFlag::RNI);
                     }
                     // Jump to memory r/m16
                     Mnemonic::JMP => {
@@ -1551,7 +1481,7 @@ impl Cpu {
                         
                         // Push return address (next instruction offset) onto stack
                         let next_i = self.ip + (self.i.size as u16);
-                        self.push_u16(next_i);
+                        self.push_u16(next_i, WriteFlag::Normal);
 
                         // Add to call stack
                         if self.call_stack.len() == CPU_CALL_STACK_LEN {
@@ -1567,18 +1497,28 @@ impl Cpu {
                         let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override).unwrap();
 
                         // Push return address of next instruction
-                        self.push_register16(Register16::CS);
-                        let next_i = self.ip + (self.i.size as u16);
-                        self.push_u16(next_i);
 
-                        // Add to call stack
-                        if self.call_stack.len() == CPU_CALL_STACK_LEN {
-                            self.call_stack.pop_front();
-                        }                
+                        self.cycles(4);
+                        self.biu_suspend_fetch();
+                        self.cycles(3);
+
+                        self.push_register16(Register16::CS, WriteFlag::Normal);
+                        let next_i = self.ip + (self.i.size as u16);
+                        self.push_u16(next_i, WriteFlag::Normal);
+
+                        self.cycles(4);
+                        self.biu_queue_flush();
+                        self.cycles(3);
+
                         self.call_stack.push_back(CallStackEntry::CallF(self.cs, self.ip, segment, offset));
 
                         self.cs = segment;
                         self.ip = offset;
+
+                        // Add to call stack
+                        if self.call_stack.len() == CPU_CALL_STACK_LEN {
+                            self.call_stack.pop_front();
+                        }
 
                         //log::trace!("CALLF: Destination [{:04X}:{:04X}]", segment, offset);
                         jump = true;

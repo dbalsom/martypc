@@ -409,12 +409,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "configparser"
-version = "3.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65cbde0d4b888436a51954624cafd198aee478d00cf5db866c3519a8986ecb18"
-
-[[package]]
 name = "copyless"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1350,7 +1344,6 @@ dependencies = [
  "anyhow",
  "arraydeque",
  "bpaf",
- "configparser",
  "cpal",
  "egui",
  "egui-winit",

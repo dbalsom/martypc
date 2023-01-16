@@ -162,6 +162,10 @@ impl ModRmByte {
             0x01 => Register16::CS,
             0x02 => Register16::SS,
             0x03 => Register16::DS,
+            0x04 => Register16::ES,
+            0x05 => Register16::CS,
+            0x06 => Register16::SS,
+            0x07 => Register16::DS,            
             _=> Register16::InvalidRegister
         }
     }

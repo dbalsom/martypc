@@ -102,6 +102,8 @@ fn mnemonic_to_str(op: Mnemonic) -> &'static str {
         Mnemonic::SBB => "SBB",
         Mnemonic::SCASB => "SCASB",
         Mnemonic::SCASW => "SCASW",
+        Mnemonic::SETMO => "SETMO",
+        Mnemonic::SETMOC => "SETMOC",
         Mnemonic::SHL => "SHL",
         Mnemonic::SHR => "SHR",
         Mnemonic::STC => "STC",

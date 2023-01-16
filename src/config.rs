@@ -10,6 +10,7 @@ const fn _default_false() -> bool { true }
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
 pub enum MachineType {
+    FUZZER_8088,
     IBM_PC_5150,
     IBM_XT_5160
 }
@@ -130,6 +131,9 @@ pub struct Emulator {
     #[serde(default = "_default_false")]
     pub headless: bool,
 
+    #[serde(default = "_default_false")]
+    pub fuzzer: bool,    
+
     #[serde(default)]
     pub trace_mode: TraceMode,
 
@@ -167,15 +171,17 @@ pub struct CmdLineArgs {
     pub configfile: Option<PathBuf>,
 
     // Emulator options
-    #[bpaf(long)]
+    #[bpaf(long, switch)]
     pub headless: Option<bool>,
+
+    #[bpaf(long, switch)]
+    pub fuzzer: Option<bool>,
 
     #[bpaf(long)]
     pub autostart: Option<bool>,
 
     #[bpaf(long)]
     pub machine_model: Option<MachineType>,
-
 
     #[bpaf(long)]
     pub validator: Option<ValidatorType>,
@@ -187,8 +193,17 @@ impl ConfigFileParams {
             self.machine.model = machine_model;
         }
         if let Some(headless) = shell_args.headless { 
-            self.emulator.headless = headless
+            // Switch option
+            if headless == true {
+                self.emulator.headless = headless
+            }
         }
+        if let Some(fuzzer) = shell_args.fuzzer { 
+            // Switch option
+            if fuzzer == true {
+                self.emulator.fuzzer = fuzzer
+            }
+        }        
         if let Some(autostart) = shell_args.autostart { 
             self.emulator.autostart = autostart
         }          

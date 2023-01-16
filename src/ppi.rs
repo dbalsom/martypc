@@ -149,11 +149,17 @@ impl Ppi {
             machine_type,
             port_a_mode: match machine_type {
                 MachineType::IBM_PC_5150 => PortAMode::SwitchBlock1,
-                MachineType::IBM_XT_5160 => PortAMode::KeyboardByte
+                MachineType::IBM_XT_5160 => PortAMode::KeyboardByte,
+                _ => {
+                    panic!("Machine type: {:?} has no PPI", machine_type);
+                }
             },
             port_c_mode: match machine_type {
                 MachineType::IBM_PC_5150 => PortCMode::Switch2OneToFour,
-                MachineType::IBM_XT_5160 => PortCMode::Switch1FiveToEight
+                MachineType::IBM_XT_5160 => PortCMode::Switch1FiveToEight,
+                _ => {
+                    panic!("Machine type: {:?} has no PPI", machine_type);
+                }
             },
             kb_clock_low: false,
             kb_counting_low: false,
@@ -286,6 +292,9 @@ impl Ppi {
                     self.clear_keyboard = true;
                 }
                 self.port_a_mode = PortAMode::KeyboardByte;
+            }
+            _ => {
+                panic!("Invalid model type for PPI");
             }
         }
 

@@ -122,6 +122,10 @@ impl BusInterface {
         }
     }
 
+    pub fn size(&self) -> usize {
+        self.memory.len()
+    }
+
     /// Register a memory-mapped device.
     /// 
     /// The MemoryMappedDevice trait's read & write methods will be called instead for memory in the range

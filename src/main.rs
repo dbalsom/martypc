@@ -12,7 +12,6 @@ use std::{
 
 use crate::gui::Framework;
 
-use anyhow::Context;
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
@@ -27,8 +26,6 @@ use winit::event::{
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
-
-use configparser::ini::Ini;
 
 #[path = "./devices/ega/mod.rs"]
 mod ega;
@@ -74,7 +71,7 @@ mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
 mod arduino8088_validator;
 
-use config::{MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
+use config::{ConfigFileParams, MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
 
 use machine::{Machine, ExecutionState};
 use cpu::Cpu;
@@ -85,6 +82,8 @@ use vhd::{VirtualHardDisk};
 use bytequeue::ByteQueue;
 use gui::GuiEvent;
 use sound::SoundPlayer;
+
+use io::{IoHandler, IoBusInterface};
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -190,26 +189,16 @@ struct VideoData {
     aspect_h: u32
 }
 
-fn main() -> Result<(), Error> {
+fn main() {
 
     env_logger::init();
 
-    // Read config file
-    let mut config = Ini::new();
-
-    // Defaults
-    let mut machine_type = MachineType::IBM_XT_5160;
-    let mut video_type = VideoType::CGA;
-    let mut validator_type = ValidatorType::None;
-
     let mut features = Vec::new();
-    let mut machine_autostart = Some(false);
-    //let mut cfg_load_vhd_name;
 
-    let toml_config = match config::get_config("./marty.toml"){
+    // Read config file
+    let config = match config::get_config("./marty.toml"){
         Ok(config) => config,
         Err(e) => {
-
             match e.downcast_ref::<std::io::Error>() {
                 Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
                     eprintln!("Configuration file not found! Please create marty.toml in the emulator directory \
@@ -226,117 +215,41 @@ fn main() -> Result<(), Error> {
                     std::process::exit(1);
                 }
             }
-
         }
     };
 
-    // Determine required ROM features
-    match toml_config.machine.video {
+    // Determine required ROM features from configuration options
+    match config.machine.video {
         VideoType::EGA => {
+            // an EGA BIOS ROM is required for EGA
             features.push(RomFeature::EGA);
         },
         VideoType::VGA => {
-            features.push(RomFeature::EGA);
+            // a VGA BIOS ROM is required for VGA
+            features.push(RomFeature::VGA);
         },
         _ => {}
     }
 
-    match toml_config.machine.hdc {
+    match config.machine.hdc {
         HardDiskControllerType::Xebec => {
+            // The Xebec controller ROM is required for Xebec HDC
             features.push(RomFeature::XebecHDC);
         }
         _ => {}
     }
 
     #[cfg(feature = "cpu_validator")]
-    if toml_config.validator.vtype == ValidatorType::None {
-        eprintln!("Compiled with validator but no validator specified" );
-        std::process::exit(1);
-    }
-
-    /*
-    match std::fs::read_to_string("./marty.cfg") {
-        Ok(config_string) => {
-            match config.read(config_string) {
-                Ok(_) => {
-
-                    let machine_type_s = config.get("machine", "model").unwrap_or("IBM_XT_5160".to_string());
-                    machine_type = match machine_type_s.as_str() {
-                        "IBM_PC_5150" => MachineType::IBM_PC_5150,
-                        "IBM_XT_5160" => MachineType::IBM_XT_5160,
-                        _ => {
-                            log::warn!("Invalid machine type in config: '{}'", machine_type_s);
-                            MachineType::IBM_PC_5150
-                        }
-                    };
-
-                    let video_type_s = config.get("machine", "video").unwrap_or("CGA".to_string());
-                    video_type = match video_type_s.as_str() {
-                        "CGA" => VideoType::CGA,
-                        "EGA" => {
-                            features.push(RomFeature::EGA);
-                            VideoType::EGA
-                        }
-                        "VGA" => {
-                            features.push(RomFeature::VGA);
-                            VideoType::VGA
-                        }                        
-                        _ => {
-                            log::warn!("Invalid video type in config: '{}'", machine_type_s);
-                            VideoType::CGA
-                        }
-                    };
-
-                    let hdc_type_s = config.get("machine", "hdc").unwrap_or("none".to_string());
-                    match hdc_type_s.as_str() {
-                        "xebec" => {
-                            features.push(RomFeature::XebecHDC)
-                        }
-                        _ => {
-                            log::warn!("Invalid hdc type in config: '{}'", hdc_type_s);
-                        }                        
-                    }
-
-                    machine_autostart = config.getbool("machine", "autostart").unwrap_or(Some(false));
-
-                    let validator_type_s = config.get("validator", "type").unwrap_or("none".to_string());
-                    validator_type = match validator_type_s.as_str() {
-                        "pi" => {
-                            ValidatorType::Pi8088
-                        }
-                        "arduino" => {
-                            ValidatorType::Arduino8088
-                        }
-                        _ => {
-                            log::warn!("Invalid validator type in config: '{}'", validator_type_s);
-                            ValidatorType::None
-                        }                        
-                    };
-
-                    #[cfg(feature = "cpu_validator")]
-                    if validator_type == ValidatorType::None {
-                        eprintln!("Compiled with validator but no validator specified" );
-                        std::process::exit(1);
-                    }
-
-                    cfg_load_vhd_name = config.get("vhd", "drive0");
-
-                }
-                Err(e) => {
-                    eprintln!("Error reading configuration file.");
-                    std::process::exit(1);
-                }
-            }
-        }
-        Err(e) => {
-            eprintln!("Couldn't read configuration file.");
+    match config.validator.vtype {
+        Some(ValidatorType::None) | None => {
+            eprintln!("Compiled with validator but no validator specified" );
             std::process::exit(1);
         }
-    };
-    */
+        _=> {}
+    }
 
     // Instantiate the rom manager to load roms for the requested machine type    
-    let mut rom_manager = RomManager::new(machine_type, features);
+    let mut rom_manager = RomManager::new(config.machine.model, features);
 
     if let Err(e) = rom_manager.try_load_from_dir("./rom") {
         match e {
@@ -411,6 +324,18 @@ fn main() -> Result<(), Error> {
         log::debug!("Found serial port: {:?}", port);
     }
 
+
+    // If fuzzer mode was specified, run the emulator in fuzzer mode now
+    #[cfg(feature = "cpu_validator")]
+    if config.emulator.fuzzer {
+        return main_fuzzer(&config, rom_manager, floppy_manager);
+    }
+
+    // If headless mode was specified, run the emulator in headless mode now
+    if config.emulator.headless {
+        return main_headless(&config, rom_manager, floppy_manager);
+    }
+
     // Create the video renderer
     let video = video::Video::new();
 
@@ -431,7 +356,7 @@ fn main() -> Result<(), Error> {
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
 
     // Set machine state to Running if autostart option was set in config
-    if toml_config.emulator.autostart {
+    if config.emulator.autostart {
         exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
 
@@ -449,7 +374,7 @@ fn main() -> Result<(), Error> {
         let scale_factor = window.scale_factor() as f32;
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
         let pixels = 
-            Pixels::new(video_data.aspect_w, video_data.aspect_h, surface_texture)?;
+            Pixels::new(video_data.aspect_w, video_data.aspect_h, surface_texture).unwrap();
         let framework =
             Framework::new(window_size.width, window_size.height, scale_factor, &pixels, exec_control.clone());
 
@@ -479,17 +404,17 @@ fn main() -> Result<(), Error> {
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
-        toml_config.machine.model,
-        toml_config.emulator.trace_mode,
-        toml_config.machine.video, 
+        &config,
+        config.machine.model,
+        config.emulator.trace_mode,
+        config.machine.video, 
         sp, 
         rom_manager, 
         floppy_manager,
-        validator_type 
     );
 
     // Try to load default vhd
-    if let Some(vhd_name) = toml_config.machine.drive0 {
+    if let Some(vhd_name) = config.machine.drive0 {
         let vhd_os_name: OsString = vhd_name.into();
         match vhd_manager.get_vhd_file(&vhd_os_name) {
             Ok(vhd_file) => {
@@ -754,7 +679,7 @@ fn main() -> Result<(), Error> {
                     let emulation_start = Instant::now();
 
                     let mut cycle_target = CYCLES_PER_FRAME;
-                    if toml_config.emulator.trace_mode == TraceMode::Cycle {
+                    if config.emulator.trace_mode == TraceMode::Cycle {
                         cycle_target = CYCLES_PER_FRAME / 100;
                     }
                     machine.run(cycle_target, &mut exec_control.borrow_mut(), bp_addr);
@@ -835,7 +760,9 @@ fn main() -> Result<(), Error> {
                                         // We don't actually do anything with the newly created file
 
                                         // Rescan dir to show new file in list
-                                        vhd_manager.scan_dir("./hdd");
+                                        if let Err(e) = vhd_manager.scan_dir("./hdd") {
+                                            log::error!("Error scanning hdd directory: {}", e);
+                                        };
                                     }
                                     Err(err) => {
                                         log::error!("Error creating VHD: {}", err);
@@ -1069,3 +996,161 @@ fn main() -> Result<(), Error> {
     });
 }
 
+pub fn main_headless(
+    config: &ConfigFileParams,
+    rom_manager: RomManager,
+    floppy_manager: FloppyManager
+) {
+
+    // Init sound 
+    // The cpal sound library uses generics to initialize depending on the SampleFormat type.
+    // On Windows at least a sample type of f32 is typical, but just in case...
+    let sample_fmt = SoundPlayer::get_sample_format();
+    let sp = match sample_fmt {
+        cpal::SampleFormat::F32 => SoundPlayer::new::<f32>(),
+        cpal::SampleFormat::I16 => SoundPlayer::new::<i16>(),
+        cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(),
+    };
+
+    // Instantiate the main Machine data struct
+    // Machine coordinates all the parts of the emulated computer
+    let mut machine = Machine::new(
+        &config,
+        config.machine.model,
+        config.emulator.trace_mode,
+        config.machine.video, 
+        sp, 
+        rom_manager, 
+        floppy_manager,
+    );
+
+    let mut exec_control = machine::ExecutionControl::new();
+    exec_control.set_state(ExecutionState::Running);
+
+    loop {
+        // This should really return a Result
+        machine.run(1000, &mut exec_control, 0);
+    }
+    
+    //std::process::exit(0);
+}
+
+
+#[cfg(feature = "cpu_validator")]
+use std::io::{BufWriter, Write};
+#[cfg(feature = "cpu_validator")]
+use cpu::*;
+use crate::cpu::cpu_mnemonic::Mnemonic;
+
+#[cfg(feature = "cpu_validator")]
+pub fn main_fuzzer <'a>(
+    config: &ConfigFileParams,
+    rom_manager: RomManager,
+    floppy_manager: FloppyManager
+) {
+
+    let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
+    if config.emulator.trace_mode != TraceMode::None {
+        // Open the trace file if specified
+        if let Some(filename) = &config.emulator.trace_file {
+            match File::create(filename) {
+                Ok(file) => {
+                    trace_file_option = Box::new(BufWriter::new(file));
+                },
+                Err(e) => {
+                    eprintln!("Couldn't create specified tracelog file: {}", e);
+                }
+            }
+        }
+    }
+
+    let mut io_bus = IoBusInterface::new();
+    let mut pic = Rc::new(RefCell::new(pic::Pic::new()));    
+
+    let mut cpu = Cpu::new(
+        CpuType::Cpu8088,
+        config.emulator.trace_mode,
+        Some(trace_file_option),
+        #[cfg(feature = "cpu_validator")]
+        config.validator.vtype.unwrap()
+    );
+
+    cpu.randomize_mem();
+
+    loop {
+
+        cpu.randomize_regs();
+
+        if cpu.get_register16(Register16::IP) > 0xFFF0 {
+            // Avoid IP wrapping issues for now
+            continue;
+        }
+
+        // Decode this instruction
+        let instruction_address = 
+            Cpu::calc_linear_address(
+                cpu.get_register16(Register16::CS),  
+                cpu.get_register16(Register16::IP)
+            );
+
+        cpu.bus_mut().seek(instruction_address as usize);
+        let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize).expect("mem err");
+
+        let mut i = match Cpu::decode(cpu.bus_mut()) {
+            Ok(i) => i,
+            Err(_) => {
+                log::error!("Instruction decode error, skipping...");
+                continue;
+            }                
+        };
+        
+        match i.mnemonic {
+            Mnemonic::INT | Mnemonic::INT3 | Mnemonic::INTO | Mnemonic::IRET => {
+                continue;
+            },
+            Mnemonic::FWAIT => {
+                continue;
+            }
+            Mnemonic::POPF => {
+                // POPF can set trap flag which messes up the validator
+                continue;
+            }
+            Mnemonic::LDS | Mnemonic::LES | Mnemonic::LEA => {
+                if let OperandType::Register16(_) = i.operand2_type {
+                    // Invalid forms end up using the last calculated EA. However this will differ between
+                    // the validator and CPU due to the validator setup routine.
+                    continue;
+                }
+            }
+            Mnemonic::HLT => {
+                // For obvious reasons
+                continue;
+            }
+            _=> {}
+        }
+
+        if i.opcode == 0x8F {
+            continue;
+        }
+
+        i.address = instruction_address;
+   
+        log::trace!("Validating instruction: {} op:{:02X} @ [{:05X}]", i, opcode, i.address);
+        
+        match cpu.step(&mut io_bus, pic.clone()) {
+            Ok(()) => {
+            },
+            Err(err) => {
+
+                log::error!("CPU Error: {}\n", err);
+                break;
+            } 
+        }
+    }
+    
+    
+
+
+
+    //std::process::exit(0);
+}

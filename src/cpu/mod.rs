@@ -1,14 +1,15 @@
 #![allow(dead_code)]
+
 use std::{
     rc::Rc,
     cell::RefCell,
     collections::VecDeque,
     error::Error,
-    fmt
+    fmt,
+    io::Write
 };
 
 use core::fmt::Display;
-use arraydeque::ArrayDeque;
 
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -23,23 +24,28 @@ mod cpu_decode;
 mod cpu_display;
 mod cpu_execute;
 mod cpu_modrm;
-mod cpu_mnemonic;
+pub mod cpu_mnemonic;
 mod cpu_stack;
 mod cpu_string;
 mod cpu_queue;
+mod cpu_fuzzer;
 
 use crate::cpu::cpu_mnemonic::Mnemonic;
 use crate::cpu::cpu_addressing::AddressingMode;
 use crate::cpu::cpu_queue::InstructionQueue;
+use crate::cpu::cpu_biu::*;
 
 use crate::config::TraceMode;
+#[cfg(feature = "cpu_validator")]
+use crate::config::ValidatorType;
+
 use crate::bus::BusInterface;
 use crate::pic::Pic;
 use crate::bytequeue::*;
 use crate::io::IoBusInterface;
 
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, ValidatorType, VRegisters};
+use crate::cpu_validator::{CpuValidator, VRegisters};
 #[cfg(feature = "pi_validator")]
 use crate::pi_cpu_validator::{PiValidator};
 #[cfg(feature = "arduino_validator")]
@@ -54,23 +60,25 @@ const CPU_CALL_STACK_LEN: usize = 16;
 
 const INTERRUPT_VEC_LEN: usize = 4;
 
-const CPU_FLAG_CARRY: u16      = 0b0000_0000_0000_0001;
-const CPU_FLAG_RESERVED1: u16  = 0b0000_0000_0000_0010;
-const CPU_FLAG_PARITY: u16     = 0b0000_0000_0000_0100;
-const CPU_FLAG_RESERVED3: u16  = 0b0000_0000_0000_1000;
-const CPU_FLAG_AUX_CARRY: u16  = 0b0000_0000_0001_0000;
-const CPU_FLAG_RESERVED5: u16  = 0b0000_0000_0010_0000;
-const CPU_FLAG_ZERO: u16       = 0b0000_0000_0100_0000;
-const CPU_FLAG_SIGN: u16       = 0b0000_0000_1000_0000;
-const CPU_FLAG_TRAP: u16       = 0b0000_0001_0000_0000;
-const CPU_FLAG_INT_ENABLE: u16 = 0b0000_0010_0000_0000;
-const CPU_FLAG_DIRECTION: u16  = 0b0000_0100_0000_0000;
-const CPU_FLAG_OVERFLOW: u16   = 0b0000_1000_0000_0000;
+pub const CPU_FLAG_CARRY: u16      = 0b0000_0000_0000_0001;
+pub const CPU_FLAG_RESERVED1: u16  = 0b0000_0000_0000_0010;
+pub const CPU_FLAG_PARITY: u16     = 0b0000_0000_0000_0100;
+pub const CPU_FLAG_RESERVED3: u16  = 0b0000_0000_0000_1000;
+pub const CPU_FLAG_AUX_CARRY: u16  = 0b0000_0000_0001_0000;
+pub const CPU_FLAG_RESERVED5: u16  = 0b0000_0000_0010_0000;
+pub const CPU_FLAG_ZERO: u16       = 0b0000_0000_0100_0000;
+pub const CPU_FLAG_SIGN: u16       = 0b0000_0000_1000_0000;
+pub const CPU_FLAG_TRAP: u16       = 0b0000_0001_0000_0000;
+pub const CPU_FLAG_INT_ENABLE: u16 = 0b0000_0010_0000_0000;
+pub const CPU_FLAG_DIRECTION: u16  = 0b0000_0100_0000_0000;
+pub const CPU_FLAG_OVERFLOW: u16   = 0b0000_1000_0000_0000;
 
 const CPU_FLAG_RESERVED12: u16 = 0b0001_0000_0000_0000;
 const CPU_FLAG_RESERVED13: u16 = 0b0010_0000_0000_0000;
 const CPU_FLAG_RESERVED14: u16 = 0b0100_0000_0000_0000;
 const CPU_FLAG_RESERVED15: u16 = 0b1000_0000_0000_0000;
+
+const CPU_FLAGS_RESERVED_ON: u16 = 0b1111_0000_0000_0010;
 
 const FLAGS_POP_MASK: u16      = 0b0000_1111_1101_0101;
 
@@ -139,6 +147,17 @@ pub const OPCODE_PREFIX_LOCK: u32            = 0b_0000_1000_0000;
 pub const OPCODE_PREFIX_REP1: u32            = 0b_0001_0000_0000;
 pub const OPCODE_PREFIX_REP2: u32            = 0b_0010_0000_0000;
 
+pub const REGISTER16_LUT: [Register16; 8] = [
+    Register16::AX,
+    Register16::CX,
+    Register16::DX,
+    Register16::BX,
+    Register16::SP,
+    Register16::BP,
+    Register16::SI,
+    Register16::DI,
+];
+
 pub enum CpuType {
     Cpu8088,
     Cpu8086,
@@ -148,7 +167,7 @@ impl Default for CpuType {
     fn default() -> Self { CpuType::Cpu8088 }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CpuException {
     NoException,
     DivideError
@@ -248,7 +267,7 @@ pub enum Register8 {
     BH
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 #[derive(PartialEq)]
 pub enum Register16 {
     AX, 
@@ -442,7 +461,7 @@ pub struct I8288 {
 }
 
 #[derive(Default)]
-pub struct Cpu {
+pub struct Cpu<'a> {
     
     cpu_type: CpuType,
     ah: u8,
@@ -469,6 +488,7 @@ pub struct Cpu {
     flags: u16,
     address_bus: u32,
     data_bus: u16,
+    last_ea: u16, // Last calculated effective address
     bus: BusInterface, // CPU owns Bus
     i8288: I8288, // Intel 8288 Bus Controller
     pc: u32, // Program counter points to the next instruction to be fetched
@@ -489,8 +509,7 @@ pub struct Cpu {
     is_single_step: bool,
     is_error: bool,
     in_rep: bool,
-    trace_mode: TraceMode,
-    instruction_tracing: bool,
+    
     rep_mnemonic: Mnemonic,
     rep_type: RepType,
     rep_state: Vec<(u16, u16, RepState)>,
@@ -504,8 +523,13 @@ pub struct Cpu {
     reset_seg: u16,
     reset_offset: u16,
 
+    trace_mode: TraceMode,
+    trace_writer: Option<Box<dyn Write + 'a>>,
+
     opcode0_counter: u32,
     
+    
+
     #[cfg(feature = "cpu_validator")]
     validator: Option<Box<dyn CpuValidator>>
 }
@@ -577,6 +601,7 @@ pub enum RegisterType {
     Register16(u16)
 }
 
+#[derive (PartialEq)]
 pub enum ExecutionResult {
 
     Okay,
@@ -636,11 +661,12 @@ impl Default for QueueOp {
     }
 }
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
-    pub fn new(
+    pub fn new<TraceWriter: Write + 'a>(
         cpu_type: CpuType,
         trace_mode: TraceMode,
+        trace_writer: Option<TraceWriter>,
         #[cfg(feature = "cpu_validator")]
         validator_type: ValidatorType
     ) -> Self {
@@ -659,11 +685,11 @@ impl Cpu {
         {
             cpu.validator = match validator_type {
                 #[cfg(feature = "pi_validator")]
-                ValidatorType::PiValidator => {
+                ValidatorType::Pi8088 => {
                     Some(Box::new(PiValidator::new()))
                 }
                 #[cfg(feature = "arduino_validator")]
-                ValidatorType::ArduinoValidator => {
+                ValidatorType::Arduino8088 => {
                     Some(Box::new(ArduinoValidator::new()))
                 }
                 _=> {
@@ -672,7 +698,7 @@ impl Cpu {
             };
 
             if let Some(ref mut validator) = cpu.validator {
-                match validator.init(true) {
+                match validator.init(true, true, true) {
                     true => {},
                     false => {
                         panic!("Failed to init cpu validator.");
@@ -682,6 +708,8 @@ impl Cpu {
         }
 
         cpu.trace_mode = trace_mode;
+        // Unwrap the writer Option and stick it in an Option<Box<>> or None if None
+        cpu.trace_writer = trace_writer.map_or(None, |trace_writer| Some(Box::new(trace_writer)));
         cpu.cpu_type = cpu_type;
         cpu.instruction_history = VecDeque::with_capacity(16);
         cpu.reset_seg = 0xFFFF;
@@ -707,7 +735,7 @@ impl Cpu {
         self.set_register16(Register16::CS, self.reset_seg);
         self.set_register16(Register16::IP, self.reset_offset);
 
-        self.flags = CPU_FLAG_RESERVED1;
+        self.flags = CPU_FLAGS_RESERVED_ON;
         
         // Reset BIU
         self.queue.flush();
@@ -735,7 +763,7 @@ impl Cpu {
         &mut self.bus
     }
 
-    /// Cycle the cpu until the current bus cycle has completed.
+    /// If in an active bus cycle, cycle the cpu until the bus cycle has reached T4.
     pub fn bus_wait_finish(&mut self) -> u32 {
         let mut bus_cycles_elapsed = 0;
         match self.bus_status {
@@ -757,6 +785,30 @@ impl Cpu {
             }
         }
     }
+
+    /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
+    /// This function is usually used on a terminal write to wait for T2 to process RNI
+    pub fn bus_wait_until(&mut self, target_state: CycleState) -> u32 {
+        let mut bus_cycles_elapsed = 0;
+        match self.bus_status {
+            BusStatus::Passive => {
+                // No active bus transfer
+                return 0
+            }
+            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
+                while self.cycle_state != target_state {
+                    self.cycle();
+                    bus_cycles_elapsed += 1;
+                }
+                //self.cycle();
+                return bus_cycles_elapsed
+            }
+            _ => {
+                // Handle other statuses
+                return 0
+            }
+        }
+    }    
 
     /// Begin a new bus cycle of the specified type. Set the address latch and set the data bus appropriately.
     pub fn bus_begin(&mut self, bus_status: BusStatus, bus_segment: Segment, address: u32, data: u16, size: TransferSize) {
@@ -954,7 +1006,7 @@ impl Cpu {
 
         // Perform cycle tracing, if enabled
         if self.trace_mode == TraceMode::Cycle {
-            println!("{}", self.cycle_state_string());        
+            self.trace_print(&self.cycle_state_string());   
         }
 
         // Reset queue operation
@@ -1156,7 +1208,7 @@ impl Cpu {
             }
             Register8::AL => {
                 self.al = value;
-                self.ax = self.ax & REGISTER_LO_MASK | value as u16
+                self.ax = self.ax & REGISTER_LO_MASK | (value as u16)
             }    
             Register8::BH => {
                 self.bh = value;
@@ -1164,7 +1216,7 @@ impl Cpu {
             }
             Register8::BL => {
                 self.bl = value;
-                self.bx = self.bx & REGISTER_LO_MASK | value as u16
+                self.bx = self.bx & REGISTER_LO_MASK | (value as u16)
             }
             Register8::CH => {
                 self.ch = value;
@@ -1172,7 +1224,7 @@ impl Cpu {
             }
             Register8::CL => {
                 self.cl = value;
-                self.cx = self.cx & REGISTER_LO_MASK | value as u16
+                self.cx = self.cx & REGISTER_LO_MASK | (value as u16)
             }
             Register8::DH => {
                 self.dh = value;
@@ -1180,7 +1232,7 @@ impl Cpu {
             }
             Register8::DL => {
                 self.dl = value;
-                self.dx = self.dx & REGISTER_LO_MASK | value as u16
+                self.dx = self.dx & REGISTER_LO_MASK | (value as u16)
             }           
         }
     }
@@ -1453,16 +1505,20 @@ impl Cpu {
         // 4. CPU transfers control to the routine specified by the interrupt vector
         // (AoA 17.1)
 
-        self.push_flags();
+        self.push_flags(WriteFlag::Normal);
 
         // Push return address of next instruction onto stack (INT instructions should increment IP on execute)
-        self.push_register16(Register16::CS);
-        self.push_register16(Register16::IP);
+        self.push_register16(Register16::CS, WriteFlag::Normal);
+        self.push_register16(Register16::IP, WriteFlag::Normal);
         
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
-        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
+
+        let new_ip = self.biu_read_u16(Segment::None, ivt_addr);
+        let new_cs = self.biu_read_u16(Segment::None, ivt_addr + 2);
+
+        //let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
+        //let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
 
         if interrupt == 0x13 {
             // Disk interrupts
@@ -1506,13 +1562,13 @@ impl Cpu {
     pub fn handle_exception(&mut self, exception: u8) {
 
         // 
-        self.push_flags();
+        self.push_flags(WriteFlag::Normal);
 
         // Push return address of next instruction onto stack
-        self.push_register16(Register16::CS);
+        self.push_register16(Register16::CS, WriteFlag::Normal);
 
         // Don't push address of next instruction
-        self.push_u16(self.ip);
+        self.push_u16(self.ip, WriteFlag::Normal);
         
         if exception == 0x0 {
             log::trace!("CPU Exception: {:02X} Saving return: {:04X}:{:04X}", exception, self.cs, self.ip);
@@ -1576,10 +1632,10 @@ impl Cpu {
         // 4. CPU transfers control to the routine specified by the interrupt vector
         // (AoA 17.1)
 
-        self.push_flags();
+        self.push_flags(WriteFlag::Normal);
         // Push cs:ip return address to stack
-        self.push_register16(Register16::CS);
-        self.push_register16(Register16::IP);
+        self.push_register16(Register16::CS, WriteFlag::Normal);
+        self.push_register16(Register16::IP, WriteFlag::Normal);
 
         // If we are in a repeated string instruction (REP prefix) we need to save the state of the REP instruction
         if self.in_rep {
@@ -1720,14 +1776,19 @@ impl Cpu {
                     return Err(CpuError::InstructionDecodeError(instruction_address))
                 }                
             };
+
+            
         }
 
         // Since Cpu::decode doesn't know anything about the current IP, it can't set it, so we do that now.
         self.i.address = instruction_address;
 
+        //let (opcode, _cost) = self.bus.read_u8(instruction_address as usize).expect("mem err");
+        //log::trace!("Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
+
         let mut check_interrupts = false;
 
-        log::trace!("Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
+        //log::trace!("Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
         let exec_result = self.execute_instruction(io_bus);
 
         #[cfg(feature = "cpu_validator")]
@@ -1735,17 +1796,37 @@ impl Cpu {
             match exec_result {
                 ExecutionResult::Okay | ExecutionResult::OkayJump => {
                     // End validation of current instruction
-                    let vregs = self.get_vregisters();
+                    let mut vregs = self.get_vregisters();
+
+                    if exec_result == ExecutionResult::Okay {
+                        vregs.ip = self.ip.wrapping_add(self.i.size as u16);
+                    }
+                    
                     let instr_slice = self.bus.get_slice_at(instruction_address as usize, self.i.size as usize);
 
+                    if self.i.size == 0 {
+                        log::error!("Invalid length: [{:05X}] {}", instruction_address, self.i);
+                    }
+
                     if let Some(ref mut validator) = self.validator {
-                        validator.validate(
-                            self.i.mnemonic.to_string(), 
+                        match validator.validate(
+                            self.i.to_string(), 
                             &instr_slice,
                             self.i.flags & INSTRUCTION_HAS_MODRM != 0,
                             0,
                             &vregs
-                        );
+                        ) {
+
+                            Ok(_) => {},
+                            Err(e) => {
+                                log::debug!("Validation failure: {} Halting execution.", e);
+                                self.is_running = false;
+                                self.is_error = true;
+                                return Err(CpuError::CpuHaltedError(instruction_address))
+                            }
+                        }
+
+
                     }                    
                 }
                 _ => {}
@@ -2002,6 +2083,16 @@ impl Cpu {
         );        
 
         cycle_str
+    }
+
+    pub fn trace_print(&mut self, trace_str: &str) {
+        match self.trace_writer.as_mut() {
+            Some(w) => {
+                let mut _r = w.write_all(trace_str.as_bytes());
+                _r = w.write_all("\n".as_bytes());
+            },
+            None => {}
+        }
     }
 
     pub fn assert_state(&self) {

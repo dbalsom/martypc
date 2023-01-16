@@ -16,8 +16,22 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+#![allow(dead_code)]
 
-use crate::cpu_validator::{CpuValidator, VRegisters, ReadType};
+use std::backtrace::Backtrace;
+
+use crate::cpu_validator::{ValidatorError, CpuValidator, VRegisters, ReadType};
+use crate::cpu::{
+    CPU_FLAG_CARRY,
+    CPU_FLAG_PARITY,
+    CPU_FLAG_AUX_CARRY,
+    CPU_FLAG_ZERO,
+    CPU_FLAG_SIGN,
+    CPU_FLAG_TRAP,
+    CPU_FLAG_INT_ENABLE,
+    CPU_FLAG_DIRECTION,
+    CPU_FLAG_OVERFLOW
+};
 
 mod queue;
 mod udmask;
@@ -87,7 +101,7 @@ pub enum AccessType {
     AccData,
 }
 
-#[derive (Copy, Clone, PartialEq)]
+#[derive (Copy, Clone, Debug, PartialEq)]
 pub enum BusOpType {
     CodeRead,
     MemRead,
@@ -167,6 +181,7 @@ pub struct RemoteCpu {
     data_type: QueueDataType,
 
     cycle_num: u32,
+    mcycle_state: BusState,
     bus_state: BusState,
     bus_cycle: BusCycle,
 
@@ -175,7 +190,10 @@ pub struct RemoteCpu {
     queue_type: QueueDataType,
     queue_first_fetch: bool,
     queue_fetch_n: u8,
+    queue_fetch_addr: u32,
     opcode: u8,
+    instr_str: String,
+    instr_addr: u32,
     finalize: bool,
 
     // Validator stuff
@@ -200,6 +218,7 @@ impl RemoteCpu {
             data_bus: 0,
             data_type: QueueDataType::Program,
             cycle_num: 0,
+            mcycle_state: BusState::PASV,
             bus_state: BusState::PASV,
             bus_cycle: BusCycle::T1,
             queue: InstructionQueue::new(),
@@ -207,7 +226,10 @@ impl RemoteCpu {
             queue_type: QueueDataType::Program,
             queue_first_fetch: true,
             queue_fetch_n: 0,
+            queue_fetch_addr: 0,
             opcode: 0,
+            instr_str: String::new(),
+            instr_addr: 0,
             finalize: false,
 
             busop_n: 0,
@@ -226,6 +248,7 @@ pub struct ArduinoValidator {
     state: ValidatorState,
 
     cycle_count: u64,
+    cycle_trace: bool,
 
     rd_signal: bool,
     wr_signal: bool,
@@ -272,6 +295,7 @@ impl ArduinoValidator {
             state: ValidatorState::Setup,
 
             cycle_count: 0,
+            cycle_trace: false,
             rd_signal: false,
             wr_signal: false, 
             iom_signal: false,
@@ -356,7 +380,7 @@ impl ArduinoValidator {
         }
     }
 
-    pub fn validate_mem_ops(&mut self) {
+    pub fn validate_mem_ops(&mut self) -> bool {
 
         if self.current_frame.emu_ops.len() != self.current_frame.cpu_ops.len() {
             log::error!(
@@ -364,35 +388,93 @@ impl ArduinoValidator {
                 self.current_frame.emu_ops.len(),
                 self.current_frame.cpu_ops.len()
             );
+
+            return false;
         }
+
+
+        for i in 0..self.current_frame.emu_ops.len() {
+
+            if self.current_frame.emu_ops[i].op_type != self.current_frame.cpu_ops[i].op_type {
+                log::error!(
+                    "Bus op #{} type mismatch: EMU:{:?} CPU:{:?}",
+                    i,
+                    self.current_frame.emu_ops[i].op_type,
+                    self.current_frame.cpu_ops[i].op_type
+                );
+                return false;
+            }
+
+            if self.current_frame.emu_ops[i].addr != self.current_frame.cpu_ops[i].addr {
+                log::error!(
+                    "Bus op #{} addr mismatch: EMU:{:05X} CPU:{:05X}",
+                    i,
+                    self.current_frame.emu_ops[i].addr,
+                    self.current_frame.cpu_ops[i].addr
+                );
+                return false;
+            }
+
+            if self.current_frame.emu_ops[i].data != self.current_frame.cpu_ops[i].data {
+                log::error!(
+                    "Bus op #{} data mismatch: EMU:{:05X} CPU:{:05X}",
+                    i,
+                    self.current_frame.emu_ops[i].data,
+                    self.current_frame.cpu_ops[i].data
+                );
+                return false;
+            }                   
+        }
+
+        return true;
     }
 
-    pub fn validate_registers(&mut self) {
+    pub fn validate_registers(&mut self, regs: &VRegisters) -> bool {
 
-        let mut reg_buf: [u8; 28] = [0; 28];
+        let mut regs_validate = true;
 
-        match self.cpu.cpu_client.store_registers_to_buf(&mut reg_buf) {
-            Ok(_) => {},
-            Err(e) => {
-                log::error!("Validator error: Store registers failed.");
-                return
-            }
-        }        
-
-        let regs = ArduinoValidator::buf_to_regs(&mut reg_buf);
-
-        assert_eq!(self.current_frame.regs[1].ax, regs.ax);
-        assert_eq!(self.current_frame.regs[1].bx, regs.bx);
-        assert_eq!(self.current_frame.regs[1].cx, regs.cx);
-        assert_eq!(self.current_frame.regs[1].dx, regs.dx);
-        assert_eq!(self.current_frame.regs[1].cs, regs.cs);
-        assert_eq!(self.current_frame.regs[1].ss, regs.ss);
-        assert_eq!(self.current_frame.regs[1].ds, regs.ds);
-        assert_eq!(self.current_frame.regs[1].es, regs.es);
-        assert_eq!(self.current_frame.regs[1].sp, regs.sp);
-        assert_eq!(self.current_frame.regs[1].bp, regs.bp);
-        assert_eq!(self.current_frame.regs[1].si, regs.si);
-        assert_eq!(self.current_frame.regs[1].bp, regs.bp);
+        if self.current_frame.regs[1].ax != regs.ax {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].bx != regs.bx {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].cx != regs.cx {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].dx != regs.dx {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].cs != regs.cs {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].ds != regs.ds {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].es != regs.es {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].sp != regs.sp {
+            regs_validate = false;
+        }
+        if self.current_frame.regs[1].sp != regs.sp {
+            regs_validate = false;
+        }    
+        if self.current_frame.regs[1].bp != regs.bp {
+            regs_validate = false;
+        }    
+        if self.current_frame.regs[1].si != regs.si {
+            regs_validate = false;
+        }    
+        if self.current_frame.regs[1].di != regs.di {
+            regs_validate = false;
+        }
+        
+        /*
+        if self.current_frame.regs[1] != *regs {
+            regs_validate = false;
+        }
+        */
 
         let mut emu_flags_masked = self.current_frame.regs[1].flags;
         let mut cpu_flags_masked = regs.flags;
@@ -403,21 +485,78 @@ impl ArduinoValidator {
         }
 
         if emu_flags_masked != cpu_flags_masked {
+
             log::error!("CPU flags mismatch! EMU: 0b{:08b} != CPU: 0b{:08b}", emu_flags_masked, cpu_flags_masked);
-            panic!("CPU flag mismatch!")
+            //log::error!("Unmasked: EMU: 0b{:08b} != CPU: 0b{:08b}", self.current_frame.regs[1].flags, regs.flags);            
+            regs_validate = false;
+
+            let flag_diff = emu_flags_masked ^ cpu_flags_masked;
+
+            if flag_diff & CPU_FLAG_CARRY != 0 {
+                log::error!("CARRY flag differs.");
+            }
+            if flag_diff & CPU_FLAG_PARITY != 0 {
+                log::error!("PARITY flag differs.");
+            }
+            if flag_diff & CPU_FLAG_AUX_CARRY != 0 {
+                log::error!("AUX CARRY flag differs.");
+            }
+            if flag_diff & CPU_FLAG_ZERO != 0 {
+                log::error!("ZERO flag differs.");
+            }
+            if flag_diff & CPU_FLAG_SIGN != 0 {
+                log::error!("SIGN flag differs.");
+            }
+            if flag_diff & CPU_FLAG_TRAP != 0 {
+                log::error!("TRAP flag differs.");
+            }
+            if flag_diff & CPU_FLAG_INT_ENABLE != 0 {
+                log::error!("INT flag differs.");
+            }
+            if flag_diff & CPU_FLAG_DIRECTION != 0 {
+                log::error!("DIRECTION flag differs.");
+            }
+            if flag_diff & CPU_FLAG_OVERFLOW != 0 {
+                log::error!("OVERFLOW flag differs.");
+            }                    
+            //panic!("CPU flag mismatch!")
         }
+
+        regs_validate
     }
 }
 
 impl RemoteCpu {
 
     pub fn update_state(&mut self) -> bool {
+
+        /*
         self.program_state = self.cpu_client.get_program_state().expect("Failed to get program state!");
         self.status = self.cpu_client.read_status().expect("Failed to get status!");
         self.command_status = self.cpu_client.read_8288_command().expect("Failed to get 8288 command status!");
         self.control_status = self.cpu_client.read_8288_control().expect("Failed to get 8288 control status!");
         self.data_bus = self.cpu_client.read_data_bus().expect("Failed to get data bus!");
+        */
+
+        (
+            self.program_state, 
+            self.control_status, 
+            self.status, 
+            self.command_status, 
+            self.data_bus
+        ) = self.cpu_client.get_cycle_state().expect("Failed to get cycle state!");
+
+        self.bus_state = get_bus_state!(self.status);
         true    
+    }
+
+    pub fn set_instr_string(&mut self, instr_str: String) {
+        self.instr_str = instr_str;
+    }
+
+    pub fn reset(&mut self) {
+        self.bus_cycle = BusCycle::T1;
+        self.queue.flush();
     }
 
     pub fn cycle(
@@ -427,14 +566,14 @@ impl RemoteCpu {
         emu_mem_ops: &Vec<BusOp>,
         cpu_prefetch: &mut Vec<BusOp>, 
         cpu_mem_ops: &mut Vec<BusOp>
-    ) -> bool {
+    ) -> Result<bool, ValidatorError> {
 
         self.cpu_client.cycle().expect("Failed to cycle cpu!");
         
         self.bus_cycle = match self.bus_cycle {
             BusCycle::T1 => {
                 // Capture the state of the bus transfer in T1, as the state will go PASV in t3-t4
-                self.bus_state = get_bus_state!(self.status);
+                self.mcycle_state = get_bus_state!(self.status);
                 
                 // Only exit T1 state if bus transfer state indicates a bus transfer
                 match get_bus_state!(self.status) {
@@ -455,20 +594,24 @@ impl RemoteCpu {
                 BusCycle::T4
             }            
             BusCycle::T4 => {
-                if self.bus_state == BusState::CODE {
+                if self.mcycle_state == BusState::CODE {
                     // We completed a code fetch, so add to prefetch queue
-                    self.queue.push(self.data_bus, self.data_type);
+                    self.queue.push(self.data_bus, self.data_type, self.address_latch);
                 }
                 BusCycle::T1
             }            
         };
 
         self.update_state();
+        if self.program_state == ProgramState::ExecuteDone {
+            return Ok(true)
+        }
 
         if(self.command_status & COMMAND_ALE_BIT) != 0 {
             if self.bus_cycle != BusCycle::T1 {
                 log::warn!("ALE on non-T1 cycle state! CPU desynchronized.");
                 self.bus_cycle = BusCycle::T1;
+                return Err(ValidatorError::CpuDesynced);
             }
 
             self.address_latch = self.cpu_client.read_address_latch().expect("Failed to get address latch!");
@@ -484,7 +627,6 @@ impl RemoteCpu {
                     // CPU is reading code.
                     if self.v_pc < instr.len() {
                         // Feed current instruction to CPU
-                        log::trace!("CPU fetch");
                         self.data_bus = instr[self.v_pc];
                         self.data_type = QueueDataType::Program;
                         self.v_pc += 1;
@@ -494,50 +636,51 @@ impl RemoteCpu {
                         self.data_bus = OPCODE_NOP;
                         self.data_type = QueueDataType::Finalize;
                     }
+
+                    //log::trace!("CPU fetch: {:02X}", self.data_bus);
+                    self.cpu_client.write_data_bus(self.data_bus).expect("Failed to write data bus.");
                 }
                 if self.bus_state == BusState::MEMR {
                     // CPU is reading data from memory.
-                    if self.busop_n > emu_mem_ops.len() {
+                    if self.busop_n < emu_mem_ops.len() {
                         
-                        log::trace!("CPU read");
                         assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::MemRead);
                         // Feed emulator byte to CPU
                         self.data_bus = emu_mem_ops[self.busop_n].data;
                         // Add emu op to CPU BusOp list
                         cpu_mem_ops.push(emu_mem_ops[self.busop_n].clone());
                         self.busop_n += 1;
-                    }                    
-                }
-                self.data_bus = self.memory[self.address_latch as usize];
-                self.cpu_client.write_data_bus(self.data_bus).expect("Failed to write data bus.");
+
+                        log::trace!("CPU read: {:02X}", self.data_bus);
+                        self.cpu_client.write_data_bus(self.data_bus).expect("Failed to write data bus.");
+                    }
+                }             
             }
 
             // MWTC status is active-low.
             if (self.command_status & COMMAND_MWTC_BIT) == 0 {
-                // CPU is writing to bus.
+                // CPU is writing to bus. MWTC is only active on t3 so we don't need an additional check.
+
+                if self.busop_n < emu_mem_ops.len() {
+
+                    //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::MemWrite);
                 
-                if self.bus_state == BusState::MEMW {
-                    // CPU is writing data to memory.
-                    if self.busop_n > emu_mem_ops.len() {
+                    // Read byte from CPU
+                    self.data_bus = self.cpu_client.read_data_bus().expect("Failed to read data bus.");
+                
+                    log::trace!("CPU write: [{:05X}] <- {:02X}", self.address_latch, self.data_bus);
 
-                        assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::MemWrite);
-                        log::trace!("CPU write");
-
-                        // Read byte from CPU
-                        self.data_bus = self.cpu_client.read_data_bus().expect("Failed to read data bus.");
-                        
-                        // Add write op to CPU BusOp list
-                        cpu_mem_ops.push(
-                            BusOp {
-                                op_type: BusOpType::MemWrite,
-                                addr: self.address_latch,
-                                data: self.data_bus,
-                                flags: 0
-                            }
-                        );
-                        self.busop_n += 1;
-                    }                   
-                }
+                    // Add write op to CPU BusOp list
+                    cpu_mem_ops.push(
+                        BusOp {
+                            op_type: BusOpType::MemWrite,
+                            addr: self.address_latch,
+                            data: self.data_bus,
+                            flags: 0
+                        }
+                    );
+                    self.busop_n += 1;
+                }                   
             }
 
             // IORC status is active-low.
@@ -553,20 +696,24 @@ impl RemoteCpu {
             }
         }
 
-
-
         // Handle queue activity
         let q_op = get_queue_op!(self.status);
-            
+
         match q_op {
             QueueOp::First | QueueOp::Subsequent => {
                 // We fetched a byte from the queue last cycle
-                (self.queue_byte, self.queue_type ) = self.queue.pop();
+                (self.queue_byte, self.queue_type, self.queue_fetch_addr) = self.queue.pop();
                 if q_op == QueueOp::First {
                     // First byte of instruction fetched.
                     self.queue_first_fetch = true;
                     self.queue_fetch_n = 0;
                     self.opcode = self.queue_byte;
+
+                    // Is this opcode flagged as the end of execution?
+                    if self.queue_type == QueueDataType::Finalize {
+                        //log::trace!("Finalizing execution!");
+                        self.cpu_client.finalize().expect("Failed to finalize!");
+                    }
                 }
                 else {
                     // Subsequent byte of instruction fetched
@@ -581,25 +728,26 @@ impl RemoteCpu {
         }
 
         self.cycle_num += 1;
-        true        
+        Ok(true)
     }
 
     pub fn run(
         &mut self, 
         instr: &[u8],
+        instr_addr: u32,
+        cycle_trace: bool,
         emu_prefetch: &Vec<BusOp>,
         emu_mem_ops: &Vec<BusOp>,
         cpu_prefetch: &mut Vec<BusOp>, 
         cpu_mem_ops: &mut Vec<BusOp>
-    ) -> Result<bool, CpuClientError> {
+    ) -> Result<bool, ValidatorError> {
     
-
+        self.instr_addr = instr_addr;
         self.busop_n = 0;
         self.prefetch_n = 0;
         self.v_pc = 0;
 
         self.address_latch = self.cpu_client.read_address_latch().expect("Failed to get address latch!");
-
         self.update_state();
 
         // ALE should be active at start of execution
@@ -607,29 +755,17 @@ impl RemoteCpu {
             log::warn!("Execution is not starting on T1.");
         }
 
-        //self.print_cpu_state();
+        // cycle trace if enabled
+        if cycle_trace == true {
+            println!("{}", self.get_cpu_state_str());
+        }
 
-        let v_pc: usize = 0;
-
-        while self.cycle_num < CYCLE_LIMIT {
-            self.cycle(instr, emu_prefetch, emu_mem_ops, cpu_prefetch, cpu_mem_ops);
-            //self.print_cpu_state();
-
-            if self.bus_state == BusState::CODE && (self.v_pc >= instr.len()) {
-                // We are fetching past the end of the current instruction. Finalize execution.
-                if self.program_state == ProgramState::Execute {
-                    self.cpu_client.finalize().expect("Failed to finalize!");
-    
-                    // Wait for execution to finalize
-                    while self.program_state != ProgramState::ExecuteDone {
-                        self.cycle(instr, emu_prefetch, emu_mem_ops, cpu_prefetch, cpu_mem_ops);
-                    }
-    
-                    // Program finalized!
-                    log::trace!("Program finalized! Run store now.");
-
-                    return Ok(true);
-                }
+        while self.program_state != ProgramState::ExecuteDone {
+            self.cycle(instr, emu_prefetch, emu_mem_ops, cpu_prefetch, cpu_mem_ops)?;
+            
+            // cycle trace if enabled
+            if cycle_trace == true {
+                println!("{}", self.get_cpu_state_str());
             }
         }
 
@@ -643,15 +779,176 @@ impl RemoteCpu {
         Ok(true)
     }
 
-    pub fn store(&mut self) -> Result<bool, CpuClientError> {
+    /*
+    pub fn store(&mut self) -> Result<VRegisters, CpuClientError> {
+
+        // Enter store state
+        self.cpu_client.begin_store()?;
+
+        // Run Store state until StoreDone
+        while self.program_state != ProgramState::StoreDone {
+            //log::trace!("Validator state: {:?}", self.program_state);
+            self.cpu_client.cycle()?;
+            self.program_state = self.cpu_client.get_program_state().expect("Failed to get program state!");
+        }
 
         let mut buf: [u8; 28] = [0; 28];
         self.cpu_client.store_registers_to_buf(&mut buf)?;
 
         let regs = ArduinoValidator::buf_to_regs(&buf);
-        //RemoteCpu::print_regs(&regs);
-        Ok(true)
-    }    
+        
+        RemoteCpu::print_regs(&regs);
+        Ok(regs)
+    } 
+    */
+    pub fn store(&mut self) -> Result<VRegisters, CpuClientError> {
+        let mut buf: [u8; 28] = [0; 28];
+        self.cpu_client.store_registers_to_buf(&mut buf)?;
+
+        Ok(ArduinoValidator::buf_to_regs(&buf))
+    }
+
+    pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
+        ((segment as u32) << 4) + offset as u32 & 0xFFFFFu32
+    }
+
+    /// Adjust stored IP register to address of terminating opcode fetch
+    pub fn adjust_ip(&mut self, regs: &mut VRegisters) {
+
+        let flat_csip = RemoteCpu::calc_linear_address(regs.cs, regs.ip);
+
+        let ip_offset = flat_csip.wrapping_sub(self.queue_fetch_addr);
+
+        regs.ip = regs.ip.wrapping_sub(ip_offset as u16);
+    }
+
+    pub fn get_cpu_state_str(&mut self) -> String {
+
+        let ale_str = match self.command_status & COMMAND_ALE_BIT != 0 {
+            true => "A:",
+            false => "  "
+        };
+
+        let mut seg_str = "  ";
+        if self.bus_cycle != BusCycle::T1 {
+            // Segment status only valid in T2+
+            seg_str = match get_segment!(self.status) {
+                Segment::ES => "ES",
+                Segment::SS => "SS",
+                Segment::CS => "CS",
+                Segment::DS => "DS"
+            };    
+        }
+
+        let q_op = get_queue_op!(self.status);
+        let q_op_chr = match q_op {
+            QueueOp::Idle => ' ',
+            QueueOp::First => 'F',
+            QueueOp::Flush => 'E',
+            QueueOp::Subsequent => 'S'
+        };
+
+        // All read/write signals are active/low
+        let rs_chr   = match self.command_status & 0b0000_0001 == 0 {
+            true => 'R',
+            false => '.',
+        };
+        let aws_chr  = match self.command_status & 0b0000_0010 == 0 {
+            true => 'A',
+            false => '.',
+        };
+        let ws_chr   = match self.command_status & 0b0000_0100 == 0 {
+            true => 'W',
+            false => '.',
+        };
+        let ior_chr  = match self.command_status & 0b0000_1000 == 0 {
+            true => 'R',
+            false => '.',
+        };
+        let aiow_chr = match self.command_status & 0b0001_0000 == 0 {
+            true => 'A',
+            false => '.',
+        };
+
+        let iow_chr  = match self.command_status & 0b0010_0000 == 0 {
+            true => 'W',
+            false => '.',
+        };
+
+        let bus_str = match get_bus_state!(self.status) {
+            BusState::IRQA => "IRQA",
+            BusState::IOR  => "IOR ",
+            BusState::IOW  => "IOW ",
+            BusState::HALT => "HALT",
+            BusState::CODE => "CODE",
+            BusState::MEMR => "MEMR",
+            BusState::MEMW => "MEMW",
+            BusState::PASV => "PASV"           
+        };
+
+        let t_str = match self.bus_cycle {
+            BusCycle::T1 => "T1",
+            BusCycle::T2 => "T2",
+            BusCycle::T3 => "T3",
+            BusCycle::T4 => "T4",
+            BusCycle::Tw => "Tw",
+        };
+
+        let is_reading = is_reading!(self.command_status);
+        let is_writing = is_writing!(self.command_status);
+
+        let mut xfer_str = "      ".to_string();
+        if is_reading {
+            xfer_str = format!("<-r {:02X}", self.data_bus);
+        }
+        else if is_writing {
+            xfer_str = format!("w-> {:02X}", self.data_bus);
+        }
+
+        // Handle queue activity
+
+        let mut q_read_str = String::new();
+
+        if q_op == QueueOp::First {
+            // First byte of opcode read from queue. Decode it to opcode or group specifier
+            q_read_str = format!("<-q {:02X} {}", self.queue_byte, self.instr_str);
+        }
+        else if q_op == QueueOp::Subsequent {
+            q_read_str = format!("<-q {:02X}", self.queue_byte);
+        }         
+      
+        format!(
+            "{:08} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} {:04} {:02} {:06} | {:1}{:1} [{:08}] {}",
+            self.cycle_num,
+            ale_str,
+            self.address_latch,
+            seg_str,
+            rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
+            bus_str,
+            t_str,
+            xfer_str,
+            q_op_chr,
+            self.queue.len(),
+            self.queue.to_string(),
+            q_read_str
+        )
+    }
+
+    pub fn print_regs(regs: &VRegisters) {
+        let reg_str = format!(
+            "AX: {:04x} BX: {:04x} CX: {:04x} DX: {:04x}\n\
+            SP: {:04x} BP: {:04x} SI: {:04x} DI: {:04x}\n\
+            CS: {:04x} DS: {:04x} ES: {:04x} SS: {:04x}\n\
+            IP: {:04x}\n\
+            FLAGS: {:04x}",
+            regs.ax, regs.bx, regs.cx, regs.dx,
+            regs.sp, regs.bp, regs.si, regs.di,
+            regs.cs, regs.ds, regs.es, regs.ss,
+            regs.ip,
+            regs.flags );
+        
+          println!("{}", reg_str);        
+    }
 }
 
 pub fn make_pointer(base: u16, offset: u16) -> u32 {
@@ -660,9 +957,11 @@ pub fn make_pointer(base: u16, offset: u16) -> u32 {
 
 impl CpuValidator for ArduinoValidator {
 
-    fn init(&mut self, mask_flags: bool) -> bool {
+    fn init(&mut self, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool {
 
+        self.cycle_trace = cycle_trace;
         self.mask_flags = mask_flags;
+        self.visit_once = visit_once;
         true
     }
 
@@ -670,6 +969,8 @@ impl CpuValidator for ArduinoValidator {
 
         self.current_frame.discard = false;
         self.current_frame.regs[0] = regs.clone();
+
+        //RemoteCpu::print_regs(&self.current_frame.regs[0]);
 
         let ip_addr = make_pointer(regs.cs, regs.ip);
 
@@ -679,10 +980,15 @@ impl CpuValidator for ArduinoValidator {
             self.trigger_addr = V_INVALID_POINTER;
         }
 
+        /*
         if (self.trigger_addr != V_INVALID_POINTER) 
             || (self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize]) {
             self.current_frame.discard = true;
             return;
+        }
+        */
+        if (self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize]) {
+            self.current_frame.discard = true;
         }
 
         self.current_frame.emu_ops.clear();
@@ -691,148 +997,142 @@ impl CpuValidator for ArduinoValidator {
         self.current_frame.cpu_prefetch.clear();
     }    
 
-    fn validate(&mut self, name: String, instr: &[u8], has_modrm: bool, cycles: i32, regs: &VRegisters) {
+    fn validate(&mut self, name: String, instr: &[u8], has_modrm: bool, cycles: i32, regs: &VRegisters) -> Result<bool, ValidatorError>  {
 
         let ip_addr = make_pointer(self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
 
+        /*
         if (self.trigger_addr != V_INVALID_POINTER) 
             || (self.visit_once && ip_addr >= UPPER_MEMORY &&  self.visited[ip_addr as usize]) {
-            return
+            return Ok(true);
+        }
+        */
+
+
+        if instr.len() == 0 {
+            log::error!("Instruction length was 0");
+            return Err(ValidatorError::ParameterError);
         }
 
         self.visited[ip_addr as usize] = true;
 
+        let mut i = 0;
+
+        // Scan through prefix bytes to find opcode
+        loop {
+            let mut instr_byte = instr[i];
+            match instr_byte {
+                0x26 | 0x2E | 0x36 | 0x3E | 0xF0 | 0xF2 | 0xF3 => {
+                    i += 1;
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
         self.current_frame.name = name.clone();
-        self.current_frame.opcode = instr[0];
+        self.current_frame.opcode = instr[i];
         self.current_frame.instr = instr.to_vec();
         self.current_frame.has_modrm = has_modrm;
         self.current_frame.num_nop = 0;
         self.current_frame.next_fetch = false;
-        self.current_frame.regs[1] = *regs;
+        self.current_frame.regs[1] = regs.clone();
+
+        if self.current_frame.regs[1].flags == 0 {
+            log::error!("Invalid emulator flags");
+            return Err(ValidatorError::ParameterError);
+        }
+
+        //RemoteCpu::print_regs(&self.current_frame.regs[1]);
 
         if has_modrm {
-            if instr.len() < 2 {
-                log::error!("validate(): modrm specified but instruction length < 2");
-                return
+            if i > (instr.len() - 2) {
+                log::error!("validate(): modrm specified but instruction length < ");
+                log::error!(
+                    "instruction: {} opcode: {} instr: {:02X?}",
+                    self.current_frame.name,
+                    self.current_frame.opcode,
+                    self.current_frame.instr
+                );
+                return Err(ValidatorError::ParameterError);
             }
-            self.current_frame.modrm = instr[1];
+            self.current_frame.modrm = instr[i + 1];
         }
         else {
             self.current_frame.modrm = 0;
         }
-
-        // We must discard the first instructions after boot.
-        /*
-        if ((ip_addr >= 0xFFFF0) || (ip_addr <= 0xFF)) {
-            log::debug!("Instruction out of range: Discarding...");
-            self.current_frame.discard = true;
-        }
-        */
 
         let discard_or_validate = match self.current_frame.discard {
             true => "DISCARD",
             false => "VALIDATE"
         };
 
+        self.cpu.reset();
+        self.cpu.set_instr_string(name.clone());
+
         log::debug!(
-            "{}: {} (0x{:02X}) @ [{:04X}:{:04X}]", 
+            "{}: {} {:02X?} @ [{:04X}:{:04X}] Memops: {}", 
             discard_or_validate, 
             name, 
-            self.current_frame.opcode, 
+            self.current_frame.instr, 
             self.current_frame.regs[0].cs, 
-            self.current_frame.regs[0].ip
+            self.current_frame.regs[0].ip,
+            self.current_frame.emu_ops.len(),
         );
 
         if self.current_frame.discard {
-            return;
+            return Ok(true);
         }
 
-        // memset prefetch
-        //self.current_frame.prefetch_addr.fill(0);
-
-
         let mut reg_buf: [u8; 28] = [0; 28];
-        ArduinoValidator::regs_to_buf(&mut reg_buf, regs);
+        ArduinoValidator::regs_to_buf(&mut reg_buf, &self.current_frame.regs[0]);
 
         self.cpu.load(&reg_buf).expect("validate() error: Load registers failed.");
-        
+
+        let instr_addr = RemoteCpu::calc_linear_address(self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
+
         self.cpu.run(
             &self.current_frame.instr,
+            instr_addr,
+            self.cycle_trace,
             &mut self.current_frame.emu_prefetch, 
             &mut self.current_frame.emu_ops, 
             &mut self.current_frame.cpu_prefetch, 
             &mut self.current_frame.cpu_ops
-        ).expect("validate() error: Run failed");
+        )?;
 
-        self.cpu.store().expect("Failed to store registers!");
 
-        /*
-        // Create scratchpad
-        self.scratchpad.fill(0);
-        
-        // Load 'load' procedure into scratchpad
-        for i in 0..self.load_code.len() {
-            self.scratchpad[i] = self.load_code[i];
+        // Enter store state
+
+        //log::trace!("Validator state: {:?}", self.cpu.program_state);
+
+        let mut regs = self.cpu.store().expect("Failed to store registers!");
+
+        if !self.validate_mem_ops() {
+            log::error!("Memory validation failure. EMU:");
+            RemoteCpu::print_regs(&self.current_frame.regs[1]);
+            log::error!("CPU:");    
+            RemoteCpu::print_regs(&regs);
+
+            return Err(ValidatorError::MemOpMismatch);            
         }
 
-        // Patch load procedure with current register values
-        let r = self.current_frame.regs[0];
+        self.cpu.adjust_ip(&mut regs);
 
-        self.write_u16_scratch(0x00, r.flags);
-        
-        self.write_u16_scratch(0x0B, r.bx);
-        self.write_u16_scratch(0x0E, r.cx);
-        self.write_u16_scratch(0x11, r.dx);
+        if !self.validate_registers(&regs) {
+            log::error!("Register validation failure. EMU BEFORE:");    
+            RemoteCpu::print_regs(&self.current_frame.regs[0]);
+            log::error!("EMU AFTER:");
+            RemoteCpu::print_regs(&self.current_frame.regs[1]);
 
-        self.write_u16_scratch(0x14, r.ss);
-        self.write_u16_scratch(0x19, r.ds);
-        self.write_u16_scratch(0x1E, r.es);
-        self.write_u16_scratch(0x23, r.sp);
-        self.write_u16_scratch(0x28, r.bp);
-        self.write_u16_scratch(0x2D, r.si);
-        self.write_u16_scratch(0x32, r.di);
+            log::error!("CPU AFTER:");   
+            RemoteCpu::print_regs(&regs);
 
-        self.write_u16_scratch(0x37, r.ax);
-        self.write_u16_scratch(0x3A, r.ip);
-        self.write_u16_scratch(0x3C, r.cs);
-
-        // JMP 0:2
-        let jmp: Vec<u8> = vec![0xEA, 0x02, 0x00, 0x00, 0x00];
-        for i in 0..jmp.len() {
-            self.scratchpad[0xFFFF0 + i] = jmp[i];
+            return Err(ValidatorError::RegisterMismatch);
         }
 
-        self.code_as_data_skip = false;
-
-        self.reset_sequence();
-
-        self.state = ValidatorState::Setup;
-
-        loop {
-            self.execute_bus_cycle();
-            self.next_bus_cycle();
-
-            if self.state == ValidatorState::Finished {
-                break;
-            }
-        }
-        
-        if self.code_as_data_skip {
-            return
-        }
-        */
-
-        /*
-        for i in 0..NUM_MEM_OPS {
-            //self.validate_mem_op(&self.current_frame.reads[i]);
-            //self.validate_mem_op(&self.current_frame.writes[i]);
-            self.validate_mem_op_read(i);
-            self.validate_mem_op_write(i);
-        }
-        */
-
-        self.validate_mem_ops();
-        self.validate_registers();
+        Ok(true)
     }
 
     fn emu_read_byte(&mut self, addr: u32, data: u8, read_type: ReadType) {
@@ -850,9 +1150,17 @@ impl CpuValidator for ArduinoValidator {
                         flags: MOF_EMULATOR
                     }
                 );
-                log::trace!("EMU fetch: [{:05X}] <- 0x{:02X}", addr, data);
+                log::trace!("EMU fetch: [{:05X}] -> 0x{:02X}", addr, data);
             }
             ReadType::Data => {
+                let ops_len = self.current_frame.emu_ops.len();
+                if ops_len > 0 {
+                    if self.current_frame.emu_ops[ops_len - 1].addr == addr {
+                        log::trace!("EMU duplicate read!");
+                        println!("Custom backtrace: {}", Backtrace::force_capture());
+                    }
+                }
+
                 self.current_frame.emu_ops.push(
                     BusOp {
                         op_type: BusOpType::MemRead,
@@ -861,11 +1169,10 @@ impl CpuValidator for ArduinoValidator {
                         flags: MOF_EMULATOR
                     }
                 );
-                log::trace!("EMU read: [{:05X}] <- 0x{:02X}", addr, data);
+                log::trace!("EMU read: [{:05X}] -> 0x{:02X}", addr, data);
             }
         }
 
-        
     }
 
     fn emu_write_byte(&mut self, addr: u32, data: u8) {
@@ -884,7 +1191,7 @@ impl CpuValidator for ArduinoValidator {
                 flags: MOF_EMULATOR
             }
         );
-        log::trace!("EMU write: [{:05X}] -> 0x{:02X}", addr, data);
+        log::trace!("EMU write: [{:05X}] <- 0x{:02X}", addr, data);
     }
 
     fn discard_op(&mut self) {

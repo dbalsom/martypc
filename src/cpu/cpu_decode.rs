@@ -63,7 +63,7 @@ impl Display for InstructionDecodeError{
     }
 }
 
-impl Cpu {
+impl<'a> Cpu<'a> {
     pub fn decode(bytes: &mut impl ByteQueue) -> Result<Instruction, Box<dyn std::error::Error>> {
 
         let mut operand1_type: OperandType = OperandType::NoOperand;
@@ -255,7 +255,8 @@ impl Cpu {
             0xAF => (Mnemonic::SCASW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
             0xB0..=0xB7 => (Mnemonic::MOV,  OperandTemplate::Register8Encoded,   OperandTemplate::Immediate8,   0),
             0xB8..=0xBF => (Mnemonic::MOV,  OperandTemplate::Register16Encoded,   OperandTemplate::Immediate16, 0),
-
+            0xC0 => (Mnemonic::RETN, OperandTemplate::Immediate16,   OperandTemplate::NoOperand,  0),
+            0xC1 => (Mnemonic::RETN, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
             0xC2 => (Mnemonic::RETN, OperandTemplate::Immediate16,   OperandTemplate::NoOperand,  0),
             0xC3 => (Mnemonic::RETN, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
             0xC4 => (Mnemonic::LES,  OperandTemplate::Register16,   OperandTemplate::ModRM16,     0),
@@ -294,6 +295,7 @@ impl Cpu {
             0xEE => (Mnemonic::OUT,  OperandTemplate::FixedRegister16(Register16::DX),   OperandTemplate::FixedRegister8(Register8::AL),     0),
             0xEF => (Mnemonic::OUT,  OperandTemplate::FixedRegister16(Register16::DX),   OperandTemplate::FixedRegister16(Register16::AX),   0),
 
+            0xF1 => (Mnemonic::NOP,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
             0xF4 => (Mnemonic::HLT,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
             0xF5 => (Mnemonic::CMC,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
             0xF8 => (Mnemonic::CLC,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
@@ -413,61 +415,6 @@ impl Cpu {
                 operand2_size = OperandSize::Operand16;
                 operand1_type = OperandType::Register16(modrm.get_op2_segmentreg16());
             }
-            0xC0 => {
-                // Bitwise opcode extensions - r/m8, imm8
-                // This opcode was only supported on 80186 and above
-                operand1_size = OperandSize::Operand8;
-
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ROL,
-                    0x01 => Mnemonic::ROR,
-                    0x02 => Mnemonic::RCL,
-                    0x03 => Mnemonic::RCR,
-                    0x04 => Mnemonic::SHL,
-                    0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SHL,
-                    0x07 => Mnemonic::SAR,
-                    _=>Mnemonic::InvalidOpcode
-                };
-
-                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
-                operand2_type = OperandType::Immediate8(operand2);
-            }
-            0xC1 => {
-                // Bitwise opcode extensions - r/m16, imm8
-                // This opcode was only supported on 80186 and above
-                operand1_size = OperandSize::Operand16;
-
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ROL,
-                    0x01 => Mnemonic::ROR,
-                    0x02 => Mnemonic::RCL,
-                    0x03 => Mnemonic::RCR,
-                    0x04 => Mnemonic::SHL,
-                    0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SHL,
-                    0x07 => Mnemonic::SAR,
-                    _=> Mnemonic::InvalidOpcode,
-                };
-                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
-                operand2_type = OperandType::Immediate8(operand2);
-            }        
             0xD0 => {
                 // Bitwise opcode extensions - r/m8, 0x01
                 operand1_size = OperandSize::Operand8;
@@ -487,7 +434,7 @@ impl Cpu {
                     0x03 => Mnemonic::RCR,
                     0x04 => Mnemonic::SHL,
                     0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SHL,
+                    0x06 => Mnemonic::SETMO,
                     0x07 => Mnemonic::SAR,
                     _=>Mnemonic::InvalidOpcode
                 };
@@ -513,7 +460,7 @@ impl Cpu {
                     0x03 => Mnemonic::RCR,
                     0x04 => Mnemonic::SHL,
                     0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SHL,
+                    0x06 => Mnemonic::SETMO,
                     0x07 => Mnemonic::SAR,
                     _=> Mnemonic::InvalidOpcode,
                 };
@@ -537,7 +484,7 @@ impl Cpu {
                     0x03 => Mnemonic::RCR,
                     0x04 => Mnemonic::SHL,
                     0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SHL,
+                    0x06 => Mnemonic::SETMOC,
                     0x07 => Mnemonic::SAR,
                     _=> Mnemonic::InvalidOpcode
                 };
@@ -561,7 +508,7 @@ impl Cpu {
                     0x03 => Mnemonic::RCR,
                     0x04 => Mnemonic::SHL,
                     0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SHL,
+                    0x06 => Mnemonic::SETMOC,
                     0x07 => Mnemonic::SAR,
                    _=> Mnemonic::InvalidOpcode
                 };

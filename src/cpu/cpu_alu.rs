@@ -18,7 +18,7 @@ const PARITY_TABLE: [bool; 256] = {
     table
 };
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
     #[inline(always)]
     fn set_parity_flag_from_u8(&mut self, operand: u8) {
@@ -656,7 +656,7 @@ mod tests {
     #[test]
     
     fn test_mul() {
-        let mut cpu = Cpu::new(CpuType::Cpu8088, TraceMode::None);
+        let mut cpu = Cpu::new(CpuType::Cpu8088, TraceMode::None, None::<Write>);
 
         cpu.set_register16(Register16::AX, 1);
 

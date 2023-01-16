@@ -1,5 +1,6 @@
 use crate::cpu::*;
-use crate::bus::BusInterface;
+use crate::cpu::cpu_biu::*;
+
 
 #[derive(Copy, Clone)]
 pub enum AddressingMode {
@@ -30,7 +31,7 @@ pub enum AddressingMode {
     RegisterMode
 }
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
     fn is_register_mode(mode: AddressingMode) {
         match mode {
@@ -41,6 +42,10 @@ impl Cpu {
 
     pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
         ((segment as u32) << 4) + offset as u32 & 0xFFFFFu32
+    }
+
+    pub fn relative_offset_u16(base: u16, offset: i16) -> u16 {
+        base.wrapping_add(offset as u16)
     }
     
     pub fn calc_linear_address_seg(&self, segment: Segment, offset: u16) -> u32 {
@@ -68,7 +73,8 @@ impl Cpu {
 
     /// Calculate the Effective Address for the given AddressingMode enum
     fn calc_effective_address(
-        &self, mode: AddressingMode, 
+        &mut self, 
+        mode: AddressingMode, 
         segment_override: SegmentOverride) 
             -> (u16, Segment, u16) 
     {
@@ -123,7 +129,7 @@ impl Cpu {
             SegmentOverride::DS  => (self.ds, Segment::DS),
         };      
 
-        match mode {
+        let (seg_val, seg, offset) = match mode {
             // All of this relies on 2's compliment arithmetic for signed displacements
             AddressingMode::BxSi                => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.si)),
             AddressingMode::BxDi                => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.di)),
@@ -155,10 +161,13 @@ impl Cpu {
             // The instruction decoder should convert ModRM operands that specify Registers to Register type operands, so
             // in theory this shouldn't happen
             AddressingMode::RegisterMode => panic!("Can't calculate EA for register")
-        }
+        };
+
+        self.last_ea = offset; // Save last EA to do voodoo when LEA is called with reg, reg operands
+        (seg_val, seg, offset)
     }
 
-    pub fn load_effective_address(&self, operand: OperandType) -> Option<u16> {
+    pub fn load_effective_address(&mut self, operand: OperandType) -> Option<u16> {
         if let OperandType::AddressingMode(mode) = operand {
             let (_segment_value, _segment, offset) = self.calc_effective_address(mode, SegmentOverride::None);
             return Some(offset);
@@ -234,7 +243,7 @@ impl Cpu {
                     Register16::CS => Some(self.cs),
                     Register16::SS => Some(self.ss),
                     Register16::DS => Some(self.ds),
-                    _=> panic!("read_operand16(): Invalid Register16 operand")
+                    _=> panic!("read_operand16(): Invalid Register16 operand: {:?}", reg16)
                 }
             },
             OperandType::AddressingMode(mode) => {
@@ -262,13 +271,30 @@ impl Cpu {
                 let offset = self.biu_read_u16(segment, flat_addr);
                 let segment = self.biu_read_u16(segment, flat_addr + 2);
                 Some((segment, offset))
-            }
+            },
+            OperandType::Register16(_) => {
+                // Illegal form of LES/LDS reg reg uses the last calculated EA.
+                let (segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
+                    SegmentOverride::None => (self.ds, Segment::DS),
+                    SegmentOverride::ES  => (self.es, Segment::ES),
+                    SegmentOverride::CS  => (self.cs, Segment::CS),
+                    SegmentOverride::SS  => (self.ss, Segment::SS),
+                    SegmentOverride::DS  => (self.ds, Segment::DS),
+                };
+
+                let flat_addr = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea);
+                let flat_addr2 = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea.wrapping_add(2));
+
+                let offset = self.biu_read_u16(segment_base_ds, flat_addr);
+                let segment = self.biu_read_u16(segment_base_ds, flat_addr2);
+                Some((segment, offset))
+            },
             _ => None
         }
     }    
 
     /// Write an 8-bit value to the specified destination operand
-    pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8) {
+    pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8, flag: WriteFlag) {
 
         match operand {
             OperandType::Immediate8(imm8) => {}
@@ -278,7 +304,7 @@ impl Cpu {
             OperandType::Offset8(offset8) => {
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
                 let flat_addr = self.calc_linear_address_seg(segment, offset8);
-                self.biu_write_u8(segment, flat_addr, value);
+                self.biu_write_u8(segment, flat_addr, value, flag);
             }
             OperandType::Offset16(offset16) => {}
             OperandType::Register8(reg8) => {
@@ -297,8 +323,7 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
-                let byte = self.biu_read_u8(segment, flat_addr);
-                self.biu_write_u8(segment, flat_addr, value);
+                self.biu_write_u8(segment, flat_addr, value, flag);
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}
@@ -308,7 +333,7 @@ impl Cpu {
     }
 
     // TODO: implement cycle cost
-    pub fn write_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u16) {
+    pub fn write_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u16, flag: WriteFlag) {
 
         match operand {
             OperandType::Immediate8(imm8) => {}
@@ -319,7 +344,7 @@ impl Cpu {
             OperandType::Offset16(offset16) => {
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
                 let flat_addr = self.calc_linear_address_seg(segment, offset16);
-                self.biu_write_u16(segment, flat_addr, value);
+                self.biu_write_u16(segment, flat_addr, value, flag);
             }
             OperandType::Register8(reg8) => {}
             OperandType::Register16(reg16) => {
@@ -347,7 +372,7 @@ impl Cpu {
             OperandType::AddressingMode(mode) => {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
-                self.biu_write_u16(segment, flat_addr, value);
+                self.biu_write_u16(segment, flat_addr, value, flag);
             }
             OperandType::NearAddress(offset) => {}
             OperandType::FarAddress(segment,offset) => {}

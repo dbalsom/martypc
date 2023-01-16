@@ -1,11 +1,11 @@
 use crate::cpu::*;
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
     /// Ascii Adjust after Addition
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aaa(&mut self) {
-        if (self.al & 0x0F) > 9 || self.get_flag(Flag::AuxCarry) {
+        if ((self.al & 0x0F) > 9) || self.get_flag(Flag::AuxCarry) {
             self.set_register16(Register16::AX, self.ax.wrapping_add(0x106));
             self.set_flag(Flag::AuxCarry);
             self.set_flag(Flag::Carry);
@@ -14,14 +14,13 @@ impl Cpu {
             self.clear_flag(Flag::AuxCarry);
             self.clear_flag(Flag::Carry);
         }
-
         self.set_register8(Register8::AL, self.al & 0x0F);
     }
 
     /// Ascii Adjust after Subtraction
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aas(&mut self) {    
-        if (self.al & 0x0F) > 9 || self.get_flag(Flag::AuxCarry) {
+        if ((self.al & 0x0F) > 9) || self.get_flag(Flag::AuxCarry) {
             self.set_register16(Register16::AX, self.ax.wrapping_sub(6));
             self.set_register8(Register8::AH, self.ah.wrapping_sub(1));
             self.set_flag(Flag::AuxCarry);
@@ -99,6 +98,8 @@ impl Cpu {
             self.set_register8(Register8::AL, self.al.wrapping_sub(0x60));
             self.set_flag(Flag::Carry);
         }
+
+        self.set_flags_from_result_u8(self.al);
     }
 
     /// AAM - Ascii adjust AX After multiply

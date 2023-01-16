@@ -1,7 +1,7 @@
 use crate::cpu::*;
 use crate::cpu::cpu_mnemonic::Mnemonic;
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
     pub(crate) fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {
 
@@ -261,6 +261,33 @@ impl Cpu {
                 (result, carry) = Cpu::rcr_u8_with_carry(operand1, rot_count, existing_carry);
                 self.set_flag_state(Flag::Carry, carry);
             }
+            Mnemonic::SETMO => {
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::AuxCarry);
+                self.clear_flag(Flag::Zero);
+                self.clear_flag(Flag::Overflow);
+
+                self.set_flag(Flag::Parity);
+                self.set_flag(Flag::Sign);
+
+                result = 0xFF;
+            }
+            Mnemonic::SETMOC => {
+
+                if self.cl != 0 {
+                    self.clear_flag(Flag::Carry);
+                    self.clear_flag(Flag::AuxCarry);
+                    self.clear_flag(Flag::Zero);
+                    self.clear_flag(Flag::Overflow);
+
+                    self.set_flag(Flag::Parity);
+                    self.set_flag(Flag::Sign);
+                    result = 0xFF;
+                }
+                else {
+                    result = operand1;
+                }
+            }            
             Mnemonic::SHL => {
                 (result, carry) = Cpu::shl_u8_with_carry(operand1, operand2);
                 // Set state of Carry Flag
@@ -384,6 +411,33 @@ impl Cpu {
                 // The rcr instruction does not affect the zero, sign, parity, or auxiliary carry flags.
                 // AoA 6.6.3.2
             }
+            Mnemonic::SETMO => {
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::AuxCarry);
+                self.clear_flag(Flag::Zero);
+                self.clear_flag(Flag::Overflow);
+
+                self.set_flag(Flag::Parity);
+                self.set_flag(Flag::Sign);
+
+                result = 0xFFFF;
+            }
+            Mnemonic::SETMOC => {
+
+                if self.cl != 0 {
+                    self.clear_flag(Flag::Carry);
+                    self.clear_flag(Flag::AuxCarry);
+                    self.clear_flag(Flag::Zero);
+                    self.clear_flag(Flag::Overflow);
+
+                    self.set_flag(Flag::Parity);
+                    self.set_flag(Flag::Sign);
+                    result = 0xFFFF;
+                }
+                else {
+                    result = operand1;
+                }
+            }            
             Mnemonic::SHL => {
                 (result, carry) = Cpu::shl_u16_with_carry(operand1, operand2);
                 // Set state of Carry Flag

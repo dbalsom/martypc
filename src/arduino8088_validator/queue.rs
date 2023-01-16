@@ -16,21 +16,28 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
+#![allow(dead_code)]
 
 pub const QUEUE_SIZE: usize = 4;
 
-#[derive (Copy, Clone)]
+#[derive (Copy, Clone, PartialEq)]
 pub enum QueueDataType {
     Program,
     Finalize
+}
+
+#[derive (Copy, Clone)]
+pub struct QueueEntry {
+    opcode: u8,
+    dtype: QueueDataType,
+    addr: u32
 }
 
 pub struct InstructionQueue {
     len: usize,
     back: usize,
     front: usize,
-    q: [u8; QUEUE_SIZE],
-    dt: [QueueDataType; QUEUE_SIZE]
+    q: [QueueEntry; QUEUE_SIZE],
 }
 
 impl InstructionQueue {
@@ -39,13 +46,13 @@ impl InstructionQueue {
             len: 0,
             back: 0,
             front: 0,
-            q: [0,0,0,0],
-            dt: [
-                QueueDataType::Program,
-                QueueDataType::Program,
-                QueueDataType::Program,
-                QueueDataType::Program
-            ]
+            q: [
+                QueueEntry {
+                    opcode: 0,
+                    dtype: QueueDataType::Program,
+                    addr: 0,
+                }; QUEUE_SIZE
+            ],
         }
     }
 
@@ -53,11 +60,15 @@ impl InstructionQueue {
         self.len
     }
 
-    pub fn push(&mut self, byte: u8, dtype: QueueDataType) {
+    pub fn push(&mut self, byte: u8, dtype: QueueDataType, addr: u32) {
         if self.len < QUEUE_SIZE {
 
-            self.q[self.front] = byte;
-            self.dt[self.front] = dtype;
+            self.q[self.front] = QueueEntry {
+                opcode: byte,
+                dtype,
+                addr
+            };
+            //self.dt[self.front] = dtype;
 
             self.front = (self.front + 1) % QUEUE_SIZE;
             self.len += 1;
@@ -67,15 +78,15 @@ impl InstructionQueue {
         }
     }
 
-    pub fn pop(&mut self) -> (u8, QueueDataType) {
+    pub fn pop(&mut self) -> (u8, QueueDataType, u32) {
         if self.len > 0 {
-            let byte = self.q[self.back];
-            let dt = self.dt[self.back];
+            let q_entry = self.q[self.back];
+            //let dt = self.dt[self.back];
 
             self.back = (self.back + 1) % QUEUE_SIZE;
             self.len -= 1;
 
-            return (byte, dt)
+            return (q_entry.opcode, q_entry.dtype, q_entry.addr)
         }
 
         panic!("Queue underrun!");
@@ -92,7 +103,7 @@ impl InstructionQueue {
         let mut base_str = "".to_string();
 
         for i in 0..self.len {
-            base_str.push_str(&format!("{:02X}", self.q[(self.back + i) % QUEUE_SIZE]));
+            base_str.push_str(&format!("{:02X}", self.q[(self.back + i) % QUEUE_SIZE].opcode));
         }
 
         base_str
