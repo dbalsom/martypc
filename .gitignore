@@ -16,10 +16,13 @@ Thumbs.db
 /hdd
 /dumps
 /traces
+/builds
+
 *.pcm
 *.cfg
 marty.toml
 *.log
+
 
 # Assembly stuff
 /asm

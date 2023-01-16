@@ -1493,6 +1493,11 @@ impl<'a> Cpu<'a> {
         self.pop_register16(Register16::CS);
         //log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
         self.pop_flags();
+
+        // temporary timings
+        self.biu_suspend_fetch();
+        self.cycles(4);
+        self.biu_queue_flush();        
     }
 
     /// Perform a software interrupt
@@ -1847,6 +1852,12 @@ impl<'a> Cpu<'a> {
                 self.instruction_history.push_back(self.i);
                 self.instruction_count += 1;
                 check_interrupts = true;
+
+                // Perform instruction tracing, if enabled
+                if self.trace_mode == TraceMode::Instruction {
+                    self.trace_print(&self.instruction_state_string());   
+                }                
+
                 Ok(())
             }
             ExecutionResult::OkayJump => {
@@ -1864,6 +1875,11 @@ impl<'a> Cpu<'a> {
                 // If fetching was suspended, resume it
                 self.biu_resume_fetch();
                 check_interrupts = true;
+
+                // Perform instruction tracing, if enabled
+                if self.trace_mode == TraceMode::Instruction {
+                    self.trace_print(&self.instruction_state_string());   
+                }                          
                 Ok(())
             }
             ExecutionResult::OkayRep => {
@@ -2083,6 +2099,18 @@ impl<'a> Cpu<'a> {
         );        
 
         cycle_str
+    }
+
+    pub fn instruction_state_string(&self) -> String {
+        let mut instr_str = String::new();
+
+        instr_str.push_str(&format!("{:04x}:{:04x} {}\n", self.cs, self.ip, self.i));
+        instr_str.push_str(&format!("AX: {:04x} BX: {:04x} CX: {:04x} DX: {:04x}\n", self.ax, self.bx, self.cx, self.dx));
+        instr_str.push_str(&format!("SP: {:04x} BP: {:04x} SI: {:04x} DI: {:04x}\n", self.sp, self.bp, self.si, self.di));
+        instr_str.push_str(&format!("CS: {:04x} DS: {:04x} ES: {:04x} SS: {:04x}\n", self.cs, self.ds, self.es, self.ss));
+        instr_str.push_str(&format!("IP: {:04x} FLAGS: {:04x}", self.ip, self.flags));
+
+        instr_str
     }
 
     pub fn trace_print(&mut self, trace_str: &str) {

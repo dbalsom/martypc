@@ -638,6 +638,11 @@ impl<'a> Cpu<'a> {
                     self.cs = segment;
                     self.ip = offset;
                 }
+
+                // temporary timings
+                self.biu_suspend_fetch();
+                self.cycles(4);
+                self.biu_queue_flush();                
                 jump = true;
             }
             0x9B => {
@@ -876,6 +881,11 @@ impl<'a> Cpu<'a> {
                 // 0xC0 undocumented alias for 0xC2
                 // Flags: None
                 let new_ip = self.pop_u16();
+                // temporary timings
+                self.biu_suspend_fetch();
+                self.cycle();
+                self.biu_queue_flush();
+                self.cycles(2);    
                 self.ip = new_ip;
                 
                 let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::None).unwrap();
@@ -943,6 +953,12 @@ impl<'a> Cpu<'a> {
                 let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::None).unwrap();
                 self.release(stack_disp);
 
+                // temporary timings
+                self.biu_suspend_fetch();
+                self.cycle();
+                self.biu_queue_flush();
+                self.cycles(2); 
+
                 // Pop call stack
                 self.call_stack.pop_back();
                 jump = true;
@@ -952,6 +968,12 @@ impl<'a> Cpu<'a> {
                 // 0xC9 undocumented alias for 0xCB
                 self.pop_register16(Register16::IP);
                 self.pop_register16(Register16::CS);
+
+                // temporary timings
+                self.biu_suspend_fetch();
+                self.cycle();
+                self.biu_queue_flush();
+                self.cycles(2); 
 
                 // Pop call stack
                 self.call_stack.pop_back();                
@@ -1072,56 +1094,93 @@ impl<'a> Cpu<'a> {
             0xE0 => {
                 // LOOPNE - Decrement CX, Jump short if count!=0 and ZF=0
                 // loop does not modify flags
+
+                // Cycles spent decrementing CX were accounted for in decode(). This instruction doesn't have a clean 
+                // separation between fetch/execute.                
                 self.decrement_register16(Register16::CX);
+                self.cycle();
+
                 if self.cx != 0 {
                     if !self.get_flag(Flag::Zero) {
                         if let OperandType::Relative8(rel8) = self.i.operand1_type {
                             self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-                            jump = true;
                         }
+                        self.cycle();
+                        self.biu_suspend_fetch();
+                        self.cycles(4);
+                        self.biu_queue_flush();
+                        jump = true;                     
                     }
                 }
+                if !jump {
+                    self.cycle();
+                }                
             }
             0xE1 => {
                 // LOOPE - Jump short if count!=0 and ZF=1
                 // loop does not modify flags
+                
+                // Cycles spent decrementing CX were accounted for in decode(). This instruction doesn't have a clean 
+                // separation between fetch/execute.
                 self.decrement_register16(Register16::CX);
+                self.cycle();
+
                 if self.cx != 0 {
-                    if self.get_flag(Flag::Zero) {
+                    if self.get_flag(Flag::Zero) {                        
                         if let OperandType::Relative8(rel8) = self.i.operand1_type {
                             self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-                            jump = true;
                         }
-                    }
-                }
-            }
-            0xE2 => {
-                // LOOP - Jump short if count!=0 
-                // loop does not modify flags
-                let dec_cx = self.cx.wrapping_sub(1);
-                self.set_register16(Register16::CX, dec_cx);
-                if dec_cx != 0 {
-                    if let OperandType::Relative8(rel8) = self.i.operand1_type {
-                        self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-
-                        self.cycles(2);
+                        self.cycle();
                         self.biu_suspend_fetch();
-                        self.cycles(6);
+                        self.cycles(4);
                         self.biu_queue_flush();
-                        self.cycles(2);
                         jump = true;
                     }
                 }
-                // Instruction ends at last operand fetch if no jump. (CX is compared before fetch)
+                if !jump {
+                    self.cycle();
+                }
+            }
+            0xE2 => {
+                // LOOP - Jump short if count != 0 
+                // loop does not modify flags
+
+                // Cycles spent decrementing CX were accounted for in decode(). This instruction doesn't have a clean 
+                // separation between fetch/execute.                
+                self.decrement_register16(Register16::CX);
+                self.cycle();
+
+                if self.cx != 0 {
+                    if let OperandType::Relative8(rel8) = self.i.operand1_type {
+                        self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
+
+                        self.cycle();
+                        self.biu_suspend_fetch();
+                        self.cycles(4);
+                        self.biu_queue_flush();
+                        jump = true;
+                    }
+                }
+                if !jump {
+                    self.cycle();
+                }
             }
             0xE3 => {
                 // JCXZ - Jump if CX == 0
                 // Flags: None
+                                
                 if self.cx == 0 {
                     if let OperandType::Relative8(rel8) = self.i.operand1_type {
                         self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-                        jump = true;
                     }
+                    self.cycle();
+                    self.biu_suspend_fetch();
+                    self.cycles(4);
+                    self.biu_queue_flush();                    
+                    jump = true;
+                }
+                if !jump {
+                    self.cycle();
                 }
             }
             0xE4 => {
@@ -1180,12 +1239,18 @@ impl<'a> Cpu<'a> {
                 // Add rel16 to ip
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 self.ip = util::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
-                jump = true;
 
                 // Add to call stack
                 if self.call_stack.len() == CPU_CALL_STACK_LEN {
                     self.call_stack.pop_front();
                 }                
+
+                // temporary timings
+                self.biu_suspend_fetch();
+                self.cycles(4);
+                self.biu_queue_flush();
+                jump = true;
+
                 self.call_stack.push_back(CallStackEntry::Call(cs, ip, rel16));
             }
             0xE9 => {
@@ -1461,6 +1526,9 @@ impl<'a> Cpu<'a> {
                         let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
                         self.ip = ptr16;
+
+                        self.biu_suspend_fetch();
+                        self.biu_queue_flush();
                         jump = true;
                     }
                     // Jump Far
@@ -1470,6 +1538,11 @@ impl<'a> Cpu<'a> {
 
                         self.cs = segment;
                         self.ip = offset;
+
+                        // temporary timings
+                        self.biu_suspend_fetch();
+                        self.cycles(4);
+                        self.biu_queue_flush();
                         jump = true;
 
                         //log::trace!("JMPF: Destination [{:04X}:{:04X}]", segment, offset);
@@ -1489,6 +1562,11 @@ impl<'a> Cpu<'a> {
                         }                
                         self.call_stack.push_back(CallStackEntry::Call(self.cs, self.ip, ptr16));
                         
+                        // temporary timings
+                        self.biu_suspend_fetch();
+                        self.cycles(4);
+                        self.biu_queue_flush();
+
                         self.ip = ptr16;
                         jump = true;
                     }

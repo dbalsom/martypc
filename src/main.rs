@@ -114,7 +114,8 @@ struct Counter {
     current_pit_tps: u64,
     emulation_time: Duration,
     render_time: Duration,
-    accumulated_us: u128
+    accumulated_us: u128,
+    cycle_target: u32,
 }
 
 impl Counter {
@@ -132,7 +133,8 @@ impl Counter {
             current_pit_tps: 0,
             emulation_time: Duration::ZERO,
             render_time: Duration::ZERO,
-            accumulated_us: 0
+            accumulated_us: 0,
+            cycle_target: CYCLES_PER_FRAME
         }
     }
 }
@@ -677,13 +679,58 @@ fn main() {
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
-
-                    let mut cycle_target = CYCLES_PER_FRAME;
-                    if config.emulator.trace_mode == TraceMode::Cycle {
-                        cycle_target = CYCLES_PER_FRAME / 100;
-                    }
-                    machine.run(cycle_target, &mut exec_control.borrow_mut(), bp_addr);
+                    machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut(), bp_addr);
                     stat_counter.emulation_time = Instant::now() - emulation_start;
+
+                    // Emulation time budget is 16ms - render time in ms - fudge factor
+                    let render_time = stat_counter.render_time.as_millis();
+                    let emulation_time = stat_counter.emulation_time.as_millis();
+                    let mut emulation_time_allowed_ms = 16;
+                    if render_time < 16 {
+                        // Rendering time has left us some emulation headroom
+                        emulation_time_allowed_ms = 16_u128.saturating_sub(render_time);
+                    }
+                    else {
+                        // Rendering is too long to run at 60fps. Just ignore render time for now.
+                    }                    
+
+                    // If emulation time took too long, reduce CYCLE_TARGET
+                    if emulation_time > emulation_time_allowed_ms {
+                        // Emulation running slower than 60fps
+                        let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+                        // Decrease speed by half of scaling factor
+
+                        let old_target = stat_counter.cycle_target;
+                        let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
+                        stat_counter.cycle_target -= (old_target - new_target) / 2;
+
+                        log::trace!("Emulation speed slow: ({}ms > {}ms). Reducing cycle target: {}->{}", 
+                            emulation_time,
+                            emulation_time_allowed_ms,
+                            old_target,
+                            stat_counter.cycle_target
+                        );
+                    }
+                    else if emulation_time < emulation_time_allowed_ms {
+                        // ignore spurious 0-duration emulation loops
+                        if stat_counter.emulation_time.as_millis() > 0 {
+                            // Emulation could be faster
+                            
+                            // Increase speed by half of scaling factor
+                            let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+
+                            let old_target = stat_counter.cycle_target;
+                            let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
+                            stat_counter.cycle_target += (new_target - old_target) / 2;
+
+                            log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
+                                emulation_time,
+                                emulation_time_allowed_ms,
+                                old_target,
+                                stat_counter.cycle_target
+                            );
+                        }
+                    }
 
                     // Do per-frame updates (Serial port emulation)
                     machine.frame_update();
