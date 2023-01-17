@@ -1135,6 +1135,12 @@ impl GuiState {
                         ui.add(egui::TextEdit::singleline(&mut self.pic_state.isr).font(egui::TextStyle::Monospace));
                     });
                     ui.end_row();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Auto-EOI: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.autoeoi).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();
+
 
                     for i in 0..self.pic_state.interrupt_stats.len() {
                         ui.horizontal(|ui| {
