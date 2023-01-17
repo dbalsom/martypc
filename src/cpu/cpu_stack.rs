@@ -4,6 +4,14 @@ use super::CPU_FLAG_RESERVED1;
 
 impl<'a> Cpu<'a> {
 
+    pub fn push_u8(&mut self, data: u8, flag: WriteFlag) {
+        
+        // Stack pointer grows downwards
+        self.sp = self.sp.wrapping_sub(2); 
+        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
+        self.biu_write_u8(Segment::SS, stack_addr, data, flag);
+    }
+
     pub fn push_u16(&mut self, data: u16, flag: WriteFlag) {
 
         // Stack pointer grows downwards
