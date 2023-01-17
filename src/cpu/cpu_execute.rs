@@ -501,15 +501,13 @@ impl<'a> Cpu<'a> {
                 handled_override = true;
             }
             0x83 => {
-                // ADD/ADC/SBB/SUB/CMP r/m16, imm_i8
+                // ADD/ADC/SBB/SUB/CMP r/m16, imm8 (sign-extended)
+                // Decode extends operand for us, so read imm16
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-
-                // imm_i8 gets sign-extended
-                let op2_extended = util::sign_extend_u8_to_u16(op2_value);
+                let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 // math_op16 handles flags
-                let result = self.math_op16(self.i.mnemonic, op1_value, op2_extended);   
+                let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);   
                 
                 if self.i.mnemonic != Mnemonic::CMP {
                     self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);

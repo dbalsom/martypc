@@ -310,7 +310,7 @@ pub enum DispType {
     Disp16,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Displacement {
     NoDisp,
     Disp8(i8),

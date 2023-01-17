@@ -17,10 +17,12 @@ pub enum OperandTemplate {
     ModRM16,
     Register8,
     Register16,
+    SegmentRegister,
     Register8Encoded,
     Register16Encoded,
     Immediate8,
     Immediate16,
+    Immediate8SignExtended,
     Relative8,
     Relative16,
     Offset8,
@@ -75,7 +77,7 @@ impl<'a> Cpu<'a> {
         bytes.clear_delay();
         let mut opcode = bytes.q_read_u8(QueueType::First);
 
-        let mut mnemonic = Mnemonic::InvalidOpcode;
+        let mut mnemonic;
 
         let mut operand1_template = OperandTemplate::NoTemplate;
         let mut operand2_template = OperandTemplate::NoTemplate;
@@ -83,6 +85,7 @@ impl<'a> Cpu<'a> {
         let mut op_flags: u32 = 0;
         let mut op_prefixes: u32 = 0;
         let mut op_segment_override = SegmentOverride::None;
+        let mut loaded_modrm = false;
 
         // Read in opcode prefixes until exhausted
         loop {
@@ -92,9 +95,6 @@ impl<'a> Cpu<'a> {
                 0x2E => OPCODE_PREFIX_CS_OVERRIDE,
                 0x36 => OPCODE_PREFIX_SS_OVERRIDE,
                 0x3E => OPCODE_PREFIX_DS_OVERRIDE,
-                //0x66 => OPCODE_PREFIX_OPERAND_OVERIDE,
-                //0x67 => OPCODE_PREFIX_ADDRESS_OVERIDE,
-                //0x9B => OPCODE_PREFIX_WAIT,
                 0xF0 => OPCODE_PREFIX_LOCK,
                 0xF2 => OPCODE_PREFIX_REP1,
                 0xF3 => OPCODE_PREFIX_REP2,
@@ -224,8 +224,9 @@ impl<'a> Cpu<'a> {
             0x89 => (Mnemonic::MOV,   OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
             0x8A => (Mnemonic::MOV,   OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
             0x8B => (Mnemonic::MOV,   OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
-
+            0x8C => (Mnemonic::MOV,   OperandTemplate::ModRM16,    OperandTemplate::SegmentRegister,  0),
             0x8D => (Mnemonic::LEA,   OperandTemplate::Register16,   OperandTemplate::ModRM16,   0),
+            0x8E => (Mnemonic::MOV,   OperandTemplate::SegmentRegister,    OperandTemplate::ModRM16,  0),
             0x8F => (Mnemonic::POP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
             0x90 => (Mnemonic::NOP,   OperandTemplate::NoOperand,   OperandTemplate::NoOperand,  0),
             0x91..=0x97 => (Mnemonic::XCHG,  OperandTemplate::Register16Encoded,   OperandTemplate::FixedRegister16(Register16::AX),  0),
@@ -306,326 +307,123 @@ impl<'a> Cpu<'a> {
             0xFC => (Mnemonic::CLD,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
             0xFD => (Mnemonic::STD,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,    0),
             // No match to templatizable instruction, handle in next match statement
-            _=> (Mnemonic::InvalidOpcode, OperandTemplate::NoTemplate, OperandTemplate::NoTemplate,  0)
+            _=> (Mnemonic::NoOpcode, OperandTemplate::NoTemplate, OperandTemplate::NoTemplate,  0)
         };
 
-        // Handle instructions with opcode extensions
-        match opcode {
-            0x80 | 0x82 => {
-                // MATH Opcode Extensions (0x82 is alias for 0x80):  r/m8, imm8
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
+        let mut modrm = Default::default();
 
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode=> OperandType::Register8(modrm.get_op1_reg8()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ADD,
-                    0x01 => Mnemonic::OR,
-                    0x02 => Mnemonic::ADC,
-                    0x03 => Mnemonic::SBB,
-                    0x04 => Mnemonic::AND,
-                    0x05 => Mnemonic::SUB,
-                    0x06 => Mnemonic::XOR,
-                    0x07 => Mnemonic::CMP,
-                    _=>Mnemonic::InvalidOpcode
-                };
-                operand1_size = OperandSize::Operand8;
-                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
-                operand2_type = OperandType::Immediate8(operand2);
-            }
-            0x81 => {
-                // MATH Opcode Extensions: r/m16, imm16
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode=> OperandType::Register16(modrm.get_op1_reg16()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ADD,
-                    0x01 => Mnemonic::OR,
-                    0x02 => Mnemonic::ADC,
-                    0x03 => Mnemonic::SBB,
-                    0x04 => Mnemonic::AND,
-                    0x05 => Mnemonic::SUB,
-                    0x06 => Mnemonic::XOR,
-                    0x07 => Mnemonic::CMP,
-                    _=>Mnemonic::InvalidOpcode
-                };
-                operand1_size = OperandSize::Operand16;
-                let operand2 = bytes.q_read_u16(QueueType::Subsequent);
-                operand2_type = OperandType::Immediate16(operand2);
-            }
-            0x83 => {
-                // MATH Opcode Extensions: r/m16, imm8 (sign-extended)
-                // Strictly speaking, OR, AND and XOR are not supported on 8088 in this form, but whatever
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode=> OperandType::Register16(modrm.get_op1_reg16()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ADD,
-                    0x01 => Mnemonic::OR,
-                    0x02 => Mnemonic::ADC,
-                    0x03 => Mnemonic::SBB,
-                    0x04 => Mnemonic::AND,
-                    0x05 => Mnemonic::SUB,
-                    0x06 => Mnemonic::XOR,
-                    0x07 => Mnemonic::CMP,
-                    _=>Mnemonic::InvalidOpcode
-                };
-                operand1_size = OperandSize::Operand16;
-                let operand2 = bytes.q_read_u8(QueueType::Subsequent);
-                operand2_type = OperandType::Immediate8(operand2);
-            }
-            0x8C => {
-                // MOV r/m16*, Sreg
-                // *This MOV modrm can only refer to a general purpose register OR memory, and REG field may only refer to segment register
-                mnemonic = Mnemonic::MOV;
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode=> OperandType::Register16(modrm.get_op1_reg16()),
-                    _=> OperandType::AddressingMode(modrm.get_addressing_mode())
-                };
-                operand1_size = OperandSize::Operand16;
-                operand2_type = OperandType::Register16(modrm.get_op2_segmentreg16());
-            }
-            0x8E => {
-                // MOV Sreg, r/m16*
-                // *This MOV modrm can only refer to a general purpose register OR memory, and REG field may only refer to segment register
-                mnemonic = Mnemonic::MOV;
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand2_type = match addr_mode {
-                    AddressingMode::RegisterMode=> OperandType::Register16(modrm.get_op1_reg16()),
-                    _=> OperandType::AddressingMode(modrm.get_addressing_mode())
-                };
-                operand2_size = OperandSize::Operand16;
-                operand1_type = OperandType::Register16(modrm.get_op2_segmentreg16());
-            }
-            0xD0 => {
-                // Bitwise opcode extensions - r/m8, 0x01
-                operand1_size = OperandSize::Operand8;
+        // If we haven't had a match yet, we are in a group instruction
+        if mnemonic == Mnemonic::NoOpcode {
+            // All group instructions have a modrm w/ op extension.
 
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ROL,
-                    0x01 => Mnemonic::ROR,
-                    0x02 => Mnemonic::RCL,
-                    0x03 => Mnemonic::RCR,
-                    0x04 => Mnemonic::SHL,
-                    0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SETMO,
-                    0x07 => Mnemonic::SAR,
-                    _=>Mnemonic::InvalidOpcode
-                };
-                operand2_type = OperandType::Immediate8(0x01);
-            }
-            0xD1 => {
-                // Bitwise opcode extensions
-                // Bitwise opcode extensions - r/m16, 0x01
-                operand1_size = OperandSize::Operand16;
+            modrm = ModRmByte::read_from(bytes)?;
+            loaded_modrm = true;
+            let op_ext = modrm.get_op_extension();
+            
+            (mnemonic, operand1_template, operand2_template, op_flags) = match (opcode, op_ext) {
+                (0x80 | 0x82, 0x00) => (Mnemonic::ADD,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x01) => (Mnemonic::OR,   OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x02) => (Mnemonic::ADC,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x03) => (Mnemonic::SBB,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x04) => (Mnemonic::AND,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x05) => (Mnemonic::SUB,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x06) => (Mnemonic::XOR,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x07) => (Mnemonic::CMP,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                
+                (0x81, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x03) => (Mnemonic::SBB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x04) => (Mnemonic::AND,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                
+                (0x83, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
+                (0x83, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
+                (0x83, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
+                (0x83, 0x03) => (Mnemonic::SBB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
+                (0x83, 0x04) => (Mnemonic::AND,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
+                (0x83, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
+                (0x83, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
+                (0x83, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),   
+                
+                (0xD0, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x06) => (Mnemonic::SETMO, OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                
+                (0xD1, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x06) => (Mnemonic::SETMO, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
 
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ROL,
-                    0x01 => Mnemonic::ROR,
-                    0x02 => Mnemonic::RCL,
-                    0x03 => Mnemonic::RCR,
-                    0x04 => Mnemonic::SHL,
-                    0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SETMO,
-                    0x07 => Mnemonic::SAR,
-                    _=> Mnemonic::InvalidOpcode,
-                };
-                operand2_type = OperandType::Immediate8(0x01);
-            }
-            0xD2 => {
-                // Bitwise opcode extensions - r/m8, CL
-                operand1_size = OperandSize::Operand8;
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ROL,
-                    0x01 => Mnemonic::ROR,
-                    0x02 => Mnemonic::RCL,
-                    0x03 => Mnemonic::RCR,
-                    0x04 => Mnemonic::SHL,
-                    0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SETMOC,
-                    0x07 => Mnemonic::SAR,
-                    _=> Mnemonic::InvalidOpcode
-                };
-                operand2_type = OperandType::Register8(Register8::CL);
-            }
-            0xD3 => {
-                // Bitwise opcode extensions - r/m16, CL
-                operand1_size = OperandSize::Operand16;
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                operand1_type = match addr_mode {
-                    AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
-                    _=> OperandType::AddressingMode(addr_mode)
-                };
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::ROL,
-                    0x01 => Mnemonic::ROR,
-                    0x02 => Mnemonic::RCL,
-                    0x03 => Mnemonic::RCR,
-                    0x04 => Mnemonic::SHL,
-                    0x05 => Mnemonic::SHR,
-                    0x06 => Mnemonic::SETMOC,
-                    0x07 => Mnemonic::SAR,
-                   _=> Mnemonic::InvalidOpcode
-                };
-                operand2_type = OperandType::Register8(Register8::CL);
-            }        
-            0xF6 => {
-                // Math opcode extensions
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                match addr_mode {
-                    AddressingMode::RegisterMode => operand1_type = OperandType::Register8(modrm.get_op1_reg8()),
-                    _=>operand1_type = OperandType::AddressingMode(modrm.get_addressing_mode())
-                }
-                operand1_size = OperandSize::Operand8;
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 | 0x01 => {
-                        // TEST is the only opcode extension that has an immediate value
-                        let operand2 = bytes.q_read_u8(QueueType::Subsequent);
-                        operand2_type = OperandType::Immediate8(operand2);
-                        Mnemonic::TEST
-                    }
-                    0x02 => Mnemonic::NOT,
-                    0x03 => Mnemonic::NEG,
-                    0x04 => Mnemonic::MUL,
-                    0x05 => Mnemonic::IMUL,
-                    0x06 => Mnemonic::DIV,
-                    0x07 => Mnemonic::IDIV,
-                    _=> Mnemonic::InvalidOpcode
-                };              
-            }
-            0xF7 => {
-                // Math opcode extensions
-                // Math opcode extensions
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                match addr_mode {
-                    AddressingMode::RegisterMode => operand1_type = OperandType::Register16(modrm.get_op1_reg16()),
-                    _=>operand1_type = OperandType::AddressingMode(modrm.get_addressing_mode())
-                }
-                operand1_size = OperandSize::Operand16;
+                (0xD2, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x06) => (Mnemonic::SETMOC,OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
 
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 | 0x01 => {
-                        // TEST is the only opcode extension that has an immediate value
-                        let operand2 = bytes.q_read_u16(QueueType::Subsequent);
-                        operand2_type = OperandType::Immediate16(operand2);
-                        Mnemonic::TEST
-                    }
-                    0x02 => Mnemonic::NOT,
-                    0x03 => Mnemonic::NEG,
-                    0x04 => Mnemonic::MUL,
-                    0x05 => Mnemonic::IMUL,
-                    0x06 => Mnemonic::DIV,
-                    0x07 => Mnemonic::IDIV,
-                    _=> Mnemonic::InvalidOpcode
-                };               
-            }
-            0xFE => {
-                // INC/DEC opcode extensions - r/m8
-                operand1_size = OperandSize::Operand8;
-                operand2_type = OperandType::NoOperand;
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                match addr_mode {
-                    AddressingMode::RegisterMode => operand1_type = OperandType::Register8(modrm.get_op1_reg8()),
-                    _=>operand1_type = OperandType::AddressingMode(modrm.get_addressing_mode())
-                }
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::INC,
-                    0x01 => Mnemonic::DEC,
-                    // These forms are technically invalid, but they do weird 8 bit versions of these commands. 
-                    // Acid88 requires them.
-                    0x02 => Mnemonic::CALL,
-                    0x03 => Mnemonic::CALLF,
-                    0x04 => Mnemonic::JMP,
-                    0x05 => Mnemonic::JMPF,
-                    0x06 => Mnemonic::PUSH,
-                    0x07 => Mnemonic::PUSH,
-                    _=> Mnemonic::InvalidOpcode
-                };            
-            }
-            0xFF => {
-                // INC/DEC/CALL/JMP opcode extensions - r/m16
-                operand1_size = OperandSize::Operand16;
-                operand2_type = OperandType::NoOperand;
-                op_flags |= INSTRUCTION_HAS_MODRM;
-                let modrm = ModRmByte::read_from(bytes)?;
-                let addr_mode = modrm.get_addressing_mode();
-                match addr_mode {
-                    AddressingMode::RegisterMode => operand1_type = OperandType::Register16(modrm.get_op1_reg16()),
-                    _=>operand1_type = OperandType::AddressingMode(modrm.get_addressing_mode())
-                }
-                let op_ext = modrm.get_op_extension();
-                mnemonic = match op_ext {
-                    0x00 => Mnemonic::INC,
-                    0x01 => Mnemonic::DEC,
-                    0x02 => Mnemonic::CALL,
-                    0x03 => Mnemonic::CALLF,
-                    0x04 => Mnemonic::JMP,
-                    0x05 => Mnemonic::JMPF,
-                    0x06 => Mnemonic::PUSH,
-                    0x07 => Mnemonic::PUSH,
-                    _=> Mnemonic::InvalidOpcode
-                }; 
-            }
-            _ => {
-                if let Mnemonic::InvalidOpcode = mnemonic {
-                    return Err(Box::new(InstructionDecodeError::UnsupportedOpcode(opcode)));
-                }
-            }
+                (0xD3, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x06) => (Mnemonic::SETMOC,OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+
+                (0xF6, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     0),
+                (0xF6, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     0),
+                (0xF6, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xF6, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xF6, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xF6, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xF6, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xF6, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+
+                (0xF7, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   0),
+                (0xF7, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   0),
+                (0xF7, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xF7, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xF7, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xF7, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xF7, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xF7, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),                
+
+                (0xFE, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xFE, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xFE, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xFE, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xFE, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xFE, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xFE, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xFE, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),                    
+                    
+                (0xFF, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xFF, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xFF, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xFF, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xFF, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xFF, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xFF, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
+                (0xFF, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0), 
+                
+                _=> (Mnemonic::NoOpcode, OperandTemplate::NoOperand, OperandTemplate::NoOperand, 0)
+            };
+
+            op_flags |= INSTRUCTION_HAS_MODRM;
         }
 
         // Handle templatized operands
@@ -647,12 +445,11 @@ impl<'a> Cpu<'a> {
         };
 
         // Load the ModRM byte if required
-        let mut modrm = Default::default();
-        if load_modrm_op1 | load_modrm_op2 {
+        if !loaded_modrm && (load_modrm_op1 | load_modrm_op2) {
             op_flags |= INSTRUCTION_HAS_MODRM;
             modrm = ModRmByte::read_from(bytes)?;
         }
-        else {
+        else if !loaded_modrm {
             // No modrm. Set a one cycle fetch delay. This has no effect when reading from memory.
             // When fetching from the processor instruction queue, the 2nd byte must be a modrm or 
             // the fetch is skipped for that cycle.
@@ -694,6 +491,10 @@ impl<'a> Cpu<'a> {
                     let operand_type = OperandType::Register16(modrm.get_op2_reg16());
                     Ok((operand_type, OperandSize::Operand16))       
                 }
+                OperandTemplate::SegmentRegister => {
+                    let operand_type = OperandType::Register16(modrm.get_op2_segmentreg16());
+                    Ok((operand_type, OperandSize::Operand16))
+                }
                 OperandTemplate::Register8Encoded => {
                     let operand_type = match opcode & OPCODE_REGISTER_SELECT_MASK {
                         0x00 => OperandType::Register8(Register8::AL),
@@ -729,6 +530,11 @@ impl<'a> Cpu<'a> {
                 OperandTemplate::Immediate16 => {
                     let operand = bytes.q_read_u16(QueueType::Subsequent);
                     Ok((OperandType::Immediate16(operand), OperandSize::Operand16))
+                }
+                OperandTemplate::Immediate8SignExtended => {
+                    let operand = bytes.q_read_u8(QueueType::Subsequent);
+                    let op_extended = operand as i8 as i16 as u16;
+                    Ok((OperandType::Immediate16(op_extended), OperandSize::Operand16))
                 }
                 OperandTemplate::Relative8 => {
                     let operand = bytes.q_read_i8(QueueType::Subsequent);

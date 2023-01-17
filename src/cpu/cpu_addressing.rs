@@ -2,7 +2,7 @@ use crate::cpu::*;
 use crate::cpu::cpu_biu::*;
 
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum AddressingMode {
     BxSi,
     BxDi,
