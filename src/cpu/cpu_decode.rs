@@ -463,7 +463,7 @@ impl<'a> Cpu<'a> {
             bytes.delay(2);
         }
 
-        // Match templatized operands. We use a closure to avoid duplicating code for each operand
+        // Match templatized operands.
         let mut match_op = |op_template| -> Result<(OperandType, OperandSize), Box<dyn std::error::Error>> {
             match op_template {
 
