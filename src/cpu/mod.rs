@@ -403,11 +403,8 @@ pub struct Instruction {
     pub(crate) segment_override: SegmentOverride,
     pub(crate) operand1_type: OperandType,
     pub(crate) operand1_size: OperandSize,
-    //pub(crate) operand1: u16,
     pub(crate) operand2_type: OperandType,
     pub(crate) operand2_size: OperandSize,
-    //pub(crate) operand2: u16,
-    pub(crate) is_location: bool
 }
 
 impl Default for Instruction {
@@ -422,11 +419,8 @@ impl Default for Instruction {
             segment_override: SegmentOverride::None,
             operand1_type: OperandType::NoOperand,
             operand1_size: OperandSize::NoOperand,
-            //operand1: 0,
             operand2_type: OperandType::NoOperand,
             operand2_size: OperandSize::NoOperand,
-            //operand2: 0,
-            is_location: false,
         }
     }
 }

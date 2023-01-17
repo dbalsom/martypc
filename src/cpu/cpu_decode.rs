@@ -605,11 +605,8 @@ impl<'a> Cpu<'a> {
             segment_override: op_segment_override,
             operand1_type: operand1_type,
             operand1_size: operand1_size,
-            //operand1: 0,
             operand2_type: operand2_type,
             operand2_size: operand2_size,
-            //operand2: 0,
-            is_location: false 
         })
     }
 }
