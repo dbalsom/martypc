@@ -79,26 +79,6 @@ pub enum Segment {
     DS
 }
 
-#[derive (PartialEq)]
-pub enum QueueOp {
-    Idle = 0,
-    First,
-    Flush,
-    Subsequent,
-}
-
-#[derive (Debug, PartialEq)]
-pub enum BusState {
-    IRQA = 0,   // IRQ Acknowledge
-    IOR  = 1,   // IO Read
-    IOW  = 2,   // IO Write
-    HALT = 3,   // Halt
-    CODE = 4,   // Code
-    MEMR = 5,   // Memory Read
-    MEMW = 6,   // Memory Write
-    PASV = 7    // Passive
-}
-
 pub const REQUIRED_PROTOCOL_VER: u8 = 0x01;
 
 
@@ -120,6 +100,17 @@ macro_rules! get_segment {
             0b01 => Segment::SS,
             0b10 => Segment::CS,
             _ => Segment::DS
+        }
+    };
+}
+
+macro_rules! get_access_type {
+    ($s:expr) => {
+        match (($s >> 3) & 0x03) {
+            0b00 => AccessType::AccAlternateData,
+            0b01 => AccessType::AccStack,
+            0b10 => AccessType::AccCodeOrNone,
+            _ => AccessType::AccData
         }
     };
 }

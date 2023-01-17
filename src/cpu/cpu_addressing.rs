@@ -55,7 +55,6 @@ impl<'a> Cpu<'a> {
             Segment::ES => self.es,
             Segment::CS => self.cs,
             Segment::DS => self.ds,
-            Segment::ES => self.es,
             Segment::SS => self.ss,
         };
         ((segment_val as u32) << 4) + offset as u32 & 0xFFFFFu32
@@ -72,7 +71,7 @@ impl<'a> Cpu<'a> {
     }
 
     /// Calculate the Effective Address for the given AddressingMode enum
-    fn calc_effective_address(
+    pub fn calc_effective_address(
         &mut self, 
         mode: AddressingMode, 
         segment_override: SegmentOverride) 

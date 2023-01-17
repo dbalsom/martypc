@@ -375,7 +375,7 @@ impl Default for Segment {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum SegmentOverride {
     None,
     ES,
@@ -1273,6 +1273,24 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    /// Converts a Register8 into a Register16.
+    /// Only really useful for r forms of FE.03-07 which operate on 8 bits of a memory
+    /// operand but 16 bits of a register operand. We don't support 'hybrid' 8/16 bit 
+    /// instruction templates so we have to convert.
+    pub fn reg8to16(reg: Register8) -> Register16 {
+
+        match reg {
+            Register8::AH => Register16::AX,
+            Register8::AL => Register16::AX,
+            Register8::BH => Register16::BX,
+            Register8::BL => Register16::BX,
+            Register8::CH => Register16::CX,
+            Register8::CL => Register16::CX,
+            Register8::DH => Register16::DX,
+            Register8::DL => Register16::DX,  
+        }
+    }
+
     pub fn decrement_register8(&mut self, reg: Register8) {
         // TODO: do this directly
         let mut value = self.get_register8(reg);
@@ -1516,6 +1534,13 @@ impl<'a> Cpu<'a> {
         self.push_register16(Register16::CS, WriteFlag::Normal);
         self.push_register16(Register16::IP, WriteFlag::Normal);
         
+        // Clear interrupt flag
+        self.clear_flag(Flag::Interrupt);
+        // Clear trap flag
+        self.clear_flag(Flag::Trap);
+        // Clear auxilliary carry (?)
+        self.clear_flag(Flag::AuxCarry);
+
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
 
@@ -1644,6 +1669,7 @@ impl<'a> Cpu<'a> {
 
         // If we are in a repeated string instruction (REP prefix) we need to save the state of the REP instruction
         if self.in_rep {
+
             let (src_reg, src_reg_val) = match self.i.segment_override {
                 SegmentOverride::CS => (Register16::CS, self.cs),
                 SegmentOverride::ES => (Register16::ES, self.es),
@@ -1729,6 +1755,21 @@ impl<'a> Cpu<'a> {
 
         // When halted, the CPU waits for an interrupt to fire before resuming execution
         if self.halted {
+            
+            // Check for hardware interrupts if Interrupt Flag is set and not in wait cycle
+            if self.interrupts_enabled() {
+                let mut pic = pic_ref.borrow_mut();
+                if pic.query_interrupt_line() {
+                    match pic.get_interrupt_vector() {
+                        Some(irq) => {
+                            self.hw_interrupt(irq);
+                            self.resume();
+                        },
+                        None => {}
+                    }
+                }
+            }
+
             return Ok(())
         }
 
@@ -1819,7 +1860,8 @@ impl<'a> Cpu<'a> {
                             &instr_slice,
                             self.i.flags & INSTRUCTION_HAS_MODRM != 0,
                             0,
-                            &vregs
+                            &vregs,
+                            Vec::new()
                         ) {
 
                             Ok(_) => {},
@@ -1842,6 +1884,17 @@ impl<'a> Cpu<'a> {
 
             ExecutionResult::Okay => {
                 // Normal non-jump instruction updates CS:IP to next instruction
+
+                // temp debugging
+                {
+                    //let dbg_addr = self.calc_linear_address_seg(Segment::ES, self.bx);
+                    let (word, _) = self.bus.read_u16(0x2905C as usize).unwrap();
+                    if word == 0xCCCC {
+                        log::trace!("Jump target trashed at {:05X}: {}", self.i.address, self.i);
+                    }
+                }
+                
+
                 self.ip = self.ip.wrapping_add(self.i.size as u16);
 
                 //log::trace!("Execution complete; updated CS:IP: [{:04X}:{:04X}]", self.cs, self.ip);

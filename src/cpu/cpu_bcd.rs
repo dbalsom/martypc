@@ -53,7 +53,7 @@ impl<'a> Cpu<'a> {
         let old_cf = self.get_flag(Flag::Carry);
         self.clear_flag(Flag::Carry);
         if (self.al & 0x0F) > 9 || self.get_flag(Flag::AuxCarry) {
-            let temp16: u16 = self.al as u16 + 6;
+            let temp16: u16 = self.al.wrapping_add(6) as u16;
             self.set_register8(Register8::AL, (temp16 & 0xFF) as u8);
             // Set carry flag on overflow from AL + 6
             self.set_flag_state(Flag::Carry, old_cf || temp16 & 0xFF00 != 0);
@@ -83,7 +83,7 @@ impl<'a> Cpu<'a> {
         let old_cf = self.get_flag(Flag::Carry);
         self.clear_flag(Flag::Carry);
         if (self.al & 0x0F) > 9 || self.get_flag(Flag::AuxCarry) {
-            let temp16: u16 = self.al as u16 - 6;
+            let temp16: u16 = self.al.wrapping_sub(6) as u16;
             self.set_register8(Register8::AL, self.al.wrapping_sub(6));
             self.set_flag_state(Flag::Carry, old_cf || temp16 & 0x100 != 0);
             self.set_flag(Flag::AuxCarry);

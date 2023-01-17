@@ -263,7 +263,8 @@ impl<'a> Cpu<'a> {
             0xC5 => (Mnemonic::LDS,  OperandTemplate::Register16,   OperandTemplate::ModRM16,     0),
             0xC6 => (Mnemonic::MOV,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,      0),
             0xC7 => (Mnemonic::MOV,  OperandTemplate::ModRM16,    OperandTemplate::Immediate16,   0),
-
+            0xC8 => (Mnemonic::RETF, OperandTemplate::Immediate16,   OperandTemplate::NoOperand,   0),
+            0xC9 => (Mnemonic::RETF, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
             0xCA => (Mnemonic::RETF, OperandTemplate::Immediate16,   OperandTemplate::NoOperand,   0),
             0xCB => (Mnemonic::RETF, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
             0xCC => (Mnemonic::INT3, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
@@ -585,6 +586,14 @@ impl<'a> Cpu<'a> {
                 mnemonic = match op_ext {
                     0x00 => Mnemonic::INC,
                     0x01 => Mnemonic::DEC,
+                    // These forms are technically invalid, but they do weird 8 bit versions of these commands. 
+                    // Acid88 requires them.
+                    0x02 => Mnemonic::CALL,
+                    0x03 => Mnemonic::CALLF,
+                    0x04 => Mnemonic::JMP,
+                    0x05 => Mnemonic::JMPF,
+                    0x06 => Mnemonic::PUSH,
+                    0x07 => Mnemonic::PUSH,
                     _=> Mnemonic::InvalidOpcode
                 };            
             }
@@ -604,10 +613,11 @@ impl<'a> Cpu<'a> {
                     0x00 => Mnemonic::INC,
                     0x01 => Mnemonic::DEC,
                     0x02 => Mnemonic::CALL,
-                    0x03 => Mnemonic::CALLF,  // CALLF
+                    0x03 => Mnemonic::CALLF,
                     0x04 => Mnemonic::JMP,
                     0x05 => Mnemonic::JMPF,
                     0x06 => Mnemonic::PUSH,
+                    0x07 => Mnemonic::PUSH,
                     _=> Mnemonic::InvalidOpcode
                 }; 
             }

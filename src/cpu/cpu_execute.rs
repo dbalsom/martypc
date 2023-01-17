@@ -148,8 +148,11 @@ impl<'a> Cpu<'a> {
 
             if self.opcode0_counter > 5 {
                 // Halt permanently by clearing interrupt flag
+
+                /*
                 self.clear_flag(Flag::Interrupt);
                 self.halted = true;
+                */
             }
         }
         else {
@@ -385,7 +388,6 @@ impl<'a> Cpu<'a> {
                 // CMP 8-bit variants
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-
                 
                 let _result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
                 //self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
@@ -397,7 +399,6 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                
                 let _result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
                 //self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
                 handled_override = true;
@@ -646,7 +647,8 @@ impl<'a> Cpu<'a> {
                 jump = true;
             }
             0x9B => {
-                unhandled = true;
+                // WAIT
+                self.cycles(3);
             }
             0x9C => {
                 // PUSHF - Push Flags
@@ -1359,7 +1361,8 @@ impl<'a> Cpu<'a> {
             0xF4 => {
                 // HLT - Halt
                 self.halted = true;
-                cycles = 2;
+                log::trace!("Halted at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
+                self.cycles(2);
             }
             0xF5 => {
                 // CMC - Complement (invert) Carry Flag
@@ -1501,9 +1504,157 @@ impl<'a> Cpu<'a> {
             }
             0xFE => {
                 // INC/DEC r/m8
-                let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let result = self.math_op8(self.i.mnemonic, op_value, 0);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
+                // Technically only the INC and DEC froms of this group are valid. However, the other operands do 8 bit sorta-broken versions
+                // of CALL, JMP and PUSH. The behavior implemented here was derived from experimentation with a real 8088 CPU.
+                match self.i.mnemonic {
+                    // INC/DEC r/m16
+                    Mnemonic::INC | Mnemonic::DEC => {
+                        let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                        let result = self.math_op8(self.i.mnemonic, op_value, 0);
+                        self.write_operand8(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
+                    },
+                    // Call Near
+                    Mnemonic::CALL => {
+
+                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                            // Reads only 8 bit operand from modrm.
+                            let ptr8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                            
+                            // Push only 8 bits of next IP onto stack
+                            let next_i = self.ip + (self.i.size as u16);
+                            self.push_u8((next_i & 0xFF) as u8, WriteFlag::Normal);
+
+                            // temporary timings
+                            self.biu_suspend_fetch();
+                            self.cycles(4);
+                            self.biu_queue_flush();
+
+                            // Set only lower 8 bits of IP, upper bits FF
+                            self.ip = 0xFF00 | ptr8 as u16;
+                        }
+                        else if let OperandType::Register8(reg) = self.i.operand1_type {
+                            
+                            // Push only 8 bits of next IP onto stack
+                            let next_i = self.ip + (self.i.size as u16);
+                            self.push_u8((next_i & 0xFF) as u8, WriteFlag::Normal);
+
+                            // temporary timings
+                            self.biu_suspend_fetch();
+                            self.cycles(4);
+                            self.biu_queue_flush();
+                            
+                            // If this form uses a register operand, the full 16 bits are copied to IP.
+                            self.ip = self.get_register16(Cpu::reg8to16(reg));
+                        }
+                        jump = true;
+                    }
+                    // Call Far
+                    Mnemonic::CALLF => {
+                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                            let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+
+                            // Read one byte of offset and one byte of segment
+                            let offset_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset);
+                            let segment_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset + 2);
+                            let offset = self.biu_read_u8(ea_segment, offset_addr);
+                            let segment = self.biu_read_u8(ea_segment, segment_addr);
+
+                            self.cycles(4);
+                            self.biu_suspend_fetch();
+                            self.cycles(3);
+    
+                            // Push low byte of CS
+                            self.push_u8((self.cs & 0x00FF) as u8, WriteFlag::Normal);
+                            let next_i = self.ip.wrapping_add(self.i.size as u16);
+                            // Push low byte of next IP
+                            self.push_u8((next_i & 0x00FF) as u8, WriteFlag::Normal);
+    
+                            self.cycles(4);
+                            self.biu_queue_flush();
+                            self.cycles(3);
+    
+                            self.cs = 0xFF00 | segment as u16;
+                            self.ip = 0xFF00 | offset as u16;
+                            jump = true;
+                        }
+                        else if let OperandType::Register8(reg) = self.i.operand1_type {
+
+                            // Read one byte from DS:0004 (weird?) and don't do anything with it.
+                            let _ = self.biu_read_u8(Segment::DS, 0x0004);
+
+                            // Push low byte of CS
+                            self.push_u8((self.cs & 0x00FF) as u8, WriteFlag::Normal);
+                            let next_i = self.ip.wrapping_add(self.i.size as u16);
+                            // Push low byte of next IP
+                            self.push_u8((next_i & 0x00FF) as u8, WriteFlag::Normal);
+
+                            // temporary timings
+                            self.biu_suspend_fetch();
+                            self.cycles(4);
+                            self.biu_queue_flush();
+                            
+                            // If this form uses a register operand, the full 16 bits are copied to IP.
+                            self.ip = self.get_register16(Cpu::reg8to16(reg));
+                        }
+                    }
+                    // Jump to memory r/m16
+                    Mnemonic::JMP => {
+                        // Reads only 8 bit operand from modrm.
+                        let ptr8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+
+                        // Set only lower 8 bits of IP, upper bits FF
+                        self.ip = 0xFF00 | ptr8 as u16;
+
+                        self.biu_suspend_fetch();
+                        self.cycles(4);
+                        self.biu_queue_flush();
+                        jump = true;
+                    }
+                    // Jump Far
+                    Mnemonic::JMPF => {
+                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                            let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+
+                            // Read one byte of offset and one byte of segment
+                            let offset_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset);
+                            let segment_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset + 2);
+                            let offset = self.biu_read_u8(ea_segment, offset_addr);
+                            let segment = self.biu_read_u8(ea_segment, segment_addr);
+
+                            self.biu_suspend_fetch();
+                            self.cycles(4);
+                            self.biu_queue_flush();
+
+                            self.cs = 0xFF00 | segment as u16;
+                            self.ip = 0xFF00 | offset as u16;
+                            jump = true;                     
+                        }
+                        else if let OperandType::Register8(reg) = self.i.operand1_type {
+
+                            // Read one byte from DS:0004 (weird?) and don't do anything with it.
+                            let _ = self.biu_read_u8(Segment::DS, 0x0004);
+
+                            // temporary timings
+                            self.biu_suspend_fetch();
+                            self.cycles(4);
+                            self.biu_queue_flush();
+                            
+                            // If this form uses a register operand, the full 16 bits are copied to IP.
+                            self.ip = self.get_register16(Cpu::reg8to16(reg));
+                        }
+                    }
+                    // Push Byte onto stack
+                    Mnemonic::PUSH => {
+                        // Read one byte from rm
+                        let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                        // Write one byte to stack
+                        self.push_u8(op_value, WriteFlag::RNI);
+                    }                                                           
+                    _ => {
+                        unhandled = true;
+                    }
+                }
+
                 // cycles ?
                 handled_override = true;
             }
@@ -1516,37 +1667,6 @@ impl<'a> Cpu<'a> {
                         let result = self.math_op16(self.i.mnemonic, op_value, 0);
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, WriteFlag::RNI);
                     },
-                    // Push Word onto stack
-                    Mnemonic::PUSH => {
-                        let op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                        self.push_u16(op_value, WriteFlag::RNI);
-                    }
-                    // Jump to memory r/m16
-                    Mnemonic::JMP => {
-                        let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-
-                        self.ip = ptr16;
-
-                        self.biu_suspend_fetch();
-                        self.biu_queue_flush();
-                        jump = true;
-                    }
-                    // Jump Far
-                    Mnemonic::JMPF => {
-
-                        let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override).unwrap();
-
-                        self.cs = segment;
-                        self.ip = offset;
-
-                        // temporary timings
-                        self.biu_suspend_fetch();
-                        self.cycles(4);
-                        self.biu_queue_flush();
-                        jump = true;
-
-                        //log::trace!("JMPF: Destination [{:04X}:{:04X}]", segment, offset);
-                    }
                     // Call Near
                     Mnemonic::CALL => {
                         let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1598,9 +1718,54 @@ impl<'a> Cpu<'a> {
                             self.call_stack.pop_front();
                         }
 
+                        // log geoworks crap
+                        if self.i.segment_override == SegmentOverride::SS {
+
+                            /*
+                            let addr = Cpu::calc_linear_address_seg(&self, Segment::SS, 0x000c);
+
+                            let (offset, _) = self.bus.read_u16(addr as usize).unwrap();
+                            let (segment, _) = self.bus.read_u16((addr + 2) as usize).unwrap();
+                            */
+
+                            log::trace!("ptr ss:[0x00c]: {:04X}:{:04X}", segment, offset);
+                        }
+
                         //log::trace!("CALLF: Destination [{:04X}:{:04X}]", segment, offset);
                         jump = true;
                     }
+                    // Jump to memory r/m16
+                    Mnemonic::JMP => {
+                        let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+
+                        self.ip = ptr16;
+
+                        self.biu_suspend_fetch();
+                        self.cycles(4);
+                        self.biu_queue_flush();
+                        jump = true;
+                    }
+                    // Jump Far
+                    Mnemonic::JMPF => {
+
+                        let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override).unwrap();
+
+                        self.cs = segment;
+                        self.ip = offset;
+
+                        // temporary timings
+                        self.biu_suspend_fetch();
+                        self.cycles(4);
+                        self.biu_queue_flush();
+                        jump = true;
+
+                        log::trace!("JMPF: Destination [{:04X}:{:04X}]", segment, offset);
+                    }                    
+                    // Push Word onto stack
+                    Mnemonic::PUSH => {
+                        let op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+                        self.push_u16(op_value, WriteFlag::RNI);
+                    }                    
                     _=> {
                         unhandled = true;
                     }

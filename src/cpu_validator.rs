@@ -54,6 +54,7 @@ pub enum ValidatorError {
     MemOpMismatch,
     RegisterMismatch,
     CpuDesynced,
+    CycleMismatch
 }
 
 impl Error for ValidatorError {}
@@ -74,15 +75,85 @@ impl Display for ValidatorError{
             }
             ValidatorError::CpuDesynced => {
                 write!(f, "CPU state desynced with client.")
-            }          
+            }
+            ValidatorError::CycleMismatch => {
+                write!(f, "Instruction cycle states did not validate.")
+            }                  
         }
     }
+}
+
+#[derive (Copy, Clone, PartialEq)]
+pub enum BusCycle {
+    T1,
+    T2,
+    T3,
+    T4,
+    Tw
+}
+
+#[derive (Copy, Clone, PartialEq, Debug)]
+pub enum AccessType {
+    AccAlternateData = 0x0,
+    AccStack,
+    AccCodeOrNone,
+    AccData,
+}
+
+#[derive (PartialEq)]
+pub enum QueueOp {
+    Idle = 0,
+    First,
+    Flush,
+    Subsequent,
+}
+
+#[derive (Copy, Clone, Debug, PartialEq)]
+pub enum BusState {
+    IRQA = 0,   // IRQ Acknowledge
+    IOR  = 1,   // IO Read
+    IOW  = 2,   // IO Write
+    HALT = 3,   // Halt
+    CODE = 4,   // Code
+    MEMR = 5,   // Memory Read
+    MEMW = 6,   // Memory Write
+    PASV = 7    // Passive
+}
+
+#[derive (PartialEq)]
+pub struct CycleState {
+    pub n: u32,
+    pub addr: u32,
+    pub t_state: BusCycle,
+    pub a_type: AccessType,
+    pub b_state: BusState,
+    pub ale: bool,
+    pub mrdc: bool,
+    pub amwc: bool,
+    pub mwtc: bool,
+    pub iorc: bool,
+    pub aiowc: bool,
+    pub iowc: bool,
+    pub inta: bool,
+    pub q_op: QueueOp,
+    pub q_byte: u8,
+    pub q_len: u32,
+    pub data_bus: u16,
+    
 }
 
 pub trait CpuValidator {
     fn init(&mut self, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool;
     fn begin(&mut self, regs: &VRegisters );
-    fn validate(&mut self, name: String, instr: &[u8], has_modrm: bool, cycles: i32, regs: &VRegisters) -> Result<bool, ValidatorError>;
+    fn validate(
+        &mut self, 
+        name: String, 
+        instr: &[u8], 
+        has_modrm: bool, 
+        cycles: i32, 
+        regs: &VRegisters, 
+        emu_states: Vec<CycleState>) 
+            -> Result<bool, ValidatorError>;
 
     fn emu_read_byte(&mut self, addr: u32, data: u8, read_type: ReadType);
     fn emu_write_byte(&mut self, addr: u32, data: u8);
