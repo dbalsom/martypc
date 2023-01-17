@@ -83,10 +83,6 @@ impl<'a> Cpu<'a> {
                 //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
                 self.set_register16(Register16::AX, data);  
 
-                if data == 0xFFFF {
-                    log::trace!("Hmm...");
-                }
-
                 // Increment or Decrement SI according to Direction flag
                 match self.get_flag(Flag::Direction) {
                     false => {
