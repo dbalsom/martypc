@@ -704,16 +704,18 @@ fn main() {
                         let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
                         stat_counter.cycle_target -= (old_target - new_target) / 2;
 
+                        /*
                         log::trace!("Emulation speed slow: ({}ms > {}ms). Reducing cycle target: {}->{}", 
                             emulation_time,
                             emulation_time_allowed_ms,
                             old_target,
                             stat_counter.cycle_target
                         );
+                        */
                     }
                     else if emulation_time < emulation_time_allowed_ms {
                         // ignore spurious 0-duration emulation loops
-                        if stat_counter.emulation_time.as_millis() > 0 {
+                        if emulation_time > 0 {
                             // Emulation could be faster
                             
                             // Increase speed by half of scaling factor
@@ -723,12 +725,20 @@ fn main() {
                             let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
                             stat_counter.cycle_target += (new_target - old_target) / 2;
 
-                            log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
-                                emulation_time,
-                                emulation_time_allowed_ms,
-                                old_target,
-                                stat_counter.cycle_target
-                            );
+                            if stat_counter.cycle_target > CYCLES_PER_FRAME {
+                                // Comment to run as fast as possible
+                                stat_counter.cycle_target = CYCLES_PER_FRAME;
+                            }
+                            else {
+                                /*
+                                log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
+                                    emulation_time,
+                                    emulation_time_allowed_ms,
+                                    old_target,
+                                    stat_counter.cycle_target
+                                );
+                                */
+                            }
                         }
                     }
 
