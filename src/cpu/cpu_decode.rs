@@ -572,12 +572,12 @@ impl<'a> Cpu<'a> {
         };
 
         match operand1_template {
-            OperandTemplate::NoTemplate => (),
+            OperandTemplate::NoTemplate => {},
             _=> (operand1_type, operand1_size) = match_op(operand1_template)?
         }
     
         match operand2_template {
-            OperandTemplate::NoTemplate => (),
+            OperandTemplate::NoTemplate => {},
             _=> (operand2_type, operand2_size) = match_op(operand2_template)?
         }
 
@@ -589,7 +589,6 @@ impl<'a> Cpu<'a> {
             op_flags |= INSTRUCTION_USES_MEM;
         }
 
-        // Cheating here by seeing how many bytes we read, should we be specific about what each opcode size is?
         op_size = bytes.tell() as u32 - op_address;
 
         if let Mnemonic::InvalidOpcode = mnemonic {
