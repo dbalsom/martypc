@@ -282,6 +282,14 @@ impl ProgrammableIntervalTimer {
             _ => false,
         };
 
+        match channel.mode {
+            ChannelMode::InterruptOnTerminalCount => {
+                // Reset output on port write
+                channel.output_is_high = false; 
+            }
+            _=> {}
+        }
+
         match channel.access_mode {
             AccessMode::LoByteOnly => {
                 channel.reload_value = data as u16;
