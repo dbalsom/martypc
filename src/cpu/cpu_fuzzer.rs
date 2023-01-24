@@ -17,44 +17,51 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 
 use crate::cpu::*;
 
+const RNG_SEED: u64 = 0x58158258u64;
+
 impl<'a> Cpu<'a> {
 
+    pub fn randomize_seed(&mut self, mut seed: u64) {
+        if seed == 0 {
+            seed = RNG_SEED;
+        }
+        self.rng = Some(rand::rngs::StdRng::seed_from_u64(1234));
+    }
+
     pub fn randomize_regs(&mut self) {
-        
-        self.reset();
-        let mut rng = rand::thread_rng();
+
+        self.cs = self.rng.as_mut().unwrap().gen();
+        self.ip = self.rng.as_mut().unwrap().gen();
+
+        self.reset(self.cs, self.ip);
 
         for i in 0..REGISTER16_LUT.len() {
-            let n: u16 = rng.gen();
+            let n: u16 = self.rng.as_mut().unwrap().gen();
             self.set_register16(REGISTER16_LUT[i], n);
         }
-
-        self.cs = rng.gen();
-        self.ip = rng.gen();
 
         // Adjust pc
         self.pc = Cpu::calc_linear_address(self.cs, self.ip);
         // Flush queue
         self.queue.flush();
 
-        self.ds = rng.gen();
-        self.ss = rng.gen();
-        self.es = rng.gen();
+        self.ds = self.rng.as_mut().unwrap().gen();
+        self.ss = self.rng.as_mut().unwrap().gen();
+        self.es = self.rng.as_mut().unwrap().gen();
 
 
     }
 
     pub fn randomize_mem(&mut self) {
 
-        let mut rng = rand::thread_rng();
-
         for i in 0..self.bus.size() {
 
-            let n: u8 = rng.gen();
+            let n: u8 = self.rng.as_mut().unwrap().gen();
             self.bus.write_u8(i, n).expect("Mem err");
         }
     }

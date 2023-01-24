@@ -118,7 +118,7 @@ macro_rules! get_access_type {
 macro_rules! get_bus_state {
     ($s:expr) => {
         match ($s & 0x07) {
-            0 => BusState::IRQA,
+            0 => BusState::INTA,
             1 => BusState::IOR,
             2 => BusState::IOW,
             3 => BusState::HALT,

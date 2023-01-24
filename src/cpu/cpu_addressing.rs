@@ -224,7 +224,7 @@ impl<'a> Cpu<'a> {
             OperandType::Offset16(offset16) => {
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
                 let flat_addr = self.calc_linear_address_seg(segment, offset16);
-                let word = self.biu_read_u16(segment, flat_addr);
+                let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
 
                 Some(word)
             }
@@ -248,7 +248,7 @@ impl<'a> Cpu<'a> {
             OperandType::AddressingMode(mode) => {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
-                let word = self.biu_read_u16(segment, flat_addr);
+                let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
                 
                 Some(word)
             }
@@ -260,15 +260,16 @@ impl<'a> Cpu<'a> {
         }
     }    
 
-    pub fn read_operand_farptr(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<(u16, u16)> {
+    pub fn read_operand_farptr(&mut self, operand: OperandType, seg_override: SegmentOverride, flag: ReadWriteFlag) -> Option<(u16, u16)> {
 
         match operand {
             OperandType::AddressingMode(mode) => {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = Cpu::calc_linear_address(segment_val, offset);
 
-                let offset = self.biu_read_u16(segment, flat_addr);
-                let segment = self.biu_read_u16(segment, flat_addr + 2);
+                let offset = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
+                self.cycles(4);
+                let segment = self.biu_read_u16(segment, flat_addr + 2, flag);
                 Some((segment, offset))
             },
             OperandType::Register16(_) => {
@@ -284,8 +285,8 @@ impl<'a> Cpu<'a> {
                 let flat_addr = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea);
                 let flat_addr2 = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea.wrapping_add(2));
 
-                let offset = self.biu_read_u16(segment_base_ds, flat_addr);
-                let segment = self.biu_read_u16(segment_base_ds, flat_addr2);
+                let offset = self.biu_read_u16(segment_base_ds, flat_addr, ReadWriteFlag::Normal);
+                let segment = self.biu_read_u16(segment_base_ds, flat_addr2, ReadWriteFlag::Normal);
                 Some((segment, offset))
             },
             _ => None
@@ -293,7 +294,7 @@ impl<'a> Cpu<'a> {
     }    
 
     /// Write an 8-bit value to the specified destination operand
-    pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8, flag: WriteFlag) {
+    pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8, flag: ReadWriteFlag) {
 
         match operand {
             OperandType::Immediate8(imm8) => {}
@@ -332,7 +333,7 @@ impl<'a> Cpu<'a> {
     }
 
     // TODO: implement cycle cost
-    pub fn write_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u16, flag: WriteFlag) {
+    pub fn write_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u16, flag: ReadWriteFlag) {
 
         match operand {
             OperandType::Immediate8(imm8) => {}

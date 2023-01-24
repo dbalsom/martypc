@@ -1132,10 +1132,14 @@ pub fn main_fuzzer <'a>(
         config.validator.vtype.unwrap()
     );
 
+    cpu.randomize_seed(0);
     cpu.randomize_mem();
+
+    let mut test_num = 0;
 
     loop {
 
+        test_num += 1;
         cpu.randomize_regs();
 
         if cpu.get_register16(Register16::IP) > 0xFFF0 {
@@ -1192,10 +1196,10 @@ pub fn main_fuzzer <'a>(
 
         i.address = instruction_address;
    
-        log::trace!("Validating instruction: {} op:{:02X} @ [{:05X}]", i, opcode, i.address);
+        log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
         
         match cpu.step(&mut io_bus, pic.clone()) {
-            Ok(()) => {
+            Ok(_) => {
             },
             Err(err) => {
 

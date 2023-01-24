@@ -56,9 +56,10 @@ impl ByteQueue for BusInterface {
     }
 
     fn delay(&mut self, _delay: u32) {}
+    fn wait(&mut self, _cycles: u32) {}
     fn clear_delay(&mut self) {}
 
-    fn q_read_u8(&mut self, dtype: QueueType) -> u8 {
+    fn q_read_u8(&mut self, _dtype: QueueType) -> u8 {
         if self.cursor < self.memory.len() {
             let b: u8 = self.memory[self.cursor];
             self.cursor += 1;
@@ -67,7 +68,7 @@ impl ByteQueue for BusInterface {
         0xffu8
     }
 
-    fn q_read_i8(&mut self, dtype: QueueType) -> i8 {
+    fn q_read_i8(&mut self, _dtype: QueueType) -> i8 {
         if self.cursor < self.memory.len() {
             let b: i8 = self.memory[self.cursor] as i8;
             self.cursor += 1;
@@ -76,7 +77,7 @@ impl ByteQueue for BusInterface {
         -1i8       
     }
 
-    fn q_read_u16(&mut self, dtype: QueueType) -> u16 {
+    fn q_read_u16(&mut self, _dtype: QueueType) -> u16 {
         if self.cursor < self.memory.len() - 1 {
             let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
             self.cursor += 2;
@@ -85,7 +86,7 @@ impl ByteQueue for BusInterface {
         0xffffu16   
     }
 
-    fn q_read_i16(&mut self, dtype: QueueType) -> i16 {
+    fn q_read_i16(&mut self, _dtype: QueueType) -> i16 {
         if self.cursor < self.memory.len() - 1 {
             let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
             self.cursor += 2;

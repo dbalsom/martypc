@@ -29,6 +29,38 @@ impl ModRmByte {
         let byte = bytes.q_read_u8(QueueType::Subsequent);
         let mut displacement = Displacement::NoDisp;
 
+        // Set the addressing mode based on the cominbation of Mod and R/M bitfields + Displacement
+        let (pre_disp_cost, post_disp_cost) = match byte & MODRM_ADDR_MASK {
+            MODRM_ADDR_BX_SI =>        (5,0),
+            MODRM_ADDR_BX_DI =>        (6,0),
+            MODRM_ADDR_BP_SI =>        (6,0),
+            MODRM_ADDR_BP_DI =>        (5,0),
+            MODRM_ADDR_SI =>           (3,0),
+            MODRM_ADDR_DI =>           (3,0),
+            MODRM_ADDR_DISP16 =>       (4,0),
+            MODRM_ADDR_BX =>           (3,0),
+            MODRM_ADDR_BX_SI_DISP8 =>  (4,4), // Oddly, fetching an 8-bit displacement takes longer than 16-bit!
+            MODRM_ADDR_BX_DI_DISP8 =>  (5,4), // This is due to an extra jump at microcode line 1de.
+            MODRM_ADDR_BP_SI_DISP8 =>  (5,4),
+            MODRM_ADDR_BP_DI_DISP8 =>  (4,4),
+            MODRM_ADDR_DI_DISP8 =>     (2,4),
+            MODRM_ADDR_SI_DISP8 =>     (2,4),
+            MODRM_ADDR_BP_DISP8=>      (2,4),
+            MODRM_ADDR_BX_DISP8 =>     (2,4),
+            MODRM_ADDR_BX_SI_DISP16 => (4,2),
+            MODRM_ADDR_BX_DI_DISP16 => (5,2),
+            MODRM_ADDR_BP_SI_DISP16 => (5,2),
+            MODRM_ADDR_BP_DI_DISP16 => (4,2),
+            MODRM_ADDR_SI_DISP16 =>    (2,2),
+            MODRM_ADDR_DI_DISP16 =>    (2,2),
+            MODRM_ADDR_BP_DISP16 =>    (2,2),
+            MODRM_ADDR_BX_DISP16 =>    (2,2),
+            _=> (0,0)
+        };   
+
+        // Spend cycles calculating EA
+        bytes.wait(pre_disp_cost);
+
         // The 'mod' field is two bits and along with the r/m field, specifies the general addressing mode,
         // including the size of any displacement. First we determine the size of the displacement, if any,
         // and read the displacement value. 
@@ -40,48 +72,51 @@ impl ModRmByte {
                 if byte & MODRM_ADDR_MASK == MODRM_ADDR_DISP16 {
                     let tdisp = bytes.q_read_i16(QueueType::Subsequent);
                     displacement = Displacement::Disp16(tdisp);
+                    bytes.wait(post_disp_cost);
                 }
             },
             0b01 => {
                 // 0b01 signifies an 8 bit displacement (sign-extended to 16)
                 let tdisp = bytes.q_read_i8(QueueType::Subsequent);
                 displacement = Displacement::Disp8(tdisp);
+                bytes.wait(post_disp_cost);
             } 
             0b10 => {
                 // 0b10 signifies a 16 bit displacement
                 let tdisp = bytes.q_read_i16(QueueType::Subsequent);
                 displacement = Displacement::Disp16(tdisp);
+                bytes.wait(post_disp_cost);
             }
             _ => displacement = Displacement::NoDisp,            
         }
 
         // Set the addressing mode based on the cominbation of Mod and R/M bitfields + Displacement
-        let addressing_mode = match byte & MODRM_ADDR_MASK {
-            MODRM_ADDR_BX_SI =>        AddressingMode::BxSi,
-            MODRM_ADDR_BX_DI =>        AddressingMode::BxDi,
-            MODRM_ADDR_BP_SI =>        AddressingMode::BpSi,
-            MODRM_ADDR_BP_DI =>        AddressingMode::BpDi,
-            MODRM_ADDR_SI =>           AddressingMode::Si,
-            MODRM_ADDR_DI =>           AddressingMode::Di,
-            MODRM_ADDR_DISP16 =>       AddressingMode::Disp16(displacement),
-            MODRM_ADDR_BX =>           AddressingMode::Bx,
-            MODRM_ADDR_BX_SI_DISP8 =>  AddressingMode::BxSiDisp8(displacement),
-            MODRM_ADDR_BX_DI_DISP8 =>  AddressingMode::BxDiDisp8(displacement),
-            MODRM_ADDR_BP_SI_DISP8 =>  AddressingMode::BpSiDisp8(displacement),
-            MODRM_ADDR_BP_DI_DISP8 =>  AddressingMode::BpDiDisp8(displacement),
-            MODRM_ADDR_SI_DI_DISP8 =>  AddressingMode::SiDisp8(displacement),
-            MODRM_ADDR_DI_DISP8 =>     AddressingMode::DiDisp8(displacement),
-            MODRM_ADDR_BP_DISP8=>      AddressingMode::BpDisp8(displacement),
-            MODRM_ADDR_BX_DISP8 =>     AddressingMode::BxDisp8(displacement),
-            MODRM_ADDR_BX_SI_DISP16 => AddressingMode::BxSiDisp16(displacement),
-            MODRM_ADDR_BX_DI_DISP16 => AddressingMode::BxDiDisp16(displacement),
-            MODRM_ADDR_BP_SI_DISP16 => AddressingMode::BpSiDisp16(displacement),
-            MODRM_ADDR_BP_DI_DISP16 => AddressingMode::BpDiDisp16(displacement),
-            MODRM_ADDR_SI_DI_DISP16 => AddressingMode::SiDisp16(displacement),
-            MODRM_ADDR_DI_DISP16 =>    AddressingMode::DiDisp16(displacement),
-            MODRM_ADDR_BP_DISP16 =>    AddressingMode::BpDisp16(displacement),
-            MODRM_ADDR_BX_DISP16 =>    AddressingMode::BxDisp16(displacement),
-            _=> AddressingMode::RegisterMode,
+        let (addressing_mode, _ ) = match byte & MODRM_ADDR_MASK {
+            MODRM_ADDR_BX_SI =>        (AddressingMode::BxSi, 5),
+            MODRM_ADDR_BX_DI =>        (AddressingMode::BxDi, 6),
+            MODRM_ADDR_BP_SI =>        (AddressingMode::BpSi, 6),
+            MODRM_ADDR_BP_DI =>        (AddressingMode::BpDi, 5),
+            MODRM_ADDR_SI =>           (AddressingMode::Si, 3),
+            MODRM_ADDR_DI =>           (AddressingMode::Di, 3),
+            MODRM_ADDR_DISP16 =>       (AddressingMode::Disp16(displacement), 4),
+            MODRM_ADDR_BX =>           (AddressingMode::Bx, 3),
+            MODRM_ADDR_BX_SI_DISP8 =>  (AddressingMode::BxSiDisp8(displacement), 9),
+            MODRM_ADDR_BX_DI_DISP8 =>  (AddressingMode::BxDiDisp8(displacement), 10),
+            MODRM_ADDR_BP_SI_DISP8 =>  (AddressingMode::BpSiDisp8(displacement), 10),
+            MODRM_ADDR_BP_DI_DISP8 =>  (AddressingMode::BpDiDisp8(displacement), 9),
+            MODRM_ADDR_SI_DISP8 =>     (AddressingMode::SiDisp8(displacement), 7),
+            MODRM_ADDR_DI_DISP8 =>     (AddressingMode::DiDisp8(displacement), 7),
+            MODRM_ADDR_BP_DISP8=>      (AddressingMode::BpDisp8(displacement), 7),
+            MODRM_ADDR_BX_DISP8 =>     (AddressingMode::BxDisp8(displacement), 7),
+            MODRM_ADDR_BX_SI_DISP16 => (AddressingMode::BxSiDisp16(displacement), 9),
+            MODRM_ADDR_BX_DI_DISP16 => (AddressingMode::BxDiDisp16(displacement), 10),
+            MODRM_ADDR_BP_SI_DISP16 => (AddressingMode::BpSiDisp16(displacement), 10),
+            MODRM_ADDR_BP_DI_DISP16 => (AddressingMode::BpDiDisp16(displacement), 9),
+            MODRM_ADDR_SI_DISP16 =>    (AddressingMode::SiDisp16(displacement), 7),
+            MODRM_ADDR_DI_DISP16 =>    (AddressingMode::DiDisp16(displacement), 7),
+            MODRM_ADDR_BP_DISP16 =>    (AddressingMode::BpDisp16(displacement), 7),
+            MODRM_ADDR_BX_DISP16 =>    (AddressingMode::BxDisp16(displacement), 7),
+            _=> (AddressingMode::RegisterMode, 0)
         };        
 
         // 'REG' field specifies either register operand or opcode extension. There's no way 

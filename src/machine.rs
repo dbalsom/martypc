@@ -171,7 +171,8 @@ impl<'a> Machine<'a> {
             config.validator.vtype.unwrap()
         );
 
-        cpu.reset();        
+        let (seg, offset) = cpu.get_reset_vector();
+        cpu.reset(seg, offset);        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let pit_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
@@ -351,7 +352,7 @@ impl<'a> Machine<'a> {
 
         // Set entry point for ROM (mostly used for diagnostic ROMs that don't have a FAR JUMP reset vector)
         let rom_entry_point = rom_manager.get_entrypoint();
-        cpu.set_reset_address(rom_entry_point.0, rom_entry_point.1);
+        cpu.set_reset_vector(rom_entry_point.0, rom_entry_point.1);
         cpu.reset_address();
 
         Machine {
@@ -477,7 +478,8 @@ impl<'a> Machine<'a> {
     }
 
     pub fn reset(&mut self) {
-        self.cpu.reset();
+
+        self.cpu.reset(0xFFFF, 0x0000);
 
         // Clear RAM
         self.cpu.bus_mut().reset();
@@ -556,18 +558,28 @@ impl<'a> Machine<'a> {
                     self.rom_manager.install_patches(self.cpu.bus_mut());
                 }
 
+                let cpu_cycles;
                 match self.cpu.step(&mut self.io_bus, self.pic.clone()) {
-                    Ok(()) => {
+                    Ok(cycles) => {
+                        cpu_cycles = cycles
                     },
                     Err(err) => {
                         self.error = true;
                         self.error_str = format!("{}", err);
                         log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
+                        cpu_cycles = 0
                     } 
                 }
 
                 // Convert cycles into elapsed microseconds
-                let us = self.cycles_to_us(fake_cycles);
+                let us;
+                if cpu_cycles == 0 {
+                    us = self.cycles_to_us(fake_cycles);
+                }
+                else {
+                    us = self.cycles_to_us(cpu_cycles);
+                }
+                
 
                 // Process a keyboard event once per frame.
                 // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu

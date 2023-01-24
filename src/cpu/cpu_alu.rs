@@ -385,15 +385,17 @@ impl<'a> Cpu<'a> {
     /// Sign extend AX ito DX:AX
     pub fn sign_extend_ax(&mut self) {
 
-        if self.ax & 0x8000 != 0 {
-            self.dx = 0xFFFF;
-            self.dl = 0xFF;
-            self.dh = 0xFF;
-        }
-        else {
+        self.cycles(3);
+        if self.ax & 0x8000 == 0 {
             self.dx = 0x0000;
             self.dl = 0x00;
             self.dh = 0x00;
+        }
+        else {
+            self.cycle(); // Microcode jump @ 05a            
+            self.dx = 0xFFFF;
+            self.dl = 0xFF;
+            self.dh = 0xFF;
         }
     }
 

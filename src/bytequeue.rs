@@ -15,6 +15,7 @@ pub trait ByteQueue {
     fn tell(&self) -> usize;
 
     fn delay(&mut self, delay: u32);
+    fn wait(&mut self, cycles: u32);
     fn clear_delay(&mut self);
 
     fn q_read_u8(&mut self, qtype: QueueType) -> u8;

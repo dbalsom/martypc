@@ -18,9 +18,14 @@ impl<'a> Cpu<'a> {
                 // No flags affected
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
+                // Check REP prefixs
+                self.cycles(2);
+
                 // Write AL to [es:di]
-                self.biu_write_u8(segment_base_ds, dest_addr, self.al, WriteFlag::Normal);
+                self.biu_write_u8(Segment::ES, dest_addr, self.al, ReadWriteFlag::Normal);
                 //self.bus.write_u8(dest_addr as usize, self.al).unwrap();
+
+                self.cycles(2);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -38,9 +43,14 @@ impl<'a> Cpu<'a> {
                 // No flags affected
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
+                // Check REP prefixs
+                self.cycles(2);
+
                 // Write AX to [es:di]
-                self.biu_write_u16(segment_base_ds, dest_addr, self.ax, WriteFlag::Normal);
+                self.biu_write_u16(Segment::ES, dest_addr, self.ax, ReadWriteFlag::Normal);
                 //self.bus.write_u16(dest_addr as usize, self.ax).unwrap();
+
+                self.cycles(1);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -79,7 +89,7 @@ impl<'a> Cpu<'a> {
                 // Store word [ds:si] in AX   (Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
-                let data = self.biu_read_u16(segment_base_ds, src_addr);
+                let data = self.biu_read_u16(segment_base_ds, src_addr, ReadWriteFlag::Normal);
                 //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
                 self.set_register16(Register16::AX, data);  
 
@@ -100,10 +110,12 @@ impl<'a> Cpu<'a> {
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
+                // Check REP prefixs
+                self.cycles(2);
                 let data = self.biu_read_u8(segment_base_ds, src_addr);
-                self.biu_write_u8(segment_base_ds, dst_addr, data, WriteFlag::Normal);
-                //let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
-                //self.bus.write_u8(dst_addr as usize, data).unwrap();
+                self.cycle();
+                self.biu_write_u8(Segment::ES, dst_addr, data, ReadWriteFlag::Normal);
+                self.cycles(2);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -116,15 +128,15 @@ impl<'a> Cpu<'a> {
                         self.si = self.si.wrapping_sub(1);
                         self.di = self.di.wrapping_sub(1);
                     }
-                }                    
+                }
             }
             Mnemonic::MOVSW => {
                 // Store word from [ds:si] in [es:di] (DS Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                let data = self.biu_read_u16(segment_base_ds, src_addr);
-                self.biu_write_u16(segment_base_ds, dst_addr, data, WriteFlag::Normal);
+                let data = self.biu_read_u16(segment_base_ds, src_addr, ReadWriteFlag::Normal);
+                self.biu_write_u16(Segment::ES, dst_addr, data, ReadWriteFlag::Normal);
                 //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
                 //self.bus.write_u16(dst_addr as usize, data).unwrap();
 
@@ -174,7 +186,7 @@ impl<'a> Cpu<'a> {
                 // Override: ES cannot be overridden                
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                let data = self.biu_read_u16(Segment::ES, scan_addr);
+                let data = self.biu_read_u16(Segment::ES, scan_addr, ReadWriteFlag::Normal);
                 //let (word, _cost) = self.bus.read_u16(scan_addr as usize).unwrap();
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, data, false );
@@ -235,8 +247,8 @@ impl<'a> Cpu<'a> {
                 let dssi_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
                 
-                let dssi_op = self.biu_read_u16(segment_base_ds, dssi_addr);
-                let esdi_op = self.biu_read_u16(Segment::ES, esdi_addr);
+                let dssi_op = self.biu_read_u16(segment_base_ds, dssi_addr, ReadWriteFlag::Normal);
+                let esdi_op = self.biu_read_u16(Segment::ES, esdi_addr, ReadWriteFlag::Normal);
 
                 //let (dssi_op, _cost2) = self.bus.read_u16(dssi_addr as usize).unwrap();
                 //let (esdi_op, _cost1) = self.bus.read_u16(esdi_addr as usize).unwrap();

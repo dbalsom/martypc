@@ -42,6 +42,8 @@ impl<'a> Cpu<'a> {
         self.set_register8(Register8::AL, self.al.wrapping_add(product));
         self.set_register8(Register8::AH, 0);
 
+        self.cycles(59);
+        
         // Other sources set flags from AX register. Intel's documentation specifies AL
         self.set_flags_from_result_u8(self.al);
     }

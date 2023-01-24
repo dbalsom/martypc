@@ -213,10 +213,14 @@ impl<'a> Cpu<'a> {
         let carry: bool;
 
         // All processors after 8086 mask the rotation count to 5 bits (31 maximum)
+        /*
         let rot_count = match self.cpu_type {
             CpuType::Cpu8088 | CpuType::Cpu8086 => operand2,
             _=> operand2 & 0x1F
         };
+        */
+
+        let rot_count = operand2;
 
         match opcode {
             Mnemonic::ROL => {

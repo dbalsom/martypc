@@ -23,6 +23,8 @@ use std::{
     fmt::Display,
 };
 
+use crate::cpu::QueueOp;
+
 #[derive (PartialEq, Copy, Clone)]
 pub enum ReadType {
     Code,
@@ -100,17 +102,10 @@ pub enum AccessType {
     AccData,
 }
 
-#[derive (PartialEq)]
-pub enum QueueOp {
-    Idle = 0,
-    First,
-    Flush,
-    Subsequent,
-}
 
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum BusState {
-    IRQA = 0,   // IRQ Acknowledge
+    INTA = 0,   // IRQ Acknowledge
     IOR  = 1,   // IO Read
     IOW  = 2,   // IO Write
     HALT = 3,   // Halt
@@ -120,7 +115,7 @@ pub enum BusState {
     PASV = 7    // Passive
 }
 
-#[derive (PartialEq)]
+#[derive (Copy, Clone)]
 pub struct CycleState {
     pub n: u32,
     pub addr: u32,
@@ -142,6 +137,37 @@ pub struct CycleState {
     
 }
 
+impl PartialEq<CycleState> for CycleState {
+    fn eq(&self, other: &CycleState) -> bool {
+
+        let equals_a = self.addr == other.addr
+            && self.t_state == other.t_state
+            && self.b_state == other.b_state
+            && self.ale == other.ale
+            && self.mrdc == other.mrdc
+            && self.amwc == other.amwc
+            && self.mwtc == other.mwtc
+            && self.iorc == other.iorc
+            //&& self.inta == other.inta
+            && self.q_op == other.q_op;
+
+        let equals_b = match self.t_state {
+            BusCycle::T1 => true,
+            BusCycle::T4 => {
+                //(self.q_len == other.q_len) && (self.a_type == other.a_type)
+                (self.a_type == other.a_type)
+            }
+            BusCycle::T3 => {
+                //(self.data_bus == other.data_bus) && (self.a_type == other.a_type)
+                (self.a_type == other.a_type)
+            }
+            _=> (self.a_type == other.a_type)
+        };
+
+        equals_a && equals_b
+    }
+}
+
 pub trait CpuValidator {
     fn init(&mut self, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool;
     fn begin(&mut self, regs: &VRegisters );
@@ -152,7 +178,7 @@ pub trait CpuValidator {
         has_modrm: bool, 
         cycles: i32, 
         regs: &VRegisters, 
-        emu_states: Vec<CycleState>) 
+        emu_states: &Vec<CycleState>) 
             -> Result<bool, ValidatorError>;
 
     fn emu_read_byte(&mut self, addr: u32, data: u8, read_type: ReadType);

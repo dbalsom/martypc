@@ -23,6 +23,7 @@ use std::cmp;
 
 use crate::cpu_validator::{ValidatorError, CpuValidator, VRegisters, ReadType};
 use crate::cpu::{
+    QueueOp,
     CPU_FLAG_CARRY,
     CPU_FLAG_PARITY,
     CPU_FLAG_AUX_CARRY,
@@ -124,7 +125,7 @@ pub struct Frame {
     cpu_ops: Vec<BusOp>,
     mem_op_n: usize,
 
-    emu_states: Vec<CycleState>
+    cpu_states: Vec<CycleState>
 }
 
 impl Frame {
@@ -148,7 +149,7 @@ impl Frame {
             cpu_prefetch: Vec::new(),
             cpu_ops: Vec::new(),
             mem_op_n: 0,
-            emu_states: Vec::new()
+            cpu_states: Vec::new()
         }
     }
 }
@@ -184,6 +185,7 @@ pub struct RemoteCpu {
     instr_str: String,
     instr_addr: u32,
     finalize: bool,
+    flushed: bool,
 
     // Validator stuff
     busop_n: usize,
@@ -221,6 +223,7 @@ impl RemoteCpu {
             instr_str: String::new(),
             instr_addr: 0,
             finalize: false,
+            flushed: false,
 
             busop_n: 0,
             prefetch_n: 0,
@@ -515,39 +518,59 @@ impl ArduinoValidator {
         regs_validate
     }
 
-    pub fn validate_cycles(&mut self, cpu_states: &Vec::<CycleState>) -> bool {
+    pub fn validate_cycles(
+        &mut self, 
+        cpu_states: &Vec::<CycleState>, 
+        emu_states: &Vec::<CycleState>
+    ) -> (bool, usize) {
 
-        if self.current_frame.emu_states.len() != cpu_states.len() {
+        if emu_states.len() != cpu_states.len() {
             // Cycle count mismatch
-            return false
+            return (false, 0)
         }
 
         for i in 0..cpu_states.len() {
 
-            if self.current_frame.emu_states[i] != cpu_states[i] {
+            if emu_states[i] != cpu_states[i] {
                 // Cycle state mismatch
-                return false
+                return (false, i)
             }
         }
 
-        true
+        (true, 0)
     }
 
-    pub fn print_cycle_diff(&mut self, cpu_states: &Vec::<CycleState>) {
+    pub fn correct_queue_counts(&mut self, cpu_states: &mut Vec::<CycleState>) {
 
-        let max_lines = cmp::max(self.current_frame.emu_states.len(), cpu_states.len());
+        for i in 0..cpu_states.len() {
+
+            match cpu_states[i].q_op {
+                QueueOp::First | QueueOp::Subsequent => {
+                    if i > 0 {
+                        // Queue was read out on previous cycle, adjust.
+                        cpu_states[i-1].q_len -= 1;
+                    }
+                }
+                QueueOp::Flush => {
+                    if i > 0 {
+                        // Queue was flushed on previous cycle, adjust.
+                        cpu_states[i-1].q_len = 0;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    pub fn print_cycle_diff(&mut self, cpu_states: &Vec::<CycleState>, emu_states: &Vec::<CycleState>) {
+
+        let max_lines = cmp::max(emu_states.len(), cpu_states.len());
 
         for i in 0..max_lines {
 
-            let emu_str;
             let cpu_str;
-            if i < self.current_frame.emu_states.len() {
-                emu_str = RemoteCpu::get_cycle_state_str(&self.current_frame.emu_states[i])
-            }
-            else {
-                emu_str = String::new();
-            }
-
+            let emu_str;
+            
             if i < cpu_states.len() {
                 cpu_str = RemoteCpu::get_cycle_state_str(&cpu_states[i])
             }
@@ -555,7 +578,14 @@ impl ArduinoValidator {
                 cpu_str = String::new();
             }
 
-            println!("{:<80} | {:<80}", emu_str, cpu_str);
+            if i < emu_states.len() {
+                emu_str = RemoteCpu::get_cycle_state_str(&emu_states[i])
+            }
+            else {
+                emu_str = String::new();
+            }
+
+            println!("{:<80} | {:<80}", cpu_str, emu_str);
         }
     }    
 }
@@ -642,6 +672,10 @@ impl RemoteCpu {
             }
             BusCycle::T3 => {
                 // TODO: Handle wait states
+                if self.mcycle_state == BusState::CODE {
+                    // We completed a code fetch, so add to prefetch queue
+                    self.queue.push(self.data_bus, self.data_type, self.address_latch);
+                }
                 BusCycle::T4
             }
             BusCycle::Tw => {
@@ -649,10 +683,7 @@ impl RemoteCpu {
                 BusCycle::T4
             }            
             BusCycle::T4 => {
-                if self.mcycle_state == BusState::CODE {
-                    // We completed a code fetch, so add to prefetch queue
-                    self.queue.push(self.data_bus, self.data_type, self.address_latch);
-                }
+
                 BusCycle::T1
             }            
         };
@@ -670,6 +701,7 @@ impl RemoteCpu {
             }
 
             self.address_latch = self.cpu_client.read_address_latch().expect("Failed to get address latch!");
+            cycle_info.addr = self.address_latch;
         }
 
         // Do reads & writes if we are in execute state.
@@ -706,7 +738,7 @@ impl RemoteCpu {
                         cpu_mem_ops.push(emu_mem_ops[self.busop_n].clone());
                         self.busop_n += 1;
 
-                        log::trace!("CPU read: {:02X}", self.data_bus);
+                        //log::trace!("CPU read: {:02X}", self.data_bus);
                         self.cpu_client.write_data_bus(self.data_bus).expect("Failed to write data bus.");
                     }
                 }             
@@ -723,7 +755,7 @@ impl RemoteCpu {
                     // Read byte from CPU
                     self.data_bus = self.cpu_client.read_data_bus().expect("Failed to read data bus.");
                 
-                    log::trace!("CPU write: [{:05X}] <- {:02X}", self.address_latch, self.data_bus);
+                    //log::trace!("CPU write: [{:05X}] <- {:02X}", self.address_latch, self.data_bus);
 
                     // Add write op to CPU BusOp list
                     cpu_mem_ops.push(
@@ -768,6 +800,7 @@ impl RemoteCpu {
                     if self.queue_type == QueueDataType::Finalize {
                         //log::trace!("Finalizing execution!");
                         self.cpu_client.finalize().expect("Failed to finalize!");
+                        self.finalize = true;
                     }
                 }
                 else {
@@ -777,6 +810,7 @@ impl RemoteCpu {
             }
             QueueOp::Flush => {
                 // Queue was flushed last cycle
+                self.flushed = true;
                 self.queue.flush();
             }
             _ => {}
@@ -787,6 +821,7 @@ impl RemoteCpu {
         cycle_info.q_len = self.queue.len() as u32;
 
         self.cycle_num += 1;
+        cycle_info.n = self.cycle_num;
         Ok(cycle_info)
     }
 
@@ -805,6 +840,9 @@ impl RemoteCpu {
         self.busop_n = 0;
         self.prefetch_n = 0;
         self.v_pc = 0;
+        self.cycle_num = 0;
+        self.finalize = false;
+        self.flushed = false;
 
         self.address_latch = self.cpu_client.read_address_latch().expect("Failed to get address latch!");
         
@@ -821,16 +859,20 @@ impl RemoteCpu {
 
         // cycle trace if enabled
         if cycle_trace == true {
-            println!("{}", self.get_cpu_state_str());
+            //println!("{}", self.get_cpu_state_str());
         }
 
         while self.program_state != ProgramState::ExecuteDone {
             let cycle_state = self.cycle(instr, emu_prefetch, emu_mem_ops, cpu_prefetch, cpu_mem_ops)?;
-            cycle_vec.push(cycle_state);
+            
+            
+            if !self.finalize {
+                cycle_vec.push(cycle_state);
+            }
 
             // cycle trace if enabled
             if cycle_trace == true {
-                println!("{}", self.get_cpu_state_str());
+                //println!("{}", self.get_cpu_state_str());
             }
         }
 
@@ -912,33 +954,33 @@ impl RemoteCpu {
         };
 
         // All read/write signals are active/low
-        let rs_chr   = match c.mrdc {
+        let rs_chr   = match !c.mrdc {
             true => 'R',
             false => '.',
         };
-        let aws_chr  = match c.aiowc {
+        let aws_chr  = match !c.aiowc {
             true => 'A',
             false => '.',
         };
-        let ws_chr   = match c.mwtc {
+        let ws_chr   = match !c.mwtc {
             true => 'W',
             false => '.',
         };
-        let ior_chr  = match c.iorc {
+        let ior_chr  = match !c.iorc {
             true => 'R',
             false => '.',
         };
-        let aiow_chr = match c.aiowc {
+        let aiow_chr = match !c.aiowc {
             true => 'A',
             false => '.',
         };
-        let iow_chr  = match c.iowc {
+        let iow_chr  = match !c.iowc {
             true => 'W',
             false => '.',
         };        
 
         let bus_str = match c.b_state {
-            BusState::IRQA => "IRQA",
+            BusState::INTA => "INTA",
             BusState::IOR  => "IOR ",
             BusState::IOW  => "IOW ",
             BusState::HALT => "HALT",
@@ -956,8 +998,8 @@ impl RemoteCpu {
             BusCycle::Tw => "Tw",
         };
 
-        let is_reading = c.mrdc;
-        let is_writing = c.mwtc;
+        let is_reading = !c.mrdc;
+        let is_writing = !c.mwtc;
 
         let mut xfer_str = "      ".to_string();
         if is_reading {
@@ -1049,7 +1091,7 @@ impl RemoteCpu {
         };
 
         let bus_str = match get_bus_state!(self.status) {
-            BusState::IRQA => "IRQA",
+            BusState::INTA => "INTA",
             BusState::IOR  => "IOR ",
             BusState::IOW  => "IOW ",
             BusState::HALT => "HALT",
@@ -1177,7 +1219,7 @@ impl CpuValidator for ArduinoValidator {
         has_modrm: bool, 
         cycles: i32, 
         regs: &VRegisters,
-        emu_states: Vec<CycleState>,
+        emu_states: &Vec<CycleState>,
     ) -> Result<bool, ValidatorError>  {
 
         let ip_addr = make_pointer(self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
@@ -1224,9 +1266,9 @@ impl CpuValidator for ArduinoValidator {
             return Err(ValidatorError::ParameterError);
         }
 
-        self.current_frame.emu_states.clear();
+        //self.current_frame.emu_states.clone_from(&emu_states);
 
-        //RemoteCpu::print_regs(&self.current_frame.regs[1]);
+        RemoteCpu::print_regs(&self.current_frame.regs[0]);
 
         if has_modrm {
             if i > (instr.len() - 2) {
@@ -1274,7 +1316,7 @@ impl CpuValidator for ArduinoValidator {
 
         let instr_addr = RemoteCpu::calc_linear_address(self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);
 
-        self.current_frame.emu_states = self.cpu.run(
+        let mut cpu_states = self.cpu.run(
             &self.current_frame.instr,
             instr_addr,
             self.cycle_trace,
@@ -1317,10 +1359,16 @@ impl CpuValidator for ArduinoValidator {
         if emu_states.len() > 0 {
             // Only validate CPU cycles if any were provided
 
-            if !self.validate_cycles(&emu_states) {
-                log::error!("Cycle state validation failure:");    
-                self.print_cycle_diff(&emu_states);
+            self.correct_queue_counts(&mut cpu_states);
+            let (result, cycle_num) = self.validate_cycles(&cpu_states, &emu_states);
+
+            if !result {
+                log::error!("Cycle state validation failure @ cycle {}", cycle_num);    
+                self.print_cycle_diff(&cpu_states, &emu_states);
                 return Err(ValidatorError::CycleMismatch);
+            }
+            else {
+                self.print_cycle_diff(&cpu_states, &emu_states);
             }
         }
 
@@ -1384,7 +1432,7 @@ impl CpuValidator for ArduinoValidator {
                 flags: MOF_EMULATOR
             }
         );
-        log::trace!("EMU write: [{:05X}] <- 0x{:02X}", addr, data);
+        //log::trace!("EMU write: [{:05X}] <- 0x{:02X}", addr, data);
     }
 
     fn discard_op(&mut self) {
