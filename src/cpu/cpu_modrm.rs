@@ -24,17 +24,17 @@ impl Default for ModRmByte {
 }
 
 impl ModRmByte {
-    pub fn read_from(bytes: &mut impl ByteQueue) -> Result<ModRmByte, Box<dyn std::error::Error>> {
+    pub fn read_from(bytes: &mut impl ByteQueue, seg_override: SegmentOverride ) -> Result<ModRmByte, Box<dyn std::error::Error>> {
         let mut cycle_cost = 0;
         let byte = bytes.q_read_u8(QueueType::Subsequent);
         let mut displacement = Displacement::NoDisp;
 
         // Set the addressing mode based on the cominbation of Mod and R/M bitfields + Displacement
-        let (pre_disp_cost, post_disp_cost) = match byte & MODRM_ADDR_MASK {
-            MODRM_ADDR_BX_SI =>        (5,0),
-            MODRM_ADDR_BX_DI =>        (6,0),
-            MODRM_ADDR_BP_SI =>        (6,0),
-            MODRM_ADDR_BP_DI =>        (5,0),
+        let (mut pre_disp_cost, post_disp_cost) = match byte & MODRM_ADDR_MASK {
+            MODRM_ADDR_BX_SI =>        (4,0),
+            MODRM_ADDR_BX_DI =>        (5,0),
+            MODRM_ADDR_BP_SI =>        (5,0),
+            MODRM_ADDR_BP_DI =>        (4,0),
             MODRM_ADDR_SI =>           (3,0),
             MODRM_ADDR_DI =>           (3,0),
             MODRM_ADDR_DISP16 =>       (4,0),
@@ -57,6 +57,14 @@ impl ModRmByte {
             MODRM_ADDR_BX_DISP16 =>    (2,2),
             _=> (0,0)
         };   
+
+        // Segment override costs 2 cycles during EA calculation
+        match seg_override {
+            SegmentOverride::None => {}
+            _ => {
+                pre_disp_cost += 2;
+            }
+        }
 
         // Spend cycles calculating EA
         bytes.wait(pre_disp_cost);

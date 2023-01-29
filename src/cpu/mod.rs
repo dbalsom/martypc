@@ -141,6 +141,7 @@ pub const OPCODE_PREFIX_ES_OVERRIDE: u32     = 0b_0000_0000_0001;
 pub const OPCODE_PREFIX_CS_OVERRIDE: u32     = 0b_0000_0000_0010;
 pub const OPCODE_PREFIX_SS_OVERRIDE: u32     = 0b_0000_0000_0100;
 pub const OPCODE_PREFIX_DS_OVERRIDE: u32     = 0b_0000_0000_1000;
+pub const OPCODE_SEG_OVERRIDE_MASK: u32      = 0b_0000_0000_1111;
 pub const OPCODE_PREFIX_OPERAND_OVERIDE: u32 = 0b_0000_0001_0000;
 pub const OPCODE_PREFIX_ADDRESS_OVERIDE: u32 = 0b_0000_0010_0000;
 pub const OPCODE_PREFIX_WAIT: u32            = 0b_0000_0100_0000;
@@ -1251,10 +1252,21 @@ impl<'a> Cpu<'a> {
         self.trace_comment = ""; 
     }
 
+    #[inline]
+    pub fn cycle_nx(&self) {
+        // Do nothing
+    }
+
+    #[inline]
     pub fn cycles(&mut self, ct: u32) {
         for _ in 0..ct {
             self.cycle();
         }
+    }
+
+    #[inline]
+    pub fn cycles_nx(&mut self, ct: u32) {
+        self.cycles(ct - 1);
     }
 
     /// Finalize an instruction that has terminated before there is a new byte in the queue.

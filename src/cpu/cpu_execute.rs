@@ -160,19 +160,19 @@ impl<'a> Cpu<'a> {
         }
 
         match self.i.opcode {
-            0x00 | 0x02 | 0x04 | // ADD r/m8, r8 | r8, r/m8 | al, imm8
-            0x08 | 0x0A | 0x0C | // OR r/m8, r8  | r8, r/m8 | al, imm8
-            0x10 | 0x12 | 0x14 | // ADC r/m8,r8  | r8, r/m8 | al, imm8 
-            0x18 | 0x1A | 0x1C | // SBB r/m8,r8  | r8, r/m8 | al, imm8 
-            0x20 | 0x22 | 0x24 | // AND r/m8,r8  | r8, r/m8 | al, imm8 
-            0x28 | 0x2A | 0x2C | // SUB r/m8,r8  | r8, r/m8 | al, imm8 
+            0x00 | 0x02 | 0x04 |  // ADD r/m8, r8 | r8, r/m8 | al, imm8
+            0x08 | 0x0A | 0x0C |  // OR r/m8, r8  | r8, r/m8 | al, imm8
+            0x10 | 0x12 | 0x14 |  // ADC r/m8,r8  | r8, r/m8 | al, imm8 
+            0x18 | 0x1A | 0x1C |  // SBB r/m8,r8  | r8, r/m8 | al, imm8 
+            0x20 | 0x22 | 0x24 |  // AND r/m8,r8  | r8, r/m8 | al, imm8 
+            0x28 | 0x2A | 0x2C |  // SUB r/m8,r8  | r8, r/m8 | al, imm8 
             0x30 | 0x32 | 0x34 => // XOR r/m8, r8 | r8, r/m8 | al, imm8
             { 
                 // 8 bit ALU operations
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();            
                 
-                self.cycles(2);
+                self.cycles_nx(2);
                 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles(3);
@@ -183,19 +183,19 @@ impl<'a> Cpu<'a> {
 
                 handled_override = true;
             }
-            0x01 | 0x03 | 0x05 | // ADD r/m16, r16 | r16, r/m16 | ax, imm16
-            0x09 | 0x0B | 0x0D | // OR r/m16, r16 | r16, r/m16 | ax, imm16
-            0x11 | 0x13 | 0x15 | // ADC r/m16,r16 | r16, r/m16 | ax,imm16 
-            0x19 | 0x1B | 0x1D | // SBB r/m16,r16 | r16, r/m16 | ax,imm16 
-            0x21 | 0x23 | 0x25 | // AND r/m16,r16 | r16, r/m16 | ax,imm16 
-            0x29 | 0x2B | 0x2D | // SUB r/m16,r16 | r16, r/m16 | ax,imm16 
+            0x01 | 0x03 | 0x05 |  // ADD r/m16, r16 | r16, r/m16 | ax, imm16
+            0x09 | 0x0B | 0x0D |  // OR r/m16, r16 | r16, r/m16 | ax, imm16
+            0x11 | 0x13 | 0x15 |  // ADC r/m16,r16 | r16, r/m16 | ax,imm16 
+            0x19 | 0x1B | 0x1D |  // SBB r/m16,r16 | r16, r/m16 | ax,imm16 
+            0x21 | 0x23 | 0x25 |  // AND r/m16,r16 | r16, r/m16 | ax,imm16 
+            0x29 | 0x2B | 0x2D |  // SUB r/m16,r16 | r16, r/m16 | ax,imm16 
             0x31 | 0x33 | 0x35 => // XOR r/m16, r16 |  XOR r16, r/m16
             {
                 // 16 bit ADD variants
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles(2);
+                self.cycles_nx(2);
                 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles(3);
@@ -272,7 +272,7 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles(2);
+                self.cycles_nx(2);
                 let _result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
                 //self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
                 handled_override = true;
@@ -283,7 +283,7 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles(2);
+                self.cycles_nx(2);
                 let _result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
                 //self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
                 handled_override = true;
@@ -397,7 +397,7 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 self.math_op8(Mnemonic::TEST, op1_value, op2_value);
-                self.cycles(2);
+                self.cycles_nx(2);
                 handled_override = true;
             }
             0x85 => {
@@ -407,7 +407,7 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 // math_op16 handles flags
                 self.math_op16(Mnemonic::TEST, op1_value, op2_value);
-                self.cycles(2);
+                self.cycles_nx(2);
                 handled_override = true;
             }
             0x86 => {
@@ -872,13 +872,17 @@ impl<'a> Cpu<'a> {
             0xC6 => {
                 // MOV r/m8, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                self.cycles(2);
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
+                
                 handled_override = true;
             }
             0xC7 => {
                 // MOV r/m16, imm16
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
+                self.cycles(2);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
+                
                 handled_override = true;
             }
             0xC8 | 0xCA => {
@@ -976,7 +980,10 @@ impl<'a> Cpu<'a> {
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles(3);
+                    self.cycles(5); // Is there a prefetch abort in here?
+                }
+                else {
+                    //self.cycle();
                 }
 
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
@@ -993,12 +1000,16 @@ impl<'a> Cpu<'a> {
                 if self.cl > 0 {
                     self.cycles(4 * self.cl as u32 - 1);
                 }
+             
                 self.trace_comment("DONE LOOPING");
                 let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles(3);
+                    self.cycles(5); // Is there a prefetch abort in here?
                 }
+                else {
+                    //self.cycle();
+                }                
 
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 // TODO: Cost
@@ -1052,7 +1063,6 @@ impl<'a> Cpu<'a> {
                 
                 // Perform dummy read if memory operand
                 let _op1_value = self.read_operand16(self.i.operand1_type, SegmentOverride::None);
-                self.cycle();
             }
             0xE0 => {
                 // LOOPNE - Decrement CX, Jump short if count!=0 and ZF=0

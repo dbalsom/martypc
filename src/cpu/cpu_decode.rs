@@ -316,7 +316,7 @@ impl<'a> Cpu<'a> {
         if mnemonic == Mnemonic::NoOpcode {
             // All group instructions have a modrm w/ op extension.
 
-            modrm = ModRmByte::read_from(bytes)?;
+            modrm = ModRmByte::read_from(bytes, op_segment_override)?;
             loaded_modrm = true;
             let op_ext = modrm.get_op_extension();
             
@@ -447,7 +447,7 @@ impl<'a> Cpu<'a> {
         // Load the ModRM byte if required
         if !loaded_modrm && (load_modrm_op1 | load_modrm_op2) {
             op_flags |= INSTRUCTION_HAS_MODRM;
-            modrm = ModRmByte::read_from(bytes)?;
+            modrm = ModRmByte::read_from(bytes, op_segment_override)?;
         }
         else if !loaded_modrm {
             // No modrm. Set a one cycle fetch delay. This has no effect when reading from memory.
