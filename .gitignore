@@ -20,6 +20,8 @@ Thumbs.db
 marty.toml
 *.pcm
 *.cfg
+*.log
+
 
 # Assembly stuff
 /asm
