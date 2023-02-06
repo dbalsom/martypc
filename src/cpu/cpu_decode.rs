@@ -75,13 +75,15 @@ impl<'a> Cpu<'a> {
 
         let op_address = bytes.tell() as u32;
         bytes.clear_delay();
+
         let mut opcode = bytes.q_read_u8(QueueType::First);
+        let mut size: u32 = 1;
 
         let mut mnemonic;
 
         let mut operand1_template = OperandTemplate::NoTemplate;
         let mut operand2_template = OperandTemplate::NoTemplate;
-        let mut op_size: u32 = 1;
+        
         let mut op_flags: u32 = 0;
         let mut op_prefixes: u32 = 0;
         let mut op_segment_override = SegmentOverride::None;
@@ -113,68 +115,69 @@ impl<'a> Cpu<'a> {
 
             // Reset first-fetch flag on each prefix read
             opcode = bytes.q_read_u8(QueueType::First);
+            size += 1;
         }
 
         // Match templatizeable instructions
         (mnemonic, operand1_template, operand2_template, op_flags) = match opcode {
-            0x00 => (Mnemonic::ADD,  OperandTemplate::ModRM8,   OperandTemplate::Register8,     0),
-            0x01 => (Mnemonic::ADD,  OperandTemplate::ModRM16,   OperandTemplate::Register16,   0),
-            0x02 => (Mnemonic::ADD,  OperandTemplate::Register8,   OperandTemplate::ModRM8,     0),
-            0x03 => (Mnemonic::ADD,  OperandTemplate::Register16,   OperandTemplate::ModRM16,   0),
+            0x00 => (Mnemonic::ADD,  OperandTemplate::ModRM8,   OperandTemplate::Register8,     I_LOAD_EA ),
+            0x01 => (Mnemonic::ADD,  OperandTemplate::ModRM16,   OperandTemplate::Register16,   I_LOAD_EA ),
+            0x02 => (Mnemonic::ADD,  OperandTemplate::Register8,   OperandTemplate::ModRM8,     I_LOAD_EA ),
+            0x03 => (Mnemonic::ADD,  OperandTemplate::Register16,   OperandTemplate::ModRM16,   I_LOAD_EA ),
             0x04 => (Mnemonic::ADD,  OperandTemplate::FixedRegister8(Register8::AL),   OperandTemplate::Immediate8,    0),
             0x05 => (Mnemonic::ADD,  OperandTemplate::FixedRegister16(Register16::AX),   OperandTemplate::Immediate16, 0),
             0x06 => (Mnemonic::PUSH, OperandTemplate::FixedRegister16(Register16::ES),   OperandTemplate::NoOperand,   0),
             0x07 => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::ES),   OperandTemplate::NoOperand,   0),
-            0x08 => (Mnemonic::OR,   OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x09 => (Mnemonic::OR,   OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x0A => (Mnemonic::OR,   OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x0B => (Mnemonic::OR,   OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x08 => (Mnemonic::OR,   OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
+            0x09 => (Mnemonic::OR,   OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
+            0x0A => (Mnemonic::OR,   OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
+            0x0B => (Mnemonic::OR,   OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x0C => (Mnemonic::OR,   OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x0D => (Mnemonic::OR,   OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
             0x0E => (Mnemonic::PUSH, OperandTemplate::FixedRegister16(Register16::CS),   OperandTemplate::NoOperand,   0),
             0x0F => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::CS),   OperandTemplate::NoOperand,   0),    
-            0x10 => (Mnemonic::ADC,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x11 => (Mnemonic::ADC,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x12 => (Mnemonic::ADC,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x13 => (Mnemonic::ADC,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x10 => (Mnemonic::ADC,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
+            0x11 => (Mnemonic::ADC,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
+            0x12 => (Mnemonic::ADC,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
+            0x13 => (Mnemonic::ADC,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x14 => (Mnemonic::ADC,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x15 => (Mnemonic::ADC,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
             0x16 => (Mnemonic::PUSH, OperandTemplate::FixedRegister16(Register16::SS),   OperandTemplate::NoOperand,   0),
             0x17 => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::SS),   OperandTemplate::NoOperand,   0), 
-            0x18 => (Mnemonic::SBB,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x19 => (Mnemonic::SBB,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x1A => (Mnemonic::SBB,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x1B => (Mnemonic::SBB,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x18 => (Mnemonic::SBB,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
+            0x19 => (Mnemonic::SBB,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
+            0x1A => (Mnemonic::SBB,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
+            0x1B => (Mnemonic::SBB,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x1C => (Mnemonic::SBB,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x1D => (Mnemonic::SBB,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
             0x1E => (Mnemonic::PUSH, OperandTemplate::FixedRegister16(Register16::DS),   OperandTemplate::NoOperand,   0),
             0x1F => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::DS),   OperandTemplate::NoOperand,   0),   
-            0x20 => (Mnemonic::AND,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x21 => (Mnemonic::AND,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x22 => (Mnemonic::AND,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x23 => (Mnemonic::AND,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x20 => (Mnemonic::AND,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
+            0x21 => (Mnemonic::AND,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
+            0x22 => (Mnemonic::AND,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
+            0x23 => (Mnemonic::AND,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x24 => (Mnemonic::AND,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x25 => (Mnemonic::AND,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
             0x27 => (Mnemonic::DAA,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand, 0),
-            0x28 => (Mnemonic::SUB,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x29 => (Mnemonic::SUB,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x2A => (Mnemonic::SUB,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x2B => (Mnemonic::SUB,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x28 => (Mnemonic::SUB,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
+            0x29 => (Mnemonic::SUB,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
+            0x2A => (Mnemonic::SUB,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
+            0x2B => (Mnemonic::SUB,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x2C => (Mnemonic::SUB,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x2D => (Mnemonic::SUB,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
             0x2F => (Mnemonic::DAS,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,  0),
-            0x30 => (Mnemonic::XOR,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x31 => (Mnemonic::XOR,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x32 => (Mnemonic::XOR,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x33 => (Mnemonic::XOR,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x30 => (Mnemonic::XOR,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
+            0x31 => (Mnemonic::XOR,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
+            0x32 => (Mnemonic::XOR,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
+            0x33 => (Mnemonic::XOR,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x34 => (Mnemonic::XOR,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x35 => (Mnemonic::XOR,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
         //  0x36 Segment override prefix
             0x37 => (Mnemonic::AAA,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,  0),
-            0x38 => (Mnemonic::CMP,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x39 => (Mnemonic::CMP,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x3A => (Mnemonic::CMP,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x3B => (Mnemonic::CMP,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x38 => (Mnemonic::CMP,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
+            0x39 => (Mnemonic::CMP,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
+            0x3A => (Mnemonic::CMP,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
+            0x3B => (Mnemonic::CMP,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x3C => (Mnemonic::CMP,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x3D => (Mnemonic::CMP,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
             0x3F => (Mnemonic::AAS,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,  0),
@@ -183,50 +186,50 @@ impl<'a> Cpu<'a> {
             0x50..=0x57 => (Mnemonic::PUSH, OperandTemplate::Register16Encoded,    OperandTemplate::NoOperand, 0),
             0x58..=0x5F => (Mnemonic::POP,  OperandTemplate::Register16Encoded,    OperandTemplate::NoOperand, 0),
         //  0x60..=0x6F >= on 8088, these instructions map to 0x70-7F
-            0x60 => (Mnemonic::JO,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x61 => (Mnemonic::JNO,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x62 => (Mnemonic::JB,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x63 => (Mnemonic::JNB,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x64 => (Mnemonic::JZ,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x65 => (Mnemonic::JNZ,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x66 => (Mnemonic::JBE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x67 => (Mnemonic::JNBE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x68 => (Mnemonic::JS,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x69 => (Mnemonic::JNS,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x6A => (Mnemonic::JP,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x6B => (Mnemonic::JNP,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x6C => (Mnemonic::JL,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x6D => (Mnemonic::JNL,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x6E => (Mnemonic::JLE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x6F => (Mnemonic::JNLE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),        
-            0x70 => (Mnemonic::JO,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x71 => (Mnemonic::JNO,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x72 => (Mnemonic::JB,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x73 => (Mnemonic::JNB,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x74 => (Mnemonic::JZ,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x75 => (Mnemonic::JNZ,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x76 => (Mnemonic::JBE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x77 => (Mnemonic::JNBE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x78 => (Mnemonic::JS,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x79 => (Mnemonic::JNS,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x7A => (Mnemonic::JP,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x7B => (Mnemonic::JNP,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x7C => (Mnemonic::JL,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x7D => (Mnemonic::JNL,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x7E => (Mnemonic::JLE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
-            0x7F => (Mnemonic::JNLE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  INSTRUCTION_REL_JUMP),
+            0x60 => (Mnemonic::JO,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x61 => (Mnemonic::JNO,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x62 => (Mnemonic::JB,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x63 => (Mnemonic::JNB,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x64 => (Mnemonic::JZ,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x65 => (Mnemonic::JNZ,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x66 => (Mnemonic::JBE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x67 => (Mnemonic::JNBE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x68 => (Mnemonic::JS,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x69 => (Mnemonic::JNS,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x6A => (Mnemonic::JP,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x6B => (Mnemonic::JNP,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x6C => (Mnemonic::JL,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x6D => (Mnemonic::JNL,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x6E => (Mnemonic::JLE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x6F => (Mnemonic::JNLE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),        
+            0x70 => (Mnemonic::JO,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x71 => (Mnemonic::JNO,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x72 => (Mnemonic::JB,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x73 => (Mnemonic::JNB,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x74 => (Mnemonic::JZ,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x75 => (Mnemonic::JNZ,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x76 => (Mnemonic::JBE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x77 => (Mnemonic::JNBE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x78 => (Mnemonic::JS,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x79 => (Mnemonic::JNS,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x7A => (Mnemonic::JP,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x7B => (Mnemonic::JNP,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x7C => (Mnemonic::JL,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x7D => (Mnemonic::JNL,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x7E => (Mnemonic::JLE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
+            0x7F => (Mnemonic::JNLE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
 
-            0x84 => (Mnemonic::TEST,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
-            0x85 => (Mnemonic::TEST,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x86 => (Mnemonic::XCHG,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x87 => (Mnemonic::XCHG,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x84 => (Mnemonic::TEST,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA),
+            0x85 => (Mnemonic::TEST,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA),
+            0x86 => (Mnemonic::XCHG,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA),
+            0x87 => (Mnemonic::XCHG,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA),
             0x88 => (Mnemonic::MOV,   OperandTemplate::ModRM8,    OperandTemplate::Register8,    0),
             0x89 => (Mnemonic::MOV,   OperandTemplate::ModRM16,    OperandTemplate::Register16,  0),
-            0x8A => (Mnemonic::MOV,   OperandTemplate::Register8,    OperandTemplate::ModRM8,    0),
-            0x8B => (Mnemonic::MOV,   OperandTemplate::Register16,    OperandTemplate::ModRM16,  0),
+            0x8A => (Mnemonic::MOV,   OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA),
+            0x8B => (Mnemonic::MOV,   OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA),
             0x8C => (Mnemonic::MOV,   OperandTemplate::ModRM16,    OperandTemplate::SegmentRegister,  0),
             0x8D => (Mnemonic::LEA,   OperandTemplate::Register16,   OperandTemplate::ModRM16,   0),
-            0x8E => (Mnemonic::MOV,   OperandTemplate::SegmentRegister,    OperandTemplate::ModRM16,  0),
+            0x8E => (Mnemonic::MOV,   OperandTemplate::SegmentRegister,    OperandTemplate::ModRM16,  I_LOAD_EA),
             0x8F => (Mnemonic::POP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
             0x90 => (Mnemonic::NOP,   OperandTemplate::NoOperand,   OperandTemplate::NoOperand,  0),
             0x91..=0x97 => (Mnemonic::XCHG,  OperandTemplate::Register16Encoded,   OperandTemplate::FixedRegister16(Register16::AX),  0),
@@ -278,20 +281,20 @@ impl<'a> Cpu<'a> {
             0xD6 => (Mnemonic::SALC, OperandTemplate::NoOperand,  OperandTemplate::NoOperand,      0),
             0xD7 => (Mnemonic::XLAT, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,     0),
             // FPU instructions
-            0xD8..=0xDF => (Mnemonic::ESC, OperandTemplate::ModRM16, OperandTemplate::NoOperand, 0),
+            0xD8..=0xDF => (Mnemonic::ESC, OperandTemplate::ModRM16, OperandTemplate::NoOperand,   I_LOAD_EA),
 
-            0xE0 => (Mnemonic::LOOPNE, OperandTemplate::Relative8,   OperandTemplate::NoOperand,   INSTRUCTION_REL_JUMP),
-            0xE1 => (Mnemonic::LOOPE,  OperandTemplate::Relative8,   OperandTemplate::NoOperand,   INSTRUCTION_REL_JUMP),
-            0xE2 => (Mnemonic::LOOP, OperandTemplate::Relative8,   OperandTemplate::NoOperand,     INSTRUCTION_REL_JUMP),
-            0xE3 => (Mnemonic::JCXZ, OperandTemplate::Relative8,   OperandTemplate::NoOperand,     INSTRUCTION_REL_JUMP),
+            0xE0 => (Mnemonic::LOOPNE, OperandTemplate::Relative8,   OperandTemplate::NoOperand,   I_REL_JUMP),
+            0xE1 => (Mnemonic::LOOPE,  OperandTemplate::Relative8,   OperandTemplate::NoOperand,   I_REL_JUMP),
+            0xE2 => (Mnemonic::LOOP, OperandTemplate::Relative8,   OperandTemplate::NoOperand,     I_REL_JUMP),
+            0xE3 => (Mnemonic::JCXZ, OperandTemplate::Relative8,   OperandTemplate::NoOperand,     I_REL_JUMP),
             0xE4 => (Mnemonic::IN,   OperandTemplate::FixedRegister8(Register8::AL),   OperandTemplate::Immediate8,    0),
             0xE5 => (Mnemonic::IN,   OperandTemplate::FixedRegister16(Register16::AX),   OperandTemplate::Immediate8,   0),
             0xE6 => (Mnemonic::OUT,  OperandTemplate::Immediate8,   OperandTemplate::FixedRegister8(Register8::AL),  0),
             0xE7 => (Mnemonic::OUT,  OperandTemplate::Immediate8,   OperandTemplate::FixedRegister16(Register16::AX), 0),
-            0xE8 => (Mnemonic::CALL, OperandTemplate::Relative16,   OperandTemplate::NoOperand,    INSTRUCTION_REL_JUMP),
-            0xE9 => (Mnemonic::JMP,  OperandTemplate::Relative16,   OperandTemplate::NoOperand,    INSTRUCTION_REL_JUMP),
+            0xE8 => (Mnemonic::CALL, OperandTemplate::Relative16,   OperandTemplate::NoOperand,    I_REL_JUMP),
+            0xE9 => (Mnemonic::JMP,  OperandTemplate::Relative16,   OperandTemplate::NoOperand,    I_REL_JUMP),
             0xEA => (Mnemonic::JMPF, OperandTemplate::FarAddress,  OperandTemplate::NoOperand,    0),
-            0xEB => (Mnemonic::JMP,  OperandTemplate::Relative8,   OperandTemplate::NoOperand,     INSTRUCTION_REL_JUMP),
+            0xEB => (Mnemonic::JMP,  OperandTemplate::Relative8,   OperandTemplate::NoOperand,     I_REL_JUMP),
             0xEC => (Mnemonic::IN,   OperandTemplate::FixedRegister8(Register8::AL),   OperandTemplate::FixedRegister16(Register16::DX),     0),
             0xED => (Mnemonic::IN,   OperandTemplate::FixedRegister16(Register16::AX),   OperandTemplate::FixedRegister16(Register16::DX),   0),
             0xEE => (Mnemonic::OUT,  OperandTemplate::FixedRegister16(Register16::DX),   OperandTemplate::FixedRegister8(Register8::AL),     0),
@@ -314,116 +317,119 @@ impl<'a> Cpu<'a> {
 
         // If we haven't had a match yet, we are in a group instruction
         if mnemonic == Mnemonic::NoOpcode {
-            // All group instructions have a modrm w/ op extension.
 
-            modrm = ModRmByte::read_from(bytes, op_segment_override)?;
+            // All group instructions have a modrm w/ op extension. Load the modrm now.
+            let modrm_len;
+            (modrm, modrm_len) = ModRmByte::read(bytes, op_segment_override);
+            size += modrm_len;
+
             loaded_modrm = true;
             let op_ext = modrm.get_op_extension();
             
             (mnemonic, operand1_template, operand2_template, op_flags) = match (opcode, op_ext) {
-                (0x80 | 0x82, 0x00) => (Mnemonic::ADD,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
-                (0x80 | 0x82, 0x01) => (Mnemonic::OR,   OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
-                (0x80 | 0x82, 0x02) => (Mnemonic::ADC,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
-                (0x80 | 0x82, 0x03) => (Mnemonic::SBB,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
-                (0x80 | 0x82, 0x04) => (Mnemonic::AND,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
-                (0x80 | 0x82, 0x05) => (Mnemonic::SUB,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
-                (0x80 | 0x82, 0x06) => (Mnemonic::XOR,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
-                (0x80 | 0x82, 0x07) => (Mnemonic::CMP,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    0),
+                (0x80 | 0x82, 0x00) => (Mnemonic::ADD,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
+                (0x80 | 0x82, 0x01) => (Mnemonic::OR,   OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
+                (0x80 | 0x82, 0x02) => (Mnemonic::ADC,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
+                (0x80 | 0x82, 0x03) => (Mnemonic::SBB,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
+                (0x80 | 0x82, 0x04) => (Mnemonic::AND,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
+                (0x80 | 0x82, 0x05) => (Mnemonic::SUB,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
+                (0x80 | 0x82, 0x06) => (Mnemonic::XOR,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
+                (0x80 | 0x82, 0x07) => (Mnemonic::CMP,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
                 
-                (0x81, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
-                (0x81, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
-                (0x81, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
-                (0x81, 0x03) => (Mnemonic::SBB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
-                (0x81, 0x04) => (Mnemonic::AND,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
-                (0x81, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
-                (0x81, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
-                (0x81, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    0),
+                (0x81, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
+                (0x81, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
+                (0x81, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
+                (0x81, 0x03) => (Mnemonic::SBB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
+                (0x81, 0x04) => (Mnemonic::AND,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
+                (0x81, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
+                (0x81, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
+                (0x81, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
                 
-                (0x83, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
-                (0x83, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
-                (0x83, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
-                (0x83, 0x03) => (Mnemonic::SBB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
-                (0x83, 0x04) => (Mnemonic::AND,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
-                (0x83, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
-                (0x83, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),
-                (0x83, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    0),   
+                (0x83, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+                (0x83, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+                (0x83, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+                (0x83, 0x03) => (Mnemonic::SBB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+                (0x83, 0x04) => (Mnemonic::AND,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+                (0x83, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+                (0x83, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+                (0x83, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),   
                 
-                (0xD0, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
-                (0xD0, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
-                (0xD0, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
-                (0xD0, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
-                (0xD0, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
-                (0xD0, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
-                (0xD0, 0x06) => (Mnemonic::SETMO, OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
-                (0xD0, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    0),
+                (0xD0, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD0, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD0, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD0, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD0, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD0, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD0, 0x06) => (Mnemonic::SETMO, OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD0, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
                 
-                (0xD1, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
-                (0xD1, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
-                (0xD1, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
-                (0xD1, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
-                (0xD1, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
-                (0xD1, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
-                (0xD1, 0x06) => (Mnemonic::SETMO, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
-                (0xD1, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    0),
+                (0xD1, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD1, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD1, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD1, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD1, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD1, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD1, 0x06) => (Mnemonic::SETMO, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
+                (0xD1, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
 
-                (0xD2, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD2, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD2, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD2, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD2, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD2, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD2, 0x06) => (Mnemonic::SETMOC,OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD2, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD2, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD2, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD2, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD2, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD2, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD2, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD2, 0x06) => (Mnemonic::SETMOC,OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD2, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM8,    OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
 
-                (0xD3, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD3, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD3, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD3, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD3, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD3, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD3, 0x06) => (Mnemonic::SETMOC,OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
-                (0xD3, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    0),
+                (0xD3, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD3, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD3, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD3, 0x03) => (Mnemonic::RCR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD3, 0x04) => (Mnemonic::SHL,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD3, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD3, 0x06) => (Mnemonic::SETMOC,OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
+                (0xD3, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
 
-                (0xF6, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     0),
-                (0xF6, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     0),
-                (0xF6, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xF6, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xF6, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xF6, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xF6, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xF6, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
+                (0xF6, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     I_LOAD_EA ),
+                (0xF6, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     I_LOAD_EA ),
+                (0xF6, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xF6, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xF6, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xF6, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xF6, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xF6, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
 
-                (0xF7, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   0),
-                (0xF7, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   0),
-                (0xF7, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xF7, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xF7, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xF7, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xF7, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xF7, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),                
+                (0xF7, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   I_LOAD_EA ),
+                (0xF7, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   I_LOAD_EA ),
+                (0xF7, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xF7, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xF7, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xF7, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xF7, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xF7, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),                
 
-                (0xFE, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xFE, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xFE, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xFE, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xFE, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xFE, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xFE, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),
-                (0xFE, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      0),                    
+                (0xFE, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xFE, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xFE, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xFE, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xFE, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xFE, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xFE, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xFE, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),                    
                     
-                (0xFF, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xFF, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xFF, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xFF, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xFF, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xFF, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xFF, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0),
-                (0xFF, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     0), 
+                (0xFF, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xFF, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xFF, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xFF, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xFF, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xFF, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xFF, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+                (0xFF, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ), 
                 
                 _=> (Mnemonic::NoOpcode, OperandTemplate::NoOperand, OperandTemplate::NoOperand, 0)
             };
 
-            op_flags |= INSTRUCTION_HAS_MODRM;
+            op_flags |= I_HAS_MODRM;
         }
 
         // Handle templatized operands
@@ -446,15 +452,23 @@ impl<'a> Cpu<'a> {
 
         // Load the ModRM byte if required
         if !loaded_modrm && (load_modrm_op1 | load_modrm_op2) {
-            op_flags |= INSTRUCTION_HAS_MODRM;
-            modrm = ModRmByte::read_from(bytes, op_segment_override)?;
+            op_flags |= I_HAS_MODRM;
+            let modrm_len;
+            (modrm, modrm_len) = ModRmByte::read(bytes, op_segment_override);
+            size += modrm_len;
+            loaded_modrm = true;
         }
-        else if !loaded_modrm {
-            // No modrm. Set a one cycle fetch delay. This has no effect when reading from memory.
-            // When fetching from the processor instruction queue, the 2nd byte must be a modrm or 
-            // the fetch is skipped for that cycle.
-            bytes.delay(1);
+
+        // Begin instruction execution after opcode fetch (if no modrm) or after modrm on next cycle
+        if !loaded_modrm {
+            bytes.wait(1);
         }
+
+        if loaded_modrm && (op_flags & I_LOAD_EA == 0) {
+            // The EA calculated by the modrm will not be loaded (ie, we proceed to EADONE instead of EALOAD).
+            // Account for two cycles.
+            bytes.wait(2);
+        }         
 
         // Handle fetch delays for 0xF0, 0xF1, 0xF2, 0xF3
         // These instructions decrement and compare CX before fetching their rel8 operand, taking two
@@ -524,32 +538,41 @@ impl<'a> Cpu<'a> {
                     Ok((operand_type, OperandSize::Operand16))
                 }
                 OperandTemplate::Immediate8 => {
-                    let operand = bytes.q_read_u8(QueueType::Subsequent);
+                    // Peek at immediate value now, fetch during execute
+                    let operand = bytes.q_peek_u8();
+                    size += 1;
                     Ok((OperandType::Immediate8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Immediate16 => {
-                    let operand = bytes.q_read_u16(QueueType::Subsequent);
+                    // Peek at immediate value now, fetch during execute
+                    let operand = bytes.q_peek_u16();
+                    size += 2;
                     Ok((OperandType::Immediate16(operand), OperandSize::Operand16))
                 }
                 OperandTemplate::Immediate8SignExtended => {
-                    let operand = bytes.q_read_u8(QueueType::Subsequent);
-                    let op_extended = operand as i8 as i16 as u16;
-                    Ok((OperandType::Immediate16(op_extended), OperandSize::Operand16))
+                    // Peek at immediate value now, fetch during execute
+                    let operand = bytes.q_peek_i8();
+                    size += 1;
+                    Ok((OperandType::Immediate8s(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Relative8 => {
                     let operand = bytes.q_read_i8(QueueType::Subsequent);
+                    size += 1;
                     Ok((OperandType::Relative8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Relative16 => {
                     let operand = bytes.q_read_i16(QueueType::Subsequent);
+                    size += 2;
                     Ok((OperandType::Relative16(operand), OperandSize::Operand16))                
                 }
                 OperandTemplate::Offset8 => {
                     let operand = bytes.q_read_u16(QueueType::Subsequent);
+                    size += 2;
                     Ok((OperandType::Offset8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Offset16 => {
                     let operand = bytes.q_read_u16(QueueType::Subsequent);
+                    size += 2;
                     Ok((OperandType::Offset16(operand), OperandSize::Operand16))
                 }
                 OperandTemplate::FixedRegister8(r8) => {
@@ -560,11 +583,13 @@ impl<'a> Cpu<'a> {
                 }
                 OperandTemplate::NearAddress => {
                     let offset = bytes.q_read_u16(QueueType::Subsequent);
+                    size += 2;
                     Ok((OperandType::NearAddress(offset), OperandSize::NoSize))
                 }
                 OperandTemplate::FarAddress => {
                     let offset = bytes.q_read_u16(QueueType::Subsequent);
                     let segment = bytes.q_read_u16(QueueType::Subsequent);
+                    size += 4;
                     Ok((OperandType::FarAddress(segment,offset), OperandSize::NoSize))
                 }
                 _=>Ok((OperandType::NoOperand,OperandSize::NoOperand))
@@ -583,30 +608,30 @@ impl<'a> Cpu<'a> {
 
         // Set a flag if either of the instruction operands is a memory operand.
         if let OperandType::AddressingMode(_) = operand1_type {
-            op_flags |= INSTRUCTION_USES_MEM;
+            op_flags |= I_USES_MEM;
         }
         if let OperandType::AddressingMode(_) = operand2_type {
-            op_flags |= INSTRUCTION_USES_MEM;
+            op_flags |= I_USES_MEM;
         }
 
-        op_size = bytes.tell() as u32 - op_address;
+        //size = bytes.tell() as u32 - op_address;
 
         if let Mnemonic::InvalidOpcode = mnemonic {
             return Err(Box::new(InstructionDecodeError::UnsupportedOpcode(opcode)));
         }
 
         Ok(Instruction { 
-            opcode: opcode,
+            opcode,
             flags: op_flags,
             prefixes: op_prefixes,
             address: 0,
-            size: op_size, 
-            mnemonic: mnemonic,
+            size,
+            mnemonic,
             segment_override: op_segment_override,
-            operand1_type: operand1_type,
-            operand1_size: operand1_size,
-            operand2_type: operand2_type,
-            operand2_size: operand2_size,
+            operand1_type,
+            operand1_size,
+            operand2_type,
+            operand2_size
         })
     }
 }

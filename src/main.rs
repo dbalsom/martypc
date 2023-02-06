@@ -1187,6 +1187,14 @@ pub fn main_fuzzer <'a>(
                 // For obvious reasons
                 continue;
             }
+            Mnemonic::DIV | Mnemonic::IDIV | Mnemonic::MUL | Mnemonic::IMUL => {
+                // Timings on these will take some work 
+                continue;
+            }
+            Mnemonic::ROL | Mnemonic::ROR | Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
+                // Limit cl to 0-31.
+                cpu.set_register8(Register8::CL, cpu.get_register8(Register8::CL) % 32);
+            }
             _=> {}
         }
 

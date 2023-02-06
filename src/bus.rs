@@ -57,6 +57,7 @@ impl ByteQueue for BusInterface {
 
     fn delay(&mut self, _delay: u32) {}
     fn wait(&mut self, _cycles: u32) {}
+    fn wait_i(&mut self, _cycles: u32, _instr: &[u16]) {}
     fn clear_delay(&mut self) {}
 
     fn q_read_u8(&mut self, _dtype: QueueType) -> u8 {
@@ -93,7 +94,39 @@ impl ByteQueue for BusInterface {
             return w
         }
         -1i16
+    }
+
+    fn q_peek_u8(&self) -> u8 {
+        if self.cursor < self.memory.len() {
+            let b: u8 = self.memory[self.cursor];
+            return b
+        }
+        0xffu8
+    }
+
+    fn q_peek_i8(&self) -> i8 {
+        if self.cursor < self.memory.len() {
+            let b: i8 = self.memory[self.cursor] as i8;
+            return b
+        }
+        -1i8   
+    }
+
+    fn q_peek_u16(&self) -> u16 {
+        if self.cursor < self.memory.len() - 1 {
+            let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
+            return w
+        }
+        0xffffu16   
     }    
+
+    fn q_peek_i16(&self) -> i16 {
+        if self.cursor < self.memory.len() - 1 {
+            let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
+            return w
+        }
+        -1i16
+    }      
 }
 
 impl Default for BusInterface {

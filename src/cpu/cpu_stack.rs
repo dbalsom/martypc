@@ -66,8 +66,7 @@ impl<'a> Cpu<'a> {
     pub fn pop_register16(&mut self, reg: Register16, flag: ReadWriteFlag) {
 
         let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        
-        self.cycles(2);
+    
         let data = self.biu_read_u16(Segment::SS, stack_addr, flag);
 
         let mut update_sp = true;

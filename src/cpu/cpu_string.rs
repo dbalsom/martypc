@@ -18,14 +18,9 @@ impl<'a> Cpu<'a> {
                 // No flags affected
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                // Check REP prefixs
-                self.cycles(2);
-
                 // Write AL to [es:di]
                 self.biu_write_u8(Segment::ES, dest_addr, self.al, ReadWriteFlag::Normal);
-                //self.bus.write_u8(dest_addr as usize, self.al).unwrap();
-
-                self.cycles(2);
+                self.cycles(1);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -43,13 +38,8 @@ impl<'a> Cpu<'a> {
                 // No flags affected
                 let dest_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                // Check REP prefixs
-                self.cycles(2);
-
                 // Write AX to [es:di]
                 self.biu_write_u16(Segment::ES, dest_addr, self.ax, ReadWriteFlag::Normal);
-                //self.bus.write_u16(dest_addr as usize, self.ax).unwrap();
-
                 self.cycles(1);
 
                 match self.get_flag(Flag::Direction) {
@@ -69,6 +59,8 @@ impl<'a> Cpu<'a> {
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
                 let data = self.biu_read_u8(segment_base_ds, src_addr);
+                self.cycles_i(3, &[0x12e, MC_JUMP, 0x1f8]);
+
                 //let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
                 self.set_register8(Register8::AL, data);
 
@@ -90,6 +82,8 @@ impl<'a> Cpu<'a> {
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
                 let data = self.biu_read_u16(segment_base_ds, src_addr, ReadWriteFlag::Normal);
+                self.cycles_i(3, &[0x12e, MC_JUMP, 0x1f8]);
+
                 //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
                 self.set_register16(Register16::AX, data);  
 
@@ -159,8 +153,10 @@ impl<'a> Cpu<'a> {
                 // Override: ES cannot be overridden
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);
 
+                self.cycles_i(2, &[0x121, MC_JUMP]);
                 let data = self.biu_read_u8(Segment::ES, scan_addr);
                 //let (byte, _cost) = self.bus.read_u8(scan_addr as usize).unwrap();
+                self.cycles_i(4, &[0x126, 0x127, 0x128, MC_JUMP]);
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, data, false );
                 // Test operation behaves like CMP
@@ -214,10 +210,12 @@ impl<'a> Cpu<'a> {
                 let dssi_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
                 
+                //self.cycles_i(2, &[0x121, 0x122]);
+                self.cycle_i(0x121);
                 let dssi_op = self.biu_read_u8(segment_base_ds, dssi_addr);
+                self.cycles_i(2, &[0x123, 0x124]);
                 let esdi_op = self.biu_read_u8(Segment::ES, esdi_addr);
-                //let (dssi_op, _cost2) = self.bus.read_u8(dssi_addr as usize).unwrap();
-                //let (esdi_op, _cost1) = self.bus.read_u8(esdi_addr as usize).unwrap();
+                self.cycles_i(2, &[0x127, 0x128]);
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(dssi_op, esdi_op, false);
 
@@ -246,6 +244,8 @@ impl<'a> Cpu<'a> {
                 // Override: DS can be overridden
                 let dssi_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
+
+                self.cycles(2);
                 
                 let dssi_op = self.biu_read_u16(segment_base_ds, dssi_addr, ReadWriteFlag::Normal);
                 let esdi_op = self.biu_read_u16(Segment::ES, esdi_addr, ReadWriteFlag::Normal);

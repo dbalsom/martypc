@@ -51,6 +51,10 @@ impl ByteQueue for Cpu<'_> {
         self.cycles(cycles);
     }
 
+    fn wait_i(&mut self, cycles: u32, instr: &[u16]) {
+        self.cycles_i(cycles, instr);
+    }
+
     fn clear_delay(&mut self) {
         self.fetch_delay = 0;
     }
@@ -76,6 +80,26 @@ impl ByteQueue for Cpu<'_> {
         
         ((ho as u16) << 8 | (lo as u16)) as i16
     }
+
+    fn q_peek_u8(&self) -> u8 {
+        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len()).unwrap();
+        byte
+    }
+
+    fn q_peek_i8(&self) -> i8 {
+        let (byte, _cost) = self.bus.read_i8(self.pc as usize - self.queue.len()).unwrap();
+        byte
+    }
+
+    fn q_peek_u16(&self) -> u16 {
+        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len()).unwrap();
+        word
+    }    
+
+    fn q_peek_i16(&self) -> i16 {
+        let (word, _cost) = self.bus.read_i16(self.pc as usize - self.queue.len()).unwrap();
+        word
+    }        
 }
 
 
@@ -89,9 +113,9 @@ impl<'a> Cpu<'a> {
         let byte;
 
         if let Some(preload_byte) = self.queue.get_preload() {
-            // We have a pre-loaded byte from the last instruction
+            // We have a pre-loaded byte from finalizing the last instruction
+            self.queue_op = QueueOp::First;
             self.cycle();
-            self.last_queue_op = QueueOp::First;
             self.last_queue_byte = preload_byte;
             return preload_byte
         }
@@ -107,31 +131,24 @@ impl<'a> Cpu<'a> {
                 self.cycle();
             }
 
-            self.trace_print("biu_queue_read: pop()");
+            //self.trace_print("biu_queue_read: pop()");
+            self.trace_comment("Q_READ");
             byte = self.queue.pop();
-
-            self.trace_print("biu_queue_read: cycle()");
-            self.cycle();
-
-            self.last_queue_op = match dtype {
+            self.queue_op = match dtype {
                 QueueType::First => QueueOp::First,
                 QueueType::Subsequent => QueueOp::Subsequent
             };
+            self.cycle();
             self.last_queue_byte = byte;
-
-
         }
         else {
             // Queue is empty, first fetch byte
-            byte = self.biu_fetch_u8(self.pc);
+            byte = self.biu_fetch_u8(dtype);
 
-            self.last_queue_op = match dtype {
-                QueueType::First => QueueOp::First,
-                QueueType::Subsequent => QueueOp::Subsequent
-            };
+
             self.last_queue_byte = byte;
 
-            self.trace_print("biu_queue_read: cycle()");
+            //self.trace_print("biu_queue_read: cycle()");
             self.cycle();            
         }
         byte
@@ -166,7 +183,8 @@ impl<'a> Cpu<'a> {
 
     pub fn biu_suspend_fetch(&mut self) {
         self.trace_comment("SUSP");
-        self.fetch_state = FetchState::Suspended;
+        //self.fetch_state = FetchState::Suspended;
+        self.fetch_suspended = true;
     }
 
     pub fn biu_schedule_fetch(&mut self) {
@@ -181,6 +199,9 @@ impl<'a> Cpu<'a> {
     pub fn biu_abort_fetch(&mut self) {
 
         self.fetch_state = FetchState::Aborted(0);
+        self.t_cycle = TCycle::T1;
+        self.bus_status = BusStatus::Passive;
+        self.i8288.ale = false;
         self.trace_comment("ABORT");
         self.cycles(2);
     }
@@ -204,10 +225,13 @@ impl<'a> Cpu<'a> {
     pub fn biu_queue_flush(&mut self) {
         self.pc -= self.queue.len() as u32;
         self.queue.flush();
-        self.last_queue_op = QueueOp::Flush;
+        self.queue_op = QueueOp::Flush;
         self.trace_comment("FLUSH");
         self.biu_update_pc();
-        self.biu_schedule_fetch();
+        
+        self.trace_print("Fetch state to idle");
+        self.fetch_state = FetchState::Idle;
+        self.fetch_suspended = false;
     }
 
     pub fn biu_update_pc(&mut self) {
@@ -235,18 +259,19 @@ impl<'a> Cpu<'a> {
         */
 
         let can_fetch = match self.fetch_state {
-            FetchState::BlockedByEU | FetchState::Suspended => false,
+            //FetchState::BlockedByEU | FetchState::Suspended => false,
+            FetchState::BlockedByEU => false,  // we CAN schedule a fetch while suspended (?)
             _=> true
         };
 
-        if self.biu_queue_has_room() && can_fetch {
+        if self.biu_queue_has_room() && can_fetch && self.queue_op != QueueOp::Flush {
             self.biu_schedule_fetch();
         }
     }
 
     pub fn biu_tick_prefetcher(&mut self) {
         match &mut self.fetch_state {
-            FetchState::Scheduled(c) => {
+            FetchState::Scheduled(c) if c < &mut 2 => {
                 *c += 1;
 
                 if *c == FETCH_DELAY {
@@ -264,10 +289,7 @@ impl<'a> Cpu<'a> {
         }
     }
 
-    pub fn biu_fetch_u8(&mut self, addr: u32) -> u8 {
-        //let byte;
-        //let _cost;
-
+    pub fn biu_fetch_u8(&mut self, dtype: QueueType) -> u8 {
         // Fetching should be automatic, we shouldn't have to request it.
         // Therefore, just cycle the cpu until there is a byte in the queue and return it.
 
@@ -275,57 +297,15 @@ impl<'a> Cpu<'a> {
             self.cycle();
         }
 
-        self.trace_print("biu_fetch_u8: pop()");
+        self.trace_comment("Q_READ");
         let byte = self.queue.pop();
-
-        self.trace_print("biu_fetch_u8: cycle()");
-        self.cycle(); // It takes 1 cycle to read from the queue.
+        self.queue_op = match dtype {
+            QueueType::First => QueueOp::First,
+            QueueType::Subsequent => QueueOp::Subsequent
+        };
+        //self.cycle(); // It takes 1 cycle to read from the queue.
         
         byte
-
-        /*
-        match self.bus_status {
-            BusStatus::CodeFetch => {
-                // Fetch already in progress?
-                // Wait for fetch to complete
-                cycles_waited = self.bus_wait_finish();
-                self.fetch_delay = self.fetch_delay.saturating_sub(cycles_waited);
-                while self.fetch_delay > 0 {
-                    // Wait any more remaining fetch delay cycles                    
-                    self.cycle();
-                    self.fetch_delay -= 1;
-                }
-                // Byte should be in queue now
-                byte = self.queue.pop();
-                self.cycle();
-            }
-            _ => {
-                // Handle other states
-                self.bus_wait_finish();
-                self.bus_begin(
-                    BusStatus::CodeFetch, 
-                    Segment::CS, 
-                    self.pc, 
-                    0, 
-                    TransferSize::Byte,
-                    OperandSize::Operand8,
-                    true
-                );
-                cycles_waited = self.bus_wait_finish();
-                self.fetch_delay = self.fetch_delay.saturating_sub(cycles_waited);
-                while self.fetch_delay > 0 {
-                    // Wait any more remaining fetch delay cycles
-                    self.cycle();
-                    self.fetch_delay -= 1;
-                }
-                // Byte should be in queue now
-                byte = self.queue.pop();
-                self.cycle();                
-            }                
-        }
-       
-        byte
-         */
     }
 
     pub fn biu_read_u8(&mut self, seg: Segment, addr: u32) -> u8 {
@@ -398,7 +378,7 @@ impl<'a> Cpu<'a> {
         );
         match flag {
             ReadWriteFlag::Normal => self.bus_wait_finish(),
-            ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T2)
+            ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
         };
         
         validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
@@ -580,7 +560,7 @@ impl<'a> Cpu<'a> {
 
                 match flag {
                     ReadWriteFlag::Normal => self.bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T2)
+                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
                 };
             }
             CpuType::Cpu8086 => {
@@ -594,7 +574,7 @@ impl<'a> Cpu<'a> {
                     true);
                 match flag {
                     ReadWriteFlag::Normal => self.bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T2)
+                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
                 };
             }
         }

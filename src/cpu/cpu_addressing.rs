@@ -175,11 +175,21 @@ impl<'a> Cpu<'a> {
     }
 
     /// Return the value of an 8-bit Operand
-    // TODO: implement cycle cost
     pub fn read_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<u8> {
 
         match operand {
-            OperandType::Immediate8(imm8) => Some(imm8),
+            OperandType::Immediate8(imm8) => {
+                // Immediate value was peeked during instruction decode, but we have to fetch it now.
+                let byte = self.q_read_u8(QueueType::Subsequent);
+                assert!(byte == imm8); // Fetched value should match peeked value
+                Some(byte)
+            }
+            OperandType::Immediate8s(imm8s) => {
+                // Immediate value was peeked during instruction decode, but we have to fetch it now.
+                let byte = self.q_read_i8(QueueType::Subsequent);
+                assert!(byte == imm8s); // Fetched value should match peeked value
+                Some(byte as u8)
+            }
             OperandType::Relative8(rel8) => Some(rel8 as u8),
             OperandType::Offset8(offset8) => {
 
@@ -204,7 +214,7 @@ impl<'a> Cpu<'a> {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 let byte = self.biu_read_u8(segment, flat_addr);
-                self.cycle(); // Return delay cycle from EALOAD
+                self.cycles_i(2, &[0x1e2, MC_NONE]); // Return delay cycle from EALOAD
                 Some(byte)
             }
             OperandType::NearAddress(_u16) => None,
@@ -216,11 +226,15 @@ impl<'a> Cpu<'a> {
     }
 
     /// Return the value of a 16-bit Operand
-    // TODO: implement cycle cost
     pub fn read_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<u16> {
 
         match operand {
-            OperandType::Immediate16(imm16) => Some(imm16),
+            OperandType::Immediate16(imm16) => {
+                // Immediate value was peeked during instruction decode, but we have to fetch it now.
+                let word = self.q_read_u16(QueueType::Subsequent);
+                assert!(word == imm16); // Fetched value should match peeked value
+                Some(word)                
+            },
             OperandType::Relative16(rel16) => Some(rel16 as u16),
             OperandType::Offset16(offset16) => {
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
@@ -249,8 +263,8 @@ impl<'a> Cpu<'a> {
             OperandType::AddressingMode(mode) => {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
-                let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
-                self.cycle(); // Return delay cycle from EALOAD
+                let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);             
+                self.cycles_i(2, &[0x1e2, MC_NONE]); // Return delay cycle from EALOAD
                 Some(word)
             }
             OperandType::NearAddress(_u16) => None,
@@ -298,16 +312,11 @@ impl<'a> Cpu<'a> {
     pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8, flag: ReadWriteFlag) {
 
         match operand {
-            OperandType::Immediate8(imm8) => {}
-            OperandType::Immediate16(imm16) => {}
-            OperandType::Relative8(rel8) => {}
-            OperandType::Relative16(rel16) => {}
             OperandType::Offset8(offset8) => {
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
                 let flat_addr = self.calc_linear_address_seg(segment, offset8);
                 self.biu_write_u8(segment, flat_addr, value, flag);
             }
-            OperandType::Offset16(offset16) => {}
             OperandType::Register8(reg8) => {
                 match reg8 {
                     Register8::AH => self.set_register8(Register8::AH, value),
@@ -320,16 +329,12 @@ impl<'a> Cpu<'a> {
                     Register8::DL => self.set_register8(Register8::DL , value),
                 }
             },
-            OperandType::Register16(r16) => {}
             OperandType::AddressingMode(mode) => {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 self.biu_write_u8(segment, flat_addr, value, flag);
             }
-            OperandType::NearAddress(offset) => {}
-            OperandType::FarAddress(segment,offset) => {}
-            OperandType::NoOperand => {}
-            OperandType::InvalidOperand => {}
+            _ => {}
         }
     }
 
@@ -337,17 +342,11 @@ impl<'a> Cpu<'a> {
     pub fn write_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u16, flag: ReadWriteFlag) {
 
         match operand {
-            OperandType::Immediate8(imm8) => {}
-            OperandType::Immediate16(imm16) => {}
-            OperandType::Relative8(rel8) => {}
-            OperandType::Relative16(rel16) => {}
-            OperandType::Offset8(offset8) => {}
             OperandType::Offset16(offset16) => {
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
                 let flat_addr = self.calc_linear_address_seg(segment, offset16);
                 self.biu_write_u16(segment, flat_addr, value, flag);
             }
-            OperandType::Register8(reg8) => {}
             OperandType::Register16(reg16) => {
                 match reg16 {
                     Register16::AX => self.set_register16(Register16::AX, value),
@@ -375,10 +374,7 @@ impl<'a> Cpu<'a> {
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 self.biu_write_u16(segment, flat_addr, value, flag);
             }
-            OperandType::NearAddress(offset) => {}
-            OperandType::FarAddress(segment,offset) => {}
-            OperandType::NoOperand => {}
-            OperandType::InvalidOperand => {}
+            _ => {}
         }
     }    
 }

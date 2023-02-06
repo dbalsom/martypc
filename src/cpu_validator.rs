@@ -140,8 +140,8 @@ pub struct CycleState {
 impl PartialEq<CycleState> for CycleState {
     fn eq(&self, other: &CycleState) -> bool {
 
-        let equals_a = self.addr == other.addr
-            && self.t_state == other.t_state
+        let equals_a = 
+            self.t_state == other.t_state
             && self.b_state == other.b_state
             && self.ale == other.ale
             && self.mrdc == other.mrdc
@@ -152,16 +152,23 @@ impl PartialEq<CycleState> for CycleState {
             && self.q_op == other.q_op;
 
         let equals_b = match self.t_state {
-            BusCycle::T1 => true,
+            BusCycle::T1 => {
+                if self.ale {
+                    self.addr == other.addr
+                }
+                else {
+                    true
+                }
+            },
             BusCycle::T4 => {
                 //(self.q_len == other.q_len) && (self.a_type == other.a_type)
-                (self.a_type == other.a_type)
+                self.a_type == other.a_type
             }
             BusCycle::T3 => {
                 //(self.data_bus == other.data_bus) && (self.a_type == other.a_type)
-                (self.a_type == other.a_type)
+                self.a_type == other.a_type
             }
-            _=> (self.a_type == other.a_type)
+            _=> self.a_type == other.a_type
         };
 
         equals_a && equals_b
