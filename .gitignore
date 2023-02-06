@@ -15,12 +15,11 @@ Thumbs.db
 /floppy
 /hdd
 /dumps
-/traces
 /builds
-
+/traces
+marty.toml
 *.pcm
 *.cfg
-marty.toml
 *.log
 
 
