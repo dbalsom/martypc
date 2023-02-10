@@ -986,34 +986,37 @@ fn main() {
 
                     // -- Update disassembly viewer window
                     if framework.gui.is_window_open(gui::GuiWindow::DiassemblyViewer) {
-                        let disassembly_addr_str = framework.gui.get_disassembly_view_address();
-                        let disassembly_addr = match machine.cpu().eval_address(disassembly_addr_str) {
+                        let disassembly_start_addr_str = framework.gui.get_disassembly_view_address();
+                        let disassembly_start_addr = match machine.cpu().eval_address(disassembly_start_addr_str) {
                             Some(i) => i,
                             None => 0
                         };
 
                         let bus = machine.bus_mut();
-                        bus.seek(disassembly_addr as usize);
+                        
                         let mut disassembly_string = String::new();
+                        let mut disassembly_addr = disassembly_start_addr as usize;
                         for _ in 0..24 {
 
-                            let address = bus.tell();
-                            if address < machine::MAX_MEMORY_ADDRESS {
+                            if disassembly_addr < machine::MAX_MEMORY_ADDRESS {
 
+                                bus.seek(disassembly_addr as usize);
                                 let decode_str: String = match Cpu::decode(bus) {
                                     Ok(i) => {
                                     
-                                        let instr_slice = bus.get_slice_at(address, i.size as usize);
-                                        let instr_bytes_str = util::fmt_byte_array(instr_slice);                                    
-                                        format!("{:05X} {:012} {}\n", address, instr_bytes_str, i)
+                                        let instr_slice = bus.get_slice_at(disassembly_addr, i.size as usize);
+                                        let instr_bytes_str = util::fmt_byte_array(instr_slice);
+                                        let decode_str = format!("{:05X} {:012} {}\n", disassembly_addr, instr_bytes_str, i);
+                                        disassembly_addr += i.size as usize;
+
+                                        decode_str
                                     }
                                     Err(_) => {
-                                        format!("{:05X} INVALID\n", address)
+                                        format!("{:05X} INVALID\n", disassembly_addr)
                                     }
                                 };
-                                disassembly_string.push_str(&decode_str)
+                                disassembly_string.push_str(&decode_str);
                             }
-
                         }
                         framework.gui.update_dissassembly_view(disassembly_string);
                     }
@@ -1165,6 +1168,11 @@ pub fn main_fuzzer <'a>(
             }                
         };
         
+        // Skip N successful instructions
+        if test_num < 490 {
+            //continue;
+        }
+
         match i.mnemonic {
             Mnemonic::INT | Mnemonic::INT3 | Mnemonic::INTO | Mnemonic::IRET => {
                 continue;
@@ -1187,7 +1195,7 @@ pub fn main_fuzzer <'a>(
                 // For obvious reasons
                 continue;
             }
-            Mnemonic::DIV | Mnemonic::IDIV | Mnemonic::MUL | Mnemonic::IMUL => {
+            Mnemonic::AAM | Mnemonic::DIV | Mnemonic::IDIV | Mnemonic::MUL | Mnemonic::IMUL => {
                 // Timings on these will take some work 
                 continue;
             }

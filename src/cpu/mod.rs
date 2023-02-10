@@ -25,6 +25,7 @@ mod cpu_display;
 mod cpu_execute;
 mod cpu_modrm;
 pub mod cpu_mnemonic;
+mod cpu_multiply;
 mod cpu_stack;
 mod cpu_string;
 mod cpu_queue;
@@ -50,6 +51,17 @@ use crate::cpu_validator::{CpuValidator, CycleState, VRegisters, BusCycle, BusSt
 use crate::pi_cpu_validator::{PiValidator};
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::{ArduinoValidator};
+
+macro_rules! trace_print {
+    ($self:ident, $($t:tt)*) => {{
+        if let TraceMode::Cycle = $self.trace_mode {
+            $self.trace_print(&format!($($t)*));
+        }
+    }};
+}
+
+
+
 
 pub const CPU_MHZ: f64 = 4.77272666;
 
@@ -824,7 +836,8 @@ impl<'a> Cpu<'a> {
         self.biu_queue_flush();
         self.cycles_i(3, &[0x1e6, 0x1e7, 0x1e8]);
 
-        self.trace_print(&format!("Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip));
+        trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip);
+
     }
 
     pub fn bus(&self) -> &BusInterface {
@@ -895,12 +908,13 @@ impl<'a> Cpu<'a> {
         // We can cancel a scheduled fetch if it happened this cycle.
         //self.biu_try_cancel_fetch();
 
-        self.trace_print(
-            &format!(
-                "Bus begin! {:?}:[{:05X}] in {:?}", 
-                new_bus_status, 
-                address, 
-                self.t_cycle));
+        trace_print!(
+            self,
+            "Bus begin! {:?}:[{:05X}] in {:?}", 
+            new_bus_status, 
+            address, 
+            self.t_cycle
+        );
 
         if new_bus_status != BusStatus::CodeFetch {
             // The EU has requested a Read/Write cycle, if we haven't scheduled a prefetch, block 
@@ -913,7 +927,7 @@ impl<'a> Cpu<'a> {
             //else if self.is_before_last_wait() && self.fetch_state != FetchState::Suspended {
             else if self.is_before_last_wait() && !self.fetch_suspended {
 
-                self.trace_print(&format!("Blocking fetch: T:{:?}", self.t_cycle));
+                trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);
                 self.fetch_state = FetchState::BlockedByEU;
                 self.bus_pending_eu = true;
             }
@@ -926,7 +940,7 @@ impl<'a> Cpu<'a> {
             waited_cycles += 1;
         }
 
-        self.trace_print(&format!("bus_begin(): Done waiting for mcycle complete: ({})", waited_cycles));
+        trace_print!(self, "bus_begin(): Done waiting for mcycle complete: ({})", waited_cycles);
 
         if self.fetch_state == FetchState::BlockedByEU {
             self.fetch_state = FetchState::Idle;
@@ -971,7 +985,7 @@ impl<'a> Cpu<'a> {
             self.bus_segment = bus_segment;
             self.t_cycle = TCycle::TInit;
 
-            self.trace_print(&format!("bus_begin(): address {:05X}", address));
+            trace_print!(self, "bus_begin(): address {:05X}", address);
             self.address_bus = address;
             self.i8288.ale = true;
             self.data_bus = data as u16;
@@ -1237,7 +1251,7 @@ impl<'a> Cpu<'a> {
                 if !self.fetch_suspended {
                     if self.biu_queue_has_room() {
 
-                        self.trace_print(&format!("Fetch started"));
+                        trace_print!(self, "Fetch started");
                         self.fetch_state = FetchState::InProgress;
                         self.bus_status = BusStatus::CodeFetch;
                         self.bus_segment = Segment::CS;
@@ -1254,13 +1268,13 @@ impl<'a> Cpu<'a> {
                     }
                     else {
                         self.fetch_state = FetchState::Idle;
-                        self.trace_print(&format!("Fetch cancelled"));
+                        trace_print!(self, "Fetch cancelled");
                     }
                 }
             }
             FetchState::Idle => {
                 if self.queue_op == QueueOp::Flush {
-                    self.trace_print("Flush scheduled fetch!");
+                    trace_print!(self, "Flush scheduled fetch!");
                     self.biu_schedule_fetch();
                 }
                 if (self.bus_status == BusStatus::Passive) && (self.t_cycle == TCycle::T1) {
@@ -1323,25 +1337,35 @@ impl<'a> Cpu<'a> {
     /// This fetched byte is considered 'preloaded' by the queue.
     pub fn finalize(&mut self) {
 
-        self.trace_comment("FINALIZE");
-
-        if self.queue.len() == 0 {
-            while { 
+        // Don't finalize a string instruction that is still repeating.
+        if !self.in_rep {
+            self.trace_comment("FINALIZE");
+            let mut finalize_timeout = 0;
+    
+            if self.queue.len() == 0 {
+                while { 
+                    self.cycle();
+                    finalize_timeout += 1;
+                    if finalize_timeout == 16 {
+                        self.trace_flush();
+                        panic!("Finalize timeout!");
+                    }
+                    self.queue.len() == 0
+                } {}
+                // Should be a byte in the queue now. Preload it
+                self.queue.set_preload();
+                self.trace_comment("FINALIZE_END");
                 self.cycle();
-                self.queue.len() == 0
-            } {}
-            // Should be a byte in the queue now. Preload it
-            self.queue.set_preload();
-            self.trace_comment("FINALIZE_END");
-            self.cycle();
-        }
-        else {
-            self.queue.set_preload();
-            self.trace_comment("FINALIZE_END");
-            self.cycle();
-        }
+            }
+            else {
+                // Check if reading the queue will cause a prefetch.
+                self.trigger_prefetch_on_queue_read();
 
-        
+                self.queue.set_preload();
+                self.trace_comment("FINALIZE_END");
+                self.cycle();
+            }
+        }
     }
 
     #[cfg(feature = "cpu_validator")]
@@ -1957,8 +1981,7 @@ impl<'a> Cpu<'a> {
         self.cs = new_cs;        
 
         // Flush queue
-        self.biu_queue_flush();
-        self.biu_update_pc();                
+        self.biu_queue_flush();             
     }
 
     /// Handle a CPU exception
@@ -2131,7 +2154,7 @@ impl<'a> Cpu<'a> {
 
         self.instr_cycle = 0;
 
-        self.trace_print(&format!("STEP"));
+        self.trace_comment("STEP");
 
         // When halted, the CPU waits for an interrupt to fire before resuming execution
         if self.halted {
@@ -2198,7 +2221,7 @@ impl<'a> Cpu<'a> {
             // which fetches instruction bytes through the processor instruction queue.
             
             //self.trace_comment("FETCH");
-            self.trace_print(&format!("FETCH {:05X}", self.pc));
+            trace_print!(self, "FETCH {:05X}", self.pc);
             self.i = match Cpu::decode(self) {
                 Ok(i) => i,
                 Err(_) => {
@@ -2217,10 +2240,12 @@ impl<'a> Cpu<'a> {
 
         let (opcode, _cost) = self.bus.read_u8(instruction_address as usize).expect("mem err");
         
-        self.trace_print(&format!("Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address));
-        self.trace_print(&format!("Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size));
+        trace_print!(self, "Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
+        trace_print!(self, "Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
 
         let exec_result = self.execute_instruction(io_bus);
+        // Finalize execution. This runs cycles until the next instruction byte has been fetched. This fetch period is technically
+        // part of the current instruction execution time, but not part of the instruction's microcode other than executing RNI.
         self.finalize();
 
         #[cfg(feature = "cpu_validator")]
@@ -2280,8 +2305,9 @@ impl<'a> Cpu<'a> {
                     }
                 }
                 
-                
+                //println!("instruction {} is of size: {} ip: {:05X} new ip: {:05X}", self.i, self.i.size, self.ip, self.ip.wrapping_add(self.i.size as u16));
                 self.ip = self.ip.wrapping_add(self.i.size as u16);
+                
 
                 //log::trace!("Execution complete; updated CS:IP: [{:04X}:{:04X}]", self.cs, self.ip);
 
@@ -2317,7 +2343,8 @@ impl<'a> Cpu<'a> {
                 // Perform instruction tracing, if enabled
                 if self.trace_mode == TraceMode::Instruction {
                     self.trace_print(&self.instruction_state_string());   
-                }                          
+                }
+   
                 Ok(self.instr_cycle + 1)
             }
             ExecutionResult::OkayRep => {
@@ -2578,6 +2605,7 @@ impl<'a> Cpu<'a> {
         instr_str
     }
 
+    #[inline]
     pub fn trace_print(&mut self, trace_str: &str) {
         if let Some(w) = self.trace_writer.as_mut() {
             let mut _r = w.write_all(trace_str.as_bytes());
@@ -2587,14 +2615,16 @@ impl<'a> Cpu<'a> {
 
     pub fn trace_flush(&mut self) {
         if let Some(w) = self.trace_writer.as_mut() {
-            w.flush();
+            w.flush().unwrap();
         }
     }
 
+    #[inline]
     pub fn trace_comment(&mut self, comment: &'static str) {
         self.trace_comment = comment;
     }
 
+    #[inline]
     pub fn trace_instr(&mut self, instr: u16) {
         self.trace_instr = instr;
     }

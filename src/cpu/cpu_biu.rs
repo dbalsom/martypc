@@ -123,6 +123,8 @@ impl<'a> Cpu<'a> {
         if self.queue.len() > 0 {
             // The queue is not empty. Return byte from queue.
 
+            self.trigger_prefetch_on_queue_read();
+
             // Handle fetch delays.
             // Delays are set during decode from instructions with no modrm or jcxz, loop & loopne/loope
             while self.fetch_delay > 0 {
@@ -138,6 +140,7 @@ impl<'a> Cpu<'a> {
                 QueueType::First => QueueOp::First,
                 QueueType::Subsequent => QueueOp::Subsequent
             };
+
             self.cycle();
             self.last_queue_byte = byte;
         }
@@ -152,6 +155,23 @@ impl<'a> Cpu<'a> {
             self.cycle();            
         }
         byte
+    }
+
+    pub fn trigger_prefetch_on_queue_read(&mut self) {
+        match self.cpu_type {
+            CpuType::Cpu8088 => {
+                if self.queue.len() == 4 {
+                    // We can fetch again after this read
+                    self.biu_schedule_fetch();
+                }
+            }
+            CpuType::Cpu8086 => {
+                if self.queue.len() == 5 {
+                    // We can fetch again after this read
+                    self.biu_schedule_fetch();
+                }
+            }
+        }
     }
 
     /*
@@ -183,8 +203,13 @@ impl<'a> Cpu<'a> {
 
     pub fn biu_suspend_fetch(&mut self) {
         self.trace_comment("SUSP");
-        //self.fetch_state = FetchState::Suspended;
         self.fetch_suspended = true;
+
+        // SUSP waits for any current fetch to complete.
+        if self.bus_status == BusStatus::CodeFetch {
+            self.bus_wait_finish();
+            //self.cycle();
+        }
     }
 
     pub fn biu_schedule_fetch(&mut self) {
@@ -456,7 +481,10 @@ impl<'a> Cpu<'a> {
                 );
                 match flag {
                     ReadWriteFlag::Normal => self.bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
+                    ReadWriteFlag::RNI => {
+                        // self.bus_wait_until(TCycle::T3)
+                        self.bus_wait_finish()
+                    }
                 };
                 word |= (self.data_bus & 0x00FF) << 8;
 

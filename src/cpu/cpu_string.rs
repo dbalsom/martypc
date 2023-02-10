@@ -104,8 +104,6 @@ impl<'a> Cpu<'a> {
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                // Check REP prefixs
-                self.cycles(2);
                 let data = self.biu_read_u8(segment_base_ds, src_addr);
                 self.cycle();
                 self.biu_write_u8(Segment::ES, dst_addr, data, ReadWriteFlag::Normal);
@@ -130,9 +128,9 @@ impl<'a> Cpu<'a> {
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
                 let data = self.biu_read_u16(segment_base_ds, src_addr, ReadWriteFlag::Normal);
+                self.cycle_i(0x12e);
                 self.biu_write_u16(Segment::ES, dst_addr, data, ReadWriteFlag::Normal);
-                //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
-                //self.bus.write_u16(dst_addr as usize, data).unwrap();
+                self.cycle_i(0x130);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -155,7 +153,6 @@ impl<'a> Cpu<'a> {
 
                 self.cycles_i(2, &[0x121, MC_JUMP]);
                 let data = self.biu_read_u8(Segment::ES, scan_addr);
-                //let (byte, _cost) = self.bus.read_u8(scan_addr as usize).unwrap();
                 self.cycles_i(4, &[0x126, 0x127, 0x128, MC_JUMP]);
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, data, false );
@@ -182,8 +179,9 @@ impl<'a> Cpu<'a> {
                 // Override: ES cannot be overridden                
                 let scan_addr = Cpu::calc_linear_address(self.es, self.di);
 
+                self.cycles_i(2, &[0x121, MC_JUMP]);
                 let data = self.biu_read_u16(Segment::ES, scan_addr, ReadWriteFlag::Normal);
-                //let (word, _cost) = self.bus.read_u16(scan_addr as usize).unwrap();
+                self.cycles_i(4, &[0x126, 0x127, 0x128, MC_JUMP]);
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, data, false );
                 // Test operation behaves like CMP
@@ -245,14 +243,12 @@ impl<'a> Cpu<'a> {
                 let dssi_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
                 let esdi_addr = Cpu::calc_linear_address(self.es, self.di);
 
-                self.cycles(2);
-                
+                self.cycle_i(0x121);
                 let dssi_op = self.biu_read_u16(segment_base_ds, dssi_addr, ReadWriteFlag::Normal);
+                self.cycles_i(2, &[0x123, 0x124]);
                 let esdi_op = self.biu_read_u16(Segment::ES, esdi_addr, ReadWriteFlag::Normal);
-
-                //let (dssi_op, _cost2) = self.bus.read_u16(dssi_addr as usize).unwrap();
-                //let (esdi_op, _cost1) = self.bus.read_u16(esdi_addr as usize).unwrap();
-
+                self.cycles_i(2, &[0x127, 0x128]);
+                
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(dssi_op, esdi_op, false);
 
                 // Test operation behaves like CMP

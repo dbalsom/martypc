@@ -28,7 +28,7 @@
 use serialport::ClearBuffer;
 use log;
 
-pub const ARD8088_BAUD: u32 = 2000000;
+pub const ARD8088_BAUD: u32 = 1000000;
 //pub const ARD8088_BAUD: u32 = 460800;
 
 #[derive(Copy, Clone)]

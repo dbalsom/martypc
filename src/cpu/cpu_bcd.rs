@@ -5,14 +5,17 @@ impl<'a> Cpu<'a> {
     /// Ascii Adjust after Addition
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aaa(&mut self) {
+        self.cycles_i(6, &[0x148, 0x149, 0x14a, 0x14b, 0x14c, 0x14d]);
         if ((self.al & 0x0F) > 9) || self.get_flag(Flag::AuxCarry) {
             self.set_register16(Register16::AX, self.ax.wrapping_add(0x106));
             self.set_flag(Flag::AuxCarry);
             self.set_flag(Flag::Carry);
+            //self.cycle_i(0x14e);
         }
         else {
             self.clear_flag(Flag::AuxCarry);
             self.clear_flag(Flag::Carry);
+            self.cycle_i(MC_JUMP);
         }
         self.set_register8(Register8::AL, self.al & 0x0F);
     }
@@ -20,17 +23,21 @@ impl<'a> Cpu<'a> {
     /// Ascii Adjust after Subtraction
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aas(&mut self) {    
+        self.cycles_i(6, &[0x148, 0x149, 0x14a, 0x14b, MC_JUMP, 0x14d]);
         if ((self.al & 0x0F) > 9) || self.get_flag(Flag::AuxCarry) {
             self.set_register16(Register16::AX, self.ax.wrapping_sub(6));
             self.set_register8(Register8::AH, self.ah.wrapping_sub(1));
+            self.set_register8(Register8::AL, self.al & 0x0F);
             self.set_flag(Flag::AuxCarry);
             self.set_flag(Flag::Carry);
-            self.set_register8(Register8::AL, self.al & 0x0F);
+            //self.cycle_i(0x14e);
+            
         }
         else {
+            self.set_register8(Register8::AL, self.al & 0x0F);
             self.clear_flag(Flag::Carry);
             self.clear_flag(Flag::AuxCarry);
-            self.set_register8(Register8::AL, self.al & 0x0F);
+            self.cycle_i(MC_JUMP);
         }
     }
 
@@ -38,12 +45,16 @@ impl<'a> Cpu<'a> {
     /// Flags: The SF, ZF, and PF flags are set according to the resulting binary value in the AL register
     pub fn aad(&mut self, imm8: u8) {
 
-        let product = self.ah.wrapping_mul(imm8);
-        self.set_register8(Register8::AL, self.al.wrapping_add(product));
-        self.set_register8(Register8::AH, 0);
+        self.cycles_i(3, &[0x170, 0x171, MC_JUMP]);
+        let product_native = (self.ah as u16).wrapping_mul(imm8 as u16) as u8;
+        let (_, product) = self.corx8(self.ah, imm8, false);
+        assert!((product as u8) == product_native);
 
-        self.cycles(60);
+        self.set_register8(Register8::AL, self.al.wrapping_add(product as u8));
+        self.set_register8(Register8::AH, 0);
         
+        self.cycles_i(2, &[0x172, 0x173]);
+
         // Other sources set flags from AX register. Intel's documentation specifies AL
         self.set_flags_from_result_u8(self.al);
     }

@@ -148,13 +148,15 @@ impl<'a> Machine<'a> {
 
         let mut io_bus = IoBusInterface::new();
         
-        let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
+        //let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
+
+        let mut trace_file_option = None;
         if config.emulator.trace_mode != TraceMode::None {
             // Open the trace file if specified
             if let Some(filename) = &config.emulator.trace_file {
                 match File::create(filename) {
                     Ok(file) => {
-                        trace_file_option = Box::new(BufWriter::new(file));
+                        trace_file_option = Some(Box::new(BufWriter::new(file)));
                     },
                     Err(e) => {
                         eprintln!("Couldn't create specified tracelog file: {}", e);
@@ -166,7 +168,7 @@ impl<'a> Machine<'a> {
         let mut cpu = Cpu::new(
             CpuType::Cpu8088,
             trace_mode,
-            Some(trace_file_option),
+            trace_file_option,
             #[cfg(feature = "cpu_validator")]
             config.validator.vtype.unwrap()
         );
@@ -549,7 +551,7 @@ impl<'a> Machine<'a> {
 
                 // Match checkpoints
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
-                    log::trace!("ROM CHECKPOINT: {}", cp);
+                    log::trace!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
                 }
 
                 // Check for patching checkpoint & install patches

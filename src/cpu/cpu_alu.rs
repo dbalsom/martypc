@@ -52,7 +52,7 @@ impl<'a> Cpu<'a> {
         self.set_parity_flag_from_u16(result);
     }
 
-    fn add_u8(byte1: u8, byte2: u8, carry_in: bool) -> (u8, bool, bool, bool) {
+    pub fn add_u8(byte1: u8, byte2: u8, carry_in: bool) -> (u8, bool, bool, bool) {
         // OVERFLOW flag indicates signed overflow
         // CARRY flag indicates unsigned overflow
         let mut carry = false;
@@ -81,7 +81,7 @@ impl<'a> Cpu<'a> {
         (sum, carry, overflow, aux_carry)
     }
 
-    fn add_u16(word1: u16, word2: u16, carry_in: bool) -> (u16, bool, bool, bool) {
+    pub fn add_u16(word1: u16, word2: u16, carry_in: bool) -> (u16, bool, bool, bool) {
         // OVERFLOW flag indicates signed overflow
         // CARRY flag indicates unsigned overflow
         let mut carry = false;

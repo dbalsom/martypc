@@ -226,10 +226,11 @@ impl ModRmByte {
         let byte = bytes.q_read_u8(QueueType::Subsequent);
         let mut modrm = MODRM_TABLE[byte as usize];
         let mut disp_size = 0;
-        
+        /*
         if modrm.post_disp_cost > 0 {
             log::trace!("modrm: {:02X} rm: {} pre disp cost: {:02} table: {:x?}", byte, modrm.b_rm, modrm.pre_disp_cost, &EA_INSTR_TABLE_PRE[(modrm.b_mod << 3 | modrm.b_rm) as usize]);
         }
+        */
 
         // If modrm is an addressing mode, spend cycles in EA calculation 
         if modrm.b_mod != 0b11 {
@@ -239,10 +240,11 @@ impl ModRmByte {
             // Load any displacement
             disp_size = ModRmByte::load_displacement(&mut modrm, bytes);
 
-            //bytes.wait(modrm.post_disp_cost as u32);
+            /*
             if modrm.post_disp_cost > 0 {
                 log::trace!("rm: {} post disp cost: {:02} table: {:x?}", modrm.b_rm, modrm.post_disp_cost, &EA_INSTR_TABLE_POST[(modrm.b_mod << 3 | modrm.b_rm) as usize]);
             }
+            */
             bytes.wait_i(modrm.post_disp_cost as u32, &EA_INSTR_TABLE_POST[(modrm.b_mod << 3 | modrm.b_rm) as usize]);
         }
         else {
