@@ -23,7 +23,7 @@ use std::{
     fmt::Display,
 };
 
-use crate::cpu::QueueOp;
+use crate::cpu_808x::QueueOp;
 
 #[derive (PartialEq, Copy, Clone)]
 pub enum ReadType {

@@ -1,4 +1,4 @@
-use crate::cpu::*;
+use crate::cpu_808x::*;
 
 impl<'a> Cpu<'a> {
 
@@ -56,7 +56,7 @@ impl<'a> Cpu<'a> {
         self.cycles_i(2, &[0x172, 0x173]);
 
         // Other sources set flags from AX register. Intel's documentation specifies AL
-        self.set_flags_from_result_u8(self.al);
+        self.set_szp_flags_from_result_u8(self.al);
     }
 
     /// DAA — Decimal Adjust AL after Addition
@@ -86,7 +86,7 @@ impl<'a> Cpu<'a> {
             self.clear_flag(Flag::Carry);
         }
 
-        self.set_flags_from_result_u8(self.al);
+        self.set_szp_flags_from_result_u8(self.al);
     }
 
     /// DAS — Decimal Adjust AL after Subtraction
@@ -112,7 +112,7 @@ impl<'a> Cpu<'a> {
             self.set_flag(Flag::Carry);
         }
 
-        self.set_flags_from_result_u8(self.al);
+        self.set_szp_flags_from_result_u8(self.al);
     }
 
     /// AAM - Ascii adjust AX After multiply
@@ -127,7 +127,7 @@ impl<'a> Cpu<'a> {
         self.set_register8(Register8::AL, temp_al % imm8);
 
         // Other sources set flags from AX register. Intel's documentation specifies AL
-        self.set_flags_from_result_u8(self.al);
+        self.set_szp_flags_from_result_u8(self.al);
     }
     
 }

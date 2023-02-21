@@ -1,4 +1,4 @@
-use crate::cpu::*;
+use crate::cpu_808x::*;
 use crate::bytequeue::*;
 
 pub struct InstructionQueue {

@@ -24,7 +24,7 @@ use crate::{
     cga::{self, CGACard},
     ega::{self, EGACard},
     vga::{self, VGACard},
-    cpu::{self, CpuType, Cpu, Flag, CpuError},
+    cpu_808x::{self, CpuType, Cpu, Flag, CpuError},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
@@ -501,7 +501,7 @@ impl<'a> Machine<'a> {
 
     fn cycles_to_us(&self, cycles: u32) -> f64 {
 
-        1.0 / cpu::CPU_MHZ * cycles as f64
+        1.0 / cpu_808x::CPU_MHZ * cycles as f64
     }
     
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl, breakpoint: u32) {
@@ -538,6 +538,7 @@ impl<'a> Machine<'a> {
         while cycles_elapsed < cycle_target_adj {
 
             let fake_cycles: u32 = 7;
+            let mut cpu_cycles = 0;
 
             if self.cpu.is_error() == false {
 
@@ -560,7 +561,7 @@ impl<'a> Machine<'a> {
                     self.rom_manager.install_patches(self.cpu.bus_mut());
                 }
 
-                let cpu_cycles;
+                
                 match self.cpu.step(&mut self.io_bus, self.pic.clone()) {
                     Ok(cycles) => {
                         cpu_cycles = cycles
@@ -576,12 +577,11 @@ impl<'a> Machine<'a> {
                 // Convert cycles into elapsed microseconds
                 let us;
                 if cpu_cycles == 0 {
-                    us = self.cycles_to_us(fake_cycles);
+                    log::warn!("Instruction returned 0 cycles");
+                    cpu_cycles = fake_cycles;
                 }
-                else {
-                    us = self.cycles_to_us(cpu_cycles);
-                }
-                
+
+                us = self.cycles_to_us(cpu_cycles);
 
                 // Process a keyboard event once per frame.
                 // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
@@ -609,10 +609,10 @@ impl<'a> Machine<'a> {
                     &mut self.dma_controller.borrow_mut(),
                     &mut self.ppi.borrow_mut(),
                     &mut self.pit_buffer_producer,
-                    fake_cycles);
+                    cpu_cycles);
 
                 // Sample the PIT channel
-                self.pit_ticks += fake_cycles as f64;
+                self.pit_ticks += cpu_cycles as f64;
                 while self.pit_ticks >= self.pit_ticks_per_sample {
                     self.pit_buf_to_sound_buf();
                     self.pit_ticks -= self.pit_ticks_per_sample;
@@ -624,23 +624,23 @@ impl<'a> Machine<'a> {
 
                 // Run the video device
                 // This uses dynamic dispatch - be aware of any performance hit
-                self.video.borrow_mut().run( fake_cycles);
+                self.video.borrow_mut().run( cpu_cycles);
                 
-                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), fake_cycles);
+                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), cpu_cycles);
                 
                 // FDC needs PIC to issue controller interrupts, DMA to request DMA transfers, and Memory Bus to read/write to via DMA
                 self.fdc.borrow_mut().run(
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     self.cpu.bus_mut(),
-                    fake_cycles);
+                    cpu_cycles);
 
                 // HDC needs PIC to issue controller interrupts, DMA to request DMA stransfers, and Memory Bus to read/write to via DMA                    
                 self.hdc.borrow_mut().run(
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     self.cpu.bus_mut(),
-                    fake_cycles);         
+                    cpu_cycles);         
                     
                 // Serial port needs PIC to issue interrupts
                 self.serial_controller.borrow_mut().run(
@@ -649,11 +649,13 @@ impl<'a> Machine<'a> {
 
                 self.mouse.run(us);
             }
-            // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all
-            // that good stuff. For now during initial development we're going to assume an average instruction cost of 8** 7
-            // even cycles keeps the BIOS PIT test from working!
-            cycles_elapsed += fake_cycles;
-            self.cpu_cycles += fake_cycles as u64;
+            else {
+                // CPU in error won't report cycles
+                break;
+            }
+
+            cycles_elapsed += cpu_cycles;
+            self.cpu_cycles += cpu_cycles as u64;
         }
     }
 
@@ -700,4 +702,7 @@ impl<'a> Machine<'a> {
         //self.debug_snd_file.write(&average.to_be_bytes()).expect("Error writing to debug sound file");
                 
     }
+
+
+
 }

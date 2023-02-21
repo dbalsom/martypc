@@ -37,7 +37,8 @@ mod bytebuf;
 mod bytequeue;
 mod cga;
 mod config;
-mod cpu;
+mod cpu_common;
+mod cpu_808x;
 mod dma;
 mod fdc;
 mod floppy_manager;
@@ -45,6 +46,7 @@ mod gui;
 mod gui_image;
 mod hdc;
 mod io;
+mod interrupt;
 mod machine;
 mod memerror;
 mod mouse;
@@ -74,7 +76,7 @@ mod arduino8088_validator;
 use config::{ConfigFileParams, MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
 
 use machine::{Machine, ExecutionState};
-use cpu::Cpu;
+use cpu_808x::Cpu;
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
 use vhd_manager::{VHDManager, VHDManagerError};
@@ -98,7 +100,7 @@ const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
-const CYCLES_PER_FRAME: u32 = (cpu::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
+const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
 // Rendering Stats
 struct Counter {
@@ -727,7 +729,7 @@ fn main() {
 
                             if stat_counter.cycle_target > CYCLES_PER_FRAME {
                                 // Comment to run as fast as possible
-                                stat_counter.cycle_target = CYCLES_PER_FRAME;
+                                //stat_counter.cycle_target = CYCLES_PER_FRAME;
                             }
                             else {
                                 /*
@@ -860,6 +862,9 @@ fn main() {
                             Some(GuiEvent::DumpVRAM) => {
                                 machine.videocard().borrow().dump_mem();
                             }
+                            Some(GuiEvent::DumpCS) => {
+                                machine.cpu().dump_cs();
+                            }                            
                             None => break,
                             _ => {
                                 // Unhandled event?
@@ -1099,8 +1104,8 @@ pub fn main_headless(
 #[cfg(feature = "cpu_validator")]
 use std::io::{BufWriter, Write};
 #[cfg(feature = "cpu_validator")]
-use cpu::*;
-use crate::cpu::cpu_mnemonic::Mnemonic;
+use cpu_808x::*;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
 
 #[cfg(feature = "cpu_validator")]
 pub fn main_fuzzer <'a>(
@@ -1150,6 +1155,12 @@ pub fn main_fuzzer <'a>(
             continue;
         }
 
+        // Generate specific opcodes (optional)
+        //cpu.random_inst_from_opcodes(&[0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D]); // SBB 8 & 16 bit
+        //cpu.random_inst_from_opcodes(&[0x18, 0x1A, 0x1C]); // SBB 8 bit
+
+        cpu.random_grp_instruction(0xF6, &[4, 5]);
+
         // Decode this instruction
         let instruction_address = 
             Cpu::calc_linear_address(
@@ -1169,8 +1180,8 @@ pub fn main_fuzzer <'a>(
         };
         
         // Skip N successful instructions
-        if test_num < 490 {
-            //continue;
+        if test_num < 168 {
+            continue;
         }
 
         match i.mnemonic {
@@ -1195,7 +1206,7 @@ pub fn main_fuzzer <'a>(
                 // For obvious reasons
                 continue;
             }
-            Mnemonic::AAM | Mnemonic::DIV | Mnemonic::IDIV | Mnemonic::MUL | Mnemonic::IMUL => {
+            Mnemonic::AAM | Mnemonic::DIV | Mnemonic::IDIV => {
                 // Timings on these will take some work 
                 continue;
             }
@@ -1215,7 +1226,8 @@ pub fn main_fuzzer <'a>(
         log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
         
         match cpu.step(&mut io_bus, pic.clone()) {
-            Ok(_) => {
+            Ok(cycles) => {
+                log::trace!("Instruction reported {} cycles", cycles);
             },
             Err(err) => {
 

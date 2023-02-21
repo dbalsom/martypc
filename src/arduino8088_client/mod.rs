@@ -1,7 +1,7 @@
 /*
-  Marty PC Emulator 
-  (C)2023 Daniel Balsom
-  https://github.com/dbalsom/marty
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -15,9 +15,9 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
 
-/* 
+    ---------------------------------------------------------------------------
+
     This module implements a serial client for the arduino8088 serial CPU server.
     See https://github.com/dbalsom/arduino_8088 for more details.
 

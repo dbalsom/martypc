@@ -1,10 +1,10 @@
 use std::fmt::Display;
 use std::error::Error;
 
-use crate::cpu::*;
-use crate::cpu::cpu_addressing::AddressingMode;
-use crate::cpu::cpu_modrm::ModRmByte;
-use crate::cpu::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::*;
+use crate::cpu_808x::cpu_addressing::AddressingMode;
+use crate::cpu_808x::cpu_modrm::ModRmByte;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
 
 use crate::bytequeue::*;
 

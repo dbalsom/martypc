@@ -1,10 +1,13 @@
-use crate::cpu::*;
-use crate::cpu::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::*;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
+use crate::cpu_common::alu::*;
 
+use num_traits::PrimInt;
+
+// The parity flag is calculated from the lower 8 bits of an alu operation regardless
+// of the operand width.  Thefore it is trivial to precalculate a 8-bit parity table.
 const PARITY_TABLE: [bool; 256] = {
     let mut table = [false; 256];
-    
-    // can't do for loop in const
     let mut index = 0;
     loop {
         table[index] = index.count_ones() % 2 == 0;
@@ -14,7 +17,6 @@ const PARITY_TABLE: [bool; 256] = {
             break;
         }
     }
-
     table
 };
 
@@ -30,7 +32,25 @@ impl<'a> Cpu<'a> {
         self.set_flag_state(Flag::Parity, PARITY_TABLE[(operand & 0xFF) as usize]);
     }
 
-    pub fn set_flags_from_result_u8(&mut self, result: u8) {
+    #[inline(always)]
+    fn set_parity_flag<T: PrimInt>(&mut self, result: T) {
+        self.set_flag_state(Flag::Parity, PARITY_TABLE[result.to_usize().unwrap() & 0xFF]);
+    }
+
+    #[inline(always)]
+    pub fn set_szp_flags_from_result<T: PrimInt>(&mut self, result: T) {
+
+        // Set Sign flag to state of Sign (HO) bit
+        self.set_flag_state(Flag::Sign, result & (T::one() << (std::mem::size_of::<T>() - 1)) != T::zero());
+
+        // Set Zero flag if result is 0, clear it if not
+        self.set_flag_state(Flag::Zero, result == T::zero());
+
+        // Set Parity Flag
+        self.set_parity_flag(result);
+    }
+
+    pub fn set_szp_flags_from_result_u8(&mut self, result: u8) {
         // Set Sign flag to state of Sign (HO) bit
         self.set_flag_state(Flag::Sign, result & 0x80 != 0);
 
@@ -41,7 +61,7 @@ impl<'a> Cpu<'a> {
         self.set_parity_flag_from_u8(result);
     }
 
-    pub fn set_flags_from_result_u16(&mut self, result: u16) {
+    pub fn set_szp_flags_from_result_u16(&mut self, result: u16) {
         // Set Sign flag to state of Sign (HO) bit
         self.set_flag_state(Flag::Sign, result & 0x8000 != 0);
 
@@ -408,7 +428,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }
             Mnemonic::ADC => {
@@ -419,26 +439,32 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }
             Mnemonic::SUB => {
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, false );
+                //let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, false );
+
+                let (result, carry, overflow, aux_carry) = operand1.alu_sub(operand2);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result                
             }
             Mnemonic::SBB => {
                 // Get value of carry flag
                 let carry_in = self.get_flag(Flag::Carry);
                 // And pass it to SBB                
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, carry_in );
+                //let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, carry_in );
+
+                
+                let (result, carry, overflow, aux_carry) = operand1.alu_sbb(operand2, carry_in);
+                println!(">>>>>>>>>>>>> SBB: op1: {:02x} op2: {:02x} result: {:02x} carry: {}", operand1, operand2, result, carry_in);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result    
             }
             Mnemonic::NEG => {
@@ -451,7 +477,7 @@ impl<'a> Cpu<'a> {
                 // NEG Updates AF, SF, PF, ZF
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }
             Mnemonic::INC => {
@@ -460,7 +486,7 @@ impl<'a> Cpu<'a> {
                 // DO NOT set carry Flag
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }
             Mnemonic::DEC => {
@@ -469,7 +495,7 @@ impl<'a> Cpu<'a> {
                 // DEC does NOT set carry Flag
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }              
             Mnemonic::OR => {
@@ -477,7 +503,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }
             Mnemonic::AND => {
@@ -485,7 +511,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }
             Mnemonic::TEST => {
@@ -493,7 +519,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 // TEST does not modify operand1
                 operand1
             }
@@ -502,7 +528,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 result
             }
             Mnemonic::NOT => {
@@ -516,7 +542,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
                 // Return the operand1 unchanged
                 operand1
             }                        
@@ -533,7 +559,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }
             Mnemonic::ADC => {
@@ -544,26 +570,28 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }
             Mnemonic::SUB => {
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, false );
+                //let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, false );
+                let (result, carry, overflow, aux_carry) = operand1.alu_sub(operand2);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result                
             }
             Mnemonic::SBB => {
                 // Get value of carry flag
                 let carry_in = self.get_flag(Flag::Carry);
                 // And pass it to SBB                
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, carry_in );
+                //let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, carry_in );
+                let (result, carry, overflow, aux_carry) = operand1.alu_sbb(operand2, carry_in);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result    
             }
             Mnemonic::NEG => {
@@ -575,7 +603,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, operand1 != 0);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }            
             Mnemonic::INC => {
@@ -584,7 +612,7 @@ impl<'a> Cpu<'a> {
                 // INC does NOT set carry Flag
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }
             Mnemonic::DEC => {
@@ -593,7 +621,7 @@ impl<'a> Cpu<'a> {
                 // DEC does NOT set carry Flag
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }            
             Mnemonic::OR => {
@@ -601,7 +629,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }
             Mnemonic::AND => {
@@ -609,7 +637,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }        
             Mnemonic::TEST => {
@@ -617,7 +645,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 // Do not modify operand
                 operand1  
             }    
@@ -626,7 +654,7 @@ impl<'a> Cpu<'a> {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 result
             }
             Mnemonic::NOT => {
@@ -640,7 +668,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
                 // Return the operand1 unchanged
                 operand1
             }           
@@ -653,7 +681,7 @@ impl<'a> Cpu<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cpu::CpuType;
+    use crate::cpu_808x::CpuType;
 
     #[test]
     

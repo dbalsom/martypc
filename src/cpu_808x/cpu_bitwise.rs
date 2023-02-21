@@ -1,5 +1,5 @@
-use crate::cpu::*;
-use crate::cpu::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::*;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
 
 impl<'a> Cpu<'a> {
 
@@ -304,7 +304,7 @@ impl<'a> Cpu<'a> {
                     self.set_flag_state(Flag::Overflow, (operand1 & 0xC0 == 0x80) || (operand1 & 0xC0 == 0x40));
                 }
                 
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SHR => {
                 (result, carry) = Cpu::shr_u8_with_carry(operand1, operand2);
@@ -317,7 +317,7 @@ impl<'a> Cpu<'a> {
                     // so set overflow flag if it was set. 
                     self.set_flag_state(Flag::Overflow, operand1 & 0x80 != 0 );
                 }
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SAR => {
                 (result, carry) = Cpu::sar_u8_with_carry(operand1, operand2);
@@ -329,7 +329,7 @@ impl<'a> Cpu<'a> {
                 if operand2 == 1 {
                     self.clear_flag(Flag::Overflow);
                 }
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
             }
             _=> panic!("Invalid opcode provided to bitshift_op8()")
         }
@@ -457,7 +457,7 @@ impl<'a> Cpu<'a> {
                     // and overflow should be set
                     self.set_flag_state(Flag::Overflow, (operand1 & 0xC000 == 0x8000) || (operand1 & 0xC000 == 0x4000));
                 }
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SHR => {
                 (result, carry) = Cpu::shr_u16_with_carry(operand1, operand2);
@@ -470,7 +470,7 @@ impl<'a> Cpu<'a> {
                     // so set overflow flag if it was set. 
                     self.set_flag_state(Flag::Overflow, operand1 & 0x8000 != 0 );
                 }
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SAR => {
                 (result, carry) = Cpu::sar_u16_with_carry(operand1, operand2);
@@ -482,7 +482,7 @@ impl<'a> Cpu<'a> {
                 if operand2 == 1 {
                     self.clear_flag(Flag::Overflow);
                 }
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
             }
             _=> panic!("Invalid opcode provided to bitshift_op16()")
         }

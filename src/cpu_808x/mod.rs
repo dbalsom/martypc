@@ -23,27 +23,31 @@ mod cpu_biu;
 mod cpu_decode;
 mod cpu_display;
 mod cpu_execute;
-mod cpu_modrm;
+mod cpu_microcode;
 pub mod cpu_mnemonic;
-mod cpu_multiply;
+mod cpu_modrm;
+mod cpu_muldiv;
 mod cpu_stack;
 mod cpu_string;
 mod cpu_queue;
 mod cpu_fuzzer;
 
-use crate::cpu::cpu_mnemonic::Mnemonic;
-use crate::cpu::cpu_addressing::AddressingMode;
-use crate::cpu::cpu_queue::InstructionQueue;
-use crate::cpu::cpu_biu::*;
+use crate::cpu_common::*;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::cpu_microcode::*;
+use crate::cpu_808x::cpu_addressing::AddressingMode;
+use crate::cpu_808x::cpu_queue::InstructionQueue;
+use crate::cpu_808x::cpu_biu::*;
 
 use crate::config::TraceMode;
 #[cfg(feature = "cpu_validator")]
 use crate::config::ValidatorType;
 
-use crate::bus::BusInterface;
+use crate::bus::{BusInterface, MEM_RET_BIT};
 use crate::pic::Pic;
 use crate::bytequeue::*;
 use crate::io::IoBusInterface;
+use crate::interrupt::log_post_interrupt;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{CpuValidator, CycleState, VRegisters, BusCycle, BusState, AccessType};
@@ -60,9 +64,6 @@ macro_rules! trace_print {
     }};
 }
 
-
-
-
 pub const CPU_MHZ: f64 = 4.77272666;
 
 const QUEUE_MAX: usize = 6;
@@ -72,9 +73,6 @@ const CPU_HISTORY_LEN: usize = 32;
 const CPU_CALL_STACK_LEN: usize = 16;
 
 const INTERRUPT_VEC_LEN: usize = 4;
-
-const MC_NONE: u16 = 0x200;
-const MC_JUMP: u16 = 0x201;
 
 pub const CPU_FLAG_CARRY: u16      = 0b0000_0000_0000_0001;
 pub const CPU_FLAG_RESERVED1: u16  = 0b0000_0000_0000_0010;
@@ -95,6 +93,7 @@ const CPU_FLAG_RESERVED14: u16 = 0b0100_0000_0000_0000;
 const CPU_FLAG_RESERVED15: u16 = 0b1000_0000_0000_0000;
 
 const CPU_FLAGS_RESERVED_ON: u16 = 0b1111_0000_0000_0010;
+const CPU_FLAGS_RESERVED_OFF: u16 = !(CPU_FLAG_RESERVED3 | CPU_FLAG_RESERVED5);
 
 const FLAGS_POP_MASK: u16      = 0b0000_1111_1101_0101;
 
@@ -221,11 +220,28 @@ impl Display for CpuError{
     }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum CallStackEntry {
-    Call(u16,u16,u16),
-    CallF(u16,u16,u16,u16),
-    Interrupt(u16,u16,u8)
+    Call { 
+        ret_cs: u16, 
+        ret_ip: u16, 
+        call_ip: u16
+    },
+    CallF {
+        ret_cs: u16,
+        ret_ip: u16,
+        call_cs: u16,
+        call_ip: u16
+    },
+    Interrupt {
+        ret_cs: u16,
+        ret_ip: u16,   
+        call_cs: u16,
+        call_ip: u16,     
+        itype: InterruptType,
+        number: u8,
+        ah: u8,
+    }
 }
 
 /// Representation of the state of a REPeated string instruction, saved on interrupt
@@ -426,6 +442,32 @@ impl Default for OperandSize {
     }
 }
 
+#[derive (Copy, Clone, Debug, PartialEq)]
+pub enum InterruptType {
+    NMI,
+    Exception,
+    Software,
+    Hardware
+}
+
+#[derive (Copy, Clone)]
+pub struct InterruptDescriptor {
+    itype: InterruptType,
+    number: u8,
+    ah: u8
+}
+
+impl Default for InterruptDescriptor {
+    fn default() -> Self {
+        InterruptDescriptor {
+            itype: InterruptType::Hardware,
+            number: 0,
+            ah: 0
+        }
+    }
+}
+
+
 #[derive (Copy, Clone)]
 pub struct Instruction {
     pub(crate) opcode: u8,
@@ -559,6 +601,9 @@ pub struct Cpu<'a> {
     i: Instruction,                 // Currently executing instruction 
     instruction_history: VecDeque<Instruction>,
     call_stack: VecDeque<CallStackEntry>,
+    int_stack: Vec<InterruptDescriptor>,
+    int_count: u64,
+    iret_count: u64,
     interrupt_inhibit: bool,
     reset_seg: u16,
     reset_offset: u16,
@@ -579,28 +624,28 @@ pub struct Cpu<'a> {
 }
 
 pub struct CpuRegisterState {
-    ah: u8,
-    al: u8,
-    ax: u16,
-    bh: u8,
-    bl: u8,
-    bx: u16,
-    ch: u8,
-    cl: u8,
-    cx: u16,
-    dh: u8,
-    dl: u8,
-    dx: u16,
-    sp: u16,
-    bp: u16,
-    si: u16,
-    di: u16,
-    cs: u16,
-    ds: u16,
-    ss: u16,
-    es: u16,
-    ip: u16,
-    flags: u16,
+    pub ah: u8,
+    pub al: u8,
+    pub ax: u16,
+    pub bh: u8,
+    pub bl: u8,
+    pub bx: u16,
+    pub ch: u8,
+    pub cl: u8,
+    pub cx: u16,
+    pub dh: u8,
+    pub dl: u8,
+    pub dx: u16,
+    pub sp: u16,
+    pub bp: u16,
+    pub si: u16,
+    pub di: u16,
+    pub cs: u16,
+    pub ds: u16,
+    pub ss: u16,
+    pub es: u16,
+    pub ip: u16,
+    pub flags: u16,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -807,6 +852,8 @@ impl<'a> Cpu<'a> {
         self.t_cycle = TCycle::T1;
         
         self.instruction_count = 0; 
+        self.int_count = 0;
+        self.iret_count = 0;
         
         self.in_rep = false;
         self.rep_state.clear();
@@ -1251,7 +1298,7 @@ impl<'a> Cpu<'a> {
                 if !self.fetch_suspended {
                     if self.biu_queue_has_room() {
 
-                        trace_print!(self, "Fetch started");
+                        //trace_print!(self, "Fetch started");
                         self.fetch_state = FetchState::InProgress;
                         self.bus_status = BusStatus::CodeFetch;
                         self.bus_segment = Segment::CS;
@@ -1461,6 +1508,16 @@ impl<'a> Cpu<'a> {
             Flag::Direction => !CPU_FLAG_DIRECTION,
             Flag::Overflow => !CPU_FLAG_OVERFLOW
         };
+    }
+
+    pub fn set_flags(&mut self, mut flags: u16) {
+
+        // Clear reserved 0 flags
+        flags &= CPU_FLAGS_RESERVED_OFF;
+        // Set reserved 1 flags
+        flags |= CPU_FLAGS_RESERVED_ON;
+
+        self.flags = flags;
     }
 
     #[inline(always)]
@@ -1902,6 +1959,79 @@ impl<'a> Cpu<'a> {
 
     }
 
+    pub fn push_call_stack(&mut self, entry: CallStackEntry, cs: u16, ip: u16) {
+
+        self.call_stack.push_front(entry);
+        /// Flag the specified CS:IP as a retun address
+        let return_addr = Cpu::calc_linear_address(cs, ip);
+
+        self.bus.set_flags(return_addr as usize, MEM_RET_BIT);
+
+    }
+
+    pub fn rewind_call_stack(&mut self, addr: u32) {
+
+        let mut return_addr: u32 = 0;
+        let mut entry_opt = None;
+        let mut skip_count = -1;
+
+        let mut last_entry_opt = None;
+
+        while return_addr != addr {
+
+            skip_count += 1;
+
+            if let Some(last_entry) = last_entry_opt {
+                if let CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } = last_entry {
+                    log::trace!("rewind_call_stack(): skipped interrupt {:02X}, type: {:?}, ah=={:02}", number, itype, ah);
+                }
+            }
+
+
+            entry_opt = self.call_stack.pop_front();
+            match entry_opt {
+
+                Some(entry) => {
+                    match entry {
+                        CallStackEntry::CallF { ret_cs, ret_ip, .. } => {
+                            return_addr = Cpu::calc_linear_address(ret_cs, ret_ip);
+                        }
+                        CallStackEntry::Call { ret_cs, ret_ip, .. } => {
+                            return_addr = Cpu::calc_linear_address(ret_cs, ret_ip);
+                        }
+                        CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => {
+                            return_addr = Cpu::calc_linear_address(ret_cs, ret_ip);
+                        }       
+                    }
+                }
+                None => break
+            }
+
+            // Clear flags for returns we popped
+            self.bus.clear_flags(return_addr as usize, MEM_RET_BIT);
+
+            last_entry_opt = entry_opt;
+        }
+
+        if skip_count > 0 {
+            //log::warn!("rewind_call_stack(): skipped {} entries in call stack", skip_count);
+        }
+
+        if return_addr == addr {
+            // We matched a return. Clear the return bit from byte flags
+            self.bus.clear_flags(return_addr as usize, MEM_RET_BIT);
+
+            // If this return was from an interrupt, send it through interrupt logger
+            if let CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } = entry_opt.unwrap() {
+
+                log_post_interrupt(number, ah, &self.get_state(), self.bus());
+            }
+        }
+        else {
+            log::warn!("rewind_call_stack(): no matching return for [{:05X}]", addr);
+        }
+    }    
+
     pub fn end_interrupt(&mut self) {
 
         self.pop_register16(Register16::IP, ReadWriteFlag::Normal);
@@ -1913,6 +2043,24 @@ impl<'a> Cpu<'a> {
         self.biu_suspend_fetch();
         self.cycles(4);
         self.biu_queue_flush();        
+
+        /*
+        match self.int_stack.pop() {
+            Some(int_descriptor) => {
+                if int_descriptor.itype == InterruptType::Software {
+                    // log post-interrupt here
+        
+                    log_post_interrupt(int_descriptor.number, int_descriptor.ah, &self.get_state(), self.bus() );
+                }
+            }
+            None => {
+                log::error!("Interrupt stack underflow");
+            }
+        }
+        self.iret_count += 1;
+
+        log::trace!("interrupt stack len: {} ints: {} irets:{}", self.int_stack.len(), self.int_count, self.iret_count);
+        */
     }
 
     /// Perform a software interrupt
@@ -1931,12 +2079,9 @@ impl<'a> Cpu<'a> {
         self.push_register16(Register16::CS, ReadWriteFlag::Normal);
         self.push_register16(Register16::IP, ReadWriteFlag::Normal);
         
-        // Clear interrupt flag
+        // Clear interrupt & trap flag
         self.clear_flag(Flag::Interrupt);
-        // Clear trap flag
         self.clear_flag(Flag::Trap);
-        // Clear auxilliary carry (?)
-        self.clear_flag(Flag::AuxCarry);
 
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
@@ -1973,15 +2118,43 @@ impl<'a> Cpu<'a> {
         if interrupt == 0x21 {
             //log::trace!("CPU: int21h: AH: {:02X} [{:04X}:{:04X}]", self.ah, self.cs, self.ip);
             if self.ah == 0x4B {
-                log::trace!("EXEC/Load and Execute Program");
+                log::trace!("int21,4B: EXEC/Load and Execute Program @ [{:04X}:{:04X}] es:bx: [{:04X}:{:04X}]", self.cs, self.ip, self.es, self.bx);
             }
+            if self.ah == 0x55 {
+                log::trace!("int21,55:  @ [{:04X}]:[{:04X}]", self.cs, self.ip);
+            }            
         }         
+
+        if interrupt == 0x16 {
+            if self.ah == 0x01 {
+                //log::trace!("int16,01: Poll keyboard @ [{:04X}]:[{:04X}]", self.cs, self.ip);
+            }
+        }
+
+        // Add interrupt to call stack
+        self.push_call_stack(
+            CallStackEntry::Interrupt {
+                ret_cs: self.cs,
+                ret_ip: self.ip,
+                call_cs: new_cs,
+                call_ip: new_ip,
+                itype: InterruptType::Software,
+                number: interrupt,
+                ah: self.ah
+            },
+            self.cs,
+            self.ip
+        );
 
         self.ip = new_ip;
         self.cs = new_cs;        
 
+
+
+        self.int_count += 1;
+
         // Flush queue
-        self.biu_queue_flush();             
+        self.biu_queue_flush();          
     }
 
     /// Handle a CPU exception
@@ -2003,6 +2176,22 @@ impl<'a> Cpu<'a> {
         let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
         let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
+
+        // Add interrupt to call stack
+        self.push_call_stack(
+            CallStackEntry::Interrupt {
+                ret_cs: self.cs,
+                ret_ip: self.ip,
+                call_cs: new_cs,
+                call_ip: new_ip,
+                itype: InterruptType::Exception,
+                number: exception,
+                ah: self.ah
+            },
+            self.cs,
+            self.ip
+        );
+
         self.ip = new_ip;
         self.cs = new_cs;
 
@@ -2051,14 +2240,13 @@ impl<'a> Cpu<'a> {
     /// Perform a hardware interrupt
     pub fn hw_interrupt(&mut self, interrupt: u8) {
 
-        // When an interrupt occurs the following happens:
-        // 1. CPU pushes flags register to stack
-        // 2. CPU pushes far return address into the stack
-        // 3. CPU fetches the four byte interrupt vector from the IVT
-        // 4. CPU transfers control to the routine specified by the interrupt vector
-        // (AoA 17.1)
-
+        // Push flags
         self.push_flags(ReadWriteFlag::Normal);
+
+        // Clear interrupt & trap flag
+        self.clear_flag(Flag::Interrupt);
+        self.clear_flag(Flag::Trap);
+
         // Push cs:ip return address to stack
         self.push_register16(Register16::CS, ReadWriteFlag::Normal);
         self.push_register16(Register16::IP, ReadWriteFlag::Normal);
@@ -2121,6 +2309,22 @@ impl<'a> Cpu<'a> {
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
         let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
         let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
+
+        // Add interrupt to call stack
+        self.push_call_stack(
+            CallStackEntry::Interrupt {
+                ret_cs: self.cs,
+                ret_ip: self.ip,
+                call_cs: new_cs,
+                call_ip: new_ip,
+                itype: InterruptType::Hardware,
+                number: interrupt,
+                ah: self.ah
+            },
+            self.cs,
+            self.ip
+        );
+
         self.ip = new_ip;
         self.cs = new_cs;
 
@@ -2128,13 +2332,7 @@ impl<'a> Cpu<'a> {
         self.biu_queue_flush();
         self.biu_update_pc();
 
-        // timer interrupt to noisy to log
-        if interrupt != 8 {
-            self.log_interrupt(interrupt);
-            //log::trace!("CPU: Interrupt: {} Saving return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
-            //log::trace!("CPU: Hardware Interrupt: {} Jumping to IV [{:04X}:{:04X}]", interrupt, new_cs, new_ip);
-        }
-
+        self.int_count += 1;
     }
 
     /// Return true if an interrupt can occur under current execution state
@@ -2173,7 +2371,7 @@ impl<'a> Cpu<'a> {
                 }
             }
 
-            return Ok(1)
+            return Ok(3)
         }
 
         // A real 808X CPU maintains a single Program Counter or PC register that points to the next instruction
@@ -2323,7 +2521,7 @@ impl<'a> Cpu<'a> {
                     self.trace_print(&self.instruction_state_string());   
                 }                
 
-                Ok(self.instr_cycle + 1)
+                Ok(self.instr_cycle)
             }
             ExecutionResult::OkayJump => {
 
@@ -2345,7 +2543,7 @@ impl<'a> Cpu<'a> {
                     self.trace_print(&self.instruction_state_string());   
                 }
    
-                Ok(self.instr_cycle + 1)
+                Ok(self.instr_cycle)
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
@@ -2357,7 +2555,7 @@ impl<'a> Cpu<'a> {
                 self.instruction_history.push_back(self.i);
                 self.instruction_count += 1;
                 check_interrupts = true;
-                Ok(self.instr_cycle + 1)
+                Ok(self.instr_cycle)
             }                    
             ExecutionResult::UnsupportedOpcode(o) => {
                 self.is_running = false;
@@ -2430,14 +2628,14 @@ impl<'a> Cpu<'a> {
 
         for call in &self.call_stack {
             match call {
-                CallStackEntry::Call(cs,ip,rel16) => {
-                    call_stack_string.push_str(&format!("{:04X}:{:04X} CALL {:04X}\n", cs, ip, rel16));
+                CallStackEntry::Call{ ret_cs, ret_ip, call_ip } => {
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} CALL {:04X}\n", ret_cs, ret_ip, call_ip));
                 }
-                CallStackEntry::CallF(cs,ip,seg,off) => {
-                    call_stack_string.push_str(&format!("{:04X}:{:04X} CALL FAR {:04X}:{:04X}\n", cs, ip, seg, off));
+                CallStackEntry::CallF{ ret_cs, ret_ip, call_cs, call_ip } => {
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} CALL FAR {:04X}:{:04X}\n", ret_cs, ret_ip, call_cs, call_ip));
                 }
-                CallStackEntry::Interrupt(cs, ip, inum) => {
-                    call_stack_string.push_str(&format!("{:04X}:{:04X} INT {:02X}\n", cs, ip, inum));
+                CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } => {
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} INT {:02X} type={:?} AH=={:02X}\n", ret_cs, ret_ip, number, itype, ah));
                 }
             }   
         }
@@ -2543,32 +2741,45 @@ impl<'a> Cpu<'a> {
 
         let mut q_read_str = "      ".to_string();
 
+        let mut instr_str = String::new();
+
+
+        if self.last_queue_op == QueueOp::First || self.last_queue_op == QueueOp::Subsequent {
+            // Queue byte was read.
+            q_read_str = format!("<-q {:02X}", self.last_queue_byte);
+        }
+
         if self.last_queue_op == QueueOp::First {
             // First byte of opcode read from queue. Decode the full instruction
-            q_read_str = format!(
-                "<-q {:02X} | [{:04X}:{:04X}] {} ({})", 
-                self.last_queue_byte, 
+            instr_str = format!(
+                "[{:04X}:{:04X}] {} ({}) ", 
                 self.cs, 
                 self.ip, 
                 self.i,
                 self.i.size
             );
         }
-        else if self.last_queue_op == QueueOp::Subsequent {
-            q_read_str = format!("<-q {:02X}", self.last_queue_byte);
-        }        
       
         //let mut microcode_str = "   ".to_string();
-        let microcode_str = match self.trace_instr {
+        let microcode_line_str = match self.trace_instr {
             MC_JUMP => "JMP".to_string(),
+            MC_RTN => "RET".to_string(),
+            MC_CORR => "COR".to_string(),
             MC_NONE => "   ".to_string(),
             _ => {
                 format!("{:03X}", self.trace_instr)
             }
         };
 
+        let microcode_op_str = match self.trace_instr {
+            i if usize::from(i) < MICROCODE_SRC_8088.len() => {
+                MICROCODE_SRC_8088[i as usize].to_string()
+            }
+            _ => MICROCODE_NUL.to_string()
+        };
+
         let cycle_str = format!(
-            "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} {:04} {:02} {:06} ({}) | {:1}{:1} {:<16} | {:1}{:1} [{:08}] {} | {} | {}",
+            "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} {:04} {:02} {:06} ({}) | {:1}{:1} {:<16} | {:1}{:1} [{:08}] {} | {}: {} | {}{}",
             self.cycle_num,
             self.instr_cycle,
             ale_str,
@@ -2586,7 +2797,9 @@ impl<'a> Cpu<'a> {
             self.queue.len(),
             self.queue.to_string(),
             q_read_str,
-            microcode_str,
+            microcode_line_str,
+            microcode_op_str,
+            instr_str,
             self.trace_comment
         );        
 
@@ -2640,7 +2853,30 @@ impl<'a> Cpu<'a> {
         assert_eq!(self.bx, bx_should);
         assert_eq!(self.cx, cx_should);
         assert_eq!(self.dx, dx_should);
+
+        let should_be_off = self.flags & !CPU_FLAGS_RESERVED_OFF;
+        assert_eq!(should_be_off, 0);
+
+        let should_be_set = self.flags & CPU_FLAGS_RESERVED_ON;
+        assert_eq!(should_be_set, CPU_FLAGS_RESERVED_ON);
+
     }
+
+    pub fn dump_cs(&self) {
+        
+        let filename = format!("./dumps/cs.bin");
+        
+        let cs_slice = self.bus.get_slice_at((self.cs << 4) as usize, 0x10000);
+
+        match std::fs::write(filename.clone(), &cs_slice) {
+            Ok(_) => {
+                log::debug!("Wrote memory dump: {}", filename)
+            }
+            Err(e) => {
+                log::error!("Failed to write memory dump '{}': {}", filename, e)
+            }
+        }
+    }    
 }
 
 

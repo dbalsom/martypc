@@ -1,6 +1,6 @@
 
-use crate::cpu::*;
-use crate::cpu::cpu_biu::*;
+use crate::cpu_808x::*;
+use crate::cpu_808x::cpu_biu::*;
 use super::CPU_CALL_STACK_LEN;
 
 use crate::io::IoBusInterface;
@@ -31,6 +31,13 @@ impl<'a> Cpu<'a> {
             SegmentOverride::None => true,
             _ => false,
         };
+
+        // Check if this address is a return from a CALL or INT
+        let flat_addr = self.get_linear_ip();
+        if self.bus.get_flags(flat_addr as usize) & MEM_RET_BIT != 0 {
+            // This address is a return address, rewind the stack
+            self.rewind_call_stack(flat_addr);
+        }
         
         // Check for REPx prefixes
         if (self.i.prefixes & OPCODE_PREFIX_REP1 != 0) || (self.i.prefixes & OPCODE_PREFIX_REP2 != 0) {
@@ -585,11 +592,17 @@ impl<'a> Cpu<'a> {
 
                 if let OperandType::FarAddress(segment, offset) = self.i.operand1_type {        
                     
-                    // Add to call stack
-                    if self.call_stack.len() == CPU_CALL_STACK_LEN {
-                        self.call_stack.pop_front();
-                    }                    
-                    self.call_stack.push_back(CallStackEntry::CallF(self.cs, self.ip, segment, offset));
+                    self.push_call_stack(
+                        CallStackEntry::CallF {
+                            ret_cs: self.cs,
+                            ret_ip: next_i,
+                            call_cs: segment,
+                            call_ip: offset
+                        },
+                        self.cs,
+                        next_i
+                    );
+                    //self.call_stack.push_back(CallStackEntry::CallF(self.cs, self.ip, segment, offset));
                     
                     self.cs = segment;
                     self.ip = offset;
@@ -870,7 +883,7 @@ impl<'a> Cpu<'a> {
                 self.release(stack_disp);
 
                 // Pop call stack
-                self.call_stack.pop_back();
+                //self.call_stack.pop_back();
 
                 jump = true
             }
@@ -887,7 +900,7 @@ impl<'a> Cpu<'a> {
                 self.cycles_i(2, &[0x0be, 0x0bf]);                
                 
                 // Pop call stack
-                self.call_stack.pop_back();
+                // self.call_stack.pop_back();
 
                 jump = true
             }
@@ -962,7 +975,7 @@ impl<'a> Cpu<'a> {
                 self.cycles_i(4, &[0x0c7, MC_JUMP, 0x0ce, 0x0cf]);
                 
                 // Pop call stack
-                self.call_stack.pop_back();
+                //self.call_stack.pop_back();
                 jump = true;
             }
             0xC9 | 0xCB => {
@@ -978,7 +991,7 @@ impl<'a> Cpu<'a> {
                 self.cycles_i(3, &[0x0c7, MC_JUMP, 0x0c1]);
 
                 // Pop call stack
-                self.call_stack.pop_back();                
+                //self.call_stack.pop_back();                
                 jump = true;
             }
             0xCC => {
@@ -1280,13 +1293,21 @@ impl<'a> Cpu<'a> {
 
                 // Add rel16 to ip
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                self.ip = util::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
+                let new_ip = util::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
 
                 // Add to call stack
-                if self.call_stack.len() == CPU_CALL_STACK_LEN {
-                    self.call_stack.pop_front();
-                }                
-                self.call_stack.push_back(CallStackEntry::Call(cs, ip, rel16));
+                self.push_call_stack(
+                    CallStackEntry::Call {
+                        ret_cs: cs,
+                        ret_ip: next_i,
+                        call_ip: new_ip
+                    },
+                    cs,
+                    next_i
+                );
+
+                // Set new IP
+                self.ip = new_ip;
 
                 // temporary timings
                 self.biu_suspend_fetch();
@@ -1422,13 +1443,18 @@ impl<'a> Cpu<'a> {
                     }
                     Mnemonic::MUL => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                        // Multiply handles writing to ax
-                        self.multiply_u8(op1_value);
+                        
+                        //self.multiply_u8(op1_value);
+                        let product = self.mul8(self.al, op1_value, false, false);
+                        self.set_register16(Register16::AX, product);
+
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                        // Multiply handles writing to ax
-                        self.multiply_i8(op1_value as i8);
+                        
+                        //self.multiply_i8(op1_value as i8);
+                        let product = self.mul8(self.al, op1_value, true, false);
+                        self.set_register16(Register16::AX, product);
                     }                    
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1475,12 +1501,20 @@ impl<'a> Cpu<'a> {
                     Mnemonic::MUL => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         // Multiply handles writing to ax
-                        self.multiply_u16(op1_value);
+                        //self.multiply_u16(op1_value);
+
+                        let (dx, ax) = self.mul16(self.ax, op1_value, false, false);
+                        self.set_register16(Register16::DX, dx);
+                        self.set_register16(Register16::AX, ax);
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         // Multiply handles writing to dx:ax
-                        self.multiply_i16(op1_value as i16);
+                        //self.multiply_i16(op1_value as i16);
+
+                        let (dx, ax) = self.mul16(self.ax, op1_value, true, false);
+                        self.set_register16(Register16::DX, dx);
+                        self.set_register16(Register16::AX, ax);                        
                     }
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1710,14 +1744,20 @@ impl<'a> Cpu<'a> {
                         // Push return address (next instruction offset) onto stack
                         let next_i = self.ip + (self.i.size as u16);
                         self.push_u16(next_i, ReadWriteFlag::Normal);
-                        self.ip = ptr16;
 
                         // Add to call stack
-                        if self.call_stack.len() == CPU_CALL_STACK_LEN {
-                            self.call_stack.pop_front();
-                        }                
-                        self.call_stack.push_back(CallStackEntry::Call(self.cs, self.ip, ptr16));
-                        
+                        self.push_call_stack(
+                            CallStackEntry::Call {
+                                ret_cs: self.cs,
+                                ret_ip: next_i,
+                                call_ip: ptr16
+                            },
+                            self.cs,
+                            next_i
+                        );
+
+                        self.ip = ptr16;
+
                         // temporary timings
                         self.biu_suspend_fetch();
                         self.cycles(4);
@@ -1741,6 +1781,19 @@ impl<'a> Cpu<'a> {
 
                         self.push_register16(Register16::CS, ReadWriteFlag::Normal);
                         let next_i = self.ip + (self.i.size as u16);
+
+                        // Add to call stack
+                        self.push_call_stack(
+                            CallStackEntry::CallF {
+                                ret_cs: self.cs,
+                                ret_ip: next_i,
+                                call_cs: segment,
+                                call_ip: offset
+                            },
+                            self.cs,
+                            next_i
+                        );
+
                         self.cs = segment;
                         self.ip = offset;
                         self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
@@ -1748,13 +1801,6 @@ impl<'a> Cpu<'a> {
                         self.cycles_i(3, &[0x077, 0x078, 0x079]);
 
                         self.push_u16(next_i, ReadWriteFlag::RNI);
-
-                        self.call_stack.push_back(CallStackEntry::CallF(self.cs, self.ip, segment, offset));
-
-                        // Add to call stack
-                        if self.call_stack.len() == CPU_CALL_STACK_LEN {
-                            self.call_stack.pop_front();
-                        }
 
                         // log geoworks crap
                         if self.i.segment_override == SegmentOverride::SS {

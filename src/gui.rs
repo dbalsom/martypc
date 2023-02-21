@@ -32,7 +32,7 @@ use crate::{
     gui_image::{UiImage, get_ui_image},
 
     machine::{ExecutionControl, ExecutionState},
-    cpu::CpuStringState, 
+    cpu_808x::CpuStringState, 
     dma::DMAControllerStringState,
     hdc::HardDiskFormat,
     pit::PitStringState, 
@@ -67,7 +67,8 @@ pub(crate) enum GuiEvent {
     LoadFloppy(usize, OsString),
     EjectFloppy(usize),
     BridgeSerialPort(String),
-    DumpVRAM
+    DumpVRAM,
+    DumpCS
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -603,6 +604,10 @@ impl GuiState {
                             self.event_queue.push_back(GuiEvent::DumpVRAM);
                             ui.close_menu();
                         }
+                        if ui.button("Code Segment").clicked() {
+                            self.event_queue.push_back(GuiEvent::DumpCS);
+                            ui.close_menu();
+                        }                        
                     });
                     if ui.button("CPU Control...").clicked() {
                         self.cpu_control_dialog_open = true;
@@ -1140,7 +1145,11 @@ impl GuiState {
                         ui.add(egui::TextEdit::singleline(&mut self.pic_state.autoeoi).font(egui::TextStyle::Monospace));
                     });
                     ui.end_row();
-
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Trigger Mode: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.trigger_mode).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();                    
 
                     for i in 0..self.pic_state.interrupt_stats.len() {
                         ui.horizontal(|ui| {

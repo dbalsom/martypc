@@ -10,6 +10,10 @@ const ADDRESS_SPACE: usize = 1_048_576;
 const DEFAULT_WAIT_STATES: u32 = 0;
 const ROM_BIT: u8 = 0b1000_0000;
 
+pub const MEM_RET_BIT: u8 = 0b0100_0000; // Bit to signify that this address is a return address for a CALL or INT
+pub const MEM_BPE_BIT: u8 = 0b0010_0000; // Bit to signify that this address is associated with a breakpoint on execute
+pub const MEM_BPA_BIT: u8 = 0b0001_0000; // Bit to signify that this address is associated with a breakpoint on access
+
 pub trait MemoryMappedDevice {  
     fn read_u8(&mut self, address: usize) -> u8;
     fn read_u16(&mut self, address: usize) -> u16;
@@ -394,6 +398,32 @@ impl BusInterface {
             return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
+    }
+
+    /// Get bit flags for the specified byte at address
+    #[inline]
+    pub fn get_flags(&self, address: usize) -> u8 {
+        if address < self.memory.len() - 1 {
+            self.memory_mask[address]
+        }
+        else {
+            0
+        }
+    }
+
+    /// Set bit flags for the specified byte at address
+    pub fn set_flags(&mut self, address: usize, flags: u8) {
+        if address < self.memory.len() - 1 {     
+            self.memory_mask[address] |= flags;
+        }
+    }
+
+    /// Clear the specified flags for the specified byte at address
+    /// Do not allow ROM bit to be cleared
+    pub fn clear_flags(&mut self, address: usize, flags: u8) {
+        if address < self.memory.len() - 1 {     
+            self.memory_mask[address] &= !(flags & 0x7F);
+        }
     }
 
     /// Dump memory to a string representation.

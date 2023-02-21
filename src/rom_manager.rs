@@ -556,7 +556,7 @@ impl RomManager {
                         (0xFE166, "Base 16K RAM Test"),
                         (0xFE242, "Initialize CRTC Controller"),
                         (0xFE329, "8259 Interrupt Controller Test"),
-                        (0xFE35C, "8253 Timer Checkout"),
+                        (0xFE35D, "8253 Timer Checkout"),
                         (0xFE3A2, "Keyboard Test"),
                         (0xFE3DE, "Setup Interrupt Vector Table"),
                         (0xFE418, "Expansion I/O Box Test"),

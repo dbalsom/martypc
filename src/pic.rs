@@ -17,7 +17,7 @@ pub const PIC_DATA_PORT: u16    = 0x21;
 const ICW1_ICW4_NEEDED: u8      = 0b0000_0001; // Bit set if a 4th control world is required (not supported)
 const ICW1_SINGLE_MODE: u8      = 0b0000_0010; // Bit is set if PIC is operating in signle mode (only supported configuration)
 const ICW1_ADI: u8              = 0b0000_0100; // Bit is set if PIC is using a call address interval of 4, otherwise 8
-const ICW1_LTIML: u8            = 0b0000_1000; // Bit is set if PIC is in Level Triggered Mode
+const ICW1_LTIM: u8             = 0b0000_1000; // Bit is set if PIC is in Level Triggered Mode
 const ICW1_IS_ICW1: u8          = 0b0001_0000; // Bit determines if input is ICW1
 
 const ICW4_8088_MODE: u8        = 0b0000_0001; // Bit on if 8086/8088 mode (required)
@@ -37,6 +37,13 @@ pub enum InitializationState {
     ExpectingICW2,      // In initialization sequence, expecting ICW2
     ExpectingICW4       // In initialization sequence, expecting ICW4
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum TriggerMode {
+    Edge,
+    Level
+}
+
 
 #[derive(Copy, Clone)]
 pub enum ReadSelect {
@@ -79,6 +86,7 @@ pub struct Pic {
     polled: bool,            // Polled mode
     auto_eoi: bool,          // Auto-EOI mode
     rotate_on_aeoi: bool,    // Should rotate in Auto-EOI mode
+    trigger_mode: TriggerMode,
     expecting_icw2: bool,
     expecting_icw4: bool,    // ICW3 not supported in Single mode operation
     error: bool,             // We encountered an invalid condition or request
@@ -93,6 +101,7 @@ pub struct PicStringState {
     pub isr: String,
     pub irr: String,
     pub autoeoi: String,
+    pub trigger_mode: String,
     pub interrupt_stats: Vec<(String, String, String)>
 }
 
@@ -138,6 +147,7 @@ impl Pic {
             special_nested: false,
             polled: false,
             auto_eoi: false,
+            trigger_mode: TriggerMode::Edge,
             rotate_on_aeoi: false,
             expecting_icw2: false,
             expecting_icw4: false,
@@ -186,9 +196,17 @@ impl Pic {
                 log::error!("PIC: Error: Chained mode not supported");
                 self.error = true;
             }
+
             if byte & ICW1_ADI != 0 {
                 log::error!("PIC: Error: 4 byte ADI unsupported");
                 self.error = true;
+            }
+
+            if byte & ICW1_LTIM != 0 {
+                self.trigger_mode = TriggerMode::Level;
+            }
+            else {
+                self.trigger_mode = TriggerMode::Edge;
             }
 
             self.init_state = InitializationState::ExpectingICW2;
@@ -318,6 +336,7 @@ impl Pic {
     fn set_imr(&mut self, byte: u8) {
 
         // Changing the IMR will allow devices with current high IR lines to generate interrupts
+        // in Level triggered mode.  In Edge triggered mode they will not
         self.imr = byte;
 
         let mut ir_bit = 0x01;
@@ -327,10 +346,12 @@ impl Pic {
             let is_masked = ir_bit & self.imr != 0;
             let is_in_service = ir_bit & self.isr != 0;
 
-            if have_request && !is_masked && !is_in_service {
-                // (Set INT request line high)
-                self.int_request = true;
-                self.interrupt_stats[interrupt as usize].serviced_count += 1;
+            if self.trigger_mode == TriggerMode::Level {
+                if have_request && !is_masked && !is_in_service {
+                    // (Set INT request line high)
+                    self.int_request = true;
+                    self.interrupt_stats[interrupt as usize].serviced_count += 1;
+                }
             }
 
             ir_bit <<= 1;
@@ -430,6 +451,7 @@ impl Pic {
             irr: format!("{:08b}", self.irr),
             isr: format!("{:08b}", self.isr),
             autoeoi: format!("{:?}", self.auto_eoi),
+            trigger_mode: format!("{:?}", self.trigger_mode),
             interrupt_stats: Vec::new()
         };
 

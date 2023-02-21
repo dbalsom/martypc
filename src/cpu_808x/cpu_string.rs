@@ -1,4 +1,4 @@
-use crate::cpu::*;
+use crate::cpu_808x::*;
 use crate::bus::BusInterface;
 
 impl<'a> Cpu<'a> {
@@ -160,7 +160,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);                
+                self.set_szp_flags_from_result_u8(result);                
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -188,7 +188,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);                
+                self.set_szp_flags_from_result_u16(result);                
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -221,7 +221,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u8(result);                    
+                self.set_szp_flags_from_result_u8(result);                    
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -255,7 +255,7 @@ impl<'a> Cpu<'a> {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_flags_from_result_u16(result);                    
+                self.set_szp_flags_from_result_u16(result);                    
 
                 match self.get_flag(Flag::Direction) {
                     false => {

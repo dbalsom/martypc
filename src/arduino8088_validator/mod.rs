@@ -22,7 +22,7 @@ use std::backtrace::Backtrace;
 use std::cmp;
 
 use crate::cpu_validator::{ValidatorError, CpuValidator, VRegisters, ReadType};
-use crate::cpu::{
+use crate::cpu_808x::{
     QueueOp,
     CPU_FLAG_CARRY,
     CPU_FLAG_PARITY,

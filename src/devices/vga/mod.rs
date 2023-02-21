@@ -1798,18 +1798,25 @@ impl MemoryMappedDevice for VGACard {
                     // Third, the operation specified by the Logical Operation field of the Data Rotate register
                     // is perfomed on the data for each plane and the latch read register.
                     // Only the bits set in the Bit Mask register will be affected by the Logical Operation. 
-                    self.pipeline_buf[i] = match self.graphics_data_rotate.function() {
+
+                    let mut rotate_function = self.graphics_data_rotate.function();
+                    
+                    if rotate_function == RotateFunction::Xor {
+                        //rotate_function = RotateFunction::Unmodified;
+                    }
+                    self.pipeline_buf[i] = match  rotate_function {
                         RotateFunction::Unmodified => {
+                            //(self.pipeline_buf[i] & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                             (self.pipeline_buf[i] & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                         }
                         RotateFunction::And => {
-                            (self.pipeline_buf[i] | !self.graphics_bitmask) & self.planes[i].latch
+                            ((self.pipeline_buf[i] & self.planes[i].latch) & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                         }
                         RotateFunction::Or => {
-                            (self.pipeline_buf[i] & self.graphics_bitmask) | self.planes[i].latch
+                            ((self.pipeline_buf[i] | self.planes[i].latch) & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                         }
                         RotateFunction::Xor => {
-                            (self.pipeline_buf[i] & self.graphics_bitmask) ^ self.planes[i].latch
+                            ((self.pipeline_buf[i] ^ self.planes[i].latch) & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                         }
                     };
                 }
@@ -1853,13 +1860,7 @@ impl MemoryMappedDevice for VGACard {
                             false => 0x00,
                         };
 
-                        // Clear bits not masked
-                        self.planes[i].buf[offset] &= !self.graphics_bitmask;
-
-                        // Mask off bits not to set
-                        let set_bits = bit_span & self.graphics_bitmask;
-
-                        self.planes[i].buf[offset] |= set_bits;
+                        self.planes[i].buf[offset] = (self.planes[i].buf[offset] & !self.graphics_bitmask) | (bit_span & self.graphics_bitmask);
                     }
                 }
             }
@@ -1881,6 +1882,7 @@ impl MemoryMappedDevice for VGACard {
                     // Use the mask calculated earlier to mask the identical bits from the set/reset register
                     self.planes[i].buf[offset] = (self.planes[i].buf[offset] & !mask) | (all_bits & mask);
                 }
+
             }
         }
 

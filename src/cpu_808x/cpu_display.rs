@@ -1,8 +1,8 @@
 use std::fmt;
 
-use crate::cpu::*;
-use crate::cpu::cpu_mnemonic::Mnemonic;
-use crate::cpu::cpu_addressing::AddressingMode;
+use crate::cpu_808x::*;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::cpu_addressing::AddressingMode;
 
 #[derive(Copy, Clone)]
 pub enum OperandSelect {

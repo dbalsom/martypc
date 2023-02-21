@@ -7,7 +7,7 @@ use log;
 
 use crate::io::{IoBusInterface, IoDevice};
 use crate::bus::{BusInterface};
-use crate::cpu::CPU_MHZ;
+use crate::cpu_808x::CPU_MHZ;
 use crate::pic;
 use crate::dma;
 use crate::ppi;

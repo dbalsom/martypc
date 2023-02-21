@@ -1,5 +1,5 @@
-use crate::cpu::*;
-use crate::cpu::cpu_biu::*;
+use crate::cpu_808x::*;
+use crate::cpu_808x::cpu_biu::*;
 
 
 #[derive(Copy, Clone, Debug)]

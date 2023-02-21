@@ -60,7 +60,7 @@ pub enum MemoryMap {
     B8000_32K
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, PartialEq, BitfieldSpecifier)]
 pub enum RotateFunction {
     Unmodified,
     And,
