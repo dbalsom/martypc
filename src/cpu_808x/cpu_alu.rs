@@ -424,7 +424,7 @@ impl<'a> Cpu<'a> {
 
         match opcode {
             Mnemonic::ADD => {
-                let (result, carry, overflow, aux_carry) = Cpu::add_u8(operand1, operand2, false);
+                let (result, carry, overflow, aux_carry) = operand1.alu_add(operand2);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -432,10 +432,7 @@ impl<'a> Cpu<'a> {
                 result
             }
             Mnemonic::ADC => {
-                // Get value of carry flag
-                let carry_in = self.get_flag(Flag::Carry);
-                // And pass it to ADC
-                let (result, carry, overflow, aux_carry) = Cpu::add_u8(operand1, operand2, carry_in);
+                let (result, carry, overflow, aux_carry) = operand1.alu_adc(operand2, self.get_flag(Flag::Carry));
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -471,7 +468,7 @@ impl<'a> Cpu<'a> {
                 // Compute (0-operand)
                 // Flags: The CF flag set to 0 if the source operand is 0; otherwise it is set to 1. 
                 // The OF, SF, ZF, AF, and PF flags are set according to the result.
-                let (result, _carry, overflow, aux_carry) = Cpu::sub_u8(0, operand1, false);
+                let (result, _carry, overflow, aux_carry) = 0u8.alu_sub(operand1);
                 
                 self.set_flag_state(Flag::Carry, operand1 != 0);
                 // NEG Updates AF, SF, PF, ZF
@@ -482,7 +479,7 @@ impl<'a> Cpu<'a> {
             }
             Mnemonic::INC => {
                 // INC acts like add xx, 1, however does not set carry flag
-                let (result, _carry, overflow, aux_carry) = Cpu::add_u8(operand1, 1, false);
+                let (result, _carry, overflow, aux_carry) = operand1.alu_add(1);
                 // DO NOT set carry Flag
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -491,7 +488,7 @@ impl<'a> Cpu<'a> {
             }
             Mnemonic::DEC => {
                 // DEC acts like sub xx, 1, however does not set carry flag
-                let (result, _carry, overflow, aux_carry) = Cpu::sub_u8(operand1, 1, false);
+                let (result, _carry, overflow, aux_carry) = operand1.alu_sub(1);
                 // DEC does NOT set carry Flag
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -538,7 +535,7 @@ impl<'a> Cpu<'a> {
             }
             Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, false );
+                let (result, carry, overflow, aux_carry) = operand1.alu_sub(operand2);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -555,7 +552,7 @@ impl<'a> Cpu<'a> {
 
         match opcode {
             Mnemonic::ADD => {
-                let (result, carry, overflow, aux_carry) = Cpu::add_u16(operand1, operand2, false);
+                let (result, carry, overflow, aux_carry) = operand1.alu_add(operand2);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -563,10 +560,7 @@ impl<'a> Cpu<'a> {
                 result
             }
             Mnemonic::ADC => {
-                // Get value of carry flag
-                let carry_in = self.get_flag(Flag::Carry);
-                // And pass it to ADC
-                let (result, carry, overflow, aux_carry) = Cpu::add_u16(operand1, operand2, carry_in);
+                let (result, carry, overflow, aux_carry) = operand1.alu_adc(operand2, self.get_flag(Flag::Carry));
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -598,7 +592,7 @@ impl<'a> Cpu<'a> {
                 // Compute (0-operand)
                 // Flags: The CF flag set to 0 if the source operand is 0; otherwise it is set to 1. 
                 // The OF, SF, ZF, AF, and PF flags are set according to the result.
-                let (result, _carry, overflow, aux_carry) = Cpu::sub_u16(0, operand1, false);
+                let (result, _carry, overflow, aux_carry) = 0u16.alu_sub(operand2);
                 
                 self.set_flag_state(Flag::Carry, operand1 != 0);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -608,8 +602,7 @@ impl<'a> Cpu<'a> {
             }            
             Mnemonic::INC => {
                 // INC acts like add xx, 1, however does not set carry flag
-                let (result, _carry, overflow, aux_carry) = Cpu::add_u16(operand1, 1, false);
-                // INC does NOT set carry Flag
+                let (result, _carry, overflow, aux_carry) = operand1.alu_add(1);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
                 self.set_szp_flags_from_result_u16(result);
@@ -617,8 +610,7 @@ impl<'a> Cpu<'a> {
             }
             Mnemonic::DEC => {
                 // DEC acts like sub xx, 1, however does not set carry flag
-                let (result, _carry, overflow, aux_carry) = Cpu::sub_u16(operand1, 1, false);
-                // DEC does NOT set carry Flag
+                let (result, _carry, overflow, aux_carry) = operand1.alu_sub(1);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
                 self.set_szp_flags_from_result_u16(result);
@@ -664,7 +656,7 @@ impl<'a> Cpu<'a> {
             }            
             Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(operand1, operand2, false );
+                let (result, carry, overflow, aux_carry) = operand1.alu_sub(operand2);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
