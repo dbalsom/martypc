@@ -21,7 +21,7 @@
     alu.rs
 
     This module implements traits for alu operations of different widths
-    common accross CPU types. 
+    common accross CPU types.
 
 */
 
@@ -207,6 +207,26 @@ macro_rules! impl_shr {
     }
 }
 
+pub trait AluRotateLeft: Sized {
+    fn alu_rol(self, count: u8) -> (Self, bool);
+}
+
+macro_rules! impl_rol {
+    ($prim:ty) => {
+        impl AluRotateLeft for $prim {
+            fn alu_rol(mut self, count: u8) -> (Self, bool) {
+                let mut carry = 0 as $prim;
+                for _ in 0..count {
+                    carry = self & (1 << (<$prim>::BITS - 1));
+                    self <<= 1;
+                    self |= carry >> (<$prim>::BITS - 1);
+                }
+                (self, carry != 0)
+            }
+        }
+    }
+}
+
 pub trait AluRotateCarryLeft: Sized {
     fn alu_rcl(self, count: u8, carry: bool) -> (Self, bool);
 }
@@ -224,6 +244,26 @@ macro_rules! impl_rcl {
                     self |= saved_carry;
                 }
         
+                (self, carry != 0)
+            }
+        }
+    }
+}
+
+pub trait AluRotateRight: Sized {
+    fn alu_ror(self, count: u8) -> (Self, bool);
+}
+
+macro_rules! impl_ror {
+    ($prim:ty) => {
+        impl AluRotateRight for $prim {
+            fn alu_ror(mut self, count: u8) -> (Self, bool) {
+                let mut carry = 0 as $prim;
+                for _ in 0..count {
+                    carry = self & 0x01;
+                    self >>= 1;
+                    self |= carry << (<$prim>::BITS - 1);
+                }
                 (self, carry != 0)
             }
         }
@@ -257,8 +297,12 @@ impl_shl!(u8);
 impl_shl!(u16);
 impl_shr!(u8);
 impl_shr!(u16);
+impl_rol!(u8);
+impl_rol!(u16);
 impl_rcl!(u8);
 impl_rcl!(u16);
+impl_ror!(u8);
+impl_ror!(u16);
 impl_rcr!(u8);
 impl_rcr!(u16);
 
@@ -378,17 +422,60 @@ mod tests {
 
     }
 
-    /*
+    #[test]
+    fn test_rol() {
+
+        let (result, carry) = 0xAAu8.alu_rol(8);
+        assert_eq!(result, 0xAA);
+        assert_eq!(carry, false);
+
+        let (result, carry) = 0x55u8.alu_rol(16);
+        assert_eq!(result, 0x55);
+        assert_eq!(carry, true);   
+
+        let (result, carry) = 0x80u8.alu_rol(1);
+        assert_eq!(result, 0x01);
+        assert_eq!(carry, true);
+
+        let (result, carry) = 0xAAAAu16.alu_rol(16);
+        assert_eq!(result, 0xAAAA);
+        assert_eq!(carry, false);
+
+        let (result, carry) = 0x5555u16.alu_rol(16);
+        assert_eq!(result, 0x5555);
+        assert_eq!(carry, true);        
+
+        let (result, carry) = 0x8000u16.alu_rol(1);
+        assert_eq!(result, 0x0001);
+        assert_eq!(carry, true);
+    }
+
     #[test]
     fn test_ror() {
 
-        let (result, carry) = Cpu::ror_u8_with_carry(0xAA, 8);
+        let (result, carry) = 0xAAu8.alu_ror(8);
         assert_eq!(result, 0xAA);
         assert_eq!(carry, true);
 
-        let (result, carry) = Cpu::ror_u8_with_carry(0x01, 1);
+        let (result, carry) = 0x55u8.alu_ror(8);
+        assert_eq!(result, 0x55);
+        assert_eq!(carry, false);        
+
+        let (result, carry) = 0x01u8.alu_ror(1);
         assert_eq!(result, 0x80);
         assert_eq!(carry, true);
+
+        let (result, carry) = 0xAAAAu16.alu_ror(16);
+        assert_eq!(result, 0xAAAA);
+        assert_eq!(carry, true);
+
+        let (result, carry) = 0x5555u16.alu_ror(16);
+        assert_eq!(result, 0x5555);
+        assert_eq!(carry, false);        
+
+        let (result, carry) = 0x0001u16.alu_ror(1);
+        assert_eq!(result, 0x8000);
+        assert_eq!(carry, true);
     }
-    */
+
 }
