@@ -1102,11 +1102,8 @@ impl<'a> Cpu<'a> {
                 // Get imm8 value
                 let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
                 
-                if op1_value == 0 {
+                if !self.aam(op1_value) {
                     exception = CpuException::DivideError;
-                }
-                else {
-                    self.aam(op1_value);
                 }
             }
             0xD5 => {
@@ -1458,21 +1455,44 @@ impl<'a> Cpu<'a> {
                     }                    
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                        
+                        /*
                         // Divide handles writing to dx:ax
                         let success = self.divide_u8(op1_value);
                         if !success {
                             exception = CpuException::DivideError;
                         }
-                        // TODO: Handle DIV exceptions
+                        */
+                        
+                        match self.div8(self.ax, op1_value, false, false) {
+                            Ok((al, ah)) => {
+                                self.set_register8(Register8::AL, al); // Quotient in AL
+                                self.set_register8(Register8::AH, ah); // Remainder in AH
+                            }
+                            Err(_) => {
+                                exception = CpuException::DivideError;
+                            }
+                        }
                     }          
                     Mnemonic::IDIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                        /*
                         // Divide handles writing to dx:ax
                         let success = self.divide_i8(op1_value);
                         if !success {
                             exception = CpuException::DivideError;
                         }
-                        // TODO: Handle DIV exceptions
+                        */
+
+                        match self.div8(self.ax, op1_value, true, false) {
+                            Ok((al, ah)) => {
+                                self.set_register8(Register8::AL, al); // Quotient in AL
+                                self.set_register8(Register8::AH, ah); // Remainder in AH
+                            }
+                            Err(_) => {
+                                exception = CpuException::DivideError;
+                            }
+                        }
                     }                                 
                     _=> unhandled = true
                 }
@@ -1518,20 +1538,43 @@ impl<'a> Cpu<'a> {
                     }
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+                        /*
                         // Divide handles writing to dx:ax
                         let success = self.divide_u16(op1_value);
                         if !success {
                             exception = CpuException::DivideError;
                         }
-                        // TODO: Handle DIV exceptions
+                        */
+
+                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, false, false) {
+                            Ok((quotient, remainder)) => {
+                                self.set_register16(Register16::AX, quotient); // Quotient in AX
+                                self.set_register16(Register16::DX, remainder); // Remainder in DX
+                            }
+                            Err(_) => {
+                                exception = CpuException::DivideError;
+                            }
+                        }
                     }
                     Mnemonic::IDIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+                        /*
                         // Divide handles writing to dx:ax
                         let success = self.divide_i16(op1_value);
                         if !success {
                             exception = CpuException::DivideError;
                         }
+                        */
+
+                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, true, false) {
+                            Ok((quotient, remainder)) => {
+                                self.set_register16(Register16::AX, quotient); // Quotient in AX
+                                self.set_register16(Register16::DX, remainder); // Remainder in DX
+                            }
+                            Err(_) => {
+                                exception = CpuException::DivideError;
+                            }
+                        }                        
                     }
                     _=> unhandled = true
                 }

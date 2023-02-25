@@ -164,6 +164,22 @@ pub const OPCODE_PREFIX_LOCK: u32            = 0b_0000_1000_0000;
 pub const OPCODE_PREFIX_REP1: u32            = 0b_0001_0000_0000;
 pub const OPCODE_PREFIX_REP2: u32            = 0b_0010_0000_0000;
 
+// The parity flag is calculated from the lower 8 bits of an alu operation regardless
+// of the operand width.  Thefore it is trivial to precalculate a 8-bit parity table.
+pub const PARITY_TABLE: [bool; 256] = {
+    let mut table = [false; 256];
+    let mut index = 0;
+    loop {
+        table[index] = index.count_ones() % 2 == 0;
+        index += 1;
+        
+        if index == 256 {
+            break;
+        }
+    }
+    table
+};
+
 pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::AX,
     Register16::CX,
@@ -2160,7 +2176,6 @@ impl<'a> Cpu<'a> {
     /// Handle a CPU exception
     pub fn handle_exception(&mut self, exception: u8) {
 
-        // 
         self.push_flags(ReadWriteFlag::Normal);
 
         // Push return address of next instruction onto stack
@@ -2558,6 +2573,8 @@ impl<'a> Cpu<'a> {
                 Ok(self.instr_cycle)
             }                    
             ExecutionResult::UnsupportedOpcode(o) => {
+                // This shouldn't really happen on the 8088 as every opcode does something, 
+                // but allowed us to be missing opcode implementations during development.
                 self.is_running = false;
                 self.is_error = true;
                 Err(CpuError::UnhandledInstructionError(o, instruction_address))
@@ -2580,7 +2597,7 @@ impl<'a> Cpu<'a> {
                 match exception {
                     CpuException::DivideError => {
                         self.handle_exception(0);
-                        Ok(self.instr_cycle + 1)
+                        Ok(self.instr_cycle)
                     }
                     _ => {
                         // Unhandled exception?

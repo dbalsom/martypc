@@ -72,6 +72,7 @@ impl<'a> Cpu<'a> {
         flags &= !CPU_FLAG_TRAP;
         self.set_flags(flags);
 
+        //self.set_flags(0);
     }
 
     pub fn randomize_mem(&mut self) {

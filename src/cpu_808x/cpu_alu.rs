@@ -4,22 +4,6 @@ use crate::cpu_common::alu::*;
 
 use num_traits::PrimInt;
 
-// The parity flag is calculated from the lower 8 bits of an alu operation regardless
-// of the operand width.  Thefore it is trivial to precalculate a 8-bit parity table.
-const PARITY_TABLE: [bool; 256] = {
-    let mut table = [false; 256];
-    let mut index = 0;
-    loop {
-        table[index] = index.count_ones() % 2 == 0;
-        index += 1;
-        
-        if index == 256 {
-            break;
-        }
-    }
-    table
-};
-
 impl<'a> Cpu<'a> {
 
     #[inline(always)]

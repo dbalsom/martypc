@@ -78,7 +78,8 @@ pub const FLAG_MASK_LOOKUP: [FlagMask; 256] =  [
     FlagMask { opcode: 0x24, group: 0, mask: VFLAG_AUXILIARY },
     FlagMask { opcode: 0x25, group: 0, mask: VFLAG_AUXILIARY },
     FlagMask { opcode: 0x26, group: 0, mask: 0 },
-    FlagMask { opcode: 0x27, group: 0, mask: VFLAG_OVERFLOW },
+    //FlagMask { opcode: 0x27, group: 0, mask: VFLAG_OVERFLOW },
+    FlagMask { opcode: 0x27, group: 0, mask: 0 }, // DAA - implemented overflow flag behavior
     FlagMask { opcode: 0x28, group: 0, mask: 0 },
     FlagMask { opcode: 0x29, group: 0, mask: 0 },
     FlagMask { opcode: 0x2A, group: 0, mask: 0 },
@@ -86,7 +87,8 @@ pub const FLAG_MASK_LOOKUP: [FlagMask; 256] =  [
     FlagMask { opcode: 0x2C, group: 0, mask: 0 },
     FlagMask { opcode: 0x2D, group: 0, mask: 0 },
     FlagMask { opcode: 0x2E, group: 0, mask: 0 },
-    FlagMask { opcode: 0x2F, group: 0, mask: VFLAG_OVERFLOW },
+    //FlagMask { opcode: 0x2F, group: 0, mask: VFLAG_OVERFLOW },
+    FlagMask { opcode: 0x2F, group: 0, mask: 0 }, // DAS - implemented overflow flag behavior
     FlagMask { opcode: 0x30, group: 0, mask: VFLAG_AUXILIARY },
     FlagMask { opcode: 0x31, group: 0, mask: VFLAG_AUXILIARY },
     FlagMask { opcode: 0x32, group: 0, mask: VFLAG_AUXILIARY },
@@ -94,7 +96,8 @@ pub const FLAG_MASK_LOOKUP: [FlagMask; 256] =  [
     FlagMask { opcode: 0x34, group: 0, mask: VFLAG_AUXILIARY },
     FlagMask { opcode: 0x35, group: 0, mask: VFLAG_AUXILIARY },
     FlagMask { opcode: 0x36, group: 0, mask: 0 },
-    FlagMask { opcode: 0x37, group: 0, mask: VFLAG_PARITY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
+    //FlagMask { opcode: 0x37, group: 0, mask: VFLAG_PARITY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
+    FlagMask { opcode: 0x37, group: 0, mask: 0 }, // AAA - implemented flag behavior
     FlagMask { opcode: 0x38, group: 0, mask: 0 },
     FlagMask { opcode: 0x39, group: 0, mask: 0 },
     FlagMask { opcode: 0x3A, group: 0, mask: 0 },

@@ -1156,10 +1156,72 @@ pub fn main_fuzzer <'a>(
         }
 
         // Generate specific opcodes (optional)
+
+        // ALU ops
+        /*
+        cpu.random_inst_from_opcodes(
+            &[
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
+                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, // OR
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, // ADC
+                0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, // SBB
+                0x20, 0x21, 0x22, 0x23, 0x24, 0x25, // AND
+                0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, // SUB
+                0x30, 0x31, 0x32, 0x33, 0x34, 0x35, // XOR
+                0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, // CMP
+            ]
+        );
+        // Completed 5000 tests
+        */
+
+        //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
+        //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
+
+        cpu.random_inst_from_opcodes(&[0x37]); // AAA
+        //cpu.random_inst_from_opcodes(&[0x90]);
+
+        /*
+        // INC & DEC
+        cpu.random_inst_from_opcodes(
+            &[
+                0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
+                0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+            ]
+        );
+        */ 
+
+        /*
+        // PUSH & POP
+        cpu.random_inst_from_opcodes(
+            &[
+                0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57,
+                0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+            ]
+        );
+        */ 
+
+        /*
+        // Relative jumps
+        cpu.random_inst_from_opcodes(
+            &[
+                0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+                0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+            ]
+        );
+        */ 
+
+        //cpu.random_inst_from_opcodes(&[0x80, 0x81, 0x83]); // ALU imm8, imm16, and imm8s
+
+
         //cpu.random_inst_from_opcodes(&[0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D]); // SBB 8 & 16 bit
         //cpu.random_inst_from_opcodes(&[0x18, 0x1A, 0x1C]); // SBB 8 bit
 
-        cpu.random_grp_instruction(0xF6, &[4, 5]);
+        //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
+        //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
+        
+        //cpu.random_inst_from_opcodes(&[0xD4]); // AAM
+        //cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
+        //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
 
         // Decode this instruction
         let instruction_address = 
@@ -1180,8 +1242,8 @@ pub fn main_fuzzer <'a>(
         };
         
         // Skip N successful instructions
-        if test_num < 168 {
-            continue;
+        if test_num < 276 {
+            //continue;
         }
 
         match i.mnemonic {
@@ -1206,11 +1268,13 @@ pub fn main_fuzzer <'a>(
                 // For obvious reasons
                 continue;
             }
+            /*
             Mnemonic::AAM | Mnemonic::DIV | Mnemonic::IDIV => {
                 // Timings on these will take some work 
                 continue;
             }
-            Mnemonic::ROL | Mnemonic::ROR | Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
+            */
+            Mnemonic::SETMO | Mnemonic::SETMOC | Mnemonic::ROL | Mnemonic::ROR | Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
                 // Limit cl to 0-31.
                 cpu.set_register8(Register8::CL, cpu.get_register8(Register8::CL) % 32);
             }

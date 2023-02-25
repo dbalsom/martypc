@@ -369,6 +369,9 @@ impl CpuClient {
         }
     }
 
+    /// Receive a buffer of dynamic size (don't expect the entire buffer read like recv_buf does)
+    /// Returns the number of bytes read.
+    /// Primarily used for get_last_error
     pub fn recv_dyn_buf(&mut self, buf: &mut [u8]) -> Result<usize, CpuClientError> {
         match self.port.borrow_mut().read(buf) {
             Ok(bytes) => {
@@ -393,7 +396,7 @@ impl CpuClient {
         self.read_result_code()
     }
 
-    pub  fn begin_store(&mut self) -> Result<bool, CpuClientError> {
+    pub fn begin_store(&mut self) -> Result<bool, CpuClientError> {
         self.send_command_byte(ServerCommand::CmdBeginStore)?;
         self.read_result_code()
     }
