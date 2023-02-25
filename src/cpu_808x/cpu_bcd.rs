@@ -22,13 +22,13 @@ impl<'a> Cpu<'a> {
             //self.cycle_i(0x14e);
         }
         else {
+            new_al = self.al;
+            self.set_register8(Register8::AL, self.al & 0x0F);
             self.clear_flag(Flag::AuxCarry);
             self.clear_flag(Flag::Carry);
             self.cycle_i(MC_JUMP);
-            new_al = self.al;
+            
         }
-
-        self.set_register8(Register8::AL, self.al & 0x0F);
 
         // Handle undefined flag behavior. Determined by testing against real 8088.
         self.clear_flag(Flag::Overflow);
@@ -50,11 +50,16 @@ impl<'a> Cpu<'a> {
     /// Ascii Adjust after Subtraction
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aas(&mut self) {    
+
+        let old_al = self.al;
+        let old_af = self.get_flag(Flag::AuxCarry);
+        let new_al;
+
         self.cycles_i(6, &[0x148, 0x149, 0x14a, 0x14b, MC_JUMP, 0x14d]);
-        if ((self.al & 0x0F) > 9) || self.get_flag(Flag::AuxCarry) {
+        if ((self.al & 0x0F) > 9) || old_af {
             // Intel documentation shows AX := AX - 6 for AAS, but the microcode only reads AL not AX
             // before calling XI.  Mistake on intel's part(?)
-            let new_al = self.al.wrapping_sub(6);
+            new_al = self.al.wrapping_sub(6);
             self.set_register8(Register8::AH, self.ah.wrapping_sub(1));
             self.set_register8(Register8::AL, new_al & 0x0F);
             self.set_flag(Flag::AuxCarry);
@@ -63,11 +68,31 @@ impl<'a> Cpu<'a> {
             
         }
         else {
+            new_al = self.al;
             self.set_register8(Register8::AL, self.al & 0x0F);
             self.clear_flag(Flag::Carry);
             self.clear_flag(Flag::AuxCarry);
             self.cycle_i(MC_JUMP);
         }
+
+        // Handle undefined flag behavior. Determined by testing against real 8088.
+        self.clear_flag(Flag::Overflow);
+        self.clear_flag(Flag::Zero);
+        self.clear_flag(Flag::Sign);
+        if new_al == 0 {
+            self.set_flag(Flag::Zero);
+        }
+        if old_af && old_al >= 0x80 && old_al <= 0x85 {
+            self.set_flag(Flag::Overflow);
+        }
+        if !old_af && old_al >= 0x80 {
+            self.set_flag(Flag::Sign);
+        }
+        if old_af && ((old_al <= 0x05) || (old_al >= 0x86)) {
+            self.set_flag(Flag::Sign);
+        }
+
+        self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);        
     }
 
     /// Ascii adjust before Divison

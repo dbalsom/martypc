@@ -105,7 +105,8 @@ pub const FLAG_MASK_LOOKUP: [FlagMask; 256] =  [
     FlagMask { opcode: 0x3C, group: 0, mask: 0 },
     FlagMask { opcode: 0x3D, group: 0, mask: 0 },
     FlagMask { opcode: 0x3E, group: 0, mask: 0 },
-    FlagMask { opcode: 0x3F, group: 0, mask: VFLAG_PARITY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
+    //FlagMask { opcode: 0x3F, group: 0, mask: VFLAG_PARITY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
+    FlagMask { opcode: 0x3F, group: 0, mask: 0 }, // AAS - implemented flag behavior
     FlagMask { opcode: 0x40, group: 0, mask: 0 },
     FlagMask { opcode: 0x41, group: 0, mask: 0 },
     FlagMask { opcode: 0x42, group: 0, mask: 0 },
