@@ -34,7 +34,7 @@ impl Default for ModRmByte {
 const EA_INSTR_TABLE_PRE: [[u16; 5]; 24] = [
     [0x1d4, 0x1d5, 0x1d6, MC_JUMP, MC_NONE], // MODRM_ADDR_BX_SI  
     [0x1da, MC_JUMP, 0x1d8, 0x1d9, MC_JUMP], // MODRM_ADDR_BX_DI  
-    [0x1db, MC_JUMP, 0x1d5, 0x1f6, MC_JUMP], // MODRM_ADDR_BP_SI   
+    [0x1db, MC_JUMP, 0x1d5, 0x1d6, MC_JUMP], // MODRM_ADDR_BP_SI   
     [0x1d7, 0x1d8, 0x1d9, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_DI  
     [0x003, MC_JUMP, MC_NONE, MC_NONE, MC_NONE],   // MODRM_ADDR_SI    
     [0x01f, MC_JUMP, MC_NONE, MC_NONE, MC_NONE],   // MODRM_ADDR_DI     
@@ -58,7 +58,7 @@ const EA_INSTR_TABLE_PRE: [[u16; 5]; 24] = [
     [0x037, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BX_DISP16
 ];
 
-// Microcode addresses for EA procedures, post-displacement
+// Microcode addresses for EA procedures, post-displacement, EA loaded
 const EA_INSTR_TABLE_POST: [[u16; 3]; 24] = [
     [MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BX_SI
     [MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BX_DI  
@@ -66,7 +66,7 @@ const EA_INSTR_TABLE_POST: [[u16; 3]; 24] = [
     [MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BP_DI  
     [MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_SI     
     [MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_DI      
-    [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_DISP16 
+    [MC_JUMP, MC_NONE, MC_NONE], // MODRM_ADDR_DISP16 
     [MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BX      
     [MC_JUMP, 0x1e0, MC_JUMP], // MODRM_ADDR_BX_SI_DISP8 
     [MC_JUMP, 0x1e0, MC_JUMP], // MODRM_ADDR_BX_DI_DISP8 
@@ -129,6 +129,9 @@ const MODRM_TABLE: [ModRmByte; 256] = {
         // We divide these into two values, representing microcode instructions before and after
         // loading the displacement. Time spent loading the displacement itself is dependent on the 
         // state of the prefetch queue, so can't be known ahead of time.
+        //
+        // Oddly, fetching an 8-bit displacement takes longer than 16-bit!
+        // This is due to an extra jump at microcode line 1de.
         let (pre_disp_cost, post_disp_cost) = match byte & MODRM_ADDR_MASK {
             MODRM_ADDR_BX_SI =>        (4,0),
             MODRM_ADDR_BX_DI =>        (5,0),
@@ -136,10 +139,10 @@ const MODRM_TABLE: [ModRmByte; 256] = {
             MODRM_ADDR_BP_DI =>        (4,0),
             MODRM_ADDR_SI =>           (2,0),
             MODRM_ADDR_DI =>           (2,0),
-            MODRM_ADDR_DISP16 =>       (0,2),
+            MODRM_ADDR_DISP16 =>       (0,1),
             MODRM_ADDR_BX =>           (2,0),
-            MODRM_ADDR_BX_SI_DISP8 =>  (4,3), // Oddly, fetching an 8-bit displacement takes longer than 16-bit!
-            MODRM_ADDR_BX_DI_DISP8 =>  (5,3), // This is due to an extra jump at microcode line 1de.
+            MODRM_ADDR_BX_SI_DISP8 =>  (4,3), 
+            MODRM_ADDR_BX_DI_DISP8 =>  (5,3), 
             MODRM_ADDR_BP_SI_DISP8 =>  (5,3),
             MODRM_ADDR_BP_DI_DISP8 =>  (4,3),
             MODRM_ADDR_DI_DISP8 =>     (2,3),
@@ -215,8 +218,6 @@ const MODRM_TABLE: [ModRmByte; 256] = {
     table
 };
 
-
-
 impl ModRmByte {
 
     /// Read the modrm byte and look up the appropriate value from the modrm table.
@@ -255,7 +256,7 @@ impl ModRmByte {
     }
 
     /// Load any displacement the modrm might have. The modrm table only has 'pending' displacement values,
-    /// which must be resolved.
+    /// which must be resolved to actual displacement values.
     pub fn load_displacement(&mut self, bytes: &mut impl ByteQueue) -> u32 {
 
         let (displacement, size) = match self.disp {

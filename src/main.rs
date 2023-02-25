@@ -1158,7 +1158,7 @@ pub fn main_fuzzer <'a>(
         // Generate specific opcodes (optional)
 
         // ALU ops
-        /*
+        
         cpu.random_inst_from_opcodes(
             &[
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
@@ -1172,12 +1172,10 @@ pub fn main_fuzzer <'a>(
             ]
         );
         // Completed 5000 tests
-        */
-
+        
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
 
-        cpu.random_inst_from_opcodes(&[0x37]); // AAA
         //cpu.random_inst_from_opcodes(&[0x90]);
 
         /*
@@ -1188,7 +1186,7 @@ pub fn main_fuzzer <'a>(
                 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
             ]
         );
-        */ 
+        */
 
         /*
         // PUSH & POP
@@ -1198,7 +1196,7 @@ pub fn main_fuzzer <'a>(
                 0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
             ]
         );
-        */ 
+        */
 
         /*
         // Relative jumps
@@ -1208,10 +1206,38 @@ pub fn main_fuzzer <'a>(
                 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
             ]
         );
+        */
+        
+        //cpu.random_inst_from_opcodes(&[0x80, 0x81, 82, 83]); // ALU imm8, imm16, and imm8s
+        //cpu.random_inst_from_opcodes(&[0x84, 0x85]); // TEST 8 & 16 bit
+        //cpu.random_inst_from_opcodes(&[0x86, 0x87]); // XCHG 8 & 16 bit
+        //cpu.random_inst_from_opcodes(&[0x88, 0x89, 0x8A, 0x8B]); // MOV various
+        //cpu.random_inst_from_opcodes(&[0x8D]); // LEA
+        //cpu.random_inst_from_opcodes(&[0x8C, 0x8E]); // MOV Sreg
+
+        //cpu.random_inst_from_opcodes(&[0x8F]); // POP
+        //cpu.random_inst_from_opcodes(&[0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]); // XCHG reg, ax
+        //cpu.random_inst_from_opcodes(&[0x98, 0x99]); // CBW, CWD
+        //cpu.random_inst_from_opcodes(&[0x9A]); // CALLF
+        //cpu.random_inst_from_opcodes(&[0x9C, 0x9D]); // PUSHF, POPF
+        //cpu.random_inst_from_opcodes(&[0x9E, 0x9F]); // SAHF, LAHF
+        //cpu.random_inst_from_opcodes(&[0xA0, 0xA1, 0xA2, 0xA3]); // MOV offset
+        //cpu.random_inst_from_opcodes(&[0xA4, 0xA5]); // MOVS
+        //cpu.random_inst_from_opcodes(&[0xA6, 0xA7]); // CMPS
+        //cpu.random_inst_from_opcodes(&[0xA8, 0xA9]); // TEST
+        //cpu.random_inst_from_opcodes(&[0xAA, 0xAB]); // STOS
+        //cpu.random_inst_from_opcodes(&[0xAC, 0xAD]); // LODS
+        //cpu.random_inst_from_opcodes(&[0xAE, 0xAF]); // SCAS
+
+        /*
+        // MOV imm
+        cpu.random_inst_from_opcodes(
+            &[
+                0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 
+                0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF
+            ]
+        );
         */ 
-
-        //cpu.random_inst_from_opcodes(&[0x80, 0x81, 0x83]); // ALU imm8, imm16, and imm8s
-
 
         //cpu.random_inst_from_opcodes(&[0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D]); // SBB 8 & 16 bit
         //cpu.random_inst_from_opcodes(&[0x18, 0x1A, 0x1C]); // SBB 8 bit
@@ -1242,8 +1268,8 @@ pub fn main_fuzzer <'a>(
         };
         
         // Skip N successful instructions
-        if test_num < 276 {
-            //continue;
+        if test_num < 96 {
+            continue;
         }
 
         match i.mnemonic {

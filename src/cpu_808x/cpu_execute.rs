@@ -226,7 +226,7 @@ impl<'a> Cpu<'a> {
                 // PUSH cs
                 // Flags: None
                 self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
-                self.push_register16( Register16::CS, ReadWriteFlag::RNI);
+                self.push_register16(Register16::CS, ReadWriteFlag::RNI);
             }
             0x0F => {
                 // POP cs
@@ -391,7 +391,7 @@ impl<'a> Cpu<'a> {
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x009, 0x00a]);
+                    self.cycles_i(2, &[0x00e, 0x00f]);
                 }
 
                 if self.i.mnemonic != Mnemonic::CMP {
@@ -408,7 +408,12 @@ impl<'a> Cpu<'a> {
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x009, 0x00a]);
+                    if self.i.mnemonic != Mnemonic::CMP {
+                        self.cycles_i(2, &[0x00e, 0x00f]);
+                    }
+                    else {
+                        self.cycles_nx_i(2, &[0x00e, 0x00f]);
+                    }
                 }
 
                 if self.i.mnemonic != Mnemonic::CMP {
@@ -519,18 +524,16 @@ impl<'a> Cpu<'a> {
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles_i(2, &[0x000, 0x001]);
-                }                
+                }
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
                 handled_override = true;
             }
             0x8C | 0x8E => {
                 // MOV r/m16, SReg | MOV SReg, r/m16
 
-                if let OperandType::Register16(foo) = self.i.operand2_type {
-                    if let Register16::InvalidRegister = foo {
-                        println!("Whoops!")
-                    }
-                }                
+                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                    self.cycle_i(0x0ec);
+                }           
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
                 handled_override = true;
@@ -540,15 +543,14 @@ impl<'a> Cpu<'a> {
                 let ea = self.load_effective_address(self.i.operand2_type);
                 match ea {
                     Some(value) => {
-                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, value, ReadWriteFlag::Normal);
+                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, value, ReadWriteFlag::RNI);
                     }
                     None => {
                         // In the event of an invalid (Register) operand2, operand1 is set to the last EA calculated by an instruction.
-                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, self.last_ea, ReadWriteFlag::Normal);
-                        self.cycles(3);
+                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, self.last_ea, ReadWriteFlag::RNI);
+                        //self.cycles(1);
                     }
                 }
-                
             }
             0x8F => {
                 // POP r/m16

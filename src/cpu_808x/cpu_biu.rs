@@ -264,6 +264,16 @@ impl<'a> Cpu<'a> {
         self.pc = Cpu::calc_linear_address(self.cs, self.ip);
     }
 
+    /// Don't adjust the relative PC position, but update the pc for a new value of cs.  
+    /// This is used to support worthless instructions like pop cs and mov cs, r/m16.
+    pub fn biu_update_cs(&mut self, new_cs: u16) {
+
+        let pc_offset = (self.pc.wrapping_sub(((self.cs as u32) << 4))) as u16;
+
+        self.pc = Cpu::calc_linear_address(new_cs, pc_offset);
+        self.cs = new_cs;
+    }    
+
     pub fn biu_queue_has_room(&mut self) -> bool {
         match self.cpu_type {
             CpuType::Cpu8088 => {

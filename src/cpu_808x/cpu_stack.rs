@@ -82,7 +82,9 @@ impl<'a> Cpu<'a> {
             Register16::BP => self.bp = data,
             Register16::SI => self.si = data,
             Register16::DI => self.di = data,
-            Register16::CS => self.cs = data,
+            Register16::CS => {
+                self.biu_update_cs(data);
+            }
             Register16::DS => self.ds = data,
             Register16::SS => {
                 self.ss = data;

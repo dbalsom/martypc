@@ -358,7 +358,9 @@ impl<'a> Cpu<'a> {
                     Register16::SI => self.set_register16(Register16::SI, value),
                     Register16::DI => self.set_register16(Register16::DI, value),
                     Register16::ES => self.set_register16(Register16::ES, value),
-                    Register16::CS => self.set_register16(Register16::CS, value),
+                    Register16::CS => {
+                        self.biu_update_cs(value); // Update the PC for the new CS segment.
+                    },
                     Register16::SS => {
                         self.set_register16(Register16::SS, value);
                         // Technically only MOV ss, nn instructions will inhibit interrupts for one instruction

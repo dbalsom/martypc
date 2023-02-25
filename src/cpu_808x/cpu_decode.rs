@@ -466,8 +466,7 @@ impl<'a> Cpu<'a> {
 
         if loaded_modrm && (op_flags & I_LOAD_EA == 0) {
             // The EA calculated by the modrm will not be loaded (ie, we proceed to EADONE instead of EALOAD).
-            // Account for two cycles.
-            bytes.wait(2);
+            bytes.wait_i(2, &[0x1e3, MC_RTN]);
         }         
 
         // Handle fetch delays for 0xF0, 0xF1, 0xF2, 0xF3
