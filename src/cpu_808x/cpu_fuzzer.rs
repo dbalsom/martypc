@@ -94,6 +94,23 @@ impl<'a> Cpu<'a> {
 
         instr.push_back(opcode);
 
+        // Add rep prefixes to string ops with 50% probability
+        let do_rep_prefix: u8 = get_rand!(self);
+        match opcode {
+            0xA4..=0xA7 | 0xAA..=0xAF => { // String ops
+                match do_rep_prefix {
+                    0..=64 => {
+                        instr.push_front(0xF2); // REPNZ
+                    }
+                    65..=128 => {
+                        instr.push_front(0xF3);  // REPZ
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+
         // Add a segment override prefix with 50% probability
         let do_segment_prefix: u8 = get_rand!(self);
 
@@ -117,7 +134,7 @@ impl<'a> Cpu<'a> {
 
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
-        self.bus.copy_from(instr.make_contiguous(), addr as usize, 0, false);
+        self.bus.copy_from(instr.make_contiguous(), addr as usize, 0, false).unwrap();
 
     }
 
@@ -167,7 +184,7 @@ impl<'a> Cpu<'a> {
 
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
-        self.bus.copy_from(instr.make_contiguous(), addr as usize, 0, false);
+        self.bus.copy_from(instr.make_contiguous(), addr as usize, 0, false).unwrap();
 
     }
     
