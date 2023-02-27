@@ -63,6 +63,7 @@ macro_rules! trace_print {
         }
     }};
 }
+pub(crate) use trace_print;
 
 pub const CPU_MHZ: f64 = 4.77272666;
 
@@ -576,10 +577,18 @@ pub struct Cpu<'a> {
 
     address_bus: u32,
     data_bus: u16,
-    last_ea: u16,                   // Last calculated effective address
+    last_ea: u16,                   // Last calculated effective address. Used by 0xFE instructions
     bus: BusInterface,              // CPU owns Bus
     i8288: I8288,                   // Intel 8288 Bus Controller
     pc: u32,                        // Program counter points to the next instruction to be fetched
+
+    // Operand and result state
+    op1_8: u8,
+    op1_16: u16,
+    op2_8: u8,
+    op2_16: u16,
+    result_8: u8,
+    result_16: u16,
 
     queue: InstructionQueue,
     fetch_size: TransferSize,
@@ -606,7 +615,7 @@ pub struct Cpu<'a> {
     in_rep: bool,
     rep_init: bool,
     rep_saved: bool,
-    
+
     rep_mnemonic: Mnemonic,
     rep_type: RepType,
     rep_state: Vec<(u16, u16, RepState)>,
@@ -615,12 +624,17 @@ pub struct Cpu<'a> {
     instr_cycle: u32,
     instruction_count: u64,
     i: Instruction,                 // Currently executing instruction 
+    instruction_history_on: bool,
     instruction_history: VecDeque<Instruction>,
     call_stack: VecDeque<CallStackEntry>,
+
+    // Interrupts
     int_stack: Vec<InterruptDescriptor>,
     int_count: u64,
     iret_count: u64,
     interrupt_inhibit: bool,
+    pending_interrupt: bool,
+
     reset_seg: u16,
     reset_offset: u16,
 
@@ -706,7 +720,7 @@ pub enum RegisterType {
     Register16(u16)
 }
 
-#[derive (PartialEq)]
+#[derive (Debug, PartialEq)]
 pub enum ExecutionResult {
 
     Okay,
@@ -835,6 +849,8 @@ impl<'a> Cpu<'a> {
         // Unwrap the writer Option and stick it in an Option<Box<>> or None if None
         cpu.trace_writer = trace_writer.map_or(None, |trace_writer| Some(Box::new(trace_writer)));
         cpu.cpu_type = cpu_type;
+
+        cpu.instruction_history_on = true; // TODO: Control this from config/GUI
         cpu.instruction_history = VecDeque::with_capacity(16);
         cpu.reset_seg = 0xFFFF;
         cpu.reset_offset = 0x0000;
@@ -876,6 +892,7 @@ impl<'a> Cpu<'a> {
         self.halted = false;
         self.opcode0_counter = 0;
         self.interrupt_inhibit = false;
+        self.pending_interrupt = false;
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
@@ -901,6 +918,10 @@ impl<'a> Cpu<'a> {
 
         trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip);
 
+    }
+
+    pub fn in_rep(&self) -> bool {
+        self.in_rep
     }
 
     pub fn bus(&self) -> &BusInterface {
@@ -956,127 +977,6 @@ impl<'a> Cpu<'a> {
             }
         }
     }    
-
-    /// Begin a new bus cycle of the specified type. Set the address latch and set the data bus appropriately.
-    pub fn bus_begin(
-        &mut self, 
-        new_bus_status: BusStatus, 
-        bus_segment: Segment, 
-        address: u32, 
-        data: u16, 
-        size: TransferSize,
-        op_size: OperandSize,
-        first: bool,
-    ) {
-        // We can cancel a scheduled fetch if it happened this cycle.
-        //self.biu_try_cancel_fetch();
-
-        trace_print!(
-            self,
-            "Bus begin! {:?}:[{:05X}] in {:?}", 
-            new_bus_status, 
-            address, 
-            self.t_cycle
-        );
-
-        if new_bus_status != BusStatus::CodeFetch {
-            // The EU has requested a Read/Write cycle, if we haven't scheduled a prefetch, block 
-            // prefetching until the bus transfer is complete.
-
-            if let FetchState::Scheduled(_) = self.fetch_state {
-                // Don't block prefetching if already scheduled.
-            }
-            //else if self.t_cycle != TCycle::T4 && self.fetch_state != FetchState::Suspended {
-            //else if self.is_before_last_wait() && self.fetch_state != FetchState::Suspended {
-            else if self.is_before_last_wait() && !self.fetch_suspended {
-
-                trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);
-                self.fetch_state = FetchState::BlockedByEU;
-                self.bus_pending_eu = true;
-            }
-        }
-
-        // Wait for the current bus cycle to terminate.
-        let mut waited_cycles = self.bus_wait_finish();
-        if self.t_cycle == TCycle::T4 {
-            self.cycle();
-            waited_cycles += 1;
-        }
-
-        trace_print!(self, "bus_begin(): Done waiting for mcycle complete: ({})", waited_cycles);
-
-        if self.fetch_state == FetchState::BlockedByEU {
-            self.fetch_state = FetchState::Idle;
-        }
-        
-        self.bus_pending_eu = false;
-
-        // Reset the transfer number if this is the first transfer of a word
-        if first {
-            self.transfer_n = 0;
-        }        
-        
-        //log::trace!("Bus begin! {:?}:[{:05X}]", bus_status, address);
-
-        if new_bus_status == BusStatus::CodeFetch {
-            // Prefetch is starting so reset prefetch scheculed flag
-            self.fetch_state = FetchState::InProgress;
-            self.transfer_n = 0;
-        }
-
-        if self.bus_status == BusStatus::Passive || self.bus_status == BusStatus::CodeFetch || self.t_cycle == TCycle::T4 {
-
-            let fetch_scheduled = if let FetchState::Scheduled(_) = self.fetch_state { true } else { false };
-
-            //self.trace_print(&format!("bus_begin(): fetch is scheduled? {}", fetch_scheduled));
-            if new_bus_status != BusStatus::CodeFetch && (fetch_scheduled || self.fetch_state == FetchState::InProgress) {
-                // A fetch was scheduled already, so we have to abort and incur a two cycle penalty.
-                //self.trace_print("Aborting prefetch!");
-
-                if self.fetch_suspended {
-                    // Oddly, suspending prefetch does not avoid a prefetch abort on a bus request if a prefetch was already scheduled.
-                    // This costs an extra cycle.
-                    self.cycle();
-                }
-
-                // Don't abort if bus request came in on T1
-                self.biu_abort_fetch(); 
-            }
-            
-            
-            self.bus_status = new_bus_status;
-            self.bus_segment = bus_segment;
-            self.t_cycle = TCycle::TInit;
-
-            trace_print!(self, "bus_begin(): address {:05X}", address);
-            self.address_bus = address;
-            self.i8288.ale = true;
-            self.data_bus = data as u16;
-            self.transfer_size = size;
-            self.operand_size = op_size;
-            if self.transfer_n > 1 {
-                self.transfer_n = 0;
-            }
-        }
-        else {
-            self.trace_flush();
-            panic!("bus_begin: Attempted to start bus cycle in unhandled state: {:?}:{:?}", self.bus_status, self.t_cycle);
-        }
-
-    }
-
-    pub fn bus_end(&mut self) {
-
-        // Reset i8288 signals
-        self.i8288.mrdc = false;
-        self.i8288.amwc = false;
-        self.i8288.mwtc = false;
-        self.i8288.iorc = false;
-        self.i8288.aiowc = false;
-        self.i8288.iowc = false;
-
-        self.bus_pending_eu = false;
-    }
 
     #[inline]
     pub fn is_last_wait(&self) -> bool {
@@ -1279,7 +1179,7 @@ impl<'a> Cpu<'a> {
             TCycle::T2 => TCycle::T3,
             TCycle::T3 => {
                 if self.wait_states == 0 {
-                    self.bus_end();
+                    self.biu_bus_end();
                     TCycle::T4
                 }
                 else {
@@ -1292,7 +1192,7 @@ impl<'a> Cpu<'a> {
                     TCycle::Tw
                 }
                 else {
-                    self.bus_end();
+                    self.biu_bus_end();
                     TCycle::T4
                 }                
             }
@@ -1329,9 +1229,13 @@ impl<'a> Cpu<'a> {
                         };
                         self.transfer_n = 0;
                     }
-                    else {
+                    else if !self.bus_pending_eu {
+                        /*
+                        // Cancel fetch if queue is full and no pending bus request from EU that 
+                        // would otherwise trigger an abort.
                         self.fetch_state = FetchState::Idle;
-                        trace_print!(self, "Fetch cancelled");
+                        trace_print!(self, "Fetch cancelled. bus_pending_eu: {}", self.bus_pending_eu);
+                        */
                     }
                 }
             }
@@ -2050,15 +1954,19 @@ impl<'a> Cpu<'a> {
 
     pub fn end_interrupt(&mut self) {
 
+        self.cycles_i(2, &[0x0c8, MC_JUMP]); // JMP to FARRET
         self.pop_register16(Register16::IP, ReadWriteFlag::Normal);
+        self.biu_suspend_fetch();
+        self.cycles_i(3, &[0x0c3, 0x0c4, MC_JUMP]);
+        //self.cycle(); // TODO: account for this extra cycle?
+
         self.pop_register16(Register16::CS, ReadWriteFlag::Normal);
         //log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
-        self.pop_flags();
 
-        // temporary timings
-        self.biu_suspend_fetch();
-        self.cycles(4);
         self.biu_queue_flush();        
+        self.cycles_i(2,&[0x0c7, MC_RTN]);
+        self.pop_flags();
+        self.cycle_i(0x0ca);
 
         /*
         match self.int_stack.pop() {
@@ -2082,31 +1990,49 @@ impl<'a> Cpu<'a> {
     /// Perform a software interrupt
     pub fn sw_interrupt(&mut self, interrupt: u8) {
 
-        // When an interrupt occurs the following happens:
-        // 1. CPU pushes flags register to stack
-        // 2. CPU pushes far return address into the stack
-        // 3. CPU fetches the four byte interrupt vector from the IVT
-        // 4. CPU transfers control to the routine specified by the interrupt vector
-        // (AoA 17.1)
+        self.cycles_i(3, &[0x19d, 0x19e, 0x19f]);
+        // Read the IVT
+        let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
+        let new_ip = self.biu_read_u16(Segment::None, ivt_addr, ReadWriteFlag::Normal);
+        self.cycle_i(0x1a1);
+        let new_cs = self.biu_read_u16(Segment::None, ivt_addr + 2, ReadWriteFlag::Normal);
 
+        // Add interrupt to call stack
+        self.push_call_stack(
+            CallStackEntry::Interrupt {
+                ret_cs: self.cs,
+                ret_ip: self.ip,
+                call_cs: new_cs,
+                call_ip: new_ip,
+                itype: InterruptType::Software,
+                number: interrupt,
+                ah: self.ah
+            },
+            self.cs,
+            self.ip
+        );
+
+        self.biu_suspend_fetch(); // 1a3 SUSP
+        self.cycles_i(2, &[0x1a3, 0x1a4]);
         self.push_flags(ReadWriteFlag::Normal);
-
-        // Push return address of next instruction onto stack (INT instructions should increment IP on execute)
-        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-        self.push_register16(Register16::IP, ReadWriteFlag::Normal);
-        
-        // Clear interrupt & trap flag
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
 
-        // Read the IVT
-        let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
+        // FARCALL2
+        self.cycles_i(4, &[0x1a6, MC_JUMP, 0x06c, MC_CORR]);
+        // Push return segment
+        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
+        self.cs = new_cs;        
+        self.cycle_i(0x06e);
 
-        let new_ip = self.biu_read_u16(Segment::None, ivt_addr, ReadWriteFlag::Normal);
-        let new_cs = self.biu_read_u16(Segment::None, ivt_addr + 2, ReadWriteFlag::Normal);
-
-        //let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
-        //let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
+        // NEARCALL
+        let old_ip = self.ip;
+        self.cycles_i(2, &[0x06f, MC_JUMP]);
+        self.ip = new_ip;    
+        self.biu_queue_flush();  
+        self.cycles_i(3, &[0x077, 0x078, 0x079]);
+        // Finally, push return address
+        self.push_u16(old_ip, ReadWriteFlag::RNI);
 
         if interrupt == 0x13 {
             // Disk interrupts
@@ -2147,30 +2073,7 @@ impl<'a> Cpu<'a> {
             }
         }
 
-        // Add interrupt to call stack
-        self.push_call_stack(
-            CallStackEntry::Interrupt {
-                ret_cs: self.cs,
-                ret_ip: self.ip,
-                call_cs: new_cs,
-                call_ip: new_ip,
-                itype: InterruptType::Software,
-                number: interrupt,
-                ah: self.ah
-            },
-            self.cs,
-            self.ip
-        );
-
-        self.ip = new_ip;
-        self.cs = new_cs;        
-
-
-
         self.int_count += 1;
-
-        // Flush queue
-        self.biu_queue_flush();          
     }
 
     /// Handle a CPU exception
@@ -2363,30 +2266,41 @@ impl<'a> Cpu<'a> {
         self.halted = false;
     }
 
+    /// Execute a single instruction.
+    /// 
+    /// We divide instruction execution into separate fetch/decode and execute phases.
+    /// This is an artificial distinction, but allows for flexibility as the decode() function can be 
+    /// used on anything that implements the ByteQueue trait, ie, raw memory for a disassembly viewer.
+    /// 
+    /// REP string instructions are handled by stopping them after one iteration so that interrupts can
+    /// be checked. 
     pub fn step(&mut self, io_bus: &mut IoBusInterface, pic_ref: Rc<RefCell<Pic>>) -> Result<u32, CpuError> {
 
         self.instr_cycle = 0;
 
-        self.trace_comment("STEP");
+        // Check for interrupts but do not process yet (unless CPU is halted) 
+        // This is so we can send an interrupt flag to execute() so that string instructions can call RPTI
+        // if there is a pending interrupt.
+        self.pending_interrupt = false;
+        let mut irq = 7;
 
-        // When halted, the CPU waits for an interrupt to fire before resuming execution
-        if self.halted {
-            
-            // Check for hardware interrupts if Interrupt Flag is set and not in wait cycle
-            if self.interrupts_enabled() {
-                let mut pic = pic_ref.borrow_mut();
-                if pic.query_interrupt_line() {
-                    match pic.get_interrupt_vector() {
-                        Some(irq) => {
+        if self.interrupts_enabled() {
+            let mut pic = pic_ref.borrow_mut();
+            if pic.query_interrupt_line() {
+                match pic.get_interrupt_vector() {
+                    Some(iv) => {
+                        irq = iv;
+                        // Resume from halt on interrupt
+                        if self.halted {
                             self.hw_interrupt(irq);
                             self.resume();
-                        },
-                        None => {}
-                    }
+                            return Ok(3)
+                        }
+                        self.pending_interrupt = true;
+                    },
+                    None => {}
                 }
             }
-
-            return Ok(3)
         }
 
         // A real 808X CPU maintains a single Program Counter or PC register that points to the next instruction
@@ -2399,7 +2313,8 @@ impl<'a> Cpu<'a> {
 
         // Fetch the next instruction unless we are executing a REP
         if !self.in_rep {
-            
+
+            // Initialize the CPU validator with the current register state.
             #[cfg(feature = "cpu_validator")]
             {
                 self.cycle_states.clear();
@@ -2432,9 +2347,6 @@ impl<'a> Cpu<'a> {
             
             // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait implementation, 
             // which fetches instruction bytes through the processor instruction queue.
-            
-            //self.trace_comment("FETCH");
-            trace_print!(self, "FETCH {:05X}", self.pc);
             self.i = match Cpu::decode(self) {
                 Ok(i) => i,
                 Err(_) => {
@@ -2444,19 +2356,20 @@ impl<'a> Cpu<'a> {
                 }                
             };
             self.trace_comment("EXECUTE");
-            
         }
 
         // Since Cpu::decode doesn't know anything about the current IP, it can't set it, so we do that now.
         self.i.address = instruction_address;
+
         let mut check_interrupts = false;
 
-        let (opcode, _cost) = self.bus.read_u8(instruction_address as usize).expect("mem err");
-        
-        trace_print!(self, "Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
-        trace_print!(self, "Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
+        //let (opcode, _cost) = self.bus.read_u8(instruction_address as usize).expect("mem err");
+        //trace_print!(self, "Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
+        //trace_print!(self, "Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
 
+        // Execute the current decoded instruction.
         let exec_result = self.execute_instruction(io_bus);
+
         // Finalize execution. This runs cycles until the next instruction byte has been fetched. This fetch period is technically
         // part of the current instruction execution time, but not part of the instruction's microcode other than executing RNI.
         self.finalize();
@@ -2465,6 +2378,7 @@ impl<'a> Cpu<'a> {
         {
             match exec_result {
                 ExecutionResult::Okay | ExecutionResult::OkayJump => {
+
                     // End validation of current instruction
                     let mut vregs = self.get_vregisters();
 
@@ -2509,6 +2423,7 @@ impl<'a> Cpu<'a> {
             ExecutionResult::Okay => {
                 // Normal non-jump instruction updates CS:IP to next instruction
 
+                /*
                 // temp debugging
                 {
                     //let dbg_addr = self.calc_linear_address_seg(Segment::ES, self.bx);
@@ -2517,18 +2432,19 @@ impl<'a> Cpu<'a> {
                         log::trace!("Jump target trashed at {:05X}: {}", self.i.address, self.i);
                     }
                 }
+                */
                 
                 //println!("instruction {} is of size: {} ip: {:05X} new ip: {:05X}", self.i, self.i.size, self.ip, self.ip.wrapping_add(self.i.size as u16));
                 self.ip = self.ip.wrapping_add(self.i.size as u16);
-                
 
-                //log::trace!("Execution complete; updated CS:IP: [{:04X}:{:04X}]", self.cs, self.ip);
-
-                if self.instruction_history.len() == CPU_HISTORY_LEN {
-                    self.instruction_history.pop_front();
+                if self.instruction_history_on {
+                    if self.instruction_history.len() == CPU_HISTORY_LEN {
+                        self.instruction_history.pop_front();
+                    }
+                    self.instruction_history.push_back(self.i);
+                    self.instruction_count += 1;
                 }
-                self.instruction_history.push_back(self.i);
-                self.instruction_count += 1;
+
                 check_interrupts = true;
 
                 // Perform instruction tracing, if enabled
@@ -2539,17 +2455,14 @@ impl<'a> Cpu<'a> {
                 Ok(self.instr_cycle)
             }
             ExecutionResult::OkayJump => {
-
-                // Flush PIQ on jump
-                
-                //self.biu_queue_flush();
-                //self.biu_update_pc();
-
-                if self.instruction_history.len() == CPU_HISTORY_LEN {
-                    self.instruction_history.pop_front();
+                // A control flow instruction updated CS:IP. (Does not differ from ::Okay anymore?)
+                if self.instruction_history_on {
+                    if self.instruction_history.len() == CPU_HISTORY_LEN {
+                        self.instruction_history.pop_front();
+                    }
+                    self.instruction_history.push_back(self.i);
+                    self.instruction_count += 1;
                 }
-                self.instruction_history.push_back(self.i);
-                self.instruction_count += 1;
 
                 check_interrupts = true;
 
@@ -2562,8 +2475,11 @@ impl<'a> Cpu<'a> {
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
-                // The ip will not increment until the instruction has completed
-                // But process interrupts
+
+                // The ip will not increment until the instruction has completed, but
+                // continue to process interrupts. We passed pending_interrupt to execute
+                // earlier so that a REP string operation can call RPTI to be ready for
+                // an interrupt to occur.
                 if self.instruction_history.len() == CPU_HISTORY_LEN {
                     self.instruction_history.pop_front();
                 }
@@ -2580,20 +2496,22 @@ impl<'a> Cpu<'a> {
                 Err(CpuError::UnhandledInstructionError(o, instruction_address))
             }
             ExecutionResult::ExecutionError(e) => {
+                // Something unexpected happened!
                 self.is_running = false;
                 self.is_error = true;
                 Err(CpuError::ExecutionError(instruction_address, e))
             }
             ExecutionResult::Halt => {
                 // Specifically, this error condition is a halt with interrupts disabled -
-                // execution cannot continue. This state is most encountered during BIOS
-                // initialization.
+                // since only an interrupt can resume after a halt, execution cannot continue. 
+                // This state is most often encountered during failed BIOS initialization checks.
                 self.is_running = false;
                 self.is_error = true;
                 Err(CpuError::CpuHaltedError(instruction_address))
             }
             ExecutionResult::ExceptionError(exception) => {
-                // Handle DIV by 0 here
+                // A CPU exception occurred. On the 8088, these are limited in scope to 
+                // division errors, and overflow after INTO.
                 match exception {
                     CpuException::DivideError => {
                         self.handle_exception(0);
@@ -2607,11 +2525,14 @@ impl<'a> Cpu<'a> {
             }
         };
 
+        /*
         if check_interrupts {
             // Check for hardware interrupts if Interrupt Flag is set and not in wait cycle
             if self.interrupts_enabled() {
                 let mut pic = pic_ref.borrow_mut();
                 if pic.query_interrupt_line() {
+
+                    // If we are executing a rep instruction, emulate calling RPTI
                     match pic.get_interrupt_vector() {
                         Some(irq) => {
                             self.hw_interrupt(irq);
@@ -2621,8 +2542,15 @@ impl<'a> Cpu<'a> {
                     }
                 }
             }
+        }*/
+
+        // Handle pending interrupts now that execution has completed.
+        if check_interrupts && self.pending_interrupt {
+            self.hw_interrupt(irq);
+            self.resume();
         }
 
+        // Check registers and flags for internal consistency.
         #[cfg(debug_assertions)]        
         self.assert_state();
 

@@ -18,6 +18,42 @@ macro_rules! get_operand {
     };
 }
 
+macro_rules! read_operand {
+    ($self:ident, $op: expr) => {
+        {
+            if $self.i.opcode & 0x01 == 0 {
+                $self.op1_8 = $self.read_operand8($op, $self.i.segment_override).unwrap()
+            }
+            else {
+                $self.op1_16 = $self.read_operand16($op, $self.i.segment_override).unwrap()
+            }
+        }
+    };
+}
+
+macro_rules! write_operand {
+    ($self:ident, $op: expr, $value: expr, $flag: expr ) => {
+        {
+            if $self.i.opcode & 0x01 == 0 {
+                $self.write_operand8($op, $self.i.segment_override, $self.result_8, $flag)
+            }
+            else {
+                $self.write_operand16($op, $self.i.segment_override, $self.result_16, $flag)
+            }
+        }
+    };
+}
+
+macro_rules! alu_op {
+    ($self:ident) => {
+        if $self.i.opcode & 0x01 == 0 {
+            $self.result_8 = $self.math_op8($self.i.mnemonic, $self.op1_8, $self.op2_8)
+        }
+        else {
+            $self.result_16 = $self.math_op16($self.i.mnemonic, $self.op1_16, $self.op2_16)
+        }
+    }
+}
 
 impl<'a> Cpu<'a> {
 
@@ -173,18 +209,17 @@ impl<'a> Cpu<'a> {
             0x28 | 0x2A | 0x2C |  // SUB r/m8, r8 | r8, r/m8 | al, imm8 
             0x30 | 0x32 | 0x34 => // XOR r/m8, r8 | r8, r/m8 | al, imm8
             { 
-                // 8 bit ALU operations
-                let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();            
-                
+                read_operand!(self, self.i.operand1_type);
+                read_operand!(self, self.i.operand2_type);
+
                 self.cycles_nx_i(2, &[0]);
                 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles_i(3, &[0x01, 0x02, 0x03]);
                 }
 
-                let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                alu_op!(self);
+                write_operand!(self, self.i.operand1_type, result, ReadWriteFlag::RNI);
 
                 handled_override = true;
             }
@@ -554,7 +589,12 @@ impl<'a> Cpu<'a> {
             }
             0x8F => {
                 // POP r/m16
+                self.cycle_i(0x040);
                 let value = self.pop_u16();
+                self.cycle_i(0x042);
+                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                    self.cycles_i(2, &[0x043, 0x044]);
+                }                   
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, value, ReadWriteFlag::RNI);
                 handled_override = true;
             }
@@ -582,14 +622,13 @@ impl<'a> Cpu<'a> {
             0x9A => {
                 // CALLF - Call Far
 
-                self.cycle();
                 self.biu_suspend_fetch();
-                self.cycles(6);
+                self.cycles_i(3, &[0x06b, 0x06c, MC_CORR]);
 
                 // Push return address of next instruction
                 self.push_register16(Register16::CS, ReadWriteFlag::Normal);
                 
-                self.cycles(3);
+                self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]);
                 let next_i = self.ip + (self.i.size as u16);
 
                 if let OperandType::FarAddress(segment, offset) = self.i.operand1_type {        
@@ -611,10 +650,8 @@ impl<'a> Cpu<'a> {
                 }
 
                 self.biu_queue_flush();
-                self.cycles(4); 
-                
+                self.cycles_i(3, &[0x077, 0x078, 0x079]); 
                 self.push_u16(next_i, ReadWriteFlag::RNI);
-
                 jump = true;
             }
             0x9B => {
@@ -673,75 +710,103 @@ impl<'a> Cpu<'a> {
             }
             0xA4 | 0xA5 => {
                 // MOVSB & MOVSW
-                self.rep_start();
 
-                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                // rep_start() will terminate early if CX==0
+                if self.rep_start() {
+
                     self.string_op(self.i.mnemonic, self.i.segment_override);
-                }
+                    self.cycle_i(0x130);
 
-                // Check for end condition (CX==0)
-                if self.in_rep {
-                    if self.cx > 0 {
-                        self.decrement_register16(Register16::CX);
+                    // Check for end condition (CX==0)
+                    if self.in_rep {
+                        
+                        self.decrement_register16(Register16::CX); // 131
+
+                        // Check for interrupt
+                        if self.pending_interrupt {
+                            self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
+                            self.rep_interrupt();
+                            
+                        }
+                        else {
+                            self.cycles_i(2, &[0x131, 0x132]);
+
+                            if self.cx == 0 {
+                                // Fall through to 133, RNI
+                                self.rep_end();
+                            }
+                            else {
+                                self.cycle_i(MC_JUMP); // jump to 1
+                            }
+                        }
                     }
-                    if self.cx == 0 {
-                        self.in_rep = false;
-                        self.rep_type = RepType::NoRep;
-                    }
+                    else {
+                        // End non-rep prefixed MOVSB
+                        self.cycle_i(MC_JUMP); // jump to 133, RNI
+                    }                
+                    handled_override = true;
                 }
-                else {
-                    // End non-rep prefixed MOVSB
-                    self.cycle_i(0x133);
-                }                
-                handled_override = true;
             }
-            0xA6 | 0xA7 => {
-                // CMPSB & CMPSW
+            0xA6 | 0xA7 | 0xAE | 0xAF => {
+                // CMPSB, CMPSW, SCASB, SCASW
                 // Segment override: DS overridable
                 // Flags: All
 
-                self.rep_start();
+                if self.rep_start() {
+                    
+                    self.string_op(self.i.mnemonic, self.i.segment_override);
+    
+                    if self.in_rep {
+                        let mut end = false;
+                        // Check for REP end condition #1 (Z/NZ)
+                        self.cycle_i(0x129);
+                        self.decrement_register16(Register16::CX); // 129
 
-                if !self.in_rep || (self.in_rep && self.cx > 0) {
-                    self.string_op(self.i.mnemonic, self.i.segment_override);       
-                }
+                        match self.rep_type {
+                            RepType::Repne => {
+                                // Repeat while NOT zero. If Zero flag is set, end REP.
+                                if self.get_flag(Flag::Zero) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                    end = true;
+                                }
+                            }
+                            RepType::Repe => {
+                                // Repeat while zero. If zero flag is NOT set, end REP.
+                                if !self.get_flag(Flag::Zero) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                    end = true;
+                                }
+                            }
+                            _=> {}
+                        };
 
-                // Check for REP end condition #1 (CX==0)
-                if self.in_rep {
-                    if self.cx > 0 {
-                        self.decrement_register16(Register16::CX);
-                    }
-                    if self.cx == 0 {
-                        self.in_rep = false;
-                        self.rep_type = RepType::NoRep;
-                        self.cycle();
-                    }
-                }
-                else {
-                    // End non-rep prefixed CMPS
-                    self.cycles(2);
-                }
-
-                // Check for REP end condition #2 (Z/NZ)
-                match self.rep_type {
-                    RepType::Repne => {
-                        // Repeat while NOT zero. If Zero flag is set, end REP.
-                        if self.get_flag(Flag::Zero) {
-                            self.in_rep = false;
-                            self.rep_type = RepType::NoRep;
-                            self.cycle();
+                        if !end {
+                            
+                            self.cycle_i(0x12a);
+    
+                            if self.pending_interrupt {
+                                self.cycle_i(MC_JUMP); // Jump to RPTI
+                                self.rep_interrupt();
+                            }   
+    
+                            // Check for REP end condition #2 (CX==0)
+                            self.cycle_i(0x12b);
+                            if self.cx == 0 {
+                                self.rep_end();
+                                // Next instruction is 1f4: RNI, so don't spend cycle
+                            }                 
+                            else {
+                                self.cycle_i(MC_JUMP); // Jump to line 1: 121
+                            }
                         }
                     }
-                    RepType::Repe => {
-                        // Repeat while zero. If zero flag is NOT set, end REP.
-                        if !self.get_flag(Flag::Zero) {
-                            self.in_rep = false;
-                            self.rep_type = RepType::NoRep;
-                            self.cycle();
-                        }
+                    else {
+                        // End non-rep prefixed CMPS
+                        self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
                     }
-                    _=> {}
-                };
+                }
                 handled_override = true;
             }
             0xA8 => {
@@ -763,94 +828,76 @@ impl<'a> Cpu<'a> {
             0xAA | 0xAB => {
                 // STOSB & STOSW
 
-                self.rep_start();
-
-                if !self.in_rep || (self.in_rep && self.cx > 0) {
+                if self.rep_start() {
+                    
                     self.string_op(self.i.mnemonic, SegmentOverride::None);
-                }
+                    self.cycle_i(0x11e);
+    
+                    // Check for end condition (CX==0)
+                    if self.in_rep {
 
-                // Check for end condition (CX==0)
-                if self.in_rep {
-                    if self.cx > 0 {
-                        self.decrement_register16(Register16::CX);
+                        // Check for interrupt
+                        self.cycle_i(0x11f);
+                        if self.pending_interrupt {
+                            self.cycle_i(MC_JUMP); // Jump to RPTI
+                            self.rep_interrupt();
+                            
+                        }
+                        
+                        self.cycle_i(0x1f0);
+                        self.decrement_register16(Register16::CX); //1f0
+                        if self.cx == 0 {
+                            self.rep_end();
+                        }
+                        else {
+                            // Jump to 1
+                            self.cycle_i(MC_JUMP);
+                        }
                     }
-                    if self.cx == 0 {
-                        self.in_rep = false;
-                        self.rep_type = RepType::NoRep;
+                    else {
+                        // Jump to 1f1
+                        self.cycle_i(MC_JUMP);
                     }
+                    
                 }
             }
             0xAC | 0xAD => {
                 // LODSB & LODSW
                 // Flags: None
-
-                self.rep_start();
-
                 // Although LODSx is not typically used with a REP prefix, it can be
-                if !self.in_rep {
+
+                // rep_start() will terminate early if CX==0
+                if self.rep_start() {
+
                     self.string_op(self.i.mnemonic, self.i.segment_override);
-                } 
-                else {
-                    if self.cx > 0 {
-                        self.string_op(self.i.mnemonic, self.i.segment_override);
-                    }
-                }
-                
-                // Check for REP end condition #1 (CX==0)
-                if self.in_rep {
-                    if self.cx > 0 {
-                        self.decrement_register16(Register16::CX);
-                    }
-                    if self.cx == 0 {
-                        self.in_rep = false;
-                        self.rep_type = RepType::NoRep;
+                    self.cycles_i(3, &[0x12e, MC_JUMP, 0x1f8]);
+
+                    // Check for REP end condition #1 (CX==0)
+                    if self.in_rep {
+
+                        self.cycle_i(MC_JUMP); // Jump to 131
+                        self.decrement_register16(Register16::CX); // 131
+
+                        // Check for interrupt
+                        if self.pending_interrupt {
+                            self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
+                            self.rep_interrupt();
+                            
+                        }
+                        else {
+                            self.cycles_i(2, &[0x131, 0x132]);
+
+                            if self.cx == 0 {
+                                // Fall through to 133, RNI
+                                self.rep_end();
+                            }
+                            else {
+                                self.cycle_i(MC_JUMP); // jump to 1
+                            }
+                        }
                     }
                 }
                 handled_override = true;
-            }
-            0xAE | 0xAF => {
-                // SCASB & SCASW
-                // Flags: ALL
-
-                self.rep_start();
-
-                if !self.in_rep {
-                    self.string_op(self.i.mnemonic, SegmentOverride::None);
-                }
-                else {
-                    if self.cx > 0 {
-                        self.string_op(self.i.mnemonic, SegmentOverride::None);
-                    }
-                }
-
-                // Check for REP end condition #1 (CX==0)
-                if self.in_rep {
-                    if self.cx > 0 {
-                        self.decrement_register16(Register16::CX);
-                    }
-                    if self.cx == 0 {
-                        self.in_rep = false;
-                        self.rep_type = RepType::NoRep;
-                    }
-                }
-                // Check for REP end condition #2 (Z/NZ)
-                match self.rep_type {
-                    RepType::Repne => {
-                        // Repeat while NOT zero. If Zero flag is set, end REP.
-                        if self.get_flag(Flag::Zero) {
-                            self.in_rep = false;
-                            self.rep_type = RepType::NoRep;
-                        }
-                    }
-                    RepType::Repe => {
-                        // Repeat while zero. If zero flag is NOT set, end REP.
-                        if !self.get_flag(Flag::Zero) {
-                            self.in_rep = false;
-                            self.rep_type = RepType::NoRep;
-                        }
-                    }
-                    _=> {}
-                };
             }
             0xB0..=0xB7 => {
                 // MOV r8, imm8
@@ -974,7 +1021,7 @@ impl<'a> Cpu<'a> {
                 self.pop_register16(Register16::CS, ReadWriteFlag::Normal);
                 self.release(stack_disp);
                 self.biu_queue_flush();
-                self.cycles_i(4, &[0x0c7, MC_JUMP, 0x0ce, 0x0cf]);
+                self.cycles_i(4, &[0x0c7, MC_RTN, 0x0ce, 0x0cf]);
                 
                 // Pop call stack
                 //self.call_stack.pop_back();
@@ -999,9 +1046,10 @@ impl<'a> Cpu<'a> {
             0xCC => {
                 // INT 3 - Software Interrupt 3
                 // This is a special form of INT which assumes IRQ 3 always. Most assemblers will not generate this form
-                self.ip = self.ip.wrapping_add(1);
-                self.sw_interrupt(3);
+                self.ip = self.ip.wrapping_add(self.i.size as u16);
 
+                self.cycles_i(4, &[0x1b0, MC_JUMP, 0x1b2, MC_JUMP]); // Jump to INTR
+                self.sw_interrupt(3);
                 jump = true;    
             }
             0xCD => {
@@ -1009,15 +1057,17 @@ impl<'a> Cpu<'a> {
                 // The Interrupt flag does not affect the handling of non-maskable interrupts (NMIs) or software interrupts
                 // generated by the INT instruction. 
 
-                // Get IRQ number
+                self.ip = self.ip.wrapping_add(self.i.size as u16);
+
+                // Get interrupt number (immediate operand)
                 let irq = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
-                self.ip = self.ip.wrapping_add(2);
+                self.cycle_i(MC_JUMP); // Jump to INTR
                 self.sw_interrupt(irq);
                 jump = true;
             }
             0xCE => {
                 // INTO - Call Overflow Interrupt Handler
-                self.ip = self.ip.wrapping_add(1);
+                self.ip = self.ip.wrapping_add(self.i.size as u16);
                 self.sw_interrupt(4);
             
                 jump = true;
@@ -1054,22 +1104,27 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles(6);
-                self.trace_comment("START LOOPING");
-                if self.cl > 0 {
-                    self.cycles(4 * self.cl as u32 - 1);
-                }
-                
-                self.trace_comment("DONE LOOPING");
-                let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
-
+                // 0xD2 and 0xD3 have odd behavior. They appear to start a cycle early if there is a register operand.
+                // Usually, the microcode for an instruction starts on the cycle after the modrm is fetched.
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles(5); // Is there a prefetch abort in here?
+                    self.cycle_i(0x08c);
                 }
-                else {
-                    //self.cycle();
+                //self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+
+                if self.cl > 0 {
+                    for _ in 0..(self.cl ) {
+                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                    }
                 }
 
+                // If there is a terminal write to M, don't process RNI on line 0x92
+                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                    self.cycle_i(0x092);
+                }
+
+                let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
+ 
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 // TODO: Cost
                 handled_override = true;
@@ -1079,21 +1134,30 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles(6);
-                self.trace_comment("START LOOPING");
+                // 0xD2 and 0xD3 have odd behavior. They appear to start a cycle early if there is a register operand.
+                // Usually, the microcode for an instruction starts on the cycle after the modrm is fetched.
+                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                    self.cycle_i(0x08c);
+                }
+                //self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+
                 if self.cl > 0 {
-                    self.cycles(4 * self.cl as u32 - 1);
+                    for _ in 0..(self.cl ) {
+                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                    }
+                }
+
+                // If there is a terminal write to M, don't process RNI on line 0x92
+                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                    self.cycle_i(0x092);
                 }
              
-                self.trace_comment("DONE LOOPING");
                 let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles(5); // Is there a prefetch abort in here?
-                }
-                else {
-                    //self.cycle();
-                }                
+                }             
 
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 // TODO: Cost
@@ -1134,6 +1198,7 @@ impl<'a> Cpu<'a> {
 
                 let addr = self.calc_linear_address_seg(segment, disp16);
                 
+                self.cycles_i(3, &[0x10c, 0x10d, 0x10e]);
                 let value = self.biu_read_u8(segment, addr);
                 
                 self.set_register8(Register8::AL, value as u8);
@@ -1143,7 +1208,7 @@ impl<'a> Cpu<'a> {
                 // ESC - FPU instructions. 
                 
                 // Perform dummy read if memory operand
-                let _op1_value = self.read_operand16(self.i.operand1_type, SegmentOverride::None);
+                let _op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override);
             }
             0xE0 => {
                 // LOOPNE - Decrement CX, Jump short if count!=0 and ZF=0
@@ -1918,7 +1983,8 @@ impl<'a> Cpu<'a> {
         }
 
         // Reset REP init flag. This flag is set after a rep-prefixed instruction is executed for the first time. It
-        // should be preserved between executions of a rep-prefixed instruction. This flag determins whether RPTS is 
+        // should be preserved between executions of a rep-prefixed instruction unless an interrupt occurs, in which
+        // case the rep-prefix instruction terminates normally after RPTI. This flag determins whether RPTS is 
         // run when executing the instruction.
         if !self.in_rep {
             self.rep_init = false;
@@ -1927,42 +1993,23 @@ impl<'a> Cpu<'a> {
         if unhandled {
             ExecutionResult::UnsupportedOpcode(self.i.opcode)
         }
+        else if self.halted && !self.get_flag(Flag::Interrupt) {
+            // CPU was halted with interrupts disabled - will not continue
+            ExecutionResult::Halt
+        }
+        else if jump {
+            ExecutionResult::OkayJump
+        }
+        else if self.in_rep {
+            self.rep_init = true;
+            ExecutionResult::OkayRep
+        }
         else {
-            if self.halted && !self.get_flag(Flag::Interrupt) {
-                // CPU was halted with interrupts disabled - will not continue
-                ExecutionResult::Halt
-            }
-            else if jump {
-                ExecutionResult::OkayJump
-            }
-            else if self.in_rep {
-                self.rep_init = true;
-                ExecutionResult::OkayRep
-            }
-            else {
-                match exception {
-                    CpuException::DivideError => ExecutionResult::ExceptionError(exception),
-                    CpuException::NoException => ExecutionResult::Okay
-                }                
-            }
+            match exception {
+                CpuException::DivideError => ExecutionResult::ExceptionError(exception),
+                CpuException::NoException => ExecutionResult::Okay
+            }                
         }
     }
 
-    pub fn rep_start(&mut self) {
-        if self.in_rep && !self.rep_init {
-            // Rep-prefixed instruction is starting for the first time. Run the RPTS procedure.
-            if self.cx == 0 {
-                // Only take 5 cycles if CX was initially 0.
-                self.cycles(5);
-            }
-            else {
-                // CX > 0. Decrement CX - 7 initial cycles.
-                self.cycles(7);
-            }
-        }
-        else if !self.rep_init {
-            // Non rep-prefixed instruction is starting for the first time. Spend a cycle skipping RPTS.
-            self.cycle();
-        }
-    }
 }

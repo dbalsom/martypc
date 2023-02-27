@@ -1145,7 +1145,7 @@ pub fn main_fuzzer <'a>(
 
     let mut test_num = 0;
 
-    loop {
+    'testloop: loop {
 
         test_num += 1;
         cpu.randomize_regs();
@@ -1158,7 +1158,7 @@ pub fn main_fuzzer <'a>(
         // Generate specific opcodes (optional)
 
         // ALU ops
-        
+        /*
         cpu.random_inst_from_opcodes(
             &[
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
@@ -1172,7 +1172,7 @@ pub fn main_fuzzer <'a>(
             ]
         );
         // Completed 5000 tests
-        
+        */
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
 
@@ -1215,29 +1215,57 @@ pub fn main_fuzzer <'a>(
         //cpu.random_inst_from_opcodes(&[0x8D]); // LEA
         //cpu.random_inst_from_opcodes(&[0x8C, 0x8E]); // MOV Sreg
 
-        //cpu.random_inst_from_opcodes(&[0x8F]); // POP
+        //cpu.random_inst_from_opcodes(&[0x8F]); // POP  (Weird behavior when REG != 0)
+
         //cpu.random_inst_from_opcodes(&[0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]); // XCHG reg, ax
         //cpu.random_inst_from_opcodes(&[0x98, 0x99]); // CBW, CWD
         //cpu.random_inst_from_opcodes(&[0x9A]); // CALLF
         //cpu.random_inst_from_opcodes(&[0x9C, 0x9D]); // PUSHF, POPF
         //cpu.random_inst_from_opcodes(&[0x9E, 0x9F]); // SAHF, LAHF
         //cpu.random_inst_from_opcodes(&[0xA0, 0xA1, 0xA2, 0xA3]); // MOV offset
+        
         //cpu.random_inst_from_opcodes(&[0xA4, 0xA5]); // MOVS
-        //cpu.random_inst_from_opcodes(&[0xA6, 0xA7]); // CMPS
-        //cpu.random_inst_from_opcodes(&[0xA8, 0xA9]); // TEST
-        //cpu.random_inst_from_opcodes(&[0xAA, 0xAB]); // STOS
         //cpu.random_inst_from_opcodes(&[0xAC, 0xAD]); // LODS
+
+        //cpu.random_inst_from_opcodes(&[0xA6, 0xA7]); // CMPS
         //cpu.random_inst_from_opcodes(&[0xAE, 0xAF]); // SCAS
 
-        /*
+        //cpu.random_inst_from_opcodes(&[0xA8, 0xA9]); // TEST
+        
+        //cpu.random_inst_from_opcodes(&[0xAA, 0xAB]); // STOS
+        
         // MOV imm
+        /*
         cpu.random_inst_from_opcodes(
             &[
                 0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 
                 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF
             ]
         );
-        */ 
+        */
+
+        //cpu.random_inst_from_opcodes(&[0xC0, 0xC1, 0xC2, 0xC3]); // RETN
+        //cpu.random_inst_from_opcodes(&[0xC4]); // LES
+        //cpu.random_inst_from_opcodes(&[0xC5]); // LDS
+        //cpu.random_inst_from_opcodes(&[0xC6, 0xC7]); // MOV r/m, imm
+        //cpu.random_inst_from_opcodes(&[0xC8, 0xC9, 0xCA, 0xCB]); // RETF
+        //cpu.random_inst_from_opcodes(&[0xCC]); // INT3
+        //cpu.random_inst_from_opcodes(&[0xCD]); // INT
+        //cpu.random_inst_from_opcodes(&[0xCE]); // INT0
+        //cpu.random_inst_from_opcodes(&[0xCF]); // IRET  ** unaccounted for cycle after FLUSH
+        
+        //cpu.random_inst_from_opcodes(&[0xD0, 0xD1]); // Misc bitshift ops, 1
+        //cpu.random_inst_from_opcodes(&[0xD2]); // Misc bitshift ops, cl
+
+        //cpu.random_inst_from_opcodes(&[0xD4]); // AAM
+        //cpu.random_inst_from_opcodes(&[0xD5]); // AAD
+        //cpu.random_inst_from_opcodes(&[0xD6]); // SALC
+        //cpu.random_inst_from_opcodes(&[0xD7]); // XLAT
+        //cpu.random_inst_from_opcodes(&[0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF]); // ESC
+
+        //cpu.random_inst_from_opcodes(&[0xE0, 0xE1, 0xE2, 0xE3]); // LOOP & JCXZ
+
+        cpu.random_inst_from_opcodes(&[0xE8, 0xE9, 0xEA, 0xEB]); // CALL & JMP
 
         //cpu.random_inst_from_opcodes(&[0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D]); // SBB 8 & 16 bit
         //cpu.random_inst_from_opcodes(&[0x18, 0x1A, 0x1C]); // SBB 8 bit
@@ -1268,13 +1296,14 @@ pub fn main_fuzzer <'a>(
         };
         
         // Skip N successful instructions
-        if test_num < 96 {
+        if test_num < 0 {
             continue;
         }
 
+        let mut rep = false;
         match i.mnemonic {
             Mnemonic::INT | Mnemonic::INT3 | Mnemonic::INTO | Mnemonic::IRET => {
-                continue;
+                //continue;
             },
             Mnemonic::FWAIT => {
                 continue;
@@ -1300,31 +1329,45 @@ pub fn main_fuzzer <'a>(
                 continue;
             }
             */
-            Mnemonic::SETMO | Mnemonic::SETMOC | Mnemonic::ROL | Mnemonic::ROR | Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
+            Mnemonic::MOVSB | Mnemonic::MOVSW | Mnemonic::CMPSB | Mnemonic::CMPSW | Mnemonic::STOSB | 
+            Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::SCASB | Mnemonic::SCASW => {
+                // limit cx to 31.
+                cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) % 32);
+
+                rep = true;
+            }
+            
+            Mnemonic::SETMO | Mnemonic::SETMOC | Mnemonic::ROL | Mnemonic::ROR | 
+            Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
                 // Limit cl to 0-31.
                 cpu.set_register8(Register8::CL, cpu.get_register8(Register8::CL) % 32);
             }
             _=> {}
         }
 
-        if i.opcode == 0x8F {
-            continue;
-        }
-
         i.address = instruction_address;
    
         log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
         
-        match cpu.step(&mut io_bus, pic.clone()) {
-            Ok(cycles) => {
-                log::trace!("Instruction reported {} cycles", cycles);
-            },
-            Err(err) => {
+        // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
+        // execution per iteration. The 8088 makes no such distinction.
+        loop {
+            match cpu.step(&mut io_bus, pic.clone()) {
+                Ok(cycles) => {
+                    log::trace!("Instruction reported {} cycles", cycles);
 
-                log::error!("CPU Error: {}\n", err);
-                break;
-            } 
+                    if rep & cpu.in_rep() {
+                        continue
+                    }
+                    break;
+                },
+                Err(err) => {
+                    log::error!("CPU Error: {}\n", err);
+                    break 'testloop;
+                } 
+            }
         }
+
     }
     
     

@@ -1,10 +1,10 @@
+
 use crate::cpu_808x::*;
 use crate::bus::BusInterface;
 use crate::bytequeue::*;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ReadType;
-
 
 macro_rules! validate_read_u8 {
     ($myself: expr, $addr: expr, $data: expr, $rtype: expr) => {
@@ -177,7 +177,7 @@ impl<'a> Cpu<'a> {
     /*
     pub fn biu_queue_fetch(&mut self, bus: &mut BusInterface) {
 
-        self.bus_begin(BusStatus::CodeFetch, self.pc, 0, TransferSize::Byte);
+        self.biu_bus_begin(BusStatus::CodeFetch, self.pc, 0, TransferSize::Byte);
         self.bus_wait_finish();
         /*
         let byte;
@@ -299,22 +299,20 @@ impl<'a> Cpu<'a> {
             _=> true
         };
 
-        if self.biu_queue_has_room() && can_fetch && self.queue_op != QueueOp::Flush {
+        //if self.biu_queue_has_room() && can_fetch && self.queue_op != QueueOp::Flush {
+        if can_fetch && self.queue_op != QueueOp::Flush { 
+            // 8088 schedules fetch even when queue is full
             self.biu_schedule_fetch();
         }
     }
 
     pub fn biu_tick_prefetcher(&mut self) {
         match &mut self.fetch_state {
-            FetchState::Scheduled(c) if c < &mut 2 => {
+            FetchState::Scheduled(c) => {
                 *c += 1;
-
-                if *c == FETCH_DELAY {
-
-                }
             }
             FetchState::Aborted(c) => {
-                *c +=1 ;
+                *c += 1;
 
                 if *c == FETCH_DELAY {
                     self.fetch_state = FetchState::Idle;
@@ -345,7 +343,7 @@ impl<'a> Cpu<'a> {
 
     pub fn biu_read_u8(&mut self, seg: Segment, addr: u32) -> u8 {
 
-        self.bus_begin(
+        self.biu_bus_begin(
             BusStatus::MemRead, 
             seg, 
             addr, 
@@ -402,7 +400,7 @@ impl<'a> Cpu<'a> {
 
     pub fn biu_write_u8(&mut self, seg: Segment, addr: u32, byte: u8, flag: ReadWriteFlag) {
 
-        self.bus_begin(
+        self.biu_bus_begin(
             BusStatus::MemWrite, 
             seg, 
             addr, 
@@ -466,7 +464,7 @@ impl<'a> Cpu<'a> {
         match self.cpu_type {
             CpuType::Cpu8088 => {
                 // 8088 performs two consecutive byte transfers
-                self.bus_begin(
+                self.biu_bus_begin(
                     BusStatus::MemRead, 
                     seg, 
                     addr, 
@@ -480,7 +478,7 @@ impl<'a> Cpu<'a> {
 
                 validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
 
-                self.bus_begin(
+                self.biu_bus_begin(
                     BusStatus::MemRead, 
                     seg, 
                     addr.wrapping_add(1), 
@@ -502,7 +500,7 @@ impl<'a> Cpu<'a> {
                 word
             }
             CpuType::Cpu8086 => {
-                self.bus_begin(
+                self.biu_bus_begin(
                     BusStatus::MemRead, 
                     seg, 
                     addr, 
@@ -572,7 +570,7 @@ impl<'a> Cpu<'a> {
         match self.cpu_type {
             CpuType::Cpu8088 => {
                 // 8088 performs two consecutive byte transfers
-                self.bus_begin(
+                self.biu_bus_begin(
                     BusStatus::MemWrite, 
                     seg, 
                     addr, 
@@ -585,7 +583,7 @@ impl<'a> Cpu<'a> {
 
                 self.bus_wait_finish();
 
-                self.bus_begin(
+                self.biu_bus_begin(
                     BusStatus::MemWrite, 
                     seg, 
                     addr.wrapping_add(1), 
@@ -602,7 +600,7 @@ impl<'a> Cpu<'a> {
                 };
             }
             CpuType::Cpu8086 => {
-                self.bus_begin(
+                self.biu_bus_begin(
                     BusStatus::MemWrite, 
                     seg, 
                     addr, 
@@ -661,5 +659,143 @@ impl<'a> Cpu<'a> {
         }
         */
     }    
+
+    /// Begin a new bus cycle of the specified type. Set the address latch and set the data bus appropriately.
+    pub fn biu_bus_begin(
+        &mut self, 
+        new_bus_status: BusStatus, 
+        bus_segment: Segment, 
+        address: u32, 
+        data: u16, 
+        size: TransferSize,
+        op_size: OperandSize,
+        first: bool,
+    ) {
+        // We can cancel a scheduled fetch if it happened this cycle.
+        //self.biu_try_cancel_fetch();
+
+        trace_print!(
+            self,
+            "Bus begin! {:?}:[{:05X}] in {:?}", 
+            new_bus_status, 
+            address, 
+            self.t_cycle
+        );
+
+        // Save current fetch state
+        let old_fetch_state = self.fetch_state;
+
+        if new_bus_status != BusStatus::CodeFetch {
+            // The EU has requested a Read/Write cycle, if we haven't scheduled a prefetch, block 
+            // prefetching until the bus transfer is complete.
+
+            self.bus_pending_eu = true; 
+            if let FetchState::Scheduled(_) = self.fetch_state {
+                // Don't block prefetching if already scheduled.
+            }
+            //else if self.t_cycle != TCycle::T4 && self.fetch_state != FetchState::Suspended {
+            //else if self.is_before_last_wait() && self.fetch_state != FetchState::Suspended {
+            else if self.is_before_last_wait() && !self.fetch_suspended {
+
+                //trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);
+                self.fetch_state = FetchState::BlockedByEU;
+            }
+        }
+
+        // Wait for the current bus cycle to terminate.
+        let mut _waited_cycles = self.bus_wait_finish();
+        if self.t_cycle == TCycle::T4 {
+            self.cycle();
+            _waited_cycles += 1;
+        }
+        
+        //trace_print!(self, "biu_bus_begin(): Done waiting for mcycle complete: ({})", waited_cycles);
+
+        if self.fetch_state == FetchState::BlockedByEU {
+            self.fetch_state = FetchState::Idle;
+        }
+        
+        self.bus_pending_eu = false;
+
+        // Reset the transfer number if this is the first transfer of a word
+        if first {
+            self.transfer_n = 0;
+        }        
+        
+        //log::trace!("Bus begin! {:?}:[{:05X}]", bus_status, address);
+
+        if new_bus_status == BusStatus::CodeFetch {
+            // Prefetch is starting so reset prefetch scheculed flag
+            self.fetch_state = FetchState::InProgress;
+            self.transfer_n = 0;
+        }
+
+        if self.bus_status == BusStatus::Passive || self.bus_status == BusStatus::CodeFetch || self.t_cycle == TCycle::T4 {
+
+            let fetch_scheduled = if let FetchState::Scheduled(_) = self.fetch_state { true } else { false };
+
+            //self.trace_print(&format!("biu_bus_begin(): fetch is scheduled? {}", fetch_scheduled));
+            if new_bus_status != BusStatus::CodeFetch && (fetch_scheduled || self.fetch_state == FetchState::InProgress) {
+                // A fetch was scheduled already, so we have to abort and incur a two cycle penalty.
+                //self.trace_print("Aborting prefetch!");
+
+                let mut penalty_cycle = false;
+                if self.fetch_suspended {
+                    // Oddly, suspending prefetch does not avoid a prefetch abort on a bus request if a prefetch was already scheduled.
+                    // This costs an extra cycle.
+                    
+                    penalty_cycle = true;
+                }
+
+                // If the prefetcher is unable to fetch after two cycles due to the queue being full, it enters a 'paused' state that
+                // incurs a one cycle delay to abort. Detect if our bus request originated during this state.
+                if let FetchState::Scheduled(x) = old_fetch_state {
+                    if !self.biu_queue_has_room() && (x > 1) {
+                        penalty_cycle = true;
+                    }
+                }
+
+                if penalty_cycle {
+                    self.trace_print("Stalled prefetch penalty cycle");
+                    self.cycle();
+                }
+
+                self.biu_abort_fetch(); 
+            }
+            
+            
+            self.bus_status = new_bus_status;
+            self.bus_segment = bus_segment;
+            self.t_cycle = TCycle::TInit;
+
+            //trace_print!(self, "biu_bus_begin(): address {:05X}", address);
+            self.address_bus = address;
+            self.i8288.ale = true;
+            self.data_bus = data as u16;
+            self.transfer_size = size;
+            self.operand_size = op_size;
+            if self.transfer_n > 1 {
+                self.transfer_n = 0;
+            }
+        }
+        else {
+            self.trace_flush();
+            panic!("biu_bus_begin: Attempted to start bus cycle in unhandled state: {:?}:{:?}", self.bus_status, self.t_cycle);
+        }
+
+    }
+
+    pub fn biu_bus_end(&mut self) {
+
+        // Reset i8288 signals
+        self.i8288.mrdc = false;
+        self.i8288.amwc = false;
+        self.i8288.mwtc = false;
+        self.i8288.iorc = false;
+        self.i8288.aiowc = false;
+        self.i8288.iowc = false;
+
+        //self.bus_pending_eu = false;
+    }
 
 }

@@ -473,7 +473,7 @@ impl<'a> Cpu<'a> {
         // These instructions decrement and compare CX before fetching their rel8 operand, taking two
         // additional cycles. This is hacky but necessary to have seperate decode/execute phases.
         if opcode & 0xFC == 0xF0 {
-            bytes.delay(2);
+            //bytes.delay(2);
         }
 
         // Match templatized operands.

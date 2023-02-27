@@ -400,9 +400,11 @@ impl ArduinoValidator {
 
             if self.current_frame.emu_ops[i].addr != self.current_frame.cpu_ops[i].addr {
                 log::error!(
-                    "Bus op #{} addr mismatch: EMU:{:05X} CPU:{:05X}",
+                    "Bus op #{} addr mismatch: EMU:{:?}:{:05X} CPU:{:?}:{:05X}",
                     i,
+                    self.current_frame.emu_ops[i].op_type,
                     self.current_frame.emu_ops[i].addr,
+                    self.current_frame.cpu_ops[i].op_type,
                     self.current_frame.cpu_ops[i].addr
                 );
                 return false;
@@ -410,9 +412,11 @@ impl ArduinoValidator {
 
             if self.current_frame.emu_ops[i].data != self.current_frame.cpu_ops[i].data {
                 log::error!(
-                    "Bus op #{} data mismatch: EMU:{:05X} CPU:{:05X}",
+                    "Bus op #{} data mismatch: EMU:{:?}:{:05X} CPU:{:?}:{:05X}",
                     i,
+                    self.current_frame.emu_ops[i].op_type,
                     self.current_frame.emu_ops[i].data,
+                    self.current_frame.cpu_ops[i].op_type,
                     self.current_frame.cpu_ops[i].data
                 );
                 return false;
@@ -738,7 +742,7 @@ impl RemoteCpu {
                         cpu_mem_ops.push(emu_mem_ops[self.busop_n].clone());
                         self.busop_n += 1;
 
-                        //log::trace!("CPU read: {:02X}", self.data_bus);
+                        log::trace!("CPU read: {:02X}", self.data_bus);
                         self.cpu_client.write_data_bus(self.data_bus).expect("Failed to write data bus.");
                     }
                 }             
@@ -1344,17 +1348,6 @@ impl CpuValidator for ArduinoValidator {
 
         self.cpu.adjust_ip(&mut regs);
 
-        if !self.validate_registers(&regs) {
-            log::error!("Register validation failure. EMU BEFORE:");    
-            RemoteCpu::print_regs(&self.current_frame.regs[0]);
-            log::error!("EMU AFTER:");
-            RemoteCpu::print_regs(&self.current_frame.regs[1]);
-
-            log::error!("CPU AFTER:");   
-            RemoteCpu::print_regs(&regs);
-
-            return Err(ValidatorError::RegisterMismatch);
-        }
 
         if emu_states.len() > 0 {
             // Only validate CPU cycles if any were provided
@@ -1371,6 +1364,20 @@ impl CpuValidator for ArduinoValidator {
                 self.print_cycle_diff(&cpu_states, &emu_states);
             }
         }
+
+        if !self.validate_registers(&regs) {
+            log::error!("Register validation failure. EMU BEFORE:");    
+            RemoteCpu::print_regs(&self.current_frame.regs[0]);
+            log::error!("EMU AFTER:");
+            RemoteCpu::print_regs(&self.current_frame.regs[1]);
+
+            log::error!("CPU AFTER:");   
+            RemoteCpu::print_regs(&regs);
+
+            return Err(ValidatorError::RegisterMismatch);
+        }
+
+
 
 
         Ok(true)
