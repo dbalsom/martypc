@@ -20,7 +20,6 @@ impl<'a> Cpu<'a> {
 
                 // Write AL to [es:di]
                 self.biu_write_u8(Segment::ES, dest_addr, self.al, ReadWriteFlag::Normal);
-                self.cycles(1);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -40,7 +39,6 @@ impl<'a> Cpu<'a> {
 
                 // Write AX to [es:di]
                 self.biu_write_u16(Segment::ES, dest_addr, self.ax, ReadWriteFlag::Normal);
-                self.cycles(1);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -59,9 +57,7 @@ impl<'a> Cpu<'a> {
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
                 let data = self.biu_read_u8(segment_base_ds, src_addr);
-                self.cycles_i(3, &[0x12e, MC_JUMP, 0x1f8]);
 
-                //let (data, _cost) = self.bus.read_u8(src_addr as usize).unwrap();
                 self.set_register8(Register8::AL, data);
 
                 // Increment or Decrement SI according to Direction flag
@@ -82,9 +78,7 @@ impl<'a> Cpu<'a> {
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
                 let data = self.biu_read_u16(segment_base_ds, src_addr, ReadWriteFlag::Normal);
-                self.cycles_i(3, &[0x12e, MC_JUMP, 0x1f8]);
 
-                //let (data, _cost) = self.bus.read_u16(src_addr as usize).unwrap();
                 self.set_register16(Register16::AX, data);  
 
                 // Increment or Decrement SI according to Direction flag
@@ -105,9 +99,8 @@ impl<'a> Cpu<'a> {
                 let dst_addr = Cpu::calc_linear_address(self.es, self.di);
 
                 let data = self.biu_read_u8(segment_base_ds, src_addr);
-                self.cycle();
+                self.cycle_i(0x12e);
                 self.biu_write_u8(Segment::ES, dst_addr, data, ReadWriteFlag::Normal);
-                self.cycles(2);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -130,7 +123,6 @@ impl<'a> Cpu<'a> {
                 let data = self.biu_read_u16(segment_base_ds, src_addr, ReadWriteFlag::Normal);
                 self.cycle_i(0x12e);
                 self.biu_write_u16(Segment::ES, dst_addr, data, ReadWriteFlag::Normal);
-                self.cycle_i(0x130);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -153,7 +145,7 @@ impl<'a> Cpu<'a> {
 
                 self.cycles_i(2, &[0x121, MC_JUMP]);
                 let data = self.biu_read_u8(Segment::ES, scan_addr);
-                self.cycles_i(4, &[0x126, 0x127, 0x128, MC_JUMP]);
+                self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, data, false );
                 // Test operation behaves like CMP
@@ -181,7 +173,7 @@ impl<'a> Cpu<'a> {
 
                 self.cycles_i(2, &[0x121, MC_JUMP]);
                 let data = self.biu_read_u16(Segment::ES, scan_addr, ReadWriteFlag::Normal);
-                self.cycles_i(4, &[0x126, 0x127, 0x128, MC_JUMP]);
+                self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, data, false );
                 // Test operation behaves like CMP
@@ -213,7 +205,7 @@ impl<'a> Cpu<'a> {
                 let dssi_op = self.biu_read_u8(segment_base_ds, dssi_addr);
                 self.cycles_i(2, &[0x123, 0x124]);
                 let esdi_op = self.biu_read_u8(Segment::ES, esdi_addr);
-                self.cycles_i(2, &[0x127, 0x128]);
+                self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u8(dssi_op, esdi_op, false);
 
@@ -247,7 +239,7 @@ impl<'a> Cpu<'a> {
                 let dssi_op = self.biu_read_u16(segment_base_ds, dssi_addr, ReadWriteFlag::Normal);
                 self.cycles_i(2, &[0x123, 0x124]);
                 let esdi_op = self.biu_read_u16(Segment::ES, esdi_addr, ReadWriteFlag::Normal);
-                self.cycles_i(2, &[0x127, 0x128]);
+                self.cycles_i(3, &[0x126, 0x127, 0x128]);
                 
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(dssi_op, esdi_op, false);
 
@@ -276,4 +268,52 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    /// Implement the RPTS microcode co-routine for string operation repetition.
+    pub fn rep_start(&mut self) -> bool {
+
+        if !self.rep_init {
+
+            // First entry into REP-prefixed instruction, run the first line where we 
+            // decide whether to call RPTS
+            match self.i.mnemonic {
+                Mnemonic::MOVSB | Mnemonic::MOVSW => self.cycle_i(0x12c),
+                Mnemonic::CMPSB | Mnemonic::CMPSW => self.cycle_i(0x120),
+                Mnemonic::STOSB | Mnemonic::STOSW => self.cycle_i(0x11c),
+                Mnemonic::LODSB | Mnemonic::LODSW => self.cycle_i(0x12c),
+                Mnemonic::SCASB | Mnemonic::SCASW => self.cycle_i(0x120),
+                _ => {}
+            }
+
+            if self.in_rep {
+                // Rep-prefixed instruction is starting for the first time. Run the RPTS procedure.
+                if self.cx == 0 {
+                    self.cycles_i(4, &[MC_JUMP, 0x112, 0x113, 0x114]);
+                    self.rep_end();
+                    return false
+                }
+                else {
+                    // CX > 0. Load ALU for decrementing CX
+                    self.cycles_i(7, &[MC_JUMP, 0x112, 0x113, 0x114, MC_JUMP, 0x116, MC_RTN]);
+                }
+            }
+        }
+
+        self.rep_init = true;
+        true
+    }
+
+    pub fn rep_end(&mut self) {
+        self.rep_init = false;
+        self.in_rep = false;
+        self.rep_type = RepType::NoRep;
+    }
+
+    /// Implement the RPTI microcode co-routine for string interrupt handling.
+    pub fn rep_interrupt(&mut self) {
+        self.biu_suspend_fetch();
+        self.cycles_i(4, &[0x118, 0x119, MC_CORR, 0x11a]);
+        self.biu_queue_flush();
+        self.rep_end();
+        // Flush was on RNI so no extra cycle here
+    }
 }
