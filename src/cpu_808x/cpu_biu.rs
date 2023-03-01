@@ -151,7 +151,7 @@ impl<'a> Cpu<'a> {
 
             self.last_queue_byte = byte;
 
-            //self.trace_print("biu_queue_read: cycle()");
+            //trace_print!(self, "biu_queue_read: cycle()");
             self.cycle();            
         }
         byte
@@ -236,7 +236,6 @@ impl<'a> Cpu<'a> {
         match self.fetch_state {
             FetchState::Scheduled(0) => {
                 // Fetch was scheduled this cycle, cancel it
-                //self.trace_print("CANCEL");
                 self.trace_comment("CANCEL");
 
                 self.fetch_state = FetchState::BlockedByEU;
@@ -254,7 +253,7 @@ impl<'a> Cpu<'a> {
         self.trace_comment("FLUSH");
         self.biu_update_pc();
         
-        self.trace_print("Fetch state to idle");
+        //trace_print!("Fetch state to idle");
         self.fetch_state = FetchState::Idle;
         self.fetch_suspended = false;
     }
@@ -671,8 +670,6 @@ impl<'a> Cpu<'a> {
         op_size: OperandSize,
         first: bool,
     ) {
-        // We can cancel a scheduled fetch if it happened this cycle.
-        //self.biu_try_cancel_fetch();
 
         trace_print!(
             self,
@@ -756,7 +753,7 @@ impl<'a> Cpu<'a> {
                 }
 
                 if penalty_cycle {
-                    self.trace_print("Stalled prefetch penalty cycle");
+                    trace_print!(self, "Stalled prefetch penalty cycle");
                     self.cycle();
                 }
 
