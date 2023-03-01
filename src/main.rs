@@ -729,7 +729,7 @@ fn main() {
 
                             if stat_counter.cycle_target > CYCLES_PER_FRAME {
                                 // Comment to run as fast as possible
-                                //stat_counter.cycle_target = CYCLES_PER_FRAME;
+                                stat_counter.cycle_target = CYCLES_PER_FRAME;
                             }
                             else {
                                 /*
@@ -1264,18 +1264,29 @@ pub fn main_fuzzer <'a>(
         //cpu.random_inst_from_opcodes(&[0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF]); // ESC
 
         //cpu.random_inst_from_opcodes(&[0xE0, 0xE1, 0xE2, 0xE3]); // LOOP & JCXZ
+        //cpu.random_inst_from_opcodes(&[0xE8, 0xE9, 0xEA, 0xEB]); // CALL & JMP
 
-        cpu.random_inst_from_opcodes(&[0xE8, 0xE9, 0xEA, 0xEB]); // CALL & JMP
+        //cpu.random_inst_from_opcodes(&[0xF5]); // CMC
 
-        //cpu.random_inst_from_opcodes(&[0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D]); // SBB 8 & 16 bit
-        //cpu.random_inst_from_opcodes(&[0x18, 0x1A, 0x1C]); // SBB 8 bit
-
+        //cpu.random_grp_instruction(0xF6, &[0, 1, 2, 3]); // 8 bit TEST, NOT & NEG
+        //cpu.random_grp_instruction(0xF7, &[0, 1, 2, 3]); // 16 bit TEST, NOT & NEG
         //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
         //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
-        
-        //cpu.random_inst_from_opcodes(&[0xD4]); // AAM
-        //cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
+          
+        cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
         //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
+
+        //cpu.random_inst_from_opcodes(&[0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD]); // CLC, STC, CLI, STI, CLD, STD
+
+        //cpu.random_grp_instruction(0xFE, &[0, 1]); // 8 bit INC & DEC
+        //cpu.random_grp_instruction(0xFF, &[0, 1]); // 16 bit INC & DEC
+        
+        //cpu.random_grp_instruction(0xFE, &[2, 3]); // CALL & CALLF
+        //cpu.random_grp_instruction(0xFF, &[2, 3]); // CALL & CALLF
+        //cpu.random_grp_instruction(0xFE, &[4, 5]); // JMP & JMPF
+        //cpu.random_grp_instruction(0xFF, &[4, 5]); // JMP & JMPF
+        //cpu.random_grp_instruction(0xFE, &[6, 7]); // 8-bit broken PUSH & POP
+        //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
         let instruction_address = 
@@ -1296,14 +1307,23 @@ pub fn main_fuzzer <'a>(
         };
         
         // Skip N successful instructions
+
+        // was at 13546
         if test_num < 0 {
             continue;
+        }
+
+        match i.opcode {
+            0xFE | 0xD2 | 0xD3 | 0x8F => {
+                continue;
+            }
+            _ => {}
         }
 
         let mut rep = false;
         match i.mnemonic {
             Mnemonic::INT | Mnemonic::INT3 | Mnemonic::INTO | Mnemonic::IRET => {
-                //continue;
+                continue;
             },
             Mnemonic::FWAIT => {
                 continue;
