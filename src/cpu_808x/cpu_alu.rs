@@ -2,7 +2,7 @@ use crate::cpu_808x::*;
 use crate::cpu_808x::cpu_mnemonic::Mnemonic;
 use crate::cpu_common::alu::*;
 
-use num_traits::PrimInt;
+//use num_traits::PrimInt;
 
 impl<'a> Cpu<'a> {
 
@@ -16,11 +16,14 @@ impl<'a> Cpu<'a> {
         self.set_flag_state(Flag::Parity, PARITY_TABLE[(operand & 0xFF) as usize]);
     }
 
+    /*
     #[inline(always)]
     fn set_parity_flag<T: PrimInt>(&mut self, result: T) {
         self.set_flag_state(Flag::Parity, PARITY_TABLE[result.to_usize().unwrap() & 0xFF]);
     }
+    */
 
+/*
     #[inline(always)]
     pub fn set_szp_flags_from_result<T: PrimInt>(&mut self, result: T) {
 
@@ -33,7 +36,7 @@ impl<'a> Cpu<'a> {
         // Set Parity Flag
         self.set_parity_flag(result);
     }
-
+*/
     pub fn set_szp_flags_from_result_u8(&mut self, result: u8) {
         // Set Sign flag to state of Sign (HO) bit
         self.set_flag_state(Flag::Sign, result & 0x80 != 0);
@@ -438,10 +441,8 @@ impl<'a> Cpu<'a> {
                 let carry_in = self.get_flag(Flag::Carry);
                 // And pass it to SBB                
                 //let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, carry_in );
-
                 
                 let (result, carry, overflow, aux_carry) = operand1.alu_sbb(operand2, carry_in);
-                println!(">>>>>>>>>>>>> SBB: op1: {:02x} op2: {:02x} result: {:02x} carry: {}", operand1, operand2, result, carry_in);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
@@ -576,7 +577,7 @@ impl<'a> Cpu<'a> {
                 // Compute (0-operand)
                 // Flags: The CF flag set to 0 if the source operand is 0; otherwise it is set to 1. 
                 // The OF, SF, ZF, AF, and PF flags are set according to the result.
-                let (result, _carry, overflow, aux_carry) = 0u16.alu_sub(operand2);
+                let (result, _carry, overflow, aux_carry) = 0u16.alu_sub(operand1);
                 
                 self.set_flag_state(Flag::Carry, operand1 != 0);
                 self.set_flag_state(Flag::Overflow, overflow);
