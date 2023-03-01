@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "type": "lldb",
             "request": "launch",
@@ -74,7 +75,34 @@
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
-        },        
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'marty' in fuzzer mode",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=marty",
+                    "--package=marty",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "marty",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "marty_fuzzer.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "marty=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },               
         {
             "type": "lldb",
             "request": "launch",

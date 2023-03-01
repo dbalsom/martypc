@@ -1354,7 +1354,6 @@ dependencies = [
  "log",
  "md5",
  "modular-bitfield",
- "num-traits",
  "pixels",
  "rand",
  "regex",

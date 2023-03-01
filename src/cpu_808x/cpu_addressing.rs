@@ -31,6 +31,12 @@ pub enum AddressingMode {
     RegisterMode
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum FarPtr {
+    Offset,
+    Segment
+}
+
 impl<'a> Cpu<'a> {
 
     fn is_register_mode(mode: AddressingMode) {
@@ -181,13 +187,13 @@ impl<'a> Cpu<'a> {
             OperandType::Immediate8(imm8) => {
                 // Immediate value was peeked during instruction decode, but we have to fetch it now.
                 let byte = self.q_read_u8(QueueType::Subsequent);
-                assert!(byte == imm8); // Fetched value should match peeked value
+                //assert!(byte == imm8); // Fetched value should match peeked value (this can fail with self-modifying code)
                 Some(byte)
             }
             OperandType::Immediate8s(imm8s) => {
                 // Immediate value was peeked during instruction decode, but we have to fetch it now.
                 let byte = self.q_read_i8(QueueType::Subsequent);
-                assert!(byte == imm8s); // Fetched value should match peeked value
+                //assert!(byte == imm8s); // Fetched value should match peeked value
                 Some(byte as u8)
             }
             OperandType::Relative8(rel8) => Some(rel8 as u8),
@@ -303,6 +309,40 @@ impl<'a> Cpu<'a> {
                 let offset = self.biu_read_u16(segment_base_ds, flat_addr, ReadWriteFlag::Normal);
                 let segment = self.biu_read_u16(segment_base_ds, flat_addr2, ReadWriteFlag::Normal);
                 Some((segment, offset))
+            },
+            _ => None
+        }
+    }    
+
+    pub fn read_operand_farptr2(&mut self, operand: OperandType, seg_override: SegmentOverride, ptr: FarPtr, flag: ReadWriteFlag) -> Option<(u16)> {
+
+        match operand {
+            OperandType::AddressingMode(mode) => {
+                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = Cpu::calc_linear_address(segment_val, offset);
+
+                match ptr {
+                    FarPtr::Offset => Some(self.biu_read_u16(segment, flat_addr, flag)),
+                    FarPtr::Segment => Some(self.biu_read_u16(segment, flat_addr.wrapping_add(2), flag))
+                }
+            },
+            OperandType::Register16(_) => {
+                // Illegal form of LES/LDS reg reg uses the last calculated EA.
+                let (segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
+                    SegmentOverride::None => (self.ds, Segment::DS),
+                    SegmentOverride::ES  => (self.es, Segment::ES),
+                    SegmentOverride::CS  => (self.cs, Segment::CS),
+                    SegmentOverride::SS  => (self.ss, Segment::SS),
+                    SegmentOverride::DS  => (self.ds, Segment::DS),
+                };
+
+                let flat_addr = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea);
+                let flat_addr2 = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea.wrapping_add(2));
+
+                match ptr {
+                    FarPtr::Offset => Some(0),
+                    FarPtr::Segment => Some(self.biu_read_u16(segment_base_ds, flat_addr2, flag))
+                }
             },
             _ => None
         }

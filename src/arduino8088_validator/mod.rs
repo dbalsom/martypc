@@ -1358,6 +1358,11 @@ impl CpuValidator for ArduinoValidator {
             if !result {
                 log::error!("Cycle state validation failure @ cycle {}", cycle_num);    
                 self.print_cycle_diff(&cpu_states, &emu_states);
+                log::error!("EMU AFTER:");
+                RemoteCpu::print_regs(&self.current_frame.regs[1]);
+    
+                log::error!("CPU AFTER:");   
+                RemoteCpu::print_regs(&regs);                
                 return Err(ValidatorError::CycleMismatch);
             }
             else {

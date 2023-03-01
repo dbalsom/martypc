@@ -1,6 +1,8 @@
 
 use crate::cpu_808x::*;
 use crate::cpu_808x::cpu_biu::*;
+use crate::cpu_808x::cpu_addressing::*;
+
 use super::CPU_CALL_STACK_LEN;
 
 use crate::io::IoBusInterface;
@@ -94,6 +96,10 @@ impl<'a> Cpu<'a> {
                         self.rep_type = RepType::Repe;
                     }
                 }
+                Mnemonic::MUL | Mnemonic::IMUL | Mnemonic::DIV | Mnemonic::IDIV => {
+                    // REP prefix on MUL/DIV negates the product/quotient.
+                    self.rep_type = RepType::Rep;
+                }
                 _=> {
                     invalid_rep = true;
                     //return ExecutionResult::ExecutionError(
@@ -175,6 +181,7 @@ impl<'a> Cpu<'a> {
                     self.rep_state.pop();
                 }
             }
+
             if !invalid_rep {
                 self.in_rep = true;
                 self.rep_mnemonic = self.i.mnemonic;
@@ -209,19 +216,19 @@ impl<'a> Cpu<'a> {
             0x28 | 0x2A | 0x2C |  // SUB r/m8, r8 | r8, r/m8 | al, imm8 
             0x30 | 0x32 | 0x34 => // XOR r/m8, r8 | r8, r/m8 | al, imm8
             { 
-                read_operand!(self, self.i.operand1_type);
-                read_operand!(self, self.i.operand2_type);
-
-                self.cycles_nx_i(2, &[0]);
+                // 16 bit ADD variants
+                let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
+                self.cycles_nx_i(2, &[0]);
+
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles_i(3, &[0x01, 0x02, 0x03]);
                 }
 
-                alu_op!(self);
-                write_operand!(self, self.i.operand1_type, result, ReadWriteFlag::RNI);
-
-                handled_override = true;
+                let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);       
+                handled_override = true; 
             }
             0x01 | 0x03 | 0x05 |  // ADD r/m16, r16 | r16, r/m16 | ax, imm16
             0x09 | 0x0B | 0x0D |  // OR  r/m16, r16 | r16, r/m16 | ax, imm16
@@ -508,7 +515,6 @@ impl<'a> Cpu<'a> {
             }
             0x86 => {
                 // XCHG r8, r/m8
-                self.trace_print("XCHG START");
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
@@ -1349,12 +1355,16 @@ impl<'a> Cpu<'a> {
             }
             0xE8 => {
                 // CALL rel16
+                // Unique microcode routine. Does not call NEARCALL.
+
+                self.biu_suspend_fetch();
+                self.cycles_i(4, &[0x07e, 0x07f, MC_CORR, 0x080]);
+                
                 // Push offset of next instruction
                 let cs = self.get_register16(Register16::CS);
                 let ip = self.get_register16(Register16::IP);
                 let next_i = ip.wrapping_add(self.i.size as u16);
-                self.push_u16(next_i, ReadWriteFlag::Normal);
-
+                
                 // Add rel16 to ip
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let new_ip = util::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
@@ -1372,23 +1382,20 @@ impl<'a> Cpu<'a> {
 
                 // Set new IP
                 self.ip = new_ip;
-
-                // temporary timings
-                self.biu_suspend_fetch();
-                self.cycles(4);
                 self.biu_queue_flush();
+                self.cycles_i(3, &[0x081, 0x082, MC_JUMP]); 
+                self.push_u16(next_i, ReadWriteFlag::RNI);
                 jump = true;
             }
             0xE9 => {
                 // JMP rel16
 
                 let rel16 = get_operand!(self.i.operand1_type, OperandType::Relative16);
+                self.biu_suspend_fetch();
+                self.cycles_i(4, &[0x0d2, 0x0d3, MC_CORR, 0x0d4]);
                 self.ip = Cpu::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
-
-                self.biu_suspend_fetch(); // Immediately suspend.
-                self.cycles(4);
                 self.biu_queue_flush();
-                self.cycles(2);
+                self.cycle_i(0x0d5);
                 jump = true;
             }
             0xEA => {
@@ -1410,11 +1417,11 @@ impl<'a> Cpu<'a> {
                 // Cycles: 10 (3 fetch + 7 EU)
 
                 let rel8 = get_operand!(self.i.operand1_type, OperandType::Relative8);
-                self.ip = Cpu::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
 
                 self.cycle_i(MC_JUMP); // JMP rel8 takes this extra cycle due to skipping 2nd byte of rel operand
                 self.biu_suspend_fetch();
                 self.cycles_i(4, &[0x0d2, 0x0d3, MC_NONE, 0x0d4]);
+                self.ip = Cpu::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
                 self.biu_queue_flush();
                 self.cycle_i(0x0d5);
                 jump = true
@@ -1487,29 +1494,45 @@ impl<'a> Cpu<'a> {
             }
             0xF6 => {
                 // Miscellaneous Opcode Extensions, r/m8, imm8
+
+                // REP negates product/quotient of MUL/DIV
+                let negate = (self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2)) != 0;
+
                 match self.i.mnemonic {
 
                     Mnemonic::TEST => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+
+                        // 8 bit TEST takes a jump
+                        self.cycles_i(2, &[MC_JUMP, 0x09a]);
+
                         // Don't use result, just set flags
                         let _result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
                     }
                     Mnemonic::NOT => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
+
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                            self.cycles_i(2,&[0x04c, 0x04d]);
+                        }                        
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::NEG => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
+
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                            self.cycles_i(2,&[0x050, 0x051]);
+                        }                          
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::MUL => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         
                         //self.multiply_u8(op1_value);
-                        let product = self.mul8(self.al, op1_value, false, false);
+                        let product = self.mul8(self.al, op1_value, false, negate);
                         self.set_register16(Register16::AX, product);
 
                     }
@@ -1517,7 +1540,7 @@ impl<'a> Cpu<'a> {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         
                         //self.multiply_i8(op1_value as i8);
-                        let product = self.mul8(self.al, op1_value, true, false);
+                        let product = self.mul8(self.al, op1_value, true, negate);
                         self.set_register16(Register16::AX, product);
                     }                    
                     Mnemonic::DIV => {
@@ -1531,7 +1554,7 @@ impl<'a> Cpu<'a> {
                         }
                         */
                         
-                        match self.div8(self.ax, op1_value, false, false) {
+                        match self.div8(self.ax, op1_value, false, negate) {
                             Ok((al, ah)) => {
                                 self.set_register8(Register8::AL, al); // Quotient in AL
                                 self.set_register8(Register8::AH, ah); // Remainder in AH
@@ -1551,7 +1574,7 @@ impl<'a> Cpu<'a> {
                         }
                         */
 
-                        match self.div8(self.ax, op1_value, true, false) {
+                        match self.div8(self.ax, op1_value, true, negate) {
                             Ok((al, ah)) => {
                                 self.set_register8(Register8::AL, al); // Quotient in AL
                                 self.set_register8(Register8::AH, ah); // Remainder in AH
@@ -1567,22 +1590,35 @@ impl<'a> Cpu<'a> {
             }
             0xF7 => {
                 // Miscellaneous Opcode Extensions, r/m16, imm16
+
+                // REP negates product/quotient of MUL/DIV
+                let negate = (self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2)) != 0;
+
                 match self.i.mnemonic {
 
                     Mnemonic::TEST => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
+                        
+                        self.cycle_i(0x09a);
                         // Don't use result, just set flags
                         let _result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
                     }
                     Mnemonic::NOT => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                            self.cycles_i(2,&[0x04c, 0x04d]);
+                        }                            
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::NEG => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
+
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                            self.cycles_i(2,&[0x050, 0x051]);
+                        }        
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::MUL => {
@@ -1590,7 +1626,7 @@ impl<'a> Cpu<'a> {
                         // Multiply handles writing to ax
                         //self.multiply_u16(op1_value);
 
-                        let (dx, ax) = self.mul16(self.ax, op1_value, false, false);
+                        let (dx, ax) = self.mul16(self.ax, op1_value, false, negate);
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);
                     }
@@ -1599,7 +1635,7 @@ impl<'a> Cpu<'a> {
                         // Multiply handles writing to dx:ax
                         //self.multiply_i16(op1_value as i16);
 
-                        let (dx, ax) = self.mul16(self.ax, op1_value, true, false);
+                        let (dx, ax) = self.mul16(self.ax, op1_value, true, negate);
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);                        
                     }
@@ -1613,7 +1649,7 @@ impl<'a> Cpu<'a> {
                         }
                         */
 
-                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, false, false) {
+                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, false, negate) {
                             Ok((quotient, remainder)) => {
                                 self.set_register16(Register16::AX, quotient); // Quotient in AX
                                 self.set_register16(Register16::DX, remainder); // Remainder in DX
@@ -1633,7 +1669,7 @@ impl<'a> Cpu<'a> {
                         }
                         */
 
-                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, true, false) {
+                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, true, negate) {
                             Ok((quotient, remainder)) => {
                                 self.set_register16(Register16::AX, quotient); // Quotient in AX
                                 self.set_register16(Register16::DX, remainder); // Remainder in DX
@@ -1686,6 +1722,10 @@ impl<'a> Cpu<'a> {
                     Mnemonic::INC | Mnemonic::DEC => {
                         let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op_value, 0);
+
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                            self.cycles_i(2,&[0x020, 0x021]);
+                        }                           
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     },
                     // Call Near
@@ -1826,6 +1866,8 @@ impl<'a> Cpu<'a> {
                     Mnemonic::PUSH => {
                         // Read one byte from rm
                         let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                        self.cycles_i(3, &[0x024, 0x025, 0x026]);
+
                         // Write one byte to stack
                         self.push_u8(op_value, ReadWriteFlag::RNI);
                     }                                                           
@@ -1844,120 +1886,212 @@ impl<'a> Cpu<'a> {
                     Mnemonic::INC | Mnemonic::DEC => {
                         let op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op_value, 0);
+
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                            self.cycles_i(2,&[0x020, 0x021]);
+                        }                         
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     },
                     // Call Near
                     Mnemonic::CALL => {
-                        let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                        //log::trace!("CALL: Destination [{:04X}]", ptr16);
-                        
-                        // Push return address (next instruction offset) onto stack
-                        let next_i = self.ip + (self.i.size as u16);
-                        self.push_u16(next_i, ReadWriteFlag::Normal);
 
-                        // Add to call stack
-                        self.push_call_stack(
-                            CallStackEntry::Call {
-                                ret_cs: self.cs,
-                                ret_ip: next_i,
-                                call_ip: ptr16
-                            },
-                            self.cs,
-                            next_i
-                        );
+                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
 
-                        self.ip = ptr16;
+                            let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                        // temporary timings
-                        self.biu_suspend_fetch();
-                        self.cycles(4);
-                        self.biu_queue_flush();
-                        
+                            self.biu_suspend_fetch();
+                            self.cycles_i(4, &[0x074, 0x075, MC_CORR, 0x076]);
+
+                            let next_i = self.ip + (self.i.size as u16);
+                            // Add to call stack
+                            self.push_call_stack(
+                                CallStackEntry::Call {
+                                    ret_cs: self.cs,
+                                    ret_ip: next_i,
+                                    call_ip: ptr16
+                                },
+                                self.cs,
+                                next_i
+                            );
+
+                            self.ip = ptr16;
+                            self.biu_queue_flush();
+                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+
+                            // Push return address (next instruction offset) onto stack
+                            self.push_u16(next_i, ReadWriteFlag::RNI);
+                            
+                        }
+                        else if let OperandType::Register16(reg) = self.i.operand1_type {
+                            // Register form is invalid (can't use arbitrary modrm register as a pointer)
+                            // We model the odd behavior of this invalid form here.
+                            self.biu_suspend_fetch();
+                            self.cycles_i(4, &[0x074, 0x075, MC_CORR, 0x076]);
+
+                            let next_i = self.ip + (self.i.size as u16);
+                            self.ip = self.get_register16(reg); // Value of IP becomes value of register operand
+                            self.biu_queue_flush();
+                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+
+                            // Push return address (next instruction offset) onto stack
+                            self.push_u16(next_i, ReadWriteFlag::RNI);                            
+                        }
+
                         jump = true;
                     }
                     // Call Far
                     Mnemonic::CALLF => {
-                        let (segment, offset) = 
-                            self.read_operand_farptr(
-                                self.i.operand1_type, 
-                                self.i.segment_override, 
-                                ReadWriteFlag::Normal).unwrap();
+                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
 
-                        // Push return address of next instruction
+                            //self.cycle_i(0x068);
+                            let (segment, offset) = 
+                                self.read_operand_farptr(
+                                    self.i.operand1_type, 
+                                    self.i.segment_override, 
+                                    ReadWriteFlag::Normal).unwrap();
 
-                        self.cycle_i(0x06a);
-                        self.biu_suspend_fetch();
-                        self.cycles_i(3, &[0x06b, 0x06c, MC_NONE]);
+                            //log::trace!("CALLF: jump to [{:04X}:{:04X}]", segment, offset);
+                            // Push return address of next instruction
+                            
+                            self.cycle_i(0x06a);
+                            self.biu_suspend_fetch();
+                            self.cycles_i(3, &[0x06b, 0x06c, MC_NONE]);
 
-                        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-                        let next_i = self.ip + (self.i.size as u16);
+                            self.push_register16(Register16::CS, ReadWriteFlag::Normal);
+                            let next_i = self.ip + (self.i.size as u16);
 
-                        // Add to call stack
-                        self.push_call_stack(
-                            CallStackEntry::CallF {
-                                ret_cs: self.cs,
-                                ret_ip: next_i,
-                                call_cs: segment,
-                                call_ip: offset
-                            },
-                            self.cs,
-                            next_i
-                        );
+                            // Add to call stack
+                            self.push_call_stack(
+                                CallStackEntry::CallF {
+                                    ret_cs: self.cs,
+                                    ret_ip: next_i,
+                                    call_cs: segment,
+                                    call_ip: offset
+                                },
+                                self.cs,
+                                next_i
+                            );
 
-                        self.cs = segment;
-                        self.ip = offset;
-                        self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
-                        self.biu_queue_flush();
-                        self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            self.cs = segment;
+                            self.ip = offset;
+                            self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
+                            self.biu_queue_flush();
+                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
 
-                        self.push_u16(next_i, ReadWriteFlag::RNI);
-
-                        // log geoworks crap
-                        if self.i.segment_override == SegmentOverride::SS {
-
-                            /*
-                            let addr = Cpu::calc_linear_address_seg(&self, Segment::SS, 0x000c);
-
-                            let (offset, _) = self.bus.read_u16(addr as usize).unwrap();
-                            let (segment, _) = self.bus.read_u16((addr + 2) as usize).unwrap();
-                            */
-
-                            //log::trace!("ptr ss:[0x00c]: {:04X}:{:04X}", segment, offset);
+                            self.push_u16(next_i, ReadWriteFlag::RNI);
                         }
+                        else if let OperandType::Register16(_) = self.i.operand1_type {
+                            // Register form is invalid (can't use arbitrary modrm register as a pointer)
+                            // We model the odd behavior of this invalid form here.
 
-                        //log::trace!("CALLF: Destination [{:04X}:{:04X}]", segment, offset);
+                            let seg = match self.i.segment_override {
+                                SegmentOverride::None | SegmentOverride::DS => Segment::DS,
+                                SegmentOverride::CS => Segment::CS,
+                                SegmentOverride::ES => Segment::ES,
+                                SegmentOverride::SS => Segment::SS
+                            };
+                            
+                            // Read the segment from Seg:0004 
+                            let offset = 0x0004;    
+                            let flat_addr = self.calc_linear_address_seg(seg, offset);
+                            let segment = self.biu_read_u16(seg, flat_addr, ReadWriteFlag::Normal);
+
+                            self.cycle_i(0x06a);
+                            self.biu_suspend_fetch();
+                            self.cycles_i(3, &[0x06b, 0x06c, MC_CORR]);
+
+                            // Push CS
+                            self.push_register16(Register16::CS, ReadWriteFlag::Normal);
+                            let next_i = self.ip.wrapping_add(self.i.size as u16);
+
+                            self.cs = segment;
+
+                            //self.ip = self.last_ea; // I am not sure where IP gets its value.
+
+                            self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]);
+                            self.biu_queue_flush();
+                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+
+                            // Push next IP
+                            self.push_u16(next_i, ReadWriteFlag::RNI);
+                        }
                         jump = true;
                     }
                     // Jump to memory r/m16
                     Mnemonic::JMP => {
                         let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                        self.ip = ptr16;
-
                         self.biu_suspend_fetch();
-                        self.cycles(4);
+                        self.cycle_i(0x0d8);
+                        self.ip = ptr16;
                         self.biu_queue_flush();
                         jump = true;
                     }
                     // Jump Far
                     Mnemonic::JMPF => {
+                        let offset;
 
-                        let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override, ReadWriteFlag::Normal).unwrap();
+                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                            
+                            offset = 
+                                self.read_operand_farptr2(
+                                    self.i.operand1_type, 
+                                    self.i.segment_override, 
+                                    FarPtr::Offset, 
+                                    ReadWriteFlag::Normal
+                                ).unwrap();
 
-                        self.cs = segment;
-                        self.ip = offset;
+                                self.cycle_i(0x0dc);
+                                self.biu_suspend_fetch();
+                                self.cycle_i(0x0dd);
+        
+                                let segment = 
+                                    self.read_operand_farptr2(
+                                        self.i.operand1_type, 
+                                        self.i.segment_override, 
+                                        FarPtr::Segment, 
+                                        ReadWriteFlag::Normal
+                                    ).unwrap();
+        
+                                self.cs = segment;
+                                self.ip = offset;
+                                self.biu_queue_flush();                                
+                        }
+                        else {
+                            // Register form is invalid (can't use arbitrary modrm register as a pointer)
+                            // We model the odd behavior of this invalid form here.
 
-                        // temporary timings
-                        self.biu_suspend_fetch();
-                        self.cycles(4);
-                        self.biu_queue_flush();
+                            let seg = match self.i.segment_override {
+                                SegmentOverride::None | SegmentOverride::DS => Segment::DS,
+                                SegmentOverride::CS => Segment::CS,
+                                SegmentOverride::ES => Segment::ES,
+                                SegmentOverride::SS => Segment::SS
+                            };
+
+                            self.cycle();
+                            self.biu_suspend_fetch();
+                            self.cycle();
+                            
+                            // Read the segment from Seg:0004 
+                            offset = 0x0004;    
+                            let flat_addr = self.calc_linear_address_seg(seg, offset);
+                            let segment = self.biu_read_u16(seg, flat_addr, ReadWriteFlag::Normal);
+
+                            self.cs = segment;
+                            self.biu_queue_flush();
+                        }
                         jump = true;
-
                         //log::trace!("JMPF: Destination [{:04X}:{:04X}]", segment, offset);
                     }                    
                     // Push Word onto stack
                     Mnemonic::PUSH => {
-                        let op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+                        let mut op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+                        self.cycles_i(3, &[0x024, 0x025, 0x026]);
+                        
+                        // If SP, push the new value of SP instead of the old value
+                        if let OperandType::Register16(Register16::SP) = self.i.operand1_type {
+                            op_value = op_value.wrapping_sub(2);
+                        }
                         self.push_u16(op_value, ReadWriteFlag::RNI);
                     }                    
                     _=> {
