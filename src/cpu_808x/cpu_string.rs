@@ -313,6 +313,12 @@ impl<'a> Cpu<'a> {
         self.biu_suspend_fetch();
         self.cycles_i(4, &[0x118, 0x119, MC_CORR, 0x11a]);
         self.biu_queue_flush();
+
+        // Rewind IP so that it points to REP instruction again afterwards.
+        // This behavior will emulate the 8088's bug with string operations and segment overrides,
+        // as the next time the instruction is fetched it will be with only a single prefix.
+        self.ip = self.ip.wrapping_sub(2); 
+            
         self.rep_end();
         // Flush was on RNI so no extra cycle here
     }
