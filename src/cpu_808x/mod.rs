@@ -1209,7 +1209,7 @@ impl<'a> Cpu<'a> {
         self.biu_tick_prefetcher();
 
         match self.fetch_state {
-            FetchState::Scheduled(2) => {
+            FetchState::Scheduled(n) if n > 1 => {
                 //self.trace_print("Scheduled fetch!");
                 if !self.fetch_suspended {
                     if self.biu_queue_has_room() {
@@ -1903,7 +1903,7 @@ impl<'a> Cpu<'a> {
 
             if let Some(last_entry) = last_entry_opt {
                 if let CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } = last_entry {
-                    log::trace!("rewind_call_stack(): skipped interrupt {:02X}, type: {:?}, ah=={:02}", number, itype, ah);
+                    //log::trace!("rewind_call_stack(): skipped interrupt {:02X}, type: {:?}, ah=={:02}", number, itype, ah);
                 }
             }
 
@@ -2162,6 +2162,7 @@ impl<'a> Cpu<'a> {
         self.push_flags(ReadWriteFlag::Normal);
 
         // Clear interrupt & trap flag
+        
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
 
@@ -2292,8 +2293,8 @@ impl<'a> Cpu<'a> {
                         irq = iv;
                         // Resume from halt on interrupt
                         if self.halted {
-                            self.hw_interrupt(irq);
                             self.resume();
+                            self.hw_interrupt(irq);
                             return Ok(3)
                         }
                         self.pending_interrupt = true;
@@ -2301,6 +2302,10 @@ impl<'a> Cpu<'a> {
                     None => {}
                 }
             }
+        }
+
+        if self.halted {
+            return Ok(3);
         }
 
         // A real 808X CPU maintains a single Program Counter or PC register that points to the next instruction
