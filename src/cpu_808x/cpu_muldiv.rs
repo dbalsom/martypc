@@ -322,7 +322,7 @@ impl<'a> Cpu<'a> {
 
     /// Microcode routine for multiplication, 8 bit
     /// Accepts al and 8-bit operand, returns 16 bit product (for AX)
-    pub fn mul8(&mut self, al: u8, operand: u8, signed: bool, mut negate: bool) -> (u16) {
+    pub fn mul8(&mut self, al: u8, operand: u8, signed: bool, mut negate: bool) -> u16 {
 
         let mut sigma: u16;
         let sigma8: u8;
