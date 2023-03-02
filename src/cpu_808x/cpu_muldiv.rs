@@ -597,8 +597,7 @@ impl<'a> Cpu<'a> {
         // NEGATE if REP
         // -------------------------------------------------------------------------
         if negate {
-
-            println!("negate: tmpa: {}", tmpa);
+            
             self.cycle_i(MC_JUMP); // Jump to NEGATE
 
             (tmpa, tmpb, tmpc, carry, negate) = tmpa.cor_negate(self, tmpb, tmpc, negate, false);
