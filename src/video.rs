@@ -267,7 +267,7 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
         (0b00, CGAPalette::RedCyanWhite(bg), false) => color_enum_to_rgba(bg), // Background color
         (0b01, CGAPalette::RedCyanWhite(_), false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
         (0b10, CGAPalette::RedCyanWhite(_), false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
-        (0b11, CGAPalette::RedCyanWhite(_), false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        (0b11, CGAPalette::RedCyanWhite(_), false) => &[0xAAu8, 0xAAu8, 0xAAu8, 0xFFu8], // Gray
         // Palette 2 - High Intensity
         (0b00, CGAPalette::RedCyanWhite(bg), true) => color_enum_to_rgba(bg), // Background color
         (0b01, CGAPalette::RedCyanWhite(_), true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
