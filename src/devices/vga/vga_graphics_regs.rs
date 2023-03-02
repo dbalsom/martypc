@@ -38,6 +38,7 @@ pub struct GModeRegister {
     #[bits = 1]
     pub read_mode: ReadMode,
     pub odd_even: bool,
+    #[bits = 2]
     pub shift_mode: ShiftMode,
     #[skip]
     unused: B1
@@ -47,6 +48,7 @@ pub struct GModeRegister {
 pub struct GMiscellaneousRegister {
     pub graphics_mode: bool,    
     pub chain_odd_maps: bool,
+    #[bits = 2]
     pub memory_map: MemoryMap,
     #[skip]
     unused: B4
@@ -139,7 +141,7 @@ impl VGACard {
             }
             GraphicsRegister::EnableSetReset => {
                 // Value must be 1 to enable writing
-                self.graphics_enable_set_reset = byte;
+                self.graphics_enable_set_reset = byte & 0x0F;
             },
             GraphicsRegister::ColorCompare => {
                 // Bits 0-3: Color Compare 0-3
@@ -152,7 +154,7 @@ impl VGACard {
             },
             GraphicsRegister::ReadMapSelect => {
                 // Bits 0-2: Map Select 0-2
-                self.graphics_read_map_select = byte & 0x07;
+                self.graphics_read_map_select = byte & 0x03;
             },
 
             GraphicsRegister::Mode => {
