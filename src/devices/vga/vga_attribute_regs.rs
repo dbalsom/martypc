@@ -154,10 +154,7 @@ impl VGACard {
             AttributeRegisterFlipFlop::Address => {
 
                 self.attribute_address = AttributeAddress::from_bytes([byte]);
-
-                if self.attribute_address.address() <= 0x0F {
-                    self.attribute_palette_index = self.attribute_address.address() as usize;
-                }
+                self.attribute_palette_index = (self.attribute_address.address() & 0x0F) as usize;
                 self.attribute_selected = match self.attribute_address.address() {
                     0x00 => AttributeRegister::Palette0,
                     0x01 => AttributeRegister::Palette1,
@@ -185,7 +182,7 @@ impl VGACard {
                         self.attribute_selected
                     }
                 };
-
+                // IBM: "The flip flop toggles each time an OUT is issued to the Attribute Controller"
                 self.attribute_flipflop = AttributeRegisterFlipFlop::Data;
             }
             AttributeRegisterFlipFlop::Data => {
@@ -198,6 +195,7 @@ impl VGACard {
                     AttributeRegister::PaletteC | AttributeRegister::PaletteD | AttributeRegister::PaletteE |
                     AttributeRegister::PaletteF => {
                         //self.attribute_palette_registers[self.attribute_palette_index] = APaletteRegister::from_bytes([byte]);
+                        log::trace!("palette register index {} set to {:08b}", self.attribute_palette_index, byte);
                         self.attribute_palette_registers[self.attribute_palette_index] = byte;
                     }
                     AttributeRegister::ModeControl => {
