@@ -1881,22 +1881,82 @@ impl<'a> Cpu<'a> {
 
     pub fn push_call_stack(&mut self, entry: CallStackEntry, cs: u16, ip: u16) {
 
-        self.call_stack.push_front(entry);
-        /// Flag the specified CS:IP as a retun address
+        self.call_stack.push_back(entry);
+
+        // Flag the specified CS:IP as a return address
         let return_addr = Cpu::calc_linear_address(cs, ip);
 
         self.bus.set_flags(return_addr as usize, MEM_RET_BIT);
 
     }
 
+
+    /// Rewind the call stack to the specified address.
+    /// We have to rewind the call stack to the earliest appearance of this address we returned to, 
+    /// because popping the call stack clears the return flag from the memory location.
+    /// 
+    /// Maintaining a call stack is trickier than expected. JUMPs can RET, CALLS can JMP back, ISRs
+    /// may not always IRET, so there is no other reliable way to pop a CALL/INT other than to mark the
+    /// return address as the end of that CALL/INT.
     pub fn rewind_call_stack(&mut self, addr: u32) {
 
         let mut return_addr: u32 = 0;
-        let mut entry_opt = None;
-        let mut skip_count = -1;
+        //let mut entry_opt = None;
+        //let mut skip_count = -1;
+        //let mut last_entry_opt = None;
+        let mut have_pop = false;
 
-        let mut last_entry_opt = None;
+        let mut found_idx = 0;
 
+        for (i, call) in self.call_stack.range(..).enumerate() {
+
+            return_addr = match call {
+                CallStackEntry::CallF { ret_cs, ret_ip, .. } => {
+                    Cpu::calc_linear_address(*ret_cs, *ret_ip)
+                },
+                CallStackEntry::Call { ret_cs, ret_ip, .. } => {
+                    Cpu::calc_linear_address(*ret_cs, *ret_ip)
+                },
+                CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => {
+                    Cpu::calc_linear_address(*ret_cs, *ret_ip)
+                }       
+            };
+
+            if return_addr == addr {
+                // We found the first entry.
+
+                have_pop = true;
+                found_idx = i;
+            }
+        }
+
+        if have_pop {
+
+            let drained = self.call_stack.drain(found_idx..);
+
+            drained.for_each(|drained_call| {
+                return_addr = match drained_call {
+                    CallStackEntry::CallF { ret_cs, ret_ip, .. } => {
+                        Cpu::calc_linear_address(ret_cs, ret_ip)
+                    },
+                    CallStackEntry::Call { ret_cs, ret_ip, .. } => {
+                        Cpu::calc_linear_address(ret_cs, ret_ip)
+                    },
+                    CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => {
+                        Cpu::calc_linear_address(ret_cs, ret_ip)
+                    }       
+                };
+    
+                // Clear flags for returns we popped
+                self.bus.clear_flags(return_addr as usize, MEM_RET_BIT)
+            })
+
+        }
+        else {
+            log::warn!("rewind_call_stack(): no matching return for [{:05X}]", addr);
+        }
+
+        /*
         while return_addr != addr {
 
             skip_count += 1;
@@ -1906,7 +1966,6 @@ impl<'a> Cpu<'a> {
                     //log::trace!("rewind_call_stack(): skipped interrupt {:02X}, type: {:?}, ah=={:02}", number, itype, ah);
                 }
             }
-
 
             entry_opt = self.call_stack.pop_front();
             match entry_opt {
@@ -1950,6 +2009,7 @@ impl<'a> Cpu<'a> {
         else {
             log::warn!("rewind_call_stack(): no matching return for [{:05X}]", addr);
         }
+        */
     }    
 
     pub fn end_interrupt(&mut self) {
@@ -2169,60 +2229,6 @@ impl<'a> Cpu<'a> {
         // Push cs:ip return address to stack
         self.push_register16(Register16::CS, ReadWriteFlag::Normal);
         self.push_register16(Register16::IP, ReadWriteFlag::Normal);
-        
-        // If we are in a repeated string instruction (REP prefix) we need to save the state of the REP instruction
-        if self.in_rep {
-            let (src_reg, src_reg_val) = match self.i.segment_override {
-                SegmentOverride::CS => (Register16::CS, self.cs),
-                SegmentOverride::ES => (Register16::ES, self.es),
-                SegmentOverride::SS => (Register16::SS, self.ss),
-                _=> (Register16::DS, self.ds)
-            };
-
-            let state: RepState = match self.i.mnemonic {
-                Mnemonic::LODSB => {
-                    RepState::LodsbState(src_reg, src_reg_val, self.si, self.cx)
-                }
-                Mnemonic::LODSW => {
-                    RepState::LodswState(src_reg, src_reg_val, self.si, self.cx)
-                } 
-                Mnemonic::MOVSB => {
-                    RepState::MovsbState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
-                } 
-                Mnemonic::MOVSW => {
-                    RepState::MovswState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
-                } 
-                Mnemonic::CMPSB => {
-                    RepState::CmpsbState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
-                } 
-                Mnemonic::CMPSW => {
-                    RepState::CmpswState(src_reg, src_reg_val, self.si, self.es, self.di, self.cx)
-                }
-                Mnemonic::STOSB => {
-                    RepState::StosbState(self.es, self.di, self.cx)
-                } 
-                Mnemonic::STOSW => {
-                    RepState::StoswState(self.es, self.di, self.cx)
-                } 
-                Mnemonic::SCASB => {
-                    RepState::ScasbState(self.es, self.di, self.cx)
-                } 
-                Mnemonic::SCASW => {
-                    RepState::ScaswState(self.es, self.di, self.cx)
-                }
-                _=> {
-                    log::warn!("Invalid instruction saving REP state: {:?}", self.i.mnemonic);
-                    RepState::NoState
-                }
-            };
-
-            self.rep_state.push((self.cs, self.ip, state));
-            self.rep_saved = true;
-            self.in_rep = false;
-        }
-        else {
-            self.rep_saved = false;
-        }
 
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
