@@ -1,5 +1,4 @@
 use crate::cpu_808x::*;
-use crate::bus::BusInterface;
 
 impl<'a> Cpu<'a> {
     pub fn string_op(&mut self, opcode: Mnemonic, segment_override: SegmentOverride) {
