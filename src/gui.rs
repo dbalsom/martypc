@@ -20,7 +20,7 @@ use egui::{
     TexturesDelta
 };
 
-use egui::{Visuals, Color32};
+use egui::{Visuals, Color32, FontDefinitions, Style};
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
@@ -33,6 +33,7 @@ use serialport::SerialPortInfo;
 use crate::{
 
     gui_image::{UiImage, get_ui_image},
+    gui_color::{darken_c32, lighten_c32, add_c32},
 
     machine::{ExecutionControl, ExecutionState},
     cpu_808x::CpuStringState, 
@@ -194,7 +195,17 @@ impl Framework {
         let gui = GuiState::new(exec_control);
 
         let visuals = egui::Visuals::dark();
-        let visuals = Framework::create_theme(&visuals, Color32::from_rgb(32,0,170));
+        let visuals = Framework::create_theme(&visuals, Color32::from_rgb(56,45,89));
+
+        let mut style: egui::Style = (*egui_ctx.style()).clone();
+        let mut fonts = FontDefinitions::default();
+
+        let title_font = fonts
+            .families
+            .get_mut(&TextStyle::Title)
+            .unwrap();
+
+        egui_ctx.set_visuals(visuals);
 
         Self {
             egui_ctx,
@@ -211,8 +222,22 @@ impl Framework {
         
         let mut new_visuals = base.clone();
 
-        //new_visuals.window_fill = color;
-        //new_visuals.extreme_bg_color = color.
+        new_visuals.window_fill = color;
+        new_visuals.extreme_bg_color = darken_c32(color, 0.50);
+        new_visuals.faint_bg_color = darken_c32(color, 0.15);
+
+        new_visuals.widgets.noninteractive.bg_fill = lighten_c32(color, 0.10);
+        new_visuals.widgets.noninteractive.bg_stroke.color = lighten_c32(color, 0.75);
+        new_visuals.widgets.noninteractive.fg_stroke.color = add_c32(color, 128);
+
+        new_visuals.widgets.active.bg_fill = lighten_c32(color, 0.20);
+        new_visuals.widgets.active.bg_stroke.color = lighten_c32(color, 0.35);
+
+        new_visuals.widgets.inactive.bg_fill = lighten_c32(color, 0.35);
+        new_visuals.widgets.inactive.bg_stroke.color = lighten_c32(color, 0.50);
+
+        new_visuals.widgets.hovered.bg_fill = lighten_c32(color, 0.75);
+        new_visuals.widgets.hovered.bg_stroke.color = lighten_c32(color, 0.75);
 
         new_visuals
     }
