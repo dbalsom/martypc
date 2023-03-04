@@ -2242,6 +2242,11 @@ impl<'a> Cpu<'a> {
         // instruction. Otherwise, when single-stepping in the debugger, the IP value will read ahead. 
         let instruction_address = Cpu::calc_linear_address(self.cs, self.ip);
 
+        // Check if we are in BreakpointHit state. This state must be cleared before we can execute another instruction.
+        if self.get_breakpoint_flag() {
+            return Ok((StepResult::BreakpointHit, 0))
+        }
+
         // Check instruction address for breakpoint on execute flag
         if !skip_breakpoint && self.bus.get_flags(instruction_address as usize) & MEM_BPE_BIT != 0 {
             // Breakpoint hit.

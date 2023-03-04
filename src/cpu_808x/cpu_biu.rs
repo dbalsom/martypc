@@ -307,10 +307,10 @@ impl<'a> Cpu<'a> {
     pub fn biu_tick_prefetcher(&mut self) {
         match &mut self.fetch_state {
             FetchState::Scheduled(c) => {
-                *c += 1;
+                *c = c.saturating_add(1);
             }
             FetchState::Aborted(c) => {
-                *c += 1;
+                *c = c.saturating_add(1);
 
                 if *c == FETCH_DELAY {
                     self.fetch_state = FetchState::Idle;
@@ -513,6 +513,12 @@ impl<'a> Cpu<'a> {
             address, 
             self.t_cycle
         );
+
+        // Check this address for a memory access breakpoint
+        if self.bus().get_flags(address as usize) & MEM_BPA_BIT != 0 {
+            // Breakpoint hit
+            self.state = CpuState::BreakpointHit;
+        }
 
         // Save current fetch state
         let old_fetch_state = self.fetch_state;
