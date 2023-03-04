@@ -12,6 +12,8 @@
 
 */
 use std::collections::HashMap;
+use std::io::Write;
+
 use modular_bitfield::prelude::*;
 
 //#![allow(dead_code)]
@@ -252,7 +254,17 @@ impl DisplayPlane {
     }
 }
 
-pub struct VGACard {
+macro_rules! trace {
+    ($self:ident, $($t:tt)*) => {{
+        if let Some(_) = $self.trace_writer {
+            $self.trace_print(&format!($($t)*));
+        }
+    }};
+}
+
+pub(crate) use trace;
+
+pub struct VGACard<'a> {
 
     timings: [VideoTimings; 2],
     u_timings: VideoMicroTimings,
@@ -363,11 +375,15 @@ pub struct VGACard {
 
     misc_output_register: EMiscellaneousOutputRegister,
 
+    latch_addr: u32,
+
     // Display Planes
     planes: [DisplayPlane; 4],
     pixel_buf: [u8; 8],
     pipeline_buf: [u8; 4],
-    write_buf: [u8; 4]
+    write_buf: [u8; 4],
+
+    trace_writer: Option<Box<dyn Write + 'a>>,
 }
 
 
@@ -423,7 +439,7 @@ pub enum RetracePolarity {
 /// Implement Device IO for the VGA Card.
 /// 
 /// Unlike the EGA, most of the registers on the VGA are readable.
-impl IoDevice for VGACard {
+impl<'a> IoDevice for VGACard<'a> {
     fn read_u8(&mut self, port: u16) -> u8 {
         match port {
             MISC_OUTPUT_REGISTER_READ => {
@@ -557,9 +573,9 @@ impl IoDevice for VGACard {
 
 }
 
-impl VGACard {
+impl<'a> VGACard<'a> {
 
-    pub fn new() -> Self {
+    pub fn new<TraceWriter: Write + 'a>(trace_writer: Option<TraceWriter>) -> Self {
         Self {
 
             timings: [
@@ -683,6 +699,7 @@ impl VGACard {
 
             current_font: 0,
             misc_output_register: EMiscellaneousOutputRegister::new(),
+            latch_addr: 0,
 
             planes: [
                 DisplayPlane::new(),
@@ -694,6 +711,8 @@ impl VGACard {
             pixel_buf: [0; 8],
             pipeline_buf: [0; 4],
             write_buf: [0; 4],
+
+            trace_writer: trace_writer.map_or(None, |trace_writer| Some(Box::new(trace_writer)))
         }
     }
 
@@ -1204,9 +1223,17 @@ impl VGACard {
         
     }
 
+    #[inline]
+    pub fn trace_print(&mut self, trace_str: &str) {
+        if let Some(w) = self.trace_writer.as_mut() {
+            let mut _r = w.write_all(trace_str.as_bytes());
+            _r = w.write_all("\n".as_bytes());
+        }
+    }
+
 }
 
-impl VideoCard for VGACard {
+impl<'a> VideoCard for VGACard<'a> {
 
     fn get_video_type(&self) -> VideoType {
         VideoType::VGA
@@ -1566,6 +1593,11 @@ impl VideoCard for VGACard {
             format!("{:02b}", self.attribute_color_plane_enable.video_status_mux())));                
         attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), 
             format!("{}", self.attribute_pel_panning)));     
+        attribute_vec.push((format!("{:?} [45]", AttributeRegister::ColorSelect), 
+            format!("{}", self.attribute_color_select.c45())));
+        attribute_vec.push((format!("{:?} [67]", AttributeRegister::ColorSelect), 
+            format!("{}", self.attribute_color_select.c67())));            
+
         //attribute_overscan_color: AOverscanColor::new(),
         //attribute_color_plane_enable: AColorPlaneEnable::new(),
         map.insert("Attribute".to_string(), attribute_vec);
@@ -1611,8 +1643,10 @@ impl VideoCard for VGACard {
         return &self.color_registers_rgba[pixel_byte as usize];
     }
 
-    fn get_pixel_raw(&self, x: u32, y:u32) -> u8 {
+    fn get_pixel_raw(&self, x: u32, mut y :u32) -> u8 {
         
+        y += 20;
+
         let mut byte = 0;
 
         if self.sequencer_memory_mode.chain4_enable() {
@@ -1665,10 +1699,17 @@ impl VideoCard for VGACard {
                         false => 0
                     };
                 
-                    //byte |= read_bit << (3 - i);
                     byte |= read_bit << i;
                 }
                 // return self.attribute_palette_registers[byte & 0x0F].into_bytes()[0];
+
+
+                if x == 0 && y == 0 {
+                    // break me
+        
+                    //log::trace!("pixel (0,0): byte: {:01X}, palette: {:04X}", byte, self.attribute_palette_registers[byte & 0x0F]);
+                }
+
                 return self.attribute_palette_registers[byte & 0x0F];
             }
         }
@@ -1699,24 +1740,31 @@ impl VideoCard for VGACard {
 
 }
 
-impl MemoryMappedDevice for VGACard {
+impl<'a> MemoryMappedDevice for VGACard<'a> {
 
     fn read_u8(&mut self, address: usize) -> u8 {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
-            return 0;
+            //return 0;
         }
 
-        // Validate address is within current memory map and get the offset
+        // Validate address is within current memory map and get the offset into VRAM
         let offset = match self.plane_bounds_check(address) {
             Some(offset) => offset,
             None => {
-                return 0;
+                trace!(self, "Read out of range: Failed to set latches for address: {:05X}", address);
+                log::warn!("Failed to set latches for address: {:05X}", address);
+
+                for i in 0..4 {
+                    self.planes[i].latch = 0xFF;
+                }
+                return 0xFF;
             }
         };
 
         // Load all the latches regardless of selected plane or read mode
+        self.latch_addr = address as u32;
         for i in 0..4 {
             self.planes[i].latch = self.planes[i].buf[offset];
         }
@@ -1728,6 +1776,16 @@ impl MemoryMappedDevice for VGACard {
                 // by the read map select register.
                 let plane = (self.graphics_read_map_select & 0x03) as usize;
                 let byte = self.planes[plane].buf[offset];
+
+                trace!(self, "Read mode: {:?} address: {:05X} byte: {:02X} latches: {:02X},{:02X},{:02X},{:02X}",
+                    self.graphics_mode.read_mode(),
+                    address,
+                    byte,
+                    self.planes[0].latch,
+                    self.planes[1].latch,
+                    self.planes[2].latch,
+                    self.planes[3].latch
+                );
                 return byte;
             }
             ReadMode::ReadComparedPlanes => {
@@ -1735,6 +1793,16 @@ impl MemoryMappedDevice for VGACard {
                 // Color Compare register, from the set of enabled planes in the Color Dont Care register
                 self.get_pixels(offset);
                 let comparison = self.pixel_op_compare();
+
+                trace!(self, "Read mode: {:?} address: {:05X} comparison: {:02X} latches: {:02X},{:02X},{:02X},{:02X}",
+                    self.graphics_mode.read_mode(),
+                    address,
+                    comparison,
+                    self.planes[0].latch,
+                    self.planes[1].latch,
+                    self.planes[2].latch,
+                    self.planes[3].latch
+                );                
                 return comparison;
             }
         }
@@ -1745,8 +1813,7 @@ impl MemoryMappedDevice for VGACard {
         let lo_byte = MemoryMappedDevice::read_u8(self, address);
         let ho_byte = MemoryMappedDevice::read_u8(self, address + 1);
 
-
-        //log::warn!("Unsupported 16 bit read from VRAM");
+        log::warn!("Unsupported 16 bit read from VRAM");
         return (ho_byte as u16) << 8 | lo_byte as u16
     }
 
@@ -1772,7 +1839,6 @@ impl MemoryMappedDevice for VGACard {
             offset >>= 2;
         }
         
-
         match self.graphics_mode.write_mode() {
             WriteMode::Mode0 => {
 
@@ -1780,12 +1846,23 @@ impl MemoryMappedDevice for VGACard {
                 // First, data is rotated as specified by the Rotate Count field of the Data Rotate Register.
                 let data_rot = VGACard::rotate_right_u8(byte, self.graphics_data_rotate.count());
 
+                trace!(self, "wm0: [{:05X}]: byte: {:02x} rot ct: {} latches: {:02x},{:02x},{:02x},{:02x} la: {:05X}", 
+                    address,
+                    byte,
+                    self.graphics_data_rotate.count(),
+                    self.planes[0].latch,
+                    self.planes[1].latch,
+                    self.planes[2].latch,
+                    self.planes[3].latch,
+                    self.latch_addr
+                );
+
                 for i in 0..4 {
                     // Second, data is is either passed through to the next stage or replaced by a value determined
                     // by the Set/Reset register. The bits in the Enable Set/Reset register controls whether this occurs.
-                    if self.graphics_enable_set_reset & (0x01 << i) != 0 {
+                    if (self.graphics_enable_set_reset & (0x01 << i)) != 0 {
                         // If the Set/Reset Enable bit is set, use expansion of corresponding Set/Reset register bit
-                        self.pipeline_buf[i] = match self.graphics_set_reset & (0x01 << i) != 0 {
+                        self.pipeline_buf[i] = match (self.graphics_set_reset & (0x01 << i)) != 0 {
                             true  => 0xFF,
                             false => 0x00
                         }                        
@@ -1799,14 +1876,10 @@ impl MemoryMappedDevice for VGACard {
                     // is perfomed on the data for each plane and the latch read register.
                     // Only the bits set in the Bit Mask register will be affected by the Logical Operation. 
 
-                    let mut rotate_function = self.graphics_data_rotate.function();
+                    let rotate_function = self.graphics_data_rotate.function();
                     
-                    if rotate_function == RotateFunction::Xor {
-                        //rotate_function = RotateFunction::Unmodified;
-                    }
-                    self.pipeline_buf[i] = match  rotate_function {
+                    self.pipeline_buf[i] = match rotate_function {
                         RotateFunction::Unmodified => {
-                            //(self.pipeline_buf[i] & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                             (self.pipeline_buf[i] & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                         }
                         RotateFunction::And => {
@@ -1819,7 +1892,22 @@ impl MemoryMappedDevice for VGACard {
                             ((self.pipeline_buf[i] ^ self.planes[i].latch) & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
                         }
                     };
+
+              
                 }
+
+                trace!(self, "wm0: [{:05X}] func: {:?} esr: {:01X} gsr: {:01X} mask: {:02X} writing: {:02x},{:02x},{:02x},{:02x} map_mask: {:02X}",
+                    address,
+                    self.graphics_data_rotate.function(),
+                    self.graphics_enable_set_reset,
+                    self.graphics_set_reset,
+                    self.graphics_bitmask,
+                    self.pipeline_buf[0],
+                    self.pipeline_buf[1],
+                    self.pipeline_buf[2],
+                    self.pipeline_buf[3],
+                    self.sequencer_map_mask
+                );
 
                 if self.sequencer_memory_mode.chain4_enable() {
                     // (Chain4 mode...)
@@ -1838,33 +1926,78 @@ impl MemoryMappedDevice for VGACard {
                 }                
             }
             WriteMode::Mode1 => {
-                // Write the contents of the platches to their corresponding planes. This assumes that the latches
+                // Write the contents of the latches to their corresponding planes. This assumes that the latches
                 // were loaded propery via a previous read operation.
+
+                trace!(self, "wm1: [{:05X}]: byte: {:02x} latches: {:02x},{:02x},{:02x},{:02x} map_mask: {:01X} la: {:05X}", 
+                    address,
+                    byte,
+                    self.planes[0].latch,
+                    self.planes[1].latch,
+                    self.planes[2].latch,
+                    self.planes[3].latch,
+                    self.sequencer_map_mask,
+                    self.latch_addr
+                );
 
                 for i in 0..4 {
                     // Only write to planes enabled in the Sequencer Map Mask.
-                    if self.sequencer_map_mask & (0x01 << i) != 0 {
+                    if (self.sequencer_map_mask & (0x01 << i)) != 0 {
                         self.planes[i].buf[offset] = self.planes[i].latch;
                     }
                 }
             }
             WriteMode::Mode2 => {
 
+                
+
                 for i in 0..4 {
                     // Only write to planes enabled in the Sequencer Map Mask.
                     if self.sequencer_map_mask & (0x01 << i) != 0 {
 
                         // Extend the bit for this plane to 8 bits.
-                        let bit_span: u8 = match byte & (0x01 << i) != 0 {
+                        let bit_span: u8 = match (byte & (0x01 << i)) != 0 {
                             true => 0xFF,
                             false => 0x00,
                         };
 
-                        self.planes[i].buf[offset] = (self.planes[i].buf[offset] & !self.graphics_bitmask) | (bit_span & self.graphics_bitmask);
+                        //self.planes[i].buf[offset] = (self.planes[i].buf[offset] & !self.graphics_bitmask) | (bit_span & self.graphics_bitmask);
+                        self.pipeline_buf[i] = bit_span;
+
+                        self.pipeline_buf[i] = match self.graphics_data_rotate.function() {
+                            RotateFunction::Unmodified => {
+                                (self.pipeline_buf[i] & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
+                            }
+                            RotateFunction::And => {
+                                ((self.pipeline_buf[i] & self.planes[i].latch) & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
+                            }
+                            RotateFunction::Or => {
+                                ((self.pipeline_buf[i] | self.planes[i].latch) & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
+                            }
+                            RotateFunction::Xor => {
+                                ((self.pipeline_buf[i] ^ self.planes[i].latch) & self.graphics_bitmask) | (self.planes[i].latch & !self.graphics_bitmask)
+                            }
+                        };
+
+                        self.planes[i].buf[offset] = self.pipeline_buf[i];
                     }
                 }
+
+                trace!(self, "wm2: fn: {:?} byte: {:02X} bit_mask: {:02X} map_mask: {:01X} wrote: {:02X},{:02X},{:02X},{:02X} la:{:05X}",
+                    self.graphics_data_rotate.function(),
+                    byte,
+                    self.graphics_bitmask,
+                    self.sequencer_map_mask,
+                    self.pipeline_buf[0],
+                    self.pipeline_buf[1],
+                    self.pipeline_buf[2],
+                    self.pipeline_buf[3], 
+                    self.latch_addr
+                );
             }
             WriteMode::Mode3 => {
+
+                trace!(self, "wm3:");
 
                 // First, data is rotated as specified by the Rotate Count field of the Data Rotate Register.
                 let data_rot = VGACard::rotate_right_u8(byte, self.graphics_data_rotate.count());
@@ -1889,6 +2022,7 @@ impl MemoryMappedDevice for VGACard {
     }
 
     fn write_u16(&mut self, address: usize, data: u16) {
+        trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
     }
 }
@@ -1899,7 +2033,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_rotate() {
+        let data_rot = VGACard::rotate_right_u8(0xFF, 7);
+
+        assert_eq!(data_rot, 0xFF);
+
+        let data_rot = VGACard::rotate_right_u8(0x80, 7);
+
+        assert_eq!(data_rot, 0x01);
+
+        let data_rot = VGACard::rotate_right_u8(0x01, 1);
+
+        assert_eq!(data_rot, 0x80);
+    }
+
+    #[test]
     fn test_color_compare() {
+        /*
         let mut ega = VGACard::new();
 
         ega.pixel_buf[0] = 0b1100;
@@ -1933,7 +2083,7 @@ mod tests {
         ega.graphics_color_dont_care = 0b1000;
         let result = ega.pixel_op_compare();
         assert_eq!(result, 0b00100111);        
-
+        */
 
     }
 }

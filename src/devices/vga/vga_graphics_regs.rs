@@ -6,7 +6,7 @@
 */
 
 use modular_bitfield::prelude::*;
-use crate::vga::VGACard;
+use crate::vga::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum GraphicsRegister {
@@ -92,7 +92,7 @@ pub enum ShiftMode {
     Reserved
 }
 
-impl VGACard {
+impl<'a> VGACard<'a> {
     /// Handle a write to one of the Graphics Position Registers.
     /// 
     /// According to IBM documentation, both these registers should be set to
@@ -138,10 +138,18 @@ impl VGACard {
             GraphicsRegister::SetReset => {
                 // Bits 0-3: Set/Reset Bits 0-3
                 self.graphics_set_reset = byte & 0x0F;
+                trace!(self, "Write to {:?}: sr: {:01X}",
+                    self.graphics_register_selected,
+                    self.graphics_set_reset
+                );                  
             }
             GraphicsRegister::EnableSetReset => {
                 // Value must be 1 to enable writing
                 self.graphics_enable_set_reset = byte & 0x0F;
+                trace!(self, "Write to {:?}: esr: {:01x}",
+                    self.graphics_register_selected,
+                    self.graphics_enable_set_reset
+                );                  
             },
             GraphicsRegister::ColorCompare => {
                 // Bits 0-3: Color Compare 0-3
@@ -155,6 +163,10 @@ impl VGACard {
             GraphicsRegister::ReadMapSelect => {
                 // Bits 0-2: Map Select 0-2
                 self.graphics_read_map_select = byte & 0x03;
+                trace!(self, "Write to {:?}: rms: {:?}",
+                    self.graphics_register_selected,
+                    self.graphics_read_map_select
+                );                
             },
 
             GraphicsRegister::Mode => {
@@ -167,6 +179,13 @@ impl VGACard {
             },
             GraphicsRegister::Miscellaneous => {
                 self.graphics_micellaneous = GMiscellaneousRegister::from_bytes([byte]);
+
+                trace!(self, "Write to {:?}: gm: {:?} com:{:?} mm:{:?}",
+                    self.graphics_register_selected,
+                    self.graphics_micellaneous.graphics_mode(),
+                    self.graphics_micellaneous.chain_odd_maps(),
+                    self.graphics_micellaneous.memory_map()
+                );
             }
             GraphicsRegister::ColorDontCare => {
                 // Bits 0-3: Color Don't Care

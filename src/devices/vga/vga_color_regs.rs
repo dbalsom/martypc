@@ -5,12 +5,12 @@
 
 */
 
-use crate::vga::VGACard;
+use crate::vga::*;
 
 pub const DAC_STATE_READ: u8 = 0;
 pub const DAC_STATE_WRITE: u8 = 0x03;
 
-impl VGACard {
+impl<'a> VGACard<'a> {
     
     pub fn read_pel_data(&mut self) -> u8 {
         let byte;
@@ -55,6 +55,12 @@ impl VGACard {
             self.color_registers_rgba[color][1] = ((self.color_registers[color][1] as u32 * 255) / 63) as u8;
             self.color_registers_rgba[color][2] = ((self.color_registers[color][2] as u32 * 255) / 63) as u8;
             self.color_registers_rgba[color][3] = 0xFF;
+
+            trace!(self, "Wrote color register [{}] ({:02X},{:02X},{:02X})", 
+                color,
+                self.color_registers[color][0],
+                self.color_registers[color][1],
+                self.color_registers[color][2]);
 
             log::trace!("Wrote color register [{}] ({:02X},{:02X},{:02X})", 
                 color,

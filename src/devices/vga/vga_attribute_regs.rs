@@ -142,7 +142,7 @@ pub struct AColorSelect {
     unused: B4
 }
 
-impl VGACard {
+impl<'a> VGACard<'a> {
     /// Handle a write to the Attribute Register 0x3C0.
     /// 
     /// Unlike the other register files on the VGA, the Attribute Register doesn't have an 
