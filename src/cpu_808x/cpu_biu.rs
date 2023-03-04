@@ -1,6 +1,5 @@
 
 use crate::cpu_808x::*;
-use crate::bus::BusInterface;
 use crate::bytequeue::*;
 
 #[cfg(feature = "cpu_validator")]
@@ -351,53 +350,18 @@ impl<'a> Cpu<'a> {
             OperandSize::Operand8,
             true
         );
-        let cycles_waited = self.bus_wait_finish();
+        let _cycles_waited = self.bus_wait_finish();
         
         validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
 
         (self.data_bus & 0x00FF) as u8
-        /*
-        match self.bus_status {
-            BusStatus::CodeFetch => {
-                // Abort fetch
-                self.bus_status = BusStatus::Passive;        
-                self.cycle();
-
-                self.bus_status = BusStatus::Passive;
-                (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
-                
-                #[cfg(feature = "cpu_validator")]
-                self.validator.as_mut().unwrap().emu_read_byte(addr, byte, ReadType::Data);
-
-                // TODO: Handle wait states here
-                self.cycles(4);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::Passive => {
-                self.bus_status = BusStatus::MemRead;
-                (byte, _cost) = self.bus.read_u8(addr as usize).unwrap();
-                
-                #[cfg(feature = "cpu_validator")]
-                self.validator.as_mut().unwrap().emu_read_byte(addr, byte, ReadType::Data);
-
-                // TODO: Handle wait states here
-                self.cycles(4);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::MemRead | BusStatus::MemWrite => {
-                panic!("Overlapping read/write!");
-            }
-            _ => {
-                // Handle other states
-                byte = 0;
-            }
-        }
-        
-        byte
-        */
     }
 
     pub fn biu_write_u8(&mut self, seg: Segment, addr: u32, byte: u8, flag: ReadWriteFlag) {
+
+        if addr == 0xABFFE {
+            log::trace!("break me");
+        }
 
         self.biu_bus_begin(
             BusStatus::MemWrite, 
@@ -414,46 +378,6 @@ impl<'a> Cpu<'a> {
         };
         
         validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
-
-        /*
-        let _result;
-
-        match self.bus_status {
-            BusStatus::CodeFetch => {
-                // Abort fetch
-                self.bus_status = BusStatus::Passive;        
-                self.cycle();
-
-                self.bus_status = BusStatus::MemWrite;
-                _result = self.bus.write_u8(addr as usize, byte).unwrap();
-                // TODO: Handle wait states here
-
-                #[cfg(feature = "cpu_validator")]
-                self.validator.as_mut().unwrap().emu_write_byte(addr, byte);
-
-
-                self.cycles(4);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::Passive => {
-                self.bus_status = BusStatus::MemWrite;
-                _result = self.bus.write_u8(addr as usize, byte).unwrap();
-                // TODO: Handle wait states here
-
-                #[cfg(feature = "cpu_validator")]
-                self.validator.as_mut().unwrap().emu_write_byte(addr, byte);
-
-                self.cycles(4);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::MemRead | BusStatus::MemWrite => {
-                panic!("Overlapping read/write state!");
-            }
-            _ => {
-                // Handle other status            
-            }
-        }
-        */
     }
 
     pub fn biu_read_u16(&mut self, seg: Segment, addr: u32, flag: ReadWriteFlag) -> u16 {
@@ -516,52 +440,6 @@ impl<'a> Cpu<'a> {
                 self.data_bus
             }
         }
-
-        /*
-        let _cost;
-
-        match self.bus_status {
-            BusStatus::CodeFetch => {
-                // Abort fetch
-                self.bus_status = BusStatus::Passive;        
-                self.cycle();
-
-                self.bus_status = BusStatus::MemRead;
-                (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
-                // TODO: Handle wait states here
-
-                #[cfg(feature = "cpu_validator")]
-                {
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8, ReadType::Data);
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8, ReadType::Data);
-                }
-                self.cycles(8);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::Passive => {
-                self.bus_status = BusStatus::MemRead;
-                (word, _cost) = self.bus.read_u16(addr as usize).unwrap();
-                // TODO: Handle wait states here
-
-                #[cfg(feature = "cpu_validator")]
-                {
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word & 0xFF) as u8, ReadType::Data);
-                    self.validator.as_mut().unwrap().emu_read_byte(addr, (word >> 8) as u8, ReadType::Data);
-                }
-                self.cycles(8);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::MemRead | BusStatus::MemWrite => {
-                panic!("Overlapping read/write!");
-                
-            }
-            _ => {
-                // Handle other states
-                word = 0;
-            }
-        }
-        word
-        */
     }
 
     pub fn biu_write_u16(&mut self, seg: Segment, addr: u32, word: u16, flag: ReadWriteFlag) {
@@ -614,49 +492,6 @@ impl<'a> Cpu<'a> {
             }
         }
 
-
-        /*
-        let _result;
-
-        match self.bus_status {
-            BusStatus::CodeFetch => {
-                // Abort fetch
-                self.bus_status = BusStatus::Passive;        
-                self.cycle();
-
-                self.bus_status = BusStatus::MemWrite;
-                _result = self.bus.write_u16(addr as usize, word).unwrap();
-                // TODO: Handle wait states here
-
-                #[cfg(feature = "cpu_validator")]
-                {
-                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word & 0xFF) as u8);
-                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word >> 8) as u8);
-                }
-                self.cycles(8);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::Passive => {
-                self.bus_status = BusStatus::MemWrite;
-                _result = self.bus.write_u16(addr as usize, word).unwrap();
-                // TODO: Handle wait states here
-
-                #[cfg(feature = "cpu_validator")]
-                {
-                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word & 0xFF) as u8);
-                    self.validator.as_mut().unwrap().emu_write_byte(addr, (word >> 8) as u8);
-                }
-                self.cycles(8);
-                self.bus_status = BusStatus::Passive;
-            }
-            BusStatus::MemRead | BusStatus::MemWrite => {
-                panic!("Overlapping read/write state!");
-            }
-            _ => {
-                // Handle other states
-            }
-        }
-        */
     }    
 
     /// Begin a new bus cycle of the specified type. Set the address latch and set the data bus appropriately.
@@ -740,7 +575,6 @@ impl<'a> Cpu<'a> {
                 if self.fetch_suspended {
                     // Oddly, suspending prefetch does not avoid a prefetch abort on a bus request if a prefetch was already scheduled.
                     // This costs an extra cycle.
-                    
                     penalty_cycle = true;
                 }
 
