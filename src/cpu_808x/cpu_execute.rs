@@ -147,7 +147,7 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles_nx_i(2, &[0]);
+                self.cycles_nx_i(2, &[0x001,]);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles_i(3, &[0x01, 0x02, 0x03]);
@@ -169,7 +169,7 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles_nx_i(2, &[0]);
+                self.cycles_nx_i(2, &[0x001, 0x002]);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycles_i(3, &[0x01, 0x02, 0x03]);
