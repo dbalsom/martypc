@@ -8,11 +8,12 @@ use crate::memerror::MemError;
 
 const ADDRESS_SPACE: usize = 1_048_576;
 const DEFAULT_WAIT_STATES: u32 = 0;
-const ROM_BIT: u8 = 0b1000_0000;
 
+const ROM_BIT: u8 = 0b1000_0000;
 pub const MEM_RET_BIT: u8 = 0b0100_0000; // Bit to signify that this address is a return address for a CALL or INT
 pub const MEM_BPE_BIT: u8 = 0b0010_0000; // Bit to signify that this address is associated with a breakpoint on execute
 pub const MEM_BPA_BIT: u8 = 0b0001_0000; // Bit to signify that this address is associated with a breakpoint on access
+pub const MEM_CP_BIT: u8  = 0b0000_1000; // Bit to signify that this address is a ROM checkpoint
 
 pub trait MemoryMappedDevice {  
     fn read_u8(&mut self, address: usize) -> u8;
@@ -28,6 +29,7 @@ pub struct MemRangeDescriptor {
     cycle_cost: u32,
     read_only: bool
 }
+
 impl MemRangeDescriptor {
     pub fn new(address: usize, size: usize, read_only: bool) -> Self {
         Self {
@@ -38,7 +40,6 @@ impl MemRangeDescriptor {
         }
     }
 }
-
 
 pub struct BusInterface {
     memory: Vec<u8>,
@@ -198,7 +199,7 @@ impl BusInterface {
             false => 0x00
         };
         for dst in mask_slice.iter_mut() {
-            *dst = cycle_cost as u8 & 0xEF | access_bit;
+            *dst |= access_bit;
         }
 
         self.desc_vec.push({
@@ -247,14 +248,24 @@ impl BusInterface {
         });        
     }
 
-    pub fn reset(&mut self) {
-        // Clear mem range descriptors
-        self.desc_vec.clear();
+    pub fn clear(&mut self) {
+
+        // Remove return flags
+        for byte_ref in &mut self.memory_mask {
+            *byte_ref &= !MEM_RET_BIT;
+        } 
 
         // Set all bytes to 0
         for byte_ref in &mut self.memory {
             *byte_ref = 0;
         }
+    }
+
+    pub fn reset(&mut self) {
+        // Clear mem range descriptors
+        self.desc_vec.clear();
+
+        self.clear();
     }
 
     pub fn read_u8(&self, address: usize ) -> Result<(u8, u32), MemError> {
@@ -414,6 +425,7 @@ impl BusInterface {
     /// Set bit flags for the specified byte at address
     pub fn set_flags(&mut self, address: usize, flags: u8) {
         if address < self.memory.len() - 1 {     
+            //log::trace!("set flag for address: {:05X}: {:02X}", address, flags);
             self.memory_mask[address] |= flags;
         }
     }
