@@ -28,7 +28,7 @@ use std::path::PathBuf;
 use std::cell::Cell;
 
 use crate::config::MachineType;
-use crate::bus::BusInterface;
+use crate::bus::{BusInterface, MEM_CP_BIT};
 
 pub const BIOS_READ_CYCLE_COST: u32 = 4;
 
@@ -1286,6 +1286,21 @@ impl RomManager {
             rom_desc.present
         });
 
+        // Filter roms that provide features that were not requested
+        rom_set_active.roms.retain(|rom| {
+            let rom_desc = self.get_romdesc(rom).unwrap();
+
+            if let Some(feature) = rom_desc.feature {
+                if !self.features_requested.contains(&feature) {
+                    return false
+                }
+                else {
+                    return true
+                }
+            }
+            true
+        });        
+
         // Now remove all but highest priority Basic images
         
         // Find highest priority Basic:
@@ -1323,7 +1338,6 @@ impl RomManager {
 
             // Reverse the rom if required
             if let RomOrder::Reversed = rom_desc.order {
-
                 file_vec = file_vec.into_iter().rev().collect();
             }
 
@@ -1458,6 +1472,19 @@ impl RomManager {
         }
 
         true
+    }
+
+    /// Sets the checkpoint bus flag for loaded checkpoints. We only try to look up the checkpoint
+    /// for an address if this flag is set, for speed.
+    pub fn install_checkpoints(&self,  bus: &mut BusInterface) {
+
+        self.checkpoints_active.keys().for_each(|addr| {
+            bus.set_flags(*addr as usize, MEM_CP_BIT);
+        });
+
+        self.patches_active.keys().for_each(|addr| {
+            bus.set_flags(*addr as usize, MEM_CP_BIT);
+        });        
     }
 
     pub fn install_patches(&self, bus: &mut BusInterface) {
