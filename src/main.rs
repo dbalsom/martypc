@@ -43,6 +43,7 @@ mod dma;
 mod fdc;
 mod floppy_manager;
 mod gui;
+mod gui_color;
 mod gui_image;
 mod hdc;
 mod io;
@@ -380,7 +381,14 @@ fn main() {
         let pixels = 
             Pixels::new(video_data.aspect_w, video_data.aspect_h, surface_texture).unwrap();
         let framework =
-            Framework::new(window_size.width, window_size.height, scale_factor, &pixels, exec_control.clone());
+            Framework::new(
+                &event_loop,
+                window_size.width, 
+                window_size.height, 
+                scale_factor, 
+                &pixels, 
+                exec_control.clone()
+            );
 
         (pixels, framework)
     };
@@ -553,14 +561,14 @@ fn main() {
                                     // Ctrl-F10 pressed. Toggle mouse capture.
                                     log::trace!("Control F10 pressed.");
                                     if !mouse_data.is_captured {
-                                        match window.set_cursor_grab(true) {
+                                        match window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
                                             Ok(_) => mouse_data.is_captured = true,
                                             Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
                                         }
                                     }
                                     else {
                                         // Cursor is grabbed, ungrab
-                                        match window.set_cursor_grab(false) {
+                                        match window.set_cursor_grab(winit::window::CursorGrabMode::None) {
                                             Ok(_) => mouse_data.is_captured = false,
                                             Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
                                         }                                        
@@ -761,7 +769,7 @@ fn main() {
                             let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
                             video_data.aspect_h = new_height;
 
-                            pixels.get_frame().fill(0);
+                            pixels.get_frame_mut().fill(0);
                             pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h);
                         }
                     }
@@ -779,12 +787,12 @@ fn main() {
                                 &render_src, 
                                 video_data.render_w, 
                                 video_data.render_h, 
-                                pixels.get_frame(), 
+                                pixels.get_frame_mut(), 
                                 video_data.aspect_w, 
                                 video_data.aspect_h);                            
                         }
                         false => {
-                            video.draw(pixels.get_frame(), machine.videocard(), machine.bus(), composite_enabled);
+                            video.draw(pixels.get_frame_mut(), machine.videocard(), machine.bus(), composite_enabled);
                         }
                     }
                     stat_counter.render_time = Instant::now() - render_start;
@@ -1053,7 +1061,7 @@ fn main() {
 
                         // Render egui
                         #[cfg(not(feature = "pi_validator"))]
-                        framework.render(encoder, render_target, context)?;
+                        framework.render(encoder, render_target, context);
 
                         Ok(())
                     });
