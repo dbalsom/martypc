@@ -1,6 +1,5 @@
 use crate::cpu_808x::*;
 use crate::cpu_808x::cpu_biu::*;
-use super::CPU_FLAG_RESERVED1;
 
 impl<'a> Cpu<'a> {
 
