@@ -369,6 +369,9 @@ impl<'a> Machine<'a> {
         // Load BIOS ROM images
         rom_manager.copy_into_memory(cpu.bus_mut());
 
+        // Load checkpoint flags into memory
+        rom_manager.install_checkpoints(cpu.bus_mut());
+
         // Set entry point for ROM (mostly used for diagnostic ROMs that don't have a FAR JUMP reset vector)
         let rom_entry_point = rom_manager.get_entrypoint();
         cpu.set_reset_vector(rom_entry_point.0, rom_entry_point.1);
