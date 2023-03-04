@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
-use bpaf::{Bpaf, Parser};
+use bpaf::{Bpaf};
 use serde_derive::{Deserialize};
 
 const fn _default_true() -> bool { true }

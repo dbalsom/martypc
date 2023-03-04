@@ -17,6 +17,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
+#[allow(dead_code)]
 pub enum BreakPointType {
 
     Execute(u16, u16), // Breakpoint on CS:IP

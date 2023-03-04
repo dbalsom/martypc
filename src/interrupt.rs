@@ -29,7 +29,7 @@ pub fn log_post_interrupt21(ah: u8, regs: &CpuRegisterState, bus: &BusInterface 
             // Load and Execute Program
 
             let seg = regs.es;
-            let mut offset = regs.bx;
+            let offset = regs.bx;
 
             let cs_offset = offset.wrapping_add(0x12); // Offset of CS:IP in parameter block
             let ip_offset = offset.wrapping_add(0x14);
