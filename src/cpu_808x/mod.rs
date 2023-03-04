@@ -43,7 +43,8 @@ use crate::config::TraceMode;
 #[cfg(feature = "cpu_validator")]
 use crate::config::ValidatorType;
 
-use crate::bus::{BusInterface, MEM_RET_BIT};
+use crate::breakpoints::BreakPointType;
+use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
 use crate::pic::Pic;
 use crate::bytequeue::*;
 use crate::io::IoBusInterface;
@@ -214,6 +215,16 @@ pub enum CpuException {
     DivideError
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum CpuState {
+    Normal,
+    BreakpointHit
+}
+impl Default for CpuState {
+    fn default() -> Self { CpuState::Normal }
+}
+
+
 #[derive(Debug)]
 pub enum CpuError {
     InvalidInstructionError(u8, u32),
@@ -259,21 +270,6 @@ pub enum CallStackEntry {
         number: u8,
         ah: u8,
     }
-}
-
-/// Representation of the state of a REPeated string instruction, saved on interrupt
-pub enum RepState {
-    NoState,
-    StosbState(u16, u16, u16), // dst: [es:di], cx
-    StoswState(u16, u16, u16), // dst: [es:di], cx
-    LodsbState(Register16, u16, u16, u16), // src: [ds*:si], cx
-    LodswState(Register16, u16, u16, u16), // src: [ds*:si], cx
-    MovsbState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si], dst: [es:di], cx
-    MovswState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si]. dst: [es:di], cx
-    ScasbState(u16,u16,u16), // src: [es:di], cx
-    ScaswState(u16,u16,u16), // src: [es:di], cx
-    CmpsbState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si], dst: [es:di], cx
-    CmpswState(Register16, u16, u16, u16, u16, u16), // src: [ds*:si], dst: [es:di], cx
 }
 
 /// Representation of a flag in the eFlags CPU register
@@ -484,7 +480,6 @@ impl Default for InterruptDescriptor {
     }
 }
 
-
 #[derive (Copy, Clone)]
 pub struct Instruction {
     pub(crate) opcode: u8,
@@ -551,6 +546,7 @@ pub struct I8288 {
 pub struct Cpu<'a> {
     
     cpu_type: CpuType,
+    state: CpuState,
 
     ah: u8,
     al: u8,
@@ -618,7 +614,6 @@ pub struct Cpu<'a> {
 
     rep_mnemonic: Mnemonic,
     rep_type: RepType,
-    rep_state: Vec<(u16, u16, RepState)>,
     error_string: String,
     cycle_num: u64,
     instr_cycle: u32,
@@ -627,6 +622,9 @@ pub struct Cpu<'a> {
     instruction_history_on: bool,
     instruction_history: VecDeque<Instruction>,
     call_stack: VecDeque<CallStackEntry>,
+
+    // Breakpoints
+    breakpoints: Vec<BreakPointType>,
 
     // Interrupts
     int_stack: Vec<InterruptDescriptor>,
@@ -721,8 +719,13 @@ pub enum RegisterType {
 }
 
 #[derive (Debug, PartialEq)]
-pub enum ExecutionResult {
+pub enum StepResult {
+    Normal,
+    BreakpointHit
+}
 
+#[derive (Debug, PartialEq)]
+pub enum ExecutionResult {
     Okay,
     OkayJump,
     OkayRep,
@@ -859,6 +862,9 @@ impl<'a> Cpu<'a> {
     }
 
     pub fn reset(&mut self, segment: u16, offset: u16) {
+        
+        self.state = CpuState::Normal;
+        
         self.set_register16(Register16::AX, 0);
         self.set_register16(Register16::BX, 0);
         self.set_register16(Register16::CX, 0);
@@ -888,7 +894,6 @@ impl<'a> Cpu<'a> {
         self.iret_count = 0;
         
         self.in_rep = false;
-        self.rep_state.clear();
         self.halted = false;
         self.opcode0_counter = 0;
         self.interrupt_inhibit = false;
@@ -1006,7 +1011,6 @@ impl<'a> Cpu<'a> {
             }
             _ => false
         }
-
     }
 
     pub fn is_operand_complete(&self) -> bool {
@@ -1879,6 +1883,7 @@ impl<'a> Cpu<'a> {
 
     }
 
+    /// Push an entry on to the call stack. This can either be a CALL or an INT.
     pub fn push_call_stack(&mut self, entry: CallStackEntry, cs: u16, ip: u16) {
 
         self.call_stack.push_back(entry);
@@ -1887,51 +1892,39 @@ impl<'a> Cpu<'a> {
         let return_addr = Cpu::calc_linear_address(cs, ip);
 
         self.bus.set_flags(return_addr as usize, MEM_RET_BIT);
-
     }
-
 
     /// Rewind the call stack to the specified address.
     /// We have to rewind the call stack to the earliest appearance of this address we returned to, 
-    /// because popping the call stack clears the return flag from the memory location.
+    /// because popping the call stack clears the return flag from the memory location, so we don't 
+    /// support reentrancy.
     /// 
     /// Maintaining a call stack is trickier than expected. JUMPs can RET, CALLS can JMP back, ISRs
-    /// may not always IRET, so there is no other reliable way to pop a CALL/INT other than to mark the
-    /// return address as the end of that CALL/INT.
+    /// may not always IRET, so there is no other reliable way to pop a "return" from CALL/INT other
+    /// than to mark the return address as the end of that CALL/INT and rewind when we reach that 
+    /// address again. It isn't perfect, but "good enough" for debugging.
     pub fn rewind_call_stack(&mut self, addr: u32) {
 
         let mut return_addr: u32 = 0;
-        //let mut entry_opt = None;
-        //let mut skip_count = -1;
-        //let mut last_entry_opt = None;
-        let mut have_pop = false;
 
-        let mut found_idx = 0;
-
-        for (i, call) in self.call_stack.range(..).enumerate() {
+        let pos = self.call_stack.iter().position(|&call| {
 
             return_addr = match call {
                 CallStackEntry::CallF { ret_cs, ret_ip, .. } => {
-                    Cpu::calc_linear_address(*ret_cs, *ret_ip)
+                    Cpu::calc_linear_address(ret_cs, ret_ip)
                 },
                 CallStackEntry::Call { ret_cs, ret_ip, .. } => {
-                    Cpu::calc_linear_address(*ret_cs, *ret_ip)
+                    Cpu::calc_linear_address(ret_cs, ret_ip)
                 },
                 CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => {
-                    Cpu::calc_linear_address(*ret_cs, *ret_ip)
+                    Cpu::calc_linear_address(ret_cs, ret_ip)
                 }       
             };
 
-            if return_addr == addr {
-                // We found the first entry.
+            return_addr == addr
+        });
 
-                have_pop = true;
-                found_idx = i;
-            }
-        }
-
-        if have_pop {
-
+        if let Some(found_idx) = pos {
             let drained = self.call_stack.drain(found_idx..);
 
             drained.for_each(|drained_call| {
@@ -1955,61 +1948,6 @@ impl<'a> Cpu<'a> {
         else {
             log::warn!("rewind_call_stack(): no matching return for [{:05X}]", addr);
         }
-
-        /*
-        while return_addr != addr {
-
-            skip_count += 1;
-
-            if let Some(last_entry) = last_entry_opt {
-                if let CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } = last_entry {
-                    //log::trace!("rewind_call_stack(): skipped interrupt {:02X}, type: {:?}, ah=={:02}", number, itype, ah);
-                }
-            }
-
-            entry_opt = self.call_stack.pop_front();
-            match entry_opt {
-
-                Some(entry) => {
-                    match entry {
-                        CallStackEntry::CallF { ret_cs, ret_ip, .. } => {
-                            return_addr = Cpu::calc_linear_address(ret_cs, ret_ip);
-                        }
-                        CallStackEntry::Call { ret_cs, ret_ip, .. } => {
-                            return_addr = Cpu::calc_linear_address(ret_cs, ret_ip);
-                        }
-                        CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => {
-                            return_addr = Cpu::calc_linear_address(ret_cs, ret_ip);
-                        }       
-                    }
-                }
-                None => break
-            }
-
-            // Clear flags for returns we popped
-            self.bus.clear_flags(return_addr as usize, MEM_RET_BIT);
-
-            last_entry_opt = entry_opt;
-        }
-
-        if skip_count > 0 {
-            //log::warn!("rewind_call_stack(): skipped {} entries in call stack", skip_count);
-        }
-
-        if return_addr == addr {
-            // We matched a return. Clear the return bit from byte flags
-            self.bus.clear_flags(return_addr as usize, MEM_RET_BIT);
-
-            // If this return was from an interrupt, send it through interrupt logger
-            if let CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } = entry_opt.unwrap() {
-
-                log_post_interrupt(number, ah, &self.get_state(), self.bus());
-            }
-        }
-        else {
-            log::warn!("rewind_call_stack(): no matching return for [{:05X}]", addr);
-        }
-        */
     }    
 
     pub fn end_interrupt(&mut self) {
@@ -2027,24 +1965,6 @@ impl<'a> Cpu<'a> {
         self.cycles_i(2,&[0x0c7, MC_RTN]);
         self.pop_flags();
         self.cycle_i(0x0ca);
-
-        /*
-        match self.int_stack.pop() {
-            Some(int_descriptor) => {
-                if int_descriptor.itype == InterruptType::Software {
-                    // log post-interrupt here
-        
-                    log_post_interrupt(int_descriptor.number, int_descriptor.ah, &self.get_state(), self.bus() );
-                }
-            }
-            None => {
-                log::error!("Interrupt stack underflow");
-            }
-        }
-        self.iret_count += 1;
-
-        log::trace!("interrupt stack len: {} ints: {} irets:{}", self.int_stack.len(), self.int_count, self.iret_count);
-        */
     }
 
     /// Perform a software interrupt
@@ -2281,7 +2201,7 @@ impl<'a> Cpu<'a> {
     /// 
     /// REP string instructions are handled by stopping them after one iteration so that interrupts can
     /// be checked. 
-    pub fn step(&mut self, io_bus: &mut IoBusInterface, pic_ref: Rc<RefCell<Pic>>) -> Result<u32, CpuError> {
+    pub fn step(&mut self, io_bus: &mut IoBusInterface, pic_ref: Rc<RefCell<Pic>>, skip_breakpoint: bool) -> Result<(StepResult, u32), CpuError> {
 
         self.instr_cycle = 0;
 
@@ -2301,7 +2221,7 @@ impl<'a> Cpu<'a> {
                         if self.halted {
                             self.resume();
                             self.hw_interrupt(irq);
-                            return Ok(3)
+                            return Ok((StepResult::Normal, 3))
                         }
                         self.pending_interrupt = true;
                     },
@@ -2311,7 +2231,7 @@ impl<'a> Cpu<'a> {
         }
 
         if self.halted {
-            return Ok(3);
+            return Ok((StepResult::Normal, 3))
         }
 
         // A real 808X CPU maintains a single Program Counter or PC register that points to the next instruction
@@ -2321,6 +2241,14 @@ impl<'a> Cpu<'a> {
         // It is more convenient for us to maintain IP as a separate register that always points to the current
         // instruction. Otherwise, when single-stepping in the debugger, the IP value will read ahead. 
         let instruction_address = Cpu::calc_linear_address(self.cs, self.ip);
+
+        // Check instruction address for breakpoint on execute flag
+        if !skip_breakpoint && self.bus.get_flags(instruction_address as usize) & MEM_BPE_BIT != 0 {
+            // Breakpoint hit.
+            log::debug!("Breakpoint hit at {:05X}", instruction_address);
+            self.set_breakpoint_flag();
+            return Ok((StepResult::BreakpointHit, 0))
+        }
 
         // Fetch the next instruction unless we are executing a REP
         if !self.in_rep {
@@ -2429,7 +2357,7 @@ impl<'a> Cpu<'a> {
             }            
         }
 
-       let cpu_result = match exec_result {
+       let step_result = match exec_result {
 
             ExecutionResult::Okay => {
                 // Normal non-jump instruction updates CS:IP to next instruction
@@ -2463,7 +2391,7 @@ impl<'a> Cpu<'a> {
                     self.trace_print(&self.instruction_state_string());   
                 }                
 
-                Ok(self.instr_cycle)
+                Ok((StepResult::Normal, self.instr_cycle))
             }
             ExecutionResult::OkayJump => {
                 // A control flow instruction updated CS:IP. (Does not differ from ::Okay anymore?)
@@ -2482,7 +2410,7 @@ impl<'a> Cpu<'a> {
                     self.trace_print(&self.instruction_state_string());   
                 }
    
-                Ok(self.instr_cycle)
+                Ok((StepResult::Normal, self.instr_cycle))
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
@@ -2497,7 +2425,8 @@ impl<'a> Cpu<'a> {
                 self.instruction_history.push_back(self.i);
                 self.instruction_count += 1;
                 check_interrupts = true;
-                Ok(self.instr_cycle)
+
+                Ok((StepResult::Normal, self.instr_cycle))
             }                    
             ExecutionResult::UnsupportedOpcode(o) => {
                 // This shouldn't really happen on the 8088 as every opcode does something, 
@@ -2526,7 +2455,7 @@ impl<'a> Cpu<'a> {
                 match exception {
                     CpuException::DivideError => {
                         self.handle_exception(0);
-                        Ok(self.instr_cycle)
+                        Ok((StepResult::Normal, self.instr_cycle))
                     }
                     _ => {
                         // Unhandled exception?
@@ -2565,7 +2494,63 @@ impl<'a> Cpu<'a> {
         #[cfg(debug_assertions)]        
         self.assert_state();
 
-        cpu_result
+        step_result
+    }
+
+    /// Set CPU breakpoints from provided list. 
+    /// 
+    /// Clears bus breakpoint flags from previous breakpoint list before applying new.
+    pub fn set_breakpoints(&mut self, bp_list: Vec<BreakPointType>) {
+
+        // Clear bus flags for current breakpoints
+        self.breakpoints.iter().for_each(|bp| {
+            match bp {
+                BreakPointType::ExecuteFlat(addr) => {
+                    log::debug!("Clearing breakpoint on execute at address: {:05X}", *addr);
+                    self.bus.clear_flags(*addr as usize, MEM_BPE_BIT );
+                },
+                BreakPointType::MemAccessFlat(addr) => {
+                    self.bus.clear_flags(*addr as usize, MEM_BPA_BIT );
+                }
+                _ => {}
+            }
+        });
+
+        // Replace current breakpoint list
+        self.breakpoints = bp_list;
+
+        // Set bus flags for new breakpoints
+        self.breakpoints.iter().for_each(|bp| {
+            match bp {
+                BreakPointType::ExecuteFlat(addr) => {
+                    log::debug!("Setting breakpoint on execute at address: {:05X}", *addr);
+                    self.bus.set_flags(*addr as usize, MEM_BPE_BIT );
+                },
+                BreakPointType::MemAccessFlat(addr) => {
+                    log::debug!("Setting breakpoint on memory access at address: {:05X}", *addr);
+                    self.bus.set_flags(*addr as usize, MEM_BPA_BIT );
+                }
+                _ => {}
+            }
+        });
+
+    }
+
+    pub fn get_breakpoint_flag(&self) -> bool {
+        if let CpuState::BreakpointHit = self.state {
+            true
+        }
+        else {
+            false
+        }
+    }
+
+    pub fn set_breakpoint_flag(&mut self) {
+        self.state = CpuState::BreakpointHit;
+    }
+
+    pub fn clear_breakpoint_flag(&mut self) {
+        self.state = CpuState::Normal;
     }
 
     pub fn dump_instruction_history(&self) -> String {

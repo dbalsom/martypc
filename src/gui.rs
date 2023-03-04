@@ -19,6 +19,7 @@ use egui::{
     ImageData, 
     TexturesDelta
 };
+
 use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
@@ -68,7 +69,8 @@ pub(crate) enum GuiEvent {
     EjectFloppy(usize),
     BridgeSerialPort(String),
     DumpVRAM,
-    DumpCS
+    DumpCS,
+    EditBreakpoint
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -144,7 +146,10 @@ pub(crate) struct GuiState {
     error_string: String,
     pub memory_viewer_address: String,
     pub cpu_state: CpuStringState,
+    
     pub breakpoint: String,
+    pub mem_breakpoint: String,
+    
     pub pit_state: PitStringState,
     pub pic_state: PicStringState,
     pub ppi_state: PpiStringState,
@@ -327,6 +332,7 @@ impl GuiState {
             memory_viewer_dump: String::new(),
             cpu_state: Default::default(),
             breakpoint: String::new(),
+            mem_breakpoint: String::new(),
             pit_state: Default::default(),
             pic_state: Default::default(),
             ppi_state: Default::default(),
@@ -471,8 +477,8 @@ impl GuiState {
         self.pic_state = state;
     }
 
-    pub fn get_breakpoint(&mut self) -> &str {
-        &self.breakpoint
+    pub fn get_breakpoints(&mut self) -> (&str, &str) {
+        (&self.breakpoint, &self.mem_breakpoint)
     }
 
     pub fn update_pit_state(&mut self, state: PitStringState) {
@@ -775,16 +781,33 @@ impl GuiState {
             .show(ctx, |ui| {
 
                 let mut exec_control = self.exec_control.borrow_mut();
+
+                let (pause_enabled, run_enabled) = match exec_control.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => (false, true),
+                    ExecutionState::Running => (true, false),
+                    _=>(true, true)
+                };
+
                 ui.horizontal(|ui|{
-                    if ui.button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0))).clicked() {
-                        exec_control.set_state(ExecutionState::Paused);
-                    };
-                    if ui.button(egui::RichText::new("⏭").font(egui::FontId::proportional(20.0))).clicked() {
-                        exec_control.do_step();
-                    };
-                    if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
-                        exec_control.set_state(ExecutionState::Running);
-                    };
+
+                    ui.add_enabled_ui(pause_enabled, |ui| {
+                        if ui.button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0))).clicked() {
+                            exec_control.set_state(ExecutionState::Paused);
+                        };
+                    });
+
+                    ui.add_enabled_ui(!pause_enabled, |ui| {
+                        if ui.button(egui::RichText::new("⏭").font(egui::FontId::proportional(20.0))).clicked() {
+                           exec_control.do_step();
+                        };
+                    });
+
+                    ui.add_enabled_ui(run_enabled, |ui| {
+                        if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
+                            exec_control.set_state(ExecutionState::Running);
+                        };
+                    });
+
                     if ui.button(egui::RichText::new("R").font(egui::FontId::proportional(20.0))).clicked() {
                         exec_control.do_reset();
                     };
@@ -798,9 +821,18 @@ impl GuiState {
                 });
                 ui.separator();
                 ui.horizontal(|ui|{
-                    ui.label("Breakpoint: ");
-                    ui.text_edit_singleline(&mut self.breakpoint);
+                    ui.label("Exec Breakpoint: ");
+                    if ui.text_edit_singleline(&mut self.breakpoint).changed() {
+                        self.event_queue.push_back(GuiEvent::EditBreakpoint);
+                    };
                 });
+                ui.separator();
+                ui.horizontal(|ui|{
+                    ui.label("Mem Breakpoint: ");
+                    if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
+                        self.event_queue.push_back(GuiEvent::EditBreakpoint);
+                    }
+                });                
             });
 
         egui::Window::new("Memory View")

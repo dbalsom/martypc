@@ -19,12 +19,12 @@ use std::{
 
 use crate::{
     config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
-
-    bus::{BusInterface, MemRangeDescriptor},
+    breakpoints::BreakPointType,
+    bus::{BusInterface, MemRangeDescriptor, MEM_CP_BIT},
     cga::{self, CGACard},
     ega::{self, EGACard},
     vga::{self, VGACard},
-    cpu_808x::{self, CpuType, Cpu, Flag, CpuError},
+    cpu_808x::{self, CpuType, Cpu, Flag, CpuError, StepResult},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
@@ -57,7 +57,7 @@ pub enum ExecutionState {
 }
 
 pub struct ExecutionControl {
-    state: ExecutionState,
+    pub state: ExecutionState,
     do_step: Cell<bool>,
     do_run: Cell<bool>,
     do_reset: Cell<bool>
@@ -273,6 +273,19 @@ impl<'a> Machine<'a> {
         // Mouse
         let mouse = Mouse::new(serial.clone());
 
+        // Create the video trace file, if specified
+        let mut video_trace_file_option = None;
+        if let Some(filename) = &config.emulator.video_trace_file {
+            match File::create(filename) {
+                Ok(file) => {
+                    video_trace_file_option = Some(Box::new(BufWriter::new(file)));
+                },
+                Err(e) => {
+                    eprintln!("Couldn't create specified video tracelog file: {}", e);
+                }
+            }
+        }
+
         // Initialize the appropriate model of Video Card.
         let mut video: Rc<RefCell<dyn VideoCard>> = match video_type {
             VideoType::CGA => {
@@ -317,7 +330,7 @@ impl<'a> Machine<'a> {
                 video
             }
             VideoType::VGA => {
-                let video = Rc::new(RefCell::new(VGACard::new()));
+                let video = Rc::new(RefCell::new(VGACard::new(video_trace_file_option)));
                 io_bus.register_port_handlers(
                     vec![
                         vga::MISC_OUTPUT_REGISTER_WRITE,
@@ -342,6 +355,10 @@ impl<'a> Machine<'a> {
                     ],
                     video.clone()
                 );
+
+                //let mem_descriptor = MemRangeDescriptor::new(0xB8000, vga::VGA_TEXT_PLANE_SIZE, false );
+                //cpu.bus_mut().register_map(video.clone(), mem_descriptor);
+
                 let mem_descriptor = MemRangeDescriptor::new(0xA0000, 65536, false );
                 cpu.bus_mut().register_map(video.clone(), mem_descriptor);
                 video
@@ -479,12 +496,16 @@ impl<'a> Machine<'a> {
         }
     }
 
+    pub fn set_breakpoints(&mut self, bp_list: Vec<BreakPointType>) {
+        self.cpu.set_breakpoints(bp_list)
+    }
+
     pub fn reset(&mut self) {
 
         self.cpu.reset(0xFFFF, 0x0000);
 
         // Clear RAM
-        self.cpu.bus_mut().reset();
+        self.cpu.bus_mut().clear();
 
         // Reload BIOS ROM images
         self.rom_manager.copy_into_memory(self.cpu.bus_mut());
@@ -504,7 +525,7 @@ impl<'a> Machine<'a> {
         1.0 / cpu_808x::CPU_MHZ * cycles as f64
     }
     
-    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl, breakpoint: u32) {
+    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) {
 
         let mut kb_event_processed = false;
 
@@ -515,14 +536,17 @@ impl<'a> Machine<'a> {
             return
         }
     
-        let mut ignore_breakpoint = false;
+        let mut skip_breakpoint = false;
         let cycle_target_adj = match exec_control.state {
             ExecutionState::Paused => {
                 match exec_control.do_step.get() {
                     true => {
+                        log::debug!("STEP");
                         // Reset step flag
                         exec_control.do_step.set(false);
-                        ignore_breakpoint = true;
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+
                         // Execute 1 cycle
                         1
                     },
@@ -530,7 +554,24 @@ impl<'a> Machine<'a> {
                 }
             }
             ExecutionState::Running => cycle_target,
-            ExecutionState::BreakpointHit => cycle_target
+            ExecutionState::BreakpointHit => {
+                match exec_control.do_step.get() {
+                    true => {
+                        // Reset step flag
+                        exec_control.do_step.set(false);
+                        // Clear CPU's breakpoint flag
+                        self.cpu.clear_breakpoint_flag();
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Transition to ExecutionState::Paused
+                        exec_control.state = ExecutionState::Paused;
+
+                        // Execute 1 cycle
+                        1
+                    },
+                    false => return
+                }
+            }
         };
 
         let mut cycles_elapsed = 0;
@@ -544,27 +585,30 @@ impl<'a> Machine<'a> {
 
                 let flat_address = self.cpu.get_linear_ip();
 
-                // Check for immediate breakpoint
-                if (flat_address == breakpoint) && breakpoint != 0 && !ignore_breakpoint {
-
-                    return
-                }
-
                 // Match checkpoints
-                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
-                    log::trace!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
+                if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
+                    if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
+                        log::trace!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
+                    }
+    
+                    // Check for patching checkpoint & install patches
+                    if self.rom_manager.is_patch_checkpoint(flat_address) {
+                        log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
+                        self.rom_manager.install_patches(self.cpu.bus_mut());
+                    }
                 }
-
-                // Check for patching checkpoint & install patches
-                if self.rom_manager.is_patch_checkpoint(flat_address) {
-                    log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
-                    self.rom_manager.install_patches(self.cpu.bus_mut());
-                }
-
                 
-                match self.cpu.step(&mut self.io_bus, self.pic.clone()) {
-                    Ok(cycles) => {
-                        cpu_cycles = cycles
+                match self.cpu.step(&mut self.io_bus, self.pic.clone(), skip_breakpoint) {
+                    Ok((step_result, step_cycles)) => {
+
+                        match step_result {
+                            StepResult::Normal => cpu_cycles = step_cycles,
+                            StepResult::BreakpointHit => {
+                                exec_control.state = ExecutionState::BreakpointHit;
+                                return
+                            }
+                        }
+                        
                     },
                     Err(err) => {
                         self.error = true;

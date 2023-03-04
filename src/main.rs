@@ -31,7 +31,7 @@ use winit_input_helper::WinitInputHelper;
 mod ega;
 #[path = "./devices/vga/mod.rs"]
 mod vga;
-
+mod breakpoints;
 mod bus;
 mod bytebuf;
 mod bytequeue;
@@ -73,8 +73,8 @@ mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
 mod arduino8088_validator;
 
+use breakpoints::BreakPointType;
 use config::{ConfigFileParams, MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
-
 use machine::{Machine, ExecutionState};
 use cpu_808x::Cpu;
 use rom_manager::{RomManager, RomError, RomFeature};
@@ -642,13 +642,6 @@ fn main() {
                     stat_counter.current_fps += 1;
                     //println!("frame: {} elapsed: {}", world.current_fps, elapsed_us);
 
-                    // Get breakpoint from GUI
-                    let bp_str = framework.gui.get_breakpoint();
-                    let bp_addr = match u32::from_str_radix(bp_str, 16) {
-                        Ok(addr) => addr,
-                        Err(_) => 0
-                    };
-
                     // Get single step flag from GUI and either step or run CPU
                     // TODO: This logic is messy, figure out a better way to control CPU state 
                     //       via gui
@@ -681,7 +674,7 @@ fn main() {
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
-                    machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut(), bp_addr);
+                    machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut());
                     stat_counter.emulation_time = Instant::now() - emulation_start;
 
                     // Emulation time budget is 16ms - render time in ms - fudge factor
@@ -729,7 +722,10 @@ fn main() {
 
                             if stat_counter.cycle_target > CYCLES_PER_FRAME {
                                 // Comment to run as fast as possible
-                                stat_counter.cycle_target = CYCLES_PER_FRAME;
+                                
+                                if !config.emulator.warpspeed {
+                                    stat_counter.cycle_target = CYCLES_PER_FRAME;
+                                }
                             }
                             else {
                                 /*
@@ -864,15 +860,35 @@ fn main() {
                             }
                             Some(GuiEvent::DumpCS) => {
                                 machine.cpu().dump_cs();
-                            }                            
+                            }
+                            Some(GuiEvent::EditBreakpoint) => {
+                                // Get breakpoints from GUI
+                                let (bp_str, bp_mem_str) = framework.gui.get_breakpoints();
+
+                                let mut breakpoints = Vec::new();
+
+                                // Push exec breakpoint to list if valid hex
+                                if let Ok(addr) = u32::from_str_radix(bp_str, 16) {
+                                    if addr > 0 && addr < 0x100000 {
+                                        breakpoints.push(BreakPointType::ExecuteFlat(addr));
+                                    }
+                                }
+                            
+                                // Push mem breakpoint to list if valid hex
+                                if let Ok(addr) = u32::from_str_radix(bp_mem_str, 16) {
+                                    if addr > 0 && addr < 0x100000 {
+                                        breakpoints.push(BreakPointType::MemAccessFlat(addr));
+                                    }
+                                }                                     
+                            
+                                machine.set_breakpoints(breakpoints);
+                            }
                             None => break,
                             _ => {
                                 // Unhandled event?
                             }
                         }
                     }
-
-
 
                     // -- Update list of floppies
                     let name_vec = machine.floppy_manager().get_floppy_names();
@@ -1094,7 +1110,7 @@ pub fn main_headless(
 
     loop {
         // This should really return a Result
-        machine.run(1000, &mut exec_control, 0);
+        machine.run(1000, &mut exec_control);
     }
     
     //std::process::exit(0);
@@ -1372,8 +1388,8 @@ pub fn main_fuzzer <'a>(
         // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
         // execution per iteration. The 8088 makes no such distinction.
         loop {
-            match cpu.step(&mut io_bus, pic.clone()) {
-                Ok(cycles) => {
+            match cpu.step(&mut io_bus, pic.clone(), false) {
+                Ok((_, cycles)) => {
                     log::trace!("Instruction reported {} cycles", cycles);
 
                     if rep & cpu.in_rep() {
