@@ -134,10 +134,15 @@ pub struct Emulator {
     #[serde(default = "_default_false")]
     pub fuzzer: bool,    
 
+    #[serde(default = "_default_false")]
+    pub warpspeed: bool,    
+
     #[serde(default)]
     pub trace_mode: TraceMode,
+    pub trace_file: Option<String>,
 
-    pub trace_file: Option<String>
+    #[serde(default)]
+    pub video_trace_file: Option<String>
 }
 
 #[derive(Debug, Deserialize)]
@@ -185,6 +190,9 @@ pub struct CmdLineArgs {
 
     #[bpaf(long)]
     pub validator: Option<ValidatorType>,
+
+    #[bpaf(long, switch)]
+    pub warpspeed: Option<bool>,    
 }
 
 impl ConfigFileParams {
