@@ -1,7 +1,6 @@
 use crate::cpu_808x::*;
 use crate::cpu_808x::cpu_biu::*;
 
-
 #[derive(Copy, Clone, Debug)]
 pub enum AddressingMode {
     BxSi,
@@ -314,7 +313,7 @@ impl<'a> Cpu<'a> {
         }
     }    
 
-    pub fn read_operand_farptr2(&mut self, operand: OperandType, seg_override: SegmentOverride, ptr: FarPtr, flag: ReadWriteFlag) -> Option<(u16)> {
+    pub fn read_operand_farptr2(&mut self, operand: OperandType, seg_override: SegmentOverride, ptr: FarPtr, flag: ReadWriteFlag) -> Option<u16> {
 
         match operand {
             OperandType::AddressingMode(mode) => {
