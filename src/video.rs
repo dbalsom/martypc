@@ -312,7 +312,17 @@ impl Video {
                 let char_height = video_card.get_character_height();
     
                 // Start address is multiplied by two due to 2 bytes per character (char + attr)
-                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+
+                let video_mem;
+                match video_type {
+                    VideoType::MDA | VideoType::CGA | VideoType::EGA => {
+                        video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+                    }
+                    VideoType::VGA => {
+                        video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+                        //video_mem = video_card.get_vram();
+                    }
+                }
                 
                 // Get font info from adapter
                 let font_info = video_card.get_current_font();

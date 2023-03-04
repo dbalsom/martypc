@@ -118,6 +118,9 @@ pub trait VideoCard {
     /// Returns the currently configured DisplayMode
     fn get_display_mode(&self) -> DisplayMode;
 
+    // Returns a slice of u8 representing video memory
+    //fn get_vram(&self) -> &[u8];
+
     fn get_display_extents(&self) -> (u32, u32);
 
     fn get_clock_divisor(&self) -> u32;
