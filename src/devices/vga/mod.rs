@@ -485,10 +485,6 @@ impl<'a> IoDevice for VGACard<'a> {
             PEL_ADDRESS_WRITE_MODE => {
                 self.color_pel_write_address
             }
-            PEL_ADDRESS_READ_MODE => {
-                // NOTE: PEL Address Read mode register is write-only
-                0xFF
-            }
             PEL_DATA => {
                 self.read_pel_data()
             }
@@ -1746,7 +1742,7 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
-            //return 0;
+            return 0;
         }
 
         // Validate address is within current memory map and get the offset into VRAM
@@ -1777,9 +1773,10 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                 let plane = (self.graphics_read_map_select & 0x03) as usize;
                 let byte = self.planes[plane].buf[offset];
 
-                trace!(self, "Read mode: {:?} address: {:05X} byte: {:02X} latches: {:02X},{:02X},{:02X},{:02X}",
+                trace!(self, "Read mode: {:?} address: {:05X} selected_plane: {:02X} byte: {:02X} latches: {:02X},{:02X},{:02X},{:02X}",
                     self.graphics_mode.read_mode(),
                     address,
+                    plane,
                     byte,
                     self.planes[0].latch,
                     self.planes[1].latch,
@@ -1929,9 +1926,8 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                 // Write the contents of the latches to their corresponding planes. This assumes that the latches
                 // were loaded propery via a previous read operation.
 
-                trace!(self, "wm1: [{:05X}]: byte: {:02x} latches: {:02x},{:02x},{:02x},{:02x} map_mask: {:01X} la: {:05X}", 
+                trace!(self, "wm1: [{:05X}]: latches: {:02x},{:02x},{:02x},{:02x} map_mask: {:01X} la: {:05X}", 
                     address,
-                    byte,
                     self.planes[0].latch,
                     self.planes[1].latch,
                     self.planes[2].latch,
