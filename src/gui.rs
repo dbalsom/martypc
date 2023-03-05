@@ -35,7 +35,7 @@ use crate::{
     gui_image::{UiImage, get_ui_image},
     gui_color::{darken_c32, lighten_c32, add_c32},
 
-    machine::{ExecutionControl, ExecutionState},
+    machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
     dma::DMAControllerStringState,
     hdc::HardDiskFormat,
@@ -853,18 +853,18 @@ impl GuiState {
 
                     ui.add_enabled_ui(!pause_enabled, |ui| {
                         if ui.button(egui::RichText::new("⏭").font(egui::FontId::proportional(20.0))).clicked() {
-                           exec_control.do_step();
+                           exec_control.set_op(ExecutionOperation::Step);
                         };
                     });
 
                     ui.add_enabled_ui(run_enabled, |ui| {
                         if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
-                            exec_control.set_state(ExecutionState::Running);
+                            exec_control.set_op(ExecutionOperation::Run);
                         };
                     });
 
                     if ui.button(egui::RichText::new("R").font(egui::FontId::proportional(20.0))).clicked() {
-                        exec_control.do_reset();
+                        exec_control.set_op(ExecutionOperation::Reset);
                     };
                 });
 

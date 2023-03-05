@@ -56,20 +56,25 @@ pub enum ExecutionState {
     Running,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum ExecutionOperation {
+    None,
+    Pause,
+    Step,
+    Run,
+    Reset
+}
+
 pub struct ExecutionControl {
     pub state: ExecutionState,
-    do_step: Cell<bool>,
-    do_run: Cell<bool>,
-    do_reset: Cell<bool>
+    op: Cell<ExecutionOperation>,
 }
 
 impl ExecutionControl {
     pub fn new() -> Self {
         Self { 
             state: ExecutionState::Paused,
-            do_step: Cell::new(false), 
-            do_run: Cell::new(false), 
-            do_reset: Cell::new(false)
+            op: Cell::new(ExecutionOperation::None),
         }
     }
 
@@ -81,29 +86,60 @@ impl ExecutionControl {
         self.state
     }
 
-    pub fn do_step(&mut self) {
-        self.do_step.set(true);
+    /// Sets the last execution operation.
+    pub fn set_op(&mut self, op: ExecutionOperation) {
+
+        match op {
+
+            ExecutionOperation::Pause => {
+                // Can only pause if Running
+                if let ExecutionState::Running = self.state {
+                    self.state = ExecutionState::Paused;
+                    self.op.set(op);
+                }
+                else {
+                    return
+                }
+            }
+            ExecutionOperation::Step => {
+                // Can only Step if paused / breakpointhit
+                match self.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        self.op.set(op);
+                    }
+                    _ => return
+                }              
+            }
+            ExecutionOperation::Run => {
+                // Can only Run if paused / breakpointhit
+                match self.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        self.op.set(op);
+                    }
+                    _=> return
+                }
+            }
+            ExecutionOperation::Reset => {
+                // Can reset anytime.
+                self.op.set(op);
+            }
+            _ => return
+        }
+        
     }
 
-    pub fn do_run(&mut self) {
-        // Run does nothing unless paused or at bp
-        match self.state {
-            ExecutionState::Paused => {
-                self.do_run.set(true);
-                self.state = ExecutionState::Running;
-            }
-            ExecutionState::BreakpointHit => {
-                // Step out of breakpoint status into paused status
-                self.do_run.set(true);
-                self.state = ExecutionState::Running;
-            }
-            _ => {}
-        }        
+    /// Simultaneously returns the set execution operation and resets it internally to None.
+    pub fn get_op(&mut self) -> ExecutionOperation {
+        let op = self.op.get();
+        self.op.set(ExecutionOperation::None);
+        op
     }
 
-    pub fn do_reset(&mut self) {
-        self.do_reset.set(true)
-    }
+    /// Returns the set execution operation without resetting it
+    pub fn peek_op(&mut self) -> ExecutionOperation {
+        self.op.get()
+    }    
+
 }
 pub struct Machine<'a> {
     machine_type: MachineType,
@@ -531,37 +567,76 @@ impl<'a> Machine<'a> {
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) {
 
         let mut kb_event_processed = false;
+        let mut skip_breakpoint = false;
+
+        /*
+        let cycle_target_adj = match exec_control.get_op() {
+            ExecutionOperation::Reset => {
+                self.reset();
+                return
+            },
+            ExecutionOperation::Step => {
+                // Step only valid if paused / breakpointhit
+                match exec_control.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Execute 1 cycle
+                        1                        
+                    }
+                    _ => cycle_target
+                }
+            },
+            ExecutionOperation::Run => {
+                // Run only valid if paused / breakpointhit
+                match exec_control.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Execute 1 cycle
+                        cycle_target      
+                    }
+                    _ => cycle_target     
+                }
+            }
+            _ => {}
+        };
+        */
 
         // Was reset requested?
-        if exec_control.do_reset.get() {
+        if let ExecutionOperation::Reset = exec_control.peek_op() {
+            _ = exec_control.get_op(); // Clear the reset operation
             self.reset();
-            exec_control.do_reset.set(false);
+
             return
         }
     
-        let mut skip_breakpoint = false;
         let cycle_target_adj = match exec_control.state {
             ExecutionState::Paused => {
-                match exec_control.do_step.get() {
-                    true => {
-                        log::debug!("STEP");
-                        // Reset step flag
-                        exec_control.do_step.set(false);
+                match exec_control.get_op() {
+                    ExecutionOperation::Step => {
                         // Skip current breakpoint, if any
                         skip_breakpoint = true;
-
                         // Execute 1 cycle
                         1
                     },
-                    false => return
+                    ExecutionOperation::Run => {
+                        // Transition to ExecutionState::Running
+                        exec_control.state = ExecutionState::Running;
+                        cycle_target
+                    },                      
+                    _ => return
                 }
+            
             }
-            ExecutionState::Running => cycle_target,
+            ExecutionState::Running => {
+                _ = exec_control.get_op(); // Clear any pending operation
+                cycle_target
+            }
             ExecutionState::BreakpointHit => {
-                match exec_control.do_step.get() {
-                    true => {
-                        // Reset step flag
-                        exec_control.do_step.set(false);
+                match exec_control.get_op() {
+                    ExecutionOperation::Step => {
+                        log::trace!("BreakpointHit->Step op");
                         // Clear CPU's breakpoint flag
                         self.cpu.clear_breakpoint_flag();
                         // Skip current breakpoint, if any
@@ -572,8 +647,18 @@ impl<'a> Machine<'a> {
                         // Execute 1 cycle
                         1
                     },
-                    false => return
+                    ExecutionOperation::Run => {
+                        // Clear CPU's breakpoint flag
+                        self.cpu.clear_breakpoint_flag();
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Transition to ExecutionState::Running
+                        exec_control.state = ExecutionState::Running;
+                        cycle_target
+                    },                    
+                    _ => return
                 }
+
             }
         };
 
