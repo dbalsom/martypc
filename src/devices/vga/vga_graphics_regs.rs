@@ -130,7 +130,9 @@ impl<'a> VGACard<'a> {
             0x07 => GraphicsRegister::ColorDontCare,
             0x08 => GraphicsRegister::BitMask,
             _ => self.graphics_register_selected
-        }
+        };
+
+        trace!(self, "Write to Graphics::Address: {:02X}", self.graphics_register_address);
     }
 
     pub fn write_graphics_data(&mut self, byte: u8 ) {
@@ -154,11 +156,26 @@ impl<'a> VGACard<'a> {
             GraphicsRegister::ColorCompare => {
                 // Bits 0-3: Color Compare 0-3
                 self.graphics_color_compare = byte & 0x0F;
+                trace!(self, "Write to {:?}: cc: {:01x}",
+                    self.graphics_register_selected,
+                    self.graphics_color_compare
+                );                  
             },
             GraphicsRegister::DataRotate => {
                 // Bits 0-2: Rotate Count
                 // Bits 3-4: Function Select
                 self.graphics_data_rotate = GDataRotateRegister::from_bytes([byte]);
+
+                if byte == 0xFF {
+                    log::warn!("Invalid write to DataRotate register!");
+                }
+
+                trace!(self, "Write to {:?}:{:02X} rot: {:?} rop:{:?}",
+                    self.graphics_register_selected,
+                    byte,
+                    self.graphics_data_rotate.count(),
+                    self.graphics_data_rotate.function(),
+                );                
             },
             GraphicsRegister::ReadMapSelect => {
                 // Bits 0-2: Map Select 0-2
@@ -176,6 +193,10 @@ impl<'a> VGACard<'a> {
                 // Bit 4: Odd/Even
                 // Bit 5: Shift Register Mode
                 self.graphics_mode = GModeRegister::from_bytes([byte]);
+                trace!(self, "Write to {:?}: {:02X}",
+                    self.graphics_register_selected,
+                    byte
+                );                  
             },
             GraphicsRegister::Miscellaneous => {
                 self.graphics_micellaneous = GMiscellaneousRegister::from_bytes([byte]);
@@ -199,7 +220,43 @@ impl<'a> VGACard<'a> {
             GraphicsRegister::BitMask => {
                 // Bits 0-7: Bit Mask
                 self.graphics_bitmask = byte;
+                trace!(self, "Write to {:?}: {:01X}",
+                    self.graphics_register_selected,
+                    self.graphics_bitmask
+                );                   
             },
         }
+    }
+
+    pub fn read_graphics_data(&self) -> u8 {
+        match self.graphics_register_selected {
+            GraphicsRegister::SetReset => {
+                self.graphics_set_reset
+            }
+            GraphicsRegister::EnableSetReset => {
+                self.graphics_enable_set_reset     
+            },
+            GraphicsRegister::ColorCompare => {
+                self.graphics_color_compare
+            },
+            GraphicsRegister::DataRotate => {
+                self.graphics_data_rotate.bytes[0]
+            },
+            GraphicsRegister::ReadMapSelect => {
+                self.graphics_read_map_select
+            },
+            GraphicsRegister::Mode => {
+                self.graphics_mode.bytes[0]
+            },
+            GraphicsRegister::Miscellaneous => {
+                self.graphics_micellaneous.bytes[0]
+            }
+            GraphicsRegister::ColorDontCare => {             
+                self.graphics_color_dont_care
+            },
+            GraphicsRegister::BitMask => {
+                self.graphics_bitmask            
+            },
+        }        
     }
 }

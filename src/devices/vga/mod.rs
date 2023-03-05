@@ -386,8 +386,6 @@ pub struct VGACard<'a> {
     trace_writer: Option<Box<dyn Write + 'a>>,
 }
 
-
-
 #[bitfield]
 #[derive (Copy, Clone)]
 struct EMiscellaneousOutputRegister {
@@ -462,6 +460,12 @@ impl<'a> IoDevice for VGACard<'a> {
                     IoAddressSelect::CompatCGA => 0xFF
                 }                
             }
+            GRAPHICS_ADDRESS => {
+                self.graphics_register_address
+            }
+            GRAPHICS_DATA => {
+                self.read_graphics_data()
+            }            
             SEQUENCER_ADDRESS_REGISTER => {
                 self.sequencer_address_byte
             }
@@ -1641,8 +1645,6 @@ impl<'a> VideoCard for VGACard<'a> {
 
     fn get_pixel_raw(&self, x: u32, mut y :u32) -> u8 {
         
-        y += 20;
-
         let mut byte = 0;
 
         if self.sequencer_memory_mode.chain4_enable() {
@@ -1773,10 +1775,10 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                 let plane = (self.graphics_read_map_select & 0x03) as usize;
                 let byte = self.planes[plane].buf[offset];
 
-                trace!(self, "Read mode: {:?} address: {:05X} selected_plane: {:02X} byte: {:02X} latches: {:02X},{:02X},{:02X},{:02X}",
-                    self.graphics_mode.read_mode(),
+                trace!(self, "READ ({:?}) [{:05X}]: BYTE:{:02X} L:[{:02X},{:02X},{:02X},{:02X}]",
+                    self.graphics_mode.read_mode() as u8,
                     address,
-                    plane,
+                    //plane,
                     byte,
                     self.planes[0].latch,
                     self.planes[1].latch,
@@ -1791,8 +1793,8 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                 self.get_pixels(offset);
                 let comparison = self.pixel_op_compare();
 
-                trace!(self, "Read mode: {:?} address: {:05X} comparison: {:02X} latches: {:02X},{:02X},{:02X},{:02X}",
-                    self.graphics_mode.read_mode(),
+                trace!(self, "READ {:?} [{:05X}]: BYTE:{:02X} L:[{:02X},{:02X},{:02X},{:02X}]",
+                    self.graphics_mode.read_mode() as u8,
                     address,
                     comparison,
                     self.planes[0].latch,
@@ -1843,16 +1845,7 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                 // First, data is rotated as specified by the Rotate Count field of the Data Rotate Register.
                 let data_rot = VGACard::rotate_right_u8(byte, self.graphics_data_rotate.count());
 
-                trace!(self, "wm0: [{:05X}]: byte: {:02x} rot ct: {} latches: {:02x},{:02x},{:02x},{:02x} la: {:05X}", 
-                    address,
-                    byte,
-                    self.graphics_data_rotate.count(),
-                    self.planes[0].latch,
-                    self.planes[1].latch,
-                    self.planes[2].latch,
-                    self.planes[3].latch,
-                    self.latch_addr
-                );
+
 
                 for i in 0..4 {
                     // Second, data is is either passed through to the next stage or replaced by a value determined
@@ -1893,6 +1886,24 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
               
                 }
 
+                trace!(self, "WRITE(0) [{:05X}]: BYTE:{:02x} L:[{:02x},{:02x},{:02x},{:02x}] W:[{:02x},{:02x},{:02x},{:02x}] ROT:{:01X} ROP:{:01X} MM:{:01X} LA:[{:05X}]", 
+                    address,
+                    byte,                    
+                    self.planes[0].latch,
+                    self.planes[1].latch,
+                    self.planes[2].latch,
+                    self.planes[3].latch,
+                    self.pipeline_buf[0],
+                    self.pipeline_buf[1],
+                    self.pipeline_buf[2],
+                    self.pipeline_buf[3],                    
+                    self.graphics_data_rotate.count(),
+                    self.graphics_data_rotate.function() as u8,
+                    self.sequencer_map_mask,
+                    self.latch_addr
+                );
+
+                /*
                 trace!(self, "wm0: [{:05X}] func: {:?} esr: {:01X} gsr: {:01X} mask: {:02X} writing: {:02x},{:02x},{:02x},{:02x} map_mask: {:02X}",
                     address,
                     self.graphics_data_rotate.function(),
@@ -1905,6 +1916,7 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                     self.pipeline_buf[3],
                     self.sequencer_map_mask
                 );
+                */
 
                 if self.sequencer_memory_mode.chain4_enable() {
                     // (Chain4 mode...)
@@ -1926,7 +1938,7 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                 // Write the contents of the latches to their corresponding planes. This assumes that the latches
                 // were loaded propery via a previous read operation.
 
-                trace!(self, "wm1: [{:05X}]: latches: {:02x},{:02x},{:02x},{:02x} map_mask: {:01X} la: {:05X}", 
+                trace!(self, "WRITE(1) [{:05X}]: BYTE:XX L:[{:02x},{:02x},{:02x},{:02x}] MM:{:01X} LA:[{:05X}]", 
                     address,
                     self.planes[0].latch,
                     self.planes[1].latch,
@@ -1979,21 +1991,29 @@ impl<'a> MemoryMappedDevice for VGACard<'a> {
                     }
                 }
 
-                trace!(self, "wm2: fn: {:?} byte: {:02X} bit_mask: {:02X} map_mask: {:01X} wrote: {:02X},{:02X},{:02X},{:02X} la:{:05X}",
-                    self.graphics_data_rotate.function(),
+                trace!(self, "WRITE(2) [{:05X}] BYTE: {:02X} L:[{:02x},{:02x},{:02x},{:02x}] W:[{:02x},{:02x},{:02x},{:02x}] ROP:{:01X} BM:{:02X} MM:{:01X} LA:[{:05X}]",
+                    address,
                     byte,
-                    self.graphics_bitmask,
-                    self.sequencer_map_mask,
+                    self.planes[0].latch,
+                    self.planes[1].latch,
+                    self.planes[2].latch,
+                    self.planes[3].latch,
                     self.pipeline_buf[0],
                     self.pipeline_buf[1],
                     self.pipeline_buf[2],
                     self.pipeline_buf[3], 
+                    self.graphics_data_rotate.function() as u8,               
+                    self.graphics_bitmask,
+                    self.sequencer_map_mask,
                     self.latch_addr
                 );
             }
             WriteMode::Mode3 => {
 
-                trace!(self, "wm3:");
+                trace!(self, "WRITE(3) [{:05X}] BYTE: {:02X}",
+                    address,
+                    byte
+                );
 
                 // First, data is rotated as specified by the Rotate Count field of the Data Rotate Register.
                 let data_rot = VGACard::rotate_right_u8(byte, self.graphics_data_rotate.count());

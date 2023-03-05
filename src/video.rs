@@ -1360,17 +1360,14 @@ pub fn draw_vga_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [
 
             let dst1_x_idx = draw_x * 4;
 
-            let ega_bits = vga.get_pixel_raw(draw_x, draw_y);
-
-            // High resolution mode offers the entire 64 color palette
-            let color = get_ega_gfx_color64(ega_bits);
-
+            let rgba = vga.get_pixel(draw_x, draw_y);
+            
             let draw_offset = (dst1_y_idx + dst1_x_idx) as usize;
             if draw_offset + 3 < frame.len() {
-                frame[draw_offset + 0] = color[0];
-                frame[draw_offset + 1] = color[1];
-                frame[draw_offset + 2] = color[2];
-                frame[draw_offset + 3] = color[3];
+                frame[draw_offset + 0] = rgba[0];
+                frame[draw_offset + 1] = rgba[1];
+                frame[draw_offset + 2] = rgba[2];
+                frame[draw_offset + 3] = rgba[3];
             }
         }
     }
