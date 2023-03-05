@@ -197,14 +197,7 @@ impl Framework {
         let visuals = egui::Visuals::dark();
         let visuals = Framework::create_theme(&visuals, Color32::from_rgb(56,45,89));
 
-        let mut style: egui::Style = (*egui_ctx.style()).clone();
-        let mut fonts = FontDefinitions::default();
-
-        let title_font = fonts
-            .families
-            .get_mut(&TextStyle::Title)
-            .unwrap();
-
+        //let mut style: egui::Style = (*egui_ctx.style()).clone();
         egui_ctx.set_visuals(visuals);
 
         Self {
