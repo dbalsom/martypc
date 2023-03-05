@@ -189,6 +189,11 @@ impl<'a> VGACard<'a> {
             }
             GraphicsRegister::ColorDontCare => {
                 // Bits 0-3: Color Don't Care
+
+                trace!(self, "Write to {:?}: {:01X}",
+                    self.graphics_register_selected,
+                    self.graphics_color_dont_care
+                );                
                 self.graphics_color_dont_care = byte & 0x0F;
             },
             GraphicsRegister::BitMask => {
