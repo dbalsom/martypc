@@ -6,7 +6,8 @@
 */
 
 use modular_bitfield::prelude::*;
-use crate::vga::VGACard;
+
+use crate::vga::*;
 
 const CURSOR_LINE_MASK: u8      = 0b0001_1111;
 
@@ -167,7 +168,7 @@ pub struct CModeControl {
     pub hardware_reset: HardwareReset,
 }
 
-impl VGACard {
+impl<'a> VGACard<'a> {
     pub fn write_crtc_register_address(&mut self, byte: u8 ) {
 
         //log::trace!("CGA: CRTC register {:02X} selected", byte);
@@ -200,6 +201,7 @@ impl VGACard {
             0x17 => CRTCRegister::ModeControl,
             0x18 => CRTCRegister::LineCompare,
             _ => {
+                trace!(self, "Select to invalid CRTC register: {:02X}", byte);
                 log::debug!("Select to invalid CRTC register: {:02X}", byte);
                 self.crtc_register_select_byte = 0;
                 CRTCRegister::HorizontalTotal
@@ -396,6 +398,7 @@ impl VGACard {
                 self.crtc_line_compare |= byte as u16;
             }
             _ => {
+                trace!(self, "Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
                 log::debug!("Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
             }
         }

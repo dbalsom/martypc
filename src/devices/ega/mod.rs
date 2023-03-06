@@ -18,12 +18,13 @@ use modular_bitfield::prelude::*;
 
 //#![allow(dead_code)]
 use log;
+
+use crate::config::VideoType;
 use crate::io::IoDevice;
 use crate::bus::MemoryMappedDevice;
 
 use crate::videocard::{
     VideoCard,
-    VideoType,
     DisplayMode,
     CursorInfo,
     FontInfo,

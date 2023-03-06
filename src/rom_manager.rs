@@ -27,8 +27,8 @@ use std::fs;
 use std::path::PathBuf;
 use std::cell::Cell;
 
-use crate::machine::{MachineType};
-use crate::bus::BusInterface;
+use crate::config::MachineType;
+use crate::bus::{BusInterface, MEM_CP_BIT};
 
 pub const BIOS_READ_CYCLE_COST: u32 = 4;
 
@@ -327,7 +327,22 @@ impl RomManager {
                     roms: vec![
                         "2e8df7c7c23646760dd18749d03b7b5a" // sub.bin test suite
                     ]
-                },                                                                                                                  
+                },  
+                RomSet {
+                    machine_type: MachineType::IBM_XT_5160,
+                    priority: 3,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
+                    roms: vec![
+                        "1a2ac1ae0fe0f7783197e78da8b3126c", // 5160 BIOS u18 v11/08/82
+                        "e816a89768a1bf4b8d52b454d5c9d1e1", // 5160 BIOS u19 v11/08/82
+                        "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                        "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
+                        "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
+                        "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed
+                        "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS
+                    ]
+                },                                                                                                                
                 RomSet {
                     machine_type: MachineType::IBM_XT_5160,
                     priority: 4,
@@ -482,6 +497,80 @@ impl RomManager {
                     size: 32768,
                     patches: Vec::new(),
                     checkpoints: HashMap::new()
+                }
+            ),(
+                "1a2ac1ae0fe0f7783197e78da8b3126c", // BIOS_5160_08NOV82_U18_1501512.BIN
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,    
+                    interleave: RomInterleave::None,
+                    optional: false,
+                    priority: 1,
+                    address: 0xF8000,
+                    offset: 0,
+                    size: 32768,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()
+                }
+            ),(
+                "e816a89768a1bf4b8d52b454d5c9d1e1", // BIOS_5160_08NOV82_U19_5000027_27256.BIN
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,   
+                    interleave: RomInterleave::None,
+                    optional: false,
+                    priority: 1,
+                    address: 0xF0000,
+                    offset: 0,
+                    size: 32768,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: vec![
+                        RomPatch {
+                            desc: "Patch ROS checksum routine",
+                            checkpoint: 0xFE0AE,
+                            address: 0xFE0D7,
+                            bytes: vec![0xEB, 0x00]
+                        },
+                        RomPatch{
+                            desc: "Patch RAM Check Routine for faster boot",
+                            checkpoint: 0xFE46A,
+                            address: 0xFE49D,
+                            bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90]
+                        },                        
+                    ],
+                    checkpoints: HashMap::from([
+                        (0xFE01A, "RAM Check Routine"),
+                        (0xFE05B, "8088 Processor Test"),
+                        (0xFE0AE, "ROS Checksum Test I"),
+                        (0xFE0D9, "8237 DMA Initialization Test"),
+                        (0xFE135, "Start DRAM Refresh"),
+                        (0xFE166, "Base 16K RAM Test"),
+                        (0xFE242, "Initialize CRTC Controller"),
+                        (0xFE329, "8259 Interrupt Controller Test"),
+                        (0xFE35D, "8253 Timer Checkout"),
+                        (0xFE3A2, "Keyboard Test"),
+                        (0xFE3DE, "Setup Interrupt Vector Table"),
+                        (0xFE418, "Expansion I/O Box Test"),
+                        (0xFE46A, "Additional R/W Storage Test"),
+
+                        /*
+                        
+                        
+                        
+                        (0xFE53C, "Optional ROM Scan"),
+                        (0xFE55B, "Diskette Attachment Test"),
+                        */
+
+                    ])
                 }
             ),(
                 "fd9ff9cbe0a8f154746ccb0a33f6d3e7", // BIOS_5160_10JAN86_U18_62X0851_27256_F800.BIN
@@ -1197,6 +1286,21 @@ impl RomManager {
             rom_desc.present
         });
 
+        // Filter roms that provide features that were not requested
+        rom_set_active.roms.retain(|rom| {
+            let rom_desc = self.get_romdesc(rom).unwrap();
+
+            if let Some(feature) = rom_desc.feature {
+                if !self.features_requested.contains(&feature) {
+                    return false
+                }
+                else {
+                    return true
+                }
+            }
+            true
+        });        
+
         // Now remove all but highest priority Basic images
         
         // Find highest priority Basic:
@@ -1234,7 +1338,6 @@ impl RomManager {
 
             // Reverse the rom if required
             if let RomOrder::Reversed = rom_desc.order {
-
                 file_vec = file_vec.into_iter().rev().collect();
             }
 
@@ -1369,6 +1472,19 @@ impl RomManager {
         }
 
         true
+    }
+
+    /// Sets the checkpoint bus flag for loaded checkpoints. We only try to look up the checkpoint
+    /// for an address if this flag is set, for speed.
+    pub fn install_checkpoints(&self,  bus: &mut BusInterface) {
+
+        self.checkpoints_active.keys().for_each(|addr| {
+            bus.set_flags(*addr as usize, MEM_CP_BIT);
+        });
+
+        self.patches_active.keys().for_each(|addr| {
+            bus.set_flags(*addr as usize, MEM_CP_BIT);
+        });        
     }
 
     pub fn install_patches(&self, bus: &mut BusInterface) {

@@ -137,7 +137,7 @@ impl EGACard {
             CRTCRegister::EndHorizontalRetrace => {
                 // (R5) 
                 self.crtc_end_horizontal_retrace = CEndHorizontalRetrace::from_bytes([byte]);
-
+                //self.normalize_end_horizontal_retrace();
             }
             CRTCRegister::VerticalTotal => {
                 // (R6) 9-bit - Vertical Total

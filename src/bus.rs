@@ -2,13 +2,18 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::bytequeue::ByteQueue;
+use crate::bytequeue::*;
 
 use crate::memerror::MemError;
 
 const ADDRESS_SPACE: usize = 1_048_576;
-const DEFAULT_CYCLE_COST: u32 = 4;
+const DEFAULT_WAIT_STATES: u32 = 0;
+
 const ROM_BIT: u8 = 0b1000_0000;
+pub const MEM_RET_BIT: u8 = 0b0100_0000; // Bit to signify that this address is a return address for a CALL or INT
+pub const MEM_BPE_BIT: u8 = 0b0010_0000; // Bit to signify that this address is associated with a breakpoint on execute
+pub const MEM_BPA_BIT: u8 = 0b0001_0000; // Bit to signify that this address is associated with a breakpoint on access
+pub const MEM_CP_BIT: u8  = 0b0000_1000; // Bit to signify that this address is a ROM checkpoint
 
 pub trait MemoryMappedDevice {  
     fn read_u8(&mut self, address: usize) -> u8;
@@ -24,6 +29,7 @@ pub struct MemRangeDescriptor {
     cycle_cost: u32,
     read_only: bool
 }
+
 impl MemRangeDescriptor {
     pub fn new(address: usize, size: usize, read_only: bool) -> Self {
         Self {
@@ -34,7 +40,6 @@ impl MemRangeDescriptor {
         }
     }
 }
-
 
 pub struct BusInterface {
     memory: Vec<u8>,
@@ -55,7 +60,12 @@ impl ByteQueue for BusInterface {
         self.cursor
     }
 
-    fn q_read_u8(&mut self) -> u8 {
+    fn delay(&mut self, _delay: u32) {}
+    fn wait(&mut self, _cycles: u32) {}
+    fn wait_i(&mut self, _cycles: u32, _instr: &[u16]) {}
+    fn clear_delay(&mut self) {}
+
+    fn q_read_u8(&mut self, _dtype: QueueType) -> u8 {
         if self.cursor < self.memory.len() {
             let b: u8 = self.memory[self.cursor];
             self.cursor += 1;
@@ -64,7 +74,7 @@ impl ByteQueue for BusInterface {
         0xffu8
     }
 
-    fn q_read_i8(&mut self) -> i8 {
+    fn q_read_i8(&mut self, _dtype: QueueType) -> i8 {
         if self.cursor < self.memory.len() {
             let b: i8 = self.memory[self.cursor] as i8;
             self.cursor += 1;
@@ -73,7 +83,7 @@ impl ByteQueue for BusInterface {
         -1i8       
     }
 
-    fn q_read_u16(&mut self) -> u16 {
+    fn q_read_u16(&mut self, _dtype: QueueType) -> u16 {
         if self.cursor < self.memory.len() - 1 {
             let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
             self.cursor += 2;
@@ -82,14 +92,46 @@ impl ByteQueue for BusInterface {
         0xffffu16   
     }
 
-    fn q_read_i16(&mut self) -> i16 {
+    fn q_read_i16(&mut self, _dtype: QueueType) -> i16 {
         if self.cursor < self.memory.len() - 1 {
             let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
             self.cursor += 2;
             return w
         }
         -1i16
+    }
+
+    fn q_peek_u8(&self) -> u8 {
+        if self.cursor < self.memory.len() {
+            let b: u8 = self.memory[self.cursor];
+            return b
+        }
+        0xffu8
+    }
+
+    fn q_peek_i8(&self) -> i8 {
+        if self.cursor < self.memory.len() {
+            let b: i8 = self.memory[self.cursor] as i8;
+            return b
+        }
+        -1i8   
+    }
+
+    fn q_peek_u16(&self) -> u16 {
+        if self.cursor < self.memory.len() - 1 {
+            let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
+            return w
+        }
+        0xffffu16   
     }    
+
+    fn q_peek_i16(&self) -> i16 {
+        if self.cursor < self.memory.len() - 1 {
+            let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
+            return w
+        }
+        -1i16
+    }      
 }
 
 impl Default for BusInterface {
@@ -117,6 +159,10 @@ impl BusInterface {
             first_map: 0,
             last_map: 0
         }
+    }
+
+    pub fn size(&self) -> usize {
+        self.memory.len()
     }
 
     /// Register a memory-mapped device.
@@ -153,7 +199,7 @@ impl BusInterface {
             false => 0x00
         };
         for dst in mask_slice.iter_mut() {
-            *dst = cycle_cost as u8 & 0xEF | access_bit;
+            *dst |= access_bit;
         }
 
         self.desc_vec.push({
@@ -202,14 +248,24 @@ impl BusInterface {
         });        
     }
 
-    pub fn reset(&mut self) {
-        // Clear mem range descriptors
-        self.desc_vec.clear();
+    pub fn clear(&mut self) {
+
+        // Remove return flags
+        for byte_ref in &mut self.memory_mask {
+            *byte_ref &= !MEM_RET_BIT;
+        } 
 
         // Set all bytes to 0
         for byte_ref in &mut self.memory {
             *byte_ref = 0;
         }
+    }
+
+    pub fn reset(&mut self) {
+        // Clear mem range descriptors
+        self.desc_vec.clear();
+
+        self.clear();
     }
 
     pub fn read_u8(&self, address: usize ) -> Result<(u8, u32), MemError> {
@@ -222,7 +278,7 @@ impl BusInterface {
                 }
             }
             let b: u8 = self.memory[address];
-            return Ok((b, DEFAULT_CYCLE_COST))
+            return Ok((b, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -238,7 +294,7 @@ impl BusInterface {
             }
 
             let b: i8 = self.memory[address] as i8;
-            return Ok((b, DEFAULT_CYCLE_COST))
+            return Ok((b, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -254,7 +310,7 @@ impl BusInterface {
             }
 
             let w: u16 = self.memory[address] as u16 | (self.memory[address+1] as u16) << 8;
-            return Ok((w, DEFAULT_CYCLE_COST))
+            return Ok((w, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -269,7 +325,7 @@ impl BusInterface {
             }
 
             let w: i16 = (self.memory[address] as u16 | (self.memory[address+1] as u16) << 8) as i16;
-            return Ok((w, DEFAULT_CYCLE_COST))
+            return Ok((w, DEFAULT_WAIT_STATES))
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -288,7 +344,7 @@ impl BusInterface {
             if self.memory_mask[address] & ROM_BIT == 0 {
                 self.memory[address] = data;                
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -306,7 +362,7 @@ impl BusInterface {
             if self.memory_mask[address] & ROM_BIT == 0 {
                 self.memory[address] = data as u8;
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }    
@@ -328,7 +384,7 @@ impl BusInterface {
                 self.memory[address] = (data & 0xFF) as u8;
                 self.memory[address+1] = (data >> 8) as u8;              
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -350,9 +406,36 @@ impl BusInterface {
                 self.memory[address] = (data as u16 & 0xFF) as u8;
                 self.memory[address+1] = (data as u16 >> 8) as u8;
             }
-            return Ok(DEFAULT_CYCLE_COST)
+            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
+    }
+
+    /// Get bit flags for the specified byte at address
+    #[inline]
+    pub fn get_flags(&self, address: usize) -> u8 {
+        if address < self.memory.len() - 1 {
+            self.memory_mask[address]
+        }
+        else {
+            0
+        }
+    }
+
+    /// Set bit flags for the specified byte at address
+    pub fn set_flags(&mut self, address: usize, flags: u8) {
+        if address < self.memory.len() - 1 {     
+            //log::trace!("set flag for address: {:05X}: {:02X}", address, flags);
+            self.memory_mask[address] |= flags;
+        }
+    }
+
+    /// Clear the specified flags for the specified byte at address
+    /// Do not allow ROM bit to be cleared
+    pub fn clear_flags(&mut self, address: usize, flags: u8) {
+        if address < self.memory.len() - 1 {     
+            self.memory_mask[address] &= !(flags & 0x7F);
+        }
     }
 
     /// Dump memory to a string representation.

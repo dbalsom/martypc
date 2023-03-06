@@ -17,7 +17,7 @@ pub const PIC_DATA_PORT: u16    = 0x21;
 const ICW1_ICW4_NEEDED: u8      = 0b0000_0001; // Bit set if a 4th control world is required (not supported)
 const ICW1_SINGLE_MODE: u8      = 0b0000_0010; // Bit is set if PIC is operating in signle mode (only supported configuration)
 const ICW1_ADI: u8              = 0b0000_0100; // Bit is set if PIC is using a call address interval of 4, otherwise 8
-const ICW1_LTIML: u8            = 0b0000_1000; // Bit is set if PIC is in Level Triggered Mode
+const ICW1_LTIM: u8             = 0b0000_1000; // Bit is set if PIC is in Level Triggered Mode
 const ICW1_IS_ICW1: u8          = 0b0001_0000; // Bit determines if input is ICW1
 
 const ICW4_8088_MODE: u8        = 0b0000_0001; // Bit on if 8086/8088 mode (required)
@@ -28,6 +28,7 @@ const ICW4_NESTED: u8           = 0b0001_0000; // Bit on if Fully Nested mode
 const OCW_IS_OCW3: u8           = 0b0000_1000; // Bit on if OCW is OCW3
 
 const OCW2_NONSPECIFIC_EOI: u8  = 0b0010_0000;
+const OCW2_SPECIFIC_EOI: u8     = 0b0110_0000;
 const OCW3_POLL_COMMAND: u8     = 0b0000_0100;
 const OCW3_RR_COMMAND: u8       = 0b0000_0011;
 
@@ -36,6 +37,13 @@ pub enum InitializationState {
     ExpectingICW2,      // In initialization sequence, expecting ICW2
     ExpectingICW4       // In initialization sequence, expecting ICW4
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum TriggerMode {
+    Edge,
+    Level
+}
+
 
 #[derive(Copy, Clone)]
 pub enum ReadSelect {
@@ -78,6 +86,7 @@ pub struct Pic {
     polled: bool,            // Polled mode
     auto_eoi: bool,          // Auto-EOI mode
     rotate_on_aeoi: bool,    // Should rotate in Auto-EOI mode
+    trigger_mode: TriggerMode,
     expecting_icw2: bool,
     expecting_icw4: bool,    // ICW3 not supported in Single mode operation
     error: bool,             // We encountered an invalid condition or request
@@ -91,7 +100,8 @@ pub struct PicStringState {
     pub imr: String,
     pub isr: String,
     pub irr: String,
-
+    pub autoeoi: String,
+    pub trigger_mode: String,
     pub interrupt_stats: Vec<(String, String, String)>
 }
 
@@ -137,6 +147,7 @@ impl Pic {
             special_nested: false,
             polled: false,
             auto_eoi: false,
+            trigger_mode: TriggerMode::Edge,
             rotate_on_aeoi: false,
             expecting_icw2: false,
             expecting_icw4: false,
@@ -172,7 +183,6 @@ impl Pic {
 
     pub fn handle_command_register_write(&mut self, byte: u8) {
         // Specific bit set inidicates an Initialization Command Word 1 (ICW1) (actually a byte)
-
         if byte & ICW1_IS_ICW1 != 0 {
             // Parse Initialization Command Word
             if let InitializationState::Normal = self.init_state {
@@ -186,9 +196,17 @@ impl Pic {
                 log::error!("PIC: Error: Chained mode not supported");
                 self.error = true;
             }
+
             if byte & ICW1_ADI != 0 {
                 log::error!("PIC: Error: 4 byte ADI unsupported");
                 self.error = true;
+            }
+
+            if byte & ICW1_LTIM != 0 {
+                self.trigger_mode = TriggerMode::Level;
+            }
+            else {
+                self.trigger_mode = TriggerMode::Edge;
             }
 
             self.init_state = InitializationState::ExpectingICW2;
@@ -197,9 +215,14 @@ impl Pic {
             }
         }
         else if byte & OCW2_NONSPECIFIC_EOI != 0 {
-            //log::trace!("PIC: Received nonspecific EOI");
-
+            //log::trace!("PIC: Received nonspecific EOI, ISR: {:08b}", self.isr);
             self.isr = Pic::clear_lsb(self.isr);
+            //log::trace!("PIC: New ISR: {:08b}", self.isr);
+        }
+        else if byte & OCW2_SPECIFIC_EOI != 0 {
+            //log::trace!("PIC: Received specific EOI, ISR: {:08b}", self.isr);
+            self.isr = Pic::clear_bit(self.isr, byte & 0x07);
+            //log::trace!("PIC: New ISR: {:08b}", self.isr);
         }
         else if byte & OCW_IS_OCW3 != 0  { 
             
@@ -248,6 +271,14 @@ impl Pic {
             mask <<= 1;
         }
         byte
+    }
+
+    pub fn clear_bit(byte: u8, bitn: u8) -> u8 {
+
+        let mut mask: u8 = 0x01;
+        mask <<= bitn;
+
+        byte & !mask
     }
 
     pub fn handle_data_register_write(&mut self, byte: u8) {
@@ -305,6 +336,7 @@ impl Pic {
     fn set_imr(&mut self, byte: u8) {
 
         // Changing the IMR will allow devices with current high IR lines to generate interrupts
+        // in Level triggered mode.  In Edge triggered mode they will not
         self.imr = byte;
 
         let mut ir_bit = 0x01;
@@ -314,10 +346,12 @@ impl Pic {
             let is_masked = ir_bit & self.imr != 0;
             let is_in_service = ir_bit & self.isr != 0;
 
-            if have_request && !is_masked && !is_in_service {
-                // (Set INT request line high)
-                self.int_request = true;
-                self.interrupt_stats[interrupt as usize].serviced_count += 1;
+            if self.trigger_mode == TriggerMode::Level {
+                if have_request && !is_masked && !is_in_service {
+                    // (Set INT request line high)
+                    self.int_request = true;
+                    self.interrupt_stats[interrupt as usize].serviced_count += 1;
+                }
             }
 
             ir_bit <<= 1;
@@ -375,6 +409,8 @@ impl Pic {
 
     pub fn get_interrupt_vector(&mut self) -> Option<u8> {
 
+        //log::trace!("Getting interrupt vector, auto-eoi: {:?}.", self.auto_eoi);
+
         // Return the highest priority vector not currently masked from the IRR
         let mut ir_bit: u8 = 0x01;
         for irq in 0..8 {
@@ -391,6 +427,11 @@ impl Pic {
                 self.irr &= !ir_bit;
                 // ...and set it in ISR being serviced
                 self.isr |= ir_bit;
+                // .. unless Auto-EOI is on
+                if self.auto_eoi {
+                    //log::trace!("Executing Auto-EOI");
+                    self.isr &= !ir_bit;
+                }
                 self.irq = irq;
                 // INT line low
                 self.int_request = false;
@@ -399,13 +440,8 @@ impl Pic {
             }
             ir_bit <<= 1;
         }
-        None
-    }
 
-    pub fn end_of_interrupt(&mut self) {
-        // Clear ISR bit
-        let intr_bit: u8 = 0x01 << self.irq;
-        self.isr &= !intr_bit;
+        None
     }
 
     pub fn get_string_state(&self) -> PicStringState {
@@ -414,6 +450,8 @@ impl Pic {
             imr: format!("{:08b}", self.imr),
             irr: format!("{:08b}", self.irr),
             isr: format!("{:08b}", self.isr),
+            autoeoi: format!("{:?}", self.auto_eoi),
+            trigger_mode: format!("{:?}", self.trigger_mode),
             interrupt_stats: Vec::new()
         };
 

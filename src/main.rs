@@ -11,6 +11,7 @@ use std::{
 };
 
 use crate::gui::Framework;
+
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
@@ -26,25 +27,27 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
-use configparser::ini::Ini;
-
 #[path = "./devices/ega/mod.rs"]
 mod ega;
 #[path = "./devices/vga/mod.rs"]
 mod vga;
-
+mod breakpoints;
 mod bus;
 mod bytebuf;
 mod bytequeue;
 mod cga;
-mod cpu;
+mod config;
+mod cpu_common;
+mod cpu_808x;
 mod dma;
 mod fdc;
 mod floppy_manager;
 mod gui;
+mod gui_color;
 mod gui_image;
 mod hdc;
 mod io;
+mod interrupt;
 mod machine;
 mod memerror;
 mod mouse;
@@ -59,11 +62,22 @@ mod util;
 mod vhd;
 mod vhd_manager;
 mod video;
-mod videocard;
+mod videocard; // VideoCard trait
 mod input;
 
-use machine::{Machine, MachineType, ExecutionState};
-use cpu::Cpu;
+mod cpu_validator; // CpuValidator trait
+#[cfg(feature = "pi_validator")]
+mod pi_cpu_validator;
+#[cfg(feature = "arduino_validator")]
+#[macro_use]
+mod arduino8088_client;
+#[cfg(feature = "arduino_validator")]
+mod arduino8088_validator;
+
+use breakpoints::BreakPointType;
+use config::{ConfigFileParams, MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
+use machine::{Machine, ExecutionState};
+use cpu_808x::Cpu;
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
 use vhd_manager::{VHDManager, VHDManagerError};
@@ -71,7 +85,8 @@ use vhd::{VirtualHardDisk};
 use bytequeue::ByteQueue;
 use gui::GuiEvent;
 use sound::SoundPlayer;
-use videocard::VideoType;
+
+use io::{IoHandler, IoBusInterface};
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -86,7 +101,7 @@ const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
-const CYCLES_PER_FRAME: u32 = (cpu::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
+const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
 // Rendering Stats
 struct Counter {
@@ -102,7 +117,8 @@ struct Counter {
     current_pit_tps: u64,
     emulation_time: Duration,
     render_time: Duration,
-    accumulated_us: u128
+    accumulated_us: u128,
+    cycle_target: u32,
 }
 
 impl Counter {
@@ -120,7 +136,8 @@ impl Counter {
             current_pit_tps: 0,
             emulation_time: Duration::ZERO,
             render_time: Duration::ZERO,
-            accumulated_us: 0
+            accumulated_us: 0,
+            cycle_target: CYCLES_PER_FRAME
         }
     }
 }
@@ -177,82 +194,67 @@ struct VideoData {
     aspect_h: u32
 }
 
-fn main() -> Result<(), Error> {
+fn main() {
 
     env_logger::init();
 
-    // Read config file
-    let mut config = Ini::new();
-
-    // Defaults
-    let mut machine_type = MachineType::IBM_XT_5160;
-    let mut video_type = VideoType::CGA;
-
     let mut features = Vec::new();
-    let mut machine_autostart = Some(false);
-    let mut cfg_load_vhd_name;
 
-    match std::fs::read_to_string("./marty.cfg") {
-        Ok(config_string) => {
-            match config.read(config_string) {
-                Ok(_) => {
+    // Read config file
+    let config = match config::get_config("./marty.toml"){
+        Ok(config) => config,
+        Err(e) => {
+            match e.downcast_ref::<std::io::Error>() {
+                Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    eprintln!("Configuration file not found! Please create marty.toml in the emulator directory \
+                               or provide the path to configuration file with --configfile.");
 
-                    let machine_type_s = config.get("machine", "model").unwrap_or("IBM_XT_5160".to_string());
-                    machine_type = match machine_type_s.as_str() {
-                        "IBM_PC_5150" => MachineType::IBM_PC_5150,
-                        "IBM_XT_5160" => MachineType::IBM_XT_5160,
-                        _ => {
-                            log::warn!("Invalid machine type in config: '{}'", machine_type_s);
-                            MachineType::IBM_PC_5150
-                        }
-                    };
-
-                    let video_type_s = config.get("machine", "video").unwrap_or("CGA".to_string());
-                    video_type = match video_type_s.as_str() {
-                        "CGA" => VideoType::CGA,
-                        "EGA" => {
-                            features.push(RomFeature::EGA);
-                            VideoType::EGA
-                        }
-                        "VGA" => {
-                            features.push(RomFeature::VGA);
-                            VideoType::VGA
-                        }                        
-                        _ => {
-                            log::warn!("Invalid video type in config: '{}'", machine_type_s);
-                            VideoType::CGA
-                        }
-                    };
-
-                    let hdc_type_s = config.get("machine", "hdc").unwrap_or("none".to_string());
-                    match hdc_type_s.as_str() {
-                        "xebec" => {
-                            features.push(RomFeature::XebecHDC)
-                        }
-                        _ => {
-                            log::warn!("Invalid hdc type in config: '{}'", hdc_type_s);
-                        }                        
-                    }
-
-                    machine_autostart = config.getbool("machine", "autostart").unwrap_or(Some(false));
-
-                    cfg_load_vhd_name = config.get("vhd", "drive0");
-
+                    std::process::exit(1);
                 }
-                Err(e) => {
-                    eprintln!("Error reading configuration file.");
+                Some(e) => {
+                    eprintln!("Unknown IO error reading configuration file:\n{}", e);
+                    std::process::exit(1);
+                }                
+                None => {
+                    eprintln!("Failed to parse configuration file. There may be a typo or otherwise invalid toml:\n{}", e);
                     std::process::exit(1);
                 }
             }
         }
-        Err(e) => {
-            eprintln!("Couldn't read configuration file.");
-            std::process::exit(1);
-        }
     };
 
+    // Determine required ROM features from configuration options
+    match config.machine.video {
+        VideoType::EGA => {
+            // an EGA BIOS ROM is required for EGA
+            features.push(RomFeature::EGA);
+        },
+        VideoType::VGA => {
+            // a VGA BIOS ROM is required for VGA
+            features.push(RomFeature::VGA);
+        },
+        _ => {}
+    }
+
+    match config.machine.hdc {
+        HardDiskControllerType::Xebec => {
+            // The Xebec controller ROM is required for Xebec HDC
+            features.push(RomFeature::XebecHDC);
+        }
+        _ => {}
+    }
+
+    #[cfg(feature = "cpu_validator")]
+    match config.validator.vtype {
+        Some(ValidatorType::None) | None => {
+            eprintln!("Compiled with validator but no validator specified" );
+            std::process::exit(1);
+        }
+        _=> {}
+    }
+
     // Instantiate the rom manager to load roms for the requested machine type    
-    let mut rom_manager = RomManager::new(machine_type, features);
+    let mut rom_manager = RomManager::new(config.machine.model, features);
 
     if let Err(e) = rom_manager.try_load_from_dir("./rom") {
         match e {
@@ -327,6 +329,18 @@ fn main() -> Result<(), Error> {
         log::debug!("Found serial port: {:?}", port);
     }
 
+
+    // If fuzzer mode was specified, run the emulator in fuzzer mode now
+    #[cfg(feature = "cpu_validator")]
+    if config.emulator.fuzzer {
+        return main_fuzzer(&config, rom_manager, floppy_manager);
+    }
+
+    // If headless mode was specified, run the emulator in headless mode now
+    if config.emulator.headless {
+        return main_headless(&config, rom_manager, floppy_manager);
+    }
+
     // Create the video renderer
     let video = video::Video::new();
 
@@ -347,10 +361,8 @@ fn main() -> Result<(), Error> {
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
 
     // Set machine state to Running if autostart option was set in config
-    if let Some(autostart) = machine_autostart {
-        if autostart {
-            exec_control.borrow_mut().set_state(ExecutionState::Running);
-        }
+    if config.emulator.autostart {
+        exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
 
     // Create render buf
@@ -367,9 +379,16 @@ fn main() -> Result<(), Error> {
         let scale_factor = window.scale_factor() as f32;
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
         let pixels = 
-            Pixels::new(video_data.aspect_w, video_data.aspect_h, surface_texture)?;
+            Pixels::new(video_data.aspect_w, video_data.aspect_h, surface_texture).unwrap();
         let framework =
-            Framework::new(window_size.width, window_size.height, scale_factor, &pixels, exec_control.clone());
+            Framework::new(
+                &event_loop,
+                window_size.width, 
+                window_size.height, 
+                scale_factor, 
+                &pixels, 
+                exec_control.clone()
+            );
 
         (pixels, framework)
     };
@@ -396,10 +415,18 @@ fn main() -> Result<(), Error> {
 
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
-    let mut machine = Machine::new(machine_type, video_type, sp, rom_manager, floppy_manager );
+    let mut machine = Machine::new(
+        &config,
+        config.machine.model,
+        config.emulator.trace_mode,
+        config.machine.video, 
+        sp, 
+        rom_manager, 
+        floppy_manager,
+    );
 
     // Try to load default vhd
-    if let Some(vhd_name) = cfg_load_vhd_name {
+    if let Some(vhd_name) = config.machine.drive0 {
         let vhd_os_name: OsString = vhd_name.into();
         match vhd_manager.get_vhd_file(&vhd_os_name) {
             Ok(vhd_file) => {
@@ -534,14 +561,14 @@ fn main() -> Result<(), Error> {
                                     // Ctrl-F10 pressed. Toggle mouse capture.
                                     log::trace!("Control F10 pressed.");
                                     if !mouse_data.is_captured {
-                                        match window.set_cursor_grab(true) {
+                                        match window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
                                             Ok(_) => mouse_data.is_captured = true,
                                             Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
                                         }
                                     }
                                     else {
                                         // Cursor is grabbed, ungrab
-                                        match window.set_cursor_grab(false) {
+                                        match window.set_cursor_grab(winit::window::CursorGrabMode::None) {
                                             Ok(_) => mouse_data.is_captured = false,
                                             Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
                                         }                                        
@@ -623,13 +650,6 @@ fn main() -> Result<(), Error> {
                     stat_counter.current_fps += 1;
                     //println!("frame: {} elapsed: {}", world.current_fps, elapsed_us);
 
-                    // Get breakpoint from GUI
-                    let bp_str = framework.gui.get_breakpoint();
-                    let bp_addr = match u32::from_str_radix(bp_str, 16) {
-                        Ok(addr) => addr,
-                        Err(_) => 0
-                    };
-
                     // Get single step flag from GUI and either step or run CPU
                     // TODO: This logic is messy, figure out a better way to control CPU state 
                     //       via gui
@@ -662,8 +682,71 @@ fn main() -> Result<(), Error> {
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
-                    machine.run(CYCLES_PER_FRAME, &mut exec_control.borrow_mut(), bp_addr);
+                    machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut());
                     stat_counter.emulation_time = Instant::now() - emulation_start;
+
+                    // Emulation time budget is 16ms - render time in ms - fudge factor
+                    let render_time = stat_counter.render_time.as_millis();
+                    let emulation_time = stat_counter.emulation_time.as_millis();
+                    let mut emulation_time_allowed_ms = 16;
+                    if render_time < 16 {
+                        // Rendering time has left us some emulation headroom
+                        emulation_time_allowed_ms = 16_u128.saturating_sub(render_time);
+                    }
+                    else {
+                        // Rendering is too long to run at 60fps. Just ignore render time for now.
+                    }                    
+
+                    // If emulation time took too long, reduce CYCLE_TARGET
+                    if emulation_time > emulation_time_allowed_ms {
+                        // Emulation running slower than 60fps
+                        let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+                        // Decrease speed by half of scaling factor
+
+                        let old_target = stat_counter.cycle_target;
+                        let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
+                        stat_counter.cycle_target -= (old_target - new_target) / 2;
+
+                        /*
+                        log::trace!("Emulation speed slow: ({}ms > {}ms). Reducing cycle target: {}->{}", 
+                            emulation_time,
+                            emulation_time_allowed_ms,
+                            old_target,
+                            stat_counter.cycle_target
+                        );
+                        */
+                    }
+                    else if emulation_time < emulation_time_allowed_ms {
+                        // ignore spurious 0-duration emulation loops
+                        if emulation_time > 0 {
+                            // Emulation could be faster
+                            
+                            // Increase speed by half of scaling factor
+                            let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+
+                            let old_target = stat_counter.cycle_target;
+                            let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
+                            stat_counter.cycle_target += (new_target - old_target) / 2;
+
+                            if stat_counter.cycle_target > CYCLES_PER_FRAME {
+                                // Comment to run as fast as possible
+                                
+                                if !config.emulator.warpspeed {
+                                    stat_counter.cycle_target = CYCLES_PER_FRAME;
+                                }
+                            }
+                            else {
+                                /*
+                                log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
+                                    emulation_time,
+                                    emulation_time_allowed_ms,
+                                    old_target,
+                                    stat_counter.cycle_target
+                                );
+                                */
+                            }
+                        }
+                    }
 
                     // Do per-frame updates (Serial port emulation)
                     machine.frame_update();
@@ -686,7 +769,7 @@ fn main() -> Result<(), Error> {
                             let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
                             video_data.aspect_h = new_height;
 
-                            pixels.get_frame().fill(0);
+                            pixels.get_frame_mut().fill(0);
                             pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h);
                         }
                     }
@@ -704,12 +787,12 @@ fn main() -> Result<(), Error> {
                                 &render_src, 
                                 video_data.render_w, 
                                 video_data.render_h, 
-                                pixels.get_frame(), 
+                                pixels.get_frame_mut(), 
                                 video_data.aspect_w, 
                                 video_data.aspect_h);                            
                         }
                         false => {
-                            video.draw(pixels.get_frame(), machine.videocard(), machine.bus(), composite_enabled);
+                            video.draw(pixels.get_frame_mut(), machine.videocard(), machine.bus(), composite_enabled);
                         }
                     }
                     stat_counter.render_time = Instant::now() - render_start;
@@ -740,7 +823,9 @@ fn main() -> Result<(), Error> {
                                         // We don't actually do anything with the newly created file
 
                                         // Rescan dir to show new file in list
-                                        vhd_manager.scan_dir("./hdd");
+                                        if let Err(e) = vhd_manager.scan_dir("./hdd") {
+                                            log::error!("Error scanning hdd directory: {}", e);
+                                        };
                                     }
                                     Err(err) => {
                                         log::error!("Error creating VHD: {}", err);
@@ -781,14 +866,37 @@ fn main() -> Result<(), Error> {
                             Some(GuiEvent::DumpVRAM) => {
                                 machine.videocard().borrow().dump_mem();
                             }
+                            Some(GuiEvent::DumpCS) => {
+                                machine.cpu().dump_cs();
+                            }
+                            Some(GuiEvent::EditBreakpoint) => {
+                                // Get breakpoints from GUI
+                                let (bp_str, bp_mem_str) = framework.gui.get_breakpoints();
+
+                                let mut breakpoints = Vec::new();
+
+                                // Push exec breakpoint to list if valid hex
+                                if let Ok(addr) = u32::from_str_radix(bp_str, 16) {
+                                    if addr > 0 && addr < 0x100000 {
+                                        breakpoints.push(BreakPointType::ExecuteFlat(addr));
+                                    }
+                                }
+                            
+                                // Push mem breakpoint to list if valid hex
+                                if let Ok(addr) = u32::from_str_radix(bp_mem_str, 16) {
+                                    if addr > 0 && addr < 0x100000 {
+                                        breakpoints.push(BreakPointType::MemAccessFlat(addr));
+                                    }
+                                }                                     
+                            
+                                machine.set_breakpoints(breakpoints);
+                            }
                             None => break,
                             _ => {
                                 // Unhandled event?
                             }
                         }
                     }
-
-
 
                     // -- Update list of floppies
                     let name_vec = machine.floppy_manager().get_floppy_names();
@@ -907,34 +1015,37 @@ fn main() -> Result<(), Error> {
 
                     // -- Update disassembly viewer window
                     if framework.gui.is_window_open(gui::GuiWindow::DiassemblyViewer) {
-                        let disassembly_addr_str = framework.gui.get_disassembly_view_address();
-                        let disassembly_addr = match machine.cpu().eval_address(disassembly_addr_str) {
+                        let disassembly_start_addr_str = framework.gui.get_disassembly_view_address();
+                        let disassembly_start_addr = match machine.cpu().eval_address(disassembly_start_addr_str) {
                             Some(i) => i,
                             None => 0
                         };
 
                         let bus = machine.bus_mut();
-                        bus.seek(disassembly_addr as usize);
+                        
                         let mut disassembly_string = String::new();
+                        let mut disassembly_addr = disassembly_start_addr as usize;
                         for _ in 0..24 {
 
-                            let address = bus.tell();
-                            if address < machine::MAX_MEMORY_ADDRESS {
+                            if disassembly_addr < machine::MAX_MEMORY_ADDRESS {
 
+                                bus.seek(disassembly_addr as usize);
                                 let decode_str: String = match Cpu::decode(bus) {
                                     Ok(i) => {
                                     
-                                        let instr_slice = bus.get_slice_at(address, i.size as usize);
-                                        let instr_bytes_str = util::fmt_byte_array(instr_slice);                                    
-                                        format!("{:05X} {:012} {}\n", address, instr_bytes_str, i)
+                                        let instr_slice = bus.get_slice_at(disassembly_addr, i.size as usize);
+                                        let instr_bytes_str = util::fmt_byte_array(instr_slice);
+                                        let decode_str = format!("{:05X} {:012} {}\n", disassembly_addr, instr_bytes_str, i);
+                                        disassembly_addr += i.size as usize;
+
+                                        decode_str
                                     }
                                     Err(_) => {
-                                        format!("{:05X} INVALID\n", address)
+                                        format!("{:05X} INVALID\n", disassembly_addr)
                                     }
                                 };
-                                disassembly_string.push_str(&decode_str)
+                                disassembly_string.push_str(&decode_str);
                             }
-
                         }
                         framework.gui.update_dissassembly_view(disassembly_string);
                     }
@@ -949,7 +1060,8 @@ fn main() -> Result<(), Error> {
                         context.scaling_renderer.render(encoder, render_target);
 
                         // Render egui
-                        framework.render(encoder, render_target, context)?;
+                        #[cfg(not(feature = "pi_validator"))]
+                        framework.render(encoder, render_target, context);
 
                         Ok(())
                     });
@@ -973,3 +1085,338 @@ fn main() -> Result<(), Error> {
     });
 }
 
+pub fn main_headless(
+    config: &ConfigFileParams,
+    rom_manager: RomManager,
+    floppy_manager: FloppyManager
+) {
+
+    // Init sound 
+    // The cpal sound library uses generics to initialize depending on the SampleFormat type.
+    // On Windows at least a sample type of f32 is typical, but just in case...
+    let sample_fmt = SoundPlayer::get_sample_format();
+    let sp = match sample_fmt {
+        cpal::SampleFormat::F32 => SoundPlayer::new::<f32>(),
+        cpal::SampleFormat::I16 => SoundPlayer::new::<i16>(),
+        cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(),
+    };
+
+    // Instantiate the main Machine data struct
+    // Machine coordinates all the parts of the emulated computer
+    let mut machine = Machine::new(
+        &config,
+        config.machine.model,
+        config.emulator.trace_mode,
+        config.machine.video, 
+        sp, 
+        rom_manager, 
+        floppy_manager,
+    );
+
+    let mut exec_control = machine::ExecutionControl::new();
+    exec_control.set_state(ExecutionState::Running);
+
+    loop {
+        // This should really return a Result
+        machine.run(1000, &mut exec_control);
+    }
+    
+    //std::process::exit(0);
+}
+
+
+#[cfg(feature = "cpu_validator")]
+use std::io::{BufWriter, Write};
+#[cfg(feature = "cpu_validator")]
+use cpu_808x::*;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
+
+#[cfg(feature = "cpu_validator")]
+pub fn main_fuzzer <'a>(
+    config: &ConfigFileParams,
+    rom_manager: RomManager,
+    floppy_manager: FloppyManager
+) {
+
+    let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
+    if config.emulator.trace_mode != TraceMode::None {
+        // Open the trace file if specified
+        if let Some(filename) = &config.emulator.trace_file {
+            match File::create(filename) {
+                Ok(file) => {
+                    trace_file_option = Box::new(BufWriter::new(file));
+                },
+                Err(e) => {
+                    eprintln!("Couldn't create specified tracelog file: {}", e);
+                }
+            }
+        }
+    }
+
+    let mut io_bus = IoBusInterface::new();
+    let mut pic = Rc::new(RefCell::new(pic::Pic::new()));    
+
+    let mut cpu = Cpu::new(
+        CpuType::Cpu8088,
+        config.emulator.trace_mode,
+        Some(trace_file_option),
+        #[cfg(feature = "cpu_validator")]
+        config.validator.vtype.unwrap()
+    );
+
+    cpu.randomize_seed(0);
+    cpu.randomize_mem();
+
+    let mut test_num = 0;
+
+    'testloop: loop {
+
+        test_num += 1;
+        cpu.randomize_regs();
+
+        if cpu.get_register16(Register16::IP) > 0xFFF0 {
+            // Avoid IP wrapping issues for now
+            continue;
+        }
+
+        // Generate specific opcodes (optional)
+
+        // ALU ops
+        /*
+        cpu.random_inst_from_opcodes(
+            &[
+                0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
+                0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, // OR
+                0x10, 0x11, 0x12, 0x13, 0x14, 0x15, // ADC
+                0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, // SBB
+                0x20, 0x21, 0x22, 0x23, 0x24, 0x25, // AND
+                0x28, 0x29, 0x2A, 0x2B, 0x2C, 0x2D, // SUB
+                0x30, 0x31, 0x32, 0x33, 0x34, 0x35, // XOR
+                0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, // CMP
+            ]
+        );
+        // Completed 5000 tests
+        */
+        //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
+        //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
+
+        //cpu.random_inst_from_opcodes(&[0x90]);
+
+        /*
+        // INC & DEC
+        cpu.random_inst_from_opcodes(
+            &[
+                0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
+                0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F,
+            ]
+        );
+        */
+
+        /*
+        // PUSH & POP
+        cpu.random_inst_from_opcodes(
+            &[
+                0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57,
+                0x58, 0x59, 0x5A, 0x5B, 0x5C, 0x5D, 0x5E, 0x5F,
+            ]
+        );
+        */
+
+        /*
+        // Relative jumps
+        cpu.random_inst_from_opcodes(
+            &[
+                0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77,
+                0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F,
+            ]
+        );
+        */
+        
+        //cpu.random_inst_from_opcodes(&[0x80, 0x81, 82, 83]); // ALU imm8, imm16, and imm8s
+        //cpu.random_inst_from_opcodes(&[0x84, 0x85]); // TEST 8 & 16 bit
+        //cpu.random_inst_from_opcodes(&[0x86, 0x87]); // XCHG 8 & 16 bit
+        //cpu.random_inst_from_opcodes(&[0x88, 0x89, 0x8A, 0x8B]); // MOV various
+        //cpu.random_inst_from_opcodes(&[0x8D]); // LEA
+        //cpu.random_inst_from_opcodes(&[0x8C, 0x8E]); // MOV Sreg
+
+        //cpu.random_inst_from_opcodes(&[0x8F]); // POP  (Weird behavior when REG != 0)
+
+        //cpu.random_inst_from_opcodes(&[0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]); // XCHG reg, ax
+        //cpu.random_inst_from_opcodes(&[0x98, 0x99]); // CBW, CWD
+        //cpu.random_inst_from_opcodes(&[0x9A]); // CALLF
+        //cpu.random_inst_from_opcodes(&[0x9C, 0x9D]); // PUSHF, POPF
+        //cpu.random_inst_from_opcodes(&[0x9E, 0x9F]); // SAHF, LAHF
+        //cpu.random_inst_from_opcodes(&[0xA0, 0xA1, 0xA2, 0xA3]); // MOV offset
+        
+        //cpu.random_inst_from_opcodes(&[0xA4, 0xA5]); // MOVS
+        //cpu.random_inst_from_opcodes(&[0xAC, 0xAD]); // LODS
+
+        //cpu.random_inst_from_opcodes(&[0xA6, 0xA7]); // CMPS
+        //cpu.random_inst_from_opcodes(&[0xAE, 0xAF]); // SCAS
+
+        //cpu.random_inst_from_opcodes(&[0xA8, 0xA9]); // TEST
+        
+        //cpu.random_inst_from_opcodes(&[0xAA, 0xAB]); // STOS
+        
+        // MOV imm
+        /*
+        cpu.random_inst_from_opcodes(
+            &[
+                0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 
+                0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF
+            ]
+        );
+        */
+
+        //cpu.random_inst_from_opcodes(&[0xC0, 0xC1, 0xC2, 0xC3]); // RETN
+        //cpu.random_inst_from_opcodes(&[0xC4]); // LES
+        //cpu.random_inst_from_opcodes(&[0xC5]); // LDS
+        //cpu.random_inst_from_opcodes(&[0xC6, 0xC7]); // MOV r/m, imm
+        //cpu.random_inst_from_opcodes(&[0xC8, 0xC9, 0xCA, 0xCB]); // RETF
+        //cpu.random_inst_from_opcodes(&[0xCC]); // INT3
+        //cpu.random_inst_from_opcodes(&[0xCD]); // INT
+        //cpu.random_inst_from_opcodes(&[0xCE]); // INT0
+        //cpu.random_inst_from_opcodes(&[0xCF]); // IRET  ** unaccounted for cycle after FLUSH
+        
+        //cpu.random_inst_from_opcodes(&[0xD0, 0xD1]); // Misc bitshift ops, 1
+        //cpu.random_inst_from_opcodes(&[0xD2]); // Misc bitshift ops, cl
+
+        //cpu.random_inst_from_opcodes(&[0xD4]); // AAM
+        //cpu.random_inst_from_opcodes(&[0xD5]); // AAD
+        //cpu.random_inst_from_opcodes(&[0xD6]); // SALC
+        //cpu.random_inst_from_opcodes(&[0xD7]); // XLAT
+        //cpu.random_inst_from_opcodes(&[0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF]); // ESC
+
+        //cpu.random_inst_from_opcodes(&[0xE0, 0xE1, 0xE2, 0xE3]); // LOOP & JCXZ
+        //cpu.random_inst_from_opcodes(&[0xE8, 0xE9, 0xEA, 0xEB]); // CALL & JMP
+
+        //cpu.random_inst_from_opcodes(&[0xF5]); // CMC
+
+        //cpu.random_grp_instruction(0xF6, &[0, 1, 2, 3]); // 8 bit TEST, NOT & NEG
+        //cpu.random_grp_instruction(0xF7, &[0, 1, 2, 3]); // 16 bit TEST, NOT & NEG
+        //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
+        //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
+          
+        cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
+        //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
+
+        //cpu.random_inst_from_opcodes(&[0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD]); // CLC, STC, CLI, STI, CLD, STD
+
+        //cpu.random_grp_instruction(0xFE, &[0, 1]); // 8 bit INC & DEC
+        //cpu.random_grp_instruction(0xFF, &[0, 1]); // 16 bit INC & DEC
+        
+        //cpu.random_grp_instruction(0xFE, &[2, 3]); // CALL & CALLF
+        //cpu.random_grp_instruction(0xFF, &[2, 3]); // CALL & CALLF
+        //cpu.random_grp_instruction(0xFE, &[4, 5]); // JMP & JMPF
+        //cpu.random_grp_instruction(0xFF, &[4, 5]); // JMP & JMPF
+        //cpu.random_grp_instruction(0xFE, &[6, 7]); // 8-bit broken PUSH & POP
+        //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
+
+        // Decode this instruction
+        let instruction_address = 
+            Cpu::calc_linear_address(
+                cpu.get_register16(Register16::CS),  
+                cpu.get_register16(Register16::IP)
+            );
+
+        cpu.bus_mut().seek(instruction_address as usize);
+        let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize).expect("mem err");
+
+        let mut i = match Cpu::decode(cpu.bus_mut()) {
+            Ok(i) => i,
+            Err(_) => {
+                log::error!("Instruction decode error, skipping...");
+                continue;
+            }                
+        };
+        
+        // Skip N successful instructions
+
+        // was at 13546
+        if test_num < 0 {
+            continue;
+        }
+
+        match i.opcode {
+            0xFE | 0xD2 | 0xD3 | 0x8F => {
+                continue;
+            }
+            _ => {}
+        }
+
+        let mut rep = false;
+        match i.mnemonic {
+            Mnemonic::INT | Mnemonic::INT3 | Mnemonic::INTO | Mnemonic::IRET => {
+                continue;
+            },
+            Mnemonic::FWAIT => {
+                continue;
+            }
+            Mnemonic::POPF => {
+                // POPF can set trap flag which messes up the validator
+                continue;
+            }
+            Mnemonic::LDS | Mnemonic::LES | Mnemonic::LEA => {
+                if let OperandType::Register16(_) = i.operand2_type {
+                    // Invalid forms end up using the last calculated EA. However this will differ between
+                    // the validator and CPU due to the validator setup routine.
+                    continue;
+                }
+            }
+            Mnemonic::HLT => {
+                // For obvious reasons
+                continue;
+            }
+            /*
+            Mnemonic::AAM | Mnemonic::DIV | Mnemonic::IDIV => {
+                // Timings on these will take some work 
+                continue;
+            }
+            */
+            Mnemonic::MOVSB | Mnemonic::MOVSW | Mnemonic::CMPSB | Mnemonic::CMPSW | Mnemonic::STOSB | 
+            Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::SCASB | Mnemonic::SCASW => {
+                // limit cx to 31.
+                cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) % 32);
+
+                rep = true;
+            }
+            
+            Mnemonic::SETMO | Mnemonic::SETMOC | Mnemonic::ROL | Mnemonic::ROR | 
+            Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
+                // Limit cl to 0-31.
+                cpu.set_register8(Register8::CL, cpu.get_register8(Register8::CL) % 32);
+            }
+            _=> {}
+        }
+
+        i.address = instruction_address;
+   
+        log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
+        
+        // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
+        // execution per iteration. The 8088 makes no such distinction.
+        loop {
+            match cpu.step(&mut io_bus, pic.clone(), false) {
+                Ok((_, cycles)) => {
+                    log::trace!("Instruction reported {} cycles", cycles);
+
+                    if rep & cpu.in_rep() {
+                        continue
+                    }
+                    break;
+                },
+                Err(err) => {
+                    log::error!("CPU Error: {}\n", err);
+                    break 'testloop;
+                } 
+            }
+        }
+
+    }
+    
+    
+
+
+
+    //std::process::exit(0);
+}

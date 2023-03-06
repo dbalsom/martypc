@@ -13,15 +13,18 @@ use std::{
     cell::{Cell, RefCell}, 
     collections::VecDeque,
     fs::File,
-    io::Write
+    io::{BufWriter, Write},
+    
 };
 
 use crate::{
-    bus::{BusInterface, MemRangeDescriptor},
+    config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
+    breakpoints::BreakPointType,
+    bus::{BusInterface, MemRangeDescriptor, MEM_CP_BIT},
     cga::{self, CGACard},
     ega::{self, EGACard},
     vga::{self, VGACard},
-    cpu::{self, CpuType, Cpu, Flag, CpuError},
+    cpu_808x::{self, CpuType, Cpu, Flag, CpuError, StepResult},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
@@ -35,7 +38,8 @@ use crate::{
     rom_manager::RomManager,
     serial::{self, SerialPortController},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
-    videocard::{VideoCard, VideoType, VideoCardState}
+
+    videocard::{VideoCard, VideoCardState},
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
@@ -45,13 +49,6 @@ pub const NUM_HDDS: u32 = 2;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug)]
-pub enum MachineType {
-    IBM_PC_5150,
-    IBM_XT_5160
-}
-
 #[derive(Copy, Clone, Debug)]
 pub enum ExecutionState {
     Paused,
@@ -59,20 +56,25 @@ pub enum ExecutionState {
     Running,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum ExecutionOperation {
+    None,
+    Pause,
+    Step,
+    Run,
+    Reset
+}
+
 pub struct ExecutionControl {
-    state: ExecutionState,
-    do_step: Cell<bool>,
-    do_run: Cell<bool>,
-    do_reset: Cell<bool>
+    pub state: ExecutionState,
+    op: Cell<ExecutionOperation>,
 }
 
 impl ExecutionControl {
     pub fn new() -> Self {
         Self { 
             state: ExecutionState::Paused,
-            do_step: Cell::new(false), 
-            do_run: Cell::new(false), 
-            do_reset: Cell::new(false)
+            op: Cell::new(ExecutionOperation::None),
         }
     }
 
@@ -84,31 +86,62 @@ impl ExecutionControl {
         self.state
     }
 
-    pub fn do_step(&mut self) {
-        self.do_step.set(true);
+    /// Sets the last execution operation.
+    pub fn set_op(&mut self, op: ExecutionOperation) {
+
+        match op {
+
+            ExecutionOperation::Pause => {
+                // Can only pause if Running
+                if let ExecutionState::Running = self.state {
+                    self.state = ExecutionState::Paused;
+                    self.op.set(op);
+                }
+                else {
+                    return
+                }
+            }
+            ExecutionOperation::Step => {
+                // Can only Step if paused / breakpointhit
+                match self.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        self.op.set(op);
+                    }
+                    _ => return
+                }              
+            }
+            ExecutionOperation::Run => {
+                // Can only Run if paused / breakpointhit
+                match self.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        self.op.set(op);
+                    }
+                    _=> return
+                }
+            }
+            ExecutionOperation::Reset => {
+                // Can reset anytime.
+                self.op.set(op);
+            }
+            _ => return
+        }
+        
     }
 
-    pub fn do_run(&mut self) {
-        // Run does nothing unless paused or at bp
-        match self.state {
-            ExecutionState::Paused => {
-                self.do_run.set(true);
-                self.state = ExecutionState::Running;
-            }
-            ExecutionState::BreakpointHit => {
-                // Step out of breakpoint status into paused status
-                self.do_run.set(true);
-                self.state = ExecutionState::Running;
-            }
-            _ => {}
-        }        
+    /// Simultaneously returns the set execution operation and resets it internally to None.
+    pub fn get_op(&mut self) -> ExecutionOperation {
+        let op = self.op.get();
+        self.op.set(ExecutionOperation::None);
+        op
     }
 
-    pub fn do_reset(&mut self) {
-        self.do_reset.set(true)
-    }
+    /// Returns the set execution operation without resetting it
+    pub fn peek_op(&mut self) -> ExecutionOperation {
+        self.op.get()
+    }    
+
 }
-pub struct Machine {
+pub struct Machine<'a> {
     machine_type: MachineType,
     video_type: VideoType,
     sound_player: SoundPlayer,
@@ -116,7 +149,7 @@ pub struct Machine {
     floppy_manager: FloppyManager,
     //bus: BusInterface,
     io_bus: IoBusInterface,
-    cpu: Cpu,
+    cpu: Cpu<'a>,
     dma_controller: Rc<RefCell<dma::DMAController>>,
     pit: Rc<RefCell<pit::Pit>>,
     pit_buffer_producer: Producer<u8>,
@@ -138,20 +171,46 @@ pub struct Machine {
     cpu_cycles: u64,
 }
 
-impl Machine {
+impl<'a> Machine<'a> {
     pub fn new(
+        config: &ConfigFileParams,
         machine_type: MachineType,
+        trace_mode: TraceMode,
         video_type: VideoType,
         sound_player: SoundPlayer,
         rom_manager: RomManager,
         floppy_manager: FloppyManager,
-        ) -> Machine {
+        ) -> Machine<'a> {
 
-        
         let mut io_bus = IoBusInterface::new();
         
-        let mut cpu = Cpu::new(CpuType::Cpu8088);
-        cpu.reset();        
+        //let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
+
+        let mut trace_file_option = None;
+        if config.emulator.trace_mode != TraceMode::None {
+            // Open the trace file if specified
+            if let Some(filename) = &config.emulator.trace_file {
+                match File::create(filename) {
+                    Ok(file) => {
+                        trace_file_option = Some(Box::new(BufWriter::new(file)));
+                    },
+                    Err(e) => {
+                        eprintln!("Couldn't create specified tracelog file: {}", e);
+                    }
+                }
+            }
+        }
+
+        let mut cpu = Cpu::new(
+            CpuType::Cpu8088,
+            trace_mode,
+            trace_file_option,
+            #[cfg(feature = "cpu_validator")]
+            config.validator.vtype.unwrap()
+        );
+
+        let (seg, offset) = cpu.get_reset_vector();
+        cpu.reset(seg, offset);        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let pit_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
@@ -250,6 +309,19 @@ impl Machine {
         // Mouse
         let mouse = Mouse::new(serial.clone());
 
+        // Create the video trace file, if specified
+        let mut video_trace_file_option = None;
+        if let Some(filename) = &config.emulator.video_trace_file {
+            match File::create(filename) {
+                Ok(file) => {
+                    video_trace_file_option = Some(Box::new(BufWriter::new(file)));
+                },
+                Err(e) => {
+                    eprintln!("Couldn't create specified video tracelog file: {}", e);
+                }
+            }
+        }
+
         // Initialize the appropriate model of Video Card.
         let mut video: Rc<RefCell<dyn VideoCard>> = match video_type {
             VideoType::CGA => {
@@ -294,7 +366,7 @@ impl Machine {
                 video
             }
             VideoType::VGA => {
-                let video = Rc::new(RefCell::new(VGACard::new()));
+                let video = Rc::new(RefCell::new(VGACard::new(video_trace_file_option)));
                 io_bus.register_port_handlers(
                     vec![
                         vga::MISC_OUTPUT_REGISTER_WRITE,
@@ -319,6 +391,10 @@ impl Machine {
                     ],
                     video.clone()
                 );
+
+                //let mem_descriptor = MemRangeDescriptor::new(0xB8000, vga::VGA_TEXT_PLANE_SIZE, false );
+                //cpu.bus_mut().register_map(video.clone(), mem_descriptor);
+
                 let mem_descriptor = MemRangeDescriptor::new(0xA0000, 65536, false );
                 cpu.bus_mut().register_map(video.clone(), mem_descriptor);
                 video
@@ -329,9 +405,12 @@ impl Machine {
         // Load BIOS ROM images
         rom_manager.copy_into_memory(cpu.bus_mut());
 
+        // Load checkpoint flags into memory
+        rom_manager.install_checkpoints(cpu.bus_mut());
+
         // Set entry point for ROM (mostly used for diagnostic ROMs that don't have a FAR JUMP reset vector)
         let rom_entry_point = rom_manager.get_entrypoint();
-        cpu.set_reset_address(rom_entry_point.0, rom_entry_point.1);
+        cpu.set_reset_vector(rom_entry_point.0, rom_entry_point.1);
         cpu.reset_address();
 
         Machine {
@@ -451,14 +530,21 @@ impl Machine {
     }
 
     pub fn bridge_serial_port(&mut self, port_num: usize, port_name: String) {
-        self.serial_controller.borrow_mut().bridge_port(port_num, port_name);
+        if let Err(e) = self.serial_controller.borrow_mut().bridge_port(port_num, port_name) {
+            log::error!("Failed to bridge serial port: {}", e );
+        }
+    }
+
+    pub fn set_breakpoints(&mut self, bp_list: Vec<BreakPointType>) {
+        self.cpu.set_breakpoints(bp_list)
     }
 
     pub fn reset(&mut self) {
-        self.cpu.reset();
+
+        self.cpu.reset(0xFFFF, 0x0000);
 
         // Clear RAM
-        self.cpu.bus_mut().reset();
+        self.cpu.bus_mut().clear();
 
         // Reload BIOS ROM images
         self.rom_manager.copy_into_memory(self.cpu.bus_mut());
@@ -475,36 +561,105 @@ impl Machine {
 
     fn cycles_to_us(&self, cycles: u32) -> f64 {
 
-        1.0 / cpu::CPU_MHZ * cycles as f64
+        1.0 / cpu_808x::CPU_MHZ * cycles as f64
     }
     
-    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl, breakpoint: u32) {
+    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) {
 
         let mut kb_event_processed = false;
+        let mut skip_breakpoint = false;
+
+        /*
+        let cycle_target_adj = match exec_control.get_op() {
+            ExecutionOperation::Reset => {
+                self.reset();
+                return
+            },
+            ExecutionOperation::Step => {
+                // Step only valid if paused / breakpointhit
+                match exec_control.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Execute 1 cycle
+                        1                        
+                    }
+                    _ => cycle_target
+                }
+            },
+            ExecutionOperation::Run => {
+                // Run only valid if paused / breakpointhit
+                match exec_control.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Execute 1 cycle
+                        cycle_target      
+                    }
+                    _ => cycle_target     
+                }
+            }
+            _ => {}
+        };
+        */
 
         // Was reset requested?
-        if exec_control.do_reset.get() {
+        if let ExecutionOperation::Reset = exec_control.peek_op() {
+            _ = exec_control.get_op(); // Clear the reset operation
             self.reset();
-            exec_control.do_reset.set(false);
+
             return
         }
     
-        let mut ignore_breakpoint = false;
         let cycle_target_adj = match exec_control.state {
             ExecutionState::Paused => {
-                match exec_control.do_step.get() {
-                    true => {
-                        // Reset step flag
-                        exec_control.do_step.set(false);
-                        ignore_breakpoint = true;
+                match exec_control.get_op() {
+                    ExecutionOperation::Step => {
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
                         // Execute 1 cycle
                         1
                     },
-                    false => return
+                    ExecutionOperation::Run => {
+                        // Transition to ExecutionState::Running
+                        exec_control.state = ExecutionState::Running;
+                        cycle_target
+                    },                      
+                    _ => return
                 }
+            
             }
-            ExecutionState::Running => cycle_target,
-            ExecutionState::BreakpointHit => cycle_target
+            ExecutionState::Running => {
+                _ = exec_control.get_op(); // Clear any pending operation
+                cycle_target
+            }
+            ExecutionState::BreakpointHit => {
+                match exec_control.get_op() {
+                    ExecutionOperation::Step => {
+                        log::trace!("BreakpointHit->Step op");
+                        // Clear CPU's breakpoint flag
+                        self.cpu.clear_breakpoint_flag();
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Transition to ExecutionState::Paused
+                        exec_control.state = ExecutionState::Paused;
+
+                        // Execute 1 cycle
+                        1
+                    },
+                    ExecutionOperation::Run => {
+                        // Clear CPU's breakpoint flag
+                        self.cpu.clear_breakpoint_flag();
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Transition to ExecutionState::Running
+                        exec_control.state = ExecutionState::Running;
+                        cycle_target
+                    },                    
+                    _ => return
+                }
+
+            }
         };
 
         let mut cycles_elapsed = 0;
@@ -512,40 +667,53 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
 
             let fake_cycles: u32 = 7;
+            let mut cpu_cycles = 0;
 
             if self.cpu.is_error() == false {
 
                 let flat_address = self.cpu.get_linear_ip();
 
-                // Check for immediate breakpoint
-                if (flat_address == breakpoint) && breakpoint != 0 && !ignore_breakpoint {
-
-                    return
-                }
-
                 // Match checkpoints
-                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
-                    log::trace!("ROM CHECKPOINT: {}", cp);
+                if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
+                    if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
+                        log::trace!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
+                    }
+    
+                    // Check for patching checkpoint & install patches
+                    if self.rom_manager.is_patch_checkpoint(flat_address) {
+                        log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
+                        self.rom_manager.install_patches(self.cpu.bus_mut());
+                    }
                 }
+                
+                match self.cpu.step(&mut self.io_bus, self.pic.clone(), skip_breakpoint) {
+                    Ok((step_result, step_cycles)) => {
 
-                // Check for patching checkpoint & install patches
-                if self.rom_manager.is_patch_checkpoint(flat_address) {
-                    log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
-                    self.rom_manager.install_patches(self.cpu.bus_mut());
-                }
-
-                match self.cpu.step(&mut self.io_bus, self.pic.clone()) {
-                    Ok(()) => {
+                        match step_result {
+                            StepResult::Normal => cpu_cycles = step_cycles,
+                            StepResult::BreakpointHit => {
+                                exec_control.state = ExecutionState::BreakpointHit;
+                                return
+                            }
+                        }
+                        
                     },
                     Err(err) => {
                         self.error = true;
                         self.error_str = format!("{}", err);
                         log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
+                        cpu_cycles = 0
                     } 
                 }
 
                 // Convert cycles into elapsed microseconds
-                let us = self.cycles_to_us(fake_cycles);
+                let us;
+                if cpu_cycles == 0 {
+                    log::warn!("Instruction returned 0 cycles");
+                    cpu_cycles = fake_cycles;
+                }
+
+                us = self.cycles_to_us(cpu_cycles);
 
                 // Process a keyboard event once per frame.
                 // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
@@ -573,10 +741,10 @@ impl Machine {
                     &mut self.dma_controller.borrow_mut(),
                     &mut self.ppi.borrow_mut(),
                     &mut self.pit_buffer_producer,
-                    fake_cycles);
+                    cpu_cycles);
 
                 // Sample the PIT channel
-                self.pit_ticks += fake_cycles as f64;
+                self.pit_ticks += cpu_cycles as f64;
                 while self.pit_ticks >= self.pit_ticks_per_sample {
                     self.pit_buf_to_sound_buf();
                     self.pit_ticks -= self.pit_ticks_per_sample;
@@ -588,23 +756,23 @@ impl Machine {
 
                 // Run the video device
                 // This uses dynamic dispatch - be aware of any performance hit
-                self.video.borrow_mut().run( fake_cycles);
+                self.video.borrow_mut().run( cpu_cycles);
                 
-                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), fake_cycles);
+                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), cpu_cycles);
                 
                 // FDC needs PIC to issue controller interrupts, DMA to request DMA transfers, and Memory Bus to read/write to via DMA
                 self.fdc.borrow_mut().run(
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     self.cpu.bus_mut(),
-                    fake_cycles);
+                    cpu_cycles);
 
                 // HDC needs PIC to issue controller interrupts, DMA to request DMA stransfers, and Memory Bus to read/write to via DMA                    
                 self.hdc.borrow_mut().run(
                     &mut self.pic.borrow_mut(),
                     &mut self.dma_controller.borrow_mut(),
                     self.cpu.bus_mut(),
-                    fake_cycles);         
+                    cpu_cycles);         
                     
                 // Serial port needs PIC to issue interrupts
                 self.serial_controller.borrow_mut().run(
@@ -613,11 +781,13 @@ impl Machine {
 
                 self.mouse.run(us);
             }
-            // Eventually we want to return per-instruction cycle counts, emulate the effect of PIQ, DMA, wait states, all
-            // that good stuff. For now during initial development we're going to assume an average instruction cost of 8** 7
-            // even cycles keeps the BIOS PIT test from working!
-            cycles_elapsed += fake_cycles;
-            self.cpu_cycles += fake_cycles as u64;
+            else {
+                // CPU in error won't report cycles
+                break;
+            }
+
+            cycles_elapsed += cpu_cycles;
+            self.cpu_cycles += cpu_cycles as u64;
         }
     }
 
@@ -664,4 +834,7 @@ impl Machine {
         //self.debug_snd_file.write(&average.to_be_bytes()).expect("Error writing to debug sound file");
                 
     }
+
+
+
 }

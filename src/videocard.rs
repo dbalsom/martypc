@@ -37,18 +37,9 @@ use std::collections::HashMap;
 
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
 
-pub type VideoCardState = HashMap<String, Vec<(String,String)>>;
+use crate::config::VideoType;
 
-/// All Video card types (Allow future expansion)
-#[allow (dead_code)]
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug)]
-pub enum VideoType {
-    MDA,
-    CGA,
-    EGA,
-    VGA
-}
+pub type VideoCardState = HashMap<String, Vec<(String,String)>>;
 
 /// All valid graphics modes for CGA, EGA and VGA Cards
 #[allow (dead_code)] 
@@ -126,6 +117,9 @@ pub trait VideoCard {
 
     /// Returns the currently configured DisplayMode
     fn get_display_mode(&self) -> DisplayMode;
+
+    // Returns a slice of u8 representing video memory
+    //fn get_vram(&self) -> &[u8];
 
     fn get_display_extents(&self) -> (u32, u32);
 

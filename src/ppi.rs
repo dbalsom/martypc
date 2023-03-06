@@ -8,9 +8,8 @@
 */
 #![allow(dead_code)]
 
+use crate::config::{MachineType, VideoType};
 use crate::io::{IoDevice};
-use crate::machine::MachineType;
-use crate::videocard::VideoType;
 use crate::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
@@ -19,7 +18,7 @@ pub const PPI_PORT_C: u16 = 0x62;
 pub const PPI_COMMAND_PORT: u16 = 0x63;
 
 pub const KB_RESET_CYCLES: u32 = 47700;
-pub const KB_RESET_CYCLE_DELAY: u32 = 50; // Cycles until reset byte is sent after reset
+pub const KB_RESET_CYCLE_DELAY: u32 = 150; // Cycles until reset byte is sent after reset
 
 // Dipswitch information from
 // http://www.minuszerodegrees.net/5150/misc/5150_motherboard_switch_settings.htm
@@ -150,11 +149,17 @@ impl Ppi {
             machine_type,
             port_a_mode: match machine_type {
                 MachineType::IBM_PC_5150 => PortAMode::SwitchBlock1,
-                MachineType::IBM_XT_5160 => PortAMode::KeyboardByte
+                MachineType::IBM_XT_5160 => PortAMode::KeyboardByte,
+                _ => {
+                    panic!("Machine type: {:?} has no PPI", machine_type);
+                }
             },
             port_c_mode: match machine_type {
                 MachineType::IBM_PC_5150 => PortCMode::Switch2OneToFour,
-                MachineType::IBM_XT_5160 => PortCMode::Switch1FiveToEight
+                MachineType::IBM_XT_5160 => PortCMode::Switch1FiveToEight,
+                _ => {
+                    panic!("Machine type: {:?} has no PPI", machine_type);
+                }
             },
             kb_clock_low: false,
             kb_counting_low: false,
@@ -288,6 +293,9 @@ impl Ppi {
                 }
                 self.port_a_mode = PortAMode::KeyboardByte;
             }
+            _ => {
+                panic!("Invalid model type for PPI");
+            }
         }
 
         // Handle keyboard clock line bit for either 5150 or 5160
@@ -405,7 +413,7 @@ impl Ppi {
                 self.kb_count_until_reset_byte = 0;
                 self.kb_resets_counter += 1;
 
-                //log::trace!("PPI: Sending keyboard reset byte");
+                log::trace!("PPI: Sending keyboard reset byte");
                 self.kb_byte = 0xAA;
                 // Bios KB check expects a reset byte to generate a KB interrupt
                 pic.request_interrupt(1);

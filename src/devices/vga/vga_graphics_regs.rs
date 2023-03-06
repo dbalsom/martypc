@@ -6,7 +6,7 @@
 */
 
 use modular_bitfield::prelude::*;
-use crate::vga::VGACard;
+use crate::vga::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum GraphicsRegister {
@@ -38,6 +38,7 @@ pub struct GModeRegister {
     #[bits = 1]
     pub read_mode: ReadMode,
     pub odd_even: bool,
+    #[bits = 2]
     pub shift_mode: ShiftMode,
     #[skip]
     unused: B1
@@ -47,6 +48,7 @@ pub struct GModeRegister {
 pub struct GMiscellaneousRegister {
     pub graphics_mode: bool,    
     pub chain_odd_maps: bool,
+    #[bits = 2]
     pub memory_map: MemoryMap,
     #[skip]
     unused: B4
@@ -60,7 +62,7 @@ pub enum MemoryMap {
     B8000_32K
 }
 
-#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, PartialEq, BitfieldSpecifier)]
 pub enum RotateFunction {
     Unmodified,
     And,
@@ -90,7 +92,7 @@ pub enum ShiftMode {
     Reserved
 }
 
-impl VGACard {
+impl<'a> VGACard<'a> {
     /// Handle a write to one of the Graphics Position Registers.
     /// 
     /// According to IBM documentation, both these registers should be set to
@@ -128,7 +130,9 @@ impl VGACard {
             0x07 => GraphicsRegister::ColorDontCare,
             0x08 => GraphicsRegister::BitMask,
             _ => self.graphics_register_selected
-        }
+        };
+
+        trace!(self, "Write to Graphics::Address: {:02X}", self.graphics_register_address);
     }
 
     pub fn write_graphics_data(&mut self, byte: u8 ) {
@@ -136,23 +140,50 @@ impl VGACard {
             GraphicsRegister::SetReset => {
                 // Bits 0-3: Set/Reset Bits 0-3
                 self.graphics_set_reset = byte & 0x0F;
+                trace!(self, "Write to {:?}: sr: {:01X}",
+                    self.graphics_register_selected,
+                    self.graphics_set_reset
+                );                  
             }
             GraphicsRegister::EnableSetReset => {
                 // Value must be 1 to enable writing
-                self.graphics_enable_set_reset = byte;
+                self.graphics_enable_set_reset = byte & 0x0F;
+                trace!(self, "Write to {:?}: esr: {:01x}",
+                    self.graphics_register_selected,
+                    self.graphics_enable_set_reset
+                );                  
             },
             GraphicsRegister::ColorCompare => {
                 // Bits 0-3: Color Compare 0-3
                 self.graphics_color_compare = byte & 0x0F;
+                trace!(self, "Write to {:?}: cc: {:01x}",
+                    self.graphics_register_selected,
+                    self.graphics_color_compare
+                );                  
             },
             GraphicsRegister::DataRotate => {
                 // Bits 0-2: Rotate Count
                 // Bits 3-4: Function Select
                 self.graphics_data_rotate = GDataRotateRegister::from_bytes([byte]);
+
+                if byte == 0xFF {
+                    log::warn!("Invalid write to DataRotate register!");
+                }
+
+                trace!(self, "Write to {:?}:{:02X} rot: {:?} rop:{:?}",
+                    self.graphics_register_selected,
+                    byte,
+                    self.graphics_data_rotate.count(),
+                    self.graphics_data_rotate.function(),
+                );                
             },
             GraphicsRegister::ReadMapSelect => {
                 // Bits 0-2: Map Select 0-2
-                self.graphics_read_map_select = byte & 0x07;
+                self.graphics_read_map_select = byte & 0x03;
+                trace!(self, "Write to {:?}: rms: {:?}",
+                    self.graphics_register_selected,
+                    self.graphics_read_map_select
+                );                
             },
 
             GraphicsRegister::Mode => {
@@ -162,18 +193,70 @@ impl VGACard {
                 // Bit 4: Odd/Even
                 // Bit 5: Shift Register Mode
                 self.graphics_mode = GModeRegister::from_bytes([byte]);
+                trace!(self, "Write to {:?}: {:02X}",
+                    self.graphics_register_selected,
+                    byte
+                );                  
             },
             GraphicsRegister::Miscellaneous => {
                 self.graphics_micellaneous = GMiscellaneousRegister::from_bytes([byte]);
+
+                trace!(self, "Write to {:?}: gm: {:?} com:{:?} mm:{:?}",
+                    self.graphics_register_selected,
+                    self.graphics_micellaneous.graphics_mode(),
+                    self.graphics_micellaneous.chain_odd_maps(),
+                    self.graphics_micellaneous.memory_map()
+                );
             }
             GraphicsRegister::ColorDontCare => {
                 // Bits 0-3: Color Don't Care
+
+                trace!(self, "Write to {:?}: {:01X}",
+                    self.graphics_register_selected,
+                    self.graphics_color_dont_care
+                );                
                 self.graphics_color_dont_care = byte & 0x0F;
             },
             GraphicsRegister::BitMask => {
                 // Bits 0-7: Bit Mask
                 self.graphics_bitmask = byte;
+                trace!(self, "Write to {:?}: {:01X}",
+                    self.graphics_register_selected,
+                    self.graphics_bitmask
+                );                   
             },
         }
+    }
+
+    pub fn read_graphics_data(&self) -> u8 {
+        match self.graphics_register_selected {
+            GraphicsRegister::SetReset => {
+                self.graphics_set_reset
+            }
+            GraphicsRegister::EnableSetReset => {
+                self.graphics_enable_set_reset     
+            },
+            GraphicsRegister::ColorCompare => {
+                self.graphics_color_compare
+            },
+            GraphicsRegister::DataRotate => {
+                self.graphics_data_rotate.bytes[0]
+            },
+            GraphicsRegister::ReadMapSelect => {
+                self.graphics_read_map_select
+            },
+            GraphicsRegister::Mode => {
+                self.graphics_mode.bytes[0]
+            },
+            GraphicsRegister::Miscellaneous => {
+                self.graphics_micellaneous.bytes[0]
+            }
+            GraphicsRegister::ColorDontCare => {             
+                self.graphics_color_dont_care
+            },
+            GraphicsRegister::BitMask => {
+                self.graphics_bitmask            
+            },
+        }        
     }
 }

@@ -8,28 +8,39 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.58"
 arraydeque = "0.4.5"
-configparser = "3.0.1"
+bpaf = { version = "0.7.7", features = ["derive"] }
 cpal = "0.13.5"
-egui = { version = "0.17"}
-egui_wgpu_backend = "0.17"
-egui-winit = { version = "0.17", default-features = false, features = ["links"] }
+egui = "0.20"
+#egui_wgpu_backend = "0.17"
+egui-wgpu = "0.20"
+egui-winit = { version = "0.20", default-features = false, features = ["links"] }
 env_logger = "0.9"
 image = "0.24.2"
 lazy_static = "1.4.0"
 log = "0.4"
 md5 = "0.7.0"
 modular-bitfield = "0.11.2"
-pixels = "0.9.0"
+pixels = "0.11.0"
 rand = "0.8.5"
 regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
 ringbuf = "0.2.8"
+serde = { version = "1.0.107", features = ["derive"] }
+serde_derive = "1.0.107"
+serde_with = "2.1.0"
 serialport = "4.2.0"
+sysfs_gpio = { version = "0.6.1", optional = true }
+toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"]}
-winit = "0.26"
-winit_input_helper = "0.12"
+winit = "0.27"
+winit_input_helper = "0.13"
+
 
 [profile.dev.package."*"]
 opt-level = 3
 
+[features]
+pi_validator = ["dep:sysfs_gpio"]
+arduino_validator = []
+cpu_validator = []

@@ -5,7 +5,8 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 
-use crate::videocard::{VideoCard, VideoType, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
+use crate::config::VideoType;
+use crate::videocard::{VideoCard, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
 use crate::cga::{self, CGACard };
 use crate::bus::BusInterface;
 
@@ -266,7 +267,7 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
         (0b00, CGAPalette::RedCyanWhite(bg), false) => color_enum_to_rgba(bg), // Background color
         (0b01, CGAPalette::RedCyanWhite(_), false) => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8], // Cyan
         (0b10, CGAPalette::RedCyanWhite(_), false) => &[0xAAu8, 0x00u8, 0x00u8, 0xFFu8], // Red
-        (0b11, CGAPalette::RedCyanWhite(_), false) => &[0xAAu8, 0x55u8, 0x00u8, 0xFFu8], // Gray
+        (0b11, CGAPalette::RedCyanWhite(_), false) => &[0xAAu8, 0xAAu8, 0xAAu8, 0xFFu8], // Gray
         // Palette 2 - High Intensity
         (0b00, CGAPalette::RedCyanWhite(bg), true) => color_enum_to_rgba(bg), // Background color
         (0b01, CGAPalette::RedCyanWhite(_), true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
@@ -311,7 +312,17 @@ impl Video {
                 let char_height = video_card.get_character_height();
     
                 // Start address is multiplied by two due to 2 bytes per character (char + attr)
-                let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+
+                let video_mem;
+                match video_type {
+                    VideoType::MDA | VideoType::CGA | VideoType::EGA => {
+                        video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+                    }
+                    VideoType::VGA => {
+                        video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+                        //video_mem = video_card.get_vram();
+                    }
+                }
                 
                 // Get font info from adapter
                 let font_info = video_card.get_current_font();
@@ -1349,17 +1360,14 @@ pub fn draw_vga_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [
 
             let dst1_x_idx = draw_x * 4;
 
-            let ega_bits = vga.get_pixel_raw(draw_x, draw_y);
-
-            // High resolution mode offers the entire 64 color palette
-            let color = get_ega_gfx_color64(ega_bits);
-
+            let rgba = vga.get_pixel(draw_x, draw_y);
+            
             let draw_offset = (dst1_y_idx + dst1_x_idx) as usize;
             if draw_offset + 3 < frame.len() {
-                frame[draw_offset + 0] = color[0];
-                frame[draw_offset + 1] = color[1];
-                frame[draw_offset + 2] = color[2];
-                frame[draw_offset + 3] = color[3];
+                frame[draw_offset + 0] = rgba[0];
+                frame[draw_offset + 1] = rgba[1];
+                frame[draw_offset + 2] = rgba[2];
+                frame[draw_offset + 3] = rgba[3];
             }
         }
     }

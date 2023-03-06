@@ -1,6 +1,7 @@
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Mnemonic {
     InvalidOpcode,
+    NoOpcode,
     NOP,
     AAA,
     AAD,
@@ -91,6 +92,8 @@ pub enum Mnemonic {
     SBB,
     SCASB,
     SCASW,
+    SETMO,
+    SETMOC,
     SHL,
     SHR,
     STC,

@@ -138,8 +138,8 @@ impl EGACard {
                 self.graphics_set_reset = byte & 0x0F;
             }
             GraphicsRegister::EnableSetReset => {
-                // Value must be 1 to enable writing
-                self.graphics_enable_set_reset = byte;
+                // Bits 0-3: Enable Set/Reset Bits 0-3
+                self.graphics_enable_set_reset = byte & 0x0F;
             },
             GraphicsRegister::ColorCompare => {
                 // Bits 0-3: Color Compare 0-3

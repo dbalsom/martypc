@@ -3,10 +3,11 @@
 use std::collections::HashMap;
 
 use log;
+
+use crate::config::VideoType;
 use crate::io::{IoBusInterface, IoDevice};
 use crate::videocard::{
     VideoCard,
-    VideoType,
     DisplayMode,
     CursorInfo,
     FontInfo,
@@ -446,7 +447,7 @@ impl CGACard {
     }
 
     fn handle_cc_register_write(&mut self, data: u8) {
-        log::trace!("Write to color control register: {:02X}", data);
+        //log::trace!("Write to color control register: {:02X}", data);
         self.cc_register = data;
     }
 

@@ -1,7 +1,7 @@
-use crate::cpu::*;
-use crate::cpu::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::*;
+use crate::cpu_808x::cpu_mnemonic::Mnemonic;
 
-impl Cpu {
+impl<'a> Cpu<'a> {
 
     pub(crate) fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {
 
@@ -212,11 +212,15 @@ impl Cpu {
         let result: u8;
         let carry: bool;
 
+        /*
         // All processors after 8086 mask the rotation count to 5 bits (31 maximum)
         let rot_count = match self.cpu_type {
             CpuType::Cpu8088 | CpuType::Cpu8086 => operand2,
             _=> operand2 & 0x1F
         };
+        */
+
+        let rot_count = operand2;
 
         match opcode {
             Mnemonic::ROL => {
@@ -261,6 +265,33 @@ impl Cpu {
                 (result, carry) = Cpu::rcr_u8_with_carry(operand1, rot_count, existing_carry);
                 self.set_flag_state(Flag::Carry, carry);
             }
+            Mnemonic::SETMO => {
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::AuxCarry);
+                self.clear_flag(Flag::Zero);
+                self.clear_flag(Flag::Overflow);
+
+                self.set_flag(Flag::Parity);
+                self.set_flag(Flag::Sign);
+
+                result = 0xFF;
+            }
+            Mnemonic::SETMOC => {
+
+                if self.cl != 0 {
+                    self.clear_flag(Flag::Carry);
+                    self.clear_flag(Flag::AuxCarry);
+                    self.clear_flag(Flag::Zero);
+                    self.clear_flag(Flag::Overflow);
+
+                    self.set_flag(Flag::Parity);
+                    self.set_flag(Flag::Sign);
+                    result = 0xFF;
+                }
+                else {
+                    result = operand1;
+                }
+            }            
             Mnemonic::SHL => {
                 (result, carry) = Cpu::shl_u8_with_carry(operand1, operand2);
                 // Set state of Carry Flag
@@ -273,7 +304,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, (operand1 & 0xC0 == 0x80) || (operand1 & 0xC0 == 0x40));
                 }
                 
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SHR => {
                 (result, carry) = Cpu::shr_u8_with_carry(operand1, operand2);
@@ -286,7 +317,7 @@ impl Cpu {
                     // so set overflow flag if it was set. 
                     self.set_flag_state(Flag::Overflow, operand1 & 0x80 != 0 );
                 }
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SAR => {
                 (result, carry) = Cpu::sar_u8_with_carry(operand1, operand2);
@@ -298,7 +329,7 @@ impl Cpu {
                 if operand2 == 1 {
                     self.clear_flag(Flag::Overflow);
                 }
-                self.set_flags_from_result_u8(result);
+                self.set_szp_flags_from_result_u8(result);
             }
             _=> panic!("Invalid opcode provided to bitshift_op8()")
         }
@@ -319,11 +350,15 @@ impl Cpu {
         let result: u16;
         let carry: bool;
 
+        /*
         // All processors after 8086 mask the rotation count to 5 bits (31 maximum)
         let rot_count = match self.cpu_type {
             CpuType::Cpu8088 | CpuType::Cpu8086 => operand2,
             _=> operand2 & 0x1F
         };
+        */
+
+        let rot_count = operand2;
 
         match opcode {
             Mnemonic::ROL => {
@@ -384,6 +419,33 @@ impl Cpu {
                 // The rcr instruction does not affect the zero, sign, parity, or auxiliary carry flags.
                 // AoA 6.6.3.2
             }
+            Mnemonic::SETMO => {
+                self.clear_flag(Flag::Carry);
+                self.clear_flag(Flag::AuxCarry);
+                self.clear_flag(Flag::Zero);
+                self.clear_flag(Flag::Overflow);
+
+                self.set_flag(Flag::Parity);
+                self.set_flag(Flag::Sign);
+
+                result = 0xFFFF;
+            }
+            Mnemonic::SETMOC => {
+
+                if self.cl != 0 {
+                    self.clear_flag(Flag::Carry);
+                    self.clear_flag(Flag::AuxCarry);
+                    self.clear_flag(Flag::Zero);
+                    self.clear_flag(Flag::Overflow);
+
+                    self.set_flag(Flag::Parity);
+                    self.set_flag(Flag::Sign);
+                    result = 0xFFFF;
+                }
+                else {
+                    result = operand1;
+                }
+            }            
             Mnemonic::SHL => {
                 (result, carry) = Cpu::shl_u16_with_carry(operand1, operand2);
                 // Set state of Carry Flag
@@ -395,7 +457,7 @@ impl Cpu {
                     // and overflow should be set
                     self.set_flag_state(Flag::Overflow, (operand1 & 0xC000 == 0x8000) || (operand1 & 0xC000 == 0x4000));
                 }
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SHR => {
                 (result, carry) = Cpu::shr_u16_with_carry(operand1, operand2);
@@ -408,7 +470,7 @@ impl Cpu {
                     // so set overflow flag if it was set. 
                     self.set_flag_state(Flag::Overflow, operand1 & 0x8000 != 0 );
                 }
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SAR => {
                 (result, carry) = Cpu::sar_u16_with_carry(operand1, operand2);
@@ -420,7 +482,7 @@ impl Cpu {
                 if operand2 == 1 {
                     self.clear_flag(Flag::Overflow);
                 }
-                self.set_flags_from_result_u16(result);
+                self.set_szp_flags_from_result_u16(result);
             }
             _=> panic!("Invalid opcode provided to bitshift_op16()")
         }

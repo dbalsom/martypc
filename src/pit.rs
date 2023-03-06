@@ -7,7 +7,7 @@ use log;
 
 use crate::io::{IoBusInterface, IoDevice};
 use crate::bus::{BusInterface};
-use crate::cpu::CPU_MHZ;
+use crate::cpu_808x::CPU_MHZ;
 use crate::pic;
 use crate::dma;
 use crate::ppi;
@@ -281,6 +281,14 @@ impl ProgrammableIntervalTimer {
             ChannelMode::InterruptOnTerminalCount | ChannelMode::SoftwareTriggeredStrobe => true,
             _ => false,
         };
+
+        match channel.mode {
+            ChannelMode::InterruptOnTerminalCount => {
+                // Reset output on port write
+                channel.output_is_high = false; 
+            }
+            _=> {}
+        }
 
         match channel.access_mode {
             AccessMode::LoByteOnly => {

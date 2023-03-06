@@ -6,7 +6,7 @@
 */
 
 use modular_bitfield::prelude::*;
-use crate::vga::VGACard;
+use crate::vga::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SequencerRegister {
@@ -72,7 +72,7 @@ pub enum DotClock {
     HalfClock,
 }
 
-impl VGACard {
+impl<'a> VGACard<'a> {
     /// Handle a write to the Sequencer Address register.
     /// 
     /// The value written to this register controls which regsiter will be written to
@@ -89,7 +89,8 @@ impl VGACard {
             0x03 => SequencerRegister::CharacterMapSelect,
             0x04 => SequencerRegister::MemoryMode,
             _ => {
-                log::debug!("Select to invalid sequencer register: {:02X}", byte);
+                trace!(self, "Select to invalid sequencer register: {:02X}", byte);
+                log::warn!("Select to invalid sequencer register: {:02X}", byte);
                 self.sequencer_register_selected
             } 
         }
@@ -103,15 +104,25 @@ impl VGACard {
         match self.sequencer_register_selected {
             SequencerRegister::Reset => {
                 self.sequencer_reset = byte & 0x03;
+
+                trace!(self, "Write to Sequencer::Reset register: {:02X}", byte);
                 log::trace!("Write to Sequencer::Reset register: {:02X}", byte);
+
+                // expirmental: reset latches?
+                //for i in 0..4 {
+                //    self.planes[i].latch = 0x00;
+                //}
             }
             SequencerRegister::ClockingMode => {
                 self.sequencer_clocking_mode = SClockingModeRegister::from_bytes([byte]);
+
+                trace!(self, "Write to Sequencer::ClockingMode register: {:02X}", byte);
                 log::trace!("Write to Sequencer::ClockingMode register: {:02X}", byte);
             }
             SequencerRegister::MapMask => {
                 self.sequencer_map_mask = byte & 0x0F;
                 // Warning: noisy
+                trace!(self, "Write to Sequencer::MapMask register: {:02X}", byte);
                 //log::trace!("Write to Sequencer::MapMask register: {:02X}", byte);
             }
             SequencerRegister::CharacterMapSelect => {
@@ -121,11 +132,14 @@ impl VGACard {
                     self.sequencer_character_map_select.select_generator_a() as u8 | self.sequencer_character_map_select.sah_bit() << 2;
                 self.sequencer_character_map_b = 
                     self.sequencer_character_map_select.select_generator_b() as u8 | self.sequencer_character_map_select.sbh_bit() << 2;                                   
-
+                
+                trace!(self, "Write to Sequencer::CharacterMapSelect register: {:02X}", byte);
                 log::trace!("Write to Sequencer::CharacterMapSelect register: {:02X}", byte);
             }
             SequencerRegister::MemoryMode => {
                 self.sequencer_memory_mode = SMemoryMode::from_bytes([byte]);
+
+                trace!(self, "Write to Sequencer::MemoryMode register: {:02X}", byte);
                 log::trace!("Write to Sequencer::MemoryMode register: {:02X}", byte);
             }
         }
