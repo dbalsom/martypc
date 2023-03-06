@@ -1,4 +1,5 @@
-![pc_pixel2x](https://user-images.githubusercontent.com/7229541/176571877-ead7fb9c-0a83-41b1-8c51-ff8deeea7c5f.png)
+![pc_logo_with_text2x](https://user-images.githubusercontent.com/7229541/222998120-88c8a230-8968-457e-87a8-843cb0a8045a.png)
+
 # Marty 
 
 ## Introduction
