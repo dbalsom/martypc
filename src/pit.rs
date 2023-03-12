@@ -3,12 +3,14 @@
     Implement the Intel 8253 Programmable Interval Timer
 */
 
+#![allow(dead_code)]
+
 use log;
 
 use std::collections::BTreeMap;
 
-use crate::io::{IoBusInterface, IoDevice};
-use crate::bus::{BusInterface};
+use crate::io::IoDevice;
+use crate::bus::BusInterface;
 use crate::cpu_808x::CPU_MHZ;
 use crate::pic;
 use crate::dma;
@@ -357,7 +359,7 @@ impl ProgrammableIntervalTimer {
         match channel.access_mode {
             AccessMode::LoByteOnly => {
 
-                dirty_update_checked!(channel.reload_value, (data as u16), channel.reload_value_dirty);
+                dirty_update_checked!(channel.reload_value, data as u16, channel.reload_value_dirty);
                 //channel.reload_value = data as u16;
 
                 if channel.waiting_for_reload || reload_immediately {
@@ -373,7 +375,7 @@ impl ProgrammableIntervalTimer {
                 }
             }
             AccessMode::HiByteOnly => {
-                dirty_update_checked!(channel.reload_value, ((data as u16) << 8), channel.reload_value_dirty);
+                dirty_update_checked!(channel.reload_value, (data as u16) << 8, channel.reload_value_dirty);
                 //channel.reload_value = (data as u16) << 8;
                 
                 if channel.waiting_for_reload || reload_immediately {
@@ -412,7 +414,7 @@ impl ProgrammableIntervalTimer {
                 else {
                     // Receiving lo byte
                     
-                    dirty_update_checked!(channel.reload_value, (data as u16), channel.reload_value_dirty);
+                    dirty_update_checked!(channel.reload_value, data as u16, channel.reload_value_dirty);
                     //channel.reload_value = data as u16;
                     channel.waiting_for_hibyte = true;
                 }
@@ -835,6 +837,8 @@ impl ProgrammableIntervalTimer {
         }
     }
 
+    // TODO: Remove this if no longer needed
+    #[allow(dead_code)]
     pub fn get_string_state(&mut self, clean: bool) -> PitStringState {
         let state = PitStringState {
             c0_value:           SyntaxToken::StateString(format!("{:06}", self.channels[0].current_count), self.channels[0].current_count_dirty, 0),

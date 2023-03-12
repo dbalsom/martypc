@@ -155,7 +155,7 @@ impl TokenListView {
     pub fn measure_token(&self, ui: &mut Ui, token: &SyntaxToken, fontid: FontId ) -> Rect {
 
         let old_clip_rect = ui.clip_rect();
-        let old_cursor = ui.cursor();
+        //let old_cursor = ui.cursor();
         ui.set_clip_rect(Rect::NOTHING);
         let r = ui.painter().text(
             egui::pos2(0.0, 0.0),
@@ -251,7 +251,7 @@ impl TokenListView {
 
                         let drawn;
                         match token {
-                            SyntaxToken::MemoryAddressFlat(addr, s) => {
+                            SyntaxToken::MemoryAddressFlat(_addr, s) => {
                                 text_rect = ui.painter().text(
                                     egui::pos2(token_x, y),
                                     egui::Align2::LEFT_TOP,

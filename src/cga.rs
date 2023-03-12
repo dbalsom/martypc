@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use log;
 
 use crate::config::VideoType;
-use crate::io::{IoBusInterface, IoDevice};
+use crate::io::{IoDevice};
 use crate::videocard::{
     VideoCard,
     VideoCardStateEntry,
@@ -455,11 +455,13 @@ macro_rules! push_reg_str {
     };
 }
 
+/*
 macro_rules! push_reg_str_bin8 {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
         $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
     };
 }
+*/
 
 macro_rules! push_reg_str_enum {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
@@ -687,15 +689,15 @@ impl VideoCard for CGACard {
         log::debug!("Resetting")
     }
 
-    fn get_pixel(&self, x: u32, y:u32) -> &[u8] {
+    fn get_pixel(&self, _x: u32, _y:u32) -> &[u8] {
         &DUMMY_PIXEL
     }
 
-    fn get_pixel_raw(&self, x: u32, y:u32) -> u8 {
+    fn get_pixel_raw(&self, _x: u32, _y:u32) -> u8 {
         0
     }
 
-    fn get_plane_slice(&self, plane: usize) -> &[u8] {
+    fn get_plane_slice(&self, _plane: usize) -> &[u8] {
         &DUMMY_PLANE
     }
 

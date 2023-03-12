@@ -277,7 +277,7 @@ impl ArduinoValidator {
         let cpu_client = match CpuClient::init() {
             Ok(client) => client,
             Err(e) => {
-                panic!("Failed to initialize ArduinoValidator");
+                panic!("Failed to initialize ArduinoValidator: {}", e);
             }
         };
 
@@ -651,9 +651,9 @@ impl RemoteCpu {
     pub fn cycle(
         &mut self,
         instr: &[u8],
-        emu_prefetch: &Vec<BusOp>,
+        _emu_prefetch: &Vec<BusOp>,
         emu_mem_ops: &Vec<BusOp>,
-        cpu_prefetch: &mut Vec<BusOp>, 
+        _cpu_prefetch: &mut Vec<BusOp>, 
         cpu_mem_ops: &mut Vec<BusOp>
     ) -> Result<CycleState, ValidatorError> {
 
@@ -1206,7 +1206,7 @@ impl CpuValidator for ArduinoValidator {
             return;
         }
         */
-        if (self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize]) {
+        if self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize] {
             self.current_frame.discard = true;
         }
 
@@ -1221,7 +1221,7 @@ impl CpuValidator for ArduinoValidator {
         name: String, 
         instr: &[u8], 
         has_modrm: bool, 
-        cycles: i32, 
+        _cycles: i32, 
         regs: &VRegisters,
         emu_states: &Vec<CycleState>,
     ) -> Result<bool, ValidatorError>  {
@@ -1246,7 +1246,7 @@ impl CpuValidator for ArduinoValidator {
 
         // Scan through prefix bytes to find opcode
         loop {
-            let mut instr_byte = instr[i];
+            let instr_byte = instr[i];
             match instr_byte {
                 0x26 | 0x2E | 0x36 | 0x3E | 0xF0 | 0xF2 | 0xF3 => {
                     i += 1;

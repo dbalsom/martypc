@@ -1,4 +1,4 @@
-use crate::egui::{GuiState, GuiEvent};
+use crate::egui::{GuiState, GuiWindow, GuiEvent};
 
 
 impl GuiState {
@@ -9,11 +9,11 @@ impl GuiState {
 
             ui.menu_button("Emulator", |ui| {
                 if ui.button("Performance...").clicked() {
-                    self.perf_viewer_open = true;
+                    *self.window_flag(GuiWindow::PerfViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("About...").clicked() {
-                    self.about_window_open = true;
+                    *self.window_flag(GuiWindow::About) = true;
                     ui.close_menu();
                 }                    
             });
@@ -69,7 +69,7 @@ impl GuiState {
                 });                               
 
                 if ui.button("Create new VHD...").clicked() {
-                    self.vhd_creator_open = true;
+                    *self.window_flag(GuiWindow::VHDCreator) = true;
                     ui.close_menu();
                 };
                 
@@ -86,47 +86,47 @@ impl GuiState {
                     }                        
                 });
                 if ui.button("CPU Control...").clicked() {
-                    self.cpu_control_dialog_open = true;
+                    *self.window_flag(GuiWindow::CpuControl) = true;
                     ui.close_menu();
                 }
                 if ui.button("Memory...").clicked() {
-                    self.memory_viewer_open = true;
+                    *self.window_flag(GuiWindow::MemoryViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("Registers...").clicked() {
-                    self.register_viewer_open = true;
+                    *self.window_flag(GuiWindow::RegisterViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("Instruction Trace...").clicked() {
-                    self.trace_viewer_open = true;
+                    *self.window_flag(GuiWindow::TraceViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("Call Stack...").clicked() {
-                    self.call_stack_open = true;
+                    *self.window_flag(GuiWindow::CallStack) = true;
                     ui.close_menu();
                 }                    
                 if ui.button("Disassembly...").clicked() {
-                    self.disassembly_viewer_open = true;
+                    *self.window_flag(GuiWindow::DiassemblyViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("PIC...").clicked() {
-                    self.pic_viewer_open = true;
+                    *self.window_flag(GuiWindow::PicViewer) = true;
                     ui.close_menu();
                 }    
                 if ui.button("PIT...").clicked() {
-                    self.pit_viewer_open = true;
+                    *self.window_flag(GuiWindow::PitViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("PPI...").clicked() {
-                    self.ppi_viewer_open = true;
+                    *self.window_flag(GuiWindow::PpiViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("DMA...").clicked() {
-                    self.dma_viewer_open = true;
+                    *self.window_flag(GuiWindow::DmaViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("Video Card...").clicked() {
-                    self.videocard_viewer_open = true;
+                    *self.window_flag(GuiWindow::VideoCardViewer) = true;
                     ui.close_menu();
                 }
             

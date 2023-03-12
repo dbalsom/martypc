@@ -222,7 +222,7 @@ impl ModRmByte {
 
     /// Read the modrm byte and look up the appropriate value from the modrm table.
     /// Load any displacement, then return modrm struct and size of modrm + displacement.
-    pub fn read(bytes: &mut impl ByteQueue, seg_override: SegmentOverride ) -> (ModRmByte, u32) {
+    pub fn read(bytes: &mut impl ByteQueue) -> (ModRmByte, u32) {
 
         let byte = bytes.q_read_u8(QueueType::Subsequent);
         let mut modrm = MODRM_TABLE[byte as usize];

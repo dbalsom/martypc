@@ -73,7 +73,7 @@ impl<'a> Cpu<'a> {
         let mut operand1_size: OperandSize = OperandSize::NoOperand;
         let mut operand2_size: OperandSize = OperandSize::NoOperand;
 
-        let op_address = bytes.tell() as u32;
+        //let op_address = bytes.tell() as u32;
         bytes.clear_delay();
 
         let mut opcode = bytes.q_read_u8(QueueType::First);
@@ -81,10 +81,10 @@ impl<'a> Cpu<'a> {
 
         let mut mnemonic;
 
-        let mut operand1_template = OperandTemplate::NoTemplate;
-        let mut operand2_template = OperandTemplate::NoTemplate;
+        let mut operand1_template;
+        let mut operand2_template;
         
-        let mut op_flags: u32 = 0;
+        let mut op_flags: u32;
         let mut op_prefixes: u32 = 0;
         let mut op_segment_override = SegmentOverride::None;
         let mut loaded_modrm = false;
@@ -320,7 +320,7 @@ impl<'a> Cpu<'a> {
 
             // All group instructions have a modrm w/ op extension. Load the modrm now.
             let modrm_len;
-            (modrm, modrm_len) = ModRmByte::read(bytes, op_segment_override);
+            (modrm, modrm_len) = ModRmByte::read(bytes);
             size += modrm_len;
 
             loaded_modrm = true;
@@ -454,7 +454,7 @@ impl<'a> Cpu<'a> {
         if !loaded_modrm && (load_modrm_op1 | load_modrm_op2) {
             op_flags |= I_HAS_MODRM;
             let modrm_len;
-            (modrm, modrm_len) = ModRmByte::read(bytes, op_segment_override);
+            (modrm, modrm_len) = ModRmByte::read(bytes);
             size += modrm_len;
             loaded_modrm = true;
         }

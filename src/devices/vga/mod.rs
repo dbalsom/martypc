@@ -46,6 +46,7 @@ use vga_attribute_regs::*;
 use vga_crtc_regs::*;
 use vga_graphics_regs::*;
 use vga_sequencer_regs::*;
+#[allow(unused_imports)]
 use vga_color_regs::*;
 
 pub const VGA_CLOCK_1: f32 = 25.175;
@@ -1267,13 +1268,13 @@ impl<'a> VideoCard for VGACard<'a> {
 
     fn get_display_extents(&self) -> (u32, u32) {
 
-        // EGA supports multiple fonts.
+        // VGA supports multiple fonts.
 
         let font_w = EGA_FONTS[self.current_font].w;
         let _font_h = EGA_FONTS[self.current_font].h;
 
         // Clock divisor effectively doubles the CRTC register values
-        let clock_divisor = match self.sequencer_clocking_mode.dot_clock() {
+        let _clock_divisor = match self.sequencer_clocking_mode.dot_clock() {
             DotClock::Native => 1,
             DotClock::HalfClock => 2
         };
@@ -1662,7 +1663,7 @@ impl<'a> VideoCard for VGACard<'a> {
         return &self.color_registers_rgba[pixel_byte as usize];
     }
 
-    fn get_pixel_raw(&self, x: u32, mut y :u32) -> u8 {
+    fn get_pixel_raw(&self, x: u32, y :u32) -> u8 {
         
         let mut byte = 0;
 

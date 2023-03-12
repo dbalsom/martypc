@@ -248,9 +248,6 @@ impl EGACard {
                 self.crtc_line_compare &= 0xFF00;
                 self.crtc_line_compare |= byte as u16;
             }
-            _ => {
-                log::debug!("Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
-            }
         }
         self.recalculate_mode();
     }

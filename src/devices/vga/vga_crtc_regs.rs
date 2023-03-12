@@ -397,10 +397,6 @@ impl<'a> VGACard<'a> {
                 self.crtc_line_compare &= 0xFF00;
                 self.crtc_line_compare |= byte as u16;
             }
-            _ => {
-                trace!(self, "Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
-                log::debug!("Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
-            }
         }
         self.recalculate_mode();
         self.recalculate_timings();
@@ -547,11 +543,7 @@ impl<'a> VGACard<'a> {
             CRTCRegister::StartVerticalBlank => (self.crtc_start_vertical_blank & 0xFF) as u8,
             CRTCRegister::EndVerticalBlank => self.crtc_end_vertical_blank,
             CRTCRegister::ModeControl => self.crtc_mode_control.into_bytes()[0],
-            CRTCRegister::LineCompare => (self.crtc_line_compare & 0xFF) as u8,
-            _ => {
-                log::debug!("Read from unsupported CRTC register: {:?}", self.crtc_register_selected);
-                0
-            }                    
+            CRTCRegister::LineCompare => (self.crtc_line_compare & 0xFF) as u8,                   
         }
     }
 

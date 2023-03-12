@@ -18,7 +18,7 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
+//use rand::rngs::StdRng;
 
 use crate::cpu_808x::*;
 
@@ -42,7 +42,7 @@ impl<'a> Cpu<'a> {
         if seed == 0 {
             seed = RNG_SEED;
         }
-        self.rng = Some(rand::rngs::StdRng::seed_from_u64(1234));
+        self.rng = Some(rand::rngs::StdRng::seed_from_u64(seed));
     }
 
     pub fn randomize_regs(&mut self) {

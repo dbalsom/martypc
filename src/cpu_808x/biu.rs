@@ -266,7 +266,7 @@ impl<'a> Cpu<'a> {
     /// This is used to support worthless instructions like pop cs and mov cs, r/m16.
     pub fn biu_update_cs(&mut self, new_cs: u16) {
 
-        let pc_offset = (self.pc.wrapping_sub(((self.cs as u32) << 4))) as u16;
+        let pc_offset = (self.pc.wrapping_sub((self.cs as u32) << 4)) as u16;
 
         self.pc = Cpu::calc_linear_address(new_cs, pc_offset);
         self.cs = new_cs;

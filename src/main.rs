@@ -2,7 +2,7 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    fs::{File, read},
+    fs::File,
     time::{Duration, Instant},
     cell::RefCell,
     rc::Rc,
@@ -13,7 +13,7 @@ use std::{
 use crate::egui::Framework;
 
 use log::error;
-use pixels::{Error, Pixels, SurfaceTexture};
+use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::{
     Event, 
@@ -74,7 +74,7 @@ mod arduino8088_client;
 mod arduino8088_validator;
 
 use breakpoints::BreakPointType;
-use config::{ConfigFileParams, MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
+use config::*;
 use machine::{Machine, ExecutionState};
 use cpu_808x::{Cpu, CpuAddress};
 use rom_manager::{RomManager, RomError, RomFeature};
@@ -82,11 +82,11 @@ use floppy_manager::{FloppyManager, FloppyError};
 use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use bytequeue::ByteQueue;
-use crate::egui::GuiEvent;
+use crate::egui::{GuiEvent, GuiWindow};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
 
-use io::{IoHandler, IoBusInterface};
+use io::{IoBusInterface};
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -118,6 +118,7 @@ struct Counter {
 
     fps: u32,
     last_frame: Instant,
+    #[allow (dead_code)]
     last_sndbuf: Instant,
     last_second: Instant,
     last_cpu_cycles: u64,
@@ -224,7 +225,7 @@ fn main() {
         Ok(config) => config,
         Err(e) => {
             match e.downcast_ref::<std::io::Error>() {
-                Some(ref e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     eprintln!("Configuration file not found! Please create marty.toml in the emulator directory \
                                or provide the path to configuration file with --configfile.");
 
@@ -426,7 +427,7 @@ fn main() {
     // The cpal sound library uses generics to initialize depending on the SampleFormat type.
     // On Windows at least a sample type of f32 is typical, but just in case...
     let sample_fmt = SoundPlayer::get_sample_format();
-    let mut sp = match sample_fmt {
+    let sp = match sample_fmt {
         cpal::SampleFormat::F32 => SoundPlayer::new::<f32>(),
         cpal::SampleFormat::I16 => SoundPlayer::new::<i16>(),
         cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(),
@@ -812,7 +813,9 @@ fn main() {
                             video_data.aspect_h = new_height;
 
                             pixels.get_frame_mut().fill(0);
-                            pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h);
+                            if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
+                                log::error!("Failed to resize pixel pixel buffer: {}", e);
+                            }
                         }
                     }
 
@@ -844,7 +847,7 @@ fn main() {
                     // Any errors?
                     if let Some(err) = machine.get_error_str() {
                         framework.gui.show_error(err);
-                        framework.gui.show_disassembly_view();
+                        framework.gui.show_window(GuiWindow::DiassemblyViewer);
                     }
 
                     // Handle custom user events received from our gui windows
@@ -890,9 +893,9 @@ fn main() {
                                         }
                                     } 
                                     Err(e) => {
-                                        log::error!("Failed to load floppy image! {:?}", filename);
+                                        log::error!("Failed to load floppy image: {:?} Error: {}", filename, e);
                                         // TODO: Some sort of GUI indication of failure
-                                        eprintln!("Failed to read floppy image file: {:?}", filename);
+                                        eprintln!("Failed to read floppy image file: {:?} Error: {}", filename, e);
                                     }
                                 }                                
                             }
@@ -1097,7 +1100,7 @@ fn main() {
                         // The behavior of the viewer will differ slightly depending on whether we have segment:offset 
                         // information. Wrapping of segments can't be detected if the expression evaluates to a flat
                         // address.
-                        let mut start_addr = machine.cpu().eval_address(start_addr_str);
+                        let start_addr = machine.cpu().eval_address(start_addr_str);
                         let start_addr_flat: u32 = match start_addr {
                             Some(i) => i.into(),
                             None => 0
@@ -1249,8 +1252,8 @@ use crate::cpu_808x::mnemonic::Mnemonic;
 #[cfg(feature = "cpu_validator")]
 pub fn main_fuzzer <'a>(
     config: &ConfigFileParams,
-    rom_manager: RomManager,
-    floppy_manager: FloppyManager
+    _rom_manager: RomManager,
+    _floppy_manager: FloppyManager
 ) {
 
     let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
@@ -1269,7 +1272,7 @@ pub fn main_fuzzer <'a>(
     }
 
     let mut io_bus = IoBusInterface::new();
-    let mut pic = Rc::new(RefCell::new(pic::Pic::new()));    
+    let pic = Rc::new(RefCell::new(pic::Pic::new()));    
 
     let mut cpu = Cpu::new(
         CpuType::Cpu8088,
@@ -1279,7 +1282,7 @@ pub fn main_fuzzer <'a>(
         config.validator.vtype.unwrap()
     );
 
-    cpu.randomize_seed(0);
+    cpu.randomize_seed(1234);
     cpu.randomize_mem();
 
     let mut test_num = 0;

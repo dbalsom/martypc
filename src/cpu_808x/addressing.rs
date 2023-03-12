@@ -183,13 +183,13 @@ impl<'a> Cpu<'a> {
     pub fn read_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<u8> {
 
         match operand {
-            OperandType::Immediate8(imm8) => {
+            OperandType::Immediate8(_imm8) => {
                 // Immediate value was peeked during instruction decode, but we have to fetch it now.
                 let byte = self.q_read_u8(QueueType::Subsequent);
                 //assert!(byte == imm8); // Fetched value should match peeked value (this can fail with self-modifying code)
                 Some(byte)
             }
-            OperandType::Immediate8s(imm8s) => {
+            OperandType::Immediate8s(_imm8s) => {
                 // Immediate value was peeked during instruction decode, but we have to fetch it now.
                 let byte = self.q_read_i8(QueueType::Subsequent);
                 //assert!(byte == imm8s); // Fetched value should match peeked value
@@ -216,7 +216,7 @@ impl<'a> Cpu<'a> {
                 }
             },
             OperandType::AddressingMode(mode) => {
-                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 let byte = self.biu_read_u8(segment, flat_addr);
                 self.cycles_i(2, &[0x1e2, MC_NONE]); // Return delay cycle from EALOAD
@@ -266,7 +266,7 @@ impl<'a> Cpu<'a> {
                 }
             },
             OperandType::AddressingMode(mode) => {
-                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);             
                 self.cycles_i(2, &[0x1e2, MC_NONE]); // Return delay cycle from EALOAD
@@ -335,7 +335,7 @@ impl<'a> Cpu<'a> {
                     SegmentOverride::DS  => (self.ds, Segment::DS),
                 };
 
-                let flat_addr = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea);
+                //let _flat_addr = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea);
                 let flat_addr2 = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea.wrapping_add(2));
 
                 match ptr {
@@ -369,7 +369,7 @@ impl<'a> Cpu<'a> {
                 }
             },
             OperandType::AddressingMode(mode) => {
-                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 self.biu_write_u8(segment, flat_addr, value, flag);
             }
@@ -411,7 +411,7 @@ impl<'a> Cpu<'a> {
                 }
             }
             OperandType::AddressingMode(mode) => {
-                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 self.biu_write_u16(segment, flat_addr, value, flag);
             }

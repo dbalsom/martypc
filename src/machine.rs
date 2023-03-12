@@ -13,23 +13,22 @@ use std::{
     cell::{Cell, RefCell}, 
     collections::VecDeque,
     fs::File,
-    io::{BufWriter, Write},
-    
+    io::BufWriter,
 };
 
 use crate::{
     config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
     breakpoints::BreakPointType,
     bus::{BusInterface, MemRangeDescriptor, MEM_CP_BIT},
-    cga::{self, CGACard},
+    cga,
     ega::{self, EGACard},
     vga::{self, VGACard},
-    cpu_808x::{self, CpuType, Cpu, Flag, CpuError, CpuAddress, StepResult},
+    cpu_808x::{self, CpuType, Cpu, CpuError, CpuAddress, StepResult},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
     floppy_manager::{FloppyManager},
-    vhd_manager::{VHDManager},
+    vhd_manager,
     io::{IoHandler, IoBusInterface},
     mouse::Mouse,
     pit::{self, PitDisplayState},
@@ -58,6 +57,7 @@ pub enum ExecutionState {
     Halted
 }
 
+#[allow (dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum ExecutionOperation {
     None,
@@ -153,6 +153,8 @@ impl ExecutionControl {
     }    
 
 }
+
+#[allow(dead_code)]
 pub struct Machine<'a> {
     machine_type: MachineType,
     video_type: VideoType,
@@ -239,14 +241,14 @@ impl<'a> Machine<'a> {
         // Attach IO Device handlers
 
         // Intel 8259 Programmable Interrupt Controller
-        let mut pic = Rc::new(RefCell::new(pic::Pic::new()));
+        let pic = Rc::new(RefCell::new(pic::Pic::new()));
         io_bus.register_port_handler(pic::PIC_COMMAND_PORT, IoHandler::new(pic.clone()));
         io_bus.register_port_handler(pic::PIC_DATA_PORT, IoHandler::new(pic.clone()));
 
         // Intel 8255 Programmable Peripheral Interface
         // PPI Needs to know machine_type as DIP switches and thus PPI behavior are different 
         // for PC vs XT
-        let mut ppi = Rc::new(RefCell::new(ppi::Ppi::new(machine_type, video_type)));
+        let ppi = Rc::new(RefCell::new(ppi::Ppi::new(machine_type, video_type, NUM_FLOPPIES)));
         io_bus.register_port_handler(ppi::PPI_PORT_A, IoHandler::new(ppi.clone()));
         io_bus.register_port_handler(ppi::PPI_PORT_B, IoHandler::new(ppi.clone()));
         io_bus.register_port_handler(ppi::PPI_PORT_C, IoHandler::new(ppi.clone()));
@@ -254,7 +256,7 @@ impl<'a> Machine<'a> {
         
         // Intel 8253 Programmable Interval Timer
         // Ports 0x40,41,42 Data ports, 0x43 Control port
-        let mut pit = Rc::new(RefCell::new(pit::ProgrammableIntervalTimer::new()));
+        let pit = Rc::new(RefCell::new(pit::ProgrammableIntervalTimer::new()));
         io_bus.register_port_handler(pit::PIT_COMMAND_REGISTER, IoHandler::new(pit.clone()));
         io_bus.register_port_handler(pit::PIT_CHANNEL_0_DATA_PORT, IoHandler::new(pit.clone()));
         io_bus.register_port_handler(pit::PIT_CHANNEL_1_DATA_PORT, IoHandler::new(pit.clone()));
@@ -262,7 +264,7 @@ impl<'a> Machine<'a> {
 
         // DMA Controller: 
         // Intel 8237 DMA Controller
-        let mut dma = Rc::new(RefCell::new(dma::DMAController::new()));
+        let dma = Rc::new(RefCell::new(dma::DMAController::new()));
 
         io_bus.register_port_handler(dma::DMA_CHANNEL_0_ADDR_PORT, IoHandler::new(dma.clone()));
         io_bus.register_port_handler(dma::DMA_CHANNEL_0_WC_PORT, IoHandler::new(dma.clone()));
@@ -288,13 +290,13 @@ impl<'a> Machine<'a> {
         io_bus.register_port_handler(dma::DMA_CHANNEL_3_PAGE_REGISTER, IoHandler::new(dma.clone()));
 
         // Floppy Controller:
-        let mut fdc = Rc::new(RefCell::new(fdc::FloppyController::new()));
+        let fdc = Rc::new(RefCell::new(fdc::FloppyController::new()));
         io_bus.register_port_handler(fdc::FDC_DIGITAL_OUTPUT_REGISTER, IoHandler::new(fdc.clone()));
         io_bus.register_port_handler(fdc::FDC_STATUS_REGISTER, IoHandler::new(fdc.clone()));
         io_bus.register_port_handler(fdc::FDC_DATA_REGISTER, IoHandler::new(fdc.clone()));
 
         // Hard Disk Controller:  (Only functions if the required rom is loaded)
-        let mut hdc = Rc::new(RefCell::new(hdc::HardDiskController::new(dma.clone(), hdc::DRIVE_TYPE2_DIP)));
+        let hdc = Rc::new(RefCell::new(hdc::HardDiskController::new(dma.clone(), hdc::DRIVE_TYPE2_DIP)));
         io_bus.register_port_handler(hdc::HDC_DATA_REGISTER, IoHandler::new(hdc.clone()));
         io_bus.register_port_handler(hdc::HDC_STATUS_REGISTER, IoHandler::new(hdc.clone()));
         io_bus.register_port_handler(hdc::HDC_READ_DIP_REGISTER, IoHandler::new(hdc.clone()));
@@ -335,7 +337,7 @@ impl<'a> Machine<'a> {
         }
 
         // Initialize the appropriate model of Video Card.
-        let mut video: Rc<RefCell<dyn VideoCard>> = match video_type {
+        let video: Rc<RefCell<dyn VideoCard>> = match video_type {
             VideoType::CGA => {
                 let video = Rc::new(RefCell::new(cga::CGACard::new()));
                 io_bus.register_port_handlers(
@@ -719,7 +721,7 @@ impl<'a> Machine<'a> {
         while cycles_elapsed < cycle_target_adj {
 
             let fake_cycles: u32 = 7;
-            let mut cpu_cycles = 0;
+            let mut cpu_cycles;
 
             if self.cpu.is_error() {
                 break;
@@ -946,7 +948,7 @@ impl<'a> Machine<'a> {
         }
 
         let mut sum = 0;
-        let mut sample = 0;
+        let mut sample;
         for _ in 0..pit_ticks {
             
             sample = match self.pit_buffer_consumer.pop() {

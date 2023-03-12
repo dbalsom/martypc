@@ -7,7 +7,7 @@ use std::cell::RefCell;
 
 use crate::config::VideoType;
 use crate::videocard::{VideoCard, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
-use crate::cga::{self, CGACard };
+use crate::cga;
 use crate::bus::BusInterface;
 
 extern crate rand; 
@@ -351,7 +351,7 @@ impl Video {
                 }
             }
             DisplayMode::Mode6HiResGraphics => {
-                let (palette, intensity) = video_card.get_cga_palette();
+                let (palette, _intensity) = video_card.get_cga_palette();
 
                 let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
@@ -364,7 +364,7 @@ impl Video {
                 
             }
             DisplayMode::Mode7LowResComposite => {
-                let (palette, intensity) = video_card.get_cga_palette();
+                let (palette, _intensity) = video_card.get_cga_palette();
 
                 let video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_SIZE);
                 if !composite {
@@ -504,7 +504,7 @@ impl Video {
 
 }
 
-pub fn draw_cga_gfx_mode(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
+pub fn draw_cga_gfx_mode(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     let mut field_src_offset = 0;
     let mut field_dst_offset = 0;
@@ -548,7 +548,7 @@ pub fn draw_cga_gfx_mode(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8
     }
 }
 
-pub fn draw_cga_gfx_mode2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
+pub fn draw_cga_gfx_mode2x(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     
     let mut field_src_offset = 0;
@@ -606,7 +606,7 @@ pub fn draw_cga_gfx_mode2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[
     }
 }
 
-pub fn draw_cga_gfx_mode_highres(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette) {
+pub fn draw_cga_gfx_mode_highres(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     
     let mut field_src_offset = 0;
@@ -650,7 +650,7 @@ pub fn draw_cga_gfx_mode_highres(frame: &mut [u8], frame_w: u32, frame_h: u32, m
     }
 }
 
-pub fn draw_cga_gfx_mode_highres2x(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette) {
+pub fn draw_cga_gfx_mode_highres2x(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     
     let mut field_src_offset = 0;
@@ -700,7 +700,7 @@ pub fn draw_cga_gfx_mode_highres2x(frame: &mut [u8], frame_w: u32, frame_h: u32,
 }
 
 
-pub fn draw_gfx_mode2x_composite(frame: &mut [u8], frame_w: u32, frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {
+pub fn draw_gfx_mode2x_composite(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette, _intensity: bool) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     
     let mut field_src_offset = 0;
@@ -1288,7 +1288,7 @@ pub fn resize_linear(src: &[u8], src_w: u32, src_h: u32, dst: &mut[u8], dst_w: u
 }
 
 
-pub fn draw_ega_lowres_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+pub fn draw_ega_lowres_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     let ega = video.borrow();
 
@@ -1318,7 +1318,7 @@ pub fn draw_ega_lowres_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut 
     }
 }
 
-pub fn draw_ega_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+pub fn draw_ega_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     let ega = video.borrow();
 
@@ -1347,7 +1347,7 @@ pub fn draw_ega_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [
     }
 }
 
-pub fn draw_vga_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+pub fn draw_vga_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     let vga = video.borrow();
 
@@ -1377,7 +1377,7 @@ pub fn draw_vga_hires_gfx_mode(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [
 /// Draw Video memory in VGA Mode 13h (320x200@256 colors)
 /// 
 /// This mode is actually 640x400, double-scanned horizontally and vertically
-pub fn draw_vga_mode13h(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, frame_h: u32 ) {
+pub fn draw_vga_mode13h(video: &Rc<RefCell<dyn VideoCard>>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     let vga = video.borrow();
 

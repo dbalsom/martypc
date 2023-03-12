@@ -288,7 +288,7 @@ impl GuiState {
                                                 Some(file) => {
                                                     let mut reg_ct = 0;
                                                     for register in file {
-                                                        if let VideoCardStateEntry::Color(str, r, g, b) = &register.1 {
+                                                        if let VideoCardStateEntry::Color(_str, r, g, b) = &register.1 {
                                                             GuiState::color_swatch(ui, egui::Color32::from_rgb(*r, *g, *b), true);
                                                         }
                                                         reg_ct += 1;

@@ -4,14 +4,28 @@
 
 */
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::ffi::OsString;
-use std::fs;
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    ffi::OsString,
+    fs,
+    error::Error,
+    fmt::Display
+};
 
+#[derive(Debug)]
 pub enum FloppyError {
     DirNotFound,
     FileReadError,
+}
+impl Error for FloppyError {}
+impl Display for FloppyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &*self {
+            FloppyError::DirNotFound => write!(f, "Couldn't find the requested directory."),
+            FloppyError::FileReadError => write!(f, "A file read error occurred."),
+        }
+    }
 }
 
 #[allow(dead_code)]

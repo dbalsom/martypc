@@ -49,6 +49,7 @@ impl Display for VirtualHardDiskError{
     }
 }
 
+#[allow(dead_code)]
 pub struct VirtualHardDisk {
 
     vhd_file: File,

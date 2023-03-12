@@ -26,8 +26,8 @@
     events.
 
 */
+
 use std::collections::VecDeque;
-use egui::*;
 
 use crate::egui::*;
 use crate::egui::token_listview::*;
@@ -84,6 +84,7 @@ impl MemoryViewerControl {
 
     }
 
+    #[allow (dead_code)]
     fn update_addr_from_row(&mut self) {
         self.address = format!("{:05X}", self.row);
     }
@@ -93,6 +94,7 @@ impl MemoryViewerControl {
         self.row = row & !0x0F;
     }
 
+    #[allow (dead_code)]
     pub fn set_address(&mut self, address: String) {
         self.address = address;
     }

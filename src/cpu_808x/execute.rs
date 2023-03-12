@@ -20,6 +20,7 @@ macro_rules! get_operand {
     };
 }
 
+/*
 macro_rules! read_operand {
     ($self:ident, $op: expr) => {
         {
@@ -56,6 +57,7 @@ macro_rules! alu_op {
         }
     }
 }
+*/
 
 impl<'a> Cpu<'a> {
 
@@ -1678,7 +1680,7 @@ impl<'a> Cpu<'a> {
                     // Call Near
                     Mnemonic::CALL => {
 
-                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
                             // Reads only 8 bit operand from modrm.
                             let ptr8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                             
@@ -1848,7 +1850,7 @@ impl<'a> Cpu<'a> {
                     // Call Near
                     Mnemonic::CALL => {
 
-                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
 
                             let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
@@ -1898,7 +1900,7 @@ impl<'a> Cpu<'a> {
                     }
                     // Call Far
                     Mnemonic::CALLF => {
-                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                        if let OperandType::AddressingMode(_mode) = self.i.operand1_type {
 
                             //self.cycle_i(0x068);
                             let (segment, offset) = 
@@ -1991,7 +1993,7 @@ impl<'a> Cpu<'a> {
                     Mnemonic::JMPF => {
                         let offset;
 
-                        if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                        if let OperandType::AddressingMode(_mode) = self.i.operand1_type {
                             
                             offset = 
                                 self.read_operand_farptr2(
@@ -2060,9 +2062,6 @@ impl<'a> Cpu<'a> {
                 }
                 handled_override = true;
                 // cycles ?
-            }
-            _ => {
-                return ExecutionResult::UnsupportedOpcode(self.i.opcode);
             }
         }
 

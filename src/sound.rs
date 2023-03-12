@@ -1,7 +1,13 @@
+#![allow(dead_code)]
+
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use ringbuf::{Producer, Consumer, RingBuffer};
-use std::fs::File;
-use std::io::Write;
+use ringbuf::{
+    Producer, 
+    //Consumer,
+    RingBuffer
+};
+//use std::fs::File;
+//use std::io::Write;
 
 pub const VOLUME_ADJUST: f32 = 0.10;
 pub const BUFFER_MS: f32 = 30.0;
@@ -60,11 +66,11 @@ impl SoundPlayer {
 
         //let mut debug_snd_file = File::create("output2.pcm").expect("Couldn't open debug pcm file");
 
-        let mut consumer_count: u64 = 0;
-        let mut last_value: f32 = 0.0;
+        let mut _consumer_count: u64 = 0;
+        let _last_value: f32 = 0.0;
         let mut refill_buffer: bool = true;
         let mut next_value = move || {
-            consumer_count += 1;
+            _consumer_count += 1;
             //log::trace!("consumer: {}", consumer_count);
 
             if refill_buffer {
@@ -124,7 +130,7 @@ impl SoundPlayer {
             Err(_) => {}
         }
     }
-    
+
     pub fn queue_sample_slice(&mut self, data: &[f32]) {
         self.buffer_producer.push_slice(data);
     }

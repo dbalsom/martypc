@@ -1,4 +1,6 @@
 
+#![allow(dead_code)]
+
 use log;
 
 use crate::cpu_808x::CpuRegisterState;

@@ -6,6 +6,8 @@
     
 */
 
+#![allow (dead_code)]
+
 use std::{
     cell::RefCell,
     collections::VecDeque,
@@ -59,6 +61,7 @@ const ERR_SEEK_ERROR: u8        = 0b01_0101;
 const ERR_INVALID_COMMAND: u8   = 0b10_0000;
 const ERR_ILLEGAL_ACCESS: u8    = 0b10_0001;
 
+#[allow (dead_code)]
 #[derive (Copy, Clone, Debug)]
 pub enum OperationError {
     NoError,
@@ -67,6 +70,7 @@ pub enum OperationError {
     IllegalAccess
 }
 
+#[allow (dead_code)]
 #[derive (Debug)]
 pub enum ControllerError {
     NoError,
@@ -84,6 +88,7 @@ impl Display for ControllerError {
     }
 }
 
+#[allow (dead_code)]
 #[derive (Copy, Clone, Debug)]
 pub enum State {
     Reset,
@@ -95,6 +100,7 @@ pub enum State {
     HaveSenseBytes
 }
 
+#[allow(dead_code)]
 #[derive (Copy, Clone, Debug)]
 pub enum Command {
     NoCommand,
@@ -218,6 +224,7 @@ impl HardDisk {
     }
 }
 
+#[allow (dead_code)]
 #[derive (Default)]
 pub struct OperationStatus {
     drive_select: usize,
@@ -233,6 +240,7 @@ pub enum Continuation {
     ContinueAsOperation
 }
 
+#[allow (dead_code)]
 pub struct DeviceControlBlock {
     drive_select: usize,
     c: u16,
@@ -245,6 +253,7 @@ pub struct DeviceControlBlock {
     disable_retry: bool,
 }
 
+#[allow (dead_code)]
 pub struct HardDiskController {
 
     dma: Rc<RefCell<dma::DMAController>>,
@@ -667,7 +676,7 @@ impl HardDiskController {
     }
 
     pub fn handle_status_register_read(&mut self) -> u8 {
-        let mut out_byte = 0;
+        let mut out_byte;
 
         out_byte = match self.state {
             State::Reset => {
@@ -801,10 +810,14 @@ impl HardDiskController {
         // Prime the Sector Buffer with an intitial sector read
         match &mut self.drives[dcb.drive_select].vhd {
             Some(vhd) => {
-                vhd.read_sector(&mut self.drives[dcb.drive_select].sector_buf, 
-                    dcb.c, 
-                    dcb.h, 
-                    dcb.s);
+                if let Err(e) = 
+                    vhd.read_sector(&mut self.drives[dcb.drive_select].sector_buf, 
+                        dcb.c, 
+                        dcb.h, 
+                        dcb.s) 
+                    {
+                        log::error!("VHD read_sector() failed: c:{} h:{} s:{} Error: {}", dcb.c, dcb.h, dcb.s, e);
+                    }
             }
             None => {
                 // No VHD? Handle error stage for read command
@@ -849,7 +862,7 @@ impl HardDiskController {
     /// Perform the Write Sector command.
     fn command_write(&mut self) -> Continuation {
 
-        let cmd_bytes = &self.data_register_in;
+        let _cmd_bytes = &self.data_register_in;
         let dcb = self.read_dcb();
         self.data_register_in.clear();
 
@@ -932,7 +945,7 @@ impl HardDiskController {
     /// Perform the Ready Verify command.
     fn command_ready_verify(&mut self) -> Continuation {
 
-        let cmd_bytes = &self.data_register_in;
+        let _cmd_bytes = &self.data_register_in;
         let dcb = self.read_dcb();
         self.data_register_in.clear();
 
@@ -1113,7 +1126,7 @@ impl HardDiskController {
     }
 
     /// End a Command that utilized DMA service.
-    fn end_dma_command(&mut self, drive: u32, error: bool ) {
+    fn end_dma_command(&mut self, _drive: u32, error: bool ) {
 
         self.clear_dreq = true;
         self.operation_status.dma_byte_count = 0;
@@ -1317,7 +1330,7 @@ impl HardDiskController {
     }
 
     /// Run the HDC device.
-    pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, cpu_cycles: u32 ) {
+    pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, _cpu_cycles: u32 ) {
 
         // Handle interrupts
         if self.send_interrupt {

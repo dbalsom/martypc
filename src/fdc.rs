@@ -1140,8 +1140,8 @@ impl FloppyController {
         let gap3_len = self.data_register_in.pop_front().unwrap();
         let fill_byte = self.data_register_in.pop_front().unwrap();
 
-        let drive_select = (drive_head_select & 0x03) as usize;
-        let head_select = (drive_head_select >> 2) & 0x01;
+        let _drive_select = (drive_head_select & 0x03) as usize;
+        let _head_select = (drive_head_select >> 2) & 0x01;
 
         // Start format operation
         self.operation_init = false;
@@ -1231,7 +1231,7 @@ impl FloppyController {
         head: u8,
         sector: u8, 
         sector_size: u8, 
-        track_len: u8 ) {
+        _track_len: u8 ) {
 
         if !self.in_dma {
             log::error!("FDC in invalid state: ReadSector operation without DMA! Aborting.");
@@ -1324,7 +1324,7 @@ impl FloppyController {
         head: u8,
         sector: u8, 
         sector_size: u8, 
-        track_len: u8 ) {
+        _track_len: u8 ) {
 
         if !self.in_dma {
             log::error!("Error: WriteSector operation without DMA!");
@@ -1419,7 +1419,7 @@ impl FloppyController {
         bus: &mut BusInterface,
         sector_size: u8,
         track_len: u8, 
-        gap3_len: u8,
+        _gap3_len: u8,
         fill_byte: u8 ) {
 
         if !self.in_dma {
@@ -1508,12 +1508,12 @@ impl FloppyController {
         }
     }    
 
-    pub fn format_sector(&mut self, cylinder: u8, head: u8, sector: u8, fill_byte: u8) {
+    pub fn format_sector(&mut self, _cylinder: u8, _head: u8, _sector: u8, _fill_byte: u8) {
 
     }
 
     /// Run the Floppy Drive Controller. Process running Operations.
-    pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, cpu_cycles: u32 ) {
+    pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, _cpu_cycles: u32 ) {
 
         // Send an interrupt if one is queued
         if self.send_interrupt {
@@ -1530,6 +1530,7 @@ impl FloppyController {
         }
 
         // Run operation
+        #[allow(unreachable_patterns)]
         match self.operation {
             Operation::NoOperation => {
                 // Do nothing

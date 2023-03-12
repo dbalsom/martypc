@@ -966,7 +966,7 @@ impl VideoCard for EGACard {
         let _font_h = EGA_FONTS[self.current_font].h;
 
         // Clock divisor effectively doubles the CRTC register values
-        let clock_divisor = match self.sequencer_clocking_mode.dot_clock() {
+        let _clock_divisor = match self.sequencer_clocking_mode.dot_clock() {
             DotClock::Native => 1,
             DotClock::HalfClock => 2
         };
@@ -1102,6 +1102,7 @@ impl VideoCard for EGACard {
         (palette, intensity)
     }    
 
+    #[allow (dead_code)]
     /// Returns a string representation of all the CRTC Registers.
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
 
@@ -1314,7 +1315,7 @@ impl VideoCard for EGACard {
         self.reset_private();
     }
 
-    fn get_pixel(&self, x: u32, y: u32 ) -> &[u8] {
+    fn get_pixel(&self, _x: u32, _y: u32 ) -> &[u8] {
         &DUMMY_PIXEL
     }
 
@@ -1569,7 +1570,7 @@ impl MemoryMappedDevice for EGACard {
 
     }
 
-    fn write_u16(&mut self, address: usize, data: u16) {
+    fn write_u16(&mut self, _address: usize, _data: u16) {
         log::warn!("Unsupported 16 bit write to VRAM");
     }
 }

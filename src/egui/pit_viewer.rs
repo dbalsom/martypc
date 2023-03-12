@@ -27,7 +27,12 @@
 */
 
 use egui::*;
-use egui::plot::{Line, Plot, PlotPoints, PlotBounds};
+use egui::plot::{
+    Line, 
+    //Plot, 
+    PlotPoints, 
+    //PlotBounds
+};
 
 use crate::egui::*;
 use crate::egui::color::*;
@@ -36,6 +41,7 @@ use crate::egui::constants::*;
 use crate::pit::PitDisplayState;
 use crate::syntax_token::*;
 
+#[allow (dead_code)]
 pub struct PitViewerControl {
 
     pit_state: PitDisplayState,
@@ -65,7 +71,7 @@ impl PitViewerControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut VecDeque<GuiEvent> ) {
 
         for (i, channel) in self.pit_state.iter().enumerate() {
 
@@ -143,9 +149,9 @@ impl PitViewerControl {
 
         // Update state entry ages
         for (i, channel) in new_pit_state.iter_mut().enumerate() {
-            for (key, mut value) in channel.iter_mut() {
+            for (key, value) in channel.iter_mut() {
 
-                if let SyntaxToken::StateString(txt, dirty, age) = value {
+                if let SyntaxToken::StateString(_txt, dirty, age) = value {
                     if *dirty {
                         *age = 0;
                     }

@@ -143,7 +143,21 @@ pub struct PpiStringState {
 
 impl Ppi {
 
-    pub fn new(machine_type: MachineType, video_type: VideoType ) -> Self {
+    pub fn new(machine_type: MachineType, video_type: VideoType, num_floppies: u32 ) -> Self {
+
+        let sw1_floppy_bits = match num_floppies {
+            1 => SW1_ONE_FLOPPY,
+            2 => SW1_TWO_FLOPPIES,
+            3 => SW1_THREE_FLOPPIES,
+            4 => SW1_FOUR_FLOPPIES,
+            _ => 0,
+        };
+
+        let sw1_video_bits = match video_type {
+            VideoType::MDA => SW1_HAVE_MDA,
+            VideoType::CGA => SW1_HAVE_CGA_HIRES,
+            VideoType::EGA | VideoType::VGA => SW1_HAVE_EXPANSION
+        };
 
         Self {
             machine_type,
@@ -172,23 +186,13 @@ impl Ppi {
             clear_keyboard: false,
             dip_sw1: match machine_type {
                 MachineType::IBM_PC_5150 => {
-                    let mut byte = SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS;
-                    byte |= match video_type {
-                        VideoType::MDA => SW1_HAVE_MDA,
-                        VideoType::CGA => SW1_HAVE_CGA_HIRES,
-                        VideoType::EGA | VideoType::VGA => SW1_HAVE_EXPANSION
-                    };
+                    let byte = SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits;
                     byte
                 },
                 MachineType::IBM_XT_5160 => {
-                    let mut byte = SW1_HAS_FLOPPIES | SW1_TWO_FLOPPIES | SW1_RAM_BANKS;
-                    byte |= match video_type {
-                        VideoType::MDA => SW1_HAVE_MDA,
-                        VideoType::CGA => SW1_HAVE_CGA_HIRES,
-                        VideoType::EGA | VideoType::VGA => SW1_HAVE_EXPANSION
-                    };
+                    let byte = SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits;
                     byte                    
-                }
+                },
                 _ => {
                     log::error!("Machine type: {:?} has no PPI", machine_type);
                     0

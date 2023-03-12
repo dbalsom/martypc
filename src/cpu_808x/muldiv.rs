@@ -320,6 +320,8 @@ impl_cor_negate!(u16);
 
 impl<'a> Cpu<'a> {
 
+    #[allow (dead_code)]
+    #[allow(unused_assignments)] // This isn't pretty but we are trying to mirror the microcode
     /// Microcode routine for multiplication, 8 bit
     /// Accepts al and 8-bit operand, returns 16 bit product (for AX)
     pub fn mul8(&mut self, al: u8, operand: u8, signed: bool, mut negate: bool) -> u16 {
@@ -523,12 +525,12 @@ impl<'a> Cpu<'a> {
         let product = tmpa << 8 | (tmpc & 0xFF); 
         product
     }
-
+    
+    #[allow(unused_assignments)] // This isn't pretty but we are trying to mirror the microcode
     /// Microcode routine for multiplication, 16 bit
     /// Accepts ax and 16-bit operand, returns 32 bit product in two parts (for DX:AX)
     pub fn mul16(&mut self, ax: u16, operand: u16, signed: bool, mut negate: bool) -> (u16, u16) {
 
-        let mut mul_cycles = 0;
         let mut sigma: u16;
 
         let mut tmpa: u16;
@@ -722,6 +724,8 @@ impl<'a> Cpu<'a> {
         (tmpa, tmpc)
     }
 
+    #[allow(dead_code)]
+    #[allow(unused_assignments)] // This isn't pretty but we are trying to mirror the microcode
     /// Microcode routine for 8-bit division.
     /// Accepts 16-bit dividend, 8-bit divisor. Returns 8 bit quotient and remainder, or Err() on divide error
     /// so that an int0 can be triggered.
@@ -732,19 +736,17 @@ impl<'a> Cpu<'a> {
         let mut tmpb = divisor as u16; // 162
         
         let mut sigma16: u16;
-        let mut sigma_next: u8;
-        let mut sigma_next16: u16;
+        let sigma_next16: u16;
         
-        let mut sigma8: u8;
         let mut carry: bool;
-        let mut carry_next: bool;
+        let carry_next: bool;
     
         self.cycles_i(3, &[0x160, 0x161, 0x162]);
 
         //log::debug!("  div8: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
 
         // Is dividend negative?
-        (sigma8, carry_next) = (tmpa as u8).alu_rcl(1, false);
+        (_, carry_next) = (tmpa as u8).alu_rcl(1, false);
 
         // Do PREIDIV if signed
         if signed {
@@ -798,10 +800,10 @@ impl<'a> Cpu<'a> {
             }
 
             // 1c5:
-            (sigma8, carry) = (tmpb as u8).alu_rcl(1, false);
+            (_, carry) = (tmpb as u8).alu_rcl(1, false);
             // 1c6:
             //sigma16 = sigma8 as u16;
-            (sigma_next16, carry_next, _, _) = tmpa.alu_neg();
+            (sigma_next16, _, _, _) = tmpa.alu_neg();
             // 1c7:
 
             self.cycles_i(3, &[0x1c5, 0x1c6, 0x1c7]);
@@ -858,16 +860,16 @@ impl<'a> Cpu<'a> {
         let mut tmpb = divisor as u16; // 162
         
         let mut sigma16: u16;
-        let mut sigma_next: u16;
+        let sigma_next: u16;
         
         let mut carry: bool;
-        let mut carry_next: bool;
+        let carry_next: bool;
     
         self.cycles_i(3, &[0x168, 0x169, 0x16a]);
     
         //log::debug!("  div16: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
 
-        (sigma16, carry_next) = tmpa.alu_rcl(1, false);
+        (_, carry_next) = tmpa.alu_rcl(1, false);
     
         // Do PREIDIV if signed
         if signed {
@@ -881,11 +883,11 @@ impl<'a> Cpu<'a> {
             if !carry {
                 // Jump into NEGATE @ 7 (skip == true)
                 self.cycle_i(MC_JUMP);
-                (tmpa, tmpb, tmpc, carry, negate) = tmpa.cor_negate(self, tmpb, tmpc, negate, true);
+                (tmpa, tmpb, tmpc, _, negate) = tmpa.cor_negate(self, tmpb, tmpc, negate, true);
             }
             else {
                 // Fall through to NEGATE 
-                (tmpa, tmpb, tmpc, carry, negate) = tmpa.cor_negate(self, tmpb, tmpc, negate, false);
+                (tmpa, tmpb, tmpc, _, negate) = tmpa.cor_negate(self, tmpb, tmpc, negate, false);
             }
 
             //log::debug!("  div16: post-negate: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
@@ -920,10 +922,10 @@ impl<'a> Cpu<'a> {
             }
 
             // 1c5:
-            (sigma16, carry) = tmpb.alu_rcl(1, false);
+            (_, carry) = tmpb.alu_rcl(1, false);
             // 1c6:
 
-            (sigma_next, carry_next, _, _) = tmpa.alu_neg();
+            (sigma_next, _, _, _) = tmpa.alu_neg();
             // 1c7:
 
             self.cycles_i(3, &[0x1c5, 0x1c6, 0x1c7]);

@@ -4,7 +4,9 @@
 
 */
 
-use std::io::Read;
+#![allow(dead_code)]
+
+//use std::io::Read;
 
 use crate::io::{IoDevice};
 
@@ -417,7 +419,7 @@ impl Pic {
 
             let have_request = ir_bit & self.irr != 0;
             let is_masked = ir_bit & self.imr != 0;
-            let is_in_service = ir_bit & self.isr != 0;
+            let _is_in_service = ir_bit & self.isr != 0;
 
             if have_request && !is_masked {
                 

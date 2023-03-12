@@ -15,12 +15,16 @@ use egui::{
     ClippedPrimitive, 
     Context, 
     ColorImage, 
-    ImageData, 
+    //ImageData, 
     TexturesDelta,
-    NumExt
 };
 
-use egui::{Visuals, Color32, FontDefinitions, Style};
+use egui::{
+    Visuals, 
+    Color32, 
+    //FontDefinitions,
+    //Style
+};
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
@@ -64,11 +68,14 @@ use crate::{
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
+#[derive(PartialEq, Eq, Hash)]
 pub(crate) enum GuiWindow {
+    About,
     CpuControl,
     PerfViewer,
     MemoryViewer,
     CpuStateViewer,
+    RegisterViewer,
     TraceViewer,
     DiassemblyViewer,
     PitViewer,
@@ -82,6 +89,7 @@ pub(crate) enum GuiWindow {
 }
 
 pub enum GuiEvent {
+    #[allow (dead_code)]
     LoadVHD(u32,OsString),
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, OsString),
@@ -115,22 +123,8 @@ pub(crate) struct GuiState {
     event_queue: VecDeque<GuiEvent>,
 
     /// Only show the associated window when true.
-    about_window_open: bool,
+    window_open_flags: HashMap::<GuiWindow, bool>,
     error_dialog_open: bool,
-    cpu_control_dialog_open: bool,
-    memory_viewer_open: bool,
-    perf_viewer_open: bool,
-    register_viewer_open: bool,
-    trace_viewer_open: bool,
-    disassembly_viewer_open: bool,
-    pit_viewer_open: bool,
-    pic_viewer_open: bool,
-    ppi_viewer_open: bool,
-    dma_viewer_open: bool,
-    videocard_viewer_open: bool,
-    video_mem_viewer_open: bool,
-    call_stack_open: bool,
-    vhd_creator_open: bool,
     
     video_mem: ColorImage,
 
@@ -164,13 +158,8 @@ pub(crate) struct GuiState {
     serial_port_name: String,
 
     exec_control: Rc<RefCell<ExecutionControl>>,
-    cpu_single_step: bool,
-    cpu_step_flag: bool,
 
     error_string: String,
-    pub memory_viewer_address: String,
-    pub memory_viewer_row: usize,
-    pub memory_viewer_lastrow: usize,
 
     pub memory_viewer: MemoryViewerControl,
     pub cpu_state: CpuStringState,
@@ -182,7 +171,7 @@ pub(crate) struct GuiState {
     pub pic_state: PicStringState,
     pub ppi_state: PpiStringState,
     pub dma_state: DMAControllerStringState,
-    pub crtc_state: Vec<(String, String)>,
+
     pub videocard_state: VideoCardState,
     videocard_set_select: String,
     dma_channel_select: u32,
@@ -362,27 +351,33 @@ impl GuiState {
     /// Create a struct representing the state of the GUI.
     fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
 
+        // Set default values for window open flags
+        let window_open_flags: HashMap<GuiWindow, bool> = [
+            (GuiWindow::About, false),
+            (GuiWindow::CpuControl, true),
+            (GuiWindow::PerfViewer, false),
+            (GuiWindow::MemoryViewer, false),
+            (GuiWindow::CpuStateViewer, false),
+            (GuiWindow::RegisterViewer, false),
+            (GuiWindow::TraceViewer, false),
+            (GuiWindow::DiassemblyViewer, true),
+            (GuiWindow::PitViewer, false),
+            (GuiWindow::PicViewer, false),
+            (GuiWindow::PpiViewer, false),
+            (GuiWindow::DmaViewer, false),
+            (GuiWindow::VideoCardViewer, false),
+            (GuiWindow::VideoMemViewer, false),
+            (GuiWindow::CallStack, false),
+            (GuiWindow::VHDCreator, false),
+        ].into();
+
         Self { 
 
             texture: None,
             event_queue: VecDeque::new(),
-            about_window_open: false, 
+            window_open_flags: window_open_flags,
             error_dialog_open: false,
-            cpu_control_dialog_open: true,
-            perf_viewer_open: false,
-            memory_viewer_open: false,
-            register_viewer_open: true,
-            disassembly_viewer_open: true,
-            trace_viewer_open: false,
-            pit_viewer_open: false,
-            pic_viewer_open: false,
-            ppi_viewer_open: false,
-            dma_viewer_open: false,
-            videocard_viewer_open: false,
-            video_mem_viewer_open: false,
-            call_stack_open: false,
-            vhd_creator_open: false,
-            
+
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
             video_data: Default::default(),
@@ -412,13 +407,8 @@ impl GuiState {
             serial_port_name: String::new(),
 
             exec_control: exec_control,
-            cpu_single_step: true,
-            cpu_step_flag: false,
 
             error_string: String::new(),
-            memory_viewer_address: String::new(),
-            memory_viewer_row: 0,
-            memory_viewer_lastrow: 0,
             memory_viewer_dump: String::new(),
             memory_viewer: MemoryViewerControl::new(),
             cpu_state: Default::default(),
@@ -430,7 +420,7 @@ impl GuiState {
             dma_state: Default::default(),
             dma_channel_select: 0,
             dma_channel_select_str: String::new(),
-            crtc_state: Default::default(),
+
             videocard_state: Default::default(),
             videocard_set_select: String::new(),
             disassembly_viewer_string: String::new(),
@@ -442,8 +432,6 @@ impl GuiState {
             // Options menu items
             aspect_correct: false,
             composite: false
-
-
         }
     }
 
@@ -451,40 +439,22 @@ impl GuiState {
         self.event_queue.pop_front()
     }
 
+    #[allow (dead_code)]
     pub fn send_event(&mut self, event: GuiEvent) {
         self.event_queue.push_back(event);
     }
 
-    pub fn get_cpu_single_step(&self) -> bool {
-        self.cpu_single_step
-    }
-
-    pub fn set_cpu_single_step(&mut self) {
-        self.cpu_single_step = true
-    }
-
-    pub fn get_cpu_step_flag(&mut self) -> bool {
-        let flag = self.cpu_step_flag;
-        self.cpu_step_flag = false;
-        return flag
+    pub fn window_flag(&mut self, window: GuiWindow) -> &mut bool {
+        self.window_open_flags.get_mut(&window).unwrap()
     }
 
     pub fn is_window_open(&self, window: GuiWindow) -> bool {
-        match window {
-            GuiWindow::CpuControl => self.cpu_control_dialog_open,
-            GuiWindow::PerfViewer => self.perf_viewer_open,
-            GuiWindow::MemoryViewer => self.memory_viewer_open,
-            GuiWindow::CpuStateViewer => self.register_viewer_open,
-            GuiWindow::TraceViewer => self.trace_viewer_open,
-            GuiWindow::DiassemblyViewer => self.disassembly_viewer_open,
-            GuiWindow::PitViewer => self.pit_viewer_open,
-            GuiWindow::PicViewer => self.pic_viewer_open,
-            GuiWindow::PpiViewer => self.ppi_viewer_open,
-            GuiWindow::DmaViewer => self.dma_viewer_open,
-            GuiWindow::VideoCardViewer => self.videocard_viewer_open,
-            GuiWindow::VideoMemViewer => self.video_mem_viewer_open,
-            GuiWindow::CallStack => self.call_stack_open,
-            GuiWindow::VHDCreator => self.vhd_creator_open,
+
+        if let Some(status) = self.window_open_flags.get(&window) {
+            *status
+        }
+        else {
+            false
         }
     }
 
@@ -499,16 +469,6 @@ impl GuiState {
 
     pub fn set_vhd_names(&mut self, names: Vec<OsString>) {
         self.vhd_names = names;
-    }
-
-    /// Retrieve a newly selected floppy image name.
-    /// 
-    /// If a floppy image was selected from the UI then we return it as an Option.
-    /// A return value of None indicates no selection change.
-    pub fn get_new_floppy_name(&mut self) -> Option<OsString> {
-        let got_str = self.new_floppy_name0.clone();
-        self.new_floppy_name0 = None;
-        got_str
     }
 
     /// Retrieve a newly selected VHD image name for the specified device slot.
@@ -533,16 +493,8 @@ impl GuiState {
         }
     }    
 
-    pub fn update_memory_view(&mut self, mem_str: String) {
-        self.memory_viewer_dump = mem_str;
-    }
-
-    pub fn get_memory_view_address(&mut self) -> &str {
-        &self.memory_viewer_address
-    }
-
-    pub fn show_disassembly_view(&mut self) {
-        self.disassembly_viewer_open = true
+    pub fn show_window(&mut self, window: GuiWindow) {
+        *self.window_open_flags.get_mut(&window).unwrap() = true;
     }
 
     pub fn get_disassembly_view_address(&mut self) -> &str {
@@ -555,10 +507,6 @@ impl GuiState {
 
     pub fn get_composite_enabled(&self) -> bool {
         self.composite
-    }
-
-    pub fn update_dissassembly_view(&mut self, disassembly_string: String) {
-        self.disassembly_viewer_string = disassembly_string;
     }
 
     pub fn update_cpu_state(&mut self, state: CpuStringState) {
@@ -614,14 +562,11 @@ impl GuiState {
         self.video_data = video_data;
     }
 
-    pub fn update_crtc_state(&mut self, state: Vec<(String, String)>) {
-        self.crtc_state = state;
-    }
-
     pub fn update_videocard_state(&mut self, state: HashMap<String,Vec<(String, VideoCardStateEntry)>>) {
         self.videocard_state = state;
     }
 
+    #[allow (dead_code)]
     pub fn update_videomem_state(&mut self, mem: Vec<u8>, w: u32, h: u32) {
 
         self.video_mem = ColorImage::from_rgba_unmultiplied([w as usize, h as usize],&mem);
@@ -634,18 +579,18 @@ impl GuiState {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             self.draw_menu(ui);
         });
-
-        let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
-            ctx.load_texture(
-                "logo",
-                get_ui_image(UiImage::Logo),
-                Default::default()
-            )
-        });
-
+        
         egui::Window::new("About")
-            .open(&mut self.about_window_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())
             .show(ctx, |ui| {
+
+                let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
+                    ctx.load_texture(
+                        "logo",
+                        get_ui_image(UiImage::Logo),
+                        Default::default()
+                    )
+                });
 
                 ui.image(about_texture, about_texture.size_vec2());
                 ui.separator();
@@ -670,21 +615,8 @@ impl GuiState {
         //    });
 
         egui::Window::new("Video Mem")
-            .open(&mut self.video_mem_viewer_open)
-            .show(ctx, |ui| {
-
-                ui.image(about_texture, about_texture.size_vec2());
-                ui.separator();
-
-                ui.label("Marty is free software.");
-
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x /= 2.0;
-                    ui.label("Github:");
-                    ui.hyperlink("https://github.com/dbalsom/marty");
-                });
-
-                ui.separator();
+            .open(self.window_open_flags.get_mut(&GuiWindow::VideoMemViewer).unwrap())
+            .show(ctx, |_ui| {
 
             });            
 
@@ -698,7 +630,7 @@ impl GuiState {
             });
 
         egui::Window::new("Performance")
-            .open(&mut &mut self.perf_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::PerfViewer).unwrap())
             .show(ctx, |ui| {
 
                 egui::Grid::new("perf")
@@ -740,7 +672,7 @@ impl GuiState {
             });
 
         egui::Window::new("CPU Control")
-            .open(&mut self.cpu_control_dialog_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::CpuControl).unwrap())
             .show(ctx, |ui| {
 
                 let mut exec_control = self.exec_control.borrow_mut();
@@ -749,7 +681,6 @@ impl GuiState {
                     ExecutionState::Paused | ExecutionState::BreakpointHit => (false, true, true),
                     ExecutionState::Running => (true, false, false),
                     ExecutionState::Halted => (false, false, false),
-                    _=>(true, false, true)
                 };
 
                 ui.horizontal(|ui|{
@@ -819,7 +750,7 @@ impl GuiState {
             });
 
         egui::Window::new("Memory View")
-            .open(&mut self.memory_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::MemoryViewer).unwrap())
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
@@ -827,7 +758,7 @@ impl GuiState {
             });
 
         egui::Window::new("Instruction Trace")
-            .open(&mut self.trace_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::TraceViewer).unwrap())
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
@@ -842,7 +773,7 @@ impl GuiState {
 
 
         egui::Window::new("Call Stack")
-            .open(&mut self.call_stack_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::CallStack).unwrap())
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
@@ -856,7 +787,7 @@ impl GuiState {
             });              
 
         egui::Window::new("Disassembly View")
-            .open(&mut self.disassembly_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::DiassemblyViewer).unwrap())
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
@@ -864,7 +795,7 @@ impl GuiState {
             });             
 
         egui::Window::new("Register View")
-            .open(&mut self.register_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::RegisterViewer).unwrap())
             .resizable(false)
             .default_width(220.0)
             .show(ctx, |ui| {
@@ -1032,7 +963,7 @@ impl GuiState {
             });        
             
         egui::Window::new("PIT View")
-            .open(&mut self.pit_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::PitViewer).unwrap())
             .resizable(false)
             .min_width(600.0)
             .default_width(600.0)
@@ -1043,7 +974,7 @@ impl GuiState {
             });               
 
             egui::Window::new("PIC View")
-            .open(&mut self.pic_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::PicViewer).unwrap())
             .resizable(true)
             .default_width(600.0)
             .show(ctx, |ui| {
@@ -1103,7 +1034,7 @@ impl GuiState {
             });           
             
             egui::Window::new("PPI View")
-            .open(&mut self.ppi_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::PpiViewer).unwrap())
             .resizable(true)
             .default_width(600.0)
             .show(ctx, |ui| {
@@ -1148,7 +1079,7 @@ impl GuiState {
             });
 
             egui::Window::new("DMA View")
-            .open(&mut self.dma_viewer_open)
+            .open(self.window_open_flags.get_mut(&GuiWindow::DmaViewer).unwrap())
             .resizable(false)
             .default_width(200.0)
             .show(ctx, |ui| {
@@ -1237,7 +1168,7 @@ impl GuiState {
             });                       
 
             egui::Window::new("Video Card View")
-                .open(&mut self.videocard_viewer_open)
+                .open(self.window_open_flags.get_mut(&GuiWindow::VideoCardViewer).unwrap())
                 .resizable(false)
                 .default_width(300.0)
                 .show(ctx, |ui| {
@@ -1245,7 +1176,7 @@ impl GuiState {
                 });         
 
             egui::Window::new("Create VHD")
-                .open(&mut self.vhd_creator_open)
+                .open(self.window_open_flags.get_mut(&GuiWindow::VHDCreator).unwrap())
                 .resizable(false)
                 .default_width(400.0)
                 .show(ctx, |ui| {

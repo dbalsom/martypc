@@ -32,7 +32,6 @@ mod string;
 mod queue;
 mod fuzzer;
 
-use crate::cpu_common::*;
 use crate::cpu_808x::mnemonic::Mnemonic;
 use crate::cpu_808x::microcode::*;
 use crate::cpu_808x::addressing::AddressingMode;
@@ -48,7 +47,7 @@ use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
 use crate::pic::Pic;
 use crate::bytequeue::*;
 use crate::io::IoBusInterface;
-use crate::interrupt::log_post_interrupt;
+//use crate::interrupt::log_post_interrupt;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{CpuValidator, CycleState, VRegisters, BusCycle, BusState, AccessType};
@@ -566,7 +565,7 @@ impl PartialEq for CpuAddress {
                 let b = Cpu::calc_linear_address(*s, *o);
                 *a == b
             }
-            (CpuAddress::Flat(a), CpuAddress::Offset(b)) => false,
+            (CpuAddress::Flat(_a), CpuAddress::Offset(_b)) => false,
             (CpuAddress::Segmented(s,o), CpuAddress::Flat(b)) => {
                 let a = Cpu::calc_linear_address(*s, *o);
                 a == *b
@@ -1302,7 +1301,7 @@ impl<'a> Cpu<'a> {
     }
 
     #[inline]
-    pub fn cycle_nx_i(&self, instr: u16) {
+    pub fn cycle_nx_i(&self, _instr: u16) {
         // Do nothing
     }
 
@@ -2659,7 +2658,7 @@ impl<'a> Cpu<'a> {
                     call_stack_string.push_str(&format!("{:04X}:{:04X} CALL FAR {:04X}:{:04X}\n", ret_cs, ret_ip, call_cs, call_ip));
                 }
                 CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } => {
-                    call_stack_string.push_str(&format!("{:04X}:{:04X} INT {:02X} type={:?} AH=={:02X}\n", ret_cs, ret_ip, number, itype, ah));
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} INT {:02X} {:04X}:{:04X} type={:?} AH=={:02X}\n", ret_cs, call_cs, call_ip, ret_ip, number, itype, ah));
                 }
             }   
         }
