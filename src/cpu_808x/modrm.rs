@@ -1,6 +1,6 @@
 
 use crate::cpu_808x::*;
-use crate::cpu_808x::cpu_addressing::AddressingMode;
+use crate::cpu_808x::addressing::AddressingMode;
 use crate::bytequeue::*;
 
 #[derive (Copy, Clone)]

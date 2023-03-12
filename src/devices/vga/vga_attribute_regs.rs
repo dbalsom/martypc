@@ -195,7 +195,7 @@ impl<'a> VGACard<'a> {
                     AttributeRegister::PaletteC | AttributeRegister::PaletteD | AttributeRegister::PaletteE |
                     AttributeRegister::PaletteF => {
                         //self.attribute_palette_registers[self.attribute_palette_index] = APaletteRegister::from_bytes([byte]);
-                        log::trace!("palette register index {} set to {:08b}", self.attribute_palette_index, byte);
+                        log::trace!("Palette register index {} set to {:08b}", self.attribute_palette_index, byte);
                         self.attribute_palette_registers[self.attribute_palette_index] = byte;
                     }
                     AttributeRegister::ModeControl => {

@@ -1,5 +1,5 @@
 use crate::cpu_808x::*;
-use crate::cpu_808x::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::mnemonic::Mnemonic;
 
 impl<'a> Cpu<'a> {
 

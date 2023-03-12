@@ -13,6 +13,9 @@
         http://www.osdever.net/FreeVGA/home.htm
 
 */
+
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use modular_bitfield::prelude::*;
 
@@ -25,6 +28,7 @@ use crate::bus::MemoryMappedDevice;
 
 use crate::videocard::{
     VideoCard,
+    VideoCardStateEntry,
     DisplayMode,
     CursorInfo,
     FontInfo,
@@ -1099,10 +1103,10 @@ impl VideoCard for EGACard {
     }    
 
     /// Returns a string representation of all the CRTC Registers.
-    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String,String)>> {
+    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
 
         let mut map = HashMap::new();
-
+        /*
         let mut general_vec = Vec::new();
         general_vec.push((format!("Adapter Type:"), format!("{:?}", self.get_video_type())));
         general_vec.push((format!("Display Mode:"), format!("{:?}", self.get_display_mode())));
@@ -1247,7 +1251,7 @@ impl VideoCard for EGACard {
         //attribute_overscan_color: AOverscanColor::new(),
         //attribute_color_plane_enable: AColorPlaneEnable::new(),
         map.insert("Attribute".to_string(), attribute_vec);
-
+        */
         map
     }
 
@@ -1380,6 +1384,10 @@ impl VideoCard for EGACard {
         }
     }
 
+    fn get_frame_count(&self) -> u64 {
+        0
+    }
+    
 }
 
 impl MemoryMappedDevice for EGACard {

@@ -5,12 +5,17 @@
 
 use log;
 
+use std::collections::BTreeMap;
+
 use crate::io::{IoBusInterface, IoDevice};
 use crate::bus::{BusInterface};
 use crate::cpu_808x::CPU_MHZ;
 use crate::pic;
 use crate::dma;
 use crate::ppi;
+use crate::syntax_token::*;
+
+pub type PitDisplayState = Vec<BTreeMap<&'static str, SyntaxToken>>;
 
 const PIT_CHANNEL_PORT_BASE: u16 = 0x40;
 pub const PIT_CHANNEL_0_DATA_PORT: u16 = 0x40;
@@ -26,7 +31,27 @@ const PIT_BCD_MODE_MASK: u8       = 0b0000_0001;
 pub const PIT_MHZ: f64 = 1.193182;
 pub const PIT_DIVISOR: f64 = 0.25;
 
-#[derive(Debug)]
+macro_rules! dirty_update_checked {
+    ($old: expr, $new: expr, $flag: expr) => {
+        {
+            if $old != $new {
+                $flag = true;
+            }
+            $old = $new
+        }
+    };
+}
+
+macro_rules! dirty_update {
+    ($old: expr, $new: expr, $flag: expr) => {
+        {
+            $flag = true;
+            $old = $new
+        }
+    };
+}
+
+#[derive(Debug, PartialEq)]
 enum ChannelMode {
     InterruptOnTerminalCount,
     HardwareRetriggerableOneShot,
@@ -36,7 +61,7 @@ enum ChannelMode {
     HardwareTriggeredStrobe
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum AccessMode {
     LatchCountValue,
     LoByteOnly,
@@ -46,22 +71,30 @@ enum AccessMode {
 
 pub struct PitChannel {
     mode: ChannelMode,
+    mode_dirty: bool,
     access_mode: AccessMode,
+    access_mode_dirty: bool,
     reload_value: u16,
+    reload_value_dirty: bool,
     waiting_for_reload: bool,
     waiting_for_lobyte: bool,
     waiting_for_hibyte: bool,
     current_count: u16,
+    current_count_dirty: bool,
     read_in_progress: bool,
     normal_lobyte_read: bool,    
     count_is_latched: bool,
-    output_is_high: bool,
+    output: bool,
+    output_dirty: bool,
     latched_lobyte_read: bool,
     latch_count: u16,
     latch_lobit: bool,
     latch_lobit_count: u32,
     bcd_mode: bool,
-    input_gate: bool
+    input_gate: bool,
+    input_gate_dirty: bool,
+    one_shot_triggered: bool,
+    gate_triggered: bool,
 }
 
 pub struct ProgrammableIntervalTimer {
@@ -71,24 +104,24 @@ pub struct ProgrammableIntervalTimer {
 }
 pub type Pit = ProgrammableIntervalTimer;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Clone)]
 pub struct PitStringState {
-    pub c0_value: String,
-    pub c0_reload_value: String,
-    pub c0_access_mode: String,
-    pub c0_channel_mode: String,
-    pub c0_channel_output: String,
-    pub c1_value: String,
-    pub c1_reload_value: String,
-    pub c1_access_mode: String,
-    pub c1_channel_mode: String,
-    pub c1_channel_output: String,
-    pub c2_value: String,
-    pub c2_reload_value: String,
-    pub c2_access_mode: String,
-    pub c2_channel_mode: String,
-    pub c2_channel_output: String,
-    pub c2_gate_status: String,
+    pub c0_value: SyntaxToken,
+    pub c0_reload_value: SyntaxToken,
+    pub c0_access_mode: SyntaxToken,
+    pub c0_channel_mode: SyntaxToken,
+    pub c0_channel_output: SyntaxToken,
+    pub c1_value: SyntaxToken,
+    pub c1_reload_value: SyntaxToken,
+    pub c1_access_mode: SyntaxToken,
+    pub c1_channel_mode: SyntaxToken,
+    pub c1_channel_output: SyntaxToken,
+    pub c2_value: SyntaxToken,
+    pub c2_reload_value: SyntaxToken,
+    pub c2_access_mode: SyntaxToken,
+    pub c2_channel_mode: SyntaxToken,
+    pub c2_channel_output: SyntaxToken,
+    pub c2_gate_status: SyntaxToken,
 }
 
 impl IoDevice for ProgrammableIntervalTimer {
@@ -126,22 +159,30 @@ impl ProgrammableIntervalTimer {
         for _ in 0..3 {
             let pit = PitChannel {
                 mode: ChannelMode::InterruptOnTerminalCount,
+                mode_dirty: false,
                 access_mode: AccessMode::HiByteOnly,
+                access_mode_dirty: false,
                 reload_value: 0,
+                reload_value_dirty: false,
                 waiting_for_reload: true,
                 waiting_for_lobyte: false,
                 waiting_for_hibyte: false,
                 current_count: 0,
+                current_count_dirty: false,
                 read_in_progress: false,
                 normal_lobyte_read: false,
                 count_is_latched: false,
-                output_is_high: false,
+                output: false,
+                output_dirty: false,
                 latched_lobyte_read: false,
                 latch_count: 0,
                 latch_lobit: false,
                 latch_lobit_count: 0,
                 bcd_mode: false,
                 input_gate: true,
+                input_gate_dirty: false,
+                one_shot_triggered: false,
+                gate_triggered: false,
             };
             vec.push(pit);
         }
@@ -158,22 +199,30 @@ impl ProgrammableIntervalTimer {
         
         for channel in &mut self.channels {
             channel.mode = ChannelMode::InterruptOnTerminalCount;
+            channel.mode_dirty = false;
             channel.access_mode = AccessMode::HiByteOnly;
+            channel.access_mode_dirty = false;
             channel.reload_value = 0;
+            channel.reload_value_dirty = false;
             channel.waiting_for_reload = true;
             channel.waiting_for_lobyte = false;
             channel.waiting_for_hibyte = false;
             channel.current_count = 0;
+            channel.current_count_dirty = false;
             channel.read_in_progress = false;
             channel.normal_lobyte_read = false;
             channel.count_is_latched = false;
-            channel.output_is_high = false;
+            channel.output = false;
+            channel.output_dirty = false;
             channel.latched_lobyte_read = false;
             channel.latch_count = 0;
             channel.latch_lobit = false;
             channel.latch_lobit_count = 0;
             channel.bcd_mode = false;
             channel.input_gate = true;
+            channel.input_gate_dirty = false;
+            channel.one_shot_triggered = false;
+            channel.gate_triggered = false;
         }
     }
 
@@ -232,39 +281,45 @@ impl ProgrammableIntervalTimer {
             log::debug!("PIT: Channel {} selected, access mode {:?}, channel_mode {:?}, bcd: {:?}", channel_select, access_mode, channel_mode, bcd_enable );
 
             let channel = &mut self.channels[channel_select];
-            channel.mode = channel_mode;
+
+            dirty_update_checked!(channel.mode, channel_mode, channel.mode_dirty);
 
             match channel.mode {
                 ChannelMode::InterruptOnTerminalCount => {
                     // Intel: The output will be intiially low after the mode set operation.
-                    channel.output_is_high = false;
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
                     channel.waiting_for_reload = true;
                 }
                 ChannelMode::HardwareRetriggerableOneShot => {
                     // osdev: When the mode/command register is written the output signal goes high
-                    channel.output_is_high = true;
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
                     channel.waiting_for_reload = true;
+                    channel.one_shot_triggered = false;
+                    channel.gate_triggered = false;
                 }
                 ChannelMode::RateGenerator => {
-                    channel.output_is_high = true;
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
                     channel.waiting_for_reload = true;
                 },
                 ChannelMode::SquareWaveGenerator => {
-                    channel.output_is_high = true;
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
                     channel.waiting_for_reload = true;
                 },
                 ChannelMode::SoftwareTriggeredStrobe => {
-                    channel.output_is_high = true;
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
                     channel.waiting_for_reload = true;
                 },
                 ChannelMode::HardwareTriggeredStrobe => {
-                    channel.output_is_high = true;
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
                     channel.waiting_for_reload = true;
+                    channel.one_shot_triggered = false;
+                    channel.gate_triggered = false;
                 }
             }
             
-            channel.reload_value = 0;
-            channel.access_mode = access_mode;
+            dirty_update_checked!(channel.reload_value, 0, channel.reload_value_dirty);
+            dirty_update_checked!(channel.access_mode, access_mode, channel.access_mode_dirty);
+            
             channel.bcd_mode = bcd_enable;
         }        
 
@@ -282,49 +337,83 @@ impl ProgrammableIntervalTimer {
             _ => false,
         };
 
+        // Intel: Mode1: "If a new count value is loaded *while the output is low* it will not affect
+        // the duration of the one-shot pulse until the succeeeding trigger."
+
+        // Assumption is that a new count value while input is high *will* affect the output state.
+        let output_low_on_reload = match channel.mode {
+            ChannelMode::HardwareRetriggerableOneShot if channel.output => true,
+            _ => false
+        };
+
         match channel.mode {
-            ChannelMode::InterruptOnTerminalCount => {
+            ChannelMode::InterruptOnTerminalCount | ChannelMode::HardwareRetriggerableOneShot => {
                 // Reset output on port write
-                channel.output_is_high = false; 
+                dirty_update_checked!(channel.output, false, channel.output_dirty);
             }
             _=> {}
         }
 
         match channel.access_mode {
             AccessMode::LoByteOnly => {
-                channel.reload_value = data as u16;
+
+                dirty_update_checked!(channel.reload_value, (data as u16), channel.reload_value_dirty);
+                //channel.reload_value = data as u16;
 
                 if channel.waiting_for_reload || reload_immediately {
                     //log::trace!("Channel {} reloaded with value {} in LSB mode.", port_num, port.reload_value);
                     channel.current_count =  channel.reload_value;
                 }
                 channel.waiting_for_reload = false;
+                if output_low_on_reload {
+
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
+                    //channel.output = false;
+                    channel.gate_triggered = false;
+                }
             }
             AccessMode::HiByteOnly => {
-                channel.reload_value = (data as u16) << 8;
+                dirty_update_checked!(channel.reload_value, ((data as u16) << 8), channel.reload_value_dirty);
+                //channel.reload_value = (data as u16) << 8;
                 
                 if channel.waiting_for_reload || reload_immediately {
                     //log::trace!("Channel {} reloaded with value {} in HSB mode.", port_num, port.reload_value);
                     channel.current_count =  channel.reload_value;
                 }
                 channel.waiting_for_reload = false;
+                if output_low_on_reload {
+                    dirty_update_checked!(channel.output, false, channel.output_dirty);
+                    //channel.output = false;
+                    channel.gate_triggered = false;
+                }                
             }
             AccessMode::LoByteHiByte => {
                 // Expect lo byte first, hi byte second
                 if channel.waiting_for_hibyte {
                     // Receiving hi byte
-                    channel.reload_value |= (data as u16) << 8;
+
+                    let new_reload_value = channel.reload_value | (data as u16) << 8;
+                    dirty_update_checked!(channel.reload_value, new_reload_value, channel.reload_value_dirty);
+                    //channel.reload_value |= (data as u16) << 8;
                     channel.waiting_for_hibyte = false;
 
-                    if channel.waiting_for_reload || reload_immediately {      
+                    if channel.waiting_for_reload || reload_immediately {
+                        dirty_update_checked!(channel.current_count, channel.reload_value, channel.current_count_dirty);
                         channel.current_count =  channel.reload_value;              
                         //log::trace!("Channel {} reloaded with value {} in WORD mode.", port_num, port.reload_value);
                     }
                     channel.waiting_for_reload = false;
+                    if output_low_on_reload {
+                        dirty_update_checked!(channel.output, false, channel.output_dirty);
+                        //channel.output = false;
+                        channel.gate_triggered = false;
+                    }                    
                 }
                 else {
                     // Receiving lo byte
-                    channel.reload_value = data as u16;
+                    
+                    dirty_update_checked!(channel.reload_value, (data as u16), channel.reload_value_dirty);
+                    //channel.reload_value = data as u16;
                     channel.waiting_for_hibyte = true;
                 }
             }
@@ -462,7 +551,7 @@ impl ProgrammableIntervalTimer {
     }
 
     pub fn get_output_state(&self, channel: usize) -> bool {
-        self.channels[channel].output_is_high
+        self.channels[channel].output
     }
 
     pub fn tick(
@@ -475,29 +564,60 @@ impl ProgrammableIntervalTimer {
     {
         self.pit_cycles += 1;
 
-        // The rising edge of a channel's input gate will reload the channel's counter value.
+        // The rising edge of a channel's input gate will reload a channel's counter value
+        // in modes 1, 2, 3 and 5.
+
         // However, only channel 2 has a working input gate. The input gate is controlled by
         // writing line pb0 of the PPI chip.
+        
         // Therefore we only need to handle channel 2 here. All other channel input gates will
         // remain always high.
+
         let channel2_gate = ppi.get_pb0_state();
         if channel2_gate && !self.channels[2].input_gate {
             // Input gate rising
-            // Reload counter in modes 2 & 3
+            // Reload counter in modes 1, 2 & 3
             match self.channels[2].mode {
-                ChannelMode::RateGenerator | ChannelMode::SquareWaveGenerator => {
+                ChannelMode::RateGenerator 
+                | ChannelMode::HardwareRetriggerableOneShot
+                | ChannelMode::SquareWaveGenerator 
+                | ChannelMode::HardwareTriggeredStrobe 
+                => 
+                {
                     if self.channels[2].reload_value == 0 {
                         // 0 functions as a reload value of 65536
-                        self.channels[2].current_count = u16::MAX;
+
+                        dirty_update_checked!(
+                            self.channels[2].current_count, 
+                            u16::MAX,
+                            self.channels[2].current_count_dirty
+                        ); 
+                        //self.channels[2].current_count = u16::MAX;
                     }
                     else {
-                        self.channels[2].current_count = self.channels[2].reload_value;                            
+                        dirty_update_checked!(
+                            self.channels[2].current_count, 
+                            self.channels[2].reload_value,
+                            self.channels[2].current_count_dirty
+                        ); 
+                        //self.channels[2].current_count = self.channels[2].reload_value;                            
                     }
                 }
                 _ => {}
             }
+
+            if let ChannelMode::HardwareRetriggerableOneShot = self.channels[2].mode {
+                // Rising edge of gate input sets output low.
+
+                dirty_update_checked!(self.channels[2].output, false, self.channels[2].output_dirty);
+                //self.channels[2].output = false;
+                self.channels[2].one_shot_triggered = false;
+            }
+            self.channels[2].gate_triggered = true;
         }
-        self.channels[2].input_gate = channel2_gate;
+
+        dirty_update_checked!(self.channels[2].input_gate, channel2_gate, self.channels[2].input_gate_dirty);
+        //self.channels[2].input_gate = channel2_gate;
 
         // Tick each timer channel
 
@@ -508,66 +628,93 @@ impl ProgrammableIntervalTimer {
                     if !t.waiting_for_reload && t.input_gate {
 
                         // Counter value of 0 equates to to reload value of 2^16
-                        if t.current_count == 0 {
-                            if t.reload_value != 0 {
-                                panic!("unexpected timer state");
-                            }
-                            t.current_count = u16::MAX;
-                        }
-                        else {
-                            t.current_count -= 1;
-                        }
+
+                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
+                        //t.current_count = t.current_count.wrapping_sub(1);
                         
                         // Terminal Count reached.
                         if t.current_count == 0 {
                             
                             // Only trigger an interrupt on Channel #0, and only if output is going from low to high
-                            if !t.output_is_high && i == 0 {
+                            if !t.output && i == 0 {
                                 pic.request_interrupt(0);
                             }
 
-                            t.output_is_high = true;
+                            dirty_update_checked!(t.output, true, t.output_dirty);
+                            //t.output = true;
                             // Counter just wraps around in this mode, it is NOT reloaded.
-                            t.current_count = u16::MAX;
+                            dirty_update!(t.current_count, u16::MAX, t.current_count_dirty);
+                            //t.current_count = u16::MAX;
                         }
                     }
                 },
-                ChannelMode::HardwareRetriggerableOneShot => {},
+                ChannelMode::HardwareRetriggerableOneShot => {
+                    // Counting waits for reload value and rising edge of gate input.
+                    // Therefore this mode is only usable on channel #2.
+                    if !t.waiting_for_reload && t.gate_triggered {
+                        // Counter value of 0 equates to to reload value of 2^16
+
+                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
+                        //t.current_count = t.current_count.wrapping_sub(1);
+                        
+                        // OSDev: When the current count decrements from one to zero, the output goes
+                        // high and remains high until another mode/command register is written 
+                        if t.current_count == 0 {
+
+                            dirty_update!(t.current_count, u16::MAX, t.current_count_dirty);
+                            //t.current_count = u16::MAX;
+
+                            if t.one_shot_triggered == false {
+                                t.one_shot_triggered = true;
+
+                                dirty_update_checked!(t.output, true, t.output_dirty);
+                                //t.output = true;
+                            }
+                        }
+                        else if !t.one_shot_triggered {
+
+                            dirty_update_checked!(t.output, false, t.output_dirty);
+                            //t.output = false;
+                        }
+
+                    }
+                },
                 ChannelMode::RateGenerator => {
                     // Don't count while waiting for reload value or if input gate is low
                     if !t.waiting_for_reload && t.input_gate {
 
-                        if t.current_count == 0 {
-                            // 0 essentially functions as a counter value of 65536
-                            t.current_count = u16::MAX;
-                        }
-                        else {
-                            t.current_count -= 1;
+                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
                             
-                            if t.current_count == 1 {
-                                // OSDev: When the current count decrements from two to one, the output goes low
-                                //        the next falling edge of the clock it will go high again
-                                t.output_is_high = false;
-                            }
-                            if t.current_count == 0 {
-                                // Decremented from 1 to 0, output high, reload counter and continue
-                                t.output_is_high = true;
-                                t.current_count = t.reload_value;
+                        if t.current_count == 1 {
+                            // OSDev: When the current count decrements from two to one, the output goes low
+                            //        the next falling edge of the clock it will go high again
+                            
+                            dirty_update_checked!(t.output, false, t.output_dirty);
+                            //t.output = false;
+                        }
+                        if t.current_count == 0 {
+                            // Decremented from 1 to 0, output high, reload counter and continue
+                            
+                            dirty_update_checked!(t.output, true, t.output_dirty);
+                            //t.output = true;
+                            
+                            dirty_update!(t.current_count, t.reload_value, t.output_dirty);
+                            //t.current_count = t.reload_value;
 
-                                if i == 0 {                          
-                                    // Channel #0 is connected to PIC and generates interrupt
-                                    pic.request_interrupt(0);
-                                }
-                                if i == 1 {
-                                    // Channel #1 is connected to DMA for DMA refresh.
-                                    dma.do_dma_read_u8(bus, 0);
-                                }
+                            if i == 0 {                          
+                                // Channel #0 is connected to PIC and generates interrupt
+                                pic.request_interrupt(0);
+                            }
+                            if i == 1 {
+                                // Channel #1 is connected to DMA for DMA refresh.
+                                dma.do_dma_read_u8(bus, 0);
                             }
                         }
                     }
                     // Low gate input forces output high
                     if !t.input_gate {
-                        t.output_is_high = true;
+                        dirty_update_checked!(t.output, true, t.output_dirty);
+                        //t.output = true;
                     }
                 },
                 ChannelMode::SquareWaveGenerator => {
@@ -579,23 +726,28 @@ impl ProgrammableIntervalTimer {
                             if t.reload_value != 0 {
                                 panic!("unexpected timer state");
                             }
-                            t.current_count = u16::MAX;
+                            dirty_update!(t.current_count, u16::MAX, t.current_count_dirty );
+                            //t.current_count = u16::MAX;
                         }
-
                         if t.current_count & 0x01 != 0 {
                             // Count is odd - can only occur immediately after reload of odd reload value
 
-                            if t.output_is_high { 
+                            if t.output { 
                                 // Intel: "If the count is odd and the output is high, the first clock pulse
                                 // (after the count is loaded) decrements the count by 1. Subsequent pulses
-                                // decrement the clock by 2..."                                     
-                                t.current_count = t.current_count.wrapping_sub(1);
+                                // decrement the clock by 2..."                    
+                                dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
+                                //t.current_count = t.current_count.wrapping_sub(1);
+
                                 // count is even from now on
                             }
                             else {
                                 // Intel: "... After timeout, the output goes low and the full count is reloaded.
                                 // The first clock pulse decrements the counter by 3."
-                                t.current_count = t.current_count.wrapping_sub(3);
+
+                                dirty_update!(t.current_count, t.current_count.wrapping_sub(3), t.current_count_dirty);
+                                //t.current_count = t.current_count.wrapping_sub(3);
+                                
                                 // count is even from now on
 
                                 // TODO: What happens on a reload value of 1? OSdev says you should avoid it - would 
@@ -603,18 +755,22 @@ impl ProgrammableIntervalTimer {
                             }
                         }
                         else {
-                            t.current_count = t.current_count.saturating_sub(2);
+
+                            dirty_update!(t.current_count, t.current_count.saturating_sub(2), t.current_count_dirty);
+                            //t.current_count = t.current_count.saturating_sub(2);
                         }
 
                         // Terminal count reached
                         if t.current_count == 0 {
 
                             // Change flipflop state
-                            t.output_is_high = !t.output_is_high;
+
+                            dirty_update!(t.output, !t.output, t.output_dirty);
+                            //t.output = !t.output;
 
                             // Only Channel #0 generates interrupts
                             if i == 0 {
-                                if t.output_is_high {
+                                if t.output {
                                     pic.request_interrupt(0);
                                 }
                                 else {
@@ -624,10 +780,12 @@ impl ProgrammableIntervalTimer {
 
                             // Reload counter
                             if t.reload_value == 0 {
-                                t.current_count = u16::MAX; 
+                                dirty_update!(t.current_count, u16::MAX, t.current_count_dirty);
+                                //t.current_count = u16::MAX; 
                             }
                             else {
-                                t.current_count = t.reload_value;                            
+                                dirty_update!(t.current_count, t.reload_value, t.current_count_dirty);
+                                //t.current_count = t.reload_value;                            
                             }
                         }
                     }
@@ -637,7 +795,29 @@ impl ProgrammableIntervalTimer {
                     //}
                 },
                 ChannelMode::SoftwareTriggeredStrobe => {},
-                ChannelMode::HardwareTriggeredStrobe => {},
+                ChannelMode::HardwareTriggeredStrobe => {
+                    if !t.waiting_for_reload {
+
+                        // Counter value of 0 equates to to reload value of 2^16
+                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
+                            
+                        // OSDev: When the current count decrements from one to zero, the output goes
+                        // low for one cycle of the input signal
+                        if t.current_count == 0 {
+
+                            if t.one_shot_triggered == false {
+                                t.one_shot_triggered = true;
+
+                                dirty_update!(t.output, false, t.output_dirty);
+                                //t.output = false;
+                            }
+                        }
+                        else {
+                            dirty_update!(t.output, true, t.output_dirty);
+                            //t.output = true;
+                        }
+                    }
+                },
             }
 
             let ppi_pb1 = ppi.get_pb1_state();
@@ -646,7 +826,7 @@ impl ProgrammableIntervalTimer {
             // Note: Bit #1 of PPI Port B is AND'd with output.
             if i == 2 {
 
-                let speaker_signal = t.output_is_high && ppi_pb1;
+                let speaker_signal = t.output && ppi_pb1;
                 match buffer_producer.push(speaker_signal as u8) {
                     Ok(()) => (),
                     Err(_) => ()
@@ -655,24 +835,100 @@ impl ProgrammableIntervalTimer {
         }
     }
 
-    pub fn get_string_repr(&self) -> PitStringState {
-        PitStringState {
-            c0_value: format!("{:06}", self.channels[0].current_count),
-            c0_reload_value: format!("{:06}", self.channels[0].reload_value),
-            c0_access_mode: format!("{:?}", self.channels[0].access_mode),
-            c0_channel_mode: format!("{:?}", self.channels[0].mode),
-            c0_channel_output: format!("{:?}", self.channels[0].output_is_high),
-            c1_value: format!("{:06}", self.channels[1].current_count),
-            c1_reload_value: format!("{:06}", self.channels[1].reload_value),
-            c1_access_mode: format!("{:?}", self.channels[1].access_mode),
-            c1_channel_mode: format!("{:?}", self.channels[1].mode),
-            c1_channel_output: format!("{:?}", self.channels[1].output_is_high),
-            c2_value: format!("{:06}", self.channels[2].current_count),
-            c2_reload_value: format!("{:06}", self.channels[2].reload_value),
-            c2_access_mode: format!("{:?}", self.channels[2].access_mode),
-            c2_channel_mode: format!("{:?}", self.channels[2].mode),
-            c2_channel_output: format!("{:?}", self.channels[2].output_is_high),
-            c2_gate_status: format!("{:?}", self.channels[2].input_gate)
+    pub fn get_string_state(&mut self, clean: bool) -> PitStringState {
+        let state = PitStringState {
+            c0_value:           SyntaxToken::StateString(format!("{:06}", self.channels[0].current_count), self.channels[0].current_count_dirty, 0),
+            c0_reload_value:    SyntaxToken::StateString(format!("{:06}", self.channels[0].reload_value), self.channels[0].reload_value_dirty, 0),
+            c0_access_mode:     SyntaxToken::StateString(format!("{:?}", self.channels[0].access_mode), self.channels[0].access_mode_dirty, 0),
+            c0_channel_mode:    SyntaxToken::StateString(format!("{:?}", self.channels[0].mode), self.channels[0].mode_dirty, 0),
+            c0_channel_output:  SyntaxToken::StateString(format!("{:?}", self.channels[0].output), self.channels[0].access_mode_dirty, 0),
+            c1_value:           SyntaxToken::StateString(format!("{:06}", self.channels[1].current_count), self.channels[1].current_count_dirty, 0),
+            c1_reload_value:    SyntaxToken::StateString(format!("{:06}", self.channels[1].reload_value), self.channels[1].reload_value_dirty, 0),
+            c1_access_mode:     SyntaxToken::StateString(format!("{:?}", self.channels[1].access_mode), self.channels[1].access_mode_dirty, 0),
+            c1_channel_mode:    SyntaxToken::StateString(format!("{:?}", self.channels[1].mode), self.channels[1].mode_dirty, 0),
+            c1_channel_output:  SyntaxToken::StateString(format!("{:?}", self.channels[1].output), self.channels[1].access_mode_dirty, 0),
+            c2_value:           SyntaxToken::StateString(format!("{:06}", self.channels[2].current_count), self.channels[2].current_count_dirty, 0),
+            c2_reload_value:    SyntaxToken::StateString(format!("{:06}", self.channels[2].reload_value), self.channels[2].reload_value_dirty, 0),
+            c2_access_mode:     SyntaxToken::StateString(format!("{:?}", self.channels[2].access_mode), self.channels[2].access_mode_dirty, 0),
+            c2_channel_mode:    SyntaxToken::StateString(format!("{:?}", self.channels[2].mode), self.channels[1].mode_dirty, 0),
+            c2_channel_output:  SyntaxToken::StateString(format!("{:?}", self.channels[2].output), self.channels[2].access_mode_dirty, 0),
+            c2_gate_status:     SyntaxToken::StateString(format!("{:?}", self.channels[2].input_gate), self.channels[2].input_gate_dirty, 0),
+        };
+
+        if clean {
+            for i in 0..3 {
+                self.channels[i].current_count_dirty = false;
+                self.channels[i].reload_value_dirty = false;
+                self.channels[i].access_mode_dirty = false;
+                self.channels[i].mode_dirty = false;
+                self.channels[i].input_gate_dirty = false;
+            }
+
         }
+
+        state
+    }
+
+    pub fn get_display_state(&mut self, clean: bool) -> PitDisplayState {
+
+        let mut state_vec = Vec::new();
+
+        for i in 0..3 {
+
+            let mut channel_map = BTreeMap::<&str, SyntaxToken>::new();
+
+            channel_map.insert(
+                "Access Mode:", 
+                SyntaxToken::StateString(
+                    format!("{:?}", self.channels[i].access_mode), self.channels[i].access_mode_dirty, 0
+                )
+            );
+            channel_map.insert(
+                "Channel Mode:", 
+                SyntaxToken::StateString(
+                    format!("{:?}", self.channels[i].mode), self.channels[i].mode_dirty, 0
+                )
+            );
+            channel_map.insert(
+                "Counter:", 
+                SyntaxToken::StateString(
+                    format!("{:?}", self.channels[i].current_count), self.channels[i].current_count_dirty, 0
+                )
+            );
+            channel_map.insert(
+                "Reload Value:", 
+                SyntaxToken::StateString(
+                    format!("{:?}", self.channels[i].reload_value), self.channels[i].reload_value_dirty, 0
+                )
+            );
+            channel_map.insert(
+                "Output Signal:", 
+                SyntaxToken::StateString(
+                    format!("{:?}", self.channels[i].output), self.channels[i].output_dirty, 0
+                )
+            );
+            channel_map.insert(
+                "Gate Status:", 
+                SyntaxToken::StateString(
+                    format!("{:?}", self.channels[i].input_gate), self.channels[i].input_gate_dirty, 0
+                )
+            );
+
+            state_vec.push(channel_map);
+        }
+
+        if clean {
+            for i in 0..3 {
+                self.channels[i].current_count_dirty = false;
+                self.channels[i].reload_value_dirty = false;
+                self.channels[i].access_mode_dirty = false;
+                self.channels[i].mode_dirty = false;
+                self.channels[i].input_gate_dirty = false;
+                self.channels[i].output_dirty = false;
+            }
+
+        }
+
+        state_vec
     }
 }

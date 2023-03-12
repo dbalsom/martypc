@@ -214,8 +214,7 @@ impl IoDevice for Ppi {
                 }
             },
             PPI_PORT_B => {
-                // Write-only port
-                0
+                self.handle_portb_read()
             },
             PPI_PORT_C => {
                 self.calc_port_c_value()
@@ -248,6 +247,11 @@ impl Ppi {
 
     pub fn handle_command_port_write(&mut self, byte: u8) {
         log::trace!("PPI: Write to command port: {:02X}", byte);
+    }
+    
+    pub fn handle_portb_read(&self) -> u8 {
+
+        self.pb_byte
     }
 
     pub fn handle_portb_write(&mut self, byte: u8) {

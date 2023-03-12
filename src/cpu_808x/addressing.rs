@@ -1,5 +1,5 @@
 use crate::cpu_808x::*;
-use crate::cpu_808x::cpu_biu::*;
+use crate::cpu_808x::biu::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum AddressingMode {

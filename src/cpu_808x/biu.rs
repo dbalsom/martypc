@@ -206,7 +206,7 @@ impl<'a> Cpu<'a> {
 
         // SUSP waits for any current fetch to complete.
         if self.bus_status == BusStatus::CodeFetch {
-            self.bus_wait_finish();
+            self.biu_bus_wait_finish();
             //self.cycle();
         }
     }
@@ -350,7 +350,7 @@ impl<'a> Cpu<'a> {
             OperandSize::Operand8,
             true
         );
-        let _cycles_waited = self.bus_wait_finish();
+        let _cycles_waited = self.biu_bus_wait_finish();
         
         validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
 
@@ -373,8 +373,8 @@ impl<'a> Cpu<'a> {
             true
         );
         match flag {
-            ReadWriteFlag::Normal => self.bus_wait_finish(),
-            ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
+            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
         };
         
         validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
@@ -396,7 +396,7 @@ impl<'a> Cpu<'a> {
                     OperandSize::Operand16,
                     true
                 );
-                self.bus_wait_finish();
+                self.biu_bus_wait_finish();
                 word = self.data_bus & 0x00FF;
 
                 validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
@@ -411,10 +411,10 @@ impl<'a> Cpu<'a> {
                     false
                 );
                 match flag {
-                    ReadWriteFlag::Normal => self.bus_wait_finish(),
+                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
                     ReadWriteFlag::RNI => {
                         // self.bus_wait_until(TCycle::T3)
-                        self.bus_wait_finish()
+                        self.biu_bus_wait_finish()
                     }
                 };
                 word |= (self.data_bus & 0x00FF) << 8;
@@ -433,8 +433,8 @@ impl<'a> Cpu<'a> {
                     true
                 );
                 match flag {
-                    ReadWriteFlag::Normal => self.bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
+                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
                 };
 
                 self.data_bus
@@ -458,7 +458,7 @@ impl<'a> Cpu<'a> {
 
                 validate_write_u8!(self, addr, (word & 0x00FF) as u8);
 
-                self.bus_wait_finish();
+                self.biu_bus_wait_finish();
 
                 self.biu_bus_begin(
                     BusStatus::MemWrite, 
@@ -472,8 +472,8 @@ impl<'a> Cpu<'a> {
                 validate_write_u8!(self, addr + 1, ((word >> 8) & 0x00FF) as u8);
 
                 match flag {
-                    ReadWriteFlag::Normal => self.bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
+                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
                 };
             }
             CpuType::Cpu8086 => {
@@ -486,13 +486,59 @@ impl<'a> Cpu<'a> {
                     OperandSize::Operand16,
                     true);
                 match flag {
-                    ReadWriteFlag::Normal => self.bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.bus_wait_until(TCycle::T3)
+                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
                 };
             }
         }
 
     }    
+
+    /// If in an active bus cycle, cycle the cpu until the bus cycle has reached T4.
+    pub fn biu_bus_wait_finish(&mut self) -> u32 {
+        let mut bus_cycles_elapsed = 0;
+        match self.bus_status {
+            BusStatus::Passive => {
+                // No active bus transfer
+                return 0
+            }
+            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
+                while self.t_cycle != TCycle::T4 {
+                    self.cycle();
+                    bus_cycles_elapsed += 1;
+                }
+                return bus_cycles_elapsed
+            }
+            _ => {
+                // Handle other statuses
+                return 0
+            }
+        }
+    }
+
+    /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
+    /// This function is usually used on a terminal write to wait for T2 to process RNI
+    pub fn biu_bus_wait_until(&mut self, target_state: TCycle) -> u32 {
+        let mut bus_cycles_elapsed = 0;
+        match self.bus_status {
+            BusStatus::Passive => {
+                // No active bus transfer
+                return 0
+            }
+            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
+                while self.t_cycle != target_state {
+                    self.cycle();
+                    bus_cycles_elapsed += 1;
+                }
+                //self.cycle();
+                return bus_cycles_elapsed
+            }
+            _ => {
+                // Handle other statuses
+                return 0
+            }
+        }
+    }   
 
     /// Begin a new bus cycle of the specified type. Set the address latch and set the data bus appropriately.
     pub fn biu_bus_begin(
@@ -541,7 +587,7 @@ impl<'a> Cpu<'a> {
         }
 
         // Wait for the current bus cycle to terminate.
-        let mut _waited_cycles = self.bus_wait_finish();
+        let mut _waited_cycles = self.biu_bus_wait_finish();
         if self.t_cycle == TCycle::T4 {
             self.cycle();
             _waited_cycles += 1;

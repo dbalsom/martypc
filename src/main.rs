@@ -10,7 +10,7 @@ use std::{
     ffi::OsString
 };
 
-use crate::gui::Framework;
+use crate::egui::Framework;
 
 use log::error;
 use pixels::{Error, Pixels, SurfaceTexture};
@@ -42,9 +42,7 @@ mod cpu_808x;
 mod dma;
 mod fdc;
 mod floppy_manager;
-mod gui;
-mod gui_color;
-mod gui_image;
+mod egui;
 mod hdc;
 mod io;
 mod interrupt;
@@ -57,6 +55,7 @@ mod ppi;
 mod rom_manager;
 mod serial;
 mod sound;
+mod syntax_token;
 mod util;
 
 mod vhd;
@@ -77,14 +76,15 @@ mod arduino8088_validator;
 use breakpoints::BreakPointType;
 use config::{ConfigFileParams, MachineType, VideoType, HardDiskControllerType, ValidatorType, TraceMode};
 use machine::{Machine, ExecutionState};
-use cpu_808x::Cpu;
+use cpu_808x::{Cpu, CpuAddress};
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
 use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use bytequeue::ByteQueue;
-use gui::GuiEvent;
+use crate::egui::GuiEvent;
 use sound::SoundPlayer;
+use syntax_token::SyntaxToken;
 
 use io::{IoHandler, IoBusInterface};
 
@@ -106,7 +106,16 @@ const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u3
 // Rendering Stats
 struct Counter {
     frame_count: u64,
+    cycle_count: u64,
+    instr_count: u64,
+
+    current_cps: u64,
     current_fps: u32,
+    current_ips: u64,
+    emulated_fps: u32,
+    current_emulated_frames: u64,
+    emulated_frames: u64,
+
     fps: u32,
     last_frame: Instant,
     last_sndbuf: Instant,
@@ -125,7 +134,17 @@ impl Counter {
     fn new() -> Self {
         Self {
             frame_count: 0,
+            cycle_count: 0,
+            instr_count: 0,
+            
+            current_cps: 0,
             current_fps: 0,
+            current_ips: 0,
+
+            emulated_fps: 0,
+            current_emulated_frames: 0,
+            emulated_frames: 0,
+
             fps: 0,
             last_second: Instant::now(),
             last_sndbuf: Instant::now(),
@@ -476,7 +495,10 @@ fn main() {
 
             // Resize the window
             if let Some(size) = input.window_resized() {
-                pixels.resize_surface(size.width, size.height);
+                if let Err(_) = pixels.resize_surface(size.width, size.height) {
+                    // Some error occured but not much we can do about it.
+                    // Errors get thrown when the window minimizes.
+                }
                 framework.resize(size.width, size.height);
             }
 
@@ -633,6 +655,17 @@ fn main() {
 
                     stat_counter.fps = stat_counter.current_fps;
                     stat_counter.current_fps = 0;
+
+                    // Update IPS and reset instruction count for next second
+
+                    stat_counter.current_cps = stat_counter.cycle_count;
+                    stat_counter.cycle_count = 0;
+
+                    stat_counter.emulated_fps = stat_counter.current_emulated_frames as u32;
+                    stat_counter.current_emulated_frames = 0;
+
+                    stat_counter.current_ips = stat_counter.instr_count;
+                    stat_counter.instr_count = 0;
                     stat_counter.last_second = Instant::now();
                 } 
 
@@ -682,8 +715,17 @@ fn main() {
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
-                    machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut());
+                    stat_counter.instr_count += machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut());
                     stat_counter.emulation_time = Instant::now() - emulation_start;
+
+                    // Add instructions to IPS counter
+                    stat_counter.cycle_count += stat_counter.cycle_target as u64;
+
+                    // Add frames to frame counter
+                    let frame_count = machine.videocard().borrow().get_frame_count();
+                    let elapsed_frames = frame_count - stat_counter.emulated_frames;
+                    stat_counter.emulated_frames += elapsed_frames;
+                    stat_counter.current_emulated_frames += elapsed_frames;
 
                     // Emulation time budget is 16ms - render time in ms - fudge factor
                     let render_time = stat_counter.render_time.as_millis();
@@ -805,7 +847,7 @@ fn main() {
                         framework.gui.show_disassembly_view();
                     }
 
-                    // -- Handle egui "Events"
+                    // Handle custom user events received from our gui windows
                     loop {
                         match framework.gui.get_event() {
                             Some(GuiEvent::CreateVHD(filename, fmt)) => {
@@ -891,6 +933,29 @@ fn main() {
                             
                                 machine.set_breakpoints(breakpoints);
                             }
+                            Some(GuiEvent::MemoryUpdate) => {
+                                // The address bar for the memory viewer was updated. We need to 
+                                // evaluate the expression and set a new row value for the control.
+                                // The memory contents will be updated in the normal frame update.
+                                let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
+                                // Show address 0 if expression evail fails
+                                let mem_dump_addr: u32 = match machine.cpu().eval_address(&mem_dump_addr_str) {
+                                    Some(i) => {
+                                        let addr: u32 = i.into();
+                                        addr & !0x0F
+                                    }
+                                    None => 0
+                                };
+                                framework.gui.memory_viewer.set_row(mem_dump_addr as usize);                                    
+                            }
+                            Some(GuiEvent::TokenHover(addr)) => {
+                                // Hovered over a token in a TokenListView.
+
+                                let debug = machine.bus_mut().get_memory_debug(addr);
+
+                                framework.gui.memory_viewer.set_hover_text(format!("{}", debug));
+
+                            }
                             None => break,
                             _ => {
                                 // Unhandled event?
@@ -903,7 +968,7 @@ fn main() {
                     framework.gui.set_floppy_names(name_vec);
 
                     // -- Update VHD Creator window
-                    if framework.gui.is_window_open(gui::GuiWindow::VHDCreator) {
+                    if framework.gui.is_window_open(egui::GuiWindow::VHDCreator) {
                         framework.gui.update_vhd_formats(machine.hdc().borrow_mut().get_supported_formats());
                     }
 
@@ -943,111 +1008,161 @@ fn main() {
                     }
 
                     // Update performance viewer
-                    if framework.gui.is_window_open(gui::GuiWindow::PerfViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::PerfViewer) {
                         framework.gui.update_video_data(video_data.clone());
                         framework.gui.update_perf_view(
                             stat_counter.fps,
+                            stat_counter.emulated_fps,
+                            stat_counter.current_cps,
+                            stat_counter.current_ips,
                             stat_counter.emulation_time.as_millis() as u32,
                             stat_counter.render_time.as_millis() as u32
                         )
                     }
 
                     // -- Update memory viewer window if open
-                    if framework.gui.is_window_open(gui::GuiWindow::MemoryViewer) {
-                        let mem_dump_addr_str = framework.gui.get_memory_view_address();
+                    if framework.gui.is_window_open(egui::GuiWindow::MemoryViewer) {
+                        let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
                         // Show address 0 if expression evail fails
-                        let mem_dump_addr = match machine.cpu().eval_address(mem_dump_addr_str) {
-                            Some(i) => i,
+                        let mem_dump_addr: u32 = match machine.cpu().eval_address(&mem_dump_addr_str) {
+                            Some(i) => {
+                                let addr: u32 = i.into();
+                                addr & !0x0F
+                            }
                             None => 0
                         };
-                        let mem_dump_str = machine.bus().dump_flat(mem_dump_addr as usize, 256);
 
-                        framework.gui.update_memory_view(mem_dump_str);
+                        let mem_dump_vec = machine.bus().dump_flat_tokens(mem_dump_addr as usize, 256);
+                    
+                        //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
+                        framework.gui.memory_viewer.set_memory(mem_dump_vec);
                     }   
 
                     // -- Update register viewer window
-                    if framework.gui.is_window_open(gui::GuiWindow::CpuStateViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::CpuStateViewer) {
                         let cpu_state = machine.cpu().get_string_state();
                         framework.gui.update_cpu_state(cpu_state);
                     }
 
                     // -- Update PIT viewer window
-                    if framework.gui.is_window_open(gui::GuiWindow::PitViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::PitViewer) {
                         let pit_state = machine.pit_state();
-                        framework.gui.update_pit_state(pit_state);
+                        framework.gui.update_pit_state(&pit_state);
+
+                        let pit_data = machine.get_pit_buf();
+                        framework.gui.pit_viewer.update_channel_data(2, &pit_data);
                     }
 
                     // -- Update PIC viewer window
-                    if framework.gui.is_window_open(gui::GuiWindow::PicViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::PicViewer) {
                         let pic_state = machine.pic_state();
                         framework.gui.update_pic_state(pic_state);
                     }
 
                     // -- Update PPI viewer window
-                    if framework.gui.is_window_open(gui::GuiWindow::PpiViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::PpiViewer) {
                         let ppi_state = machine.ppi_state();
                         framework.gui.update_ppi_state(ppi_state);  
                     }
 
                     // -- Update DMA viewer window
-                    if framework.gui.is_window_open(gui::GuiWindow::DmaViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::DmaViewer) {
                         let dma_state = machine.dma_state();
                         framework.gui.update_dma_state(dma_state);
                     }
                     
                     // -- Update VideoCard Viewer (Replace CRTC Viewer)
-                    if framework.gui.is_window_open(gui::GuiWindow::VideoCardViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::VideoCardViewer) {
                         let videocard_state = machine.videocard_state();
                         framework.gui.update_videocard_state(videocard_state);
                     }
 
                     // -- Update Instruction Trace window
-                    if framework.gui.is_window_open(gui::GuiWindow::TraceViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::TraceViewer) {
                         let trace = machine.cpu().dump_instruction_history();
                         framework.gui.update_trace_state(trace);
                     }
 
                     // -- Update Call Stack window
-                    if framework.gui.is_window_open(gui::GuiWindow::CallStack) {
+                    if framework.gui.is_window_open(egui::GuiWindow::CallStack) {
                         let stack = machine.cpu().dump_call_stack();
                         framework.gui.update_call_stack_state(stack);
                     }
 
                     // -- Update disassembly viewer window
-                    if framework.gui.is_window_open(gui::GuiWindow::DiassemblyViewer) {
-                        let disassembly_start_addr_str = framework.gui.get_disassembly_view_address();
-                        let disassembly_start_addr = match machine.cpu().eval_address(disassembly_start_addr_str) {
-                            Some(i) => i,
+                    if framework.gui.is_window_open(egui::GuiWindow::DiassemblyViewer) {
+                        let start_addr_str = framework.gui.get_disassembly_view_address();
+
+                        // The expression evaluation could result in a segment:offset address or a flat address.
+                        // The behavior of the viewer will differ slightly depending on whether we have segment:offset 
+                        // information. Wrapping of segments can't be detected if the expression evaluates to a flat
+                        // address.
+                        let mut start_addr = machine.cpu().eval_address(start_addr_str);
+                        let start_addr_flat: u32 = match start_addr {
+                            Some(i) => i.into(),
                             None => 0
                         };
 
                         let bus = machine.bus_mut();
                         
-                        let mut disassembly_string = String::new();
-                        let mut disassembly_addr = disassembly_start_addr as usize;
+                        let mut listview_vec = Vec::new();
+
+                        //let mut disassembly_string = String::new();
+                        let mut disassembly_addr_flat = start_addr_flat as usize;
+                        let mut disassembly_addr_seg = start_addr;
+
                         for _ in 0..24 {
 
-                            if disassembly_addr < machine::MAX_MEMORY_ADDRESS {
+                            if disassembly_addr_flat < machine::MAX_MEMORY_ADDRESS {
 
-                                bus.seek(disassembly_addr as usize);
-                                let decode_str: String = match Cpu::decode(bus) {
+                                bus.seek(disassembly_addr_flat as usize);
+
+                                let mut decode_vec = Vec::new();
+
+                                match Cpu::decode(bus) {
                                     Ok(i) => {
                                     
-                                        let instr_slice = bus.get_slice_at(disassembly_addr, i.size as usize);
+                                        let instr_slice = bus.get_slice_at(disassembly_addr_flat, i.size as usize);
                                         let instr_bytes_str = util::fmt_byte_array(instr_slice);
-                                        let decode_str = format!("{:05X} {:012} {}\n", disassembly_addr, instr_bytes_str, i);
-                                        disassembly_addr += i.size as usize;
+                                        
+                                        decode_vec.push(SyntaxToken::MemoryAddressFlat(disassembly_addr_flat as u32, format!("{:05X}", disassembly_addr_flat)));
 
-                                        decode_str
+                                        let mut instr_vec = Cpu::tokenize_instruction(&i);
+
+                                        //let decode_str = format!("{:05X} {:012} {}\n", disassembly_addr, instr_bytes_str, i);
+                                        
+                                        disassembly_addr_flat += i.size as usize;
+
+                                        // If we have cs:ip, advance the offset. Wrapping of segment may provide different results 
+                                        // from advancing flat address, so if a wrap is detected, adjust the flat address.
+                                        if let Some(CpuAddress::Segmented(segment, offset)) = disassembly_addr_seg {
+
+                                            decode_vec.push(SyntaxToken::MemoryAddressSeg16(segment, offset, format!("{:04X}:{:04X}", segment, offset)));
+
+                                            let new_offset = offset.wrapping_add(i.size as u16);
+                                            if new_offset < offset {
+                                                // A wrap of the code segment occurred. Update the linear address to match.
+                                                disassembly_addr_flat = Cpu::calc_linear_address(segment, new_offset) as usize;
+                                            }
+
+                                            disassembly_addr_seg = Some(CpuAddress::Segmented(segment, new_offset));
+                                            //*offset = new_offset;
+                                        }
+                                        decode_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", instr_bytes_str)));
+                                        decode_vec.append(&mut instr_vec);
                                     }
                                     Err(_) => {
-                                        format!("{:05X} INVALID\n", disassembly_addr)
+                                        //format!("{:05X} INVALID\n", disassembly_addr)
                                     }
                                 };
-                                disassembly_string.push_str(&decode_str);
+
+                                //disassembly_string.push_str(&decode_str);
+                                listview_vec.push(decode_vec);
                             }
                         }
-                        framework.gui.update_dissassembly_view(disassembly_string);
+
+                        //framework.gui.update_dissassembly_view(disassembly_string);
+                        framework.gui.disassembly_viewer.set_content(listview_vec);
                     }
 
                     // Prepare egui
@@ -1129,7 +1244,7 @@ pub fn main_headless(
 use std::io::{BufWriter, Write};
 #[cfg(feature = "cpu_validator")]
 use cpu_808x::*;
-use crate::cpu_808x::cpu_mnemonic::Mnemonic;
+use crate::cpu_808x::mnemonic::Mnemonic;
 
 #[cfg(feature = "cpu_validator")]
 pub fn main_fuzzer <'a>(

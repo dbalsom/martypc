@@ -33,13 +33,23 @@
       12  Gfx     640x480     VGA     16    a000
 */
 
+
+
 use std::collections::HashMap;
 
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
 
 use crate::config::VideoType;
 
-pub type VideoCardState = HashMap<String, Vec<(String,String)>>;
+#[allow(dead_code)]
+pub enum VideoCardStateEntry {
+    Value8(u8),
+    Value16(u16),
+    String(String),
+    Color(String, u8, u8, u8),
+}
+
+pub type VideoCardState = HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
 /// All valid graphics modes for CGA, EGA and VGA Cards
 #[allow (dead_code)] 
@@ -154,7 +164,7 @@ pub trait VideoCard {
     /// 
     /// This allows returning multiple categories of related registers.
     /// For the EGA for example, there are CRTC, Sequencer, Attribute and Graphics registers.
-    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String,String)>>;
+    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
     /// Runs the video card device for the specified period of time
     fn run(&mut self, cpu_cycles: u32);
@@ -170,6 +180,9 @@ pub trait VideoCard {
 
     /// Return the specified bitplane as a slice
     fn get_plane_slice(&self, plane: usize) -> &[u8];
+
+    /// Return the number of frames the video device has rendered
+    fn get_frame_count(&self) -> u64;
 
     /// Dump graphics memory to disk
     fn dump_mem(&self);

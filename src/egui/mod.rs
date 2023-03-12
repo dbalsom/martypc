@@ -13,11 +13,11 @@ use std::{
 
 use egui::{
     ClippedPrimitive, 
-    CollapsingHeader,
     Context, 
     ColorImage, 
     ImageData, 
-    TexturesDelta
+    TexturesDelta,
+    NumExt
 };
 
 use egui::{Visuals, Color32, FontDefinitions, Style};
@@ -30,19 +30,35 @@ use super::VideoData;
 
 use serialport::SerialPortInfo;
 
+mod constants;
+mod color;
+mod image;
+mod menu;
+mod color_swatch;
+mod token_listview;
+mod disassembly_viewer;
+mod videocard_viewer;
+mod memory_viewer;
+mod pit_viewer;
+
 use crate::{
 
-    gui_image::{UiImage, get_ui_image},
-    gui_color::{darken_c32, lighten_c32, add_c32},
+    egui::image::{UiImage, get_ui_image},
+    egui::color::{darken_c32, lighten_c32, add_c32},
+
+    // Use custom windows
+    egui::memory_viewer::MemoryViewerControl,
+    egui::disassembly_viewer::DisassemblyControl,
+    egui::pit_viewer::PitViewerControl,
 
     machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
     dma::DMAControllerStringState,
     hdc::HardDiskFormat,
-    pit::PitStringState, 
+    pit::PitDisplayState, 
     pic::PicStringState,
     ppi::PpiStringState, 
-    videocard::VideoCardState
+    videocard::{VideoCardState, VideoCardStateEntry}
     
 };
 
@@ -65,7 +81,7 @@ pub(crate) enum GuiWindow {
     VHDCreator,
 }
 
-pub(crate) enum GuiEvent {
+pub enum GuiEvent {
     LoadVHD(u32,OsString),
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, OsString),
@@ -73,7 +89,9 @@ pub(crate) enum GuiEvent {
     BridgeSerialPort(String),
     DumpVRAM,
     DumpCS,
-    EditBreakpoint
+    EditBreakpoint,
+    MemoryUpdate,
+    TokenHover(usize)
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -118,6 +136,9 @@ pub(crate) struct GuiState {
 
     video_data: VideoData,
     current_fps: u32,
+    emulated_fps: u32,
+    current_cps: u64,
+    current_ips: u64,
     emulation_ms: u32,
     render_ms: u32,
 
@@ -148,12 +169,16 @@ pub(crate) struct GuiState {
 
     error_string: String,
     pub memory_viewer_address: String,
+    pub memory_viewer_row: usize,
+    pub memory_viewer_lastrow: usize,
+
+    pub memory_viewer: MemoryViewerControl,
     pub cpu_state: CpuStringState,
     
     pub breakpoint: String,
     pub mem_breakpoint: String,
     
-    pub pit_state: PitStringState,
+    pub pit_viewer: PitViewerControl,
     pub pic_state: PicStringState,
     pub ppi_state: PpiStringState,
     pub dma_state: DMAControllerStringState,
@@ -163,8 +188,11 @@ pub(crate) struct GuiState {
     dma_channel_select: u32,
     dma_channel_select_str: String,
     memory_viewer_dump: String,
+
     disassembly_viewer_string: String,
     disassembly_viewer_address: String,
+    pub disassembly_viewer: DisassemblyControl,
+    
     trace_string: String,
     call_stack_string: String,
 
@@ -184,7 +212,9 @@ impl Framework {
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
         let egui_ctx = Context::default();
-        let egui_state = egui_winit::State::new(event_loop);
+        let mut egui_state = egui_winit::State::new(event_loop);
+        egui_state.set_max_texture_side(max_texture_size);
+        egui_state.set_pixels_per_point(scale_factor);
 
         let screen_descriptor = ScreenDescriptor {
             size_in_pixels: [width, height],
@@ -199,6 +229,7 @@ impl Framework {
 
         //let mut style: egui::Style = (*egui_ctx.style()).clone();
         egui_ctx.set_visuals(visuals);
+        //egui_ctx.set_debug_on_hover(true);
 
         Self {
             egui_ctx,
@@ -356,6 +387,9 @@ impl GuiState {
 
             video_data: Default::default(),
             current_fps: 0,
+            emulated_fps: 0,
+            current_cps: 0,
+            current_ips: 0,
             emulation_ms: 0,
             render_ms: 0,
         
@@ -383,11 +417,14 @@ impl GuiState {
 
             error_string: String::new(),
             memory_viewer_address: String::new(),
+            memory_viewer_row: 0,
+            memory_viewer_lastrow: 0,
             memory_viewer_dump: String::new(),
+            memory_viewer: MemoryViewerControl::new(),
             cpu_state: Default::default(),
             breakpoint: String::new(),
             mem_breakpoint: String::new(),
-            pit_state: Default::default(),
+            pit_viewer: PitViewerControl::new(),
             pic_state: Default::default(),
             ppi_state: Default::default(),
             dma_state: Default::default(),
@@ -398,6 +435,7 @@ impl GuiState {
             videocard_set_select: String::new(),
             disassembly_viewer_string: String::new(),
             disassembly_viewer_address: "cs:ip".to_string(),
+            disassembly_viewer: DisassemblyControl::new(),
             trace_string: String::new(),
             call_stack_string: String::new(),
 
@@ -535,8 +573,8 @@ impl GuiState {
         (&self.breakpoint, &self.mem_breakpoint)
     }
 
-    pub fn update_pit_state(&mut self, state: PitStringState) {
-        self.pit_state = state.clone();
+    pub fn update_pit_state(&mut self, state: &PitDisplayState) {
+        self.pit_viewer.update_state(state);
     }
 
     pub fn update_trace_state(&mut self, trace_string: String) {
@@ -563,8 +601,11 @@ impl GuiState {
         self.serial_ports = ports;
     }
 
-    pub fn update_perf_view(&mut self, current_fps: u32, emulation_ms: u32, render_ms: u32) {
+    pub fn update_perf_view(&mut self, current_fps: u32, emulated_fps: u32, current_cps: u64, current_ips: u64, emulation_ms: u32, render_ms: u32) {
         self.current_fps = current_fps;
+        self.emulated_fps = emulated_fps;
+        self.current_cps = current_cps;
+        self.current_ips = current_ips;
         self.emulation_ms = emulation_ms;
         self.render_ms = render_ms;
     }
@@ -577,7 +618,7 @@ impl GuiState {
         self.crtc_state = state;
     }
 
-    pub fn update_videocard_state(&mut self, state: HashMap<String,Vec<(String,String)>>) {
+    pub fn update_videocard_state(&mut self, state: HashMap<String,Vec<(String, VideoCardStateEntry)>>) {
         self.videocard_state = state;
     }
 
@@ -588,152 +629,10 @@ impl GuiState {
 
     /// Create the UI using egui.
     fn ui(&mut self, ctx: &Context) {
+
+        // Draw top menu bar
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-
-                ui.menu_button("Emulator", |ui| {
-                    if ui.button("Performance...").clicked() {
-                        self.perf_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("About...").clicked() {
-                        self.about_window_open = true;
-                        ui.close_menu();
-                    }                    
-                });
-                ui.menu_button("Media", |ui| {
-                    ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
-
-                    ui.menu_button("Load Floppy in Drive A:...", |ui| {
-                        for name in &self.floppy_names {
-                            if ui.button(name.to_str().unwrap()).clicked() {
-                                
-                                log::debug!("Selected floppy filename: {:?}", name);
-                                
-                                self.new_floppy_name0 = Some(name.clone());
-                                self.event_queue.push_back(GuiEvent::LoadFloppy(0, name.clone()));
-                                ui.close_menu();
-                            }
-                        }
-                    });
-
-                    ui.menu_button("Load Floppy in Drive B:...", |ui| {
-                        for name in &self.floppy_names {
-                            if ui.button(name.to_str().unwrap()).clicked() {
-                                
-                                log::debug!("Selected floppy filename: {:?}", name);
-                                
-                                self.new_floppy_name1 = Some(name.clone());
-                                self.event_queue.push_back(GuiEvent::LoadFloppy(1, name.clone()));
-                                ui.close_menu();
-                            }
-                        }
-                    });      
-                    
-                    if ui.button("Eject Floppy in Drive A:...").clicked() {
-                        self.event_queue.push_back(GuiEvent::EjectFloppy(0));
-                        ui.close_menu();
-                    };       
-                    
-                    if ui.button("Eject Floppy in Drive B:...").clicked() {
-                        self.event_queue.push_back(GuiEvent::EjectFloppy(1));
-                        ui.close_menu();
-                    };                              
-
-                    ui.menu_button("Load VHD in Drive 0:...", |ui| {
-                        for name in &self.vhd_names {
-
-                            if ui.radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap()).clicked() {
-
-                                log::debug!("Selected VHD filename: {:?}", name);
-                                self.new_vhd_name0 = Some(name.clone());
-                                ui.close_menu();
-                            }
-                        }
-                    });                               
-
-                    if ui.button("Create new VHD...").clicked() {
-                        self.vhd_creator_open = true;
-                        ui.close_menu();
-                    };
-                    
-                });
-                ui.menu_button("Debug", |ui| {
-                    ui.menu_button("Dump Memory", |ui| {
-                        if ui.button("Video Memory").clicked() {
-                            self.event_queue.push_back(GuiEvent::DumpVRAM);
-                            ui.close_menu();
-                        }
-                        if ui.button("Code Segment").clicked() {
-                            self.event_queue.push_back(GuiEvent::DumpCS);
-                            ui.close_menu();
-                        }                        
-                    });
-                    if ui.button("CPU Control...").clicked() {
-                        self.cpu_control_dialog_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Memory...").clicked() {
-                        self.memory_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Registers...").clicked() {
-                        self.register_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Instruction Trace...").clicked() {
-                        self.trace_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Call Stack...").clicked() {
-                        self.call_stack_open = true;
-                        ui.close_menu();
-                    }                    
-                    if ui.button("Disassembly...").clicked() {
-                        self.disassembly_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("PIC...").clicked() {
-                        self.pic_viewer_open = true;
-                        ui.close_menu();
-                    }    
-                    if ui.button("PIT...").clicked() {
-                        self.pit_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("PPI...").clicked() {
-                        self.ppi_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("DMA...").clicked() {
-                        self.dma_viewer_open = true;
-                        ui.close_menu();
-                    }
-                    if ui.button("Video Card...").clicked() {
-                        self.videocard_viewer_open = true;
-                        ui.close_menu();
-                    }
-                
-                });
-                ui.menu_button("Options", |ui| {
-                    if ui.checkbox(&mut self.aspect_correct, "Correct Aspect Ratio").clicked() {
-                        ui.close_menu();
-                    }
-                    if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {
-                        ui.close_menu();
-                    }
-                    ui.menu_button("Attach COM2: ...", |ui| {
-                        for port in &self.serial_ports {
-
-                            if ui.radio_value(&mut self.serial_port_name, port.port_name.clone(), port.port_name.clone()).clicked() {
-
-                                self.event_queue.push_back(GuiEvent::BridgeSerialPort(self.serial_port_name.clone()));
-                                ui.close_menu();
-                            }
-                        }
-                    });                                
-                });
-            });
+            self.draw_menu(ui);
         });
 
         let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
@@ -822,6 +721,15 @@ impl GuiState {
                         ui.label("FPS: ");
                         ui.label(egui::RichText::new(format!("{}", self.current_fps)).background_color(egui::Color32::BLACK));
                         ui.end_row();
+                        ui.label("Emulated FPS: ");
+                        ui.label(egui::RichText::new(format!("{}", self.emulated_fps)).background_color(egui::Color32::BLACK));
+                        ui.end_row();                        
+                        ui.label("IPS: ");
+                        ui.label(egui::RichText::new(format!("{}", self.current_ips)).background_color(egui::Color32::BLACK));
+                        ui.end_row();
+                        ui.label("CPS: ");
+                        ui.label(egui::RichText::new(format!("{}", self.current_cps)).background_color(egui::Color32::BLACK));
+                        ui.end_row();                         
                         ui.label("Emulation time: ");
                         ui.label(egui::RichText::new(format!("{}", self.emulation_ms)).background_color(egui::Color32::BLACK));
                         ui.end_row();
@@ -837,10 +745,11 @@ impl GuiState {
 
                 let mut exec_control = self.exec_control.borrow_mut();
 
-                let (pause_enabled, run_enabled) = match exec_control.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => (false, true),
-                    ExecutionState::Running => (true, false),
-                    _=>(true, true)
+                let (pause_enabled, step_enabled, run_enabled) = match exec_control.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => (false, true, true),
+                    ExecutionState::Running => (true, false, false),
+                    ExecutionState::Halted => (false, false, false),
+                    _=>(true, false, true)
                 };
 
                 ui.horizontal(|ui|{
@@ -851,19 +760,38 @@ impl GuiState {
                         };
                     });
 
-                    ui.add_enabled_ui(!pause_enabled, |ui| {
-                        if ui.button(egui::RichText::new("⏭").font(egui::FontId::proportional(20.0))).clicked() {
+                    ui.add_enabled_ui(step_enabled, |ui| {
+                        if ui.button(egui::RichText::new("⤵").font(egui::FontId::proportional(20.0))).clicked() {
+                           exec_control.set_op(ExecutionOperation::StepOver);
+                        };
+
+                        if ui.input().key_pressed(egui::Key::F10) {
+                            exec_control.set_op(ExecutionOperation::StepOver);
+                        }                             
+                    });   
+
+                    ui.add_enabled_ui(step_enabled, |ui| {
+                        if ui.button(egui::RichText::new("➡").font(egui::FontId::proportional(20.0))).clicked() {
                            exec_control.set_op(ExecutionOperation::Step);
                         };
-                    });
+
+                        if ui.input().key_pressed(egui::Key::F11) {
+                            log::debug!("f11 pressed!");
+                            exec_control.set_op(ExecutionOperation::Step);
+                        }                             
+                    });                 
 
                     ui.add_enabled_ui(run_enabled, |ui| {
                         if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
                             exec_control.set_op(ExecutionOperation::Run);
                         };
+
+                        if ui.input().key_pressed(egui::Key::F5) {
+                            exec_control.set_op(ExecutionOperation::Run);
+                        }                        
                     });
 
-                    if ui.button(egui::RichText::new("R").font(egui::FontId::proportional(20.0))).clicked() {
+                    if ui.button(egui::RichText::new("⟲").font(egui::FontId::proportional(20.0))).clicked() {
                         exec_control.set_op(ExecutionOperation::Reset);
                     };
                 });
@@ -895,18 +823,7 @@ impl GuiState {
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
-
-                ui.horizontal(|ui| {
-                    ui.label("Address: ");
-                    ui.text_edit_singleline(&mut self.memory_viewer_address);
-                });
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.add_sized(ui.available_size(), 
-                        egui::TextEdit::multiline(&mut self.memory_viewer_dump)
-                            .font(egui::TextStyle::Monospace));
-                    ui.end_row()
-                });
+                self.memory_viewer.draw(ui, &mut self.event_queue);
             });
 
         egui::Window::new("Instruction Trace")
@@ -943,18 +860,7 @@ impl GuiState {
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
-
-                ui.horizontal(|ui| {
-                    ui.label("Address: ");
-                    ui.text_edit_singleline(&mut self.disassembly_viewer_address);
-                });
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.add_sized(ui.available_size(), 
-                        egui::TextEdit::multiline(&mut self.disassembly_viewer_string)
-                            .font(egui::TextStyle::Monospace));
-                    ui.end_row()
-                });
+                self.disassembly_viewer.draw(ui, &mut self.event_queue);
             });             
 
         egui::Window::new("Register View")
@@ -1127,79 +1033,13 @@ impl GuiState {
             
         egui::Window::new("PIT View")
             .open(&mut self.pit_viewer_open)
-            .resizable(true)
+            .resizable(false)
+            .min_width(600.0)
             .default_width(600.0)
             .show(ctx, |ui| {
-                egui::Grid::new("pit_view")
-                    .num_columns(2)
-                    .spacing([40.0, 4.0])
-                    .striped(true)
-                    .show(ui, |ui| {
 
-                    ui.label(egui::RichText::new("#0 Access Mode: ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_access_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
+                self.pit_viewer.draw(ui, &mut self.event_queue);
 
-                    ui.label(egui::RichText::new("#0 Channel Mode:").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_channel_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#0 Counter:     ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_value).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#0 Reload Val:  ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_reload_value).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#0 Output Signal:  ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c0_channel_output).font(egui::TextStyle::Monospace));
-                    ui.end_row();                    
-                    
-                    ui.label(egui::RichText::new("#1 Access Mode: ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_access_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#1 Channel Mode:").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_channel_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#1 Counter:     ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_value).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#1 Reload Val:  ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_reload_value).font(egui::TextStyle::Monospace));
-                    ui.end_row();  
-
-                    ui.label(egui::RichText::new("#1 Output Signal:  ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c1_channel_output).font(egui::TextStyle::Monospace));
-                    ui.end_row();                                    
-                    
-                    ui.label(egui::RichText::new("#2 Access Mode: ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_access_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#2 Channel Mode:").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_channel_mode).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#2 Counter:     ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_value).font(egui::TextStyle::Monospace));
-                    ui.end_row();
-
-                    ui.label(egui::RichText::new("#2 Reload Val:  ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_reload_value).font(egui::TextStyle::Monospace));
-                    ui.end_row();  
-
-                    ui.label(egui::RichText::new("#2 Output Signal:  ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_channel_output).font(egui::TextStyle::Monospace));
-                    ui.end_row();                
-
-                    ui.label(egui::RichText::new("#2 Gate Status: ").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.pit_state.c2_gate_status).font(egui::TextStyle::Monospace));
-                    ui.end_row();                              
-                });
             });               
 
             egui::Window::new("PIC View")
@@ -1397,219 +1237,12 @@ impl GuiState {
             });                       
 
             egui::Window::new("Video Card View")
-            .open(&mut self.videocard_viewer_open)
-            .resizable(false)
-            .default_width(300.0)
-            .show(ctx, |ui| {
-                egui::Grid::new("videocard_view1")
-                .num_columns(2)
-                .striped(false)
-                .show(ui, |ui| {
-
-                    if self.videocard_state.contains_key("General") {
-                        ui.horizontal(|ui| {
-                            egui::Grid::new("videocard_view0")
-                                .num_columns(2)
-                                .striped(true)
-                                .min_col_width(50.0)
-                                .show(ui, |ui| {                                    
-                                let register_file = &self.videocard_state.get("General");
-                                match register_file {
-                                    Some(file) => {
-                                        for register in *file {   
-                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                                            ui.end_row();
-                                        }
-                                    }
-                                    None => {}
-                                }
-                            });                   
-                        });
-                    }
-
-                    ui.end_row();
-                    if self.videocard_state.contains_key("CRTC") {
-                        ui.vertical(|ui| {
-                            ui.label(egui::RichText::new("CRTC Registers").color(egui::Color32::LIGHT_BLUE));
-                            ui.horizontal(|ui| {
-                                ui.group(|ui| {
-                                    egui::Grid::new("videocard_view2")
-                                        .num_columns(2)
-                                        .striped(true)
-                                        .min_col_width(50.0)
-                                        .show(ui, |ui| {                                    
-                                        let register_file = &self.videocard_state.get("CRTC");
-                                        match register_file {
-                                            Some(file) => {
-                                                for register in *file {   
-                                                    ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                                    ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                                                    ui.end_row();
-                                                }
-                                            }
-                                            None => {}
-                                        }
-                                    });
-                                });                    
-                            });
-                        });
-                    }
-
-                    ui.vertical(|ui| {
-                        if self.videocard_state.contains_key("External") {
-                            CollapsingHeader::new("External Registers")
-                            .default_open(false)
-                            .show(ui,  |ui| {
-                                ui.vertical(|ui| {
-                                    //ui.label(egui::RichText::new("External Registers").color(egui::Color32::LIGHT_BLUE));
-                                    ui.horizontal(|ui| {
-                                        ui.group(|ui| {
-                                            egui::Grid::new("videocard_view13")
-                                                .num_columns(2)
-                                                .striped(true)
-                                                .min_col_width(60.0)
-                                                .show(ui, |ui| {                                    
-                                                let register_file = &self.videocard_state.get("External");
-                                                match register_file {
-                                                    Some(file) => {
-                                                        for register in *file {   
-                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                                                            ui.end_row();
-                                                        }
-                                                    }
-                                                    None => {}
-                                                }
-                                            });
-                                        });                    
-                                    });
-                                });
-                            });
-                        }                        
-                        if self.videocard_state.contains_key("Sequencer") {
-                            CollapsingHeader::new("Sequencer Registers")
-                            .default_open(false)
-                            .show(ui,  |ui| {
-                                ui.vertical(|ui| {
-                                    //ui.label(egui::RichText::new("Sequencer Registers").color(egui::Color32::LIGHT_BLUE));
-                                    ui.horizontal(|ui| {
-                                        ui.group(|ui| {
-                                            egui::Grid::new("videocard_view3")
-                                                .num_columns(2)
-                                                .striped(true)
-                                                .min_col_width(60.0)
-                                                .show(ui, |ui| {                                    
-                                                let register_file = &self.videocard_state.get("Sequencer");
-                                                match register_file {
-                                                    Some(file) => {
-                                                        for register in *file {   
-                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                                                            ui.end_row();
-                                                        }
-                                                    }
-                                                    None => {}
-                                                }
-                                            });
-                                        });                    
-                                    });
-                                });
-                            });
-                        }
-                        if self.videocard_state.contains_key("Graphics") {
-                            CollapsingHeader::new("Graphics Registers")
-                            .default_open(false)
-                            .show(ui,  |ui| {
-                                ui.vertical(|ui| {
-                                    //ui.label(egui::RichText::new("Graphics Registers").color(egui::Color32::LIGHT_BLUE));
-                                    ui.horizontal(|ui| {
-                                        ui.group(|ui| {
-                                            egui::Grid::new("videocard_view4")
-                                                .num_columns(2)
-                                                .striped(true)
-                                                .min_col_width(50.0)
-                                                .show(ui, |ui| {                                    
-                                                let register_file = &self.videocard_state.get("Graphics");
-                                                match register_file {
-                                                    Some(file) => {
-                                                        for register in *file {   
-                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                                                            ui.end_row();
-                                                        }
-                                                    }
-                                                    None => {}
-                                                }
-                                            });
-                                        });                    
-                                    });
-                                });
-                            });
-                        }
-                        if self.videocard_state.contains_key("AttributePalette") {
-                            CollapsingHeader::new("Attribute Palette Registers")
-                            .default_open(false)
-                            .show(ui,  |ui| {                            
-                                ui.vertical(|ui| {
-                                    //ui.label(egui::RichText::new("Attribute Palette Registers").color(egui::Color32::LIGHT_BLUE));
-                                    ui.horizontal(|ui| {
-                                        ui.group(|ui| {
-                                            egui::Grid::new("videocard_view6")
-                                                .num_columns(2)
-                                                .striped(true)
-                                                .min_col_width(50.0)
-                                                .show(ui, |ui| {                                    
-                                                let register_file = &self.videocard_state.get("AttributePalette");
-                                                match register_file {
-                                                    Some(file) => {
-                                                        for register in *file {   
-                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                                                            ui.end_row();
-                                                        }
-                                                    }
-                                                    None => {}
-                                                }
-                                            });
-                                        });                    
-                                    });
-                                });
-                            });
-                        }                          
-                        if self.videocard_state.contains_key("Attribute") {
-                            CollapsingHeader::new("Attribute Registers")
-                            .default_open(false)
-                            .show(ui,  |ui| {                            
-                                ui.vertical(|ui| {
-                                    //ui.label(egui::RichText::new("Attribute Registers").color(egui::Color32::LIGHT_BLUE));
-                                    ui.horizontal(|ui| {
-                                        ui.group(|ui| {
-                                            egui::Grid::new("videocard_view7")
-                                                .num_columns(2)
-                                                .striped(true)
-                                                .min_col_width(50.0)
-                                                .show(ui, |ui| {                                    
-                                                let register_file = &self.videocard_state.get("Attribute");
-                                                match register_file {
-                                                    Some(file) => {
-                                                        for register in *file {   
-                                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                                            ui.label(egui::RichText::new(&register.1).text_style(egui::TextStyle::Monospace));
-                                                            ui.end_row();
-                                                        }
-                                                    }
-                                                    None => {}
-                                                }
-                                            });
-                                        });                    
-                                    });
-                                });
-                            });
-                        }                        
-                    });
-                }); 
-            });         
+                .open(&mut self.videocard_viewer_open)
+                .resizable(false)
+                .default_width(300.0)
+                .show(ctx, |ui| {
+                   GuiState::draw_video_card_panel(ui, &self.videocard_state);
+                });         
 
             egui::Window::new("Create VHD")
                 .open(&mut self.vhd_creator_open)

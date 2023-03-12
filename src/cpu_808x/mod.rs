@@ -15,29 +15,29 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 // Pull in all CPU module components
-mod cpu_addressing;
-mod cpu_alu;
-mod cpu_bcd;
-mod cpu_bitwise;
-mod cpu_biu;
-mod cpu_decode;
-mod cpu_display;
-mod cpu_execute;
-mod cpu_microcode;
-pub mod cpu_mnemonic;
-mod cpu_modrm;
-mod cpu_muldiv;
-mod cpu_stack;
-mod cpu_string;
-mod cpu_queue;
-mod cpu_fuzzer;
+mod addressing;
+mod alu;
+mod bcd;
+mod bitwise;
+mod biu;
+mod decode;
+mod display;
+mod execute;
+mod microcode;
+pub mod mnemonic;
+mod modrm;
+mod muldiv;
+mod stack;
+mod string;
+mod queue;
+mod fuzzer;
 
 use crate::cpu_common::*;
-use crate::cpu_808x::cpu_mnemonic::Mnemonic;
-use crate::cpu_808x::cpu_microcode::*;
-use crate::cpu_808x::cpu_addressing::AddressingMode;
-use crate::cpu_808x::cpu_queue::InstructionQueue;
-use crate::cpu_808x::cpu_biu::*;
+use crate::cpu_808x::mnemonic::Mnemonic;
+use crate::cpu_808x::microcode::*;
+use crate::cpu_808x::addressing::AddressingMode;
+use crate::cpu_808x::queue::InstructionQueue;
+use crate::cpu_808x::biu::*;
 
 use crate::config::TraceMode;
 #[cfg(feature = "cpu_validator")]
@@ -395,8 +395,8 @@ impl fmt::Display for Displacement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => write!(f,"Invalid Displacement"),
-            Displacement::Disp8(i) => write!(f,"{:#04x}", i),
-            Displacement::Disp16(i) => write!(f,"{:#06x}", i),
+            Displacement::Disp8(i) => write!(f,"{:02X}h", i),
+            Displacement::Disp16(i) => write!(f,"{:04X}h", i),
         }
     }
 }
@@ -525,6 +525,60 @@ impl Default for TransferSize {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum CpuAddress {
+    Flat(u32),
+    Segmented(u16, u16),
+    Offset(u16)
+}
+
+impl Default for CpuAddress {
+    fn default() -> CpuAddress {
+        CpuAddress::Segmented(0,0)
+    }
+}
+
+impl From<CpuAddress> for u32 {
+    fn from(cpu_address: CpuAddress) -> Self {
+        match cpu_address {
+            CpuAddress::Flat(a) => a,
+            CpuAddress::Segmented(s, o) => Cpu::calc_linear_address(s, o),
+            CpuAddress::Offset(a) => a as Self
+        }
+    }
+}
+
+impl fmt::Display for CpuAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CpuAddress::Flat(a) => write!(f, "{:05X}", a),
+            CpuAddress::Segmented(s, o) => write!(f, "{:04X}:{:04X}", s, o),
+            CpuAddress::Offset(a) => write!(f, "{:04X}", a),
+        }
+    }
+}
+
+impl PartialEq for CpuAddress {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (CpuAddress::Flat(a), CpuAddress::Flat(b)) => a == b,
+            (CpuAddress::Flat(a), CpuAddress::Segmented(s,o)) => {
+                let b = Cpu::calc_linear_address(*s, *o);
+                *a == b
+            }
+            (CpuAddress::Flat(a), CpuAddress::Offset(b)) => false,
+            (CpuAddress::Segmented(s,o), CpuAddress::Flat(b)) => {
+                let a = Cpu::calc_linear_address(*s, *o);
+                a == *b
+            }
+            (CpuAddress::Segmented(s1,o1), CpuAddress::Segmented(s2,o2)) => {
+                *s1 == *s2 && *o1 == *o2
+            }
+            _ => false
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct I8288 {
     // Command bus
@@ -586,6 +640,7 @@ pub struct Cpu<'a> {
     result_8: u8,
     result_16: u16,
 
+    // BIU stuff
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
@@ -599,7 +654,7 @@ pub struct Cpu<'a> {
     bus_status: BusStatus,
     bus_segment: Segment,
     transfer_size: TransferSize,    // Width of current bus transfer
-    operand_size: OperandSize,     // Width of the operand being transferred. Prefetch 
+    operand_size: OperandSize,      // Width of the operand being transferred. Prefetch 
     transfer_n: u32,                // Byte number of current operand (ex: 1/2 bytes of Word operand)
     wait_states: u32,
 
@@ -608,12 +663,14 @@ pub struct Cpu<'a> {
     is_running: bool,
     is_single_step: bool,
     is_error: bool,
+    
+    // Rep prefix handling
     in_rep: bool,
     rep_init: bool,
     rep_saved: bool,
-
     rep_mnemonic: Mnemonic,
     rep_type: RepType,
+    
     error_string: String,
     cycle_num: u64,
     instr_cycle: u32,
@@ -626,6 +683,8 @@ pub struct Cpu<'a> {
     // Breakpoints
     breakpoints: Vec<BreakPointType>,
 
+    step_over_target: Option<CpuAddress>,
+
     // Interrupts
     int_stack: Vec<InterruptDescriptor>,
     int_count: u64,
@@ -633,14 +692,14 @@ pub struct Cpu<'a> {
     interrupt_inhibit: bool,
     pending_interrupt: bool,
 
-    reset_seg: u16,
-    reset_offset: u16,
+    reset_vector: CpuAddress,
 
     trace_mode: TraceMode,
     trace_writer: Option<Box<dyn Write + 'a>>,
     trace_comment: &'static str,
     trace_instr: u16,
 
+    off_rails_detection: bool,
     opcode0_counter: u32,
 
     rng: Option<rand::rngs::StdRng>,
@@ -718,9 +777,12 @@ pub enum RegisterType {
     Register16(u16)
 }
 
-#[derive (Debug, PartialEq)]
+#[derive (Debug)]
 pub enum StepResult {
     Normal,
+    // If a call occurred, we return the address of the next instruction after the call
+    // so that we can step over the call in the debugger.
+    Call(CpuAddress),
     BreakpointHit
 }
 
@@ -855,13 +917,13 @@ impl<'a> Cpu<'a> {
 
         cpu.instruction_history_on = true; // TODO: Control this from config/GUI
         cpu.instruction_history = VecDeque::with_capacity(16);
-        cpu.reset_seg = 0xFFFF;
-        cpu.reset_offset = 0x0000;
-        cpu.reset(cpu.reset_seg, cpu.reset_offset);
+
+        cpu.reset_vector = CpuAddress::Segmented(0xFFFF, 0x0000);
+        cpu.reset(cpu.reset_vector);
         cpu
     }
 
-    pub fn reset(&mut self, segment: u16, offset: u16) {
+    pub fn reset(&mut self, reset_vector: CpuAddress) {
         
         self.state = CpuState::Normal;
         
@@ -878,14 +940,19 @@ impl<'a> Cpu<'a> {
         self.set_register16(Register16::SS, 0);
         self.set_register16(Register16::DS, 0);
         
-        self.set_register16(Register16::CS, segment);
-        self.set_register16(Register16::IP, offset);
-
         self.flags = CPU_FLAGS_RESERVED_ON;
         
-        // Reset BIU
         self.queue.flush();
-        self.pc = Cpu::calc_linear_address(segment, offset);
+
+        if let CpuAddress::Segmented(segment, offset) = reset_vector {
+            self.set_register16(Register16::CS, segment);
+            self.set_register16(Register16::IP, offset);
+            self.pc = Cpu::calc_linear_address(segment, offset);
+        }
+        else {
+            panic!("Invalid CpuAddress for reset vector.");
+        }
+
         self.bus_status = BusStatus::Passive;
         self.t_cycle = TCycle::T1;
         
@@ -901,6 +968,8 @@ impl<'a> Cpu<'a> {
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
+
+        self.step_over_target = None;
 
         self.cycle_num = 1;
         self.i8288.ale = false;
@@ -937,51 +1006,9 @@ impl<'a> Cpu<'a> {
         &mut self.bus
     }
 
-    /// If in an active bus cycle, cycle the cpu until the bus cycle has reached T4.
-    pub fn bus_wait_finish(&mut self) -> u32 {
-        let mut bus_cycles_elapsed = 0;
-        match self.bus_status {
-            BusStatus::Passive => {
-                // No active bus transfer
-                return 0
-            }
-            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
-                while self.t_cycle != TCycle::T4 {
-                    self.cycle();
-                    bus_cycles_elapsed += 1;
-                }
-                return bus_cycles_elapsed
-            }
-            _ => {
-                // Handle other statuses
-                return 0
-            }
-        }
+    pub fn get_csip(&self) -> CpuAddress {
+        CpuAddress::Segmented(self.cs, self.ip)
     }
-
-    /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
-    /// This function is usually used on a terminal write to wait for T2 to process RNI
-    pub fn bus_wait_until(&mut self, target_state: TCycle) -> u32 {
-        let mut bus_cycles_elapsed = 0;
-        match self.bus_status {
-            BusStatus::Passive => {
-                // No active bus transfer
-                return 0
-            }
-            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
-                while self.t_cycle != target_state {
-                    self.cycle();
-                    bus_cycles_elapsed += 1;
-                }
-                //self.cycle();
-                return bus_cycles_elapsed
-            }
-            _ => {
-                // Handle other statuses
-                return 0
-            }
-        }
-    }    
 
     #[inline]
     pub fn is_last_wait(&self) -> bool {
@@ -1681,18 +1708,20 @@ impl<'a> Cpu<'a> {
         self.set_register16(reg, value);
     }
 
-    pub fn set_reset_vector(&mut self, segment: u16, offset: u16) {
-        self.reset_seg = segment;
-        self.reset_offset = offset;
+    pub fn set_reset_vector(&mut self, reset_vector: CpuAddress) {
+        self.reset_vector = reset_vector;
     }
 
-    pub fn get_reset_vector(&self) -> (u16, u16) {
-        (self.reset_seg, self.reset_offset)
+    pub fn get_reset_vector(&self) -> CpuAddress {
+        self.reset_vector
     }
 
     pub fn reset_address(&mut self) {
-        self.cs = self.reset_seg;
-        self.ip = self.reset_offset;
+        
+        if let CpuAddress::Segmented(segment, offset) = self.reset_vector {
+            self.cs = segment;
+            self.ip = offset;
+        }
     }
 
     pub fn get_linear_ip(&self) -> u32 {
@@ -1791,7 +1820,7 @@ impl<'a> Cpu<'a> {
         }
     }
     
-    pub fn eval_address(&self, expr: &str) -> Option<u32> {
+    pub fn eval_address(&self, expr: &str) -> Option<CpuAddress> {
 
         lazy_static! {
             static ref FLAT_REX: Regex = Regex::new(r"(?P<flat>[A-Fa-f\d]{5})$").unwrap();
@@ -1802,7 +1831,7 @@ impl<'a> Cpu<'a> {
 
         if FLAT_REX.is_match(expr) {
             match u32::from_str_radix(expr, 16) {
-                Ok(address) => Some(address),
+                Ok(address) => Some(CpuAddress::Flat(address)),
                 Err(_) => None
             }     
         }
@@ -1814,7 +1843,7 @@ impl<'a> Cpu<'a> {
             let offset_u16r = u16::from_str_radix(offset_str, 16);
 
             match(segment_u16r, offset_u16r) {
-                (Ok(segment),Ok(offset)) => Some(Cpu::calc_linear_address(segment,offset)),
+                (Ok(segment),Ok(offset)) => Some(CpuAddress::Segmented(segment, offset)),
                 _ => None
             }
         }
@@ -1855,7 +1884,7 @@ impl<'a> Cpu<'a> {
                 _ => 0
             };
 
-            Some(Cpu::calc_linear_address(segment, offset))
+            Some(CpuAddress::Segmented(segment, offset))
         }
         else if let Some(caps) = REGOFFSET_REX.captures(expr) {
 
@@ -1873,7 +1902,7 @@ impl<'a> Cpu<'a> {
             let offset_u16r = u16::from_str_radix(offset_str, 16);
             
             match offset_u16r {
-                Ok(offset) => Some(Cpu::calc_linear_address(segment, offset)),
+                Ok(offset) => Some(CpuAddress::Segmented(segment, offset)),
                 _ => None
             }
         }
@@ -1969,6 +1998,34 @@ impl<'a> Cpu<'a> {
 
     /// Perform a software interrupt
     pub fn sw_interrupt(&mut self, interrupt: u8) {
+
+        // Interrupt FC, emulator internal services.
+        if interrupt == 0xFC {
+            match self.ah {
+                0x01 => {
+                    log::debug!("Received emulator trap interrupt: CS: {:04X} IP: {:04X}", self.bx, self.cx);
+                    self.biu_suspend_fetch();
+                    self.cycles(4);
+
+                    self.cs = self.bx;
+                    self.ip = self.cx;
+
+                    // Set execution segments
+                    self.ds = self.cs;
+                    self.es = self.cs;
+                    self.ss = self.cs;
+                    // Create stack
+                    self.sp = 0xFFFE;
+
+                    self.biu_queue_flush();
+                    self.cycles(4);
+                    self.set_breakpoint_flag();  
+                }
+                _ => {}
+            }
+
+            return
+        }
 
         self.cycles_i(3, &[0x19d, 0x19e, 0x19f]);
         // Read the IVT
@@ -2201,7 +2258,12 @@ impl<'a> Cpu<'a> {
     /// 
     /// REP string instructions are handled by stopping them after one iteration so that interrupts can
     /// be checked. 
-    pub fn step(&mut self, io_bus: &mut IoBusInterface, pic_ref: Rc<RefCell<Pic>>, skip_breakpoint: bool) -> Result<(StepResult, u32), CpuError> {
+    pub fn step(
+        &mut self, 
+        io_bus: &mut IoBusInterface, 
+        pic_ref: Rc<RefCell<Pic>>, 
+        skip_breakpoint: bool
+    ) -> Result<(StepResult, u32), CpuError> {
 
         self.instr_cycle = 0;
 
@@ -2220,8 +2282,11 @@ impl<'a> Cpu<'a> {
                         // Resume from halt on interrupt
                         if self.halted {
                             self.resume();
+                            // We will be jumping into an ISR now. Set the step result to Call and return
+                            // the address of the next instruction. (Step Over skips ISRs)
+                            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), 3));
                             self.hw_interrupt(irq);
-                            return Ok((StepResult::Normal, 3))
+                            return step_result
                         }
                         self.pending_interrupt = true;
                     },
@@ -2318,6 +2383,7 @@ impl<'a> Cpu<'a> {
         // part of the current instruction execution time, but not part of the instruction's microcode other than executing RNI.
         self.finalize();
 
+        // If a CPU validator is configured, validate the executed instruction.
         #[cfg(feature = "cpu_validator")]
         {
             match exec_result {
@@ -2362,7 +2428,7 @@ impl<'a> Cpu<'a> {
             }            
         }
 
-       let step_result = match exec_result {
+       let mut step_result = match exec_result {
 
             ExecutionResult::Okay => {
                 // Normal non-jump instruction updates CS:IP to next instruction
@@ -2415,7 +2481,14 @@ impl<'a> Cpu<'a> {
                     self.trace_print(&self.instruction_state_string());   
                 }
    
-                Ok((StepResult::Normal, self.instr_cycle))
+                // Only CALLS will set a step over target. 
+                if let Some(step_over_target) = self.step_over_target {
+                    Ok((StepResult::Call(step_over_target), self.instr_cycle))
+                }
+                else {
+                    Ok((StepResult::Normal, self.instr_cycle))
+                }
+                
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
@@ -2491,6 +2564,11 @@ impl<'a> Cpu<'a> {
 
         // Handle pending interrupts now that execution has completed.
         if check_interrupts && self.pending_interrupt {
+
+            // We will be jumping into an ISR now. Set the step result to Call and return
+            // the address of the next instruction. (Step Over skips ISRs)
+            step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
+            
             self.hw_interrupt(irq);
             self.resume();
         }

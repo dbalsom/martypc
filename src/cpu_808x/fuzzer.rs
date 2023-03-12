@@ -32,7 +32,7 @@ macro_rules! get_rand {
 
 macro_rules! get_rand_range {
     ($myself: expr, $begin: expr, $end: expr) => {
-        $myself.rng.as_mut().unwrap().gen_range($begin..$end);
+        $myself.rng.as_mut().unwrap().gen_range($begin..$end)
     }
 }
 
@@ -50,7 +50,7 @@ impl<'a> Cpu<'a> {
         self.cs = get_rand!(self);
         self.ip = get_rand!(self);
 
-        self.reset(self.cs, self.ip);
+        self.reset(CpuAddress::Segmented(self.cs, self.ip));
 
         for i in 0..REGISTER16_LUT.len() {
             let n: u16 = get_rand!(self);

@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 use std::rc::Rc;
 use std::cell::RefCell;
+use std::fmt;
 
+use crate::cpu_808x::*;
 use crate::bytequeue::*;
+use crate::syntax_token::SyntaxToken;
 
 use crate::memerror::MemError;
 
@@ -21,6 +24,20 @@ pub trait MemoryMappedDevice {
 
     fn write_u8(&mut self, address: usize, data: u8); 
     fn write_u16(&mut self, address: usize, data: u16);
+}
+
+pub struct MemoryDebug {
+    addr: String,
+    byte: String,
+    word: String,
+    dword: String,
+    instr: String
+}
+
+impl fmt::Display for MemoryDebug {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ADDR: {}\nBYTE: {}\nWORD: {}\nDWORD: {}\nINSTR: {}", self.addr, self.byte, self.word, self.dword, self.instr)
+    }
 }
 
 pub struct MemRangeDescriptor {
@@ -472,4 +489,164 @@ impl BusInterface {
             return dump_str
         }
     }
+
+    /// Dump memory to a vector of string representations.
+    /// 
+    /// Does not honor memory mappings.
+    pub fn dump_flat_vec(&self, address: usize, size: usize) -> Vec<String> {
+
+        let mut vec = Vec::new();
+
+        if address + size >= self.memory.len() {
+            vec.push("REQUEST OUT OF BOUNDS".to_string());
+            return vec;
+        }
+        else {
+
+            let dump_slice = &self.memory[address..address+size];
+            let mut display_address = address;
+
+            for dump_row in dump_slice.chunks_exact(16) {
+
+                let mut dump_line = String::new();
+                let mut ascii_line = String::new();
+
+                for byte in dump_row {
+                    dump_line.push_str(&format!("{:02x} ", byte) );
+
+                    let char_str = match byte {
+                        00..=31 => ".".to_string(),
+                        32..=127 => format!("{}", *byte as char),
+                        128.. => ".".to_string()
+                    };
+                    ascii_line.push_str(&char_str)
+                }
+
+                vec.push(format!("{:05X} {} {}\n", display_address, dump_line, ascii_line));
+
+                display_address += 16;
+            }
+        }
+        vec
+    }
+
+    /// Dump memory to a vector of vectors of SyntaxTokens.
+    /// 
+    /// Does not honor memory mappings.
+    pub fn dump_flat_tokens(&self, address: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
+
+        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+
+        if address >= self.memory.len() {
+            // Start address is invalid. Send only an error token.
+
+            let mut linevec = Vec::new();
+
+            linevec.push(SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string()));
+            vec.push(linevec);
+
+            return vec;
+        }
+        else if address + size >= self.memory.len() {
+            // Request size invalid. Send truncated result.
+
+            let new_size = size - ((address + size) - self.memory.len());
+
+            size = new_size
+        }
+
+
+            let dump_slice = &self.memory[address..address+size];
+            let mut display_address = address;
+
+            for dump_row in dump_slice.chunks_exact(16) {
+
+                let mut line_vec = Vec::new();
+
+                // Push memory flat address tokens
+                line_vec.push(
+                    SyntaxToken::MemoryAddressFlat(
+                        display_address as u32,
+                        format!("{:05X}", display_address)
+                    )
+                );
+
+                // Build hex byte value tokens
+                let mut i = 0;
+                for byte in dump_row {
+                    line_vec.push(
+                        SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32, 
+                            *byte,
+                            format!("{:02X}", *byte),
+                            0
+                        )
+                    );
+                    i += 1;
+                }
+
+                // Build ASCII representation tokens
+                let mut i = 0;
+                for byte in dump_row {
+                    let char_str = match byte {
+                        00..=31 => ".".to_string(),
+                        32..=127 => format!("{}", *byte as char),
+                        128.. => ".".to_string()
+                    };
+                    line_vec.push(
+                        SyntaxToken::MemoryByteAsciiValue(
+                            (display_address + i) as u32,
+                            *byte,
+                            char_str, 
+                            0
+                        )
+                    );
+                    i += 1;
+                }
+
+                vec.push(line_vec);
+                display_address += 16;
+            }
+
+        vec
+    }
+
+    pub fn get_memory_debug(&mut self, address: usize) -> MemoryDebug {
+        let mut debug = MemoryDebug {
+            addr: format!("{:05X}", address),
+            byte: String::new(),
+            word: String::new(),
+            dword: String::new(),
+            instr: String::new()
+        };
+
+        if address < self.memory.len() - 1 {
+            debug.byte = format!("{:02X}", self.memory[address]);
+        }
+        if address < self.memory.len() - 2 {
+            debug.word = format!("{:04X}", (self.memory[address] as u16) | ((self.memory[address+1] as u16) << 8));
+        }
+        if address < self.memory.len() - 4 {
+            debug.dword = format!("{:04X}", (self.memory[address] as u32) 
+                | ((self.memory[address+1] as u32) << 8)
+                | ((self.memory[address+2] as u32) << 16)
+                | ((self.memory[address+3] as u32) << 24)
+            );
+        }
+
+        self.seek(address);
+
+        debug.instr = match Cpu::decode(self) {
+            Ok(instruction) => {
+                format!("{}", instruction)
+            },
+            Err(_) => {
+                "Invalid".to_string()
+            }
+        };
+
+
+        debug
+    }
+
 }

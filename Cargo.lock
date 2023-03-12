@@ -1480,6 +1480,7 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "egui-winit",
+ "emath",
  "env_logger",
  "image",
  "lazy_static",

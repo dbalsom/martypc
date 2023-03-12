@@ -714,7 +714,12 @@ impl DMAController {
                     //log::trace!("DMA write {:02X} to address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
                     self.channels[channel].terminal_count = true;
                     log::trace!("Terminal count reached on DMA channel {:01X}", channel);
-
+                    log::debug!(
+                        "Completed DMA of {} bytes to address {:05X}", 
+                        self.channels[channel].base_word_count_reg, 
+                        ((self.channels[channel].page as u32) << 16) + (self.channels[channel].base_address_reg as u32)
+                    );
+                        
                     // TODO: Support auto-init here
 
                     // Set the tc status bit regardless of auto-init

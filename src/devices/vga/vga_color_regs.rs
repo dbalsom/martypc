@@ -62,12 +62,13 @@ impl<'a> VGACard<'a> {
                 self.color_registers[color][1],
                 self.color_registers[color][2]);
 
+            /*
             log::trace!("Wrote color register [{}] ({:02X},{:02X},{:02X})", 
                 color,
                 self.color_registers[color][0],
                 self.color_registers[color][1],
                 self.color_registers[color][2]);
-
+            */
             self.color_pel_write_address_color = 0;
             // Done with all colors, so go to next palette entry
             self.color_pel_write_address = self.color_pel_write_address.wrapping_add(1);

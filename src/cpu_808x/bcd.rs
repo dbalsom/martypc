@@ -1,5 +1,5 @@
 use crate::cpu_808x::*;
-use crate::cpu_808x::cpu_muldiv::*;
+use crate::cpu_808x::muldiv::*;
 
 impl<'a> Cpu<'a> {
 

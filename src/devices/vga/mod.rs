@@ -11,6 +11,9 @@
         http://www.osdever.net/FreeVGA/home.htm
 
 */
+
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -25,6 +28,7 @@ use crate::bus::MemoryMappedDevice;
 
 use crate::videocard::{
     VideoCard,
+    VideoCardStateEntry,
     DisplayMode,
     CursorInfo,
     FontInfo,
@@ -1233,6 +1237,24 @@ impl<'a> VGACard<'a> {
 
 }
 
+macro_rules! push_reg_str {
+    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
+        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{}", $val))))
+    };
+}
+
+macro_rules! push_reg_str_bin8 {
+    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
+        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
+    };
+}
+
+macro_rules! push_reg_str_enum {
+    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
+        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
+    };
+}    
+
 impl<'a> VideoCard for VGACard<'a> {
 
     fn get_video_type(&self) -> VideoType {
@@ -1390,99 +1412,80 @@ impl<'a> VideoCard for VGACard<'a> {
     }        
 
     /// Returns a string representation of all the CRTC Registers.
-    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String,String)>> {
+    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
 
-        let mut map = HashMap::new();
+        let mut map: HashMap<String, Vec<(String, VideoCardStateEntry)>> = HashMap::new();
 
         let mut general_vec = Vec::new();
-        general_vec.push((format!("Adapter Type:"), format!("{:?}", self.get_video_type())));
-        general_vec.push((format!("Display Mode:"), format!("{:?}", self.get_display_mode())));
+        push_reg_str_enum!(general_vec, "Adapter Type:", "", self.get_video_type());
+        push_reg_str_enum!(general_vec, "Display Mode:", "", self.get_display_mode());
+
+        //general_vec.push((format!("Adapter Type:"), format!("{:?}", self.get_video_type())));
+        //general_vec.push((format!("Display Mode:"), format!("{:?}", self.get_display_mode())));
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalTotal), 
-            format!("{}", self.crtc_horizontal_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalDisplayEnd), 
-            format!("{}", self.crtc_horizontal_display_end)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartHorizontalBlank), 
-            format!("{}", self.crtc_start_horizontal_blank)));
-        
-        crtc_vec.push((format!("{:?}", CRTCRegister::EndHorizontalBlank), 
-            format!("{}", self.crtc_end_horizontal_blank.end_horizontal_blank())));
-        crtc_vec.push((format!("{:?} [norm]", CRTCRegister::EndHorizontalBlank), 
-            format!("{}", self.crtc_end_horizontal_blank_norm)));            
-        crtc_vec.push((format!("{:?} [des]", CRTCRegister::EndHorizontalBlank), 
-            format!("{}", self.crtc_end_horizontal_blank.display_enable_skew())));             
-        
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartHorizontalRetrace), 
-            format!("{}", self.crtc_start_horizontal_retrace)));
 
-        crtc_vec.push((format!("{:?}", CRTCRegister::EndHorizontalRetrace), 
-            format!("{}", self.crtc_end_horizontal_retrace.end_horizontal_retrace())));
-        crtc_vec.push((format!("{:?} [norm]", CRTCRegister::EndHorizontalRetrace), 
-            format!("{}", self.crtc_end_horizontal_retrace_norm)));
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "", self.crtc_horizontal_total);
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayEnd, "", self.crtc_horizontal_display_end);
+        push_reg_str!(crtc_vec, CRTCRegister::StartHorizontalBlank, "", self.crtc_start_horizontal_blank);
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalBlank, "", self.crtc_end_horizontal_blank.end_horizontal_blank());
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalBlank, "[norm]", self.crtc_end_horizontal_blank_norm);
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalBlank, "[des]", self.crtc_end_horizontal_blank.display_enable_skew());
+        push_reg_str!(crtc_vec, CRTCRegister::StartHorizontalRetrace, "", self.crtc_start_horizontal_retrace);
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "", self.crtc_end_horizontal_retrace.end_horizontal_retrace());
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[norm]", self.crtc_end_horizontal_retrace_norm);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "", self.crtc_vertical_total);
+        push_reg_str_bin8!(crtc_vec, CRTCRegister::Overflow, "", self.crtc_overflow);
+
+        push_reg_str!(crtc_vec, CRTCRegister::PresetRowScan, "", self.crtc_preset_row_scan.preset_row_scan());
+        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLine, "", self.crtc_maximum_scanline.maximum_scanline());
+        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLine, "[2T4]", self.crtc_maximum_scanline.two_to_four());
         
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotal), 
-            format!("{}", self.crtc_vertical_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::Overflow), 
-            format!("{:08b}", self.crtc_overflow)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::PresetRowScan), 
-            format!("{}", self.crtc_preset_row_scan.preset_row_scan())));
-        crtc_vec.push((format!("{:?}", CRTCRegister::MaximumScanLine), 
-            format!("{}", self.crtc_maximum_scanline.maximum_scanline())));
+        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "", self.crtc_cursor_start.cursor_start());
+        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "", self.crtc_cursor_end.cursor_end());
+        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "", self.crtc_start_address_ho);
+        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "", self.crtc_start_address_lo);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "", self.crtc_cursor_address_ho);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "", self.crtc_cursor_address_lo);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceStart, "", self.crtc_vertical_retrace_start);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceEnd, "", self.crtc_vertical_retrace_end.vertical_retrace_end());
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceEnd, "[norm]", self.crtc_vertical_retrace_end_norm);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayEnd, "", self.crtc_vertical_display_end);
+        push_reg_str!(crtc_vec, CRTCRegister::Offset, "", self.crtc_offset);
+        push_reg_str!(crtc_vec, CRTCRegister::UnderlineLocation, "[ul]", self.crtc_underline_location.underline_location());
+        push_reg_str!(crtc_vec, CRTCRegister::UnderlineLocation, "[cb4]", self.crtc_underline_location.count_by_four());
+        push_reg_str!(crtc_vec, CRTCRegister::UnderlineLocation, "[dw]", self.crtc_underline_location.double_word_mode());
+        push_reg_str!(crtc_vec, CRTCRegister::StartVerticalBlank, "",  self.crtc_start_vertical_blank);
 
-        crtc_vec.push((format!("{:?} [2T4]", CRTCRegister::MaximumScanLine), 
-            format!("{}", self.crtc_maximum_scanline.two_to_four())));   
+        push_reg_str!(crtc_vec, CRTCRegister::EndVerticalBlank, "", self.crtc_end_vertical_blank);
+        push_reg_str!(crtc_vec, CRTCRegister::EndVerticalBlank, "[norm]", self.crtc_end_vertical_blank_norm);
+        push_reg_str_enum!(crtc_vec, CRTCRegister::ModeControl, "[cms]", self.crtc_mode_control.compatibility_mode());
+        push_reg_str_enum!(crtc_vec, CRTCRegister::ModeControl, "[srs]", self.crtc_mode_control.select_row_scan_counter());
+        push_reg_str_enum!(crtc_vec, CRTCRegister::ModeControl, "[hrs]", self.crtc_mode_control.horizontal_retrace_select());
+        push_reg_str!(crtc_vec, CRTCRegister::ModeControl, "[cbr]", self.crtc_mode_control.count_by_two());
+        push_reg_str!(crtc_vec, CRTCRegister::LineCompare, "", self.crtc_line_compare);
 
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorStartLine), 
-            format!("{}", self.crtc_cursor_start.cursor_start())));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorEndLine), 
-            format!("{}", self.crtc_cursor_end.cursor_end())));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressH), 
-            format!("{}", self.crtc_start_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressL), 
-            format!("{}", self.crtc_start_address_lo)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressH), 
-            format!("{}", self.crtc_cursor_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressL), 
-            format!("{}", self.crtc_cursor_address_lo)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalRetraceStart), 
-            format!("{}", self.crtc_vertical_retrace_start)));
-        
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalRetraceEnd), 
-            format!("{}", self.crtc_vertical_retrace_end.vertical_retrace_end())));
-        crtc_vec.push((format!("{:?} [norm]", CRTCRegister::VerticalRetraceEnd), 
-            format!("{}", self.crtc_vertical_retrace_end_norm)));
+        map.insert("CRTC".to_string(), crtc_vec);
 
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalDisplayEnd), 
-            format!("{}", self.crtc_vertical_display_end)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::Offset), 
-            format!("{}", self.crtc_offset)));
-        crtc_vec.push((format!("{:?} [ul]", CRTCRegister::UnderlineLocation), 
-            format!("{}", self.crtc_underline_location.underline_location())));
-        crtc_vec.push((format!("{:?} [cb4]", CRTCRegister::UnderlineLocation), 
-            format!("{}", self.crtc_underline_location.count_by_four())));           
-        crtc_vec.push((format!("{:?} [dw]", CRTCRegister::UnderlineLocation), 
-            format!("{}", self.crtc_underline_location.double_word_mode())));              
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartVerticalBlank), 
-            format!("{}", self.crtc_start_vertical_blank)));
+        /*
 
         crtc_vec.push((format!("{:?}", CRTCRegister::EndVerticalBlank), 
-            format!("{}", self.crtc_end_vertical_blank)));
+            VideoCardStateEntry::String(format!("{}", self.crtc_end_vertical_blank))));
         crtc_vec.push((format!("{:?} [norm]", CRTCRegister::EndVerticalBlank), 
-            format!("{}", self.crtc_end_vertical_blank_norm)));
+            VideoCardStateEntry::String(format!("{}", self.crtc_end_vertical_blank_norm))));
 
         crtc_vec.push((format!("{:?} [cms]", CRTCRegister::ModeControl), 
-            format!("{:?}", self.crtc_mode_control.compatibility_mode())));
+            VideoCardStateEntry::String(format!("{:?}", self.crtc_mode_control.compatibility_mode()))));
         crtc_vec.push((format!("{:?} [srs]", CRTCRegister::ModeControl), 
-            format!("{:?}", self.crtc_mode_control.select_row_scan_counter())));
+            VideoCardStateEntry::String(format!("{:?}", self.crtc_mode_control.select_row_scan_counter()))));
         crtc_vec.push((format!("{:?} [hrs]", CRTCRegister::ModeControl), 
-            format!("{:?}", self.crtc_mode_control.horizontal_retrace_select())));
+            VideoCardStateEntry::String(format!("{:?}", self.crtc_mode_control.horizontal_retrace_select()))));
         crtc_vec.push((format!("{:?} [cbt]", CRTCRegister::ModeControl), 
-            format!("{:?}", self.crtc_mode_control.count_by_two())));            
+            VideoCardStateEntry::String(format!("{:?}", self.crtc_mode_control.count_by_two()))));          
 
         crtc_vec.push((format!("{:?}", CRTCRegister::LineCompare), 
-            format!("{}", self.crtc_line_compare)));
+            VideoCardStateEntry::String(format!("{}", self.crtc_line_compare))));
         map.insert("CRTC".to_string(), crtc_vec);
 
         let mut external_vec = Vec::new();
@@ -1555,24 +1558,7 @@ impl<'a> VideoCard for VGACard<'a> {
         graphics_vec.push((format!("{:?}", GraphicsRegister::BitMask), format!("{:08b}", self.graphics_bitmask)));
         map.insert("Graphics".to_string(), graphics_vec);
 
-        let mut attribute_pal_vec = Vec::new();
-        for i in 0..16 {
-            attribute_pal_vec.push((format!("Palette register {}", i), 
 
-                format!("{:06b}", self.attribute_palette_registers[i])
-                /* 
-                format!("{:01b}{:01b}{:01b},{:01b}{:01b}{:01b}", 
-                    self.attribute_palette_registers[i].secondary_red(),
-                    self.attribute_palette_registers[i].secondary_green(),
-                    self.attribute_palette_registers[i].secondary_blue(),
-                    self.attribute_palette_registers[i].red(),
-                    self.attribute_palette_registers[i].green(),
-                    self.attribute_palette_registers[i].blue(),
-                )));
-                */
-            ));
-        }
-        map.insert("AttributePalette".to_string(), attribute_pal_vec);
 
         let mut attribute_vec = Vec::new();
         attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), 
@@ -1601,6 +1587,39 @@ impl<'a> VideoCard for VGACard<'a> {
         //attribute_overscan_color: AOverscanColor::new(),
         //attribute_color_plane_enable: AColorPlaneEnable::new(),
         map.insert("Attribute".to_string(), attribute_vec);
+        */
+
+        let mut attribute_pal_vec = Vec::new();
+        for i in 0..16 {
+            attribute_pal_vec.push((
+                format!("Palette register {}", i), 
+                VideoCardStateEntry::Color(
+                    format!("{:06b}", self.attribute_palette_registers[i]),
+                    self.color_registers_rgba[i][0],
+                    self.color_registers_rgba[i][1],
+                    self.color_registers_rgba[i][2],
+                )
+            ));
+        }
+        map.insert("AttributePalette".to_string(), attribute_pal_vec);
+
+        let mut dac_pal_vec = Vec::new();
+        for i in 0..256 {
+            dac_pal_vec.push((
+                format!("{}", i), 
+                VideoCardStateEntry::Color(
+                    format!("#{:02x}{:02x}{:02x}",                    
+                        self.color_registers_rgba[i][0],
+                        self.color_registers_rgba[i][1],
+                        self.color_registers_rgba[i][2],
+                    ),
+                    self.color_registers_rgba[i][0],
+                    self.color_registers_rgba[i][1],
+                    self.color_registers_rgba[i][2],
+                )
+            ));
+        }
+        map.insert("DACPalette".to_string(), dac_pal_vec);
 
         map
     }
@@ -1734,6 +1753,10 @@ impl<'a> VideoCard for VGACard<'a> {
                 }
             }
         }
+    }
+
+    fn get_frame_count(&self) -> u64 {
+        0
     }
 
 }

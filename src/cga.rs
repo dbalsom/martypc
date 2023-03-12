@@ -8,6 +8,7 @@ use crate::config::VideoType;
 use crate::io::{IoBusInterface, IoDevice};
 use crate::videocard::{
     VideoCard,
+    VideoCardStateEntry,
     DisplayMode,
     CursorInfo,
     FontInfo,
@@ -79,8 +80,6 @@ static CGA_FONT: &'static [u8; 2048] = include_bytes!("../assets/cga_8by8.bin");
 const CGA_FONT_W: u32 = 8;
 const CGA_FONT_H: u32 = 8;
 
-
-
 pub enum Resolution {
     Res640by200,
     Res320by200
@@ -91,9 +90,6 @@ pub enum BitDepth {
     Depth2,
     Depth4,
 }
-
-
-
 pub struct CGACard {
 
     mode_byte: u8,
@@ -109,7 +105,8 @@ pub struct CGACard {
     cursor_frames: u32,
     in_hblank: bool,
     in_vblank: bool,
-    
+    frame_count: u64,
+
     cursor_status: bool,
     cursor_slowblink: bool,
     cursor_blink_rate: f64,
@@ -216,6 +213,7 @@ impl CGACard {
             scanline_cycles: 0,
             in_hblank: false,
             in_vblank: false,
+            frame_count: 0,
 
             cursor_status: false,
             cursor_slowblink: false,
@@ -257,9 +255,6 @@ impl CGACard {
     fn get_cursor_status(&self) -> bool {
         self.cursor_status
     }
-
-
-
 
     fn handle_crtc_register_select(&mut self, byte: u8 ) {
 
@@ -454,6 +449,24 @@ impl CGACard {
 
 }
 
+macro_rules! push_reg_str {
+    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
+        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{}", $val))))
+    };
+}
+
+macro_rules! push_reg_str_bin8 {
+    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
+        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
+    };
+}
+
+macro_rules! push_reg_str_enum {
+    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
+        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
+    };
+}   
+
 impl VideoCard for CGACard {
 
     fn get_video_type(&self) -> VideoType {
@@ -599,33 +612,37 @@ impl VideoCard for CGACard {
         (palette, intensity)
     }    
 
-    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String,String)>> {
+    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
 
         let mut map = HashMap::new();
-
+        
         let mut general_vec = Vec::new();
-        general_vec.push((format!("Adapter Type:"), format!("{:?}", self.get_video_type())));
-        general_vec.push((format!("Display Mode:"), format!("{:?}", self.get_display_mode())));
+
+        push_reg_str_enum!(general_vec, "Adapter Type:", "", self.get_video_type());
+        push_reg_str_enum!(general_vec, "Display Mode:", "", self.get_display_mode());
+        push_reg_str_enum!(general_vec, "Frame Count:", "", self.frame_count);
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalTotal), format!("{}", self.crtc_horizontal_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalDisplayed), format!("{}", self.crtc_horizontal_displayed)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalSyncPosition), format!("{}", self.crtc_horizontal_sync_pos)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::SyncWidth), format!("{}", self.crtc_sync_width)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotal), format!("{}", self.crtc_vertical_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotalAdjust), format!("{}", self.crtc_vertical_total_adjust)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalDisplayed), format!("{}", self.crtc_vertical_displayed)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalSync), format!("{}", self.crtc_vertical_sync_pos)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::InterlaceMode), format!("{}", self.crtc_interlace_mode)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::MaximumScanLineAddress), format!("{}", self.crtc_maximum_scanline_address)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorStartLine), format!("{}", self.crtc_cursor_start_line)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorEndLine), format!("{}", self.crtc_cursor_end_line)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressH), format!("{}", self.crtc_start_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressL), format!("{}", self.crtc_start_address_lo)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressH), format!("{}", self.crtc_cursor_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressL), format!("{}", self.crtc_cursor_address_lo)));
+
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "", self.crtc_horizontal_total);
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayed, "", self.crtc_horizontal_displayed);
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalSyncPosition, "", self.crtc_horizontal_sync_pos);
+        push_reg_str!(crtc_vec, CRTCRegister::SyncWidth, "", self.crtc_sync_width);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "", self.crtc_vertical_total);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotalAdjust, "", self.crtc_vertical_total_adjust);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayed, "", self.crtc_vertical_displayed);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalSync, "", self.crtc_vertical_sync_pos);
+        push_reg_str!(crtc_vec, CRTCRegister::InterlaceMode, "", self.crtc_interlace_mode);
+        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLineAddress, "", self.crtc_maximum_scanline_address);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "", self.crtc_cursor_start_line);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "", self.crtc_cursor_end_line);
+        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "", self.crtc_start_address_ho);
+        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "", self.crtc_start_address_lo);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "", self.crtc_cursor_address_ho);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "", self.crtc_cursor_address_lo);
         map.insert("CRTC".to_string(), crtc_vec);
+
         map       
     }
 
@@ -651,8 +668,19 @@ impl VideoCard for CGACard {
 
         // Are we in HBLANK interval?
         self.in_hblank = self.scanline_cycles > SCANLINE_HBLANK_START;
+        
         // Are we in VBLANK interval?
-        self.in_vblank = self.frame_cycles > FRAME_VBLANK_START;
+        if self.frame_cycles > FRAME_VBLANK_START {
+            if !self.in_vblank {
+                // Entering vblank, count a frame
+                self.frame_count = self.frame_count.wrapping_add(1);
+            }
+            self.in_vblank = true;
+        }
+        else {
+            self.in_vblank = false;
+        }
+        
     }    
 
     fn reset(&mut self) {
@@ -669,6 +697,10 @@ impl VideoCard for CGACard {
 
     fn get_plane_slice(&self, plane: usize) -> &[u8] {
         &DUMMY_PLANE
+    }
+
+    fn get_frame_count(&self) -> u64 {
+        self.frame_count
     }
 
     fn dump_mem(&self) {

@@ -24,7 +24,7 @@ use crate::{
     cga::{self, CGACard},
     ega::{self, EGACard},
     vga::{self, VGACard},
-    cpu_808x::{self, CpuType, Cpu, Flag, CpuError, StepResult},
+    cpu_808x::{self, CpuType, Cpu, Flag, CpuError, CpuAddress, StepResult},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
@@ -32,7 +32,7 @@ use crate::{
     vhd_manager::{VHDManager},
     io::{IoHandler, IoBusInterface},
     mouse::Mouse,
-    pit::{self, PitStringState},
+    pit::{self, PitDisplayState},
     pic::{self, PicStringState},
     ppi::{self, PpiStringState},
     rom_manager::RomManager,
@@ -44,6 +44,7 @@ use crate::{
 
 use ringbuf::{RingBuffer, Producer, Consumer};
 
+pub const STEP_OVER_TIMEOUT: u32 = 320000;
 pub const NUM_FLOPPIES: u32 = 2;
 pub const NUM_HDDS: u32 = 2;
 
@@ -54,6 +55,7 @@ pub enum ExecutionState {
     Paused,
     BreakpointHit,
     Running,
+    Halted
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -61,6 +63,7 @@ pub enum ExecutionOperation {
     None,
     Pause,
     Step,
+    StepOver,
     Run,
     Reset
 }
@@ -110,6 +113,15 @@ impl ExecutionControl {
                     _ => return
                 }              
             }
+            ExecutionOperation::StepOver => {
+                // Can only Step Over if paused / breakpointhit
+                match self.state {
+                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
+                        self.op.set(op);
+                    }
+                    _ => return
+                }              
+            }            
             ExecutionOperation::Run => {
                 // Can only Run if paused / breakpointhit
                 match self.state {
@@ -151,8 +163,8 @@ pub struct Machine<'a> {
     io_bus: IoBusInterface,
     cpu: Cpu<'a>,
     dma_controller: Rc<RefCell<dma::DMAController>>,
-    pit: Rc<RefCell<pit::Pit>>,
-    pit_buffer_producer: Producer<u8>,
+    pit: Rc<RefCell<pit::Pit>>, 
+    speaker_buf_producer: Producer<u8>,
     pit_buffer_consumer: Consumer<u8>,
     pit_samples_produced: u64,
     pit_ticks_per_sample: f64,
@@ -209,13 +221,13 @@ impl<'a> Machine<'a> {
             config.validator.vtype.unwrap()
         );
 
-        let (seg, offset) = cpu.get_reset_vector();
-        cpu.reset(seg, offset);        
+        let reset_vector = cpu.get_reset_vector();
+        cpu.reset(reset_vector);        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
-        let pit_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
-        let pit_buf: RingBuffer<u8> = RingBuffer::new(pit_buf_size);
-        let (pit_buffer_producer, pit_buffer_consumer) = pit_buf.split();
+        let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
+        let speaker_buf: RingBuffer<u8> = RingBuffer::new(speaker_buf_size);
+        let (speaker_buf_producer, speaker_buf_consumer) = speaker_buf.split();
         let sample_rate = sound_player.sample_rate();
         let pit_ticks_per_sample = (pit::PIT_MHZ * 1_000_000.0) / sample_rate as f64;
 
@@ -409,8 +421,9 @@ impl<'a> Machine<'a> {
         rom_manager.install_checkpoints(cpu.bus_mut());
 
         // Set entry point for ROM (mostly used for diagnostic ROMs that don't have a FAR JUMP reset vector)
+    
         let rom_entry_point = rom_manager.get_entrypoint();
-        cpu.set_reset_vector(rom_entry_point.0, rom_entry_point.1);
+        cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
         cpu.reset_address();
 
         Machine {
@@ -423,9 +436,9 @@ impl<'a> Machine<'a> {
             io_bus: io_bus,
             cpu: cpu,
             dma_controller: dma,
-            pit: pit,
-            pit_buffer_producer,
-            pit_buffer_consumer,
+            pit,
+            speaker_buf_producer,
+            pit_buffer_consumer: speaker_buf_consumer,
             pit_ticks_per_sample,
             pit_ticks: 0.0,
             pit_samples_produced: 0,
@@ -484,10 +497,16 @@ impl<'a> Machine<'a> {
         self.pit.borrow().get_cycles()
     }
 
-    pub fn pit_state(&self) -> PitStringState {
-        let pit = self.pit.borrow();
-        let pit_data = pit.get_string_repr();
+    pub fn pit_state(&self) -> PitDisplayState {
+        let mut pit = self.pit.borrow_mut();
+        let pit_data = pit.get_display_state(true);
         pit_data
+    }
+
+    pub fn get_pit_buf(&self) -> Vec<u8> {
+        let (a,b) = self.pit_buffer_consumer.as_slices();
+
+        a.iter().cloned().chain(b.iter().cloned()).collect()
     }
 
     pub fn pic_state(&self) -> PicStringState {
@@ -541,7 +560,7 @@ impl<'a> Machine<'a> {
 
     pub fn reset(&mut self) {
 
-        self.cpu.reset(0xFFFF, 0x0000);
+        self.cpu.reset(CpuAddress::Segmented(0xFFFF, 0x0000));
 
         // Clear RAM
         self.cpu.bus_mut().clear();
@@ -564,11 +583,11 @@ impl<'a> Machine<'a> {
         1.0 / cpu_808x::CPU_MHZ * cycles as f64
     }
     
-    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) {
+    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) -> u64 {
 
         let mut kb_event_processed = false;
         let mut skip_breakpoint = false;
-
+        let mut instr_count = 0;
         /*
         let cycle_target_adj = match exec_control.get_op() {
             ExecutionOperation::Reset => {
@@ -608,9 +627,10 @@ impl<'a> Machine<'a> {
             _ = exec_control.get_op(); // Clear the reset operation
             self.reset();
 
-            return
+            return 0
         }
-    
+
+        let mut step_over = false;
         let cycle_target_adj = match exec_control.state {
             ExecutionState::Paused => {
                 match exec_control.get_op() {
@@ -620,23 +640,31 @@ impl<'a> Machine<'a> {
                         // Execute 1 cycle
                         1
                     },
+                    ExecutionOperation::StepOver => {
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Set step-over flag
+                        step_over = true;
+                        // Execute 1 cycle
+                        1                        
+                    }
                     ExecutionOperation::Run => {
                         // Transition to ExecutionState::Running
                         exec_control.state = ExecutionState::Running;
                         cycle_target
                     },                      
-                    _ => return
+                    _ => return 0
                 }
             
-            }
+            },
             ExecutionState::Running => {
                 _ = exec_control.get_op(); // Clear any pending operation
                 cycle_target
-            }
+            },
             ExecutionState::BreakpointHit => {
                 match exec_control.get_op() {
                     ExecutionOperation::Step => {
-                        log::trace!("BreakpointHit->Step op");
+                        log::trace!("BreakpointHit -> Step");
                         // Clear CPU's breakpoint flag
                         self.cpu.clear_breakpoint_flag();
                         // Skip current breakpoint, if any
@@ -644,7 +672,21 @@ impl<'a> Machine<'a> {
                         // Transition to ExecutionState::Paused
                         exec_control.state = ExecutionState::Paused;
 
-                        // Execute 1 cycle
+                        // Execute one instruction only
+                        1
+                    },
+                    ExecutionOperation::StepOver => {
+                        log::trace!("BreakpointHit -> StepOver");
+                        // Clear CPU's breakpoint flag
+                        self.cpu.clear_breakpoint_flag();
+                        // Skip current breakpoint, if any
+                        skip_breakpoint = true;
+                        // Set the step over flag
+                        step_over = true;
+                        // Transition to ExecutionState::Paused
+                        exec_control.state = ExecutionState::Paused;
+
+                        // Execute one instruction only
                         1
                     },
                     ExecutionOperation::Run => {
@@ -656,9 +698,19 @@ impl<'a> Machine<'a> {
                         exec_control.state = ExecutionState::Running;
                         cycle_target
                     },                    
-                    _ => return
+                    _ => return 0
                 }
 
+            },
+            ExecutionState::Halted => {
+                match exec_control.get_op() {
+                    ExecutionOperation::Run => {
+                        // Transition to ExecutionState::Running
+                        exec_control.state = ExecutionState::Running;
+                        cycle_target
+                    }
+                    _ => return 0
+                }
             }
         };
 
@@ -669,126 +721,210 @@ impl<'a> Machine<'a> {
             let fake_cycles: u32 = 7;
             let mut cpu_cycles = 0;
 
-            if self.cpu.is_error() == false {
-
-                let flat_address = self.cpu.get_linear_ip();
-
-                // Match checkpoints
-                if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
-                    if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
-                        log::trace!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
-                    }
-    
-                    // Check for patching checkpoint & install patches
-                    if self.rom_manager.is_patch_checkpoint(flat_address) {
-                        log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
-                        self.rom_manager.install_patches(self.cpu.bus_mut());
-                    }
-                }
-                
-                match self.cpu.step(&mut self.io_bus, self.pic.clone(), skip_breakpoint) {
-                    Ok((step_result, step_cycles)) => {
-
-                        match step_result {
-                            StepResult::Normal => cpu_cycles = step_cycles,
-                            StepResult::BreakpointHit => {
-                                exec_control.state = ExecutionState::BreakpointHit;
-                                return
-                            }
-                        }
-                        
-                    },
-                    Err(err) => {
-                        self.error = true;
-                        self.error_str = format!("{}", err);
-                        log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
-                        cpu_cycles = 0
-                    } 
-                }
-
-                // Convert cycles into elapsed microseconds
-                let us;
-                if cpu_cycles == 0 {
-                    log::warn!("Instruction returned 0 cycles");
-                    cpu_cycles = fake_cycles;
-                }
-
-                us = self.cycles_to_us(cpu_cycles);
-
-                // Process a keyboard event once per frame.
-                // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
-                // they then appear to happen instantenously. The PPI has no buffer, so one scancode gets lost. 
-                // 
-                // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
-                // fast typist and this method seems to work fine.
-                if self.kb_buf.len() > 0 && !kb_event_processed {
-
-                    let kb_byte = self.kb_buf.pop_front().unwrap();
-
-                    self.ppi.borrow_mut().send_keyboard(kb_byte);
-                    self.pic.borrow_mut().request_interrupt(1);
-                    kb_event_processed = true;
-                }
-
-                // Run devices
-                
-                self.dma_controller.borrow_mut().run(&mut self.io_bus);
-
-                // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh, PPI for timer gate & speaker data
-                self.pit.borrow_mut().run(
-                    self.cpu.bus_mut(),
-                    &mut self.pic.borrow_mut(),
-                    &mut self.dma_controller.borrow_mut(),
-                    &mut self.ppi.borrow_mut(),
-                    &mut self.pit_buffer_producer,
-                    cpu_cycles);
-
-                // Sample the PIT channel
-                self.pit_ticks += cpu_cycles as f64;
-                while self.pit_ticks >= self.pit_ticks_per_sample {
-                    self.pit_buf_to_sound_buf();
-                    self.pit_ticks -= self.pit_ticks_per_sample;
-                }
-
-                //while self.pit_buffer_consumer.len() >= self.pit_ticks_per_sample as usize {
-                //    self.pit_buf_to_sound_buf();
-                //}
-
-                // Run the video device
-                // This uses dynamic dispatch - be aware of any performance hit
-                self.video.borrow_mut().run( cpu_cycles);
-                
-                self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), cpu_cycles);
-                
-                // FDC needs PIC to issue controller interrupts, DMA to request DMA transfers, and Memory Bus to read/write to via DMA
-                self.fdc.borrow_mut().run(
-                    &mut self.pic.borrow_mut(),
-                    &mut self.dma_controller.borrow_mut(),
-                    self.cpu.bus_mut(),
-                    cpu_cycles);
-
-                // HDC needs PIC to issue controller interrupts, DMA to request DMA stransfers, and Memory Bus to read/write to via DMA                    
-                self.hdc.borrow_mut().run(
-                    &mut self.pic.borrow_mut(),
-                    &mut self.dma_controller.borrow_mut(),
-                    self.cpu.bus_mut(),
-                    cpu_cycles);         
-                    
-                // Serial port needs PIC to issue interrupts
-                self.serial_controller.borrow_mut().run(
-                    &mut self.pic.borrow_mut(),
-                    us);
-
-                self.mouse.run(us);
-            }
-            else {
-                // CPU in error won't report cycles
+            if self.cpu.is_error() {
                 break;
             }
 
+            let flat_address = self.cpu.get_linear_ip();
+
+            // Match checkpoints
+            if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
+                if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
+                    log::trace!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
+                }
+
+                // Check for patching checkpoint & install patches
+                if self.rom_manager.is_patch_checkpoint(flat_address) {
+                    log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
+                    self.rom_manager.install_patches(self.cpu.bus_mut());
+                }
+            }
+            
+            let mut step_over_target = None;
+
+            match self.cpu.step(&mut self.io_bus, self.pic.clone(), skip_breakpoint) {
+                Ok((step_result, step_cycles)) => {
+
+                    match step_result {
+                        StepResult::Normal => {
+                            cpu_cycles = step_cycles;
+                        },
+                        StepResult::Call(target) => {
+                            cpu_cycles = step_cycles;
+                            step_over_target = Some(target);
+                        }
+                        StepResult::BreakpointHit => {
+                            exec_control.state = ExecutionState::BreakpointHit;
+                            return 1
+                        }
+                    }
+                    
+                },
+                Err(err) => {
+                    if let CpuError::CpuHaltedError(_) = err {
+                        log::error!("CPU Halted!");
+                        exec_control.state = ExecutionState::Halted;
+                    }
+                    self.error = true;
+                    self.error_str = format!("{}", err);
+                    log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
+                    cpu_cycles = 0
+                } 
+            }
+
+            instr_count += 1;
             cycles_elapsed += cpu_cycles;
-            self.cpu_cycles += cpu_cycles as u64;
+            self.cpu_cycles += cpu_cycles as u64;            
+
+            if cpu_cycles == 0 {
+                log::warn!("Instruction returned 0 cycles");
+                cpu_cycles = fake_cycles;
+            }
+
+            self.run_devices(cpu_cycles, &mut kb_event_processed);
+
+            // If we returned a step over target address, execution is paused, and step over was requested, 
+            // then consume as many instructions as needed to get to to the 'next' instruction. This will
+            // skip over any CALL or interrupt encountered.
+            if step_over {
+                if let Some(step_over_target) = step_over_target {
+
+                    log::debug!("Step over requested for CALL, return addr: {}", step_over_target );
+                    let mut cs_ip = self.cpu.get_csip();
+                    let mut step_over_cycles = 0;
+
+                    while cs_ip != step_over_target {
+
+                        match self.cpu.step(&mut self.io_bus, self.pic.clone(), skip_breakpoint) {
+                            Ok((step_result, step_cycles)) => {
+            
+                                match step_result {
+                                    StepResult::Normal => {
+                                        cpu_cycles = step_cycles
+                                    },
+                                    StepResult::Call(_) => {
+                                        cpu_cycles = step_cycles
+                                        // We are already stepping over a base CALL instruction, so ignore futher CALLS/interrupts.
+                                    }
+                                    StepResult::BreakpointHit => {
+                                        // We can hit an 'inner' breakpoint while stepping over. This is fine, and ends the step
+                                        // over operation at the breakpoint.
+                                        exec_control.state = ExecutionState::BreakpointHit;
+                                        return instr_count
+                                    }
+                                }
+                            },
+                            Err(err) => {
+                                if let CpuError::CpuHaltedError(_) = err {
+                                    log::error!("CPU Halted!");
+                                    exec_control.state = ExecutionState::Halted;
+                                }
+                                self.error = true;
+                                self.error_str = format!("{}", err);
+                                log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
+                                cpu_cycles = 0
+                            } 
+                        }
+
+                        instr_count += 1;
+                        cycles_elapsed += cpu_cycles;
+                        self.cpu_cycles += cpu_cycles as u64;            
+
+                        step_over_cycles += cpu_cycles;
+            
+                        if cpu_cycles == 0 {
+                            log::warn!("Instruction returned 0 cycles");
+                            cpu_cycles = fake_cycles;
+                        }
+            
+                        self.run_devices(cpu_cycles, &mut kb_event_processed);
+
+                        cs_ip = self.cpu.get_csip();
+
+                        if step_over_cycles > STEP_OVER_TIMEOUT {
+                            log::warn!("Step over operation timed out: No return after {} cycles.", STEP_OVER_TIMEOUT);
+                            break;
+                        }
+                    }
+                }
+            }
         }
+
+        instr_count
+    }
+
+    pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) {
+
+        // Convert cycles into elapsed microseconds
+        let us;
+        us = self.cycles_to_us(cpu_cycles);
+
+        // Process a keyboard event once per frame.
+        // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
+        // they then appear to happen instantenously. The PPI has no buffer, so one scancode gets lost. 
+        // 
+        // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
+        // fast typist and this method seems to work fine.
+        if self.kb_buf.len() > 0 && !*kb_event_processed {
+
+            let kb_byte = self.kb_buf.pop_front().unwrap();
+
+            self.ppi.borrow_mut().send_keyboard(kb_byte);
+            self.pic.borrow_mut().request_interrupt(1);
+            *kb_event_processed = true;
+        }
+
+        // Run devices
+        
+        self.dma_controller.borrow_mut().run(&mut self.io_bus);
+
+        // PIT needs PIC to issue timer interrupts, DMA to do DRAM refresh, PPI for timer gate & speaker data
+        self.pit.borrow_mut().run(
+            self.cpu.bus_mut(),
+            &mut self.pic.borrow_mut(),
+            &mut self.dma_controller.borrow_mut(),
+            &mut self.ppi.borrow_mut(),
+            &mut self.speaker_buf_producer,
+            cpu_cycles);
+
+        // Sample the PIT channel
+        self.pit_ticks += cpu_cycles as f64;
+        while self.pit_ticks >= self.pit_ticks_per_sample {
+            self.pit_buf_to_sound_buf();
+            self.pit_ticks -= self.pit_ticks_per_sample;
+        }
+
+        //while self.pit_buffer_consumer.len() >= self.pit_ticks_per_sample as usize {
+        //    self.pit_buf_to_sound_buf();
+        //}
+
+        // Run the video device
+        // This uses dynamic dispatch - be aware of any performance hit
+        self.video.borrow_mut().run( cpu_cycles);
+        
+        self.ppi.borrow_mut().run(&mut self.pic.borrow_mut(), cpu_cycles);
+        
+        // FDC needs PIC to issue controller interrupts, DMA to request DMA transfers, and Memory Bus to read/write to via DMA
+        self.fdc.borrow_mut().run(
+            &mut self.pic.borrow_mut(),
+            &mut self.dma_controller.borrow_mut(),
+            self.cpu.bus_mut(),
+            cpu_cycles);
+
+        // HDC needs PIC to issue controller interrupts, DMA to request DMA stransfers, and Memory Bus to read/write to via DMA                    
+        self.hdc.borrow_mut().run(
+            &mut self.pic.borrow_mut(),
+            &mut self.dma_controller.borrow_mut(),
+            self.cpu.bus_mut(),
+            cpu_cycles);         
+            
+        // Serial port needs PIC to issue interrupts
+        self.serial_controller.borrow_mut().run(
+            &mut self.pic.borrow_mut(),
+            us);
+
+        self.mouse.run(us);
+
     }
 
     /// Called to update machine once per frame.
