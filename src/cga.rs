@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 
-use log;
-
 use crate::config::VideoType;
 use crate::io::{IoDevice};
 use crate::videocard::{

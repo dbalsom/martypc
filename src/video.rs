@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+#![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting. Dunno.
+
 // Video module
 // This module takes an internal representation from the cga module and actually draws the screen
 // It also defines representational details such as colors
@@ -105,6 +107,7 @@ pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {
 
 pub fn get_ega_gfx_color16(bits: u8) -> &'static [u8; 4] {
 
+    #[allow(clippy::unusual_byte_groupings)]
     match bits & 0b010_111 {
         0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
         0b000_001 => &[0x00, 0x00, 0xAA, 0xFF],
@@ -128,6 +131,7 @@ pub fn get_ega_gfx_color16(bits: u8) -> &'static [u8; 4] {
 
 pub fn get_ega_gfx_color64(bits: u8) -> &'static [u8; 4] {
 
+    #[allow(clippy::unusual_byte_groupings)]
     match bits {
         0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
         0b000_001 => &[0x00, 0x00, 0xAA, 0xFF],
@@ -313,16 +317,15 @@ impl Video {
     
                 // Start address is multiplied by two due to 2 bytes per character (char + attr)
 
-                let video_mem;
-                match video_type {
+                let video_mem = match video_type {
                     VideoType::MDA | VideoType::CGA | VideoType::EGA => {
-                        video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+                        bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE)
                     }
                     VideoType::VGA => {
-                        video_mem = bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE);
+                        bus.get_slice_at(cga::CGA_MEM_ADDRESS + start_address * 2, cga::CGA_MEM_SIZE)
                         //video_mem = video_card.get_vram();
                     }
-                }
+                };
                 
                 // Get font info from adapter
                 let font_info = video_card.get_current_font();
@@ -422,7 +425,7 @@ impl Video {
 
         let char_height = char_height as u32;
 
-        let max_y = frame_h / char_height as u32 - 1;
+        let max_y = frame_h / char_height - 1;
 
         for (i, char) in mem.chunks_exact(2).enumerate() {
             let x = (i % mem_span as usize) as u32;
@@ -825,7 +828,8 @@ pub fn draw_glyph4x(
     char_height: u32,
     pos_x: u32, 
     pos_y: u32,
-    font: &FontInfo ) -> () {
+    font: &FontInfo )
+{
 
     // Do not draw glyph off screen
     if (pos_x + (font.w * 2) > frame_w) || (pos_y * 2 + (font.h * 2 ) > frame_h) {
@@ -896,7 +900,8 @@ pub fn draw_glyph2x(
     char_height: u32,
     pos_x: u32, 
     pos_y: u32,
-    font: &FontInfo ) -> () {
+    font: &FontInfo ) 
+{
 
     // Do not draw glyph off screen
     if pos_x + font.w > frame_w {
@@ -1145,7 +1150,8 @@ pub fn draw_glyph2x1(
     char_height: u32,
     pos_x: u32, 
     pos_y: u32,
-    font: &FontInfo ) -> () {
+    font: &FontInfo )
+{
 
     // Do not draw a glyph off screen
     if pos_x + (font.w * 2) > frame_w {
@@ -1206,7 +1212,8 @@ pub fn draw_glyph1x1(
     char_height: u32,
     pos_x: u32, 
     pos_y: u32,
-    font: &FontInfo ) -> () {
+    font: &FontInfo )
+{
 
     // Do not draw glyph off screen
     if pos_x + font.w > frame_w {

@@ -99,8 +99,8 @@ const MODEM_STATUS_RLSD: u8 = 0b1000_0000;
 
 impl IoDevice for SerialPortController {
     fn read_u8(&mut self, port: u16) -> u8 {
-        let byte;
-        byte = match port {
+
+        match port {
             SERIAL1_RX_TX_BUFFER => self.port[0].rx_buffer_read(),
             SERIAL2_RX_TX_BUFFER => self.port[1].rx_buffer_read(),
             SERIAL1_INTERRUPT_ENABLE => self.port[0].interrupt_enable_read(),
@@ -116,9 +116,9 @@ impl IoDevice for SerialPortController {
             SERIAL1_MODEM_STATUS => self.port[0].modem_status_read(),         
             SERIAL2_MODEM_STATUS => self.port[1].modem_status_read(),         
             _ => 0
-        };
-        byte
+        }
     }
+
     fn write_u8(&mut self, port: u16, byte: u8) {
         match port {
             SERIAL1_RX_TX_BUFFER => self.port[0].tx_buffer_write(byte),
@@ -350,11 +350,10 @@ impl SerialPort {
         // COMTEST from ctmouse suite seems to indicate that a TX Holding Register Empty interrupt 
         // will be triggered immediatately after it is enabled.
         if mask & INTERRUPT_TX_EMPTY != 0 
-            && old_enable_reg & INTERRUPT_TX_EMPTY == 0 {
-
-            if self.tx_holding_empty {
-                self.raise_interrupt_type(INTERRUPT_TX_EMPTY);
-            }
+            && (old_enable_reg & INTERRUPT_TX_EMPTY == 0)
+            && self.tx_holding_empty 
+        {
+            self.raise_interrupt_type(INTERRUPT_TX_EMPTY);
         }
 
         if mask & INTERRUPT_RX_LINE_STATUS == 0 {

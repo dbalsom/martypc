@@ -212,7 +212,7 @@ impl RemoteCpu {
             mcycle_state: BusState::PASV,
             bus_state: BusState::PASV,
             bus_cycle: BusCycle::T1,
-            access_type: AccessType::AccCodeOrNone,
+            access_type: AccessType::CodeOrNone,
             queue: InstructionQueue::new(),
             queue_byte: 0,
             queue_type: QueueDataType::Program,
@@ -524,8 +524,8 @@ impl ArduinoValidator {
 
     pub fn validate_cycles(
         &mut self, 
-        cpu_states: &Vec::<CycleState>, 
-        emu_states: &Vec::<CycleState>
+        cpu_states: &[CycleState], 
+        emu_states: &[CycleState]
     ) -> (bool, usize) {
 
         if emu_states.len() != cpu_states.len() {
@@ -566,7 +566,7 @@ impl ArduinoValidator {
         }
     }
 
-    pub fn print_cycle_diff(&mut self, cpu_states: &Vec::<CycleState>, emu_states: &Vec::<CycleState>) {
+    pub fn print_cycle_diff(&mut self, cpu_states: &Vec::<CycleState>, emu_states: &[CycleState]) {
 
         let max_lines = cmp::max(emu_states.len(), cpu_states.len());
 
@@ -943,10 +943,10 @@ impl RemoteCpu {
         if c.t_state != BusCycle::T1 {
             // Segment status only valid in T2+
             seg_str = match c.a_type {
-                AccessType::AccAlternateData  => "ES",
-                AccessType::AccStack => "SS",
-                AccessType::AccCodeOrNone => "CS",
-                AccessType::AccData => "DS"
+                AccessType::AlternateData  => "ES",
+                AccessType::Stack => "SS",
+                AccessType::CodeOrNone => "CS",
+                AccessType::Data => "DS"
             };    
         }
 
@@ -1223,7 +1223,7 @@ impl CpuValidator for ArduinoValidator {
         has_modrm: bool, 
         _cycles: i32, 
         regs: &VRegisters,
-        emu_states: &Vec<CycleState>,
+        emu_states: &[CycleState],
     ) -> Result<bool, ValidatorError>  {
 
         let ip_addr = make_pointer(self.current_frame.regs[0].cs, self.current_frame.regs[0].ip);

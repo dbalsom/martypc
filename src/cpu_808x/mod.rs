@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::unusual_byte_groupings)]
 
 use std::{
     rc::Rc,
@@ -1379,10 +1380,10 @@ impl<'a> Cpu<'a> {
                 TCycle::T4 => BusCycle::T4
             },
             a_type: match self.bus_segment { 
-                Segment::ES => AccessType::AccAlternateData,
-                Segment::SS => AccessType::AccStack,
-                Segment::DS => AccessType::AccData,
-                Segment::None | Segment::CS => AccessType::AccCodeOrNone,
+                Segment::ES => AccessType::AlternateData,
+                Segment::SS => AccessType::Stack,
+                Segment::DS => AccessType::Data,
+                Segment::None | Segment::CS => AccessType::CodeOrNone,
             },
             // Unify these enums?
             b_state: match self.t_cycle {

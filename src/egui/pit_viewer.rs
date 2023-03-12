@@ -155,12 +155,10 @@ impl PitViewerControl {
                     if *dirty {
                         *age = 0;
                     }
-                    else {
-                        if i < self.pit_state.len() {
-                            if let Some(old_tok) = self.pit_state[i].get_mut(key) {
-                                if let SyntaxToken::StateString(_,_,old_age) = old_tok {
-                                    *age = old_age.saturating_add(2);                            
-                                }
+                    else if i < self.pit_state.len() {
+                        if let Some(old_tok) = self.pit_state[i].get_mut(key) {
+                            if let SyntaxToken::StateString(_,_,old_age) = old_tok {
+                                *age = old_age.saturating_add(2);                            
                             }
                         }
                     }

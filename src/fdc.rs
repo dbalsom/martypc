@@ -1177,19 +1177,19 @@ impl FloppyController {
 
         if sector < self.drives[drive_select].max_sectors - 1 {
             // Not at last sector, just return next sector
-            return (cylinder, head, sector + 1)
+            (cylinder, head, sector + 1)
         }
         else if head < self.drives[drive_select].max_heads - 1 {
             // At last sector, but not at last head, go to next head, same cylinder, sector 1
-            return (cylinder, head + 1, 1) 
+            (cylinder, head + 1, 1) 
         }
         else if cylinder < self.drives[drive_select].max_cylinders - 1 {
             // At last sector and last head, go to next cylinder, head 0, sector 1
-            return (cylinder + 1, 0, 1)
+            (cylinder + 1, 0, 1)
         }
         else {
             // Return end of drive? What does this do on real hardware
-            return (self.drives[drive_select].max_cylinders, 0, 1)
+            (self.drives[drive_select].max_cylinders, 0, 1)
         }
     }
     

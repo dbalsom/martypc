@@ -1171,18 +1171,17 @@ impl<'a> Cpu<'a> {
                 self.decrement_register16(Register16::CX);
                 self.cycle();
 
-                if self.cx != 0 {
-                    if !self.get_flag(Flag::Zero) {
-                        if let OperandType::Relative8(rel8) = self.i.operand1_type {
-                            self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-                        }
-                        self.cycle();
-                        self.biu_suspend_fetch();
-                        self.cycles(4);
-                        self.biu_queue_flush();
-                        jump = true;                     
+                if self.cx != 0 && !self.get_flag(Flag::Zero) {
+                    if let OperandType::Relative8(rel8) = self.i.operand1_type {
+                        self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
                     }
+                    self.cycle();
+                    self.biu_suspend_fetch();
+                    self.cycles(4);
+                    self.biu_queue_flush();
+                    jump = true;
                 }
+                
                 if !jump {
                     self.cycle();
                 }                
@@ -1196,18 +1195,17 @@ impl<'a> Cpu<'a> {
                 self.decrement_register16(Register16::CX);
                 self.cycle();
 
-                if self.cx != 0 {
-                    if self.get_flag(Flag::Zero) {                        
-                        if let OperandType::Relative8(rel8) = self.i.operand1_type {
-                            self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
-                        }
-                        self.cycle();
-                        self.biu_suspend_fetch();
-                        self.cycles(4);
-                        self.biu_queue_flush();
-                        jump = true;
+                if self.cx != 0 && self.get_flag(Flag::Zero) {
+                    if let OperandType::Relative8(rel8) = self.i.operand1_type {
+                        self.ip = util::relative_offset_u16(self.ip, rel8 as i16 + self.i.size as i16 );
                     }
+                    self.cycle();
+                    self.biu_suspend_fetch();
+                    self.cycles(4);
+                    self.biu_queue_flush();
+                    jump = true;
                 }
+
                 if !jump {
                     self.cycle();
                 }

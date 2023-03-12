@@ -141,10 +141,8 @@ impl<'a> Cpu<'a> {
                 self.set_flag(Flag::Overflow);
             }            
         }
-        else {
-            if self.al >= 0x7a && self.al <= 0x7F {
-                self.set_flag(Flag::Overflow);
-            }
+        else if self.al >= 0x7a && self.al <= 0x7F {
+            self.set_flag(Flag::Overflow);
         }
 
         if (self.al & 0x0F) > 9 || self.get_flag(Flag::AuxCarry) {

@@ -79,7 +79,7 @@ impl VHDManager {
 
     pub fn get_vhd_names(&self) -> Vec<OsString> {
         let mut vec: Vec<OsString> = Vec::new();
-        for (key, _val) in &self.file_map {
+        for key in self.file_map.keys() {
             vec.push(key.clone());
         }
         vec.sort_by(|a, b| a.cmp(b));

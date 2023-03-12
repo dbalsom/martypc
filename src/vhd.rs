@@ -116,7 +116,7 @@ impl VHDFileFooter {
         };
 
         Self {
-            cookie: cookie,
+            cookie,
             features: VHD_FEATURE_RESERVED,
             version: VHD_VERSION,
             offset: VHD_DATA_OFFSET,
@@ -278,7 +278,7 @@ impl VirtualHardDisk {
 
         Ok(
             VirtualHardDisk {
-                vhd_file: vhd_file,
+                vhd_file,
 
                 size: metadata.len(),
                 checksum: 0,
@@ -291,7 +291,7 @@ impl VirtualHardDisk {
                 cur_head: 0,
                 cur_sector: 0,
 
-                footer: footer,
+                footer,
             }
         )
     }

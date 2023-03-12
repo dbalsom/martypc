@@ -375,7 +375,7 @@ impl GuiState {
 
             texture: None,
             event_queue: VecDeque::new(),
-            window_open_flags: window_open_flags,
+            window_open_flags,
             error_dialog_open: false,
 
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
@@ -406,7 +406,7 @@ impl GuiState {
             serial_ports: Vec::new(),
             serial_port_name: String::new(),
 
-            exec_control: exec_control,
+            exec_control,
 
             error_string: String::new(),
             memory_viewer_dump: String::new(),
@@ -542,7 +542,7 @@ impl GuiState {
     }
 
     pub fn update_vhd_formats(&mut self, formats: Vec<HardDiskFormat>) {
-        self.vhd_formats = formats.clone()
+        self.vhd_formats = formats
     }
 
     pub fn update_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
@@ -1089,7 +1089,7 @@ impl GuiState {
                     .min_col_width(50.0)
                     .show(ui, |ui| {
 
-                    ui.label(egui::RichText::new(format!("Enabled:")).text_style(egui::TextStyle::Monospace));
+                    ui.label(egui::RichText::new("Enabled:".to_string()).text_style(egui::TextStyle::Monospace));
                     ui.add(egui::TextEdit::singleline(&mut self.dma_state.enabled).font(egui::TextStyle::Monospace));
                     ui.end_row();     
 
@@ -1181,12 +1181,12 @@ impl GuiState {
                 .default_width(400.0)
                 .show(ctx, |ui| {
 
-                    if self.vhd_formats.len() > 0 {
+                    if !self.vhd_formats.is_empty() {
                         egui::ComboBox::from_label("Format")
                         .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
                         .show_ui(ui, |ui| {
                             for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
-                                ui.selectable_value(&mut self.selected_format_idx, i, format!("{}", fmt.desc));
+                                ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
                             }
                         });
 

@@ -577,8 +577,6 @@ impl<'a> Cpu<'a> {
             if let FetchState::Scheduled(_) = self.fetch_state {
                 // Don't block prefetching if already scheduled.
             }
-            //else if self.t_cycle != TCycle::T4 && self.fetch_state != FetchState::Suspended {
-            //else if self.is_before_last_wait() && self.fetch_state != FetchState::Suspended {
             else if self.is_before_last_wait() && !self.fetch_suspended {
 
                 //trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);

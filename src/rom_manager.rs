@@ -1399,8 +1399,8 @@ impl RomManager {
 
         // Check that all requested features are avaialble
         for feature in &self.features_requested {
-            if !self.features_available.contains(&feature) {
-                return Err(RomError::RomNotFoundForFeature(feature.clone()));
+            if !self.features_available.contains(feature) {
+                return Err(RomError::RomNotFoundForFeature(*feature));
             }
         }
 
@@ -1423,7 +1423,7 @@ impl RomManager {
     /// Only copy Feature ROMs if they match the list of requested features.
     pub fn copy_into_memory(&self, bus: &mut BusInterface) -> bool {
 
-        if self.rom_sets_complete.len() == 0 {
+        if self.rom_sets_complete.is_empty() {
             return false;
         }
 
@@ -1436,15 +1436,7 @@ impl RomManager {
                     // ROMs not associated with a specific feature are always loaded
                     true
                 }
-                Some(feature) => {
-                    if self.features_requested.contains(&feature) {
-                        // This ROM provides a requested feature
-                        true
-                    }
-                    else {
-                        false
-                    }
-                }
+                Some(feature) => self.features_requested.contains(&feature)
             };
 
             let rom_image_vec = self.rom_images.get(*rom_str).unwrap();
@@ -1512,7 +1504,7 @@ impl RomManager {
     pub fn is_patch_checkpoint(&self, address: u32) -> bool {
         let mut patch_checkpoint = false;
 
-        if let Some(_) = self.patches_active.get(&address) {
+        if self.patches_active.get(&address).is_some() {
             patch_checkpoint = true;
         }
         patch_checkpoint

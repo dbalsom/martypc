@@ -8,8 +8,6 @@
 use crate::io::{IoBusInterface, IoDevice};
 use crate::bus::BusInterface;
 
-use log;
-
 pub const DMA_CHANNEL_0_ADDR_PORT: u16  = 0x00; // R/W
 pub const DMA_CHANNEL_0_WC_PORT: u16    = 0x01; // R/W
 pub const DMA_CHANNEL_1_ADDR_PORT: u16  = 0x02; // R/W

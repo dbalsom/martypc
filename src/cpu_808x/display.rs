@@ -576,11 +576,9 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect) -> Vec<SyntaxToken> {
                     // Have first component of ea
                     op_vec.push(SyntaxToken::Register(ea_vec[0].to_string()));
                 }
-                else {
-                    if let Some(disp) = disp_opt {
-                        // Displacement by itself
-                        op_vec.push(SyntaxToken::Displacement(format!("{}", disp)));
-                    }
+                else if let Some(disp) = disp_opt {
+                    // Displacement by itself
+                    op_vec.push(SyntaxToken::Displacement(format!("{}", disp)));
                 }
 
                 if ea_vec[1].len() > 0 {

@@ -96,12 +96,11 @@ pub enum BusCycle {
 
 #[derive (Copy, Clone, PartialEq, Debug)]
 pub enum AccessType {
-    AccAlternateData = 0x0,
-    AccStack,
-    AccCodeOrNone,
-    AccData,
+    AlternateData = 0x0,
+    Stack,
+    CodeOrNone,
+    Data,
 }
-
 
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum BusState {
@@ -185,7 +184,7 @@ pub trait CpuValidator {
         has_modrm: bool, 
         cycles: i32, 
         regs: &VRegisters, 
-        emu_states: &Vec<CycleState>) 
+        emu_states: &[CycleState]) 
             -> Result<bool, ValidatorError>;
 
     fn emu_read_byte(&mut self, addr: u32, data: u8, read_type: ReadType);

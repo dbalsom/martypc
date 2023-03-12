@@ -46,7 +46,7 @@ impl<'a> Cpu<'a> {
     }
 
     pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
-        ((segment as u32) << 4) + offset as u32 & 0xFFFFFu32
+        (((segment as u32) << 4) + offset as u32) & 0xFFFFFu32
     }
 
     pub fn relative_offset_u16(base: u16, offset: i16) -> u16 {
@@ -62,7 +62,7 @@ impl<'a> Cpu<'a> {
             Segment::DS => self.ds,
             Segment::SS => self.ss,
         };
-        ((segment_val as u32) << 4) + offset as u32 & 0xFFFFFu32
+        (((segment_val as u32) << 4) + offset as u32) & 0xFFFFFu32
     }
 
     pub fn segment_override(seg_override: SegmentOverride, seg_default: Segment) -> Segment {

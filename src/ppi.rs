@@ -186,12 +186,10 @@ impl Ppi {
             clear_keyboard: false,
             dip_sw1: match machine_type {
                 MachineType::IBM_PC_5150 => {
-                    let byte = SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits;
-                    byte
+                    SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits
                 },
                 MachineType::IBM_XT_5160 => {
-                    let byte = SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits;
-                    byte                    
+                    SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits                 
                 },
                 _ => {
                     log::error!("Machine type: {:?} has no PPI", machine_type);
@@ -319,7 +317,7 @@ impl Ppi {
             if self.kb_low_count > KB_RESET_CYCLES {
                 // Clock line was low long enough to trigger reset
                 // Start timer until reset byte is sent
-                self.kb_low_count;
+                self.kb_low_count = 0;
                 self.kb_been_reset = true;
                 self.kb_count_until_reset_byte = 0;
             }

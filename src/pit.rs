@@ -829,9 +829,9 @@ impl ProgrammableIntervalTimer {
             if i == 2 {
 
                 let speaker_signal = t.output && ppi_pb1;
-                match buffer_producer.push(speaker_signal as u8) {
-                    Ok(()) => (),
-                    Err(_) => ()
+                
+                if let Ok(()) = buffer_producer.push(speaker_signal as u8) {
+                    // 
                 }
             }
         }

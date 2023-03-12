@@ -1,4 +1,5 @@
-#![deny(clippy::all)]
+#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::too_many_arguments)]
 #![forbid(unsafe_code)]
 
 use std::{
@@ -452,7 +453,7 @@ fn main() {
             Ok(vhd_file) => {
                 match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
-                        match machine.hdc().borrow_mut().set_vhd(0 as usize, vhd) {
+                        match machine.hdc().borrow_mut().set_vhd(0_usize, vhd) {
                             Ok(_) => {
                                 log::info!("VHD image {:?} successfully loaded into virtual drive: {}", vhd_os_name, 0);
                             }
@@ -496,7 +497,7 @@ fn main() {
 
             // Resize the window
             if let Some(size) = input.window_resized() {
-                if let Err(_) = pixels.resize_surface(size.width, size.height) {
+                if pixels.resize_surface(size.width, size.height).is_err() {
                     // Some error occured but not much we can do about it.
                     // Errors get thrown when the window minimizes.
                 }
@@ -1012,7 +1013,7 @@ fn main() {
 
                     // Update performance viewer
                     if framework.gui.is_window_open(egui::GuiWindow::PerfViewer) {
-                        framework.gui.update_video_data(video_data.clone());
+                        framework.gui.update_video_data(video_data);
                         framework.gui.update_perf_view(
                             stat_counter.fps,
                             stat_counter.emulated_fps,
@@ -1118,7 +1119,7 @@ fn main() {
 
                             if disassembly_addr_flat < machine::MAX_MEMORY_ADDRESS {
 
-                                bus.seek(disassembly_addr_flat as usize);
+                                bus.seek(disassembly_addr_flat);
 
                                 let mut decode_vec = Vec::new();
 
@@ -1155,7 +1156,7 @@ fn main() {
                                         decode_vec.append(&mut instr_vec);
                                     }
                                     Err(_) => {
-                                        //format!("{:05X} INVALID\n", disassembly_addr)
+                                        decode_vec.push(SyntaxToken::ErrorString("INVALID".to_string()));
                                     }
                                 };
 
@@ -1222,7 +1223,7 @@ pub fn main_headless(
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
-        &config,
+        config,
         config.machine.model,
         config.emulator.trace_mode,
         config.machine.video, 

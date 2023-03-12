@@ -103,7 +103,7 @@ pub enum State {
 #[allow(dead_code)]
 #[derive (Copy, Clone, Debug)]
 pub enum Command {
-    NoCommand,
+    None,
     TestDriveReady,
     Recalibrate,
     RequestSense,
@@ -207,19 +207,19 @@ impl HardDisk {
 
         if sector < self.max_sectors - 1 {
             // Not at last sector, just return next sector
-            return (cylinder, head, sector + 1)
+            (cylinder, head, sector + 1)
         }
         else if head < self.max_heads - 1 {
             // At last sector, but not at last head, go to next head, same cylinder, sector 0
-            return (cylinder, head + 1, 0) 
+            (cylinder, head + 1, 0) 
         }
         else if cylinder < self.max_cylinders - 1 {
             // At last sector and last head, go to next cylinder, head 0, sector 0
-            return (cylinder + 1, 0, 0)
+            (cylinder + 1, 0, 0)
         }
         else {
             // At end of drive.
-            return (self.max_cylinders, 0, 0)
+            (self.max_cylinders, 0, 0)
         }
     }
 }
@@ -307,15 +307,15 @@ impl HardDiskController {
                     desc: "20MB, Type 2".to_string()
                 }
             ],
-            drive_type_dip: drive_type_dip,
+            drive_type_dip,
             state: State::Reset,
             last_error: OperationError::NoError,
             last_error_drive: 0,
             error_flag: false,
             receiving_dcb: false,
-            command: Command::NoCommand,
+            command: Command::None,
             command_fn: None,
-            last_command: Command::NoCommand,
+            last_command: Command::None,
             command_byte_n: 0,
             command_result_pending: false,
             data_register_in: VecDeque::new(),
@@ -350,7 +350,7 @@ impl HardDiskController {
 
     pub fn get_supported_formats(&self) -> Vec<HardDiskFormat> {
 
-        return self.supported_formats.clone();
+        self.supported_formats.clone()
     }
 
     pub fn set_vhd(&mut self, device_id: usize, vhd: VirtualHardDisk) -> Result<(), ControllerError> {
@@ -472,7 +472,7 @@ impl HardDiskController {
                     byte = sense_byte
                 }
                 
-                if self.data_register_out.len() == 0 {
+                if self.data_register_out.is_empty() {
                     // Sense status itself reports success/failure
                     self.state = State::HaveCommandStatus;
                 }
@@ -505,14 +505,9 @@ impl HardDiskController {
         
         // Transition from other states. It's possible that we don't check the error code
         // after an operation
-        match self.state {
-            State::HaveCommandStatus => {
-                log::warn!("Received command with pending unread status register");
-                self.state = State::WaitingForCommand;
-            }
-            _ => {
-                // No transition
-            }
+        if let State::HaveCommandStatus = self.state {
+            log::warn!("Received command with pending unread status register");
+            self.state = State::WaitingForCommand;
         }
 
         match self.state {
@@ -533,6 +528,9 @@ impl HardDiskController {
                 if self.interrupt_active {
                     log::warn!(" >>> Received command with interrupt active")
                 }
+
+                // TODO: Change this to a bitfield for clearer matching?
+                #[allow(clippy::unusual_byte_groupings)]
                 match byte {
                     0b000_00000 => {
                         // Test Drive
@@ -664,7 +662,7 @@ impl HardDiskController {
                         self.data_register_in.clear();
 
                         self.last_command = self.command;
-                        self.command = Command::NoCommand;
+                        self.command = Command::None;
                         self.command_fn = None;
                     }
                 }
@@ -735,10 +733,7 @@ impl HardDiskController {
     /// Return a boolean representing whether a virtual drive is mounted for the specified drive number
     fn drive_present(&mut self, drive_n: usize) -> bool {
 
-        match &self.drives[drive_n].vhd {
-            Some(_) => true,
-            None => false
-        }
+        self.drives[drive_n].vhd.is_some()
     }
 
     /// Perform the Sensee Status command

@@ -100,42 +100,30 @@ impl ExecutionControl {
                     self.state = ExecutionState::Paused;
                     self.op.set(op);
                 }
-                else {
-                    return
-                }
             }
             ExecutionOperation::Step => {
                 // Can only Step if paused / breakpointhit
-                match self.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
-                        self.op.set(op);
-                    }
-                    _ => return
+                if let ExecutionState::Paused | ExecutionState::BreakpointHit = self.state {
+                    self.op.set(op);
                 }              
             }
             ExecutionOperation::StepOver => {
                 // Can only Step Over if paused / breakpointhit
-                match self.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
-                        self.op.set(op);
-                    }
-                    _ => return
-                }              
+                if let ExecutionState::Paused | ExecutionState::BreakpointHit = self.state {
+                    self.op.set(op);
+                }            
             }            
             ExecutionOperation::Run => {
                 // Can only Run if paused / breakpointhit
-                match self.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
-                        self.op.set(op);
-                    }
-                    _=> return
-                }
+                if let ExecutionState::Paused | ExecutionState::BreakpointHit = self.state {
+                    self.op.set(op);
+                } 
             }
             ExecutionOperation::Reset => {
                 // Can reset anytime.
                 self.op.set(op);
             }
-            _ => return
+            _ => {}
         }
         
     }
@@ -435,8 +423,8 @@ impl<'a> Machine<'a> {
             rom_manager,
             floppy_manager,
             //bus: bus,
-            io_bus: io_bus,
-            cpu: cpu,
+            io_bus,
+            cpu,
             dma_controller: dma,
             pit,
             speaker_buf_producer,
@@ -445,11 +433,11 @@ impl<'a> Machine<'a> {
             pit_ticks: 0.0,
             pit_samples_produced: 0,
             debug_snd_file: None,
-            pic: pic,
-            ppi: ppi,
-            video: video,
-            fdc: fdc,
-            hdc: hdc,
+            pic,
+            ppi,
+            video,
+            fdc,
+            hdc,
             serial_controller: serial,
             mouse,
             kb_buf: VecDeque::new(),

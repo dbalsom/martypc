@@ -107,10 +107,10 @@ macro_rules! get_segment {
 macro_rules! get_access_type {
     ($s:expr) => {
         match (($s >> 3) & 0x03) {
-            0b00 => AccessType::AccAlternateData,
-            0b01 => AccessType::AccStack,
-            0b10 => AccessType::AccCodeOrNone,
-            _ => AccessType::AccData
+            0b00 => AccessType::AlternateData,
+            0b01 => AccessType::Stack,
+            0b10 => AccessType::CodeOrNone,
+            _ => AccessType::Data
         }
     };
 }
