@@ -8,7 +8,7 @@ use std::{
     cell::RefCell,
     rc::Rc,
     path::Path,
-    ffi::OsString
+    ffi::OsString, f32::consts::E
 };
 
 use crate::egui::Framework;
@@ -166,8 +166,10 @@ struct MouseData {
     is_captured: bool,
     have_update: bool,
     l_button_was_pressed: bool,
+    l_button_was_released: bool,
     l_button_is_pressed: bool,
     r_button_was_pressed: bool,
+    r_button_was_released: bool,
     r_button_is_pressed: bool,
     frame_delta_x: f64,
     frame_delta_y: f64
@@ -178,8 +180,10 @@ impl MouseData {
             is_captured: false,
             have_update: false,
             l_button_was_pressed: false,
+            l_button_was_released: false,
             l_button_is_pressed: false,
             r_button_was_pressed: false,
+            r_button_was_released: false,
             r_button_is_pressed: false,
             frame_delta_x: 0.0,
             frame_delta_y: 0.0
@@ -192,6 +196,10 @@ impl MouseData {
         if !self.r_button_is_pressed {
             self.r_button_was_pressed = false;
         }
+
+        self.l_button_was_released = false;
+        self.r_button_was_released = false;
+
         self.frame_delta_x = 0.0;
         self.frame_delta_y = 0.0;
         self.have_update = false;
@@ -543,6 +551,7 @@ fn main() {
                             },
                             (1, ElementState::Released) => {
                                 mouse_data.l_button_is_pressed = false;
+                                mouse_data.l_button_was_released = true;
                                 mouse_data.have_update = true;
                             },
                             (3, ElementState::Pressed) => {
@@ -552,6 +561,7 @@ fn main() {
                             },
                             (3, ElementState::Released) => {
                                 mouse_data.r_button_is_pressed = false;
+                                mouse_data.r_button_was_released = true;
                                 mouse_data.have_update = true;
                             }                              
                             _=> {}
@@ -711,6 +721,34 @@ fn main() {
                             mouse_data.frame_delta_x,
                             mouse_data.frame_delta_y
                         );
+
+                        // Handle release event
+                        let l_release_state = 
+                            if mouse_data.l_button_was_released {
+                                false
+                            }
+                            else {
+                                mouse_data.l_button_was_pressed
+                            };
+                        
+                        let r_release_state = 
+                            if mouse_data.r_button_was_released {
+                                false
+                            }
+                            else {
+                                mouse_data.r_button_was_pressed
+                            };
+
+                        if mouse_data.l_button_was_released || mouse_data.r_button_was_released {
+                            // Send release event
+                            machine.mouse().update(
+                                l_release_state,
+                                r_release_state,
+                                0.0,
+                                0.0
+                            );                            
+                        }
+
                         // Reset mouse for next frame
                         mouse_data.reset();
                     }

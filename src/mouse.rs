@@ -74,9 +74,15 @@ impl Mouse {
         let mut byte1 = MOUSE_UPDATE_STARTBIT;
 
         if l_button_pressed {
-            log::trace!("Sending mouse button down");
+            //log::debug!("Sending mouse button down");
             byte1 |= MOUSE_UPDATE_LBUTTON;
         }
+        /*
+        else {
+            log::debug!("Sending mouse button up");
+        }
+        */
+
         if r_button_pressed {
             byte1 |= MOUSE_UPDATE_RBUTTON;
         }
