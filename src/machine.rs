@@ -13,7 +13,7 @@ use std::{
     cell::{Cell, RefCell}, 
     collections::VecDeque,
     fs::File,
-    io::BufWriter,
+    io::{BufWriter, Write}
 };
 
 use crate::{
@@ -23,7 +23,7 @@ use crate::{
     cga,
     ega::{self, EGACard},
     vga::{self, VGACard},
-    cpu_808x::{self, CpuType, Cpu, CpuError, CpuAddress, StepResult},
+    cpu_808x::{self, CpuType, Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
@@ -159,6 +159,8 @@ pub struct Machine<'a> {
     pit_samples_produced: u64,
     pit_ticks_per_sample: f64,
     pit_ticks: f64,
+    pit_log_file: Option<Box<BufWriter<File>>>,
+    pit_logging_triggered: bool,
     debug_snd_file: Option<File>,
     pic: Rc<RefCell<pic::Pic>>,
     ppi: Rc<RefCell<ppi::Ppi>>,
@@ -199,6 +201,19 @@ impl<'a> Machine<'a> {
                     Err(e) => {
                         eprintln!("Couldn't create specified tracelog file: {}", e);
                     }
+                }
+            }
+        }
+
+        // Create PIT output log file if specified
+        let mut pit_output_file_option = None;
+        if let Some(filename) = &config.emulator.pit_output_file {
+            match File::create(filename) {
+                Ok(file) => {
+                    pit_output_file_option = Some(Box::new(BufWriter::new(file)));
+                },
+                Err(e) => {
+                    eprintln!("Couldn't create specified PIT log file: {}", e);
                 }
             }
         }
@@ -432,6 +447,8 @@ impl<'a> Machine<'a> {
             pit_ticks_per_sample,
             pit_ticks: 0.0,
             pit_samples_produced: 0,
+            pit_log_file: pit_output_file_option,
+            pit_logging_triggered: false,
             debug_snd_file: None,
             pic,
             ppi,
@@ -443,7 +460,7 @@ impl<'a> Machine<'a> {
             kb_buf: VecDeque::new(),
             error: false,
             error_str: String::new(),
-            cpu_cycles: 0
+            cpu_cycles: 0,
         }
     }
 
@@ -578,39 +595,6 @@ impl<'a> Machine<'a> {
         let mut kb_event_processed = false;
         let mut skip_breakpoint = false;
         let mut instr_count = 0;
-        /*
-        let cycle_target_adj = match exec_control.get_op() {
-            ExecutionOperation::Reset => {
-                self.reset();
-                return
-            },
-            ExecutionOperation::Step => {
-                // Step only valid if paused / breakpointhit
-                match exec_control.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
-                        // Skip current breakpoint, if any
-                        skip_breakpoint = true;
-                        // Execute 1 cycle
-                        1                        
-                    }
-                    _ => cycle_target
-                }
-            },
-            ExecutionOperation::Run => {
-                // Run only valid if paused / breakpointhit
-                match exec_control.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => {
-                        // Skip current breakpoint, if any
-                        skip_breakpoint = true;
-                        // Execute 1 cycle
-                        cycle_target      
-                    }
-                    _ => cycle_target     
-                }
-            }
-            _ => {}
-        };
-        */
 
         // Was reset requested?
         if let ExecutionOperation::Reset = exec_control.peek_op() {
@@ -838,6 +822,15 @@ impl<'a> Machine<'a> {
                     }
                 }
             }
+
+            if let Some(event) = self.cpu.get_service_event() {
+                match event {
+                    ServiceEvent::TriggerPITLogging => {
+                        log::debug!("PIT logging has been triggered.");
+                        self.pit_logging_triggered = true;
+                    }
+                }
+            }
         }
 
         instr_count
@@ -937,17 +930,45 @@ impl<'a> Machine<'a> {
 
         let mut sum = 0;
         let mut sample;
-        for _ in 0..pit_ticks {
-            
-            sample = match self.pit_buffer_consumer.pop() {
-                Some(s) => s,
-                None => {
-                    log::trace!("No byte in pit buffer");
-                    0
+        let mut samples_read = false;
+
+        // If logging enabled, read samples and log to file.
+        if let Some(file) = self.pit_log_file.as_mut() {
+            if self.pit_logging_triggered {
+                for _ in 0..pit_ticks {
+
+                    sample = match self.pit_buffer_consumer.pop() {
+                        Some(s) => s,
+                        None => {
+                            log::trace!("No byte in pit buffer");
+                            0
+                        }
+                    };
+                    sum += sample;
+
+                    let sample_f32: f32 = if sample == 0 { 0.0 } else { 1.0 };
+                    file.write(&sample_f32.to_le_bytes()).expect("Error writing to debug sound file");
+
                 }
-            };
-            sum += sample;
+                samples_read = true;
+            }
         }
+
+        // Otherwise, just read samples
+        if !samples_read {
+            for _ in 0..pit_ticks {
+            
+                sample = match self.pit_buffer_consumer.pop() {
+                    Some(s) => s,
+                    None => {
+                        log::trace!("No byte in pit buffer");
+                        0
+                    }
+                };
+                sum += sample;
+            }
+        }
+
 
         let average: f32 = sum as f32 / pit_ticks as f32;
 
@@ -957,8 +978,9 @@ impl<'a> Machine<'a> {
         //log::trace!("producer: {}", self.pit_samples_produced);
 
         self.sound_player.queue_sample(average as f32 * VOLUME_ADJUST);
-        //self.debug_snd_file.write(&average.to_be_bytes()).expect("Error writing to debug sound file");
-                
+
+
+
     }
 
 

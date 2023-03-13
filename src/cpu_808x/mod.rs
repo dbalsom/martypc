@@ -224,7 +224,6 @@ impl Default for CpuState {
     fn default() -> Self { CpuState::Normal }
 }
 
-
 #[derive(Debug)]
 pub enum CpuError {
     InvalidInstructionError(u8, u32),
@@ -246,6 +245,14 @@ impl Display for CpuError{
             CpuError::ExceptionError(exception)=>write!(f, "The CPU threw an exception: {:?}", exception)
         }
     }
+}
+
+// Internal Emulator interrupt service events. These are returned to the machine when
+// the internal service interrupt is called to request an emulator action that cannot
+// be handled by the CPU alone.
+#[derive(Copy, Clone, Debug)]
+pub enum ServiceEvent {
+    TriggerPITLogging
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -707,7 +714,9 @@ pub struct Cpu<'a> {
     #[cfg(feature = "cpu_validator")]
     validator: Option<Box<dyn CpuValidator>>,
     #[cfg(feature = "cpu_validator")]
-    cycle_states: Vec<CycleState>
+    cycle_states: Vec<CycleState>,
+
+    service_events: VecDeque<ServiceEvent>
 }
 
 pub struct CpuRegisterState {
@@ -2003,6 +2012,11 @@ impl<'a> Cpu<'a> {
         if interrupt == 0xFC {
             match self.ah {
                 0x01 => {
+
+                    // TODO: Make triggering pit logging a separate service number. Just re-using this one
+                    // out of laziness.
+                    self.service_events.push_back(ServiceEvent::TriggerPITLogging);
+
                     log::debug!("Received emulator trap interrupt: CS: {:04X} IP: {:04X}", self.bx, self.cx);
                     self.biu_suspend_fetch();
                     self.cycles(4);
@@ -2262,7 +2276,7 @@ impl<'a> Cpu<'a> {
         &mut self, 
         io_bus: &mut IoBusInterface, 
         pic_ref: Rc<RefCell<Pic>>, 
-        skip_breakpoint: bool
+        skip_breakpoint: bool,
     ) -> Result<(StepResult, u32), CpuError> {
 
         self.instr_cycle = 0;
@@ -2900,6 +2914,10 @@ impl<'a> Cpu<'a> {
                 log::error!("Failed to write memory dump '{}': {}", filename, e)
             }
         }
+    }
+
+    pub fn get_service_event(&mut self) -> Option<ServiceEvent> {
+        self.service_events.pop_front()
     }    
 }
 

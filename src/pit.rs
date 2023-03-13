@@ -80,6 +80,7 @@ pub struct PitChannel {
     reload_value_dirty: bool,
     waiting_for_reload: bool,
     waiting_for_lobyte: bool,
+    low_byte_latched: u8,
     waiting_for_hibyte: bool,
     current_count: u16,
     current_count_dirty: bool,
@@ -97,6 +98,7 @@ pub struct PitChannel {
     input_gate_dirty: bool,
     one_shot_triggered: bool,
     gate_triggered: bool,
+    reload_next_cycle: bool,
 }
 
 pub struct ProgrammableIntervalTimer {
@@ -168,6 +170,7 @@ impl ProgrammableIntervalTimer {
                 reload_value_dirty: false,
                 waiting_for_reload: true,
                 waiting_for_lobyte: false,
+                low_byte_latched: 0,
                 waiting_for_hibyte: false,
                 current_count: 0,
                 current_count_dirty: false,
@@ -185,6 +188,7 @@ impl ProgrammableIntervalTimer {
                 input_gate_dirty: false,
                 one_shot_triggered: false,
                 gate_triggered: false,
+                reload_next_cycle: false,
             };
             vec.push(pit);
         }
@@ -208,6 +212,7 @@ impl ProgrammableIntervalTimer {
             channel.reload_value_dirty = false;
             channel.waiting_for_reload = true;
             channel.waiting_for_lobyte = false;
+            channel.low_byte_latched = 0;
             channel.waiting_for_hibyte = false;
             channel.current_count = 0;
             channel.current_count_dirty = false;
@@ -343,6 +348,7 @@ impl ProgrammableIntervalTimer {
         // the duration of the one-shot pulse until the succeeeding trigger."
 
         // Assumption is that a new count value while input is high *will* affect the output state.
+        
         let output_low_on_reload = match channel.mode {
             ChannelMode::HardwareRetriggerableOneShot if channel.output => true,
             _ => false
@@ -394,7 +400,7 @@ impl ProgrammableIntervalTimer {
                 if channel.waiting_for_hibyte {
                     // Receiving hi byte
 
-                    let new_reload_value = channel.reload_value | (data as u16) << 8;
+                    let new_reload_value = (channel.low_byte_latched as u16) | ((data as u16) << 8);
                     dirty_update_checked!(channel.reload_value, new_reload_value, channel.reload_value_dirty);
                     //channel.reload_value |= (data as u16) << 8;
                     channel.waiting_for_hibyte = false;
@@ -413,8 +419,7 @@ impl ProgrammableIntervalTimer {
                 }
                 else {
                     // Receiving lo byte
-                    
-                    dirty_update_checked!(channel.reload_value, data as u16, channel.reload_value_dirty);
+                    channel.low_byte_latched = data;
                     //channel.reload_value = data as u16;
                     channel.waiting_for_hibyte = true;
                 }
@@ -575,6 +580,32 @@ impl ProgrammableIntervalTimer {
         // Therefore we only need to handle channel 2 here. All other channel input gates will
         // remain always high.
 
+        // Gate input went high on previous cycle. There is a 1-cycle delay before the count
+        // is reloaded.
+        if self.channels[2].reload_next_cycle {
+
+            if self.channels[2].reload_value == 0 {
+                // 0 functions as a reload value of 65536
+
+                dirty_update_checked!(
+                    self.channels[2].current_count, 
+                    u16::MAX,
+                    self.channels[2].current_count_dirty
+                ); 
+                //self.channels[2].current_count = u16::MAX;
+            }
+            else {
+                dirty_update_checked!(
+                    self.channels[2].current_count, 
+                    self.channels[2].reload_value,
+                    self.channels[2].current_count_dirty
+                ); 
+                //self.channels[2].current_count = self.channels[2].reload_value;                            
+            }
+
+            self.channels[2].reload_next_cycle = false;
+        }
+
         let channel2_gate = ppi.get_pb0_state();
         if channel2_gate && !self.channels[2].input_gate {
             // Input gate rising
@@ -586,24 +617,7 @@ impl ProgrammableIntervalTimer {
                 | ChannelMode::HardwareTriggeredStrobe 
                 => 
                 {
-                    if self.channels[2].reload_value == 0 {
-                        // 0 functions as a reload value of 65536
-
-                        dirty_update_checked!(
-                            self.channels[2].current_count, 
-                            u16::MAX,
-                            self.channels[2].current_count_dirty
-                        ); 
-                        //self.channels[2].current_count = u16::MAX;
-                    }
-                    else {
-                        dirty_update_checked!(
-                            self.channels[2].current_count, 
-                            self.channels[2].reload_value,
-                            self.channels[2].current_count_dirty
-                        ); 
-                        //self.channels[2].current_count = self.channels[2].reload_value;                            
-                    }
+                    self.channels[2].reload_next_cycle = true;
                 }
                 _ => {}
             }

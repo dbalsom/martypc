@@ -142,7 +142,13 @@ pub struct Emulator {
     pub trace_file: Option<String>,
 
     #[serde(default)]
-    pub video_trace_file: Option<String>
+    pub video_trace_file: Option<String>,
+
+    #[serde(default)]
+    pub pit_output_file: Option<String>,
+    #[serde(default = "_default_false")]
+    pub pit_output_int_trigger: bool
+
 }
 
 #[derive(Debug, Deserialize)]
