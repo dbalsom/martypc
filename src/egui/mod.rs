@@ -75,7 +75,6 @@ pub(crate) enum GuiWindow {
     PerfViewer,
     MemoryViewer,
     CpuStateViewer,
-    RegisterViewer,
     TraceViewer,
     DiassemblyViewer,
     PitViewer,
@@ -358,7 +357,6 @@ impl GuiState {
             (GuiWindow::PerfViewer, false),
             (GuiWindow::MemoryViewer, false),
             (GuiWindow::CpuStateViewer, false),
-            (GuiWindow::RegisterViewer, false),
             (GuiWindow::TraceViewer, false),
             (GuiWindow::DiassemblyViewer, true),
             (GuiWindow::PitViewer, false),
@@ -794,8 +792,8 @@ impl GuiState {
                 self.disassembly_viewer.draw(ui, &mut self.event_queue);
             });             
 
-        egui::Window::new("Register View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::RegisterViewer).unwrap())
+        egui::Window::new("CPU State")
+            .open(self.window_open_flags.get_mut(&GuiWindow::CpuStateViewer).unwrap())
             .resizable(false)
             .default_width(220.0)
             .show(ctx, |ui| {

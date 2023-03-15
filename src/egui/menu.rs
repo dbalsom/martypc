@@ -89,12 +89,12 @@ impl GuiState {
                     *self.window_flag(GuiWindow::CpuControl) = true;
                     ui.close_menu();
                 }
+                if ui.button("CPU State...").clicked() {
+                    *self.window_flag(GuiWindow::CpuStateViewer) = true;
+                    ui.close_menu();
+                }                
                 if ui.button("Memory...").clicked() {
                     *self.window_flag(GuiWindow::MemoryViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("Registers...").clicked() {
-                    *self.window_flag(GuiWindow::RegisterViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("Instruction Trace...").clicked() {
