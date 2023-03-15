@@ -15,17 +15,25 @@ use crate::egui::Framework;
 
 use log::error;
 use pixels::{Pixels, SurfaceTexture};
-use winit::dpi::LogicalSize;
-use winit::event::{
-    Event, 
-    WindowEvent, 
-    DeviceEvent, 
-    ElementState, 
-    StartCause, 
-    VirtualKeyCode
+
+use winit::{
+    dpi::LogicalSize,
+    error::ExternalError,
+    event::{
+        Event, 
+        WindowEvent, 
+        DeviceEvent, 
+        ElementState, 
+        StartCause, 
+        VirtualKeyCode,
+    },
+    event_loop::{
+        ControlFlow,
+        EventLoop
+    },
+    window::WindowBuilder
 };
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::WindowBuilder;
+
 use winit_input_helper::WinitInputHelper;
 
 #[path = "./devices/ega/mod.rs"]
@@ -597,7 +605,13 @@ fn main() {
                                     if !mouse_data.is_captured {
                                         match window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
                                             Ok(_) => mouse_data.is_captured = true,
-                                            Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                            Err(_) => {
+                                                // Try alternate grab mode (Windows/Mac require opposite modes)
+                                                match window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
+                                                    Ok(_) => mouse_data.is_captured = true,
+                                                    Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                                }
+                                            }
                                         }
                                     }
                                     else {
