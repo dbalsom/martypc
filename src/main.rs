@@ -112,6 +112,17 @@ pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
+
+pub struct PerformanceStats {
+    emulation_time: Duration,
+    render_time: Duration,
+    fps: u32,
+    emulated_fps: u32,
+    cps: u64,
+    ips: u64,
+}
+
+
 // Rendering Stats
 struct Counter {
     frame_count: u64,
@@ -782,7 +793,7 @@ fn main() {
                     stat_counter.current_emulated_frames += elapsed_frames;
 
                     // Emulation time budget is 16ms - render time in ms - fudge factor
-                    let render_time = stat_counter.render_time.as_millis();
+                    let render_time = stat_counter.render_time.as_micros();
                     let emulation_time = stat_counter.emulation_time.as_millis();
                     let mut emulation_time_allowed_ms = 16;
                     if render_time < 16 {
@@ -1071,8 +1082,8 @@ fn main() {
                             stat_counter.emulated_fps,
                             stat_counter.current_cps,
                             stat_counter.current_ips,
-                            stat_counter.emulation_time.as_millis() as u32,
-                            stat_counter.render_time.as_millis() as u32
+                            stat_counter.emulation_time,
+                            stat_counter.render_time
                         )
                     }
 

@@ -8,7 +8,8 @@ use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
     ffi::OsString,
-    rc::Rc
+    rc::Rc,
+    time::{Duration, Instant},
 };
 
 use egui::{
@@ -132,8 +133,9 @@ pub(crate) struct GuiState {
     emulated_fps: u32,
     current_cps: u64,
     current_ips: u64,
-    emulation_ms: u32,
-    render_ms: u32,
+    emulation_time: Duration,
+    render_time: Duration,
+    gui_time: Duration,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -282,7 +284,8 @@ impl Framework {
     pub(crate) fn prepare(&mut self, window: &Window) {
         // Run the egui frame and create all paint jobs to prepare for rendering.
         let raw_input = self.egui_state.take_egui_input(window);
-
+        let gui_start = Instant::now();
+        
         let output = self.egui_ctx.run(raw_input, |egui_ctx| {
             // Draw the application.
             self.gui.ui(egui_ctx);
@@ -292,6 +295,8 @@ impl Framework {
         self.egui_state
             .handle_platform_output(window, &self.egui_ctx, output.platform_output);
         self.paint_jobs = self.egui_ctx.tessellate(output.shapes);
+
+        self.gui.gui_time = Instant::now() - gui_start;
     }
 
     /// Render egui.
@@ -322,6 +327,8 @@ impl Framework {
 
         // Render egui with WGPU
         {
+            
+
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("egui"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -383,8 +390,9 @@ impl GuiState {
             emulated_fps: 0,
             current_cps: 0,
             current_ips: 0,
-            emulation_ms: 0,
-            render_ms: 0,
+            emulation_time: Default::default(),
+            render_time: Default::default(),
+            gui_time: Default::default(),
         
             floppy_names: Vec::new(),
             new_floppy_name0: Option::None,
@@ -547,13 +555,13 @@ impl GuiState {
         self.serial_ports = ports;
     }
 
-    pub fn update_perf_view(&mut self, current_fps: u32, emulated_fps: u32, current_cps: u64, current_ips: u64, emulation_ms: u32, render_ms: u32) {
+    pub fn update_perf_view(&mut self, current_fps: u32, emulated_fps: u32, current_cps: u64, current_ips: u64, emulation_time: Duration, render_time: Duration) {
         self.current_fps = current_fps;
         self.emulated_fps = emulated_fps;
         self.current_cps = current_cps;
         self.current_ips = current_ips;
-        self.emulation_ms = emulation_ms;
-        self.render_ms = render_ms;
+        self.emulation_time = emulation_time;
+        self.render_time = render_time;
     }
 
     pub fn update_video_data(&mut self, video_data: VideoData) {
@@ -661,11 +669,14 @@ impl GuiState {
                         ui.label(egui::RichText::new(format!("{}", self.current_cps)).background_color(egui::Color32::BLACK));
                         ui.end_row();                         
                         ui.label("Emulation time: ");
-                        ui.label(egui::RichText::new(format!("{}", self.emulation_ms)).background_color(egui::Color32::BLACK));
+                        ui.label(egui::RichText::new(format!("{}", ((self.emulation_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
                         ui.end_row();
                         ui.label("Render time: ");
-                        ui.label(egui::RichText::new(format!("{}", self.render_ms)).background_color(egui::Color32::BLACK));
+                        ui.label(egui::RichText::new(format!("{}", ((self.render_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
                         ui.end_row();
+                        ui.label("Gui Render time: ");
+                        ui.label(egui::RichText::new(format!("{}", ((self.gui_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
+                        ui.end_row();                        
                     });      
             });
 
