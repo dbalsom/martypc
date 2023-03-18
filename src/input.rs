@@ -1,4 +1,49 @@
+use std::env::consts::OS;
+
 use winit::event::VirtualKeyCode;
+
+pub enum MouseButton {
+    Left,
+    Right,
+    Middle,
+}
+
+pub fn button_from_id(id: u32, reverse: bool) -> MouseButton {
+    match (OS, id, reverse) {
+        ("windows", 1, false) => MouseButton::Left,
+        ("windows", 1, true) => MouseButton::Right,
+        ("windows", 3, false) => MouseButton::Right,
+        ("windows", 3, true) => MouseButton::Left,
+        ("linux", 1, false) => MouseButton::Left, // TODO: Verify this
+        ("linux", 1, true) => MouseButton::Right,
+        ("linux", 3, false) => MouseButton::Right, 
+        ("linux", 3, true) => MouseButton::Left, 
+        ("macos", 1, false) => MouseButton::Right, // MacOS is reversed!
+        ("macos", 1, true) => MouseButton::Left,
+        ("macos", 3, false) => MouseButton::Left,
+        ("macos", 3, true) => MouseButton::Right,
+        (_, 1, false) => MouseButton::Left,
+        (_, 1, true) => MouseButton::Right,
+        (_, 3, false) => MouseButton::Right,
+        (_, 3, true) => MouseButton::Left,
+        _ => MouseButton::Middle // TODO: This assumes middle button is always 2, valid?
+    }
+}
+
+/// Return the winit button id for 
+pub fn get_mouse_buttons(reverse: bool) -> (u32, u32) {
+    match (OS, reverse) {
+        ("windows", false) => (1, 3),
+        ("windows", true) => (3, 1),
+        ("linux", false) => (1, 3), // TODO: Verify this
+        ("linux", true) => (3, 1), 
+        ("macos", false) => (3, 1), // MacOS is reversed!
+        ("macos", true) => (3, 1),
+        (_, false) => (1, 3),
+        (_, true) => (3, 1),
+    }
+}
+
 
 pub fn match_virtual_keycode( vkc: VirtualKeyCode ) -> Option<u8> {
 

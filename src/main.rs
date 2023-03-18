@@ -82,6 +82,7 @@ mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
 mod arduino8088_validator;
 
+use input::MouseButton;
 use breakpoints::BreakPointType;
 use config::*;
 use machine::{Machine, ExecutionState};
@@ -182,6 +183,9 @@ impl Counter {
     }
 }
 struct MouseData {
+    reverse_buttons: bool,
+    l_button_id: u32,
+    r_button_id: u32,
     is_captured: bool,
     have_update: bool,
     l_button_was_pressed: bool,
@@ -194,8 +198,11 @@ struct MouseData {
     frame_delta_y: f64
 }
 impl MouseData {
-    fn new() -> Self {
+    fn new(reverse_buttons: bool) -> Self {
         Self {
+            reverse_buttons,
+            l_button_id: input::get_mouse_buttons(reverse_buttons).0,
+            r_button_id: input::get_mouse_buttons(reverse_buttons).1,
             is_captured: false,
             have_update: false,
             l_button_was_pressed: false,
@@ -448,8 +455,9 @@ fn main() {
 
     // KB modifiers
     let mut kb_data = KeyboardData::new();
+
     // Mouse event struct
-    let mut mouse_data = MouseData::new();
+    let mut mouse_data = MouseData::new(config.input.reverse_mouse_buttons);
 
     // Init sound 
     // The cpal sound library uses generics to initialize depending on the SampleFormat type.
@@ -555,30 +563,35 @@ fn main() {
                         button,
                         state 
                     } => {
-                        // Button ID is a raw u32. How confident are we that the mouse buttons for the basic three button
-                        // mouse are consistent across platforms?
-                        // On Windows it appears the right mouse button is button 3 and the middle mouse button is button 2.
+                        // Button ID is a raw u32. It appears that the id's for relative buttons are not consistent
+                        // accross platforms. 1 == left button on windows, 3 == left button on macos. So we resolve
+                        // button ids to button enums based on platform. There is a config option to override button 
+                        // order.
+
+                        // Resolve the winit button id to a button enum based on platform and reverse flag.
+                        let mbutton = input::button_from_id(button, mouse_data.reverse_buttons);
 
                         // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse 
                         // clicks are 'sticky', if a button was pressed during the last update period it will be sent as
                         // pressed during virtual mouse update.
-                        match (button, state) {
-                            (1, ElementState::Pressed) => {
+
+                        match (mbutton, state) {
+                            (MouseButton::Left, ElementState::Pressed) => {
                                 mouse_data.l_button_was_pressed = true;
                                 mouse_data.l_button_is_pressed = true;
                                 mouse_data.have_update = true;
                             },
-                            (1, ElementState::Released) => {
+                            (MouseButton::Left, ElementState::Released) => {
                                 mouse_data.l_button_is_pressed = false;
                                 mouse_data.l_button_was_released = true;
                                 mouse_data.have_update = true;
                             },
-                            (3, ElementState::Pressed) => {
+                            (MouseButton::Right, ElementState::Pressed) => {
                                 mouse_data.r_button_was_pressed = true;
                                 mouse_data.r_button_is_pressed = true;
                                 mouse_data.have_update = true;
                             },
-                            (3, ElementState::Released) => {
+                            (MouseButton::Right, ElementState::Released) => {
                                 mouse_data.r_button_is_pressed = false;
                                 mouse_data.r_button_was_released = true;
                                 mouse_data.have_update = true;

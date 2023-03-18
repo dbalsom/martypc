@@ -168,8 +168,14 @@ pub struct Machine {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Input {
+    pub reverse_mouse_buttons: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct ConfigFileParams {
     pub emulator: Emulator,
+    pub input: Input,
     pub machine: Machine,
     pub validator: Validator
 }
@@ -183,22 +189,25 @@ pub struct CmdLineArgs {
 
     // Emulator options
     #[bpaf(long, switch)]
-    pub headless: Option<bool>,
+    pub headless: bool,
 
     #[bpaf(long, switch)]
-    pub fuzzer: Option<bool>,
+    pub fuzzer: bool,
 
-    #[bpaf(long)]
-    pub autostart: Option<bool>,
+    #[bpaf(long, switch)]
+    pub autostart: bool,
+
+    #[bpaf(long, switch)]
+    pub warpspeed: bool,       
+
+    #[bpaf(long, switch)]
+    pub reverse_mouse_buttons: bool,    
 
     #[bpaf(long)]
     pub machine_model: Option<MachineType>,
 
     #[bpaf(long)]
     pub validator: Option<ValidatorType>,
-
-    #[bpaf(long, switch)]
-    pub warpspeed: Option<bool>,    
 }
 
 impl ConfigFileParams {
@@ -206,21 +215,14 @@ impl ConfigFileParams {
         if let Some(machine_model) = shell_args.machine_model { 
             self.machine.model = machine_model;
         }
-        if let Some(headless) = shell_args.headless { 
-            // Switch option
-            if headless == true {
-                self.emulator.headless = headless
-            }
-        }
-        if let Some(fuzzer) = shell_args.fuzzer { 
-            // Switch option
-            if fuzzer == true {
-                self.emulator.fuzzer = fuzzer
-            }
+        if let Some(validator) = shell_args.validator { 
+            self.validator.vtype = Some(validator);
         }        
-        if let Some(autostart) = shell_args.autostart { 
-            self.emulator.autostart = autostart
-        }          
+        self.emulator.headless |= shell_args.headless;
+        self.emulator.fuzzer |= shell_args.fuzzer;
+        self.emulator.autostart |= shell_args.autostart;
+        self.emulator.warpspeed |= shell_args.warpspeed;
+        self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
     }
 }
 
