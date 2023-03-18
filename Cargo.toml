@@ -37,9 +37,12 @@ uuid = { version = "1.1.2", features = ["v4"]}
 winit = "0.27"
 winit_input_helper = "0.13"
 
-
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+#lto = true
+#strip = true 
 
 [features]
 pi_validator = ["dep:sysfs_gpio"]
