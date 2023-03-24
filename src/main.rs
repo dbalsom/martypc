@@ -3,12 +3,11 @@
 #![forbid(unsafe_code)]
 
 use std::{
-    fs::File,
     time::{Duration, Instant},
     cell::RefCell,
     rc::Rc,
     path::Path,
-    ffi::OsString, f32::consts::E
+    ffi::OsString
 };
 
 use crate::egui::Framework;
@@ -53,9 +52,10 @@ mod fdc;
 mod floppy_manager;
 mod egui;
 mod hdc;
-mod io;
+mod bus_io;
 mod interrupt;
 mod machine;
+mod machine_manager;
 mod memerror;
 mod mouse;
 mod pic;
@@ -65,6 +65,7 @@ mod rom_manager;
 mod serial;
 mod sound;
 mod syntax_token;
+mod updatable;
 mod util;
 
 mod vhd;
@@ -89,14 +90,13 @@ use machine::{Machine, ExecutionState};
 use cpu_808x::{Cpu, CpuAddress};
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
+use machine_manager::MACHINE_DESCS;
 use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use bytequeue::ByteQueue;
 use crate::egui::{GuiEvent, GuiWindow};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
-
-use io::{IoBusInterface};
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -469,11 +469,28 @@ fn main() {
         cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(),
     };
 
+    // Look up the machine description given the machine type in the configuration file
+    let machine_desc_opt = MACHINE_DESCS.get(&config.machine.model);
+    if let Some(machine_desc) = machine_desc_opt {
+        log::debug!("Given machine type {:?} got machine description: {:?}", config.machine.model, machine_desc);
+    }
+    else {
+        log::error!("Couldn't get machine description for {:?}", config.machine.model);
+
+        eprintln!(
+            "Couldn't get machine description for machine type {:?}. \
+             Check that you have a valid machine type specified in configuration file.",
+            config.machine.model
+        );
+        std::process::exit(1);        
+    }
+
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
         &config,
         config.machine.model,
+        &machine_desc_opt.unwrap(),
         config.emulator.trace_mode,
         config.machine.video, 
         sp, 
@@ -488,13 +505,18 @@ fn main() {
             Ok(vhd_file) => {
                 match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
-                        match machine.hdc().borrow_mut().set_vhd(0_usize, vhd) {
-                            Ok(_) => {
-                                log::info!("VHD image {:?} successfully loaded into virtual drive: {}", vhd_os_name, 0);
+                        if let Some(hdc) = machine.hdc() {
+                            match hdc.set_vhd(0_usize, vhd) {
+                                Ok(_) => {
+                                    log::info!("VHD image {:?} successfully loaded into virtual drive: {}", vhd_os_name, 0);
+                                }
+                                Err(err) => {
+                                    log::error!("Error mounting VHD: {}", err);
+                                }
                             }
-                            Err(err) => {
-                                log::error!("Error mounting VHD: {}", err);
-                            }
+                        }
+                        else {
+                            log::error!("Couldn't load VHD: No Hard Disk Controller present!");
                         }
                     },
                     Err(err) => {
@@ -751,45 +773,50 @@ fn main() {
                     //    }
                     //}
 
-                    // Send any pending mouse update to machine if mouse is captured
-                    if mouse_data.is_captured && mouse_data.have_update {
-                        machine.mouse().update(
-                            mouse_data.l_button_was_pressed,
-                            mouse_data.r_button_was_pressed,
-                            mouse_data.frame_delta_x,
-                            mouse_data.frame_delta_y
-                        );
+                    if let Some(mouse) = machine.mouse() {
+                        // Send any pending mouse update to machine if mouse is captured
+                        if mouse_data.is_captured && mouse_data.have_update {
+                            mouse.update(
+                                mouse_data.l_button_was_pressed,
+                                mouse_data.r_button_was_pressed,
+                                mouse_data.frame_delta_x,
+                                mouse_data.frame_delta_y
+                            );
 
-                        // Handle release event
-                        let l_release_state = 
-                            if mouse_data.l_button_was_released {
-                                false
-                            }
-                            else {
-                                mouse_data.l_button_was_pressed
-                            };
-                        
-                        let r_release_state = 
-                            if mouse_data.r_button_was_released {
-                                false
-                            }
-                            else {
-                                mouse_data.r_button_was_pressed
-                            };
+                            // Handle release event
+                            let l_release_state = 
+                                if mouse_data.l_button_was_released {
+                                    false
+                                }
+                                else {
+                                    mouse_data.l_button_was_pressed
+                                };
+                            
+                            let r_release_state = 
+                                if mouse_data.r_button_was_released {
+                                    false
+                                }
+                                else {
+                                    mouse_data.r_button_was_pressed
+                                };
 
-                        if mouse_data.l_button_was_released || mouse_data.r_button_was_released {
-                            // Send release event
-                            machine.mouse().update(
-                                l_release_state,
-                                r_release_state,
-                                0.0,
-                                0.0
-                            );                            
+                            if mouse_data.l_button_was_released || mouse_data.r_button_was_released {
+                                // Send release event
+                                mouse.update(
+                                    l_release_state,
+                                    r_release_state,
+                                    0.0,
+                                    0.0
+                                );                            
+                            }
+
+                            // Reset mouse for next frame
+                            mouse_data.reset();
                         }
 
-                        // Reset mouse for next frame
-                        mouse_data.reset();
                     }
+
+
 
                     // Emulate a frame worth of instructions
                     let emulation_start = Instant::now();
@@ -799,8 +826,12 @@ fn main() {
                     // Add instructions to IPS counter
                     stat_counter.cycle_count += stat_counter.cycle_target as u64;
 
-                    // Add frames to frame counter
-                    let frame_count = machine.videocard().borrow().get_frame_count();
+                    // Add emulated frames from video card device to emulated frame counter
+                    let mut frame_count = 0;
+                    if let Some(video_card) = machine.videocard() {
+                        // We have a video card to query
+                        frame_count = video_card.get_frame_count()
+                    }
                     let elapsed_frames = frame_count - stat_counter.emulated_frames;
                     stat_counter.emulated_frames += elapsed_frames;
                     stat_counter.current_emulated_frames += elapsed_frames;
@@ -871,27 +902,29 @@ fn main() {
                     // Do per-frame updates (Serial port emulation)
                     machine.frame_update();
 
-                    // Check if there was a resolution change
-                    let (new_w, new_h) = machine.videocard().borrow().get_display_extents();
-                    if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
-                        if new_w != video_data.render_w || new_h != video_data.render_h {
-                            // Resize buffers
-                            log::info!("Setting internal resolution to ({},{})", new_w, new_h);
-                            // Calculate new aspect ratio (make this option)
-                            video_data.render_w = new_w;
-                            video_data.render_h = new_h;
-                            render_src.resize((new_w * new_h * 4) as usize, 0);
-                            render_src.fill(0);
-
-                            video_data.aspect_w = video_data.render_w;
-                            let aspect_corrected_h = f32::floor(video_data.render_w as f32 * RENDER_ASPECT) as u32;
-                            // Don't make height smaller
-                            let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
-                            video_data.aspect_h = new_height;
-
-                            pixels.get_frame_mut().fill(0);
-                            if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
-                                log::error!("Failed to resize pixel pixel buffer: {}", e);
+                    // Check if there was a resolution change, if a video card is present
+                    if let Some(video_card) = machine.videocard() {
+                        let (new_w, new_h) = video_card.get_display_extents();
+                        if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
+                            if new_w != video_data.render_w || new_h != video_data.render_h {
+                                // Resize buffers
+                                log::info!("Setting internal resolution to ({},{})", new_w, new_h);
+                                // Calculate new aspect ratio (make this option)
+                                video_data.render_w = new_w;
+                                video_data.render_h = new_h;
+                                render_src.resize((new_w * new_h * 4) as usize, 0);
+                                render_src.fill(0);
+    
+                                video_data.aspect_w = video_data.render_w;
+                                let aspect_corrected_h = f32::floor(video_data.render_w as f32 * RENDER_ASPECT) as u32;
+                                // Don't make height smaller
+                                let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
+                                video_data.aspect_h = new_height;
+    
+                                pixels.get_frame_mut().fill(0);
+                                if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
+                                    log::error!("Failed to resize pixel pixel buffer: {}", e);
+                                }
                             }
                         }
                     }
@@ -902,19 +935,22 @@ fn main() {
 
                     let render_start = Instant::now();
 
-                    match aspect_correct {
-                        true => {
-                            video.draw(&mut render_src, machine.videocard(), machine.bus(), composite_enabled);
-                            video::resize_linear(
-                                &render_src, 
-                                video_data.render_w, 
-                                video_data.render_h, 
-                                pixels.get_frame_mut(), 
-                                video_data.aspect_w, 
-                                video_data.aspect_h);                            
-                        }
-                        false => {
-                            video.draw(pixels.get_frame_mut(), machine.videocard(), machine.bus(), composite_enabled);
+                    // Draw video if there is a video card present
+                    if let Some(video_card) = machine.videocard() {
+                        match aspect_correct {
+                            true => {
+                                video.draw(&mut render_src, *video_card, machine.bus(), composite_enabled);
+                                video::resize_linear(
+                                    &render_src, 
+                                    video_data.render_w, 
+                                    video_data.render_h, 
+                                    pixels.get_frame_mut(), 
+                                    video_data.aspect_w, 
+                                    video_data.aspect_h);                            
+                            }
+                            false => {
+                                video.draw(pixels.get_frame_mut(), *video_card, machine.bus(), composite_enabled);
+                            }
                         }
                     }
                     stat_counter.render_time = Instant::now() - render_start;
@@ -960,7 +996,7 @@ fn main() {
                                 match machine.floppy_manager().load_floppy_data(&filename) {
                                     Ok(vec) => {
                                         
-                                        match machine.fdc().borrow_mut().load_image_from(drive_select, vec) {
+                                        match machine.fdc().load_image_from(drive_select, vec) {
                                             Ok(()) => {
                                                 log::info!("Floppy image successfully loaded into virtual drive.");
                                             }
@@ -978,7 +1014,7 @@ fn main() {
                             }
                             Some(GuiEvent::EjectFloppy(drive_select)) => {
                                 log::info!("Ejecting floppy in drive: {}", drive_select);
-                                machine.fdc().borrow_mut().unload_image(drive_select);
+                                machine.fdc().unload_image(drive_select);
                             }
                             Some(GuiEvent::BridgeSerialPort(port_name)) => {
 
@@ -986,7 +1022,9 @@ fn main() {
                                 machine.bridge_serial_port(1, port_name);
                             }
                             Some(GuiEvent::DumpVRAM) => {
-                                machine.videocard().borrow().dump_mem();
+                                if let Some(video_card) = machine.videocard() {
+                                    video_card.dump_mem();
+                                }
                             }
                             Some(GuiEvent::DumpCS) => {
                                 machine.cpu().dump_cs();
@@ -1049,7 +1087,12 @@ fn main() {
 
                     // -- Update VHD Creator window
                     if framework.gui.is_window_open(egui::GuiWindow::VHDCreator) {
-                        framework.gui.update_vhd_formats(machine.hdc().borrow_mut().get_supported_formats());
+                        if let Some(hdc) = machine.hdc() {
+                            framework.gui.update_vhd_formats(hdc.get_supported_formats());
+                        }
+                        else {
+                            log::error!("Couldn't query available formats: No Hard Disk Controller present!");
+                        }
                     }
 
                     // -- Update list of VHD images
@@ -1066,13 +1109,19 @@ fn main() {
 
                                     match VirtualHardDisk::from_file(vhd_file) {
                                         Ok(vhd) => {
-                                            match machine.hdc().borrow_mut().set_vhd(i as usize, vhd) {
-                                                Ok(_) => {
-                                                    log::info!("VHD image {:?} successfully loaded into virtual drive: {}", new_vhd_name, i);
+
+                                            if let Some(hdc) = machine.hdc() {
+                                                match hdc.set_vhd(i as usize, vhd) {
+                                                    Ok(_) => {
+                                                        log::info!("VHD image {:?} successfully loaded into virtual drive: {}", new_vhd_name, i);
+                                                    }
+                                                    Err(err) => {
+                                                        log::error!("Error mounting VHD: {}", err);
+                                                    }
                                                 }
-                                                Err(err) => {
-                                                    log::error!("Error mounting VHD: {}", err);
-                                                }
+                                            }
+                                            else {
+                                                log::error!("No Hard Disk Controller present!");
                                             }
                                         },
                                         Err(err) => {
@@ -1141,8 +1190,11 @@ fn main() {
 
                     // -- Update PPI viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::PpiViewer) {
-                        let ppi_state = machine.ppi_state();
-                        framework.gui.update_ppi_state(ppi_state);  
+                        let ppi_state_opt = machine.ppi_state();
+                        if let Some(ppi_state) = ppi_state_opt {
+                            framework.gui.update_ppi_state(ppi_state);  
+                            // TODO: If no PPI, disable debug window
+                        }
                     }
 
                     // -- Update DMA viewer window
@@ -1153,8 +1205,10 @@ fn main() {
                     
                     // -- Update VideoCard Viewer (Replace CRTC Viewer)
                     if framework.gui.is_window_open(egui::GuiWindow::VideoCardViewer) {
-                        let videocard_state = machine.videocard_state();
-                        framework.gui.update_videocard_state(videocard_state);
+                        // Only have an update if we have a videocard to update.
+                        if let Some(videocard_state) = machine.videocard_state() {
+                            framework.gui.update_videocard_state(videocard_state);
+                        }
                     }
 
                     // -- Update Instruction Trace window
@@ -1296,11 +1350,28 @@ pub fn main_headless(
         cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(),
     };
 
+    // Look up the machine description given the machine type in the configuration file
+    let machine_desc_opt = MACHINE_DESCS.get(&config.machine.model);
+    if let Some(machine_desc) = machine_desc_opt {
+        log::debug!("Given machine type {:?} got machine description: {:?}", config.machine.model, machine_desc);
+    }
+    else {
+        log::error!("Couldn't get machine description for {:?}", config.machine.model);
+
+        eprintln!(
+            "Couldn't get machine description for machine type {:?}. \
+             Check that you have a valid machine type specified in configuration file.",
+            config.machine.model
+        );
+        std::process::exit(1);        
+    }
+
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
         config,
         config.machine.model,
+        &machine_desc_opt.unwrap(),
         config.emulator.trace_mode,
         config.machine.video, 
         sp, 

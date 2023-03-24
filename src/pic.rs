@@ -8,7 +8,7 @@
 
 //use std::io::Read;
 
-use crate::io::{IoDevice};
+use crate::bus::{BusInterface, IoDevice};
 
 
 pub const PIC_INTERRUPT_OFFSET: u8 = 8;
@@ -120,7 +120,7 @@ impl IoDevice for Pic {
             _ => unreachable!("PIC: Bad port #")
         }        
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface ) {
         match port {
             PIC_COMMAND_PORT => {
                 self.handle_command_register_write(data);
@@ -131,6 +131,10 @@ impl IoDevice for Pic {
             _ => unreachable!("PIC: Bad port #")
         }    
     }    
+
+    fn port_list(&self) -> Vec<u16> {
+        vec![PIC_COMMAND_PORT, PIC_DATA_PORT]
+    }
 }
 
 impl Pic {

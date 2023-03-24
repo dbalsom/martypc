@@ -1,12 +1,30 @@
 #![allow(dead_code)]
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::fmt;
+use std::io::{BufWriter, Write};
+
+use ringbuf::{Producer};
 
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
+use crate::fdc::FloppyController;
+use crate::pit::Pit;
 use crate::syntax_token::SyntaxToken;
+use crate::machine_manager::MachineDescriptor;
+use crate::config::VideoType;
+use crate::pic::*;
+use crate::dma::*;
+use crate::ppi::*;
+use crate::serial::*;
+use crate::hdc::*;
+use crate::mouse::*;
+use crate::videocard::{VideoCard, VideoCardDispatch};
 
+use crate::ega::EGACard;
+use crate::vga::VGACard;
+use crate::cga::*;
 use crate::memerror::MemError;
 
 const ADDRESS_SPACE: usize = 1_048_576;
@@ -58,17 +76,58 @@ impl MemRangeDescriptor {
     }
 }
 
-pub struct BusInterface {
+pub enum IoDeviceType {
+    Ppi,
+    Pit,
+    DmaPrimary,
+    DmaSecondary,
+    PicPrimary,
+    PicSecondary,
+    Serial,
+    FloppyController,
+    HardDiskController,
+    Mouse,
+    Cga,
+    Ega,
+    Vga,
+}
+
+pub enum IoDeviceDispatch {
+    Static(IoDeviceType),
+    Dynamic(Box<dyn IoDevice + 'static>)
+}
+
+pub trait IoDevice {
+    fn read_u8(&mut self, port: u16) -> u8;
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface);
+    fn port_list(&self) -> Vec<u16>;
+}
+
+pub struct BusInterface<'b> {
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
     map: Vec<(MemRangeDescriptor, Rc<RefCell<dyn MemoryMappedDevice>>)>,
     first_map: usize,
     last_map: usize,
-    cursor: usize
+    cursor: usize,
+
+    io_map: HashMap<u16, IoDeviceType>,
+    ppi: Option<Ppi>,
+    pit: Option<Pit>,
+    dma1: DMAController,
+    dma2: Option<DMAController>,
+    pic1: Pic,
+    pic2: Option<Pic>,
+    serial: Option<SerialPortController>,
+    fdc: FloppyController,
+    hdc: Option<HardDiskController>,
+    mouse: Option<Mouse>,
+    video: VideoCardDispatch<'b>,
+    video_ref: Option<&'b mut dyn VideoCard>
 }
 
-impl ByteQueue for BusInterface {
+impl<'b> ByteQueue for BusInterface<'b> {
     fn seek(&mut self, pos: usize) {
         self.cursor = pos;
     }
@@ -151,7 +210,7 @@ impl ByteQueue for BusInterface {
     }      
 }
 
-impl Default for BusInterface {
+impl<'b> Default for BusInterface<'b> {
     fn default() -> Self {
         BusInterface {
             memory: vec![0; ADDRESS_SPACE],
@@ -160,13 +219,27 @@ impl Default for BusInterface {
             map: Vec::new(),
             cursor: 0,
             first_map: 0,
-            last_map: 0
+            last_map: 0,
+
+            io_map: HashMap::new(),
+            ppi: None,
+            pit: None,
+            dma1: DMAController::new(),
+            dma2: None,
+            pic1: Pic::new(),
+            pic2: None,            
+            serial: None,
+            fdc: FloppyController::new(),
+            hdc: None,
+            mouse: None,
+            video: VideoCardDispatch::None,
+            video_ref: None
         }        
     }
 }
 
-impl BusInterface {
-    pub fn new() -> BusInterface {
+impl<'b> BusInterface<'b> {
+    pub fn new() -> BusInterface<'b> {
         BusInterface {
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
@@ -174,12 +247,38 @@ impl BusInterface {
             map: Vec::new(),
             cursor: 0,
             first_map: 0,
-            last_map: 0
+            last_map: 0,
+
+            io_map: HashMap::new(),
+            ppi: None,
+            pit: None,
+            dma1: DMAController::new(),
+            dma2: None,
+            pic1: Pic::new(),
+            pic2: None,        
+            serial: None,    
+            fdc: FloppyController::new(),
+            hdc: None,
+            mouse: None,
+            video: VideoCardDispatch::None,
+            video_ref: None
         }
     }
 
     pub fn size(&self) -> usize {
         self.memory.len()
+    }
+
+    pub fn get_ppi_mut(&mut self) -> &mut Option<Ppi> {
+        &mut self.ppi
+    }
+
+    pub fn get_dma_mut(&mut self) -> &mut DMAController {
+        &mut self.dma1
+    }
+
+    pub fn get_pic_mut(&mut self) -> &mut Pic {
+        &mut self.pic1
     }
 
     /// Register a memory-mapped device.
@@ -647,6 +746,223 @@ impl BusInterface {
 
 
         debug
+    }
+    
+    pub fn install_devices<TraceWriter: Write + 'b>(
+        &mut self, 
+        video_type: VideoType, 
+        machine_desc: &MachineDescriptor, 
+        video_trace_writer: Option<TraceWriter>
+    ) 
+    {
+
+        // Create PPI if PPI is defined for this machine type
+        if machine_desc.have_ppi {
+            let ppi = Ppi::new(machine_desc.machine_type, video_type, machine_desc.num_floppies);
+            // Add PPI ports to io_map
+            self.io_map.extend(ppi.port_list().iter().map(|p| (*p, IoDeviceType::Ppi)));
+            self.ppi = Some(ppi);
+        }
+
+        // Create the PIT. One PIT will always exist.
+        self.pit = Some(Pit::new());
+        self.io_map.extend(self.pit.as_mut().unwrap().port_list().iter().map(|p| (*p, IoDeviceType::Pit)));
+
+        // Create DMA. One DMA controller will always exist.
+        self.dma1 = DMAController::new();
+        // Add DMA ports to io_map
+        self.io_map.extend(self.dma1.port_list().iter().map(|p| (*p, IoDeviceType::DmaPrimary)));
+
+        // Create PIC. One PIC will always exist.
+        self.pic1 = Pic::new();
+        // Add PIC ports to io_map
+        self.io_map.extend(self.pic1.port_list().iter().map(|p| (*p, IoDeviceType::PicPrimary)));
+
+        // Create video card depending on VideoType
+        match video_type {
+            VideoType::CGA => {
+                self.video = VideoCardDispatch::Cga(CGACard::new())
+            }
+            VideoType::EGA => {
+                self.video = VideoCardDispatch::Ega(EGACard::new())
+            }
+            VideoType::VGA => {
+                self.video = VideoCardDispatch::Vga(VGACard::new(video_trace_writer))
+            }
+            _=> {
+                // MDA not implemented
+                todo!("MDA not implemented");
+            }
+        }
+    
+    }
+
+    pub fn run_devices(&mut self, us: f64, speaker_buf_producer: &mut Producer<u8>) {
+
+    }
+
+    /// Call the reset methods for all devices on the bus
+    pub fn reset_devices(&mut self) {
+        self.pit.as_mut().unwrap().reset();
+        self.pic1.reset();
+        //self.video.borrow_mut().reset();
+    }
+
+    pub fn io_read_u8(&mut self, port: u16) -> u8 {
+        /*
+        let handler_opt = self.handlers.get_mut(&port);
+        if let Some(handler) = handler_opt {
+            // We found a IoHandler in hashmap
+            let mut writeable_thing = handler.device.borrow_mut();
+            let func_ptr = handler.read_u8;
+            func_ptr(&mut *writeable_thing, port)
+        }
+        else {
+            // Unhandled IO address reads return 0xFF
+            0xFF
+        }
+        */
+        if let Some(device_id) = self.io_map.get(&port) {
+            match device_id {
+                IoDeviceType::Ppi => {
+                    if let Some(ppi) = &mut self.ppi {
+                        ppi.read_u8(port)
+                    }
+                    else {
+                        0xFF
+                    }
+                }
+                IoDeviceType::Pit => {
+                    self.pit.as_mut().unwrap().read_u8(port)
+                }
+                IoDeviceType::DmaPrimary => {
+                    self.dma1.read_u8(port)
+                }
+                IoDeviceType::DmaSecondary => {
+                    0xFF
+                }
+                IoDeviceType::PicPrimary => {
+                    self.pic1.read_u8(port)
+                }
+                IoDeviceType::PicSecondary => {
+                    0xFF
+                }
+                IoDeviceType::Cga => {
+                    0xFF
+                }
+                IoDeviceType::Ega => {
+                    0xFF
+                }
+                IoDeviceType::Vga => {
+                    0xFF
+                }
+                _ => {
+                    0xFF
+                }
+            }
+        }
+        else {
+            // Unhandled IO address reads return 0xFF
+            0xFF
+        }
+
+    }
+
+    pub fn io_write_u8(&mut self, port: u16, data: u8) {
+        /*
+        let handler_opt = self.handlers.get_mut(&port);
+        if let Some(handler) = handler_opt {
+            // We found a IoHandler in hashmap
+            let mut writeable_thing = handler.device.borrow_mut();
+            let func_ptr = handler.write_u8;
+            func_ptr(&mut *writeable_thing, port, data);
+        }
+        */
+
+        if let Some(device_id) = self.io_map.get(&port) {
+            match device_id {
+                IoDeviceType::Ppi => {
+                    if let Some(mut ppi) = self.ppi.take() {
+                        ppi.write_u8(port, data, self);
+                        self.ppi = Some(ppi);
+                    }
+                }
+                IoDeviceType::Pit => {
+                    if let Some(mut pit) = self.pit.take() {
+                        pit.write_u8(port, data, self);
+                        self.pit = Some(pit);
+                    }
+
+                }
+                IoDeviceType::DmaPrimary => {}
+                IoDeviceType::DmaSecondary => {}
+                IoDeviceType::PicPrimary => {}
+                IoDeviceType::PicSecondary => {}
+                IoDeviceType::FloppyController => {}
+                IoDeviceType::HardDiskController => {}
+                IoDeviceType::Cga => {}
+                IoDeviceType::Ega => {}
+                IoDeviceType::Vga => {}
+                _ => {}
+            }
+        }
+
+    }
+
+    // Device accessors
+    pub fn pit(&self) -> &Option<Pit> {
+        &self.pit
+    }
+
+    pub fn pit_mut(&mut self) -> &mut Option<Pit> {
+        &mut self.pit
+    }
+
+    pub fn pic_mut(&mut self) -> &mut Pic {
+        &mut self.pic1
+    }
+
+    pub fn ppi_mut(&mut self) -> &mut Option<Ppi> {
+        &mut self.ppi
+    }
+
+    pub fn dma_mut(&mut self) -> &mut DMAController {
+        &mut self.dma1
+    }
+
+    pub fn serial_mut(&mut self) -> &mut Option<SerialPortController> {
+        &mut self.serial
+    }
+
+    pub fn fdc_mut(&mut self) -> &mut FloppyController {
+        &mut self.fdc
+    }
+
+    pub fn hdc_mut(&mut self) -> &mut Option<HardDiskController> {
+        &mut self.hdc
+    }    
+
+    pub fn mouse(&mut self) -> &Option<Mouse> {
+        &self.mouse
+    }
+
+    pub fn video_mut(&mut self) -> &'b mut Option<&mut dyn VideoCard> {
+
+        match &mut self.video {
+            VideoCardDispatch::Cga(cga) => {
+                self.video_ref = Some(cga);
+            }
+            VideoCardDispatch::Ega(ega) => {
+                self.video_ref = Some(ega)
+            }
+            VideoCardDispatch::Vga(vga) => {
+                self.video_ref = Some(vga)
+            }
+            VideoCardDispatch::None => {
+                self.video_ref = None
+            }
+        }
+        &mut self.video_ref
     }
 
 }

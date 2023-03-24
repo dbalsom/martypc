@@ -158,7 +158,7 @@ impl fmt::Display for Instruction {
      }
 }
 
-impl<'a> Cpu<'a> {
+impl<'a, 'b> Cpu<'a, 'b> {
     pub fn tokenize_instruction(i: &Instruction) -> Vec<SyntaxToken> {
 
         let mut i_vec = Vec::new();

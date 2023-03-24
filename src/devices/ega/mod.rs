@@ -15,7 +15,7 @@
 */
 
 #![allow(dead_code)]
-
+use std::any::Any;
 use std::collections::HashMap;
 use modular_bitfield::prelude::*;
 
@@ -23,8 +23,7 @@ use modular_bitfield::prelude::*;
 use log;
 
 use crate::config::VideoType;
-use crate::io::IoDevice;
-use crate::bus::MemoryMappedDevice;
+use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
 
 use crate::videocard::{
     VideoCard,
@@ -409,7 +408,7 @@ impl IoDevice for EGACard {
             }
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
         match port {
             MISC_OUTPUT_REGISTER => {
                 self.write_external_misc_output_register(data);
@@ -451,6 +450,26 @@ impl IoDevice for EGACard {
         }
     }
 
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            ATTRIBUTE_REGISTER,
+            ATTRIBUTE_REGISTER_ALT,
+            MISC_OUTPUT_REGISTER,
+            INPUT_STATUS_REGISTER_0,
+            INPUT_STATUS_REGISTER_1,
+            INPUT_STATUS_REGISTER_1_MDA,
+            SEQUENCER_ADDRESS_REGISTER,
+            SEQUENCER_DATA_REGISTER,
+            CRTC_REGISTER_ADDRESS,
+            CRTC_REGISTER,    
+            CRTC_REGISTER_ADDRESS_MDA,
+            CRTC_REGISTER_MDA,
+            EGA_GRAPHICS_1_POSITION,
+            EGA_GRAPHICS_2_POSITION,
+            EGA_GRAPHICS_ADDRESS,
+            EGA_GRAPHICS_DATA
+        ]
+    }
 }
 
 impl EGACard {

@@ -7,7 +7,7 @@
 use std::collections::{VecDeque, HashMap};
 use lazy_static::lazy_static;
 
-use crate::io::IoDevice;
+use crate::bus::IoDevice;
 use crate::dma;
 use crate::bus::BusInterface;
 use crate::pic;
@@ -312,7 +312,8 @@ impl IoDevice for FloppyController {
             _ => unreachable!("FLOPPY: Bad port #")
         }        
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
         match port {
             FDC_DIGITAL_OUTPUT_REGISTER => {
                 self.handle_dor_write(data);
@@ -326,6 +327,14 @@ impl IoDevice for FloppyController {
             _ => unreachable!("FLOPPY: Bad port #")
         }    
     }    
+
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            FDC_DIGITAL_OUTPUT_REGISTER,
+            FDC_STATUS_REGISTER,
+            FDC_DATA_REGISTER
+        ]
+    }
 }
 
 impl FloppyController {

@@ -8,8 +8,10 @@
 */
 #![allow(dead_code)]
 
+use std::cell::Cell;
+
 use crate::config::{MachineType, VideoType};
-use crate::io::{IoDevice};
+use crate::bus::{BusInterface, IoDevice};
 use crate::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
@@ -129,6 +131,16 @@ pub struct Ppi {
     speaker_in: bool,
 }
 
+// This structure implements an interface for wires connected to the PPI from 
+// other components. Components connected to the PPI will receive a reference
+// to this structure on creation, and can read or modify the wire state via 
+// Cell's internal mutability.
+pub struct PpiWires {
+    timer_monitor: Cell<bool>,
+    timer_gate2: Cell<bool>,
+    speaker_monitor: Cell<bool>,
+}
+
 #[derive(Default)]
 pub struct PpiStringState {
     pub port_a_mode: String,
@@ -224,7 +236,8 @@ impl IoDevice for Ppi {
             _ => panic!("PPI: Bad port #")
         }
     }
-    fn write_u8(&mut self, port: u16, byte: u8) {
+
+    fn write_u8(&mut self, port: u16, byte: u8, bus: &mut BusInterface) {
         match port {
             PPI_PORT_A => {
                 // Read-only port
@@ -243,6 +256,14 @@ impl IoDevice for Ppi {
         }
     }
 
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            PPI_PORT_A,
+            PPI_PORT_B,
+            PPI_PORT_C,
+            PPI_COMMAND_PORT,
+        ]
+    }
 }
 
 impl Ppi {
@@ -330,8 +351,12 @@ impl Ppi {
     }
 
     pub fn calc_port_c_value(&self) -> u8 {
-        let timer_bit = (self.timer_in as u8) << 4;
-        let speaker_bit = (self.speaker_in as u8) << 5;
+
+        let mut speaker_bit = 0;
+        if let MachineType::IBM_XT_5160 = self.machine_type {
+            speaker_bit = (self.speaker_in as u8) << 4;
+        }
+        let timer_bit = (self.timer_in as u8) << 5;
 
         match (&self.machine_type, &self.port_c_mode) {
             (MachineType::IBM_PC_5150, PortCMode::Switch2OneToFour) => {
@@ -389,6 +414,14 @@ impl Ppi {
 
     pub fn get_pb1_state(&self) -> bool {
         self.pb_byte & PORTB_SPEAKER_DATA != 0
+    }
+
+    pub fn set_pit_output_bit(&mut self, signal: bool) {
+        self.timer_in = signal;
+    }
+
+    pub fn set_speaker_bit(&mut self, signal: bool) {
+        self.speaker_in = signal;
     }
 
     pub fn run(&mut self, pic: &mut pic::Pic, cycles: u32 ) {

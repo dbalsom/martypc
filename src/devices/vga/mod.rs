@@ -16,12 +16,12 @@
 
 use std::collections::HashMap;
 use std::io::Write;
+use std::any::Any;
 
 use modular_bitfield::prelude::*;
 
 use crate::config::VideoType;
-use crate::io::IoDevice;
-use crate::bus::MemoryMappedDevice;
+use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
 
 use crate::videocard::{
     VideoCard,
@@ -266,7 +266,7 @@ macro_rules! trace {
 
 pub(crate) use trace;
 
-pub struct VGACard<'a> {
+pub struct VGACard<'b> {
 
     timings: [VideoTimings; 2],
     u_timings: VideoMicroTimings,
@@ -385,7 +385,7 @@ pub struct VGACard<'a> {
     pipeline_buf: [u8; 4],
     write_buf: [u8; 4],
 
-    trace_writer: Option<Box<dyn Write + 'a>>,
+    trace_writer: Option<Box<dyn Write + 'b>>,
 }
 
 #[bitfield]
@@ -439,7 +439,7 @@ pub enum RetracePolarity {
 /// Implement Device IO for the VGA Card.
 /// 
 /// Unlike the EGA, most of the registers on the VGA are readable.
-impl<'a> IoDevice for VGACard<'a> {
+impl<'b> IoDevice for VGACard<'b> {
     fn read_u8(&mut self, port: u16) -> u8 {
         match port {
             MISC_OUTPUT_REGISTER_READ => {
@@ -507,7 +507,7 @@ impl<'a> IoDevice for VGACard<'a> {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
         match port {
             MISC_OUTPUT_REGISTER_WRITE => {
                 self.write_external_misc_output_register(data);
@@ -573,11 +573,36 @@ impl<'a> IoDevice for VGACard<'a> {
         }
     }
 
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            ATTRIBUTE_REGISTER,
+            ATTRIBUTE_REGISTER_ALT,
+            MISC_OUTPUT_REGISTER_READ,
+            MISC_OUTPUT_REGISTER_WRITE,
+            INPUT_STATUS_REGISTER_0,
+            INPUT_STATUS_REGISTER_1,
+            INPUT_STATUS_REGISTER_1_MDA,
+            SEQUENCER_ADDRESS_REGISTER,
+            SEQUENCER_DATA_REGISTER,
+            CRTC_REGISTER_ADDRESS,
+            CRTC_REGISTER,
+            CRTC_REGISTER_ADDRESS_MDA,
+            CRTC_REGISTER_MDA,
+            GRAPHICS_ADDRESS,
+            GRAPHICS_DATA,                                          
+            PEL_ADDRESS_READ_MODE,
+            PEL_ADDRESS_WRITE_MODE,
+            PEL_DATA,
+            PEL_MASK,
+            DAC_STATE_REGISTER,
+        ]
+    }
+
 }
 
-impl<'a> VGACard<'a> {
+impl<'b> VGACard<'b> {
 
-    pub fn new<TraceWriter: Write + 'a>(trace_writer: Option<TraceWriter>) -> Self {
+    pub fn new<TraceWriter: Write + 'b>(trace_writer: Option<TraceWriter>) -> Self {
         Self {
 
             timings: [
@@ -1253,7 +1278,7 @@ macro_rules! push_reg_str_enum {
     };
 }    
 
-impl<'a> VideoCard for VGACard<'a> {
+impl<'b> VideoCard for VGACard<'b> {
 
     fn get_video_type(&self) -> VideoType {
         VideoType::VGA
@@ -1759,7 +1784,7 @@ impl<'a> VideoCard for VGACard<'a> {
 
 }
 
-impl<'a> MemoryMappedDevice for VGACard<'a> {
+impl<'b> MemoryMappedDevice for VGACard<'b> {
 
     fn read_u8(&mut self, address: usize) -> u8 {
 

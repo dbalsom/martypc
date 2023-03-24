@@ -5,8 +5,7 @@
 
 */
 
-use crate::io::{IoBusInterface, IoDevice};
-use crate::bus::BusInterface;
+use crate::bus::{BusInterface, IoDevice};
 
 pub const DMA_CHANNEL_0_ADDR_PORT: u16  = 0x00; // R/W
 pub const DMA_CHANNEL_0_WC_PORT: u16    = 0x01; // R/W
@@ -199,9 +198,9 @@ impl IoDevice for DMAController {
             }
             
         }
-
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
 
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {
@@ -272,6 +271,34 @@ impl IoDevice for DMAController {
          
         }
     }
+
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            DMA_CHANNEL_0_ADDR_PORT,
+            DMA_CHANNEL_0_WC_PORT,
+            DMA_CHANNEL_1_ADDR_PORT,
+            DMA_CHANNEL_1_WC_PORT,
+            DMA_CHANNEL_2_ADDR_PORT,
+            DMA_CHANNEL_2_WC_PORT,
+            DMA_CHANNEL_3_ADDR_PORT,
+            DMA_CHANNEL_3_WC_PORT,
+            DMA_STATUS_REGISTER,
+            DMA_COMMAND_REGISTER,
+            DMA_WRITE_REQ_REGISTER,
+            DMA_CHANNEL_MASK_REGISTER,
+            DMA_CHANNEL_MODE_REGISTER,
+            DMA_CLEAR_FLIPFLOP,
+            DMA_READ_TEMP_REGISTER,
+            DMA_MASTER_CLEAR,
+            DMA_CLEAR_MASK_REGISTER,
+            DMA_WRITE_MASK_REGISTER,
+            DMA_CHANNEL_0_PAGE_REGISTER,
+            DMA_CHANNEL_1_PAGE_REGISTER,
+            DMA_CHANNEL_2_PAGE_REGISTER,
+            DMA_CHANNEL_3_PAGE_REGISTER,
+        ]
+    }
+
 }
 
 impl DMAController {
@@ -731,7 +758,7 @@ impl DMAController {
         }        
     }
 
-    pub fn run(&mut self, _io_bus: &mut IoBusInterface) {
+    pub fn run(&mut self) {
 
 
     }

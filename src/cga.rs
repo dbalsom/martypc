@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-
+use std::any::Any;
 use std::collections::HashMap;
 
 use crate::config::VideoType;
-use crate::io::{IoDevice};
+use crate::bus::{BusInterface, IoDevice};
 use crate::videocard::{
     VideoCard,
     VideoCardStateEntry,
@@ -173,7 +173,8 @@ impl IoDevice for CGACard {
             }
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
         match port {
             CGA_MODE_CONTROL_REGISTER => {
                 self.handle_mode_register(data);
@@ -189,6 +190,17 @@ impl IoDevice for CGACard {
             }
             _ => {}
         }
+    }
+
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            CRTC_REGISTER_SELECT,
+            CRTC_REGISTER,
+            CGA_MODE_CONTROL_REGISTER,
+            CGA_COLOR_CONTROL_REGISTER,
+            CGA_LIGHTPEN_REGISTER,
+            CGA_STATUS_REGISTER,
+        ]
     }
 
 }
@@ -468,7 +480,7 @@ macro_rules! push_reg_str_enum {
 }   
 
 impl VideoCard for CGACard {
-
+    
     fn get_video_type(&self) -> VideoType {
         VideoType::CGA
     }

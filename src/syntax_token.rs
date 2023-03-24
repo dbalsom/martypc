@@ -23,6 +23,13 @@
     TokenListView can use these tokens to format output with syntax coloring.
 */
 
+/// A generic enum type that can hold values that are intended to update a 
+/// Debug display. A Dirty variant can hold a value that can be dirty or not
+/// DirtyAging8 adds an u8 frame age parameter. 
+/// DirtyAgging adds a u16 frame age parameter.
+/// Aging8 has a u8 frame age parameter.
+/// Aging16 has a u16 frame age parameter.
+
 pub const TOKEN_MAX_AGE: u8 = 255;
 
 #[derive(Clone)]

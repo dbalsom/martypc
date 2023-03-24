@@ -20,7 +20,7 @@ use core::fmt::Display;
 use crate::bus::BusInterface;
 use crate::dma;
 //use crate::fdc::Operation;
-use crate::io::IoDevice;
+use crate::bus::IoDevice;
 use crate::pic;
 use crate::VirtualHardDisk;
 
@@ -145,7 +145,8 @@ impl IoDevice for HardDiskController {
             }
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
         match port {
             HDC_DATA_REGISTER => {
                 self.handle_data_register_write(data);
@@ -163,6 +164,16 @@ impl IoDevice for HardDiskController {
             }
             _ => log::error!("Write to invalid port: {:04X} : {:02X}!", port, data)
         }
+    }
+
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            HDC_DATA_REGISTER,
+            HDC_STATUS_REGISTER,
+            HDC_READ_DIP_REGISTER,
+            HDC_CONTROLLER_SELECT,
+            HDC_WRITE_MASK_REGISTER,
+        ]
     }
 }
 
