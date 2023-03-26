@@ -890,11 +890,12 @@ impl<'a> Machine<'a> {
         let mut kb_byte_opt: Option<u8> = None;
         if self.kb_buf.len() > 0 && !*kb_event_processed {
 
-            let kb_byte = self.kb_buf.pop_front().unwrap();
+            let kb_byte_opt = self.kb_buf.pop_front();
 
-            kb_byte_opt = Some(kb_byte);
-            //self.ppi.borrow_mut().send_keyboard(kb_byte);
-            //self.pic.borrow_mut().request_interrupt(1);
+            if let Some(kb_byte) = kb_byte_opt {
+                //self.ppi.borrow_mut().send_keyboard(kb_byte);
+                //self.pic.borrow_mut().request_interrupt(1);
+            }
             *kb_event_processed = true;
         }
 

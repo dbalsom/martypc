@@ -125,7 +125,7 @@ pub enum Command {
     WriteLongTrack
 }
 
-type CommandDispatchFn = fn (&mut HardDiskController) -> Continuation;
+type CommandDispatchFn = fn (&mut HardDiskController, &mut BusInterface) -> Continuation;
 
 impl IoDevice for HardDiskController {
     fn read_u8(&mut self, port: u16) -> u8 {
@@ -149,7 +149,8 @@ impl IoDevice for HardDiskController {
     fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
         match port {
             HDC_DATA_REGISTER => {
-                self.handle_data_register_write(data);
+                // Bus will always call us with Bus defined, so safe to unwrap
+                self.handle_data_register_write(data, bus.unwrap());
             }
             HDC_STATUS_REGISTER => {
                 // Write to the status register instructs the controller to reset
@@ -266,8 +267,6 @@ pub struct DeviceControlBlock {
 
 #[allow (dead_code)]
 pub struct HardDiskController {
-
-    dma: Rc<RefCell<dma::DMAController>>,
     drives: [HardDisk; 2],
     drive_select: usize,
 
@@ -301,10 +300,8 @@ pub struct HardDiskController {
 }
 
 impl HardDiskController {
-    pub fn new(dma: Rc<RefCell<dma::DMAController>>, drive_type_dip: u8) -> Self {
+    pub fn new(drive_type_dip: u8) -> Self {
         Self {
-
-            dma,
             drives: [
                 HardDisk::new(),
                 HardDisk::new()
@@ -512,7 +509,7 @@ impl HardDiskController {
     /// input for each command type. 
     /// 
     /// The 3 by 5 bit match statements match the 3 bit 'command class' and 5 bit command fields.
-    pub fn handle_data_register_write(&mut self, byte: u8) {
+    pub fn handle_data_register_write(&mut self, byte: u8, bus: &mut BusInterface) {
         
         // Transition from other states. It's possible that we don't check the error code
         // after an operation
@@ -653,7 +650,7 @@ impl HardDiskController {
                     match self.command_fn {
                         None => log::error!("No associated method for command: {:?}!", self.command),
                         Some(command_fn) => {
-                            result = command_fn(self);
+                            result = command_fn(self, bus);
                         }
                     }
 
@@ -748,7 +745,7 @@ impl HardDiskController {
     }
 
     /// Perform the Sensee Status command
-    fn command_sense_status(&mut self) -> Continuation {
+    fn command_sense_status(&mut self, bus: &mut BusInterface) -> Continuation {
 
         let dcb = self.read_dcb();
         self.data_register_in.clear();
@@ -800,12 +797,12 @@ impl HardDiskController {
     }
 
     /// Perform the Read Sector command.
-    fn command_read(&mut self) -> Continuation {
+    fn command_read(&mut self, bus: &mut BusInterface) -> Continuation {
 
         let dcb = self.read_dcb();
         self.data_register_in.clear();
 
-        let xfer_size = self.dma.borrow().get_dma_transfer_size(HDC_DMA);
+        let xfer_size = bus.dma_mut().as_mut().unwrap().get_dma_transfer_size(HDC_DMA);
         log::trace!("Command Read: drive: {} c: {} h: {} s: {}, xfer_size:{}", 
             dcb.drive_select, 
             dcb.c, 
@@ -866,13 +863,13 @@ impl HardDiskController {
     }
 
     /// Perform the Write Sector command.
-    fn command_write(&mut self) -> Continuation {
+    fn command_write(&mut self, bus: &mut BusInterface) -> Continuation {
 
         let _cmd_bytes = &self.data_register_in;
         let dcb = self.read_dcb();
         self.data_register_in.clear();
 
-        let xfer_size = self.dma.borrow().get_dma_transfer_size(HDC_DMA);
+        let xfer_size = bus.dma_mut().as_mut().unwrap().get_dma_transfer_size(HDC_DMA);
         log::trace!("Command Write: drive: {} c: {} h: {} s: {} bc: {}, xfer_size:{}", 
             dcb.drive_select, 
             dcb.c, 
@@ -917,7 +914,7 @@ impl HardDiskController {
     }
 
     /// Perform the Seek command.
-    fn command_seek(&mut self) -> Continuation {
+    fn command_seek(&mut self, bus: &mut BusInterface) -> Continuation {
 
         let dcb = self.read_dcb();
         self.data_register_in.clear();
@@ -949,7 +946,7 @@ impl HardDiskController {
     }
 
     /// Perform the Ready Verify command.
-    fn command_ready_verify(&mut self) -> Continuation {
+    fn command_ready_verify(&mut self, bus: &mut BusInterface) -> Continuation {
 
         let _cmd_bytes = &self.data_register_in;
         let dcb = self.read_dcb();
@@ -977,10 +974,10 @@ impl HardDiskController {
 
     /// Perform the Read Sector Buffer command.
     /// 
-    fn command_read_sector_buffer(&mut self) -> Continuation {
+    fn command_read_sector_buffer(&mut self, bus: &mut BusInterface) -> Continuation {
         // Don't care about DBC bytes
 
-        let xfer_size = self.dma.borrow().get_dma_transfer_size(HDC_DMA);
+        let xfer_size = bus.dma_mut().as_mut().unwrap().get_dma_transfer_size(HDC_DMA);
         if xfer_size != SECTOR_SIZE {
             log::warn!("Command ReadSectorBuffer: DMA word count != sector size");
         }
@@ -998,10 +995,10 @@ impl HardDiskController {
 
     /// Perform the Write Sector Buffer command.
     /// 
-    fn command_write_sector_buffer(&mut self) -> Continuation {
+    fn command_write_sector_buffer(&mut self, bus: &mut BusInterface) -> Continuation {
         // Don't care about DBC bytes
 
-        let xfer_size = self.dma.borrow().get_dma_transfer_size(HDC_DMA);
+        let xfer_size = bus.dma_mut().as_mut().unwrap().get_dma_transfer_size(HDC_DMA);
         if xfer_size != SECTOR_SIZE {
             log::warn!("Command WriteSectorBuffer: DMA word count != sector size");
         }
@@ -1019,7 +1016,7 @@ impl HardDiskController {
 
     /// Perform the Initialize Drive Characteristics Command.
     /// This command will never produce an error code.
-    fn command_initialize_dc(&mut self) -> Continuation {
+    fn command_initialize_dc(&mut self, _bus: &mut BusInterface) -> Continuation {
         
         let dcb = self.read_dcb();
         let data_bytes = &self.data_register_in;
@@ -1051,7 +1048,7 @@ impl HardDiskController {
     }
 
     /// Perform the Test Drive Ready Command.
-    fn command_test_drive_ready(&mut self) -> Continuation {
+    fn command_test_drive_ready(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         // Get the drive number from DCB
         let dcb = self.read_dcb();
@@ -1088,7 +1085,7 @@ impl HardDiskController {
 
     /// Perform the Recalibrate Command.
     /// This command will never produce an error code.
-    fn command_recalibrate(&mut self) -> Continuation {
+    fn command_recalibrate(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         // Get the drive number from DCB
         let cmd_bytes = &self.data_register_in;
@@ -1103,7 +1100,7 @@ impl HardDiskController {
 
     /// Perform the Controller RAM Diagonstic Command. 
     /// This command will never produce an error code.
-    fn command_ram_diagnostic(&mut self) -> Continuation {
+    fn command_ram_diagnostic(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         self.last_error = OperationError::NoError;
         self.send_interrupt = true;
@@ -1113,7 +1110,7 @@ impl HardDiskController {
 
     /// Perform the Drive Diagonstic Command. 
     /// Should this fail when a VHD is not attached?
-    fn command_drive_diagnostic(&mut self) -> Continuation {
+    fn command_drive_diagnostic(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         self.last_error = OperationError::NoError;
         self.send_interrupt = true;
@@ -1123,7 +1120,7 @@ impl HardDiskController {
 
     /// Perform the Controller Diagonstic Command. 
     /// This command will never produce an error code.
-    fn command_controller_diagnostic(&mut self) -> Continuation {
+    fn command_controller_diagnostic(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         self.last_error = OperationError::NoError;
         self.send_interrupt = true;
@@ -1336,13 +1333,13 @@ impl HardDiskController {
     }
 
     /// Run the HDC device.
-    pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, _cpu_cycles: u32 ) {
+    pub fn run(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface, _us: f64 ) {
 
         // Handle interrupts
         if self.send_interrupt {
             if self.irq_enabled {
                 //log::trace!(">>> Firing HDC IRQ 5");
-                pic.request_interrupt(HDC_IRQ);
+                bus.pic_mut().as_mut().unwrap().request_interrupt(HDC_IRQ);
                 self.send_interrupt = false;
                 self.interrupt_active = true;
 
@@ -1356,7 +1353,7 @@ impl HardDiskController {
         }
 
         if self.clear_interrupt {
-            pic.clear_interrupt(HDC_IRQ);
+            bus.pic_mut().as_mut().unwrap().clear_interrupt(HDC_IRQ);
             self.clear_interrupt = false;
             self.interrupt_active = false;
         }

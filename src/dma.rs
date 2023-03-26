@@ -84,6 +84,7 @@ pub enum TransferType {
     Read,
     Illegal
 }
+
 impl Default for TransferType {
     fn default() -> Self { TransferType::Verify }
 }
@@ -758,8 +759,37 @@ impl DMAController {
         }        
     }
 
-    pub fn run(&mut self) {
+    /// Fake the DMA controller. This should eventually be replaced by a tick procedure that 
+    /// ticks in line with the CPU.
+    pub fn run(&mut self, bus: &mut BusInterface) {
 
+        for i in 0..DMA_CHANNEL_COUNT {
 
+            if self.request_reg & (0x01 << i) != 0 {
+                // We have an active DREQ on this channel, service it
+                match self.channels[i].service_mode {
+                    ServiceMode::Single => {
+                        // We can handle single byte mode
+                        match self.channels[i].transfer_type {
+                            TransferType::Read | TransferType::Verify => {
+                                self.do_dma_read_u8(bus, i);
+                            }
+                            TransferType::Write => {
+                                // nothing to do here
+                            }
+                            TransferType::Illegal => {
+                                log::error!("Illegal DMA TransferType: {:?}", self.channels[i].transfer_type);
+                            }
+                        }
+
+                        // Since this is single byte service, we can now reset the request register bit.
+                        self.request_reg &= !(0x01 << i);
+                    }
+                    _=> {
+                        log::warn!("Unhandled DMA service mode: {:?}", self.channels[i].service_mode);
+                    }
+                }
+            }
+        }
     }
 }

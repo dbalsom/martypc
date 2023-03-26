@@ -663,6 +663,7 @@ impl RomManager {
                             bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90],
                             patched: false
                         },
+                        /*
                         RomPatch{
                             desc: "Patch out PIC IMR register test",
                             checkpoint: 0xFE000,
@@ -670,6 +671,7 @@ impl RomManager {
                             bytes: vec![0x90, 0x90],
                             patched: false
                         }
+                        */
                     ],  
                     checkpoints: HashMap::from([
                         (0xfe01a, "RAM Check Routine"),

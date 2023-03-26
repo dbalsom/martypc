@@ -53,7 +53,7 @@ impl TraceLogger {
     #[inline(always)]
     pub fn print<S: AsRef<str> + std::fmt::Display>(&mut self, msg: S) {
         match self {
-            TraceLogger::FileWriter(buf) => { buf.write_all(msg.as_ref().as_bytes()); },
+            TraceLogger::FileWriter(buf) => { _ = buf.write_all(msg.as_ref().as_bytes()); },
             TraceLogger::Console => println!("{}", msg),
             TraceLogger::None => (),
         }

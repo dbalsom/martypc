@@ -792,7 +792,7 @@ impl Channel {
             }
         }
 
-        self.cycles_in_state.saturating_add(1);
+        self.cycles_in_state = self.cycles_in_state.saturating_add(1);
     }
 }
 
@@ -820,8 +820,16 @@ impl ProgrammableIntervalTimer {
 
         self.cycle_accumulator = 0.0;
         
+        // Reset the PIT back to sensible defaults.
+        // Note: We do not change the gate input state. The PIT does not control gate status.
         for i in 0..3 {
-            self.channels[i] = Channel::new(i, PitType::Model8253);
+            self.channels[i].mode.update(ChannelMode::InterruptOnTerminalCount);
+            self.channels[i].channel_state = ChannelState::WaitingForReload;
+            self.channels[i].counting_element.update(0);
+            self.channels[i].read_state = ReadState::Unlatched;
+            self.channels[i].ce_undefined = false;
+            self.channels[i].output.update(false);
+            self.channels[i].bcd_mode = false;
         }
     }
 

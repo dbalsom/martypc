@@ -782,10 +782,26 @@ impl BusInterface {
         self.dma1 = Some(dma1);
 
         // Create PIC. One PIC will always exist.
-        self.pic1 = Some(Pic::new());
+        let pic1 = Pic::new();
         // Add PIC ports to io_map
-        let port_list = self.pic1.as_mut().unwrap().port_list();
+        let port_list = pic1.port_list();
         self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::PicPrimary)));
+        self.pic1 = Some(pic1);
+
+        // Create FDC. 
+        let fdc = FloppyController::new();
+        // Add FDC ports to io_map
+        let port_list = fdc.port_list();
+        self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::FloppyController)));
+        self.fdc = Some(fdc);
+
+        // Create HDC. This should probably be specified in the MachineDesc with an option to override it
+        // (Such as using a XTIDE instead of Xebec on PC & XT, perhaps)
+        let hdc = HardDiskController::new(DRIVE_TYPE2_DIP);
+        // Add HDC ports to io_map
+        let port_list = hdc.port_list();
+        self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::HardDiskController)));
+        self.hdc = Some(hdc);   
 
         // Create video card depending on VideoType
         match video_type {
@@ -835,6 +851,25 @@ impl BusInterface {
         // Put the PIT back.
         self.pit = Some(pit);
         
+        // Run the DMA controller.
+        let mut dma1 = self.dma1.take().unwrap();
+        dma1.run(self);
+
+        // Run the FDC, passing it DMA controller while DMA is still unattached.
+        if let Some(mut fdc) = self.fdc.take() {
+            fdc.run(&mut dma1, self, us);
+            self.fdc = Some(fdc);
+        }
+
+        // Run the HDC, passing it DMA controller while DMA is still unattached.
+        if let Some(mut hdc) = self.hdc.take() {
+            hdc.run(&mut dma1, self, us);
+            self.hdc = Some(hdc);
+        }
+
+        // Replace the DMA controller.
+        self.dma1 = Some(dma1);
+
         // Run the video device.
         match &mut self.video {
             VideoCardDispatch::Cga(cga) => {
