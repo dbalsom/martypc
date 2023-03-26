@@ -17,12 +17,11 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-    egui::disassembly.rs
+    egui::instruction_trace_viewer.rs
 
-    Implements a disassembly viewer control.
+    Implements the instruction trace viewer control.
     The control is a virtual window that will display the disassembly of 
-    the next X instructions from the specified address. This address can
-    be an expression, such as 'cs:ip'
+    the last X executed instructions. 
 
 */
 use std::collections::VecDeque;
@@ -31,7 +30,7 @@ use crate::egui::*;
 use crate::egui::token_listview::*;
 use crate::syntax_token::*;
 
-pub struct DisassemblyControl {
+pub struct InstructionTraceControl {
 
     pub address: String,
     pub row: usize,
@@ -39,7 +38,7 @@ pub struct DisassemblyControl {
     tlv: TokenListView,
 }
 
-impl DisassemblyControl {
+impl InstructionTraceControl {
 
     pub fn new() -> Self {
         Self {
@@ -52,16 +51,8 @@ impl DisassemblyControl {
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
 
-        ui.horizontal(|ui| {
-            ui.label("Address: ");
-            if ui.text_edit_singleline(&mut self.address).changed() {
-                events.push_back(GuiEvent::MemoryUpdate);
-            }
-        });
-        ui.separator();
-
-        self.tlv.set_capacity(24);
-        self.tlv.set_visible(24);
+        self.tlv.set_capacity(32);
+        self.tlv.set_visible(32);
 
         let mut new_row = self.row;
         ui.horizontal(|ui| {

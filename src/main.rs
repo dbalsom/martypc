@@ -65,6 +65,7 @@ mod rom_manager;
 mod serial;
 mod sound;
 mod syntax_token;
+mod tracelogger;
 mod updatable;
 mod util;
 
@@ -936,10 +937,12 @@ fn main() {
                     let render_start = Instant::now();
 
                     // Draw video if there is a video card present
-                    if let Some(video_card) = machine.videocard() {
+                    let bus = machine.bus_mut();
+
+                    if let Some(video_card) = bus.video() {
                         match aspect_correct {
                             true => {
-                                video.draw(&mut render_src, *video_card, machine.bus(), composite_enabled);
+                                video.draw(&mut render_src, video_card, bus, composite_enabled);
                                 video::resize_linear(
                                     &render_src, 
                                     video_data.render_w, 
@@ -949,7 +952,7 @@ fn main() {
                                     video_data.aspect_h);                            
                             }
                             false => {
-                                video.draw(pixels.get_frame_mut(), *video_card, machine.bus(), composite_enabled);
+                                video.draw(pixels.get_frame_mut(), video_card, bus, composite_enabled);
                             }
                         }
                     }
@@ -957,10 +960,14 @@ fn main() {
 
                     // Update egui data
 
-                    // Any errors?
+                    // Is the machine in an error state? If so, display an error dialog.
                     if let Some(err) = machine.get_error_str() {
                         framework.gui.show_error(err);
                         framework.gui.show_window(GuiWindow::DiassemblyViewer);
+                    }
+                    else {
+                        // No error? Make sure we close the error dialog.
+                        framework.gui.clear_error();
                     }
 
                     // Handle custom user events received from our gui windows
@@ -996,12 +1003,14 @@ fn main() {
                                 match machine.floppy_manager().load_floppy_data(&filename) {
                                     Ok(vec) => {
                                         
-                                        match machine.fdc().load_image_from(drive_select, vec) {
-                                            Ok(()) => {
-                                                log::info!("Floppy image successfully loaded into virtual drive.");
-                                            }
-                                            Err(err) => {
-                                                log::warn!("Floppy image failed to load: {}", err);
+                                        if let Some(fdc) = machine.fdc() {
+                                            match fdc.load_image_from(drive_select, vec) {
+                                                Ok(()) => {
+                                                    log::info!("Floppy image successfully loaded into virtual drive.");
+                                                }
+                                                Err(err) => {
+                                                    log::warn!("Floppy image failed to load: {}", err);
+                                                }
                                             }
                                         }
                                     } 
@@ -1014,7 +1023,9 @@ fn main() {
                             }
                             Some(GuiEvent::EjectFloppy(drive_select)) => {
                                 log::info!("Ejecting floppy in drive: {}", drive_select);
-                                machine.fdc().unload_image(drive_select);
+                                if let Some(fdc) = machine.fdc() {
+                                    fdc.unload_image(drive_select);
+                                }
                             }
                             Some(GuiEvent::BridgeSerialPort(port_name)) => {
 
@@ -1213,8 +1224,8 @@ fn main() {
 
                     // -- Update Instruction Trace window
                     if framework.gui.is_window_open(egui::GuiWindow::TraceViewer) {
-                        let trace = machine.cpu().dump_instruction_history();
-                        framework.gui.update_trace_state(trace);
+                        let trace = machine.cpu().dump_instruction_history_tokens();
+                        framework.gui.trace_viewer.set_content(trace);
                     }
 
                     // -- Update Call Stack window
@@ -1225,13 +1236,13 @@ fn main() {
 
                     // -- Update disassembly viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::DiassemblyViewer) {
-                        let start_addr_str = framework.gui.get_disassembly_view_address();
+                        let start_addr_str = framework.gui.disassembly_viewer.get_address();
 
                         // The expression evaluation could result in a segment:offset address or a flat address.
                         // The behavior of the viewer will differ slightly depending on whether we have segment:offset 
                         // information. Wrapping of segments can't be detected if the expression evaluates to a flat
                         // address.
-                        let start_addr = machine.cpu().eval_address(start_addr_str);
+                        let start_addr = machine.cpu().eval_address(&start_addr_str);
                         let start_addr_flat: u32 = match start_addr {
                             Some(i) => i.into(),
                             None => 0

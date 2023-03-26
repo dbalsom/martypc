@@ -92,7 +92,7 @@ pub enum ShiftMode {
     Reserved
 }
 
-impl<'a> VGACard<'a> {
+impl VGACard {
     /// Handle a write to one of the Graphics Position Registers.
     /// 
     /// According to IBM documentation, both these registers should be set to

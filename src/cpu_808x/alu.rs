@@ -4,7 +4,7 @@ use crate::cpu_common::alu::*;
 
 //use num_traits::PrimInt;
 
-impl<'a, 'b> Cpu<'a, 'b> {
+impl<'a> Cpu<'a> {
 
     #[inline(always)]
     fn set_parity_flag_from_u8(&mut self, operand: u8) {

@@ -6,73 +6,75 @@ use crate::videocard::{VideoCardState, VideoCardStateEntry};
 impl GuiState {
 
     pub fn draw_video_card_panel(ui: &mut egui::Ui, videocard_state: &VideoCardState) {
+
         egui::Grid::new("videocard_view1")
+        .num_columns(2)
+        .striped(true)
+        .min_col_width(50.0)
+        .show(ui, |ui| {       
+            let register_file = videocard_state.get("General");
+            match register_file {
+                Some(file) => {
+                    for register in file {   
+                        ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+
+                        match &register.1 {
+                            VideoCardStateEntry::String(str) => {
+                                ui.label(egui::RichText::new(str).text_style(egui::TextStyle::Monospace));
+                            },
+                            _=> {
+                                ui.label("unsupported entry type");
+                            }
+                        }
+
+                        ui.end_row();
+                    }
+                }
+                None => {}
+            }
+        });  
+
+
+        egui::Grid::new("videocard_view0")
         .num_columns(2)
         .striped(false)
         .show(ui, |ui| {
 
-            if videocard_state.contains_key("General") {
-                ui.horizontal(|ui| {
-                    egui::Grid::new("videocard_view0")
-                        .num_columns(2)
-                        .striped(true)
-                        .min_col_width(50.0)
-                        .show(ui, |ui| {                                    
-                        let register_file = videocard_state.get("General");
-                        match register_file {
-                            Some(file) => {
-                                for register in file {   
-                                    ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-
-                                    match &register.1 {
-                                        VideoCardStateEntry::String(str) => {
-                                            ui.label(egui::RichText::new(str).text_style(egui::TextStyle::Monospace));
-                                        },
-                                        _=> {
-                                            ui.label("unsupported entry type");
-                                        }
-                                    }
-                                    
-                                    ui.end_row();
-                                }
-                            }
-                            None => {}
-                        }
-                    });                   
-                });
-            }
-
-            ui.end_row();
             if videocard_state.contains_key("CRTC") {
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new("CRTC Registers").color(egui::Color32::LIGHT_BLUE));
-                    ui.horizontal(|ui| {
-                        ui.group(|ui| {
-                            egui::Grid::new("videocard_view2")
-                                .num_columns(2)
-                                .striped(true)
-                                .min_col_width(50.0)
-                                .show(ui, |ui| {                                    
-                                let register_file = videocard_state.get("CRTC");
-                                match register_file {
-                                    Some(file) => {
-                                        for register in file {   
-                                            ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
-                                            match &register.1 {
-                                                VideoCardStateEntry::String(str) => {
-                                                    ui.label(egui::RichText::new(str).text_style(egui::TextStyle::Monospace));
-                                                },
-                                                _=> {
-                                                    ui.label("unsupported entry type");
+                    CollapsingHeader::new("CRTC Registers")
+                    .default_open(true)
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.horizontal(|ui| {
+                                ui.group(|ui| {
+                                    egui::Grid::new("videocard_view2")
+                                        .num_columns(2)
+                                        .striped(true)
+                                        .min_col_width(50.0)
+                                        .show(ui, |ui| {                                    
+                                        let register_file = videocard_state.get("CRTC");
+                                        match register_file {
+                                            Some(file) => {
+                                                for register in file {   
+                                                    ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                    match &register.1 {
+                                                        VideoCardStateEntry::String(str) => {
+                                                            ui.label(egui::RichText::new(str).text_style(egui::TextStyle::Monospace));
+                                                        },
+                                                        _=> {
+                                                            ui.label("unsupported entry type");
+                                                        }
+                                                    }
+                                                    ui.end_row();
                                                 }
                                             }
-                                            ui.end_row();
+                                            None => {}
                                         }
-                                    }
-                                    None => {}
-                                }
+                                    });
+                                });                    
                             });
-                        });                    
+                        });
                     });
                 });
             }

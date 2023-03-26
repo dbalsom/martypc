@@ -71,7 +71,8 @@ pub struct RomPatch {
     desc: &'static str,
     checkpoint: u32,
     address: u32,
-    bytes: Vec<u8>
+    bytes: Vec<u8>,
+    patched: bool
 }
 
 #[derive (Clone)]
@@ -538,13 +539,15 @@ impl RomManager {
                             desc: "Patch ROS checksum routine",
                             checkpoint: 0xFE0AE,
                             address: 0xFE0D7,
-                            bytes: vec![0xEB, 0x00]
+                            bytes: vec![0xEB, 0x00],
+                            patched: false
                         },
                         RomPatch{
                             desc: "Patch RAM Check Routine for faster boot",
                             checkpoint: 0xFE46A,
                             address: 0xFE49D,
-                            bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90]
+                            bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90],
+                            patched: false
                         },                        
                     ],
                     checkpoints: HashMap::from([
@@ -650,19 +653,22 @@ impl RomManager {
                             desc: "Patch ROS checksum routine",
                             checkpoint: 0xFE0AC,
                             address: 0xFE0D5,
-                            bytes: vec![0xEB, 0x00]
+                            bytes: vec![0xEB, 0x00],
+                            patched: false
                         },
                         RomPatch{
                             desc: "Patch RAM Check Routine for faster boot",
                             checkpoint: 0xFE499,
                             address: 0xFE4EA,
-                            bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90]
+                            bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90],
+                            patched: false
                         },
                         RomPatch{
                             desc: "Patch out PIC IMR register test",
                             checkpoint: 0xFE000,
                             address: 0xFE36A,
-                            bytes: vec![0x90, 0x90]
+                            bytes: vec![0x90, 0x90],
+                            patched: false
                         }
                     ],  
                     checkpoints: HashMap::from([
@@ -1479,14 +1485,22 @@ impl RomManager {
         });        
     }
 
-    pub fn install_patches(&self, bus: &mut BusInterface) {
+    /// Install the patch at the specified patching checkpoint. Mark the patch as installed.
+    pub fn install_patch(&mut self, bus: &mut BusInterface, cp_address: u32) {
 
-        if let Some(rom_set) = self.rom_set_active.as_ref() {
+        let mut rom_str_vec = Vec::new();
+        if let Some(rom_set) = &self.rom_set_active {
             for rom_str in &rom_set.roms {
-                if let Some(rom_desc) = self.get_romdesc(rom_str) {
-                    log::debug!("Found {} patches for ROM {}", rom_desc.patches.len(), rom_str );
-                    for patch in &rom_desc.patches {
-                        
+                rom_str_vec.push(rom_str.clone());
+            }
+        }
+
+        for rom_str in &rom_str_vec {
+            if let Some(rom_desc) = self.get_romdesc_mut(rom_str) {
+                //log::debug!("Found {} patches for ROM {}", rom_desc.patches.len(), rom_str );
+                for patch in &mut rom_desc.patches {
+                    
+                    if !patch.patched && patch.checkpoint == cp_address {
                         match bus.patch_from(&patch.bytes, patch.address as usize) {
                             Ok(_) => {
                                 log::debug!("Installed patch '{}' at address {:06X}", patch.desc, patch.address);
@@ -1495,10 +1509,32 @@ impl RomManager {
                                 log::debug!("Error installing patch '{}' at address {:06X}; {}", patch.desc, patch.address, e);
                             }
                         }
+
+                        patch.patched = true;
                     }
                 }
             }
         }
+    }
+
+    /// Reset the installed flag for all patches associated with the active rom set.
+    /// Should be called when rebooting emulated machine so that patches can be re-applied after ROMs
+    /// are reloaded.
+    pub fn reset_patches(&mut self) {
+        let mut rom_str_vec = Vec::new();
+        if let Some(rom_set) = &self.rom_set_active {
+            for rom_str in &rom_set.roms {
+                rom_str_vec.push(rom_str.clone());
+            }
+        }
+
+        for rom_str in &rom_str_vec {
+            if let Some(rom_desc) = self.get_romdesc_mut(rom_str) {
+                for patch in &mut rom_desc.patches {
+                    patch.patched = false;
+                }
+            }
+        }   
     }
 
     pub fn is_patch_checkpoint(&self, address: u32) -> bool {

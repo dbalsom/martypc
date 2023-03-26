@@ -313,7 +313,7 @@ impl IoDevice for FloppyController {
         }        
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
         match port {
             FDC_DIGITAL_OUTPUT_REGISTER => {
                 self.handle_dor_write(data);

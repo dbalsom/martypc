@@ -1,7 +1,7 @@
 use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
 
-impl<'a, 'b> Cpu<'a, 'b> {
+impl<'a> Cpu<'a> {
 
     pub fn push_u8(&mut self, data: u8, flag: ReadWriteFlag) {
         

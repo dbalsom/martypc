@@ -38,7 +38,7 @@ use crate::{
     rom_manager::RomManager,
     serial::{self, SerialPortController},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
-
+    tracelogger::TraceLogger,
     videocard::{VideoCard, VideoCardState},
 };
 
@@ -144,14 +144,15 @@ impl ExecutionControl {
 }
 
 #[allow(dead_code)]
-pub struct Machine<'a, 'b> {
+pub struct Machine<'a> 
+{
     machine_type: MachineType,
     video_type: VideoType,
     sound_player: SoundPlayer,
     rom_manager: RomManager,
     floppy_manager: FloppyManager,
     //bus: BusInterface,
-    cpu: Cpu<'a, 'b>,
+    cpu: Cpu<'a>,
     //dma_controller: Rc<RefCell<dma::DMAController>>,
     //pit: Rc<RefCell<pit::Pit>>, 
     speaker_buf_producer: Producer<u8>,
@@ -171,11 +172,11 @@ pub struct Machine<'a, 'b> {
     //mouse: Mouse,
     kb_buf: VecDeque<u8>,
     error: bool,
-    error_str: String,
+    error_str: Option<String>,
     cpu_cycles: u64,
 }
 
-impl<'a, 'b> Machine<'a, 'b> {
+impl<'a> Machine<'a> {
     pub fn new(
         config: &ConfigFileParams,
         machine_type: MachineType,
@@ -185,7 +186,7 @@ impl<'a, 'b> Machine<'a, 'b> {
         sound_player: SoundPlayer,
         rom_manager: RomManager,
         floppy_manager: FloppyManager,
-        ) -> Machine<'a, 'b> 
+        ) -> Machine<'a> 
     {
 
 
@@ -245,20 +246,13 @@ impl<'a, 'b> Machine<'a, 'b> {
         log::trace!("Sample rate: {} pit_ticks_per_sample: {}", sample_rate, pit_ticks_per_sample);
 
         // Create the video trace file, if specified
-        let mut video_trace_file_option = None;
-        if let Some(filename) = &config.emulator.video_trace_file {
-            match File::create(filename) {
-                Ok(file) => {
-                    video_trace_file_option = Some(Box::new(BufWriter::new(file)));
-                },
-                Err(e) => {
-                    eprintln!("Couldn't create specified video tracelog file: {}", e);
-                }
-            }
+        let mut video_trace = TraceLogger::None;
+        if let Some(trace_filename) = &config.emulator.video_trace_file {
+            video_trace = TraceLogger::from_filename(&trace_filename);
         }
 
         // Install devices
-        cpu.bus_mut().install_devices(video_type, machine_desc, video_trace_file_option);
+        cpu.bus_mut().install_devices(video_type, machine_desc, video_trace);
 
         /*
         // Attach IO Device handlers
@@ -479,7 +473,7 @@ impl<'a, 'b> Machine<'a, 'b> {
             //mouse,
             kb_buf: VecDeque::new(),
             error: false,
-            error_str: String::new(),
+            error_str: None,
             cpu_cycles: 0,
         }
     }
@@ -496,7 +490,7 @@ impl<'a, 'b> Machine<'a, 'b> {
     //    self.cga.clone()
     //}
 
-    pub fn videocard(&mut self) -> &mut Option<&mut dyn VideoCard> {
+    pub fn videocard(&mut self) -> Option<Box<&mut dyn VideoCard>> {
         self.cpu.bus_mut().video_mut()
     }
 
@@ -504,11 +498,11 @@ impl<'a, 'b> Machine<'a, 'b> {
         &self.cpu
     }
 
-    pub fn fdc(&self) -> &mut FloppyController {
+    pub fn fdc(&mut self) -> &mut Option<FloppyController> {
         self.cpu.bus_mut().fdc_mut()
     }
 
-    pub fn hdc(&self) -> &mut Option<HardDiskController> {
+    pub fn hdc(&mut self) -> &mut Option<HardDiskController> {
         self.cpu.bus_mut().hdc_mut()
     }
 
@@ -523,7 +517,7 @@ impl<'a, 'b> Machine<'a, 'b> {
     /// Return the number of cycles the PIT has ticked.
     pub fn pit_cycles(&self) -> u64 {
         // Safe to unwrap pit as a PIT will always exist on any machine type
-        self.cpu.bus().pit().unwrap().get_cycles()
+        self.cpu.bus().pit().as_ref().unwrap().get_cycles()
     }
 
     /// Return the PIT's state as a PitDisplaySate struct. 
@@ -531,7 +525,7 @@ impl<'a, 'b> Machine<'a, 'b> {
     /// state variable's dirty flags.
     pub fn pit_state(&mut self) -> PitDisplayState {
         // Safe to unwrap pit as a PIT will always exist on any machine type
-        let mut pit = self.cpu.bus_mut().pit_mut().unwrap();
+        let pit = self.cpu.bus_mut().pit_mut().as_mut().unwrap();
         let pit_data = pit.get_display_state(true);
         pit_data
     }
@@ -542,11 +536,13 @@ impl<'a, 'b> Machine<'a, 'b> {
         a.iter().cloned().chain(b.iter().cloned()).collect()
     }
 
-    pub fn pic_state(&self) -> PicStringState {
-        self.cpu.bus_mut().pic_mut().get_string_state()
+    pub fn pic_state(&mut self) -> PicStringState {
+        // There will always be a primary PIC, so safe to unwrap.
+        // TODO: Handle secondary PIC if present.
+        self.cpu.bus_mut().pic_mut().as_mut().unwrap().get_string_state()
     }
 
-    pub fn ppi_state(&self) -> Option<PpiStringState> {
+    pub fn ppi_state(&mut self) -> Option<PpiStringState> {
 
         if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
             Some(ppi.get_string_state())
@@ -556,11 +552,13 @@ impl<'a, 'b> Machine<'a, 'b> {
         }
     }
 
-    pub fn dma_state(&self) -> DMAControllerStringState {
-        self.cpu.bus_mut().dma_mut().get_string_state()
+    pub fn dma_state(&mut self) -> DMAControllerStringState {
+        // There will always be a primary DMA, so safe to unwrap.
+        // TODO: Handle secondary DMA if present.
+        self.cpu.bus_mut().dma_mut().as_mut().unwrap().get_string_state()
     }
     
-    pub fn videocard_state(&self) -> Option<VideoCardState> {
+    pub fn videocard_state(&mut self) -> Option<VideoCardState> {
         if let Some(video_card) = self.cpu.bus_mut().video_mut() {
             // A video card is present
             Some(video_card.get_videocard_string_state())
@@ -572,11 +570,8 @@ impl<'a, 'b> Machine<'a, 'b> {
         
     }
 
-    pub fn get_error_str(&self) -> Option<&str> {
-        match self.error {
-            true => Some(&self.error_str),
-            false => None
-        }
+    pub fn get_error_str(&self) -> &Option<String> {
+        &self.error_str
     }
 
     pub fn key_press(&mut self, code: u8) {
@@ -588,8 +583,8 @@ impl<'a, 'b> Machine<'a, 'b> {
         self.kb_buf.push_back(code | 0x80);
     }
 
-    pub fn mouse(&self) -> & Option<Mouse> {
-        &self.cpu.bus().mouse()
+    pub fn mouse(&mut self) -> &Option<Mouse> {
+        &self.cpu.bus_mut().mouse_mut()
     }
 
     pub fn bridge_serial_port(&mut self, port_num: usize, port_name: String) {
@@ -610,6 +605,11 @@ impl<'a, 'b> Machine<'a, 'b> {
 
     pub fn reset(&mut self) {
 
+        // Clear any error state.
+        self.error = false;
+        self.error_str = None;
+
+        // Reset CPU.
         self.cpu.reset(CpuAddress::Segmented(0xFFFF, 0x0000));
 
         // Clear RAM
@@ -617,17 +617,11 @@ impl<'a, 'b> Machine<'a, 'b> {
 
         // Reload BIOS ROM images
         self.rom_manager.copy_into_memory(self.cpu.bus_mut());
+        // Clear patch installation status
+        self.rom_manager.reset_patches();
 
-        // Re-install ROM patches if any
-        //self.rom_manager.install_patches(&mut self.bus);
-
-        // Reset devices
-
+        // Reset all installed devices.
         self.cpu.bus_mut().reset_devices();
-
-        //self.pit.borrow_mut().reset();
-        //self.pic.borrow_mut().reset();
-        //self.video.borrow_mut().reset();
     }
 
     fn cycles_to_us(&self, cycles: u32) -> f64 {
@@ -645,7 +639,7 @@ impl<'a, 'b> Machine<'a, 'b> {
         if let ExecutionOperation::Reset = exec_control.peek_op() {
             _ = exec_control.get_op(); // Clear the reset operation
             self.reset();
-
+            exec_control.state = ExecutionState::Paused;
             return 0
         }
 
@@ -754,8 +748,8 @@ impl<'a, 'b> Machine<'a, 'b> {
 
                 // Check for patching checkpoint & install patches
                 if self.rom_manager.is_patch_checkpoint(flat_address) {
-                    log::trace!("ROM PATCH CHECKPOINT: Installing ROM patches");
-                    self.rom_manager.install_patches(self.cpu.bus_mut());
+                    log::trace!("ROM PATCH CHECKPOINT: [{:05X}] Installing ROM patches...", flat_address);
+                    self.rom_manager.install_patch(self.cpu.bus_mut(), flat_address);
                 }
             }
             
@@ -785,8 +779,8 @@ impl<'a, 'b> Machine<'a, 'b> {
                         exec_control.state = ExecutionState::Halted;
                     }
                     self.error = true;
-                    self.error_str = format!("{}", err);
-                    log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
+                    self.error_str = Some(format!("{}", err));
+                    log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
                     cpu_cycles = 0
                 } 
             }
@@ -839,8 +833,8 @@ impl<'a, 'b> Machine<'a, 'b> {
                                     exec_control.state = ExecutionState::Halted;
                                 }
                                 self.error = true;
-                                self.error_str = format!("{}", err);
-                                log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history());
+                                self.error_str = Some(format!("{}", err));
+                                log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
                                 cpu_cycles = 0
                             } 
                         }

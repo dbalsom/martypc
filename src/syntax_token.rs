@@ -32,6 +32,10 @@
 
 pub const TOKEN_MAX_AGE: u8 = 255;
 
+pub trait SyntaxTokenize {
+    fn tokenize(&self) -> Vec<SyntaxToken>;
+}
+
 #[derive(Clone)]
 pub enum SyntaxToken {
 

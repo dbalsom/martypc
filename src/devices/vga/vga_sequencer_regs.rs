@@ -72,7 +72,7 @@ pub enum DotClock {
     HalfClock,
 }
 
-impl<'a> VGACard<'a> {
+impl VGACard {
     /// Handle a write to the Sequencer Address register.
     /// 
     /// The value written to this register controls which regsiter will be written to

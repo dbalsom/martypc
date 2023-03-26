@@ -146,7 +146,7 @@ impl IoDevice for HardDiskController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
         match port {
             HDC_DATA_REGISTER => {
                 self.handle_data_register_write(data);
@@ -1362,13 +1362,13 @@ impl HardDiskController {
         }
         
         if self.send_dreq {
-            dma.request_dma_service(HDC_DMA);
+            dma.request_service(HDC_DMA);
             self.send_dreq = false;
             self.dreq_active = true;
         }
 
         if self.clear_dreq {
-            dma.clear_dma_service(HDC_DMA);
+            dma.clear_service(HDC_DMA);
             self.clear_dreq = false;
             self.dreq_active = false;
         }

@@ -297,7 +297,7 @@ impl Video {
         }
     }
 
-    pub fn draw(&self, frame: &mut [u8], video_card: &mut dyn VideoCard, bus: &BusInterface, composite: bool) {
+    pub fn draw(&self, frame: &mut [u8], video_card: Box<&dyn VideoCard>, bus: &BusInterface, composite: bool) {
 
         //let video_card = video.borrow();        
         let start_address = video_card.get_start_address() as usize;
@@ -1295,7 +1295,7 @@ pub fn resize_linear(src: &[u8], src_w: u32, src_h: u32, dst: &mut[u8], dst_w: u
 }
 
 
-pub fn draw_ega_lowres_gfx_mode(ega: &mut dyn VideoCard, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
+pub fn draw_ega_lowres_gfx_mode(ega: Box<&dyn VideoCard>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     for draw_y in 0..EGA_LORES_GFX_H {
 
@@ -1323,7 +1323,7 @@ pub fn draw_ega_lowres_gfx_mode(ega: &mut dyn VideoCard, frame: &mut [u8], frame
     }
 }
 
-pub fn draw_ega_hires_gfx_mode(ega: &mut dyn VideoCard, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
+pub fn draw_ega_hires_gfx_mode(ega: Box<&dyn VideoCard>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     for draw_y in 0..EGA_HIRES_GFX_H {
 
@@ -1350,7 +1350,7 @@ pub fn draw_ega_hires_gfx_mode(ega: &mut dyn VideoCard, frame: &mut [u8], frame_
     }
 }
 
-pub fn draw_vga_hires_gfx_mode(vga: &mut dyn VideoCard, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
+pub fn draw_vga_hires_gfx_mode(vga: Box<&dyn VideoCard>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     for draw_y in 0..VGA_HIRES_GFX_H {
 
@@ -1378,7 +1378,7 @@ pub fn draw_vga_hires_gfx_mode(vga: &mut dyn VideoCard, frame: &mut [u8], frame_
 /// Draw Video memory in VGA Mode 13h (320x200@256 colors)
 /// 
 /// This mode is actually 640x400, double-scanned horizontally and vertically
-pub fn draw_vga_mode13h(vga: &mut dyn VideoCard, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
+pub fn draw_vga_mode13h(vga: Box<&dyn VideoCard>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {
 
     for draw_y in 0..VGA_LORES_GFX_H {
 

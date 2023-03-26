@@ -36,7 +36,7 @@ pub enum FarPtr {
     Segment
 }
 
-impl<'a, 'b> Cpu<'a, 'b> {
+impl<'a> Cpu<'a> {
 
     fn is_register_mode(mode: AddressingMode) {
         match mode {

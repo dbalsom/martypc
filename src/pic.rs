@@ -120,7 +120,7 @@ impl IoDevice for Pic {
             _ => unreachable!("PIC: Bad port #")
         }        
     }
-    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface ) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface> ) {
         match port {
             PIC_COMMAND_PORT => {
                 self.handle_command_register_write(data);

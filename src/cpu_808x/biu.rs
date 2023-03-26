@@ -32,7 +32,7 @@ pub enum ReadWriteFlag {
     RNI
 }
 
-impl ByteQueue for Cpu<'_, '_> {
+impl ByteQueue for Cpu<'_> {
     fn seek(&mut self, _pos: usize) {
         // Instruction queue does not support seeking
     }
@@ -102,7 +102,7 @@ impl ByteQueue for Cpu<'_, '_> {
 }
 
 
-impl<'a, 'b> Cpu<'a, 'b> {
+impl<'a> Cpu<'a> {
 
     /// Read a byte from the instruction queue.
     /// Regardless of 8088 or 8086, the queue is read from one byte at a time.

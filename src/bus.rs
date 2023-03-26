@@ -20,12 +20,15 @@ use crate::ppi::*;
 use crate::serial::*;
 use crate::hdc::*;
 use crate::mouse::*;
+use crate::tracelogger::TraceLogger;
 use crate::videocard::{VideoCard, VideoCardDispatch};
 
 use crate::ega::EGACard;
 use crate::vga::VGACard;
 use crate::cga::*;
 use crate::memerror::MemError;
+
+pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from a unconnected IO address.
 
 const ADDRESS_SPACE: usize = 1_048_576;
 const DEFAULT_WAIT_STATES: u32 = 0;
@@ -99,11 +102,19 @@ pub enum IoDeviceDispatch {
 
 pub trait IoDevice {
     fn read_u8(&mut self, port: u16) -> u8;
-    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface);
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>);
     fn port_list(&self) -> Vec<u16>;
 }
 
-pub struct BusInterface<'b> {
+// Main bus struct.
+// Bus contains both the system memory and IO, and owns all connected devices.
+// This ownership heirachy allows us to avoid needing RefCells for devices.
+//
+// All devices are wrapped in Options. Some devices are actually optional, depending
+// on the machine type. 
+// But this allows us to 'disassociate' devices from the bus on io writes to allow
+// us to call them with bus as an argument.
+pub struct BusInterface {
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
@@ -115,19 +126,18 @@ pub struct BusInterface<'b> {
     io_map: HashMap<u16, IoDeviceType>,
     ppi: Option<Ppi>,
     pit: Option<Pit>,
-    dma1: DMAController,
+    dma1: Option<DMAController>,
     dma2: Option<DMAController>,
-    pic1: Pic,
+    pic1: Option<Pic>,
     pic2: Option<Pic>,
     serial: Option<SerialPortController>,
-    fdc: FloppyController,
+    fdc: Option<FloppyController>,
     hdc: Option<HardDiskController>,
     mouse: Option<Mouse>,
-    video: VideoCardDispatch<'b>,
-    video_ref: Option<&'b mut dyn VideoCard>
+    video: VideoCardDispatch,
 }
 
-impl<'b> ByteQueue for BusInterface<'b> {
+impl ByteQueue for BusInterface {
     fn seek(&mut self, pos: usize) {
         self.cursor = pos;
     }
@@ -210,7 +220,7 @@ impl<'b> ByteQueue for BusInterface<'b> {
     }      
 }
 
-impl<'b> Default for BusInterface<'b> {
+impl Default for BusInterface {
     fn default() -> Self {
         BusInterface {
             memory: vec![0; ADDRESS_SPACE],
@@ -224,22 +234,21 @@ impl<'b> Default for BusInterface<'b> {
             io_map: HashMap::new(),
             ppi: None,
             pit: None,
-            dma1: DMAController::new(),
+            dma1: None,
             dma2: None,
-            pic1: Pic::new(),
+            pic1: None,
             pic2: None,            
             serial: None,
-            fdc: FloppyController::new(),
+            fdc: None,
             hdc: None,
             mouse: None,
-            video: VideoCardDispatch::None,
-            video_ref: None
+            video: VideoCardDispatch::None
         }        
     }
 }
 
-impl<'b> BusInterface<'b> {
-    pub fn new() -> BusInterface<'b> {
+impl BusInterface {
+    pub fn new() -> BusInterface {
         BusInterface {
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
@@ -252,33 +261,20 @@ impl<'b> BusInterface<'b> {
             io_map: HashMap::new(),
             ppi: None,
             pit: None,
-            dma1: DMAController::new(),
+            dma1: None,
             dma2: None,
-            pic1: Pic::new(),
+            pic1: None,
             pic2: None,        
             serial: None,    
-            fdc: FloppyController::new(),
+            fdc: None,
             hdc: None,
             mouse: None,
             video: VideoCardDispatch::None,
-            video_ref: None
         }
     }
 
     pub fn size(&self) -> usize {
         self.memory.len()
-    }
-
-    pub fn get_ppi_mut(&mut self) -> &mut Option<Ppi> {
-        &mut self.ppi
-    }
-
-    pub fn get_dma_mut(&mut self) -> &mut DMAController {
-        &mut self.dma1
-    }
-
-    pub fn get_pic_mut(&mut self) -> &mut Pic {
-        &mut self.pic1
     }
 
     /// Register a memory-mapped device.
@@ -748,46 +744,68 @@ impl<'b> BusInterface<'b> {
         debug
     }
     
-    pub fn install_devices<TraceWriter: Write + 'b>(
+    pub fn install_devices(
         &mut self, 
         video_type: VideoType, 
         machine_desc: &MachineDescriptor, 
-        video_trace_writer: Option<TraceWriter>
+        video_trace: TraceLogger
     ) 
     {
 
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
-            let ppi = Ppi::new(machine_desc.machine_type, video_type, machine_desc.num_floppies);
+            self.ppi = Some(Ppi::new(machine_desc.machine_type, video_type, machine_desc.num_floppies));
             // Add PPI ports to io_map
-            self.io_map.extend(ppi.port_list().iter().map(|p| (*p, IoDeviceType::Ppi)));
-            self.ppi = Some(ppi);
+            let port_list = self.ppi.as_mut().unwrap().port_list();
+            self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ppi)));
         }
 
         // Create the PIT. One PIT will always exist.
-        self.pit = Some(Pit::new());
-        self.io_map.extend(self.pit.as_mut().unwrap().port_list().iter().map(|p| (*p, IoDeviceType::Pit)));
+        let mut pit = Pit::new();
+
+        // Add PIT ports to io_map
+        let port_list = pit.port_list();
+        self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Pit)));
+        
+        // Tie gates for pit channel 0 & 1 high. 
+        pit.set_channel_gate(0, true, self);
+        pit.set_channel_gate(1, true, self);
+        
+        self.pit = Some(pit);
 
         // Create DMA. One DMA controller will always exist.
-        self.dma1 = DMAController::new();
+        let dma1 = DMAController::new();
+        
         // Add DMA ports to io_map
-        self.io_map.extend(self.dma1.port_list().iter().map(|p| (*p, IoDeviceType::DmaPrimary)));
+        let port_list = dma1.port_list();
+        self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::DmaPrimary)));
+        self.dma1 = Some(dma1);
 
         // Create PIC. One PIC will always exist.
-        self.pic1 = Pic::new();
+        self.pic1 = Some(Pic::new());
         // Add PIC ports to io_map
-        self.io_map.extend(self.pic1.port_list().iter().map(|p| (*p, IoDeviceType::PicPrimary)));
+        let port_list = self.pic1.as_mut().unwrap().port_list();
+        self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::PicPrimary)));
 
         // Create video card depending on VideoType
         match video_type {
             VideoType::CGA => {
-                self.video = VideoCardDispatch::Cga(CGACard::new())
+                let cga = CGACard::new();
+                let port_list = cga.port_list();
+                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Cga)));
+                self.video = VideoCardDispatch::Cga(cga)
             }
             VideoType::EGA => {
-                self.video = VideoCardDispatch::Ega(EGACard::new())
+                let ega = EGACard::new();
+                let port_list = ega.port_list();
+                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ega)));
+                self.video = VideoCardDispatch::Ega(ega)
             }
             VideoType::VGA => {
-                self.video = VideoCardDispatch::Vga(VGACard::new(video_trace_writer))
+                let vga = VGACard::new(video_trace);
+                let port_list = vga.port_list();
+                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Vga)));                
+                self.video = VideoCardDispatch::Vga(vga)
             }
             _=> {
                 // MDA not implemented
@@ -799,12 +817,43 @@ impl<'b> BusInterface<'b> {
 
     pub fn run_devices(&mut self, us: f64, speaker_buf_producer: &mut Producer<u8>) {
 
+        // There will always be a PIC, so safe to unwrap.
+        let pic = self.pic1.as_mut().unwrap();
+
+        // There will always be a PIT, so safe to unwrap.
+        let mut pit = self.pit.take().unwrap();
+
+        // Run the PPI if present. PPI takes PIC to generate keyboard interrupts.
+        if let Some(ppi) = &mut self.ppi {
+            ppi.run(pic, us);
+        }
+
+        // Run the PIT. The PIT communicates with lots of things, so we send it the entire 
+        // bus.
+        pit.run(self, speaker_buf_producer, us);
+
+        // Put the PIT back.
+        self.pit = Some(pit);
+        
+        // Run the video device.
+        match &mut self.video {
+            VideoCardDispatch::Cga(cga) => {
+                cga.run(us);
+            },
+            VideoCardDispatch::Ega(ega) => {
+                ega.run(us);
+            }
+            VideoCardDispatch::Vga(vga) => {
+                vga.run(us);
+            }
+            VideoCardDispatch::None => {}
+        }
     }
 
     /// Call the reset methods for all devices on the bus
     pub fn reset_devices(&mut self) {
         self.pit.as_mut().unwrap().reset();
-        self.pic1.reset();
+        self.pic1.as_mut().unwrap().reset();
         //self.video.borrow_mut().reset();
     }
 
@@ -829,41 +878,77 @@ impl<'b> BusInterface<'b> {
                         ppi.read_u8(port)
                     }
                     else {
-                        0xFF
+                        NO_IO_BYTE
                     }
                 }
                 IoDeviceType::Pit => {
+                    // There will always be a PIT, so safe to unwrap
                     self.pit.as_mut().unwrap().read_u8(port)
                 }
                 IoDeviceType::DmaPrimary => {
-                    self.dma1.read_u8(port)
+                    // There will always be a primary DMA, so safe to unwrap                    
+                    self.dma1.as_mut().unwrap().read_u8(port)
                 }
                 IoDeviceType::DmaSecondary => {
-                    0xFF
+                    // Secondary DMA may not exist
+                    if let Some(dma2) = &mut self.dma2 {
+                        dma2.read_u8(port)
+                    }
+                    else {
+                        NO_IO_BYTE
+                    }
                 }
                 IoDeviceType::PicPrimary => {
-                    self.pic1.read_u8(port)
+                    // There will always be a primary PIC, so safe to unwrap
+                    self.pic1.as_mut().unwrap().read_u8(port)
                 }
                 IoDeviceType::PicSecondary => {
-                    0xFF
+                    // Secondary PIC may not exist
+                    if let Some(pic2) = &mut self.pic2 {
+                        pic2.read_u8(port)
+                    }
+                    else {
+                        NO_IO_BYTE
+                    }
                 }
-                IoDeviceType::Cga => {
-                    0xFF
+                IoDeviceType::FloppyController => {
+                    if let Some(fdc) = &mut self.fdc {
+                        fdc.read_u8(port)
+                    }                     
+                    else {
+                        NO_IO_BYTE
+                    }      
                 }
-                IoDeviceType::Ega => {
-                    0xFF
-                }
-                IoDeviceType::Vga => {
-                    0xFF
+                IoDeviceType::HardDiskController => {
+                    if let Some(hdc) = &mut self.hdc {
+                        hdc.read_u8(port)
+                    }
+                    else {
+                        NO_IO_BYTE
+                    }        
+                }                
+                IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
+                    match &mut self.video {
+                        VideoCardDispatch::Cga(cga) => {
+                            IoDevice::read_u8(cga, port)
+                        },
+                        VideoCardDispatch::Ega(ega) => {
+                            IoDevice::read_u8(ega, port)
+                        }
+                        VideoCardDispatch::Vga(vga) => {
+                            IoDevice::read_u8(vga, port)
+                        }
+                        VideoCardDispatch::None => NO_IO_BYTE
+                    }
                 }
                 _ => {
-                    0xFF
+                    NO_IO_BYTE
                 }
             }
         }
         else {
-            // Unhandled IO address reads return 0xFF
-            0xFF
+            // Unhandled IO address read
+            NO_IO_BYTE
         }
 
     }
@@ -883,26 +968,66 @@ impl<'b> BusInterface<'b> {
             match device_id {
                 IoDeviceType::Ppi => {
                     if let Some(mut ppi) = self.ppi.take() {
-                        ppi.write_u8(port, data, self);
+                        ppi.write_u8(port, data, Some(self));
                         self.ppi = Some(ppi);
                     }
                 }
                 IoDeviceType::Pit => {
                     if let Some(mut pit) = self.pit.take() {
-                        pit.write_u8(port, data, self);
+                        pit.write_u8(port, data, Some(self));
                         self.pit = Some(pit);
                     }
-
                 }
-                IoDeviceType::DmaPrimary => {}
-                IoDeviceType::DmaSecondary => {}
-                IoDeviceType::PicPrimary => {}
-                IoDeviceType::PicSecondary => {}
-                IoDeviceType::FloppyController => {}
-                IoDeviceType::HardDiskController => {}
-                IoDeviceType::Cga => {}
-                IoDeviceType::Ega => {}
-                IoDeviceType::Vga => {}
+                IoDeviceType::DmaPrimary => {
+                    if let Some(mut dma1) = self.dma1.take() {
+                        dma1.write_u8(port, data, Some(self));
+                        self.dma1 = Some(dma1);
+                    }
+                }
+                IoDeviceType::DmaSecondary => {
+                    if let Some(mut dma2) = self.dma2.take() {
+                        dma2.write_u8(port, data, Some(self));
+                        self.dma2 = Some(dma2);
+                    }                    
+                }
+                IoDeviceType::PicPrimary => {
+                    if let Some(mut pic1) = self.pic1.take() {
+                        pic1.write_u8(port, data, Some(self));
+                        self.pic1 = Some(pic1);
+                    }                    
+                }
+                IoDeviceType::PicSecondary => {
+                    if let Some(mut pic2) = self.pic2.take() {
+                        pic2.write_u8(port, data, Some(self));
+                        self.pic2 = Some(pic2);
+                    }                               
+                }
+                IoDeviceType::FloppyController => {
+                    if let Some(mut fdc) = self.fdc.take() {
+                        fdc.write_u8(port, data, Some(self));
+                        self.fdc = Some(fdc);
+                    }                           
+                }
+                IoDeviceType::HardDiskController => {
+                    if let Some(mut hdc) = self.hdc.take() {
+                        hdc.write_u8(port, data, Some(self));
+                        self.hdc = Some(hdc);
+                    }                            
+                }
+                IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
+                    match &mut self.video {
+                        VideoCardDispatch::Cga(cga) => {
+                            IoDevice::write_u8(cga, port, data, None)
+                        },
+                        VideoCardDispatch::Ega(ega) => {
+                            IoDevice::write_u8(ega, port, data, None)
+                        }
+                        VideoCardDispatch::Vga(vga) => {
+                            IoDevice::write_u8(vga, port, data, None)
+                        }
+                        VideoCardDispatch::None => {}
+                    }
+                }
                 _ => {}
             }
         }
@@ -918,7 +1043,7 @@ impl<'b> BusInterface<'b> {
         &mut self.pit
     }
 
-    pub fn pic_mut(&mut self) -> &mut Pic {
+    pub fn pic_mut(&mut self) -> &mut Option<Pic> {
         &mut self.pic1
     }
 
@@ -926,7 +1051,7 @@ impl<'b> BusInterface<'b> {
         &mut self.ppi
     }
 
-    pub fn dma_mut(&mut self) -> &mut DMAController {
+    pub fn dma_mut(&mut self) -> &mut Option<DMAController> {
         &mut self.dma1
     }
 
@@ -934,7 +1059,7 @@ impl<'b> BusInterface<'b> {
         &mut self.serial
     }
 
-    pub fn fdc_mut(&mut self) -> &mut FloppyController {
+    pub fn fdc_mut(&mut self) -> &mut Option<FloppyController> {
         &mut self.fdc
     }
 
@@ -942,27 +1067,43 @@ impl<'b> BusInterface<'b> {
         &mut self.hdc
     }    
 
-    pub fn mouse(&mut self) -> &Option<Mouse> {
-        &self.mouse
+    pub fn mouse_mut(&mut self) -> &Option<Mouse> {
+        &mut self.mouse
     }
 
-    pub fn video_mut(&mut self) -> &'b mut Option<&mut dyn VideoCard> {
+    pub fn video(&self) -> Option<Box<&dyn VideoCard>> {
+
+        match &self.video {
+            VideoCardDispatch::Cga(cga) => {
+                Some(Box::new(cga as &dyn VideoCard))
+            }
+            VideoCardDispatch::Ega(ega) => {
+                Some(Box::new(ega as &dyn VideoCard))
+            }
+            VideoCardDispatch::Vga(vga) => {
+                Some(Box::new(vga as &dyn VideoCard))
+            }
+            VideoCardDispatch::None => {
+                None
+            }
+        }
+    }
+
+    pub fn video_mut(&mut self) -> Option<Box<&mut dyn VideoCard>> {
 
         match &mut self.video {
             VideoCardDispatch::Cga(cga) => {
-                self.video_ref = Some(cga);
+                Some(Box::new(cga as &mut dyn VideoCard))
             }
             VideoCardDispatch::Ega(ega) => {
-                self.video_ref = Some(ega)
+                Some(Box::new(ega as &mut dyn VideoCard))
             }
             VideoCardDispatch::Vga(vga) => {
-                self.video_ref = Some(vga)
+                Some(Box::new(vga as &mut dyn VideoCard))
             }
             VideoCardDispatch::None => {
-                self.video_ref = None
+                None
             }
         }
-        &mut self.video_ref
     }
-
 }

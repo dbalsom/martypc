@@ -58,7 +58,7 @@ macro_rules! alu_op {
 }
 */
 
-impl<'a, 'b> Cpu<'a, 'b> {
+impl<'a> Cpu<'a> {
 
     pub fn execute_instruction(&mut self) -> ExecutionResult {
 

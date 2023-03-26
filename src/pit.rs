@@ -51,7 +51,9 @@ const PIT_ACCESS_MODE_MASK: u8    = 0b0011_0000;
 const PIT_OPERATING_MODE_MASK: u8 = 0b0000_1110;
 const PIT_BCD_MODE_MASK: u8       = 0b0000_0001;
 
+pub const PIT_FREQ: f64 = 1_193_182.0;
 pub const PIT_MHZ: f64 = 1.193182;
+pub const PIT_TICK_US: f64 = 1.0 / PIT_MHZ;
 pub const PIT_DIVISOR: f64 = 0.25;
 
 /*
@@ -77,7 +79,7 @@ macro_rules! dirty_update {
 */
 
 #[derive(Debug, PartialEq)]
-enum ChannelMode {
+pub enum ChannelMode {
     InterruptOnTerminalCount,
     HardwareRetriggerableOneShot,
     RateGenerator,
@@ -110,8 +112,15 @@ pub enum PitType {
 }
 
 #[derive(Debug, PartialEq, BitfieldSpecifier)]
-enum RwMode {
+enum RwModeField {
     LatchCommand,
+    Lsb,
+    Msb,
+    LsbMsb
+}
+
+#[derive(Debug, PartialEq)]
+pub enum RwMode {
     Lsb,
     Msb,
     LsbMsb
@@ -121,12 +130,12 @@ enum RwMode {
 pub struct ControlByte {
     bcd: bool,
     channel_mode: B3,
-    rw_mode: RwMode,
+    rw_mode: RwModeField,
     channel: B2
 }
 
 #[derive(Debug, PartialEq)]
-enum ChannelState {
+pub enum ChannelState {
     WaitingForReload,
     WaitingForGate,
     WaitingForLoadCycle,
@@ -152,7 +161,7 @@ enum LoadType {
 }
 
 #[derive(Debug, PartialEq)]
-enum ReadState {
+pub enum ReadState {
     Unlatched,
     Latched,
     ReadLsb,
@@ -232,12 +241,13 @@ impl IoDevice for ProgrammableIntervalTimer {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+        // PIT will always receive a reference to bus, so it is safe to unwrap.
         match port {
-            PIT_COMMAND_REGISTER => self.control_register_write(data, bus),
-            PIT_CHANNEL_0_DATA_PORT => self.data_write(0, data, bus),
-            PIT_CHANNEL_1_DATA_PORT => self.data_write(1, data, bus),
-            PIT_CHANNEL_2_DATA_PORT => self.data_write(2, data, bus),
+            PIT_COMMAND_REGISTER => self.control_register_write(data, bus.unwrap()),
+            PIT_CHANNEL_0_DATA_PORT => self.data_write(0, data, bus.unwrap()),
+            PIT_CHANNEL_1_DATA_PORT => self.data_write(1, data, bus.unwrap()),
+            PIT_CHANNEL_2_DATA_PORT => self.data_write(2, data, bus.unwrap()),
             _ => panic!("PIT: Bad port #")
         }
     }
@@ -304,7 +314,7 @@ impl Channel {
         //self.load_mask = 0xFFFF;
 
         log::debug!(
-            "PIT: Channel {} selected, rw mode {:?}, channel_mode {:?}, bcd: {:?}", 
+            "PIT: Channel {} selected, channel_mode {:?}, rw mode {:?}, bcd: {:?}", 
             self.c,
             mode,
             rw_mode,
@@ -342,9 +352,12 @@ impl Channel {
             }
         }
 
+        // Set the new mode.
+        self.mode.update(mode);
+
         // Setting any mode stops counter.
         self.change_channel_state(ChannelState::WaitingForReload);
-
+        
         self.load_state = LoadState::WaitingForLsb;
         self.load_type = LoadType::InitialLoad;
 
@@ -360,12 +373,13 @@ impl Channel {
             self.output.set(state);
             // Do things specific to channel #
             match (self.c, state) {
-                (0, true) => bus.get_pic_mut().request_interrupt(0),
-                (0, false) => bus.get_pic_mut().clear_interrupt(0),
+                (0, true) => bus.pic_mut().as_mut().unwrap().request_interrupt(0),
+                (0, false) => bus.pic_mut().as_mut().unwrap().clear_interrupt(0),
                 (1, true) => {
-                    let dma = bus.get_dma_mut();
-                    
-                    dma.do_dma_read_u8(bus, 0);
+                    let dma = bus.dma_mut().as_mut().unwrap();
+                    // Channel 1 is dedicated to sending DREQ0 signals to the DMA controller 
+                    // to perform DRAM refresh.
+                    dma.request_service(0);
                 },
                 (1, false) => {},
                 (2, true) => {},
@@ -444,6 +458,8 @@ impl Channel {
                 }
             }
         }
+
+        self.gate.update(new_state);
     }
 
     pub fn read_byte(&mut self) -> u8 {
@@ -813,8 +829,9 @@ impl ProgrammableIntervalTimer {
         command_byte & PIT_ACCESS_MODE_MASK == 0
     }
 
-    fn get_pit_cycles(cpu_cycles: u32) -> f64 {
-        cpu_cycles as f64 * PIT_DIVISOR
+    /// Return the number of PIT cycles that elapsed for the provided microsecond period.
+    fn get_pit_cycles(us: f64) -> f64 {
+        us / PIT_TICK_US
     }
 
     fn control_register_write(&mut self, byte: u8, bus: &mut BusInterface) {
@@ -824,7 +841,7 @@ impl ProgrammableIntervalTimer {
         let c = control_reg.channel() as usize;
         let channel = &mut self.channels[c];
 
-        if let RwMode::LatchCommand = control_reg.rw_mode() {
+        if let RwModeField::LatchCommand = control_reg.rw_mode() {
             // All 0's access mode indicates a Latch Count Value command
             // Not an access mode itself, we now latch the current value of the channel until it is read
             // or a command byte is received
@@ -833,7 +850,16 @@ impl ProgrammableIntervalTimer {
             return
         }
 
-        channel.set_mode(control_reg.channel_mode().into(), control_reg.rw_mode(), control_reg.bcd(), bus);
+        // Convert rw_mode_field enum to rw_mode enum (drops latch command as possibile variant, as we 
+        // handled it above)
+        let rw_mode = match control_reg.rw_mode() {
+            RwModeField::Lsb => RwMode::Lsb,
+            RwModeField::Msb => RwMode::Msb,
+            RwModeField::LsbMsb => RwMode::LsbMsb,
+            _ => RwMode::Lsb
+        };
+
+        channel.set_mode(control_reg.channel_mode().into(), rw_mode, control_reg.bcd(), bus);
 
     }
 
@@ -861,36 +887,20 @@ impl ProgrammableIntervalTimer {
         &mut self, 
         bus: &mut BusInterface, 
         buffer_producer: &mut ringbuf::Producer<u8>,
-        cpu_cycles: u32 ) {
+        us: f64 ) {
 
-        let mut pit_cycles = Pit::get_pit_cycles(cpu_cycles);
-        //let pit_cycles_remainder = pit_cycles.fract();
-//
-        //// Add up fractional cycles until we can make a whole one. 
-        //// Attempts to compensate for clock drift because of unaccounted fractional cycles
-        //self.cycle_accumulator += pit_cycles_remainder;
-        //
-        //// If we have enough cycles, drain them out of accumulator into cycle count
-        //while self.cycle_accumulator > 1.0 {
-        //    pit_cycles += 1.0;
-        //    self.cycle_accumulator -= 1.0;
-        //}
-//
-        //let pit_cycles_int = pit_cycles as u32;
-//
-        ////log::trace!("pit cycles: {}", pit_cycles_int );
-        //for _ in 0..pit_cycles_int {
-        //    // Each tick, the state of PIT Channel #2 is pushed into the ringbuf
-        //    self.tick(bus, pic, dma, ppi, buffer_producer);
-        //}
+        let mut pit_cycles = Pit::get_pit_cycles(us);
+        //log::debug!("Got {:?} pit cycles", pit_cycles);
 
+        // Add up fractional cycles until we can make a whole one. 
         self.cycle_accumulator += pit_cycles;
         while self.cycle_accumulator > 1.0 {
+            // We have one or more full PIT cycles. Drain the cycle accumulator
+            // by ticking the PIT until the accumulator drops below 1.0.
             pit_cycles += 1.0;
             self.cycle_accumulator -= 1.0;
             self.tick(bus, buffer_producer);
-        }
-        
+        }        
     }
 
     pub fn get_cycles(&self) -> u64 {
@@ -963,38 +973,38 @@ impl ProgrammableIntervalTimer {
             channel_map.insert(
                 "Access Mode:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].rw_mode), self.channels[i].rw_mode.is_dirty(), 0
+                    format!("{:?}", *self.channels[i].rw_mode), self.channels[i].rw_mode.is_dirty(), 0
                 )
         
             );
             channel_map.insert(
                 "Channel Mode:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].mode), self.channels[i].mode.is_dirty(), 0
+                    format!("{:?}", *self.channels[i].mode), self.channels[i].mode.is_dirty(), 0
                 )
             );
             channel_map.insert(
                 "Counting Element:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].counting_element), self.channels[i].counting_element.is_dirty(), 0
+                    format!("{:?}", *self.channels[i].counting_element), self.channels[i].counting_element.is_dirty(), 0
                 )
             );
             channel_map.insert(
                 "Reload Register:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].count_register), self.channels[i].count_register.is_dirty(), 0
+                    format!("{:?}", *self.channels[i].count_register), self.channels[i].count_register.is_dirty(), 0
                 )
             );
             channel_map.insert(
                 "Output Signal:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].output), self.channels[i].output.is_dirty(), 0
+                    format!("{:?}", *self.channels[i].output), self.channels[i].output.is_dirty(), 0
                 )
             );
             channel_map.insert(
                 "Gate Status:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].gate), self.channels[i].gate.is_dirty(), 0
+                    format!("{:?}", *self.channels[i].gate), self.channels[i].gate.is_dirty(), 0
                 )
             );
 

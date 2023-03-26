@@ -408,7 +408,7 @@ impl IoDevice for EGACard {
             }
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>) {
         match port {
             MISC_OUTPUT_REGISTER => {
                 self.write_external_misc_output_register(data);
@@ -1275,6 +1275,11 @@ impl VideoCard for EGACard {
         map
     }
 
+    fn run(&mut self, us: f64) {
+
+    }
+
+    /*
     fn run(&mut self, cpu_cycles: u32) {
 
         self.frame_cycles += cpu_cycles as f32;
@@ -1329,6 +1334,7 @@ impl VideoCard for EGACard {
         // Are we in VBLANK interval?
         //self.in_vblank = self.frame_cycles > self.timings[ti].vblank_start;
     }    
+    */
 
     fn reset(&mut self) {
         self.reset_private();

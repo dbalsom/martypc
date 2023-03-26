@@ -45,6 +45,7 @@ mod disassembly_viewer;
 mod videocard_viewer;
 mod memory_viewer;
 mod pit_viewer;
+mod instruction_trace_viewer;
 
 use crate::{
 
@@ -55,6 +56,7 @@ use crate::{
     egui::memory_viewer::MemoryViewerControl,
     egui::disassembly_viewer::DisassemblyControl,
     egui::pit_viewer::PitViewerControl,
+    egui::instruction_trace_viewer::InstructionTraceControl,
 
     machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
@@ -182,7 +184,8 @@ pub(crate) struct GuiState {
     disassembly_viewer_string: String,
     disassembly_viewer_address: String,
     pub disassembly_viewer: DisassemblyControl,
-    
+    pub trace_viewer: InstructionTraceControl,
+
     trace_string: String,
     call_stack_string: String,
 
@@ -432,6 +435,7 @@ impl GuiState {
             disassembly_viewer_string: String::new(),
             disassembly_viewer_address: "cs:ip".to_string(),
             disassembly_viewer: DisassemblyControl::new(),
+            trace_viewer: InstructionTraceControl::new(),
             trace_string: String::new(),
             call_stack_string: String::new(),
 
@@ -464,9 +468,14 @@ impl GuiState {
         }
     }
 
-    pub fn show_error(&mut self, err_str: &str) {
+    pub fn show_error(&mut self, err_str: &String) {
         self.error_dialog_open = true;
-        self.error_string = err_str.to_string();
+        self.error_string = err_str.clone();
+    }
+
+    pub fn clear_error(&mut self) {
+        self.error_dialog_open = false;
+        self.error_string = String::new();
     }
 
     pub fn set_floppy_names(&mut self, names: Vec<OsString>) {
@@ -529,10 +538,6 @@ impl GuiState {
 
     pub fn update_pit_state(&mut self, state: &PitDisplayState) {
         self.pit_viewer.update_state(state);
-    }
-
-    pub fn update_trace_state(&mut self, trace_string: String) {
-        self.trace_string = trace_string;
     }
 
     pub fn update_call_stack_state(&mut self, call_stack_string: String) {
@@ -771,15 +776,8 @@ impl GuiState {
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
-
-                ui.horizontal(|ui| {
-                    ui.add_sized(ui.available_size(), 
-                        egui::TextEdit::multiline(&mut self.trace_string)
-                            .font(egui::TextStyle::Monospace));
-                    ui.end_row()
-                });
+                self.trace_viewer.draw(ui, &mut self.event_queue);
             });       
-
 
         egui::Window::new("Call Stack")
             .open(self.window_open_flags.get_mut(&GuiWindow::CallStack).unwrap())

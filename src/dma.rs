@@ -200,7 +200,7 @@ impl IoDevice for DMAController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: &mut BusInterface) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
 
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {
@@ -620,14 +620,14 @@ impl DMAController {
 
     /// Request DMA Serivce 
     /// Equivalent to setting the DREQ line high for the given DMA channel
-    pub fn request_dma_service(&mut self, channel: usize) {
+    pub fn request_service(&mut self, channel: usize) {
 
         self.request_reg |= 0x01 << channel;
     }
 
     /// Clear DMA Service 
     /// Equivlaent to de-asserting the DREQ line for the given DMA channel
-    pub fn clear_dma_service(&mut self, channel: usize ) {
+    pub fn clear_service(&mut self, channel: usize ) {
 
         self.request_reg &= !(0x01 << channel);
     }

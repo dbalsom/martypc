@@ -36,7 +36,7 @@ macro_rules! get_rand_range {
     }
 }
 
-impl<'a, 'b> Cpu<'a, 'b> {
+impl<'a> Cpu<'a> {
 
     pub fn randomize_seed(&mut self, mut seed: u64) {
         if seed == 0 {

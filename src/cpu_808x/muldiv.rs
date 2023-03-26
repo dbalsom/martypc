@@ -318,7 +318,7 @@ macro_rules! impl_cor_negate {
 impl_cor_negate!(u8);
 impl_cor_negate!(u16);
 
-impl<'a, 'b> Cpu<'a, 'b> {
+impl<'a> Cpu<'a> {
 
     #[allow (dead_code)]
     #[allow(unused_assignments)] // This isn't pretty but we are trying to mirror the microcode

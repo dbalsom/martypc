@@ -41,11 +41,11 @@ use crate::cga::CGACard;
 // This enum holds variants that hold the various implementors of the VideoCard trait.
 // This is used for enum dispatch, to avoid overhead of dynamic dispatch when calling
 // video card methods.
-pub enum VideoCardDispatch<'a> {
+pub enum VideoCardDispatch {
     None,
     Cga(CGACard),
     Ega(EGACard),
-    Vga(VGACard<'a>),
+    Vga(VGACard),
 }
 
 use std::collections::HashMap;
@@ -183,7 +183,7 @@ pub trait VideoCard {
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
     /// Runs the video card device for the specified period of time
-    fn run(&mut self, cpu_cycles: u32);
+    fn run(&mut self, us: f64);
 
     /// Reset the video card
     fn reset(&mut self);
