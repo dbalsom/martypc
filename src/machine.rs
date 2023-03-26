@@ -890,19 +890,16 @@ impl<'a> Machine<'a> {
         let mut kb_byte_opt: Option<u8> = None;
         if self.kb_buf.len() > 0 && !*kb_event_processed {
 
-            let kb_byte_opt = self.kb_buf.pop_front();
-
-            if let Some(kb_byte) = kb_byte_opt {
-                //self.ppi.borrow_mut().send_keyboard(kb_byte);
-                //self.pic.borrow_mut().request_interrupt(1);
+            kb_byte_opt = self.kb_buf.pop_front();
+            if kb_byte_opt.is_some() {
+                *kb_event_processed = true;
             }
-            *kb_event_processed = true;
         }
 
         // Run devices.
         // We send the IO bus the elapsed time in us, and a mutable reference to the PIT channel #2 ring buffer
         // so that we can collect output from the timer.
-        self.cpu.bus_mut().run_devices(us, &mut self.speaker_buf_producer);
+        self.cpu.bus_mut().run_devices(us, kb_byte_opt, &mut self.speaker_buf_producer);
 
         // Sample the PIT channel
         self.pit_ticks += cpu_cycles as f64;

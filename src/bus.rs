@@ -831,7 +831,18 @@ impl BusInterface {
     
     }
 
-    pub fn run_devices(&mut self, us: f64, speaker_buf_producer: &mut Producer<u8>) {
+    pub fn run_devices(&mut self, us: f64, kb_byte_opt: Option<u8>, speaker_buf_producer: &mut Producer<u8>) {
+
+        // Send keyboard events to devices.
+        if let Some(kb_byte) = kb_byte_opt {
+            log::debug!("Got keyboard byte: {:02X}", kb_byte);
+            if let Some(ppi) = &mut self.ppi {
+                ppi.send_keyboard(kb_byte);
+            }
+            if let Some(pic) = &mut self.pic1 {
+                pic.request_interrupt(1);
+            }
+        }
 
         // There will always be a PIC, so safe to unwrap.
         let pic = self.pic1.as_mut().unwrap();
