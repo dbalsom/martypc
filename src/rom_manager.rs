@@ -723,7 +723,40 @@ impl RomManager {
                 }
             ),
             (
-                "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA Card ROM
+                // IBM EGA Card ROM (86box Normal Order)
+                // ibm_6277356_ega_card_u44_27128.bin
+                "528455ed0b701722c166c6536ba4ff46",
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: Some(RomFeature::EGA),
+                    order: RomOrder::Normal,  
+                    interleave: RomInterleave::None,                  
+                    optional: true,
+                    priority: 1,
+                    address: 0xC0000,
+                    offset: 0,
+                    size: 16384,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::from([
+                        (0xC0003, "EGA Expansion Init"),
+                        (0xC009B, "EGA DIP Switch Sense"),
+                        (0xC0205, "EGA CD Presence Test"),
+                        (0xC037C, "EGA VBlank Bit Test"),
+                        (0xC0D20, "EGA Error Beep"),
+                        (0xC03F6, "EGA Diagnostic Dot Test"),
+                        (0xC0480, "EGA Mem Test"),
+                        (0xC068F, "EGA How Big Test")
+                    ])         
+                }
+            ),            
+            (
+                // IBM EGA Card ROM (Reversed)
+                // ibm_6277356_ega_card_u44_27128.bin
+                "0636f46316f3e15cb287ce3da6ba43a1",
                 RomDescriptor {
                     rom_type: RomType::BIOS,
                     present: false,
