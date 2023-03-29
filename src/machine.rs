@@ -567,7 +567,6 @@ impl<'a> Machine<'a> {
             // no video card
             None
         }
-        
     }
 
     pub fn get_error_str(&self) -> &Option<String> {
@@ -583,8 +582,8 @@ impl<'a> Machine<'a> {
         self.kb_buf.push_back(code | 0x80);
     }
 
-    pub fn mouse(&mut self) -> &Option<Mouse> {
-        &self.cpu.bus_mut().mouse_mut()
+    pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
+        self.cpu.bus_mut().mouse_mut()
     }
 
     pub fn bridge_serial_port(&mut self, port_num: usize, port_name: String) {

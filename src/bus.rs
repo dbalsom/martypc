@@ -760,8 +760,8 @@ impl BusInterface {
             self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ppi)));
         }
 
-        // Create the PIT. One PIT will always exist.
-        let mut pit = Pit::new();
+        // Create the PIT. One PIT will always exist. Pick the device type from MachineDesc.
+        let mut pit = Pit::new(machine_desc.pit_type);
 
         // Add PIT ports to io_map
         let port_list = pit.port_list();
@@ -803,6 +803,17 @@ impl BusInterface {
         self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::HardDiskController)));
         self.hdc = Some(hdc);   
 
+        // Create serial port.
+        let serial = SerialPortController::new();
+        // Add Serial Controller ports to io_map
+        let port_list = serial.port_list();
+        self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Serial)));
+        self.serial = Some(serial);
+
+        // Create mouse.
+        let mouse = Mouse::new();
+        self.mouse = Some(mouse);
+
         // Create video card depending on VideoType
         match video_type {
             VideoType::CGA => {
@@ -835,7 +846,7 @@ impl BusInterface {
 
         // Send keyboard events to devices.
         if let Some(kb_byte) = kb_byte_opt {
-            log::debug!("Got keyboard byte: {:02X}", kb_byte);
+            //log::debug!("Got keyboard byte: {:02X}", kb_byte);
             if let Some(ppi) = &mut self.ppi {
                 ppi.send_keyboard(kb_byte);
             }
@@ -880,6 +891,15 @@ impl BusInterface {
 
         // Replace the DMA controller.
         self.dma1 = Some(dma1);
+
+        // Run the serial port and mouse.
+        if let Some(serial) = &mut self.serial {
+            serial.run(&mut self.pic1.as_mut().unwrap(), us);
+
+            if let Some(mouse) = &mut self.mouse {
+                mouse.run(serial, us);
+            }            
+        }
 
         // Run the video device.
         match &mut self.video {
@@ -1113,7 +1133,7 @@ impl BusInterface {
         &mut self.hdc
     }    
 
-    pub fn mouse_mut(&mut self) -> &Option<Mouse> {
+    pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
         &mut self.mouse
     }
 

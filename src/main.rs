@@ -774,7 +774,7 @@ fn main() {
                     //    }
                     //}
 
-                    if let Some(mouse) = machine.mouse() {
+                    if let Some(mouse) = machine.mouse_mut() {
                         // Send any pending mouse update to machine if mouse is captured
                         if mouse_data.is_captured && mouse_data.have_update {
                             mouse.update(
