@@ -24,7 +24,6 @@
 
 */
 
-#![allow(dead_code)]
 
 use log;
 
@@ -97,7 +96,8 @@ impl From<u8> for ChannelMode {
             0x1 => return ChannelMode::HardwareRetriggerableOneShot,
             0x2 => return ChannelMode::RateGenerator,
             0x3 => return ChannelMode::SquareWaveGenerator,
-            0x5 => return ChannelMode::HardwareRetriggerableOneShot,
+            0x4 => return ChannelMode::SoftwareTriggeredStrobe,
+            0x5 => return ChannelMode::HardwareTriggeredStrobe,
             0x6 => return ChannelMode::RateGenerator,
             0x7 => return ChannelMode::SquareWaveGenerator,
             _ => panic!("From<u8> for ChannelMode: Invalid u8 value"),
@@ -105,7 +105,7 @@ impl From<u8> for ChannelMode {
     }
 }
 
-#[derive(Debug, PartialEq, BitfieldSpecifier)]
+#[derive(Debug, Copy, Clone, PartialEq, BitfieldSpecifier)]
 pub enum PitType {
     Model8253,
     Model8254
@@ -204,6 +204,7 @@ pub struct Channel {
     reload_next_cycle: bool,
 }
 pub struct ProgrammableIntervalTimer {
+    ptype: PitType,
     pit_cycles: u64,
     cycle_accumulator: f64,
     channels: Vec<Channel>,
@@ -354,10 +355,12 @@ impl Channel {
 
         // Set the new mode.
         self.mode.update(mode);
+        self.rw_mode.update(rw_mode);
+        self.bcd_mode = bcd;
 
         // Setting any mode stops counter.
         self.change_channel_state(ChannelState::WaitingForReload);
-        
+        self.read_state = ReadState::Unlatched;
         self.load_state = LoadState::WaitingForLsb;
         self.load_type = LoadType::InitialLoad;
 
@@ -713,6 +716,7 @@ impl Channel {
                     }
                 }
                 ChannelMode::SquareWaveGenerator => {
+
                     // Gate controls counting.
                     if *self.gate {
                         if (*self.count_register & 1) == 0 {
@@ -797,7 +801,7 @@ impl Channel {
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new() -> Self {
+    pub fn new(ptype: PitType) -> Self {
         /*
             The Intel documentation says: 
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -807,9 +811,10 @@ impl ProgrammableIntervalTimer {
         */
         let mut vec = Vec::<Channel>::new();
         for i in 0..3 {
-            vec.push(Channel::new(i, PitType::Model8253));
+            vec.push(Channel::new(i, ptype));
         }
         Self {
+            ptype,
             pit_cycles: 0,
             cycle_accumulator: 0.0,
             channels: vec
@@ -847,6 +852,20 @@ impl ProgrammableIntervalTimer {
         let control_reg = ControlByte::from_bytes([byte]);
 
         let c = control_reg.channel() as usize;
+
+        if c > 2 {
+            // This is a read-back command.
+            match self.ptype {
+                PitType::Model8253 => {
+                    // Readback command not supported. Do nothing.
+                }
+                PitType::Model8254 => {
+                    // Do readback command here and return.
+                }
+            }
+            return
+        }
+
         let channel = &mut self.channels[c];
 
         if let RwModeField::LatchCommand = control_reg.rw_mode() {
@@ -864,7 +883,7 @@ impl ProgrammableIntervalTimer {
             RwModeField::Lsb => RwMode::Lsb,
             RwModeField::Msb => RwMode::Msb,
             RwModeField::LsbMsb => RwMode::LsbMsb,
-            _ => RwMode::Lsb
+            _ => unreachable!("Invalid rw_mode")
         };
 
         channel.set_mode(control_reg.channel_mode().into(), rw_mode, control_reg.bcd(), bus);
@@ -926,8 +945,18 @@ impl ProgrammableIntervalTimer {
     {
         self.pit_cycles += 1;
 
-        for c in self.channels.iter_mut() {
-            c.tick(bus, buffer_producer)
+        // Get timer channel 2 state from ppi.
+        if let Some(ppi) = bus.ppi_mut() {
+            self.channels[2].set_gate(ppi.get_pit_channel2_gate(), bus);
+        }
+
+        for (i, c) in self.channels.iter_mut().enumerate() {
+            c.tick(bus, buffer_producer);
+
+            if i == 2 {
+
+                _ = buffer_producer.push(*c.output as u8);
+            }
         }
     }
 
@@ -979,11 +1008,10 @@ impl ProgrammableIntervalTimer {
             let mut channel_map = BTreeMap::<&str, SyntaxToken>::new();
 
             channel_map.insert(
-                "Access Mode:", 
+                "Rw Mode:", 
                 SyntaxToken::StateString(
                     format!("{:?}", *self.channels[i].rw_mode), self.channels[i].rw_mode.is_dirty(), 0
                 )
-        
             );
             channel_map.insert(
                 "Channel Mode:", 
@@ -998,9 +1026,15 @@ impl ProgrammableIntervalTimer {
                 )
             );
             channel_map.insert(
-                "Reload Register:", 
+                "Count Register:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", *self.channels[i].count_register), self.channels[i].count_register.is_dirty(), 0
+                    format!(
+                        "{:?} [{:04X}]",
+                        *self.channels[i].count_register,
+                        *self.channels[i].count_register,
+                    ), 
+                    self.channels[i].count_register.is_dirty(), 
+                    0
                 )
             );
             channel_map.insert(

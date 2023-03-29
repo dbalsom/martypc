@@ -416,6 +416,10 @@ impl Ppi {
         self.pb_byte & PORTB_SPEAKER_DATA != 0
     }
 
+    pub fn get_pit_channel2_gate(&mut self) -> bool {
+        self.pb_byte & PORTB_TIMER2_GATE != 0
+    }
+
     pub fn set_pit_output_bit(&mut self, signal: bool) {
         self.timer_in = signal;
     }
