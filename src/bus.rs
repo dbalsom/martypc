@@ -23,12 +23,13 @@ use crate::mouse::*;
 use crate::tracelogger::TraceLogger;
 use crate::videocard::{VideoCard, VideoCardDispatch};
 
-use crate::ega::EGACard;
-use crate::vga::VGACard;
+use crate::ega::{self, EGACard};
+use crate::vga::{self, VGACard};
 use crate::cga::*;
 use crate::memerror::MemError;
 
 pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from a unconnected IO address.
+pub const FLOATING_BUS_BYTE: u8 = 0x00; // This is the byte read from an unmapped memory address.
 
 const ADDRESS_SPACE: usize = 1_048_576;
 const DEFAULT_WAIT_STATES: u32 = 0;
@@ -100,10 +101,24 @@ pub enum IoDeviceDispatch {
     Dynamic(Box<dyn IoDevice + 'static>)
 }
 
+
 pub trait IoDevice {
     fn read_u8(&mut self, port: u16) -> u8;
     fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>);
     fn port_list(&self) -> Vec<u16>;
+}
+
+pub struct MmioData {
+    first_map: usize,
+    last_map: usize
+}
+impl MmioData {
+    fn new() -> Self {
+        Self {
+            first_map: 0xFFFFF,
+            last_map: 0x00000
+        }
+    }
 }
 
 // Main bus struct.
@@ -118,9 +133,8 @@ pub struct BusInterface {
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
-    map: Vec<(MemRangeDescriptor, Rc<RefCell<dyn MemoryMappedDevice>>)>,
-    first_map: usize,
-    last_map: usize,
+    mmio_map: Vec<(MemRangeDescriptor, IoDeviceType)>,
+    mmio_data: MmioData,
     cursor: usize,
 
     io_map: HashMap<u16, IoDeviceType>,
@@ -187,7 +201,7 @@ impl ByteQueue for BusInterface {
         -1i16
     }
 
-    fn q_peek_u8(&self) -> u8 {
+    fn q_peek_u8(&mut self) -> u8 {
         if self.cursor < self.memory.len() {
             let b: u8 = self.memory[self.cursor];
             return b
@@ -195,7 +209,7 @@ impl ByteQueue for BusInterface {
         0xffu8
     }
 
-    fn q_peek_i8(&self) -> i8 {
+    fn q_peek_i8(&mut self) -> i8 {
         if self.cursor < self.memory.len() {
             let b: i8 = self.memory[self.cursor] as i8;
             return b
@@ -203,7 +217,7 @@ impl ByteQueue for BusInterface {
         -1i8   
     }
 
-    fn q_peek_u16(&self) -> u16 {
+    fn q_peek_u16(&mut self) -> u16 {
         if self.cursor < self.memory.len() - 1 {
             let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
             return w
@@ -211,7 +225,7 @@ impl ByteQueue for BusInterface {
         0xffffu16   
     }    
 
-    fn q_peek_i16(&self) -> i16 {
+    fn q_peek_i16(&mut self) -> i16 {
         if self.cursor < self.memory.len() - 1 {
             let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
             return w
@@ -226,10 +240,10 @@ impl Default for BusInterface {
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
-            map: Vec::new(),
+            mmio_map: Vec::new(),
+            mmio_data: MmioData::new(),
             cursor: 0,
-            first_map: 0,
-            last_map: 0,
+
 
             io_map: HashMap::new(),
             ppi: None,
@@ -253,10 +267,9 @@ impl BusInterface {
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
-            map: Vec::new(),
+            mmio_map: Vec::new(),
+            mmio_data: MmioData::new(),            
             cursor: 0,
-            first_map: 0,
-            last_map: 0,
 
             io_map: HashMap::new(),
             ppi: None,
@@ -281,14 +294,14 @@ impl BusInterface {
     /// 
     /// The MemoryMappedDevice trait's read & write methods will be called instead for memory in the range
     /// specified withing MemRangeDescriptor.
-    pub fn register_map(&mut self, device: Rc<RefCell<dyn MemoryMappedDevice>>, mem_descriptor: MemRangeDescriptor) {
-        if mem_descriptor.address < self.first_map {
-            self.first_map = mem_descriptor.address;
+    pub fn register_map(&mut self, device: IoDeviceType, mem_descriptor: MemRangeDescriptor) {
+        if mem_descriptor.address < self.mmio_data.first_map {
+            self.mmio_data.first_map = mem_descriptor.address;
         }
-        if (mem_descriptor.address + mem_descriptor.size) > self.last_map {
-            self.last_map = mem_descriptor.address + mem_descriptor.size;
+        if (mem_descriptor.address + mem_descriptor.size) > self.mmio_data.last_map {
+            self.mmio_data.last_map = mem_descriptor.address + mem_descriptor.size;
         }
-        self.map.push((mem_descriptor, device));
+        self.mmio_map.push((mem_descriptor, device));
     }
 
     pub fn copy_from(&mut self, src: &[u8], location: usize, cycle_cost: u32, read_only: bool) -> Result<(), bool> {
@@ -380,26 +393,52 @@ impl BusInterface {
         self.clear();
     }
 
-    pub fn read_u8(&self, address: usize ) -> Result<(u8, u32), MemError> {
+    pub fn read_u8(&mut self, address: usize ) -> Result<(u8, u32), MemError> {
         if address < self.memory.len() {
-
-            // Handle memory-mapped devices
-            for map_entry in &self.map {
-                if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
-                    return Ok((map_entry.1.borrow_mut().read_u8(address), map_entry.0.cycle_cost));
-                }
+            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+                // Address is not mapped.
+                let b: u8 = self.memory[address];
+                return Ok((b, DEFAULT_WAIT_STATES))
             }
-            let b: u8 = self.memory[address];
-            return Ok((b, DEFAULT_WAIT_STATES))
+            else {
+                // Handle memory-mapped devices
+                for map_entry in &self.mmio_map {
+                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
+
+                        match map_entry.1 {
+                            IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
+                                match &mut self.video {
+                                    VideoCardDispatch::Cga(cga) => {
+                                        // CGA doesn't use mmio yet
+                                    }
+                                    VideoCardDispatch::Ega(ega) => {
+                                        return Ok((MemoryMappedDevice::read_u8(ega, address), DEFAULT_WAIT_STATES));
+                                    }
+                                    VideoCardDispatch::Vga(vga) => {
+                                        return Ok((MemoryMappedDevice::read_u8(vga, address), DEFAULT_WAIT_STATES));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _=> {}
+                        }
+                        return Err(MemError::MmioError)
+                    }
+                }
+                // We didn't match any mmio devices, return raw memory
+                let b: u8 = self.memory[address];
+                return Ok((b, DEFAULT_WAIT_STATES))
+            }
         }
         Err(MemError::ReadOutOfBoundsError)
     }
 
+    /*
     pub fn read_i8(&self, address: usize ) -> Result<(i8, u32), MemError> {
         if address < self.memory.len() {
             
             // Handle memory-mapped devices
-            for map_entry in &self.map {
+            for map_entry in &self.mmio_map {
                 if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
                     return Ok((map_entry.1.borrow_mut().read_u8(address) as i8, map_entry.0.cycle_cost));
                 }
@@ -410,27 +449,54 @@ impl BusInterface {
         }
         Err(MemError::ReadOutOfBoundsError)
     }
+    */
 
-    pub fn read_u16(&self, address: usize ) -> Result<(u16, u32), MemError> {
+    pub fn read_u16(&mut self, address: usize ) -> Result<(u16, u32), MemError> {
         if address < self.memory.len() - 1 {
-
-            // Handle memory-mapped devices
-            for map_entry in &self.map {
-                if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size - 1 {
-                    return Ok((map_entry.1.borrow_mut().read_u16(address), map_entry.0.cycle_cost));
-                }
+            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+                // Address is not mapped.
+                let w: u16 = self.memory[address] as u16 | (self.memory[address + 1] as u16) << 8;
+                return Ok((w, DEFAULT_WAIT_STATES))
             }
+            else {
+                // Handle memory-mapped devices
+                for map_entry in &self.mmio_map {
+                    if address >= map_entry.0.address && address < (map_entry.0.address + map_entry.0.size - 1) {
 
-            let w: u16 = self.memory[address] as u16 | (self.memory[address+1] as u16) << 8;
-            return Ok((w, DEFAULT_WAIT_STATES))
+                        match map_entry.1 {
+                            IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
+                                match &mut self.video {
+                                    VideoCardDispatch::Cga(cga) => {
+                                        // CGA doesn't use mmio yet
+                                    }
+                                    VideoCardDispatch::Ega(ega) => {
+                                        return Ok((ega.read_u16(address), DEFAULT_WAIT_STATES));
+                                    }
+                                    VideoCardDispatch::Vga(vga) => {
+                                        return Ok((vga.read_u16(address), DEFAULT_WAIT_STATES));
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _=> {}
+                        }
+                        return Err(MemError::MmioError)
+                    }
+                }
+                // We didn't match any mmio devices, return raw memory
+                let w: u16 = self.memory[address] as u16 | (self.memory[address + 1] as u16) << 8;
+                return Ok((w, DEFAULT_WAIT_STATES))            
+            }
         }
         Err(MemError::ReadOutOfBoundsError)
     }
+
+    /*
     pub fn read_i16(&self, address: usize ) -> Result<(i16, u32), MemError> {
         if address < self.memory.len() - 1 {
 
             // Handle memory-mapped devices
-            for map_entry in &self.map {
+            for map_entry in &self.mmio_map {
                 if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size - 1 {
                     return Ok((map_entry.1.borrow_mut().read_u16(address) as i16, map_entry.0.cycle_cost));
                 }
@@ -441,30 +507,61 @@ impl BusInterface {
         }
         Err(MemError::ReadOutOfBoundsError)
     }
+    */
 
     pub fn write_u8(&mut self, address: usize, data: u8) -> Result<u32, MemError> {
         if address < self.memory.len() {
-
-            // Handle memory-mapped devices
-            for map_entry in &self.map {
-                if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
-                    map_entry.1.borrow_mut().write_u8(address, data);
-                    return Ok(map_entry.0.cycle_cost);
+            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+                // Address is not mapped.
+                if self.memory_mask[address] & ROM_BIT == 0 {
+                    self.memory[address] = data;                
                 }
+                return Ok(DEFAULT_WAIT_STATES);
             }
-            
-            if self.memory_mask[address] & ROM_BIT == 0 {
-                self.memory[address] = data;                
+            else {
+
+                let mut handled = false;
+                // Handle memory-mapped devices
+                for map_entry in &self.mmio_map {
+                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
+
+                        match map_entry.1 {
+                            IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
+                                match &mut self.video {
+                                    VideoCardDispatch::Cga(cga) => {
+                                        // CGA doesn't use mmio yet
+                                    }
+                                    VideoCardDispatch::Ega(ega) => {
+                                        MemoryMappedDevice::write_u8( ega, address, data);
+                                    }
+                                    VideoCardDispatch::Vga(vga) => {
+                                        MemoryMappedDevice::write_u8(vga, address, data);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _=> {}
+                        }                        
+                        return Ok(map_entry.0.cycle_cost);
+                    }
+                }
+                
+                // We didn't match any mmio devices, write to memory.
+                if self.memory_mask[address] & ROM_BIT == 0 {
+                    self.memory[address] = data;                
+                }
+                return Ok(DEFAULT_WAIT_STATES);
             }
-            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
+
+    /*
     pub fn write_i8(&mut self, address: usize, data: i8) -> Result<u32, MemError> {
         if address < self.memory.len() {
 
             // Handle memory-mapped devices
-            for map_entry in &self.map {
+            for map_entry in &self.mmio_map {
                 if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
                     map_entry.1.borrow_mut().write_u8(address, data as u8);
                     return Ok(map_entry.0.cycle_cost);
@@ -477,35 +574,68 @@ impl BusInterface {
             return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
-    }    
+    }*/
 
     pub fn write_u16(&mut self, address: usize, data: u16) -> Result<u32, MemError> {
         if address < self.memory.len() - 1 {
+            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+                // Address is not mapped.
 
-            // Handle memory-mapped devices
-            for map_entry in &self.map {
-                if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size - 1 {
-                    map_entry.1.borrow_mut().write_u8(address, (data & 0xFF) as u8);
-                    map_entry.1.borrow_mut().write_u8(address + 1, (data >> 8) as u8);
-                    return Ok(map_entry.0.cycle_cost);
+                // Little Endian is LO byte first
+                if self.memory_mask[address] & ROM_BIT == 0 {
+                    self.memory[address] = (data & 0xFF) as u8;
+                    self.memory[address+1] = (data >> 8) as u8;              
                 }
+                return Ok(DEFAULT_WAIT_STATES);
+            }
+            else {
+                let mut handled = false;
+                // Handle memory-mapped devices
+                for map_entry in &self.mmio_map {
+                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size - 1 {
+
+                        match map_entry.1 {
+                            IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
+                                match &mut self.video {
+                                    VideoCardDispatch::Cga(cga) => {
+                                        // CGA doesn't use mmio yet
+                                    }
+                                    VideoCardDispatch::Ega(ega) => {
+                                        MemoryMappedDevice::write_u8(ega, address, (data & 0xFF) as u8);
+                                        MemoryMappedDevice::write_u8(ega, address + 1, (data >> 8) as u8);
+                                    }
+                                    VideoCardDispatch::Vga(vga) => {
+                                        MemoryMappedDevice::write_u8(vga, address, (data & 0xFF) as u8);
+                                        MemoryMappedDevice::write_u8(vga, address + 1, (data >> 8) as u8);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _=> {}
+                        }                             
+                        return Ok(map_entry.0.cycle_cost);
+                    }
+                }
+
+                // We didn't match any mmio devices, write to memory.
+                if self.memory_mask[address] & ROM_BIT == 0 {
+                    self.memory[address] = (data & 0xFF) as u8;
+                    self.memory[address+1] = (data >> 8) as u8;              
+                }
+                return Ok(DEFAULT_WAIT_STATES);
             }
 
-            // Little Endian is LO byte first
-            if self.memory_mask[address] & ROM_BIT == 0 {
-                self.memory[address] = (data & 0xFF) as u8;
-                self.memory[address+1] = (data >> 8) as u8;              
-            }
             return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
     
+    /*
     pub fn write_i16(&mut self, address: usize, data: i16) -> Result<u32, MemError> {
         if address < self.memory.len() - 1 {
 
             // Handle memory-mapped devices
-            for map_entry in &self.map {
+            for map_entry in &self.mmio_map {
                 if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size - 1 {
                     map_entry.1.borrow_mut().write_u8(address, ((data as u16) & 0xFF) as u8);
                     map_entry.1.borrow_mut().write_u8(address + 1, ((data as u16) >> 8) as u8);
@@ -522,6 +652,7 @@ impl BusInterface {
         }
         Err(MemError::ReadOutOfBoundsError)
     }
+    */
 
     /// Get bit flags for the specified byte at address
     #[inline]
@@ -826,12 +957,23 @@ impl BusInterface {
                 let ega = EGACard::new();
                 let port_list = ega.port_list();
                 self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ega)));
+
+                let mem_descriptor = MemRangeDescriptor::new(ega::EGA_GFX_ADDRESS, ega::EGA_GFX_PLANE_SIZE, false );
+                self.register_map(IoDeviceType::Ega, mem_descriptor);
+
                 self.video = VideoCardDispatch::Ega(ega)
             }
             VideoType::VGA => {
                 let vga = VGACard::new(video_trace);
                 let port_list = vga.port_list();
-                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Vga)));                
+                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Vga)));
+
+                //let mem_descriptor = MemRangeDescriptor::new(0xB8000, vga::VGA_TEXT_PLANE_SIZE, false );
+                //cpu.bus_mut().register_map(IoDeviceType::Vga, mem_descriptor);
+
+                let mem_descriptor = MemRangeDescriptor::new(vga::VGA_GFX_ADDRESS, vga::VGA_GFX_PLANE_SIZE, false );
+                self.register_map(IoDeviceType::Vga, mem_descriptor);
+
                 self.video = VideoCardDispatch::Vga(vga)
             }
             _=> {
@@ -992,7 +1134,17 @@ impl BusInterface {
                     else {
                         NO_IO_BYTE
                     }        
-                }                
+                }
+                IoDeviceType::Serial => {
+                    if let Some(serial) = &mut self.serial {
+                        // Serial port write does not need bus.
+                        serial.read_u8(port)
+                    } 
+                    else {
+                        NO_IO_BYTE
+                    }
+                }
+                       
                 IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                     match &mut self.video {
                         VideoCardDispatch::Cga(cga) => {
@@ -1079,6 +1231,12 @@ impl BusInterface {
                         hdc.write_u8(port, data, Some(self));
                         self.hdc = Some(hdc);
                     }                            
+                }
+                IoDeviceType::Serial => {
+                    if let Some(serial) = &mut self.serial {
+                        // Serial port write does not need bus.
+                        serial.write_u8(port, data, None);
+                    }
                 }
                 IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                     match &mut self.video {

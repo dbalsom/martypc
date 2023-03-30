@@ -7,7 +7,7 @@ use crate::cpu_808x::CpuRegisterState;
 use crate::bus::BusInterface;
 
 /// Function to log interrupt return values - called on return from interrupt (IRET)
-pub fn log_post_interrupt(int: u8, ah: u8, regs: &CpuRegisterState, bus: &BusInterface ) {
+pub fn log_post_interrupt(int: u8, ah: u8, regs: &CpuRegisterState, bus: &mut BusInterface ) {
 
     match int {
 
@@ -23,7 +23,7 @@ pub fn log_post_interrupt(int: u8, ah: u8, regs: &CpuRegisterState, bus: &BusInt
     }
 }
 
-pub fn log_post_interrupt21(ah: u8, regs: &CpuRegisterState, bus: &BusInterface ) {
+pub fn log_post_interrupt21(ah: u8, regs: &CpuRegisterState, bus: &mut BusInterface ) {
 
     match ah {
 

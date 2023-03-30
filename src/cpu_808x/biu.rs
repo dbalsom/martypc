@@ -80,24 +80,24 @@ impl ByteQueue for Cpu<'_> {
         ((ho as u16) << 8 | (lo as u16)) as i16
     }
 
-    fn q_peek_u8(&self) -> u8 {
+    fn q_peek_u8(&mut self) -> u8 {
         let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len()).unwrap();
         byte
     }
 
-    fn q_peek_i8(&self) -> i8 {
-        let (byte, _cost) = self.bus.read_i8(self.pc as usize - self.queue.len()).unwrap();
-        byte
+    fn q_peek_i8(&mut self) -> i8 {
+        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len()).unwrap();
+        byte as i8
     }
 
-    fn q_peek_u16(&self) -> u16 {
+    fn q_peek_u16(&mut self) -> u16 {
         let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len()).unwrap();
         word
     }    
 
-    fn q_peek_i16(&self) -> i16 {
-        let (word, _cost) = self.bus.read_i16(self.pc as usize - self.queue.len()).unwrap();
-        word
+    fn q_peek_i16(&mut self) -> i16 {
+        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len()).unwrap();
+        word as i16
     }        
 }
 

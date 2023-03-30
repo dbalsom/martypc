@@ -648,17 +648,28 @@ fn main() {
                             (winit::event::ElementState::Pressed, VirtualKeyCode::F10 ) => {
                                 if kb_data.ctrl_pressed {
                                     // Ctrl-F10 pressed. Toggle mouse capture.
-                                    log::trace!("Control F10 pressed.");
+                                    log::info!("Control F10 pressed. Capturing mouse cursor.");
                                     if !mouse_data.is_captured {
+                                        let mut grab_success = false;
                                         match window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
-                                            Ok(_) => mouse_data.is_captured = true,
+                                            Ok(_) => {
+                                                mouse_data.is_captured = true;
+                                                grab_success = true;
+                                            }
                                             Err(_) => {
                                                 // Try alternate grab mode (Windows/Mac require opposite modes)
                                                 match window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
-                                                    Ok(_) => mouse_data.is_captured = true,
+                                                    Ok(_) => {
+                                                        mouse_data.is_captured = true;
+                                                        grab_success = true;
+                                                    } 
                                                     Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
                                                 }
                                             }
+                                        }
+                                        // Hide mouse cursor if grab successful
+                                        if grab_success {
+                                            window.set_cursor_visible(false);
                                         }
                                     }
                                     else {
@@ -666,7 +677,8 @@ fn main() {
                                         match window.set_cursor_grab(winit::window::CursorGrabMode::None) {
                                             Ok(_) => mouse_data.is_captured = false,
                                             Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
-                                        }                                        
+                                        }
+                                        window.set_cursor_visible(true);
                                     }
                                     
                                 }
