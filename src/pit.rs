@@ -946,16 +946,20 @@ impl ProgrammableIntervalTimer {
         self.pit_cycles += 1;
 
         // Get timer channel 2 state from ppi.
+        // TODO: it would be better to push this state from PPI when changed then to poll it on tick here.
+        let mut speaker_data = true;
+
         if let Some(ppi) = bus.ppi_mut() {
+            speaker_data = ppi.get_pb1_state();
             self.channels[2].set_gate(ppi.get_pit_channel2_gate(), bus);
+
         }
 
         for (i, c) in self.channels.iter_mut().enumerate() {
             c.tick(bus, buffer_producer);
 
             if i == 2 {
-
-                _ = buffer_producer.push(*c.output as u8);
+                _ = buffer_producer.push((*c.output && speaker_data) as u8);
             }
         }
     }

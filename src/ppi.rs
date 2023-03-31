@@ -210,7 +210,7 @@ impl Ppi {
             },
             dip_sw2: SW2_RAM_TEST,
             timer_in: false,
-            speaker_in: false,
+            speaker_in: false
         }
     }
 }
@@ -420,12 +420,12 @@ impl Ppi {
         self.pb_byte & PORTB_TIMER2_GATE != 0
     }
 
-    pub fn set_pit_output_bit(&mut self, signal: bool) {
-        self.timer_in = signal;
+    pub fn set_pit_output_bit(&mut self, state: bool) {
+        self.timer_in = state;
     }
 
-    pub fn set_speaker_bit(&mut self, signal: bool) {
-        self.speaker_in = signal;
+    pub fn set_speaker_bit(&mut self, state: bool) {
+        self.speaker_in = state;
     }
 
     pub fn run(&mut self, pic: &mut pic::Pic, us: f64 ) {
