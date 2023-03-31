@@ -187,6 +187,12 @@ impl<'a> Cpu<'a> {
     }
 }
 
+impl SyntaxTokenize for Instruction {
+    fn tokenize(&self) -> Vec<SyntaxToken> {
+        Cpu::tokenize_instruction(self)
+    }
+}
+
 fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
 
     let (op_type, op_size) = match op {

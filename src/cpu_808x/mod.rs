@@ -39,6 +39,8 @@ use crate::cpu_808x::addressing::AddressingMode;
 use crate::cpu_808x::queue::InstructionQueue;
 use crate::cpu_808x::biu::*;
 
+use crate::cpu_common::CpuType;
+
 use crate::config::TraceMode;
 #[cfg(feature = "cpu_validator")]
 use crate::config::ValidatorType;
@@ -47,8 +49,9 @@ use crate::breakpoints::BreakPointType;
 use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
 use crate::pic::Pic;
 use crate::bytequeue::*;
-use crate::io::IoBusInterface;
 //use crate::interrupt::log_post_interrupt;
+
+use crate::syntax_token::*;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{CpuValidator, CycleState, VRegisters, BusCycle, BusState, AccessType};
@@ -199,15 +202,6 @@ pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [
     Register16::SS,
     Register16::DS,
 ];
-
-pub enum CpuType {
-    Cpu8088,
-    Cpu8086,
-}
-
-impl Default for CpuType {
-    fn default() -> Self { CpuType::Cpu8088 }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CpuException {
@@ -418,11 +412,6 @@ pub enum RepType {
 impl Default for RepType {
     fn default() -> Self { RepType::NoRep }
 }
-// pub enum RepDirection {
-//     RepForward,
-//     RepReverse
-// }
-
 
 #[derive(Copy, Clone, Debug)]
 pub enum Segment {
@@ -439,6 +428,7 @@ impl Default for Segment {
     }
 }
 
+// TODO: This enum duplicates Segment. Why not just store a Segment in an override field?
 #[derive(Copy, Clone, PartialEq)]
 pub enum SegmentOverride {
     None,
@@ -468,6 +458,10 @@ pub enum InterruptType {
     Exception,
     Software,
     Hardware
+}
+
+pub enum HistoryEntry {
+    Entry(u16, u16, Instruction)
 }
 
 #[derive (Copy, Clone)]
@@ -604,7 +598,8 @@ pub struct I8288 {
 }
 
 #[derive(Default)]
-pub struct Cpu<'a> {
+pub struct Cpu<'a> 
+{
     
     cpu_type: CpuType,
     state: CpuState,
@@ -684,7 +679,7 @@ pub struct Cpu<'a> {
     instruction_count: u64,
     i: Instruction,                 // Currently executing instruction 
     instruction_history_on: bool,
-    instruction_history: VecDeque<Instruction>,
+    instruction_history: VecDeque<HistoryEntry>,
     call_stack: VecDeque<CallStackEntry>,
 
     // Breakpoints
@@ -883,11 +878,11 @@ impl<'a> Cpu<'a> {
         let mut cpu: Cpu = Default::default();
         
         match cpu_type {
-            CpuType::Cpu8088 => {
+            CpuType::Intel8088 => {
                 cpu.queue.set_size(4);
                 cpu.fetch_size = TransferSize::Byte;
             }
-            CpuType::Cpu8086 => {
+            CpuType::Intel8086 => {
                 cpu.queue.set_size(6);
                 cpu.fetch_size = TransferSize::Word;
             }
@@ -1009,7 +1004,7 @@ impl<'a> Cpu<'a> {
 
     pub fn bus(&self) -> &BusInterface {
         &self.bus
-    }
+    }   
 
     pub fn bus_mut(&mut self) -> &mut BusInterface {
         &mut self.bus
@@ -2274,8 +2269,6 @@ impl<'a> Cpu<'a> {
     /// be checked. 
     pub fn step(
         &mut self, 
-        io_bus: &mut IoBusInterface, 
-        pic_ref: Rc<RefCell<Pic>>, 
         skip_breakpoint: bool,
     ) -> Result<(StepResult, u32), CpuError> {
 
@@ -2288,7 +2281,8 @@ impl<'a> Cpu<'a> {
         let mut irq = 7;
 
         if self.interrupts_enabled() {
-            let mut pic = pic_ref.borrow_mut();
+            // There will always be a primary PIC present, so safe to unwrap.
+            let pic = self.bus.pic_mut().as_mut().unwrap();
             if pic.query_interrupt_line() {
                 match pic.get_interrupt_vector() {
                     Some(iv) => {
@@ -2390,8 +2384,11 @@ impl<'a> Cpu<'a> {
         //trace_print!(self, "Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
         //trace_print!(self, "Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
 
+        let last_cs = self.cs;
+        let last_ip = self.ip;
+
         // Execute the current decoded instruction.
-        let exec_result = self.execute_instruction(io_bus);
+        let exec_result = self.execute_instruction();
 
         // Finalize execution. This runs cycles until the next instruction byte has been fetched. This fetch period is technically
         // part of the current instruction execution time, but not part of the instruction's microcode other than executing RNI.
@@ -2465,7 +2462,7 @@ impl<'a> Cpu<'a> {
                     if self.instruction_history.len() == CPU_HISTORY_LEN {
                         self.instruction_history.pop_front();
                     }
-                    self.instruction_history.push_back(self.i);
+                    self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
                     self.instruction_count += 1;
                 }
 
@@ -2484,7 +2481,7 @@ impl<'a> Cpu<'a> {
                     if self.instruction_history.len() == CPU_HISTORY_LEN {
                         self.instruction_history.pop_front();
                     }
-                    self.instruction_history.push_back(self.i);
+                    self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
                     self.instruction_count += 1;
                 }
 
@@ -2514,7 +2511,7 @@ impl<'a> Cpu<'a> {
                 if self.instruction_history.len() == CPU_HISTORY_LEN {
                     self.instruction_history.pop_front();
                 }
-                self.instruction_history.push_back(self.i);
+                self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
                 self.instruction_count += 1;
                 check_interrupts = true;
 
@@ -2650,16 +2647,34 @@ impl<'a> Cpu<'a> {
         self.state = CpuState::Normal;
     }
 
-    pub fn dump_instruction_history(&self) -> String {
+    pub fn dump_instruction_history_string(&self) -> String {
 
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            let i_string = format!("{:05X} {}\n", i.address, i);
-            disassembly_string.push_str(&i_string);
+            if let HistoryEntry::Entry(cs, ip, i) = i {            
+                let i_string = format!("{:05X} [{:04X}:{:04X}] {}\n", i.address, *cs, *ip, i);
+                disassembly_string.push_str(&i_string);
+            }
         }
         disassembly_string
     }
+
+    pub fn dump_instruction_history_tokens(&self) -> Vec<Vec<SyntaxToken>> {
+
+        let mut history_vec = Vec::new();
+
+        for i in &self.instruction_history {
+            let mut i_token_vec = Vec::new();
+            if let HistoryEntry::Entry(cs, ip, i) = i {
+                i_token_vec.push(SyntaxToken::MemoryAddressFlat(i.address, format!("{:05X}", i.address)));
+                i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, format!("{:04X}:{:04X}", cs, ip)));
+                i_token_vec.extend(i.tokenize());
+            }
+            history_vec.push(i_token_vec);
+        }
+        history_vec
+    }    
 
     pub fn dump_call_stack(&self) -> String {
         let mut call_stack_string = String::new();

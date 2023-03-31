@@ -80,24 +80,24 @@ impl ByteQueue for Cpu<'_> {
         ((ho as u16) << 8 | (lo as u16)) as i16
     }
 
-    fn q_peek_u8(&self) -> u8 {
+    fn q_peek_u8(&mut self) -> u8 {
         let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len()).unwrap();
         byte
     }
 
-    fn q_peek_i8(&self) -> i8 {
-        let (byte, _cost) = self.bus.read_i8(self.pc as usize - self.queue.len()).unwrap();
-        byte
+    fn q_peek_i8(&mut self) -> i8 {
+        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len()).unwrap();
+        byte as i8
     }
 
-    fn q_peek_u16(&self) -> u16 {
+    fn q_peek_u16(&mut self) -> u16 {
         let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len()).unwrap();
         word
     }    
 
-    fn q_peek_i16(&self) -> i16 {
-        let (word, _cost) = self.bus.read_i16(self.pc as usize - self.queue.len()).unwrap();
-        word
+    fn q_peek_i16(&mut self) -> i16 {
+        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len()).unwrap();
+        word as i16
     }        
 }
 
@@ -158,13 +158,13 @@ impl<'a> Cpu<'a> {
 
     pub fn trigger_prefetch_on_queue_read(&mut self) {
         match self.cpu_type {
-            CpuType::Cpu8088 => {
+            CpuType::Intel8088 => {
                 if self.queue.len() == 4 {
                     // We can fetch again after this read
                     self.biu_schedule_fetch();
                 }
             }
-            CpuType::Cpu8086 => {
+            CpuType::Intel8086 => {
                 if self.queue.len() == 5 {
                     // We can fetch again after this read
                     self.biu_schedule_fetch();
@@ -274,10 +274,10 @@ impl<'a> Cpu<'a> {
 
     pub fn biu_queue_has_room(&mut self) -> bool {
         match self.cpu_type {
-            CpuType::Cpu8088 => {
+            CpuType::Intel8088 => {
                 self.queue.len() < 4
             }
-            CpuType::Cpu8086 => {
+            CpuType::Intel8086 => {
                 // 8086 fetches two bytes at a time, so must be two free bytes in queue
                 self.queue.len() < 5
             }
@@ -385,7 +385,7 @@ impl<'a> Cpu<'a> {
         let mut word;
 
         match self.cpu_type {
-            CpuType::Cpu8088 => {
+            CpuType::Intel8088 => {
                 // 8088 performs two consecutive byte transfers
                 self.biu_bus_begin(
                     BusStatus::MemRead, 
@@ -422,7 +422,7 @@ impl<'a> Cpu<'a> {
                 validate_read_u8!(self, addr + 1, (self.data_bus & 0x00FF) as u8, ReadType::Data);
                 word
             }
-            CpuType::Cpu8086 => {
+            CpuType::Intel8086 => {
                 self.biu_bus_begin(
                     BusStatus::MemRead, 
                     seg, 
@@ -445,7 +445,7 @@ impl<'a> Cpu<'a> {
     pub fn biu_write_u16(&mut self, seg: Segment, addr: u32, word: u16, flag: ReadWriteFlag) {
 
         match self.cpu_type {
-            CpuType::Cpu8088 => {
+            CpuType::Intel8088 => {
                 // 8088 performs two consecutive byte transfers
                 self.biu_bus_begin(
                     BusStatus::MemWrite, 
@@ -476,7 +476,7 @@ impl<'a> Cpu<'a> {
                     ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
                 };
             }
-            CpuType::Cpu8086 => {
+            CpuType::Intel8086 => {
                 self.biu_bus_begin(
                     BusStatus::MemWrite, 
                     seg, 
@@ -561,7 +561,7 @@ impl<'a> Cpu<'a> {
         );
 
         // Check this address for a memory access breakpoint
-        if self.bus().get_flags(address as usize) & MEM_BPA_BIT != 0 {
+        if self.bus.get_flags(address as usize) & MEM_BPA_BIT != 0 {
             // Breakpoint hit
             self.state = CpuState::BreakpointHit;
         }

@@ -1,0 +1,86 @@
+# marty.toml
+# Configuration file for the MartyPC emulator.
+
+[emulator]
+# ----------------------------------------------------------------------------
+# Start the emulated machine automatically (only applicable in gui mode)
+autostart = false
+# Run the emulator without gui
+headless = false 
+# Run the instruction fuzzer (requires validator feature)
+fuzzer = false
+
+# Run the emulated machine as fast as possible. Note this isn't just a CPU boost, 
+# the entire system including timer will accellerate. 
+warpspeed = false
+
+# Debug Tracing Options
+# ----------------------------------------------------------------------------
+# CPU tracing may be enabled by specifying trace_mode
+#
+# Valid values for trace_mode:
+# "None"
+# "Instruction" -> Perform per-instruction traces (slow, big)
+# "Cycle" -> Perform per-cycle traces (slowest, biggest)
+#  >>> WARNING: This will quickly make multi-gigabyte files.
+#
+# Additionally, a valid value for trace_file must be supplied.
+#
+trace_mode = "None"
+#trace_file = "./traces/instr_trace.log"
+
+# Enable Video tracing. Video device will log memory and register read/writes.
+#video_trace_file = "./traces/video_trace.log"
+
+# Enable PIT output save to file.  All samples from PIT will be saved to disk.
+#  >>> WARNING: This will quickly make multi-gigabyte files.
+#pit_output_file = "./traces/pit_output.pcm"
+# Use emulator service interrupt to trigger PIT output writing
+#pit_output_int_trigger = true 
+
+[input]
+# ----------------------------------------------------------------------------
+# Some platforms reverse the left and right mouse button id #'s. 
+# We try to detect this, but it can be overridden here.
+reverse_mouse_buttons = false
+
+
+[machine]
+# ----------------------------------------------------------------------------
+
+# Emulated machine model type.
+# ----------------------------------------------------------------------------
+# Valid options for model are:
+# "IBM_PC_5150"
+# "IBM_XT_5160"
+model = "IBM_XT_5160"
+
+# Video card type.
+# ----------------------------------------------------------------------------
+# Valid options for video are:
+# "CGA"
+# "EGA"
+# "VGA"
+video = "CGA"
+
+# Hard Disk Controller Type
+# ----------------------------------------------------------------------------
+# Valid options for hard disk controller are:
+# "None"  - No hard disk controller will be present
+# "Xebec" - Emulates the IBM/Xebec 20MB Fixed Disk Controller
+hdc = "Xebec"
+
+# VHD to mount into drive 0 (Typically C:)
+#drive0 = "dos500.vhd"
+
+# Options for the CPU Validator module.
+# ----------------------------------------------------------------------------
+# You must have an Arduino8088 connected via USB to utilize
+# the validator. For more information, see 
+# https://github.com/dbalsom/arduino_8088
+[validator]
+#type = "Arduino8088"
+#trigger_address = 0xFFFF0
+#tracing = true
+#trace_file = "./traces/validator_trace.log"
+

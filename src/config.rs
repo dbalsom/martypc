@@ -8,7 +8,7 @@ const fn _default_true() -> bool { true }
 const fn _default_false() -> bool { true }
 
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
+#[derive(Copy, Clone, Debug, Bpaf, Deserialize, Hash, Eq, PartialEq)] 
 pub enum MachineType {
     FUZZER_8088,
     IBM_PC_5150,

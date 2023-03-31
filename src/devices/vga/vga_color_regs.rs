@@ -10,7 +10,7 @@ use crate::vga::*;
 pub const DAC_STATE_READ: u8 = 0;
 pub const DAC_STATE_WRITE: u8 = 0x03;
 
-impl<'a> VGACard<'a> {
+impl VGACard {
     
     pub fn read_pel_data(&mut self) -> u8 {
         let byte;

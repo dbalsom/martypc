@@ -5,8 +5,7 @@
  
  */
 use std::{
-    cell::RefCell,
-    rc::Rc,
+    collections::VecDeque
 };
 
 use crate::serial::SerialPortController;
@@ -34,23 +33,27 @@ const MOUSE_UPDATE_LO_BITS: u8 = 0b0011_1111;
 #[allow(dead_code)]
 pub struct Mouse {
 
-    serial_ctrl: Rc<RefCell<SerialPortController>>,
+    updates: VecDeque<MouseUpdate>,
     rts: bool,
     rts_low_timer: f64,
     dtr: bool,
 }
 
+pub enum MouseUpdate {
+    Update(u8, u8, u8)
+}
+
 impl Mouse {
-    pub fn new(serial_ctrl: Rc<RefCell<SerialPortController>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            serial_ctrl,
+            updates: VecDeque::new(),
             rts: false,
             rts_low_timer: 0.0,
             dtr: false,
         }
     }
 
-    pub fn update(&self, l_button_pressed: bool, r_button_pressed: bool, delta_x: f64, delta_y: f64) {
+    pub fn update(&mut self, l_button_pressed: bool, r_button_pressed: bool, delta_x: f64, delta_y: f64) {
 
         let mut scaled_x = delta_x * MOUSE_SCALE;
         let mut scaled_y = delta_y * MOUSE_SCALE;
@@ -97,20 +100,29 @@ impl Mouse {
         // LO 6 bits of Y into byte 3
         let byte3 = (delta_y_i8 as u8) & MOUSE_UPDATE_LO_BITS;
 
-        // Send update
+        // Queue update
+
+        self.updates.push_back(MouseUpdate::Update(byte1, byte2, byte3));
+        /*
         let mut serial = self.serial_ctrl.borrow_mut();
         serial.queue_byte(MOUSE_PORT, byte1);
         serial.queue_byte(MOUSE_PORT, byte2);
-        serial.queue_byte(MOUSE_PORT, byte3);
+        serial.queue_byte(MOUSE_PORT, byte3);*/
+
 
      }
 
     /// Run the mouse device for the specified number of microseconds
-    pub fn run(&mut self, us: f64) {
+    pub fn run(&mut self, serial: &mut SerialPortController, us: f64) {
+
+        // Send a queued update.
+        if let Some(MouseUpdate::Update(byte1, byte2, byte3)) = self.updates.pop_front() {
+            serial.queue_byte(MOUSE_PORT, byte1);
+            serial.queue_byte(MOUSE_PORT, byte2);
+            serial.queue_byte(MOUSE_PORT, byte3);
+        }
 
         // Check RTS line for mouse reset
-
-        let mut serial = self.serial_ctrl.borrow_mut();
         let rts = serial.get_rts(MOUSE_PORT);
 
         if self.rts && !rts {

@@ -1,9 +1,9 @@
 #![allow(dead_code)]
-
+use std::any::Any;
 use std::collections::HashMap;
 
 use crate::config::VideoType;
-use crate::io::{IoDevice};
+use crate::bus::{BusInterface, IoDevice};
 use crate::videocard::{
     VideoCard,
     VideoCardStateEntry,
@@ -34,10 +34,18 @@ const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 6;
 const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
 const DEFAULT_VERTICAL_SYNC_POS: u8 = 28;
 
-const FRAME_CPU_TIME: u32 = 79648;
-const FRAME_VBLANK_START: u32 = 70314;
-const SCANLINE_CPU_TIME: u32 = 304;
-const SCANLINE_HBLANK_START: u32 = 250;
+// For derivision of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
+// We run the CGA card independent of the CPU frequency.
+// Timings in 4.77Mhz CPU cycles are provided for reference.
+const FRAME_TIME_US: f64 = 16_688.15452339;
+const FRAME_VBLANK_US: f64 = 14_732.45903422;
+//const FRAME_CPU_TIME: u32 = 79_648;
+//const FRAME_VBLANK_START: u32 = 70_314;
+
+const SCANLINE_TIME_US: f64 = 63.69524627;
+const SCANLINE_HBLANK_US: f64 = 52.38095911;
+//const SCANLINE_CPU_TIME: u32 = 304;
+//const SCANLINE_HBLANK_START: u32 = 250;
 
 const CGA_HBLANK: f64 = 0.1785714;
 
@@ -98,7 +106,9 @@ pub struct CGACard {
     mode_hires_gfx: bool,
     mode_hires_txt: bool,
     mode_blinking: bool,
+    scanline_us: f64,
     scanline_cycles: u32,
+    frame_us: f64,
     frame_cycles: u32,
     cursor_frames: u32,
     in_hblank: bool,
@@ -173,7 +183,8 @@ impl IoDevice for CGACard {
             }
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>) {
         match port {
             CGA_MODE_CONTROL_REGISTER => {
                 self.handle_mode_register(data);
@@ -191,6 +202,17 @@ impl IoDevice for CGACard {
         }
     }
 
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            CRTC_REGISTER_SELECT,
+            CRTC_REGISTER,
+            CGA_MODE_CONTROL_REGISTER,
+            CGA_COLOR_CONTROL_REGISTER,
+            CGA_LIGHTPEN_REGISTER,
+            CGA_STATUS_REGISTER,
+        ]
+    }
+
 }
 
 
@@ -206,8 +228,10 @@ impl CGACard {
             mode_hires_gfx: false,
             mode_hires_txt: true,
             mode_blinking: true,
+            frame_us: 0.0,
             frame_cycles: 0,
             cursor_frames: 0,
+            scanline_us: 0.0,
             scanline_cycles: 0,
             in_hblank: false,
             in_vblank: false,
@@ -646,7 +670,45 @@ impl VideoCard for CGACard {
         map       
     }
 
+    fn run(&mut self, us: f64) {
 
+        self.frame_us += us;
+        self.scanline_us += us;
+        
+        // Accumulate us in frame_us until we have one frame
+        if self.frame_us > FRAME_TIME_US {
+            self.frame_us -= FRAME_TIME_US;
+            self.cursor_frames += 1;
+
+            // Blink the cursor
+            let cursor_cycle = CGA_DEFAULT_CURSOR_FRAME_CYCLE * (self.cursor_slowblink as u32 + 1);
+            if self.cursor_frames > cursor_cycle {
+                self.cursor_frames -= cursor_cycle;
+                self.cursor_status = !self.cursor_status;
+            }
+        }
+
+        if self.scanline_us > SCANLINE_TIME_US {
+            self.scanline_us -= SCANLINE_TIME_US;
+        }
+
+        // Are we in HBLANK interval?
+        self.in_hblank = self.scanline_us > SCANLINE_HBLANK_US;
+        
+        // Are we in VBLANK interval?
+        if self.frame_us > FRAME_VBLANK_US {
+            if !self.in_vblank {
+                // Entering vblank, count a frame
+                self.frame_count = self.frame_count.wrapping_add(1);
+            }
+            self.in_vblank = true;
+        }
+        else {
+            self.in_vblank = false;
+        }
+    } 
+
+    /*
     fn run(&mut self, cpu_cycles: u32) {
 
         self.frame_cycles += cpu_cycles;
@@ -681,7 +743,8 @@ impl VideoCard for CGACard {
             self.in_vblank = false;
         }
         
-    }    
+    } 
+    */   
 
     fn reset(&mut self) {
         log::debug!("Resetting")

@@ -5,7 +5,6 @@ use crate::cpu_808x::addressing::*;
 
 use super::CPU_CALL_STACK_LEN;
 
-use crate::io::IoBusInterface;
 use crate::util;
 
 macro_rules! get_operand {
@@ -61,7 +60,7 @@ macro_rules! alu_op {
 
 impl<'a> Cpu<'a> {
 
-    pub fn execute_instruction(&mut self, io_bus: &mut IoBusInterface) -> ExecutionResult {
+    pub fn execute_instruction(&mut self) -> ExecutionResult {
 
         let mut unhandled: bool = false;
         let mut jump: bool = false;
@@ -1256,7 +1255,7 @@ impl<'a> Cpu<'a> {
                 // IN al, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 
-                let in_byte = io_bus.read_u8(op2_value as u16);
+                let in_byte = self.bus.io_read_u8(op2_value as u16);
                 self.set_register8(Register8::AL, in_byte);
                 //println!("IN: Would input value from port {:#02X}", op2_value);  
                 
@@ -1266,7 +1265,7 @@ impl<'a> Cpu<'a> {
             0xE5 => {
                 // IN ax, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                let in_byte = io_bus.read_u8(op2_value as u16);
+                let in_byte = self.bus.io_read_u8(op2_value as u16);
                 self.set_register16(Register16::AX, in_byte as u16);
 
                 #[cfg(feature = "cpu_validator")]
@@ -1278,7 +1277,7 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
 
                 // Write to port
-                io_bus.write_u8(op1_value as u16, op2_value);
+                self.bus.io_write_u8(op1_value as u16, op2_value);
                 //println!("OUT: Would output {:02X} to Port {:#02X}", op2_value, op1_value);
 
                 #[cfg(feature = "cpu_validator")]
@@ -1290,9 +1289,9 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();                
 
                 // Write first 8 bits to first port
-                io_bus.write_u8(op1_value as u16, (op2_value & 0xFF) as u8);
+                self.bus.io_write_u8(op1_value as u16, (op2_value & 0xFF) as u8);
                 // Write next 8 bits to port + 1
-                io_bus.write_u8((op1_value + 1) as u16, (op2_value >> 8 & 0xFF) as u8);
+                self.bus.io_write_u8((op1_value + 1) as u16, (op2_value >> 8 & 0xFF) as u8);
 
                 #[cfg(feature = "cpu_validator")]
                 self.validator.as_mut().unwrap().discard_op();
@@ -1304,7 +1303,7 @@ impl<'a> Cpu<'a> {
                 self.biu_suspend_fetch();
                 self.cycles_i(4, &[0x07e, 0x07f, MC_CORR, 0x080]);
                 
-                // Push offset of next instruction
+                // Calculate offset of next instruction
                 let cs = self.get_register16(Register16::CS);
                 let ip = self.get_register16(Register16::IP);
                 let next_i = ip.wrapping_add(self.i.size as u16);
@@ -1331,6 +1330,8 @@ impl<'a> Cpu<'a> {
                 self.ip = new_ip;
                 self.biu_queue_flush();
                 self.cycles_i(3, &[0x081, 0x082, MC_JUMP]); 
+
+                // Push offset of next instruction
                 self.push_u16(next_i, ReadWriteFlag::RNI);
                 jump = true;
             }
@@ -1376,7 +1377,7 @@ impl<'a> Cpu<'a> {
             0xEC => {
                 // IN al, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                let in_byte = io_bus.read_u8(op2_value);
+                let in_byte = self.bus.io_read_u8(op2_value);
                 self.set_register8(Register8::AL, in_byte);
 
                 #[cfg(feature = "cpu_validator")]
@@ -1385,7 +1386,7 @@ impl<'a> Cpu<'a> {
             0xED => {
                 // IN ax, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                let in_byte = io_bus.read_u8(op2_value);
+                let in_byte = self.bus.io_read_u8(op2_value);
                 self.set_register16(Register16::AX, in_byte as u16);
 
                 #[cfg(feature = "cpu_validator")]
@@ -1396,7 +1397,7 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
 
-                io_bus.write_u8(op1_value as u16, op2_value);
+                self.bus.io_write_u8(op1_value as u16, op2_value);
 
                 #[cfg(feature = "cpu_validator")]
                 self.validator.as_mut().unwrap().discard_op();          
@@ -1408,9 +1409,9 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 // Write first 8 bits to first port
-                io_bus.write_u8(op1_value, (op2_value & 0xFF) as u8);
+                self.bus.io_write_u8(op1_value, (op2_value & 0xFF) as u8);
                 // Write next 8 bits to port + 1
-                io_bus.write_u8(op1_value + 1, (op2_value >> 8 & 0xFF) as u8);
+                self.bus.io_write_u8(op1_value + 1, (op2_value >> 8 & 0xFF) as u8);
 
                 #[cfg(feature = "cpu_validator")]
                 self.validator.as_mut().unwrap().discard_op();

@@ -5,8 +5,7 @@
 
 */
 
-use crate::io::{IoBusInterface, IoDevice};
-use crate::bus::BusInterface;
+use crate::bus::{BusInterface, IoDevice};
 
 pub const DMA_CHANNEL_0_ADDR_PORT: u16  = 0x00; // R/W
 pub const DMA_CHANNEL_0_WC_PORT: u16    = 0x01; // R/W
@@ -85,6 +84,7 @@ pub enum TransferType {
     Read,
     Illegal
 }
+
 impl Default for TransferType {
     fn default() -> Self { TransferType::Verify }
 }
@@ -199,9 +199,9 @@ impl IoDevice for DMAController {
             }
             
         }
-
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
 
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {
@@ -272,6 +272,34 @@ impl IoDevice for DMAController {
          
         }
     }
+
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            DMA_CHANNEL_0_ADDR_PORT,
+            DMA_CHANNEL_0_WC_PORT,
+            DMA_CHANNEL_1_ADDR_PORT,
+            DMA_CHANNEL_1_WC_PORT,
+            DMA_CHANNEL_2_ADDR_PORT,
+            DMA_CHANNEL_2_WC_PORT,
+            DMA_CHANNEL_3_ADDR_PORT,
+            DMA_CHANNEL_3_WC_PORT,
+            DMA_STATUS_REGISTER,
+            DMA_COMMAND_REGISTER,
+            DMA_WRITE_REQ_REGISTER,
+            DMA_CHANNEL_MASK_REGISTER,
+            DMA_CHANNEL_MODE_REGISTER,
+            DMA_CLEAR_FLIPFLOP,
+            DMA_READ_TEMP_REGISTER,
+            DMA_MASTER_CLEAR,
+            DMA_CLEAR_MASK_REGISTER,
+            DMA_WRITE_MASK_REGISTER,
+            DMA_CHANNEL_0_PAGE_REGISTER,
+            DMA_CHANNEL_1_PAGE_REGISTER,
+            DMA_CHANNEL_2_PAGE_REGISTER,
+            DMA_CHANNEL_3_PAGE_REGISTER,
+        ]
+    }
+
 }
 
 impl DMAController {
@@ -593,14 +621,14 @@ impl DMAController {
 
     /// Request DMA Serivce 
     /// Equivalent to setting the DREQ line high for the given DMA channel
-    pub fn request_dma_service(&mut self, channel: usize) {
+    pub fn request_service(&mut self, channel: usize) {
 
         self.request_reg |= 0x01 << channel;
     }
 
     /// Clear DMA Service 
     /// Equivlaent to de-asserting the DREQ line for the given DMA channel
-    pub fn clear_dma_service(&mut self, channel: usize ) {
+    pub fn clear_service(&mut self, channel: usize ) {
 
         self.request_reg &= !(0x01 << channel);
     }
@@ -731,8 +759,37 @@ impl DMAController {
         }        
     }
 
-    pub fn run(&mut self, _io_bus: &mut IoBusInterface) {
+    /// Fake the DMA controller. This should eventually be replaced by a tick procedure that 
+    /// ticks in line with the CPU.
+    pub fn run(&mut self, bus: &mut BusInterface) {
 
+        for i in 0..DMA_CHANNEL_COUNT {
 
+            if self.request_reg & (0x01 << i) != 0 {
+                // We have an active DREQ on this channel, service it
+                match self.channels[i].service_mode {
+                    ServiceMode::Single => {
+                        // We can handle single byte mode
+                        match self.channels[i].transfer_type {
+                            TransferType::Read | TransferType::Verify => {
+                                self.do_dma_read_u8(bus, i);
+                            }
+                            TransferType::Write => {
+                                // nothing to do here
+                            }
+                            TransferType::Illegal => {
+                                log::error!("Illegal DMA TransferType: {:?}", self.channels[i].transfer_type);
+                            }
+                        }
+
+                        // Since this is single byte service, we can now reset the request register bit.
+                        self.request_reg &= !(0x01 << i);
+                    }
+                    _=> {
+                        log::warn!("Unhandled DMA service mode: {:?}", self.channels[i].service_mode);
+                    }
+                }
+            }
+        }
     }
 }

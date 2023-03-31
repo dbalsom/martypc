@@ -16,7 +16,7 @@ emath = "0.20"
 egui-wgpu = "0.20"
 egui-winit = { version = "0.20", default-features = false, features = ["links"] }
 env_logger = "0.9"
-image = "0.24.2"
+image = { version = "0.24.2", default-features = false, features = ["png"] }
 lazy_static = "1.4.0"
 log = "0.4"
 md5 = "0.7.0"
@@ -36,6 +36,8 @@ toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"]}
 winit = "0.27"
 winit_input_helper = "0.13"
+
+
 
 [profile.dev.package."*"]
 opt-level = 3

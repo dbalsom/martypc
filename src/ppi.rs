@@ -8,8 +8,10 @@
 */
 #![allow(dead_code)]
 
+use std::cell::Cell;
+
 use crate::config::{MachineType, VideoType};
-use crate::io::{IoDevice};
+use crate::bus::{BusInterface, IoDevice};
 use crate::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
@@ -17,8 +19,8 @@ pub const PPI_PORT_B: u16 = 0x61;
 pub const PPI_PORT_C: u16 = 0x62;
 pub const PPI_COMMAND_PORT: u16 = 0x63;
 
-pub const KB_RESET_CYCLES: u32 = 47700;
-pub const KB_RESET_CYCLE_DELAY: u32 = 150; // Cycles until reset byte is sent after reset
+pub const KB_RESET_US: f64 = 10_000.0; // Time with clock line pulled low before kb is reset - 10ms
+pub const KB_RESET_DELAY_US: f64 = 1_000.0; // Delay period between detecting reset and sending reset byte - 1ms
 
 // Dipswitch information from
 // http://www.minuszerodegrees.net/5150/misc/5150_motherboard_switch_settings.htm
@@ -116,9 +118,9 @@ pub struct Ppi {
     port_c_mode: PortCMode,
     kb_clock_low: bool,
     kb_counting_low: bool,
-    kb_low_count: u32,
-    kb_been_reset: bool,
-    kb_count_until_reset_byte: u32,
+    kb_low_count: f64,
+    kb_do_reset: bool,
+    kb_count_until_reset_byte: f64,
     kb_resets_counter: u32,
     pb_byte: u8,
     kb_byte: u8,
@@ -127,6 +129,16 @@ pub struct Ppi {
     dip_sw2: u8,
     timer_in: bool,
     speaker_in: bool,
+}
+
+// This structure implements an interface for wires connected to the PPI from 
+// other components. Components connected to the PPI will receive a reference
+// to this structure on creation, and can read or modify the wire state via 
+// Cell's internal mutability.
+pub struct PpiWires {
+    timer_monitor: Cell<bool>,
+    timer_gate2: Cell<bool>,
+    speaker_monitor: Cell<bool>,
 }
 
 #[derive(Default)]
@@ -177,9 +189,9 @@ impl Ppi {
             },
             kb_clock_low: false,
             kb_counting_low: false,
-            kb_low_count: 0,
-            kb_been_reset: false,
-            kb_count_until_reset_byte: 0,
+            kb_low_count: 0.0,
+            kb_do_reset: false,
+            kb_count_until_reset_byte: 0.0,
             kb_resets_counter: 0,
             pb_byte: 0,
             kb_byte: 0,
@@ -224,7 +236,8 @@ impl IoDevice for Ppi {
             _ => panic!("PPI: Bad port #")
         }
     }
-    fn write_u8(&mut self, port: u16, byte: u8) {
+
+    fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>) {
         match port {
             PPI_PORT_A => {
                 // Read-only port
@@ -243,6 +256,14 @@ impl IoDevice for Ppi {
         }
     }
 
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            PPI_PORT_A,
+            PPI_PORT_B,
+            PPI_PORT_C,
+            PPI_COMMAND_PORT,
+        ]
+    }
 }
 
 impl Ppi {
@@ -314,12 +335,12 @@ impl Ppi {
             //log::trace!("PPI: Keyboard clock resume HIGH");
             self.kb_clock_low = false;
 
-            if self.kb_low_count > KB_RESET_CYCLES {
+            if self.kb_low_count > KB_RESET_DELAY_US {
                 // Clock line was low long enough to trigger reset
                 // Start timer until reset byte is sent
-                self.kb_low_count = 0;
-                self.kb_been_reset = true;
-                self.kb_count_until_reset_byte = 0;
+                self.kb_low_count = 0.0;
+                self.kb_do_reset = true;
+                self.kb_count_until_reset_byte = 0.0;
             }
         }
 
@@ -330,8 +351,12 @@ impl Ppi {
     }
 
     pub fn calc_port_c_value(&self) -> u8 {
-        let timer_bit = (self.timer_in as u8) << 4;
-        let speaker_bit = (self.speaker_in as u8) << 5;
+
+        let mut speaker_bit = 0;
+        if let MachineType::IBM_XT_5160 = self.machine_type {
+            speaker_bit = (self.speaker_in as u8) << 4;
+        }
+        let timer_bit = (self.timer_in as u8) << 5;
 
         match (&self.machine_type, &self.port_c_mode) {
             (MachineType::IBM_PC_5150, PortCMode::Switch2OneToFour) => {
@@ -391,7 +416,19 @@ impl Ppi {
         self.pb_byte & PORTB_SPEAKER_DATA != 0
     }
 
-    pub fn run(&mut self, pic: &mut pic::Pic, cycles: u32 ) {
+    pub fn get_pit_channel2_gate(&mut self) -> bool {
+        self.pb_byte & PORTB_TIMER2_GATE != 0
+    }
+
+    pub fn set_pit_output_bit(&mut self, signal: bool) {
+        self.timer_in = signal;
+    }
+
+    pub fn set_speaker_bit(&mut self, signal: bool) {
+        self.speaker_in = signal;
+    }
+
+    pub fn run(&mut self, pic: &mut pic::Pic, us: f64 ) {
 
         // Our keyboard byte was read, so clear the interrupt request line and reset the byte
         // read at the keyboard IO port to 0
@@ -405,23 +442,22 @@ impl Ppi {
         // Keyboard should send a 'aa' byte when clock line is held low (for how long?)
         // BIOS waits 20ms. 
         // Clock line must go high again
-        if self.kb_counting_low && self.kb_low_count < KB_RESET_CYCLES {
-            self.kb_low_count += cycles;
+        if self.kb_counting_low && self.kb_low_count < KB_RESET_US {
+            self.kb_low_count += us;
         }
 
         // Send reset byte after delay elapsed. The delay gives the BIOS POST routines
         // time to check for interrupts as they do not do it immediately 
-        if self.kb_been_reset {
-            self.kb_count_until_reset_byte += cycles;
+        if self.kb_do_reset {
+            self.kb_count_until_reset_byte += us;
 
-            if self.kb_count_until_reset_byte > KB_RESET_CYCLE_DELAY {
-                self.kb_been_reset = false;
-                self.kb_count_until_reset_byte = 0;
+            if self.kb_count_until_reset_byte > KB_RESET_DELAY_US {
+                self.kb_do_reset = false;
+                self.kb_count_until_reset_byte = 0.0;
                 self.kb_resets_counter += 1;
 
                 log::trace!("PPI: Sending keyboard reset byte");
                 self.kb_byte = 0xAA;
-                // Bios KB check expects a reset byte to generate a KB interrupt
                 pic.request_interrupt(1);
             }
         }

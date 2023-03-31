@@ -16,12 +16,13 @@
 
 use std::collections::HashMap;
 use std::io::Write;
+use std::any::Any;
 
 use modular_bitfield::prelude::*;
 
 use crate::config::VideoType;
-use crate::io::IoDevice;
-use crate::bus::MemoryMappedDevice;
+use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
+use crate::tracelogger::TraceLogger;
 
 use crate::videocard::{
     VideoCard,
@@ -46,10 +47,10 @@ use vga_sequencer_regs::*;
 #[allow(unused_imports)]
 use vga_color_regs::*;
 
-pub const VGA_CLOCK_1: f32 = 25.175;
-pub const VGA_CLOCK_2: f32 = 28.322;
-pub const US_PER_CLOCK_1: f32 = 1.0 / VGA_CLOCK_1;
-pub const US_PER_CLOCK_2: f32 = 1.0 / VGA_CLOCK_2;
+pub const VGA_CLOCK_1: f64 = 25.175;
+pub const VGA_CLOCK_2: f64 = 28.322;
+pub const US_PER_CLOCK_1: f64 = 1.0 / VGA_CLOCK_1;
+pub const US_PER_CLOCK_2: f64 = 1.0 / VGA_CLOCK_2;
 
 pub const CGA_ADDRESS: usize = 0xB8000;
 pub const VGA_GFX_ADDRESS: usize = 0xA0000;
@@ -258,15 +259,13 @@ impl DisplayPlane {
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
-        if let Some(_) = $self.trace_writer {
-            $self.trace_print(&format!($($t)*));
-        }
+        $self.trace_logger.print(&format!($($t)*));
     }};
 }
 
 pub(crate) use trace;
 
-pub struct VGACard<'a> {
+pub struct VGACard {
 
     timings: [VideoTimings; 2],
     u_timings: VideoMicroTimings,
@@ -283,7 +282,7 @@ pub struct VGACard<'a> {
     scanline: u32,
     scanline_cycles: u32,
     frame_cycles: u32,
-    vga_cycle_accumulator: f32,
+    vga_cycle_accumulator: f64,
     cursor_frames: u32,
     in_hblank: bool,
     in_vblank: bool,
@@ -385,7 +384,7 @@ pub struct VGACard<'a> {
     pipeline_buf: [u8; 4],
     write_buf: [u8; 4],
 
-    trace_writer: Option<Box<dyn Write + 'a>>,
+    trace_logger: TraceLogger,
 }
 
 #[bitfield]
@@ -439,7 +438,7 @@ pub enum RetracePolarity {
 /// Implement Device IO for the VGA Card.
 /// 
 /// Unlike the EGA, most of the registers on the VGA are readable.
-impl<'a> IoDevice for VGACard<'a> {
+impl IoDevice for VGACard {
     fn read_u8(&mut self, port: u16) -> u8 {
         match port {
             MISC_OUTPUT_REGISTER_READ => {
@@ -507,7 +506,7 @@ impl<'a> IoDevice for VGACard<'a> {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8) {
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>) {
         match port {
             MISC_OUTPUT_REGISTER_WRITE => {
                 self.write_external_misc_output_register(data);
@@ -573,11 +572,36 @@ impl<'a> IoDevice for VGACard<'a> {
         }
     }
 
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            ATTRIBUTE_REGISTER,
+            ATTRIBUTE_REGISTER_ALT,
+            MISC_OUTPUT_REGISTER_READ,
+            MISC_OUTPUT_REGISTER_WRITE,
+            INPUT_STATUS_REGISTER_0,
+            INPUT_STATUS_REGISTER_1,
+            INPUT_STATUS_REGISTER_1_MDA,
+            SEQUENCER_ADDRESS_REGISTER,
+            SEQUENCER_DATA_REGISTER,
+            CRTC_REGISTER_ADDRESS,
+            CRTC_REGISTER,
+            CRTC_REGISTER_ADDRESS_MDA,
+            CRTC_REGISTER_MDA,
+            GRAPHICS_ADDRESS,
+            GRAPHICS_DATA,                                          
+            PEL_ADDRESS_READ_MODE,
+            PEL_ADDRESS_WRITE_MODE,
+            PEL_DATA,
+            PEL_MASK,
+            DAC_STATE_REGISTER,
+        ]
+    }
+
 }
 
-impl<'a> VGACard<'a> {
+impl VGACard {
 
-    pub fn new<TraceWriter: Write + 'a>(trace_writer: Option<TraceWriter>) -> Self {
+    pub fn new(trace_logger: TraceLogger) -> Self {
         Self {
 
             timings: [
@@ -714,7 +738,7 @@ impl<'a> VGACard<'a> {
             pipeline_buf: [0; 4],
             write_buf: [0; 4],
 
-            trace_writer: trace_writer.map_or(None, |trace_writer| Some(Box::new(trace_writer)))
+            trace_logger
         }
     }
 
@@ -1225,14 +1249,6 @@ impl<'a> VGACard<'a> {
         
     }
 
-    #[inline]
-    pub fn trace_print(&mut self, trace_str: &str) {
-        if let Some(w) = self.trace_writer.as_mut() {
-            let mut _r = w.write_all(trace_str.as_bytes());
-            _r = w.write_all("\n".as_bytes());
-        }
-    }
-
 }
 
 macro_rules! push_reg_str {
@@ -1253,7 +1269,7 @@ macro_rules! push_reg_str_enum {
     };
 }    
 
-impl<'a> VideoCard for VGACard<'a> {
+impl VideoCard for VGACard {
 
     fn get_video_type(&self) -> VideoType {
         VideoType::VGA
@@ -1622,6 +1638,31 @@ impl<'a> VideoCard for VGACard<'a> {
         map
     }
 
+    fn run(&mut self, elapsed_us: f64) {
+
+        //let vga_cycles = match self.misc_output_register.clock_select() {
+        //    ClockSelect::Clock25 => elapsed_us / US_PER_CLOCK_1,
+        //    ClockSelect::Clock28 => elapsed_us / US_PER_CLOCK_2,
+        //    _ => elapsed_us / US_PER_CLOCK_1
+        //};
+
+        let vga_cycles = match (self.misc_output_register.clock_select(), self.sequencer_clocking_mode.dot_clock()) {
+            (ClockSelect::Clock25, DotClock::Native) => elapsed_us / US_PER_CLOCK_1,
+            (ClockSelect::Clock25, DotClock::HalfClock) => elapsed_us / (US_PER_CLOCK_2 * 2.0), // hack for BIOS
+            (ClockSelect::Clock28, DotClock::Native) => elapsed_us / US_PER_CLOCK_2,
+            (ClockSelect::Clock28, DotClock::HalfClock) => elapsed_us / (US_PER_CLOCK_2 * 2.0),
+            _ => elapsed_us / US_PER_CLOCK_1
+        };
+
+        self.vga_cycle_accumulator += vga_cycles;
+
+        while self.vga_cycle_accumulator > 1.0 {
+            self.tick();
+            self.vga_cycle_accumulator -= 1.0;
+        }
+    }
+
+    /*
     fn run(&mut self, cpu_cycles: u32) {
 
         let elapsed_us = cpu_cycles as f32 * (1.0 / 4.77272666);
@@ -1647,7 +1688,8 @@ impl<'a> VideoCard for VGACard<'a> {
             self.vga_cycle_accumulator -= 1.0;
         }
 
-    }    
+    } 
+    */   
 
     fn reset(&mut self) {
         self.reset_private();
@@ -1759,7 +1801,7 @@ impl<'a> VideoCard for VGACard<'a> {
 
 }
 
-impl<'a> MemoryMappedDevice for VGACard<'a> {
+impl MemoryMappedDevice for VGACard {
 
     fn read_u8(&mut self, address: usize) -> u8 {
 

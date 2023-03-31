@@ -1,21 +1,41 @@
-/* 
-    pit.rs 
-    Implement the Intel 8253 Programmable Interval Timer
+/*
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+    pit.rs
+
+    This module implements functionality for the Intel 8253 Programmable
+    Interval Timer.
+
 */
 
-#![allow(dead_code)]
 
 use log;
 
 use std::collections::BTreeMap;
 
-use crate::io::IoDevice;
-use crate::bus::BusInterface;
+use modular_bitfield::prelude::*;
+
+use crate::bus::{BusInterface, IoDevice};
 use crate::cpu_808x::CPU_MHZ;
-use crate::pic;
-use crate::dma;
-use crate::ppi;
+
 use crate::syntax_token::*;
+use crate::updatable::*;
 
 pub type PitDisplayState = Vec<BTreeMap<&'static str, SyntaxToken>>;
 
@@ -30,9 +50,12 @@ const PIT_ACCESS_MODE_MASK: u8    = 0b0011_0000;
 const PIT_OPERATING_MODE_MASK: u8 = 0b0000_1110;
 const PIT_BCD_MODE_MASK: u8       = 0b0000_0001;
 
+pub const PIT_FREQ: f64 = 1_193_182.0;
 pub const PIT_MHZ: f64 = 1.193182;
+pub const PIT_TICK_US: f64 = 1.0 / PIT_MHZ;
 pub const PIT_DIVISOR: f64 = 0.25;
 
+/*
 macro_rules! dirty_update_checked {
     ($old: expr, $new: expr, $flag: expr) => {
         {
@@ -52,9 +75,10 @@ macro_rules! dirty_update {
         }
     };
 }
+*/
 
 #[derive(Debug, PartialEq)]
-enum ChannelMode {
+pub enum ChannelMode {
     InterruptOnTerminalCount,
     HardwareRetriggerableOneShot,
     RateGenerator,
@@ -63,48 +87,127 @@ enum ChannelMode {
     HardwareTriggeredStrobe
 }
 
-#[derive(Debug, PartialEq)]
-enum AccessMode {
-    LatchCountValue,
-    LoByteOnly,
-    HiByteOnly,
-    LoByteHiByte
+// We implement From<u8> for this enum ourselves rather than deriving BitfieldSpecfier
+// as there is more than one bit mapping per Enum variant (6 and 7 map to modes 2 & 3 again)
+impl From<u8> for ChannelMode {
+    fn from(orig: u8) -> Self {
+        match orig {
+            0x0 => return ChannelMode::InterruptOnTerminalCount,
+            0x1 => return ChannelMode::HardwareRetriggerableOneShot,
+            0x2 => return ChannelMode::RateGenerator,
+            0x3 => return ChannelMode::SquareWaveGenerator,
+            0x4 => return ChannelMode::SoftwareTriggeredStrobe,
+            0x5 => return ChannelMode::HardwareTriggeredStrobe,
+            0x6 => return ChannelMode::RateGenerator,
+            0x7 => return ChannelMode::SquareWaveGenerator,
+            _ => panic!("From<u8> for ChannelMode: Invalid u8 value"),
+        };
+    }
 }
 
-pub struct PitChannel {
-    mode: ChannelMode,
-    mode_dirty: bool,
-    access_mode: AccessMode,
-    access_mode_dirty: bool,
-    reload_value: u16,
-    reload_value_dirty: bool,
+#[derive(Debug, Copy, Clone, PartialEq, BitfieldSpecifier)]
+pub enum PitType {
+    Model8253,
+    Model8254
+}
+
+#[derive(Debug, PartialEq, BitfieldSpecifier)]
+enum RwModeField {
+    LatchCommand,
+    Lsb,
+    Msb,
+    LsbMsb
+}
+
+#[derive(Debug, PartialEq)]
+pub enum RwMode {
+    Lsb,
+    Msb,
+    LsbMsb
+}
+
+#[bitfield]
+pub struct ControlByte {
+    bcd: bool,
+    channel_mode: B3,
+    rw_mode: RwModeField,
+    channel: B2
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ChannelState {
+    WaitingForReload,
+    WaitingForGate,
+    WaitingForLoadCycle,
+    WaitingForLoadTrigger,
+    ReloadNextCycle,
+    GateTriggeredReload,
+    Counting,
+    CountingTriggered
+}
+
+#[derive(Debug, PartialEq)] 
+enum LoadState {
+    WaitingForLsb,
+    WaitingForMsb,
+    Loaded
+}
+  
+
+#[derive(Debug, PartialEq)] 
+enum LoadType {
+    InitialLoad,
+    SubsequentLoad
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ReadState {
+    Unlatched,
+    Latched,
+    ReadLsb,
+    ReadLsbLatched,
+}
+
+pub struct Channel {
+    c: usize,
+    ptype: PitType,
+    mode: Updatable<ChannelMode>,
+    rw_mode: Updatable<RwMode>,
+    channel_state: ChannelState,
+    cycles_in_state: u32,
+    count_register: Updatable<u16>,
     waiting_for_reload: bool,
+    load_state: LoadState,
+    load_type: LoadType,
     waiting_for_lobyte: bool,
     low_byte_latched: u8,
     waiting_for_hibyte: bool,
-    current_count: u16,
-    current_count_dirty: bool,
+    load_mask: u16,
+    counting_element: Updatable<u16>,
+    ce_undefined: bool,
+    armed: bool,
+    read_state: ReadState,
     read_in_progress: bool,
     normal_lobyte_read: bool,    
     count_is_latched: bool,
-    output: bool,
-    output_dirty: bool,
+    output: Updatable<bool>,
+    output_on_reload: bool,
+    reload_on_trigger: bool,    
     latched_lobyte_read: bool,
-    latch_count: u16,
+    latch_register: u16,
     latch_lobit: bool,
     latch_lobit_count: u32,
     bcd_mode: bool,
-    input_gate: bool,
-    input_gate_dirty: bool,
+    gate: Updatable<bool>,
     one_shot_triggered: bool,
     gate_triggered: bool,
     reload_next_cycle: bool,
 }
-
 pub struct ProgrammableIntervalTimer {
+    ptype: PitType,
     pit_cycles: u64,
     cycle_accumulator: f64,
-    channels: Vec<PitChannel>,
+    channels: Vec<Channel>,
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -138,20 +241,567 @@ impl IoDevice for ProgrammableIntervalTimer {
             _ => panic!("PIT: Bad port #")
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+        // PIT will always receive a reference to bus, so it is safe to unwrap.
         match port {
-            PIT_COMMAND_REGISTER => self.command_register_write(data),
-            PIT_CHANNEL_0_DATA_PORT => self.data_write(0, data),
-            PIT_CHANNEL_1_DATA_PORT => self.data_write(1, data),
-            PIT_CHANNEL_2_DATA_PORT => self.data_write(2, data),
+            PIT_COMMAND_REGISTER => self.control_register_write(data, bus.unwrap()),
+            PIT_CHANNEL_0_DATA_PORT => self.data_write(0, data, bus.unwrap()),
+            PIT_CHANNEL_1_DATA_PORT => self.data_write(1, data, bus.unwrap()),
+            PIT_CHANNEL_2_DATA_PORT => self.data_write(2, data, bus.unwrap()),
             _ => panic!("PIT: Bad port #")
         }
     }
 
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            PIT_CHANNEL_0_DATA_PORT,
+            PIT_CHANNEL_1_DATA_PORT,
+            PIT_CHANNEL_2_DATA_PORT,
+            PIT_COMMAND_REGISTER
+        ]
+    }
+
+}
+
+impl Channel {
+    pub fn new(c: usize, ptype: PitType) -> Self {
+        Channel {
+            c,
+            ptype,
+            mode: Updatable::Dirty(ChannelMode::InterruptOnTerminalCount, false),
+            rw_mode: Updatable::Dirty(RwMode::Lsb, false),
+            channel_state: ChannelState::WaitingForReload,
+            cycles_in_state: 0,
+            count_register: Updatable::Dirty(0, false),
+            waiting_for_reload: true,
+            load_state: LoadState::WaitingForLsb,
+            load_type: LoadType::InitialLoad,
+            waiting_for_lobyte: false,
+            low_byte_latched: 0,
+            waiting_for_hibyte: false,
+            load_mask: 0xFFFF,
+            counting_element: Updatable::Dirty(0, false),
+            ce_undefined: false,
+            armed: false,
+
+            read_state: ReadState::Unlatched,
+            read_in_progress: false,
+            normal_lobyte_read: false,
+            count_is_latched: false,
+            output: Updatable::Dirty(false, false),
+            output_on_reload: false,
+            reload_on_trigger: false,
+            latched_lobyte_read: false,
+            latch_register: 0,
+            latch_lobit: false,
+            latch_lobit_count: 0,
+            bcd_mode: false,
+            gate: Updatable::Dirty(false, false),
+            one_shot_triggered: false,
+            gate_triggered: false,
+            reload_next_cycle: false,
+        }
+    }
+
+    pub fn set_mode(&mut self, mode: ChannelMode, rw_mode: RwMode, bcd: bool, bus: &mut BusInterface) {
+        // Not latch command, carry on
+        self.latch_register = 0;
+        self.count_is_latched = false;
+        self.armed = false;
+        //self.ce_undefined = false;
+
+        // Default load mask
+        //self.load_mask = 0xFFFF;
+
+        log::debug!(
+            "PIT: Channel {} selected, channel_mode {:?}, rw mode {:?}, bcd: {:?}", 
+            self.c,
+            mode,
+            rw_mode,
+            bcd
+        );
+
+        match mode {
+            ChannelMode::InterruptOnTerminalCount => {
+                self.change_output_state(false, bus);
+                self.output_on_reload = false; 
+                self.reload_on_trigger = false;                
+            }
+            ChannelMode::HardwareRetriggerableOneShot => {
+                self.change_output_state(true, bus);
+                self.output_on_reload = false; 
+                self.reload_on_trigger = true;              
+            }
+            ChannelMode::RateGenerator => {
+                self.change_output_state(true, bus);
+                self.output_on_reload = true; // Output in this mode stays high except for one cycle.
+                self.reload_on_trigger = false;                
+            }
+            ChannelMode::SquareWaveGenerator => {
+                self.change_output_state(true, bus);
+                self.output_on_reload = true;
+                self.reload_on_trigger = false;       
+                // Only allow even values into counting element on 8254  
+                self.load_mask = if self.ptype == PitType::Model8254 { 0xFFFE } else { 0xFFFF };                        
+            }
+            ChannelMode::SoftwareTriggeredStrobe => {
+                self.change_output_state(true, bus);
+            }
+            ChannelMode::HardwareTriggeredStrobe => {
+                self.change_output_state(true, bus);
+            }
+        }
+
+        // Set the new mode.
+        self.mode.update(mode);
+        self.rw_mode.update(rw_mode);
+        self.bcd_mode = bcd;
+
+        // Setting any mode stops counter.
+        self.change_channel_state(ChannelState::WaitingForReload);
+        self.read_state = ReadState::Unlatched;
+        self.load_state = LoadState::WaitingForLsb;
+        self.load_type = LoadType::InitialLoad;
+
+    }
+
+    pub fn change_output_state(
+        &mut self, 
+        state: bool,
+        bus: &mut BusInterface,
+    ) {
+
+        if *self.output != state {
+            self.output.set(state);
+            // Do things specific to channel #
+            match (self.c, state) {
+                (0, true) => bus.pic_mut().as_mut().unwrap().request_interrupt(0),
+                (0, false) => bus.pic_mut().as_mut().unwrap().clear_interrupt(0),
+                (1, true) => {
+                    let dma = bus.dma_mut().as_mut().unwrap();
+                    // Channel 1 is dedicated to sending DREQ0 signals to the DMA controller 
+                    // to perform DRAM refresh.
+                    dma.request_service(0);
+                },
+                (1, false) => {},
+                (2, true) => {},
+                (2, false) => {}
+                (_, _) => {}
+            }
+        }
+    }
+
+    pub fn latch_count(&mut self) {
+        self.latch_register = *self.counting_element;
+        self.count_is_latched = true;
+    }
+
+    pub fn set_gate(
+        &mut self, 
+        new_state: bool,
+        bus: &mut BusInterface
+    ) {
+
+        if (*self.gate == false) && (new_state == true) {
+            // Rising edge of input gate.
+            // This is ignored if we are waiting for a reload value.
+            if self.channel_state != ChannelState::WaitingForReload {
+                match *self.mode {
+                    ChannelMode::InterruptOnTerminalCount => {
+                        // Rising gate has no effect.
+                    }
+                    ChannelMode::HardwareRetriggerableOneShot => {
+                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                    }
+                    ChannelMode::RateGenerator => {
+                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                    }
+                    ChannelMode::SquareWaveGenerator => {
+                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                    }
+                    ChannelMode::SoftwareTriggeredStrobe => {
+                        // Rising gate has no effect (?)
+                    }
+                    ChannelMode::HardwareTriggeredStrobe => {
+                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                    }
+                }
+            }
+        }
+        else if (*self.gate == true) && (new_state == false) {
+
+            // Falling edge of input gate.
+            // This is ignored if we are waiting for a reload value.
+            if self.channel_state != ChannelState::WaitingForReload {
+                match *self.mode {
+                    ChannelMode::InterruptOnTerminalCount => {
+                        // Falling gate has no efect.
+                    }
+                    ChannelMode::HardwareRetriggerableOneShot => {
+                        // Falling gate has no efect.
+                    }
+                    ChannelMode::RateGenerator => {
+                        // Falling gate stops count. Output goes high.
+                        self.change_channel_state(ChannelState::WaitingForGate);
+                        self.change_output_state(true, bus);
+                    }
+                    ChannelMode::SquareWaveGenerator => {
+                        // Falling gate stops count. Output goes high.
+                        self.change_channel_state(ChannelState::WaitingForGate);
+                        self.change_output_state(true, bus);                        
+                    }
+                    ChannelMode::SoftwareTriggeredStrobe => {
+                        // Falling gate stops count. Output unchanged.
+                        self.change_channel_state(ChannelState::WaitingForGate);
+                    }
+                    ChannelMode::HardwareTriggeredStrobe => {
+                        // Falling gate has no efect.
+                    }
+                }
+            }
+        }
+
+        self.gate.update(new_state);
+    }
+
+    pub fn read_byte(&mut self) -> u8 {
+        
+        match self.read_state {
+            ReadState::Unlatched => {
+                // Unlatched and no read in progress
+                match *self.rw_mode {
+                    RwMode::Lsb => {
+                        (*self.counting_element & 0xFF) as u8
+                    },
+                    RwMode::Msb => {
+                        ((*self.counting_element >> 8) & 0xFF) as u8
+                    },
+                    RwMode::LsbMsb => {
+                        self.change_read_state(ReadState::ReadLsb);
+                        (*self.counting_element & 0xFF) as u8
+                    }
+                }
+            }
+            ReadState::ReadLsb => {
+                // Unlatched and word read in progress
+                self.change_read_state(ReadState::Unlatched);
+                ((*self.counting_element >> 8) & 0xFF) as u8
+            }
+            ReadState::Latched => {
+                // Latched and no read in progress
+                match *self.rw_mode {
+                    RwMode::Lsb => {
+                        (self.latch_register & 0xFF) as u8
+                    },
+                    RwMode::Msb => {
+                        ((self.latch_register >> 8) & 0xFF) as u8
+                    },
+                    RwMode::LsbMsb => {
+                        self.change_read_state(ReadState::ReadLsbLatched);
+                        (self.latch_register & 0xFF) as u8
+                    }
+                }
+            }
+            ReadState::ReadLsbLatched => {
+                // Unlatched and read in progress
+                self.change_read_state(ReadState::Unlatched);
+                ((self.latch_register >> 8) & 0xFF) as u8
+            }
+        }
+    }
+
+    pub fn write_byte(
+        &mut self, 
+        byte: u8,
+        bus: &mut BusInterface,
+    ) {
+
+        match *self.rw_mode {
+            RwMode::Lsb => {
+                self.count_register.update(byte as u16);
+                self.finalize_load();
+            }
+            RwMode::Msb => {
+                self.count_register.update((byte as u16) << 8);
+                self.finalize_load();
+            }
+            RwMode::LsbMsb => {
+                match self.load_state {
+                    LoadState::Loaded | LoadState::WaitingForLsb => {
+                        self.count_register.update(byte as u16);
+
+                        if *self.mode == ChannelMode::InterruptOnTerminalCount {
+                            // Beginning a load will stop the timer in InterruptOnTerminalCount mode
+                            // and set output immediately to low.
+                            self.change_output_state(false, bus);
+                            self.change_channel_state(ChannelState::WaitingForReload);
+                        }
+
+                        self.load_state = LoadState::WaitingForMsb;
+                    }
+                    LoadState::WaitingForMsb => {
+                        self.count_register.update((*self.count_register & 0xFF) | ((byte as u16) << 8));
+                        self.finalize_load();
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn finalize_load(&mut self) {
+        match self.load_type {
+            LoadType::InitialLoad => {
+                // This was the first load. Enter either WaitingForLoadTrigger or WaitingForLoadCycle
+                // depending on the flag set by the configured mode.
+                if self.reload_on_trigger {
+                    self.change_channel_state(ChannelState::WaitingForLoadTrigger);
+                }
+                else {
+                    self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                }
+                // Arm the timer (applicable only to one-shot modes, but doesn't hurt anything to set)
+                self.armed = true;
+                // Next load will be a SubsequentLoad
+                self.load_type = LoadType::SubsequentLoad;                
+            }
+            LoadType::SubsequentLoad => {
+                // This was a subsequent load for an already loaded timer.
+                match *self.mode {
+                    ChannelMode::InterruptOnTerminalCount => {
+                        // In InterruptOnTerminalCount mode, completing a load will reload that value on the next cycle.
+                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                    }
+                    ChannelMode::SoftwareTriggeredStrobe => {
+                        // In SoftwareTriggeredStrobe mode, completing a load will reload that value on the next cycle.
+                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                    }
+                    _=> {
+                        // Other modes are not reloaded on a subsequent change of the reload value until gate trigger or
+                        // terminal count.                         
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn change_read_state(&mut self, new_state: ReadState) {
+
+        self.count_is_latched = match new_state {
+            ReadState::Unlatched => false,
+            ReadState::Latched => true,
+            ReadState::ReadLsb => false,
+            ReadState::ReadLsbLatched => true,
+        };
+
+        self.read_state = new_state;
+    }
+
+    pub fn change_channel_state(&mut self, new_state: ChannelState ) {
+        self.cycles_in_state = 0;
+        self.channel_state = new_state;
+    }
+
+    pub fn count(&mut self) {
+        // Decrement and wrap counter appropriately depending on mode.
+  
+        if self.bcd_mode {
+
+            // Wrap BCD counter
+            if *self.counting_element == 0 {
+                *self.counting_element = 0x9999;
+            }
+            else {
+                // Countdown in BCD...
+                if (*self.counting_element & 0x000F) != 0 {
+                    // Ones place is not 0
+                    self.counting_element.set((*self.counting_element).wrapping_sub(1));
+                }
+                else if (*self.counting_element & 0x00F0) != 0 {
+                    // Tenths place is not 0, borrow from it
+                    self.counting_element.set((*self.counting_element).wrapping_sub(0x7)); // (0x10 (16) - 7 = 0x09))
+                }
+                else if (*self.counting_element & 0x0F00) != 0 {
+                    // Hundredths place is not 0, borrow from it
+                    self.counting_element.set((*self.counting_element).wrapping_sub(0x67)); // (0x100 (256) - 0x67 (103) = 0x99)
+                }
+                else {
+                    // Borrow from thousandths place
+                    self.counting_element.set((*self.counting_element).wrapping_sub(0x667)); // (0x1000 (4096) - 0x667 () = 0x999)
+                }
+            }
+        }
+        else {
+            self.counting_element.set((*self.counting_element).wrapping_sub(1)); // Counter wraps in binary mode.
+        }
+        return;
+    }
+  
+    pub fn count2(&mut self) {
+        self.count();
+        self.count();
+    }
+  
+    pub fn count3(&mut self) {
+        self.count();
+        self.count();
+        self.count();
+    }
+
+    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: &mut ringbuf::Producer<u8>) {
+
+        if self.channel_state == ChannelState::WaitingForLoadCycle {
+            // Load the current reload value into the counting element, applying the load mask
+            self.counting_element.update(*self.count_register & self.load_mask);
+            self.load_state = LoadState::Loaded;
+
+            // Start counting.
+            self.change_channel_state(ChannelState::Counting);
+
+            // Set output state as appropriate for mode.
+            self.change_output_state(self.output_on_reload, bus);
+
+            // Counting Element is now defined
+            self.ce_undefined = false;
+
+            // Don't count this tick.
+            return
+        }
+
+        if (self.channel_state == ChannelState::WaitingForLoadTrigger) && (self.cycles_in_state == 0) && (self.armed == true) {
+            // First cycle of kWaitingForLoadTrigger. An undefined value is loaded into the counting element.
+            self.counting_element.update(0x03);
+            self.ce_undefined = true;
+
+            self.cycles_in_state += 1;
+
+            // Don't count this tick.
+            return            
+        }
+
+        if let ChannelState::Counting | ChannelState::CountingTriggered | ChannelState::WaitingForLoadTrigger = self.channel_state {
+
+            match *self.mode {
+                ChannelMode::InterruptOnTerminalCount => {
+                    // Gate controls counting.
+                    if *self.gate {
+                        self.count();
+
+                        if *self.counting_element == 0 {
+                            // Terminal count. Set output high.
+                            self.change_output_state(true, bus);
+                        }  
+                    }
+                }
+                ChannelMode::HardwareRetriggerableOneShot => {
+                    self.count();
+                    if *self.counting_element == 0 {
+                        // Terminal count. Set output high only if timer is armed.
+                        if self.armed {
+                            self.change_output_state(true, bus);
+                        }
+                    }                      
+                }
+                ChannelMode::RateGenerator => {
+                    // Gate controls counting.
+                    if *self.gate {
+                        self.count();
+                        // Output goes low for one clock cycle when count reaches 1.
+                        // Counter is reloaded next cycle and output goes HIGH.
+                        if *self.counting_element == 1 {
+                            self.change_output_state(false, bus);
+                            self.output_on_reload = true;
+                            self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                        }
+                    }
+                }
+                ChannelMode::SquareWaveGenerator => {
+
+                    // Gate controls counting.
+                    if *self.gate {
+                        if (*self.count_register & 1) == 0 {
+                            // Even reload value. Count decrements by two and reloads on terminal count.
+                            self.count2();
+                            if *self.counting_element == 0 {
+                              self.change_output_state(!*self.output, bus); // Toggle output state
+                              self.counting_element.update(*self.count_register); // Reload counting element
+                            }
+                        }
+                        else {
+                            // Odd reload value.
+                            if self.ptype == PitType::Model8254 {
+                                // On the 8254, odd values are not allowed into the counting element.
+                                self.count2();
+                                if *self.counting_element == 0 {
+                                    if *self.output {
+                                        // When output is high, reload is delayed one cycle.
+                                        self.output_on_reload = !*self.output; // Toggle output state next cycle
+                                        self.change_channel_state(ChannelState::WaitingForLoadCycle); // Reload next cycle                      
+                                    }
+                                    else {
+                                        // Output is low. Reload and update output immediately.
+                                        self.change_output_state(!*self.output, bus); // Toggle output state
+                                        self.counting_element.update(*self.count_register); // Reload counting element
+                                    }
+                                }
+                            }
+                            else {
+                                // On the 8253, odd values are allowed into the counting element. An odd value
+                                // triggers special behavior of output is high.
+                                if *self.output && (*self.counting_element & 1) != 0 {
+                                    // If output is high and count is odd, decrement by one. The counting element will be even
+                                    // from now on until counter is reloaded.
+                                    self.count();
+                                }
+                                else if !*self.output && (*self.counting_element & 1) != 0 {
+                                    // If output is low and count is odd, decrement by three. The counting element will be even
+                                    // from now on until counter is reloaded.
+                                    self.count3();
+                                }
+                                else {
+                                    self.count2();
+                                }
+            
+                                if *self.counting_element == 0 {
+                                    // Counting element is immediately reloaded and output toggled.
+                                    self.change_output_state(!*self.output, bus); // Toggle output state
+                                    self.counting_element.update(*self.count_register);
+                                }
+                            }
+                        }                    
+                    }
+                }
+                ChannelMode::SoftwareTriggeredStrobe => {
+                    // Gate controls counting.
+                    if *self.gate {
+                        self.count();
+                        if *self.counting_element == 0 {
+                            self.change_output_state(false, bus); // Output goes low for one cycle on terminal count.
+                        }
+                        else {
+                            self.change_output_state(true, bus);
+                        }
+                    }
+                }
+                ChannelMode::HardwareTriggeredStrobe => {
+                    self.count();
+                    if *self.counting_element == 0 {
+                        self.change_output_state(false, bus); // Output goes low for one cycle on terminal count.
+                    }
+                    else {
+                        self.change_output_state(true, bus);
+                    } 
+                }
+
+            }
+        }
+
+        self.cycles_in_state = self.cycles_in_state.saturating_add(1);
+    }
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new() -> Self {
+    pub fn new(ptype: PitType) -> Self {
         /*
             The Intel documentation says: 
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -159,40 +809,12 @@ impl ProgrammableIntervalTimer {
             BIOS will halt during POST if there's a pending timer interrupt, so that's a clue we
             shouldn't initially start a timer running, but beyond that it's a guess.
         */
-        let mut vec = Vec::<PitChannel>::new();
-        for _ in 0..3 {
-            let pit = PitChannel {
-                mode: ChannelMode::InterruptOnTerminalCount,
-                mode_dirty: false,
-                access_mode: AccessMode::HiByteOnly,
-                access_mode_dirty: false,
-                reload_value: 0,
-                reload_value_dirty: false,
-                waiting_for_reload: true,
-                waiting_for_lobyte: false,
-                low_byte_latched: 0,
-                waiting_for_hibyte: false,
-                current_count: 0,
-                current_count_dirty: false,
-                read_in_progress: false,
-                normal_lobyte_read: false,
-                count_is_latched: false,
-                output: false,
-                output_dirty: false,
-                latched_lobyte_read: false,
-                latch_count: 0,
-                latch_lobit: false,
-                latch_lobit_count: 0,
-                bcd_mode: false,
-                input_gate: true,
-                input_gate_dirty: false,
-                one_shot_triggered: false,
-                gate_triggered: false,
-                reload_next_cycle: false,
-            };
-            vec.push(pit);
+        let mut vec = Vec::<Channel>::new();
+        for i in 0..3 {
+            vec.push(Channel::new(i, ptype));
         }
         Self {
+            ptype,
             pit_cycles: 0,
             cycle_accumulator: 0.0,
             channels: vec
@@ -203,33 +825,16 @@ impl ProgrammableIntervalTimer {
 
         self.cycle_accumulator = 0.0;
         
-        for channel in &mut self.channels {
-            channel.mode = ChannelMode::InterruptOnTerminalCount;
-            channel.mode_dirty = false;
-            channel.access_mode = AccessMode::HiByteOnly;
-            channel.access_mode_dirty = false;
-            channel.reload_value = 0;
-            channel.reload_value_dirty = false;
-            channel.waiting_for_reload = true;
-            channel.waiting_for_lobyte = false;
-            channel.low_byte_latched = 0;
-            channel.waiting_for_hibyte = false;
-            channel.current_count = 0;
-            channel.current_count_dirty = false;
-            channel.read_in_progress = false;
-            channel.normal_lobyte_read = false;
-            channel.count_is_latched = false;
-            channel.output = false;
-            channel.output_dirty = false;
-            channel.latched_lobyte_read = false;
-            channel.latch_count = 0;
-            channel.latch_lobit = false;
-            channel.latch_lobit_count = 0;
-            channel.bcd_mode = false;
-            channel.input_gate = true;
-            channel.input_gate_dirty = false;
-            channel.one_shot_triggered = false;
-            channel.gate_triggered = false;
+        // Reset the PIT back to sensible defaults.
+        // Note: We do not change the gate input state. The PIT does not control gate status.
+        for i in 0..3 {
+            self.channels[i].mode.update(ChannelMode::InterruptOnTerminalCount);
+            self.channels[i].channel_state = ChannelState::WaitingForReload;
+            self.channels[i].counting_element.update(0);
+            self.channels[i].read_state = ReadState::Unlatched;
+            self.channels[i].ce_undefined = false;
+            self.channels[i].output.update(false);
+            self.channels[i].bcd_mode = false;
         }
     }
 
@@ -237,320 +842,92 @@ impl ProgrammableIntervalTimer {
         command_byte & PIT_ACCESS_MODE_MASK == 0
     }
 
-    fn get_pit_cycles(cpu_cycles: u32) -> f64 {
-        cpu_cycles as f64 * PIT_DIVISOR
+    /// Return the number of PIT cycles that elapsed for the provided microsecond period.
+    fn get_pit_cycles(us: f64) -> f64 {
+        us / PIT_TICK_US
     }
 
-    fn parse_command_register(&mut self, command_byte: u8) -> (usize, AccessMode, ChannelMode, bool) {
-        
-        let channel_select: usize = (command_byte >> 6) as usize;
+    fn control_register_write(&mut self, byte: u8, bus: &mut BusInterface) {
 
-        let access_mode = match (command_byte & PIT_ACCESS_MODE_MASK) >> 4 {
-            0b00 => AccessMode::LatchCountValue,
-            0b01 => AccessMode::LoByteOnly,
-            0b10 => AccessMode::HiByteOnly,
-            0b11 => AccessMode::LoByteHiByte,
-            _ => unreachable!("Bad PIT Access mode")
-        };
+        let control_reg = ControlByte::from_bytes([byte]);
 
-        let channel_mode = match (command_byte & PIT_OPERATING_MODE_MASK) >> 1 {
-            0b000 => ChannelMode::InterruptOnTerminalCount,
-            0b001 => ChannelMode::HardwareRetriggerableOneShot,
-            0b010 => ChannelMode::RateGenerator,
-            0b011 => ChannelMode::SquareWaveGenerator,
-            0b100 => ChannelMode::SoftwareTriggeredStrobe,
-            0b101 => ChannelMode::HardwareTriggeredStrobe,
-            0b110 => ChannelMode::RateGenerator,
-            0b111 => ChannelMode::SquareWaveGenerator,
-            _ => unreachable!("Bad PIT Operating mode")
-        };
+        let c = control_reg.channel() as usize;
 
-        let bcd_enable = command_byte & PIT_BCD_MODE_MASK == 0x01;
-        if bcd_enable {
-            log::error!("PIT: BCD mode unimplemented");
+        if c > 2 {
+            // This is a read-back command.
+            match self.ptype {
+                PitType::Model8253 => {
+                    // Readback command not supported. Do nothing.
+                }
+                PitType::Model8254 => {
+                    // Do readback command here and return.
+                }
+            }
+            return
         }
-        (channel_select, access_mode, channel_mode, bcd_enable)
-    }
 
-    fn command_register_write(&mut self, command_byte: u8) {
+        let channel = &mut self.channels[c];
 
-        let (channel_select, access_mode, channel_mode, bcd_enable) = self.parse_command_register(command_byte);
-
-        if let AccessMode::LatchCountValue = access_mode {
+        if let RwModeField::LatchCommand = control_reg.rw_mode() {
             // All 0's access mode indicates a Latch Count Value command
             // Not an access mode itself, we now latch the current value of the channel until it is read
             // or a command byte is received
-            self.channels[channel_select].latch_count = self.channels[channel_select].current_count;
-            self.channels[channel_select].count_is_latched = true;
-            self.channels[channel_select].latched_lobyte_read = false;
+
+            channel.latch_count();
+            return
         }
-        else {
-            log::debug!("PIT: Channel {} selected, access mode {:?}, channel_mode {:?}, bcd: {:?}", channel_select, access_mode, channel_mode, bcd_enable );
 
-            let channel = &mut self.channels[channel_select];
+        // Convert rw_mode_field enum to rw_mode enum (drops latch command as possibile variant, as we 
+        // handled it above)
+        let rw_mode = match control_reg.rw_mode() {
+            RwModeField::Lsb => RwMode::Lsb,
+            RwModeField::Msb => RwMode::Msb,
+            RwModeField::LsbMsb => RwMode::LsbMsb,
+            _ => unreachable!("Invalid rw_mode")
+        };
 
-            dirty_update_checked!(channel.mode, channel_mode, channel.mode_dirty);
-
-            match channel.mode {
-                ChannelMode::InterruptOnTerminalCount => {
-                    // Intel: The output will be intiially low after the mode set operation.
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    channel.waiting_for_reload = true;
-                }
-                ChannelMode::HardwareRetriggerableOneShot => {
-                    // osdev: When the mode/command register is written the output signal goes high
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    channel.waiting_for_reload = true;
-                    channel.one_shot_triggered = false;
-                    channel.gate_triggered = false;
-                }
-                ChannelMode::RateGenerator => {
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    channel.waiting_for_reload = true;
-                },
-                ChannelMode::SquareWaveGenerator => {
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    channel.waiting_for_reload = true;
-                },
-                ChannelMode::SoftwareTriggeredStrobe => {
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    channel.waiting_for_reload = true;
-                },
-                ChannelMode::HardwareTriggeredStrobe => {
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    channel.waiting_for_reload = true;
-                    channel.one_shot_triggered = false;
-                    channel.gate_triggered = false;
-                }
-            }
-            
-            dirty_update_checked!(channel.reload_value, 0, channel.reload_value_dirty);
-            dirty_update_checked!(channel.access_mode, access_mode, channel.access_mode_dirty);
-            
-            channel.bcd_mode = bcd_enable;
-        }        
+        channel.set_mode(control_reg.channel_mode().into(), rw_mode, control_reg.bcd(), bus);
 
     }
 
     /// Handle a write to one of the PIT's data registers
     /// Writes to this register specify the reload value for the given channel.
-    pub fn data_write(&mut self, port_num: usize, data: u8) {
+    pub fn data_write(&mut self, port_num: usize, data: u8, bus: &mut BusInterface) {
         
-        let mut channel = &mut self.channels[port_num];
-
-        // Only two timer modes will reload the count register immediately while counting is in progress
-        let reload_immediately = match channel.mode {
-            ChannelMode::InterruptOnTerminalCount | ChannelMode::SoftwareTriggeredStrobe => true,
-            _ => false,
-        };
-
-        // Intel: Mode1: "If a new count value is loaded *while the output is low* it will not affect
-        // the duration of the one-shot pulse until the succeeeding trigger."
-
-        // Assumption is that a new count value while input is high *will* affect the output state.
-        
-        let output_low_on_reload = match channel.mode {
-            ChannelMode::HardwareRetriggerableOneShot if channel.output => true,
-            _ => false
-        };
-
-        match channel.mode {
-            ChannelMode::InterruptOnTerminalCount | ChannelMode::HardwareRetriggerableOneShot => {
-                // Reset output on port write
-                dirty_update_checked!(channel.output, false, channel.output_dirty);
-            }
-            _=> {}
-        }
-
-        match channel.access_mode {
-            AccessMode::LoByteOnly => {
-
-                dirty_update_checked!(channel.reload_value, data as u16, channel.reload_value_dirty);
-                //channel.reload_value = data as u16;
-
-                if channel.waiting_for_reload || reload_immediately {
-                    //log::trace!("Channel {} reloaded with value {} in LSB mode.", port_num, port.reload_value);
-                    channel.current_count =  channel.reload_value;
-                }
-                channel.waiting_for_reload = false;
-                if output_low_on_reload {
-
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    //channel.output = false;
-                    channel.gate_triggered = false;
-                }
-            }
-            AccessMode::HiByteOnly => {
-                dirty_update_checked!(channel.reload_value, (data as u16) << 8, channel.reload_value_dirty);
-                //channel.reload_value = (data as u16) << 8;
-                
-                if channel.waiting_for_reload || reload_immediately {
-                    //log::trace!("Channel {} reloaded with value {} in HSB mode.", port_num, port.reload_value);
-                    channel.current_count =  channel.reload_value;
-                }
-                channel.waiting_for_reload = false;
-                if output_low_on_reload {
-                    dirty_update_checked!(channel.output, false, channel.output_dirty);
-                    //channel.output = false;
-                    channel.gate_triggered = false;
-                }                
-            }
-            AccessMode::LoByteHiByte => {
-                // Expect lo byte first, hi byte second
-                if channel.waiting_for_hibyte {
-                    // Receiving hi byte
-
-                    let new_reload_value = (channel.low_byte_latched as u16) | ((data as u16) << 8);
-                    dirty_update_checked!(channel.reload_value, new_reload_value, channel.reload_value_dirty);
-                    //channel.reload_value |= (data as u16) << 8;
-                    channel.waiting_for_hibyte = false;
-
-                    if channel.waiting_for_reload || reload_immediately {
-                        dirty_update_checked!(channel.current_count, channel.reload_value, channel.current_count_dirty);
-                        channel.current_count =  channel.reload_value;              
-                        //log::trace!("Channel {} reloaded with value {} in WORD mode.", port_num, port.reload_value);
-                    }
-                    channel.waiting_for_reload = false;
-                    if output_low_on_reload {
-                        dirty_update_checked!(channel.output, false, channel.output_dirty);
-                        //channel.output = false;
-                        channel.gate_triggered = false;
-                    }                    
-                }
-                else {
-                    // Receiving lo byte
-                    channel.low_byte_latched = data;
-                    //channel.reload_value = data as u16;
-                    channel.waiting_for_hibyte = true;
-                }
-            }
-            AccessMode::LatchCountValue => {
-                // Shouldn't reach here
-            }
-        }
+        self.channels[port_num].write_byte(data, bus);
     }
 
     pub fn data_read(&mut self, port: usize) -> u8 {
-        let mut channel = &mut self.channels[port];
-        if channel.count_is_latched {
-            match channel.access_mode {
-                AccessMode::LoByteOnly => {
-                    // Reset latch on read
-                    channel.count_is_latched = false;
-
-                    let mut byte = (channel.latch_count & 0xFF) as u8;
-
-                    // Hack to avoid halts due to BIOS bit testing of channel timer.
-                    // This should be unnecessary once we implement proper instruction timings
-                    // Returning a constant cycle count for all instructions can 'lock' the lo bit to 0 or 1
-                    let lobit = channel.latch_count & 0x01 != 0;
-                    if lobit == channel.latch_lobit {
-                        channel.latch_lobit_count += 1;
-                    }
-                    else {
-                        channel.latch_lobit_count = 0;
-                    }
-                    channel.latch_lobit = lobit;
-
-                    if channel.latch_lobit_count > 10 {
-                        byte ^= 0x01;
-                    }
-
-                    return byte;
-                }
-                AccessMode::HiByteOnly => {
-                    // Reset latch on read
-                    channel.count_is_latched = false;
-                    return (channel.latch_count >> 8) as u8;
-                }
-                AccessMode::LoByteHiByte => {
-                    if channel.latched_lobyte_read {
-                        // Return hi byte and unlatch output
-                        channel.count_is_latched = false;
-                        channel.latched_lobyte_read = false;
-                        return (channel.latch_count >> 8) as u8;
-                    }
-                    else {
-                        // Return lo byte
-                        // Reset latch on full read
-                        channel.latched_lobyte_read = true;
-                        return (channel.latch_count & 0xFF) as u8;
-                    }
-                }
-                _ => unreachable!()
-            }
-        }
-        else {
-            match channel.access_mode {
-                AccessMode::LoByteOnly => {
-                    return (channel.current_count & 0xFF) as u8;
-                }
-                AccessMode::HiByteOnly => {
-                    return (channel.current_count >> 8) as u8;
-                }
-                AccessMode::LoByteHiByte => {
-                    // Output lo byte of counter, then on next read output hi byte
-                    if channel.read_in_progress {
-                        // Return hi byte and unlatch output
-                        channel.read_in_progress = false;
-                        return (channel.current_count >> 8) as u8;
-                    }
-                    else {
-                        // Return lo byte and set read in progress flag
-                        channel.read_in_progress = true;
-                        return (channel.current_count & 0xFF) as u8;
-                    }
-                }
-                _ => unreachable!()
-            }            
-        }
+        self.channels[port].read_byte()
     }
 
-    pub fn set_channel_gate(&mut self, channel: usize, state: bool ) {
+    pub fn set_channel_gate(&mut self, channel: usize, state: bool, bus: &mut BusInterface) {
         if channel > 2 {
             return
         }
         // Note: Only the gate to PIT channel #2 is connected to anything (PPI port)
-        self.channels[channel].input_gate = state;
+
+        self.channels[channel].set_gate(state, bus);
     }
 
     pub fn run(
         &mut self, 
         bus: &mut BusInterface, 
-        pic: &mut pic::Pic, 
-        dma: &mut dma::DMAController,
-        ppi: &mut ppi::Ppi,
         buffer_producer: &mut ringbuf::Producer<u8>,
-        cpu_cycles: u32 ) {
+        us: f64 ) {
 
-        let mut pit_cycles = Pit::get_pit_cycles(cpu_cycles);
-        //let pit_cycles_remainder = pit_cycles.fract();
-//
-        //// Add up fractional cycles until we can make a whole one. 
-        //// Attempts to compensate for clock drift because of unaccounted fractional cycles
-        //self.cycle_accumulator += pit_cycles_remainder;
-        //
-        //// If we have enough cycles, drain them out of accumulator into cycle count
-        //while self.cycle_accumulator > 1.0 {
-        //    pit_cycles += 1.0;
-        //    self.cycle_accumulator -= 1.0;
-        //}
-//
-        //let pit_cycles_int = pit_cycles as u32;
-//
-        ////log::trace!("pit cycles: {}", pit_cycles_int );
-        //for _ in 0..pit_cycles_int {
-        //    // Each tick, the state of PIT Channel #2 is pushed into the ringbuf
-        //    self.tick(bus, pic, dma, ppi, buffer_producer);
-        //}
+        let mut pit_cycles = Pit::get_pit_cycles(us);
+        //log::debug!("Got {:?} pit cycles", pit_cycles);
 
+        // Add up fractional cycles until we can make a whole one. 
         self.cycle_accumulator += pit_cycles;
         while self.cycle_accumulator > 1.0 {
+            // We have one or more full PIT cycles. Drain the cycle accumulator
+            // by ticking the PIT until the accumulator drops below 1.0.
             pit_cycles += 1.0;
             self.cycle_accumulator -= 1.0;
-            self.tick(bus, pic, dma, ppi, buffer_producer);
-        }
-        
+            self.tick(bus, buffer_producer);
+        }        
     }
 
     pub fn get_cycles(&self) -> u64 {
@@ -558,295 +935,27 @@ impl ProgrammableIntervalTimer {
     }
 
     pub fn get_output_state(&self, channel: usize) -> bool {
-        self.channels[channel].output
+        *self.channels[channel].output
     }
 
     pub fn tick(
         &mut self,
         bus: &mut BusInterface,
-        pic: &mut pic::Pic,
-        dma: &mut dma::DMAController,
-        ppi: &mut ppi::Ppi,
         buffer_producer: &mut ringbuf::Producer<u8>) 
     {
         self.pit_cycles += 1;
 
-        // The rising edge of a channel's input gate will reload a channel's counter value
-        // in modes 1, 2, 3 and 5.
-
-        // However, only channel 2 has a working input gate. The input gate is controlled by
-        // writing line pb0 of the PPI chip.
-        
-        // Therefore we only need to handle channel 2 here. All other channel input gates will
-        // remain always high.
-
-        // Gate input went high on previous cycle. There is a 1-cycle delay before the count
-        // is reloaded.
-        if self.channels[2].reload_next_cycle {
-
-            if self.channels[2].reload_value == 0 {
-                // 0 functions as a reload value of 65536
-
-                dirty_update_checked!(
-                    self.channels[2].current_count, 
-                    u16::MAX,
-                    self.channels[2].current_count_dirty
-                ); 
-                //self.channels[2].current_count = u16::MAX;
-            }
-            else {
-                dirty_update_checked!(
-                    self.channels[2].current_count, 
-                    self.channels[2].reload_value,
-                    self.channels[2].current_count_dirty
-                ); 
-                //self.channels[2].current_count = self.channels[2].reload_value;                            
-            }
-
-            self.channels[2].reload_next_cycle = false;
+        // Get timer channel 2 state from ppi.
+        if let Some(ppi) = bus.ppi_mut() {
+            self.channels[2].set_gate(ppi.get_pit_channel2_gate(), bus);
         }
 
-        let channel2_gate = ppi.get_pb0_state();
-        if channel2_gate && !self.channels[2].input_gate {
-            // Input gate rising
-            // Reload counter in modes 1, 2 & 3
-            match self.channels[2].mode {
-                ChannelMode::RateGenerator 
-                | ChannelMode::HardwareRetriggerableOneShot
-                | ChannelMode::SquareWaveGenerator 
-                | ChannelMode::HardwareTriggeredStrobe 
-                => 
-                {
-                    self.channels[2].reload_next_cycle = true;
-                }
-                _ => {}
-            }
+        for (i, c) in self.channels.iter_mut().enumerate() {
+            c.tick(bus, buffer_producer);
 
-            if let ChannelMode::HardwareRetriggerableOneShot = self.channels[2].mode {
-                // Rising edge of gate input sets output low.
-
-                dirty_update_checked!(self.channels[2].output, false, self.channels[2].output_dirty);
-                //self.channels[2].output = false;
-                self.channels[2].one_shot_triggered = false;
-            }
-            self.channels[2].gate_triggered = true;
-        }
-
-        dirty_update_checked!(self.channels[2].input_gate, channel2_gate, self.channels[2].input_gate_dirty);
-        //self.channels[2].input_gate = channel2_gate;
-
-        // Tick each timer channel
-
-        for (i,t) in &mut self.channels.iter_mut().enumerate() {
-            match t.mode {
-                ChannelMode::InterruptOnTerminalCount => {
-                    // Don't count while waiting for reload value or if input gate is low
-                    if !t.waiting_for_reload && t.input_gate {
-
-                        // Counter value of 0 equates to to reload value of 2^16
-
-                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
-                        //t.current_count = t.current_count.wrapping_sub(1);
-                        
-                        // Terminal Count reached.
-                        if t.current_count == 0 {
-                            
-                            // Only trigger an interrupt on Channel #0, and only if output is going from low to high
-                            if !t.output && i == 0 {
-                                pic.request_interrupt(0);
-                            }
-
-                            dirty_update_checked!(t.output, true, t.output_dirty);
-                            //t.output = true;
-                            // Counter just wraps around in this mode, it is NOT reloaded.
-                            dirty_update!(t.current_count, u16::MAX, t.current_count_dirty);
-                            //t.current_count = u16::MAX;
-                        }
-                    }
-                },
-                ChannelMode::HardwareRetriggerableOneShot => {
-                    // Counting waits for reload value and rising edge of gate input.
-                    // Therefore this mode is only usable on channel #2.
-                    if !t.waiting_for_reload && t.gate_triggered {
-                        // Counter value of 0 equates to to reload value of 2^16
-
-                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
-                        //t.current_count = t.current_count.wrapping_sub(1);
-                        
-                        // OSDev: When the current count decrements from one to zero, the output goes
-                        // high and remains high until another mode/command register is written 
-                        if t.current_count == 0 {
-
-                            dirty_update!(t.current_count, u16::MAX, t.current_count_dirty);
-                            //t.current_count = u16::MAX;
-
-                            if t.one_shot_triggered == false {
-                                t.one_shot_triggered = true;
-
-                                dirty_update_checked!(t.output, true, t.output_dirty);
-                                //t.output = true;
-                            }
-                        }
-                        else if !t.one_shot_triggered {
-
-                            dirty_update_checked!(t.output, false, t.output_dirty);
-                            //t.output = false;
-                        }
-
-                    }
-                },
-                ChannelMode::RateGenerator => {
-                    // Don't count while waiting for reload value or if input gate is low
-                    if !t.waiting_for_reload && t.input_gate {
-
-                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
-                            
-                        if t.current_count == 1 {
-                            // OSDev: When the current count decrements from two to one, the output goes low
-                            //        the next falling edge of the clock it will go high again
-                            
-                            dirty_update_checked!(t.output, false, t.output_dirty);
-                            //t.output = false;
-                        }
-                        if t.current_count == 0 {
-                            // Decremented from 1 to 0, output high, reload counter and continue
-                            
-                            dirty_update_checked!(t.output, true, t.output_dirty);
-                            //t.output = true;
-                            
-                            dirty_update!(t.current_count, t.reload_value, t.output_dirty);
-                            //t.current_count = t.reload_value;
-
-                            if i == 0 {                          
-                                // Channel #0 is connected to PIC and generates interrupt
-                                pic.request_interrupt(0);
-                            }
-                            if i == 1 {
-                                // Channel #1 is connected to DMA for DMA refresh.
-                                dma.do_dma_read_u8(bus, 0);
-                            }
-                        }
-                    }
-                    // Low gate input forces output high
-                    if !t.input_gate {
-                        dirty_update_checked!(t.output, true, t.output_dirty);
-                        //t.output = true;
-                    }
-                },
-                ChannelMode::SquareWaveGenerator => {
-                    // Don't count while waiting for reload value, or if input gate is low
-                    if !t.waiting_for_reload && t.input_gate {
-                        
-                        // Counter value of 0 equates to to reload value of 2^16
-                        if t.current_count == 0 {
-                            if t.reload_value != 0 {
-                                panic!("unexpected timer state");
-                            }
-                            dirty_update!(t.current_count, u16::MAX, t.current_count_dirty );
-                            //t.current_count = u16::MAX;
-                        }
-                        if t.current_count & 0x01 != 0 {
-                            // Count is odd - can only occur immediately after reload of odd reload value
-
-                            if t.output { 
-                                // Intel: "If the count is odd and the output is high, the first clock pulse
-                                // (after the count is loaded) decrements the count by 1. Subsequent pulses
-                                // decrement the clock by 2..."                    
-                                dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
-                                //t.current_count = t.current_count.wrapping_sub(1);
-
-                                // count is even from now on
-                            }
-                            else {
-                                // Intel: "... After timeout, the output goes low and the full count is reloaded.
-                                // The first clock pulse decrements the counter by 3."
-
-                                dirty_update!(t.current_count, t.current_count.wrapping_sub(3), t.current_count_dirty);
-                                //t.current_count = t.current_count.wrapping_sub(3);
-                                
-                                // count is even from now on
-
-                                // TODO: What happens on a reload value of 1? OSdev says you should avoid it - would 
-                                // it wrap the counter?
-                            }
-                        }
-                        else {
-
-                            dirty_update!(t.current_count, t.current_count.saturating_sub(2), t.current_count_dirty);
-                            //t.current_count = t.current_count.saturating_sub(2);
-                        }
-
-                        // Terminal count reached
-                        if t.current_count == 0 {
-
-                            // Change flipflop state
-
-                            dirty_update!(t.output, !t.output, t.output_dirty);
-                            //t.output = !t.output;
-
-                            // Only Channel #0 generates interrupts
-                            if i == 0 {
-                                if t.output {
-                                    pic.request_interrupt(0);
-                                }
-                                else {
-                                    pic.clear_interrupt(0);
-                                }
-                            }  
-
-                            // Reload counter
-                            if t.reload_value == 0 {
-                                dirty_update!(t.current_count, u16::MAX, t.current_count_dirty);
-                                //t.current_count = u16::MAX; 
-                            }
-                            else {
-                                dirty_update!(t.current_count, t.reload_value, t.current_count_dirty);
-                                //t.current_count = t.reload_value;                            
-                            }
-                        }
-                    }
-
-                    //if !t.input_gate {
-                    //    t.output_is_high = true;
-                    //}
-                },
-                ChannelMode::SoftwareTriggeredStrobe => {},
-                ChannelMode::HardwareTriggeredStrobe => {
-                    if !t.waiting_for_reload {
-
-                        // Counter value of 0 equates to to reload value of 2^16
-                        dirty_update!(t.current_count, t.current_count.wrapping_sub(1), t.current_count_dirty);
-                            
-                        // OSDev: When the current count decrements from one to zero, the output goes
-                        // low for one cycle of the input signal
-                        if t.current_count == 0 {
-
-                            if t.one_shot_triggered == false {
-                                t.one_shot_triggered = true;
-
-                                dirty_update!(t.output, false, t.output_dirty);
-                                //t.output = false;
-                            }
-                        }
-                        else {
-                            dirty_update!(t.output, true, t.output_dirty);
-                            //t.output = true;
-                        }
-                    }
-                },
-            }
-
-            let ppi_pb1 = ppi.get_pb1_state();
-
-            // Push state of PIT channel #2 output to ring buffer. 
-            // Note: Bit #1 of PPI Port B is AND'd with output.
             if i == 2 {
 
-                let speaker_signal = t.output && ppi_pb1;
-                
-                if let Ok(()) = buffer_producer.push(speaker_signal as u8) {
-                    // 
-                }
+                _ = buffer_producer.push(*c.output as u8);
             }
         }
     }
@@ -855,31 +964,34 @@ impl ProgrammableIntervalTimer {
     #[allow(dead_code)]
     pub fn get_string_state(&mut self, clean: bool) -> PitStringState {
         let state = PitStringState {
-            c0_value:           SyntaxToken::StateString(format!("{:06}", self.channels[0].current_count), self.channels[0].current_count_dirty, 0),
-            c0_reload_value:    SyntaxToken::StateString(format!("{:06}", self.channels[0].reload_value), self.channels[0].reload_value_dirty, 0),
-            c0_access_mode:     SyntaxToken::StateString(format!("{:?}", self.channels[0].access_mode), self.channels[0].access_mode_dirty, 0),
-            c0_channel_mode:    SyntaxToken::StateString(format!("{:?}", self.channels[0].mode), self.channels[0].mode_dirty, 0),
-            c0_channel_output:  SyntaxToken::StateString(format!("{:?}", self.channels[0].output), self.channels[0].access_mode_dirty, 0),
-            c1_value:           SyntaxToken::StateString(format!("{:06}", self.channels[1].current_count), self.channels[1].current_count_dirty, 0),
-            c1_reload_value:    SyntaxToken::StateString(format!("{:06}", self.channels[1].reload_value), self.channels[1].reload_value_dirty, 0),
-            c1_access_mode:     SyntaxToken::StateString(format!("{:?}", self.channels[1].access_mode), self.channels[1].access_mode_dirty, 0),
-            c1_channel_mode:    SyntaxToken::StateString(format!("{:?}", self.channels[1].mode), self.channels[1].mode_dirty, 0),
-            c1_channel_output:  SyntaxToken::StateString(format!("{:?}", self.channels[1].output), self.channels[1].access_mode_dirty, 0),
-            c2_value:           SyntaxToken::StateString(format!("{:06}", self.channels[2].current_count), self.channels[2].current_count_dirty, 0),
-            c2_reload_value:    SyntaxToken::StateString(format!("{:06}", self.channels[2].reload_value), self.channels[2].reload_value_dirty, 0),
-            c2_access_mode:     SyntaxToken::StateString(format!("{:?}", self.channels[2].access_mode), self.channels[2].access_mode_dirty, 0),
-            c2_channel_mode:    SyntaxToken::StateString(format!("{:?}", self.channels[2].mode), self.channels[1].mode_dirty, 0),
-            c2_channel_output:  SyntaxToken::StateString(format!("{:?}", self.channels[2].output), self.channels[2].access_mode_dirty, 0),
-            c2_gate_status:     SyntaxToken::StateString(format!("{:?}", self.channels[2].input_gate), self.channels[2].input_gate_dirty, 0),
+
+            c0_value:           SyntaxToken::StateString(format!("{:06}", *self.channels[0].counting_element), self.channels[0].counting_element.is_dirty(), 0),
+            c0_reload_value:    SyntaxToken::StateString(format!("{:06}", *self.channels[0].count_register), self.channels[0].count_register.is_dirty(), 0),
+            c0_access_mode:     SyntaxToken::StateString(format!("{:?}", *self.channels[0].rw_mode), self.channels[0].rw_mode.is_dirty(), 0),
+            c0_channel_output:  SyntaxToken::StateString(format!("{:?}", *self.channels[0].output), self.channels[0].output.is_dirty(), 0),
+            c0_channel_mode:    SyntaxToken::StateString(format!("{:?}", *self.channels[0].mode), self.channels[0].mode.is_dirty(), 0),
+            
+            c1_value:           SyntaxToken::StateString(format!("{:06}", *self.channels[1].counting_element), self.channels[1].counting_element.is_dirty(), 0),
+            c1_reload_value:    SyntaxToken::StateString(format!("{:06}", *self.channels[1].count_register), self.channels[1].count_register.is_dirty(), 0),
+            c1_access_mode:     SyntaxToken::StateString(format!("{:?}", *self.channels[1].rw_mode), self.channels[1].rw_mode.is_dirty(), 0),
+            c1_channel_output:  SyntaxToken::StateString(format!("{:?}", *self.channels[1].output), self.channels[1].output.is_dirty(), 0),
+            c1_channel_mode:    SyntaxToken::StateString(format!("{:?}", *self.channels[1].mode), self.channels[1].mode.is_dirty(), 0),
+
+            c2_value:           SyntaxToken::StateString(format!("{:06}", *self.channels[2].counting_element), self.channels[2].counting_element.is_dirty(), 0),
+            c2_reload_value:    SyntaxToken::StateString(format!("{:06}", *self.channels[2].count_register), self.channels[2].count_register.is_dirty(), 0),
+            c2_access_mode:     SyntaxToken::StateString(format!("{:?}", *self.channels[2].rw_mode), self.channels[2].rw_mode.is_dirty(), 0),
+            c2_channel_output:  SyntaxToken::StateString(format!("{:?}", *self.channels[2].output), self.channels[2].output.is_dirty(), 0),
+            c2_channel_mode:    SyntaxToken::StateString(format!("{:?}", *self.channels[2].mode), self.channels[2].mode.is_dirty(), 0),
+            c2_gate_status:     SyntaxToken::StateString(format!("{:?}", self.channels[2].gate), self.channels[2].gate.is_dirty(), 0),
         };
 
         if clean {
             for i in 0..3 {
-                self.channels[i].current_count_dirty = false;
-                self.channels[i].reload_value_dirty = false;
-                self.channels[i].access_mode_dirty = false;
-                self.channels[i].mode_dirty = false;
-                self.channels[i].input_gate_dirty = false;
+                self.channels[i].mode.clean();
+                self.channels[i].counting_element.clean();
+                self.channels[i].count_register.clean();
+                self.channels[i].rw_mode.clean();
+                self.channels[i].gate.clean();
             }
 
         }
@@ -896,39 +1008,45 @@ impl ProgrammableIntervalTimer {
             let mut channel_map = BTreeMap::<&str, SyntaxToken>::new();
 
             channel_map.insert(
-                "Access Mode:", 
+                "Rw Mode:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].access_mode), self.channels[i].access_mode_dirty, 0
+                    format!("{:?}", *self.channels[i].rw_mode), self.channels[i].rw_mode.is_dirty(), 0
                 )
             );
             channel_map.insert(
                 "Channel Mode:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].mode), self.channels[i].mode_dirty, 0
+                    format!("{:?}", *self.channels[i].mode), self.channels[i].mode.is_dirty(), 0
                 )
             );
             channel_map.insert(
-                "Counter:", 
+                "Counting Element:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].current_count), self.channels[i].current_count_dirty, 0
+                    format!("{:?}", *self.channels[i].counting_element), self.channels[i].counting_element.is_dirty(), 0
                 )
             );
             channel_map.insert(
-                "Reload Value:", 
+                "Count Register:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].reload_value), self.channels[i].reload_value_dirty, 0
+                    format!(
+                        "{:?} [{:04X}]",
+                        *self.channels[i].count_register,
+                        *self.channels[i].count_register,
+                    ), 
+                    self.channels[i].count_register.is_dirty(), 
+                    0
                 )
             );
             channel_map.insert(
                 "Output Signal:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].output), self.channels[i].output_dirty, 0
+                    format!("{:?}", *self.channels[i].output), self.channels[i].output.is_dirty(), 0
                 )
             );
             channel_map.insert(
                 "Gate Status:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", self.channels[i].input_gate), self.channels[i].input_gate_dirty, 0
+                    format!("{:?}", *self.channels[i].gate), self.channels[i].gate.is_dirty(), 0
                 )
             );
 
@@ -937,14 +1055,15 @@ impl ProgrammableIntervalTimer {
 
         if clean {
             for i in 0..3 {
-                self.channels[i].current_count_dirty = false;
-                self.channels[i].reload_value_dirty = false;
-                self.channels[i].access_mode_dirty = false;
-                self.channels[i].mode_dirty = false;
-                self.channels[i].input_gate_dirty = false;
-                self.channels[i].output_dirty = false;
-            }
 
+                self.channels[i].mode.clean();
+
+                self.channels[i].counting_element.clean();
+                self.channels[i].count_register.clean();
+                self.channels[i].rw_mode.clean();
+                self.channels[i].gate.clean();
+                self.channels[i].output.clean();
+            }
         }
 
         state_vec

@@ -168,7 +168,7 @@ pub struct CModeControl {
     pub hardware_reset: HardwareReset,
 }
 
-impl<'a> VGACard<'a> {
+impl VGACard {
     pub fn write_crtc_register_address(&mut self, byte: u8 ) {
 
         //log::trace!("CGA: CRTC register {:02X} selected", byte);

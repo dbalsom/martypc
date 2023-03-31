@@ -7,7 +7,7 @@
 use std::collections::{VecDeque, HashMap};
 use lazy_static::lazy_static;
 
-use crate::io::IoDevice;
+use crate::bus::IoDevice;
 use crate::dma;
 use crate::bus::BusInterface;
 use crate::pic;
@@ -312,7 +312,8 @@ impl IoDevice for FloppyController {
             _ => unreachable!("FLOPPY: Bad port #")
         }        
     }
-    fn write_u8(&mut self, port: u16, data: u8) {
+
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
         match port {
             FDC_DIGITAL_OUTPUT_REGISTER => {
                 self.handle_dor_write(data);
@@ -326,6 +327,14 @@ impl IoDevice for FloppyController {
             _ => unreachable!("FLOPPY: Bad port #")
         }    
     }    
+
+    fn port_list(&self) -> Vec<u16> {
+        vec![
+            FDC_DIGITAL_OUTPUT_REGISTER,
+            FDC_STATUS_REGISTER,
+            FDC_DATA_REGISTER
+        ]
+    }
 }
 
 impl FloppyController {
@@ -1513,18 +1522,18 @@ impl FloppyController {
     }
 
     /// Run the Floppy Drive Controller. Process running Operations.
-    pub fn run(&mut self, pic: &mut pic::Pic, dma: &mut dma::DMAController, bus: &mut BusInterface, _cpu_cycles: u32 ) {
+    pub fn run(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface, _us: f64 ) {
 
         // Send an interrupt if one is queued
         if self.send_interrupt {
-            pic.request_interrupt(FDC_IRQ);
+            bus.pic_mut().as_mut().unwrap().request_interrupt(FDC_IRQ);
             self.pending_interrupt = true;
             self.send_interrupt = false;
         }
 
         // End an interrupt if one was handled
         if self.end_interrupt {
-            pic.clear_interrupt(FDC_IRQ);
+            bus.pic_mut().as_mut().unwrap().clear_interrupt(FDC_IRQ);
             self.pending_interrupt = false;
             self.end_interrupt = false;
         }

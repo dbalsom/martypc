@@ -25,8 +25,8 @@ pub trait ByteQueue {
     fn q_read_u16(&mut self, qtype: QueueType) -> u16;
     fn q_read_i16(&mut self, qtype: QueueType) -> i16;
 
-    fn q_peek_u8(&self) -> u8;
-    fn q_peek_i8(&self) -> i8;
-    fn q_peek_u16(&self) -> u16;
-    fn q_peek_i16(&self) -> i16;
+    fn q_peek_u8(&mut self) -> u8;
+    fn q_peek_i8(&mut self) -> i8;
+    fn q_peek_u16(&mut self) -> u16;
+    fn q_peek_i16(&mut self) -> i16;
 }
