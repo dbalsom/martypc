@@ -716,7 +716,7 @@ impl<'a> Machine<'a> {
         while self.speaker_buf_producer.len() >= self.pit_data.next_sample_size {
             self.pit_buf_to_sound_buf();
         }
-        
+
     }
 
     /// Called to update machine once per frame.
@@ -794,7 +794,7 @@ impl<'a> Machine<'a> {
         // Calculate size of next audio sample in pit samples by carrying over fractional part
         let next_sample_f: f64 = self.pit_data.ticks_per_sample + self.pit_data.fractional_part;
 
-        self.pit_data.next_sample_size = next_sample_f.trunc() as usize;
+        self.pit_data.next_sample_size = next_sample_f as usize;
         self.pit_data.fractional_part = next_sample_f.fract();
     }
 
