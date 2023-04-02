@@ -918,7 +918,15 @@ fn main() {
 
                     // Check if there was a resolution change, if a video card is present
                     if let Some(video_card) = machine.videocard() {
-                        let (new_w, new_h) = video_card.get_display_size();
+
+                        let (new_w, mut new_h) = video_card.get_display_size();
+
+                        // If CGA, we will double scanlines later in the renderer, so make our buffer twice
+                        // as high.
+                        if video_card.get_scanline_double() {
+                            new_h = new_h * 2;
+                        }
+                        
                         if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
                             if new_w != video_data.render_w || new_h != video_data.render_h {
                                 // Resize buffers

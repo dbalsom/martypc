@@ -1098,9 +1098,7 @@ impl VGACard {
             count -= 1;
         }
         byte
-    }   
-    
-
+    }
 
     /* 
     fn handle_mode_register(&mut self, mode_byte: u8) {
@@ -1299,6 +1297,12 @@ impl VideoCard for VGACard {
     /// Unimplemented for indirect rendering.
     fn get_display_extents(&self) -> &DisplayExtents {
         &self.extents
+    }
+
+    /// Return whether to double scanlines produced by this adapter.
+    /// For VGA, this is false.
+    fn get_scanline_double(&self) -> bool {
+        false
     }
 
     /// Unimplemented for indirect rendering.

@@ -563,6 +563,14 @@ impl Video {
             return
         }
 
+        // We want to double each scanline on output, abort if there's not enough froom
+        // in the framebuffer
+        if extents.visible_h > (h / 2) {
+            
+            log::warn!("Height: {} too small for visible_h: {}", h, extents.visible_h);
+            return
+        }
+
         // Assume display buffer visible data starts at offset 0
 
         let max_y = std::cmp::min(h, extents.visible_h);
@@ -572,17 +580,25 @@ impl Video {
 
         for y in 0..max_y {
 
-            let dbuf_row_offset = (y as usize) * extents.row_stride;
-            let frame_row_offset = (y * (w * 4)) as usize;
+            let dbuf_row_offset = y as usize * extents.row_stride;
+            let frame_row0_offset = ((y * 2) * (w * 4)) as usize;
+            let frame_row1_offset = (((y * 2) * (w * 4)) + (w * 4)) as usize;
 
             for x in 0..max_x {
-                let fo = frame_row_offset + (x * 4) as usize;
+                let fo0 = frame_row0_offset + (x * 4) as usize;
+                let fo1 = frame_row1_offset + (x * 4) as usize;
+
                 let dbo = dbuf_row_offset + x as usize;
 
-                frame[fo]       = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][0];
-                frame[fo + 1]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][1];
-                frame[fo + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
-                frame[fo + 3]   = 0xFFu8;
+                frame[fo0]       = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][0];
+                frame[fo0 + 1]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][1];
+                frame[fo0 + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
+                frame[fo0 + 3]   = 0xFFu8;
+
+                frame[fo1]       = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][0];
+                frame[fo1 + 1]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][1];
+                frame[fo1 + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
+                frame[fo1 + 3]   = 0xFFu8;                
             }
         }
     }

@@ -956,7 +956,6 @@ impl EGACard {
     }
     */
 
-
 }
 
 impl VideoCard for EGACard {
@@ -997,6 +996,12 @@ impl VideoCard for EGACard {
         &self.extents
     }
 
+    /// Return whether to double scanlines produced by this adapter.
+    /// For EGA, this is false.
+    fn get_scanline_double(&self) -> bool {
+        false
+    }
+
     /// Unimplemented for indirect rendering.
     fn get_display_buf(&self) -> &[u8] {
         &[0]
@@ -1016,7 +1021,6 @@ impl VideoCard for EGACard {
     }
 
     fn is_40_columns(&self) -> bool {
-
         match self.display_mode {
             DisplayMode::Mode0TextBw40 => true,
             DisplayMode::Mode1TextCo40 => true,

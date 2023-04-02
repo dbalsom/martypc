@@ -736,6 +736,10 @@ impl VideoCard for CGACard {
         &self.extents[self.back_buf]
     }
 
+    fn get_scanline_double(&self) -> bool {
+        true
+    }
+
     fn get_display_buf(&self) -> &[u8] {
         &self.buf[self.front_buf][..]
     }
@@ -743,7 +747,7 @@ impl VideoCard for CGACard {
     fn get_refresh_rate(&self) -> u32 {
         60
     }
-    
+
     fn is_40_columns(&self) -> bool {
 
         match self.display_mode {
@@ -931,7 +935,7 @@ impl VideoCard for CGACard {
 
                         // Draw cursor
                         if self.rba == self.get_cursor_address() {
-                            
+
                         }
 
                     //self.buf[self.back_buf][self.rba] = (self.rows_drawn & 0x0F) as u8;

@@ -180,6 +180,9 @@ pub trait VideoCard {
 
     fn get_clock_divisor(&self) -> u32;
 
+    /// Return a bool determining whether we double scanlines for this device (for CGA mostly)
+    fn get_scanline_double(&self) -> bool;
+
     /// Get the current refresh rate from the adapter. Different adapters might
     /// support different refresh rates, even per mode.
     fn get_refresh_rate(&self) -> u32;
