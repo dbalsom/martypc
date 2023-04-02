@@ -25,15 +25,7 @@ use log;
 use crate::config::VideoType;
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
 
-use crate::videocard::{
-    VideoCard,
-    VideoCardStateEntry,
-    DisplayMode,
-    CursorInfo,
-    FontInfo,
-    CGAColor,
-    CGAPalette
-};
+use crate::videocard::*;
 
 mod ega_attribute_regs;
 mod ega_crtc_regs;
@@ -214,7 +206,7 @@ impl DisplayPlane {
 pub struct EGACard {
 
     timings: [VideoTimings; 2],
-
+    extents: DisplayExtents,
     io_adjust: u16,
     mode_byte: u8,
     display_mode: DisplayMode,
@@ -491,7 +483,7 @@ impl EGACard {
                     hblank_start: EGA_HBLANK_START,
                 }
             ],
-
+            extents: Default::default(),
             io_adjust: 0,
             mode_byte: 0,
             display_mode: DisplayMode::Mode3TextCo80,
@@ -973,11 +965,15 @@ impl VideoCard for EGACard {
         VideoType::EGA
     }
 
+    fn get_render_mode(&self) -> RenderMode {
+        RenderMode::Indirect
+    }
+
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
     }
 
-    fn get_display_extents(&self) -> (u32, u32) {
+    fn get_display_size(&self) -> (u32, u32) {
 
         // EGA supports multiple fonts.
 
@@ -994,6 +990,22 @@ impl VideoCard for EGACard {
         let width = (self.crtc_horizontal_display_end as u32 + 1) * font_w as u32;
         let height = self.crtc_vertical_display_end as u32 + 1;
         (width, height)
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_display_extents(&self) -> &DisplayExtents {
+        &self.extents
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_display_buf(&self) -> &[u8] {
+        &[0]
+    }
+    
+    /// Return the current refresh rate.
+    /// TODO: Handle VGA 70Hz modes.
+    fn get_refresh_rate(&self) -> u32 {
+        60
     }
 
     fn get_clock_divisor(&self) -> u32 {
@@ -1029,7 +1041,7 @@ impl VideoCard for EGACard {
         match self.display_mode {
             DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
                 CursorInfo{
-                    addr,
+                    addr: addr as usize,
                     pos_x: addr % 40,
                     pos_y: addr / 40,
                     line_start: self.crtc_cursor_start,
@@ -1039,7 +1051,7 @@ impl VideoCard for EGACard {
             }
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
                 CursorInfo{
-                    addr,
+                    addr: addr as usize,
                     pos_x: addr % 80,
                     pos_y: addr / 80,
                     line_start: self.crtc_cursor_start,

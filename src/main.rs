@@ -94,6 +94,7 @@ use floppy_manager::{FloppyManager, FloppyError};
 use machine_manager::MACHINE_DESCS;
 use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
+use videocard::{RenderMode};
 use bytequeue::ByteQueue;
 use crate::egui::{GuiEvent, GuiWindow};
 use sound::SoundPlayer;
@@ -917,7 +918,7 @@ fn main() {
 
                     // Check if there was a resolution change, if a video card is present
                     if let Some(video_card) = machine.videocard() {
-                        let (new_w, new_h) = video_card.get_display_extents();
+                        let (new_w, new_h) = video_card.get_display_size();
                         if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
                             if new_w != video_data.render_w || new_h != video_data.render_h {
                                 // Resize buffers
@@ -952,20 +953,63 @@ fn main() {
                     let bus = machine.bus_mut();
 
                     if let Some(video_card) = bus.video() {
-                        match aspect_correct {
-                            true => {
-                                video.draw(&mut render_src, video_card, bus, composite_enabled);
-                                video::resize_linear(
-                                    &render_src, 
-                                    video_data.render_w, 
-                                    video_data.render_h, 
-                                    pixels.get_frame_mut(), 
-                                    video_data.aspect_w, 
-                                    video_data.aspect_h);                            
+
+                        // Get the render mode from the device and render appropriately
+                        match (video_card.get_video_type(), video_card.get_render_mode()) {
+
+                            (VideoType::CGA, RenderMode::Direct) => {
+                                // Draw device's back buffer in direct mode (CGA only for now)
+
+                                match aspect_correct {
+                                    true => {
+                                        video.draw_cga_direct(
+                                            &mut render_src,
+                                            video_data.render_w, 
+                                            video_data.render_h,                                             
+                                            video_card.get_display_buf(),
+                                            video_card.get_display_extents(),
+                                            composite_enabled
+                                        );
+
+                                        video::resize_linear(
+                                            &render_src, 
+                                            video_data.render_w, 
+                                            video_data.render_h, 
+                                            pixels.get_frame_mut(), 
+                                            video_data.aspect_w, 
+                                            video_data.aspect_h);                            
+                                    }
+                                    false => {
+                                        video.draw_cga_direct(
+                                            pixels.get_frame_mut(),
+                                            video_data.render_w, 
+                                            video_data.render_h,                                                                                         
+                                            video_card.get_display_buf(),
+                                            video_card.get_display_extents(),
+                                            composite_enabled
+                                        );
+                                    }
+                                }
                             }
-                            false => {
-                                video.draw(pixels.get_frame_mut(), video_card, bus, composite_enabled);
+                            (_, RenderMode::Indirect) => {
+                                // Draw VRAM in indirect mode
+                                match aspect_correct {
+                                    true => {
+                                        video.draw(&mut render_src, video_card, bus, composite_enabled);
+                                        video::resize_linear(
+                                            &render_src, 
+                                            video_data.render_w, 
+                                            video_data.render_h, 
+                                            pixels.get_frame_mut(), 
+                                            video_data.aspect_w, 
+                                            video_data.aspect_h);                            
+                                    }
+                                    false => {
+                                        video.draw(pixels.get_frame_mut(), video_card, bus, composite_enabled);
+                                    }
+                                }                                
                             }
+                            _ => panic!("Invalid combination of VideoType and RenderMode")
                         }
                     }
                     stat_counter.render_time = Instant::now() - render_start;

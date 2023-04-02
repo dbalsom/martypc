@@ -32,7 +32,6 @@
       10  Gfx     640x350     EGA    *16    a000 *256k EGA
       12  Gfx     640x480     VGA     16    a000
 */
-use std::any::Any;
 
 use crate::vga::VGACard;
 use crate::ega::EGACard;
@@ -46,6 +45,15 @@ pub enum VideoCardDispatch {
     Cga(CGACard),
     Ega(EGACard),
     Vga(VGACard),
+}
+
+// This enum determines the rendering method of the given videocard device. 
+// Direct mode means the video card draws to a double buffering scheme itself,
+// Indirect mode means that the video renderer draws the device's VRAM. I think 
+// eventually I will want to move all devices to direct rendering.
+pub enum RenderMode {
+    Direct,
+    Indirect
 }
 
 use std::collections::HashMap;
@@ -92,7 +100,7 @@ pub enum DisplayMode {
 }
 
 pub struct CursorInfo {
-    pub addr: u32,
+    pub addr: usize,
     pub pos_x: u32,
     pub pos_y: u32,
     pub line_start: u8,
@@ -113,6 +121,7 @@ pub enum CGAPalette {
     RedCyanWhite(CGAColor) // "Hidden" CGA palette
 }
 
+#[repr(u8)]
 #[derive(Debug, Copy, Clone)]
 pub enum CGAColor {
     Black,
@@ -133,23 +142,47 @@ pub enum CGAColor {
     WhiteBright
 }
 
+#[derive (Copy, Clone)]
+pub struct DisplayExtents {
+    pub field_w: u32,       // The total width of the video field, including all clocks except the horizontal retrace period
+    pub field_h: u32,       // The total height of the video field, including all clocks except the vertical retrace period
+    pub visible_w: u32,     // The width in pixels of the visible display area
+    pub visible_h: u32,     // The height in pixels of the visible display area
+    pub overscan_l: u32,    // Size in pixels of the left overscan area
+    pub overscan_r: u32,    // Size in pixels of the right overscan area
+    pub overscan_t: u32,    // Size in pixels of the top overscan area
+    pub overscan_b: u32,    // Size in pixels of the bottom overscan area
+    pub row_stride: usize,  // Number of bytes in frame buffer to skip to reach next row
+}
 
 pub trait VideoCard {
-    
-    // Allow downcasting to specific graphics card type
-    //fn as_any(&self) -> &dyn Any;
 
+    /// Returns the type of the adapter.
     fn get_video_type(&self) -> VideoType;
+
+    /// Returns the rendering mode of the adapter.
+    fn get_render_mode(&self) -> RenderMode;
 
     /// Returns the currently configured DisplayMode
     fn get_display_mode(&self) -> DisplayMode;
 
-    // Returns a slice of u8 representing video memory
+    /// Returns a slice of u8 representing video memory
     //fn get_vram(&self) -> &[u8];
 
-    fn get_display_extents(&self) -> (u32, u32);
+    /// Return the size (width, height) of the last rendered frame.
+    fn get_display_size(&self) -> (u32, u32);
+
+    /// Return the DisplayExtents struct corresponding to the last rendered frame.
+    fn get_display_extents(&self) -> &DisplayExtents;
+
+    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
+    fn get_display_buf(&self) -> &[u8];
 
     fn get_clock_divisor(&self) -> u32;
+
+    /// Get the current refresh rate from the adapter. Different adapters might
+    /// support different refresh rates, even per mode.
+    fn get_refresh_rate(&self) -> u32;
 
     /// Get the current calculated video start address from the CRTC
     fn get_start_address(&self) -> u16;
@@ -172,9 +205,6 @@ pub trait VideoCard {
 
     /// Returns the current CGA-compatible palette and intensity attribute
     fn get_cga_palette(&self) -> (CGAPalette, bool);
-
-    /// Returns a vector with CRTC register name and value pairs
-    //fn get_crtc_string_state(&self) -> Vec<(String, String)>;
 
     /// Returns a hash map of vectors containing name and value pairs.
     /// 

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 use crate::config::VideoType;
-use crate::videocard::{VideoCard, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
+use crate::videocard::*;
 use crate::cga;
 use crate::bus::BusInterface;
 
@@ -55,13 +55,57 @@ const VGA_HIRES_GFX_H: u32 = 480;
 //const frame_w: u32 = 640;
 //const frame_h: u32 = 400;
 
+// This color-index to RGBA table supports two conversion palettes,
+// the "standard" palette given by most online references, and the 
+// alternate, more monitor-accurate "VileR palette"
+// See https://int10h.org/blog/2022/06/ibm-5153-color-true-cga-palette/ 
+// for details.
+const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
+    [
+        [0x10, 0x10, 0x10, 0xFF], // 0 - Black  (Slightly brighter for debugging)
+        [0x00, 0x00, 0xAA, 0xFF], // 1 - Blue
+        [0x00, 0xAA, 0x00, 0xFF], // 2 - Green
+        [0x00, 0xAA, 0xAA, 0xFF], // 3 - Cyan
+        [0xAA, 0x00, 0x00, 0xFF], // 4 - Red
+        [0xAA, 0x00, 0xAA, 0xFF], // 5 - Magenta
+        [0xAA, 0x55, 0x00, 0xFF], // 6 - Brown
+        [0xAA, 0xAA, 0xAA, 0xFF], // 7 - Light Gray
+        [0x55, 0x55, 0x55, 0xFF], // 8 - Dark Gray
+        [0x55, 0x55, 0xFF, 0xFF], // 9 - Light Blue
+        [0x55, 0xFF, 0x55, 0xFF], // 10 - Light Green
+        [0x55, 0xFF, 0xFF, 0xFF], // 11 - Light Cyan
+        [0xFF, 0x55, 0x55, 0xFF], // 12 - Light Red
+        [0xFF, 0x55, 0xFF, 0xFF], // 13 - Light Magenta
+        [0xFF, 0xFF, 0x55, 0xFF], // 14 - Yellow
+        [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+    ],
+    // VileR's palette
+    [
+        [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+        [0x00, 0x00, 0xC4, 0xFF], // 1 - Blue
+        [0x00, 0xC4, 0x00, 0xFF], // 2 - Green
+        [0x00, 0xC4, 0xC4, 0xFF], // 3 - Cyan
+        [0xC4, 0x00, 0x00, 0xFF], // 4 - Red
+        [0xC4, 0x00, 0xC4, 0xFF], // 5 - Magenta
+        [0xC4, 0x7E, 0x00, 0xFF], // 6 - Brown
+        [0xC4, 0xC4, 0xC4, 0xFF], // 7 - Light Gray
+        [0x4E, 0x4E, 0x4E, 0xFF], // 8 - Dark Gray
+        [0x4E, 0x4E, 0xDC, 0xFF], // 9 - Light Blue
+        [0x4E, 0xDC, 0x4E, 0xFF], // 10 - Light Green
+        [0x4E, 0xF3, 0xF3, 0xFF], // 11 - Light Cyan
+        [0xDC, 0x4E, 0x4E, 0xFF], // 12 - Light Red
+        [0xF3, 0x4E, 0xF3, 0xFF], // 13 - Light Magenta
+        [0xF3, 0xF3, 0x4E, 0xFF], // 14 - Yellow
+        [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+    ],
+];
 
-
-// Random color generator
+// Random CGA color generator. This was used very early in emulator development
+// to display random-color glyphs in the background while we debugged the 
+// very first CPU instructions.
 impl Distribution<CGAColor> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CGAColor {
-        // match rng.gen_range(0, 3) { // rand 0.5, 0.6, 0.7
-        match rng.gen_range(0..=15) { // rand 0.8
+        match rng.gen_range(0..=15) {
             0 => CGAColor::Black,
             1 => CGAColor::Blue,       
             2 => CGAColor::Green,        
@@ -303,7 +347,7 @@ impl Video {
         let start_address = video_card.get_start_address() as usize;
         let mode_40_cols = video_card.is_40_columns();
 
-        let (frame_w, frame_h) = video_card.get_display_extents();
+        let (frame_w, frame_h) = video_card.get_display_size();
 
         match video_card.get_display_mode() {
             DisplayMode::Disabled => {
@@ -504,7 +548,54 @@ impl Video {
         }
     }
 
+    pub fn draw_cga_direct(
+        &self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,
+        dbuf: &[u8],
+        extents: &DisplayExtents,
+        composite_enabled: bool
+    ) {
 
+        if composite_enabled {
+            self.draw_cga_direct_composite(frame, w, h, dbuf, extents);
+            return
+        }
+
+        // Assume display buffer visible data starts at offset 0
+
+        let max_y = std::cmp::min(h, extents.visible_h);
+        let max_x = std::cmp::min(w, extents.visible_w);
+
+        //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
+
+        for y in 0..max_y {
+
+            let dbuf_row_offset = (y as usize) * extents.row_stride;
+            let frame_row_offset = (y * (w * 4)) as usize;
+
+            for x in 0..max_x {
+                let fo = frame_row_offset + (x * 4) as usize;
+                let dbo = dbuf_row_offset + x as usize;
+
+                frame[fo]       = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][0];
+                frame[fo + 1]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][1];
+                frame[fo + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
+                frame[fo + 3]   = 0xFFu8;
+            }
+        }
+    }
+
+    pub fn draw_cga_direct_composite(
+        &self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,        
+        dbuf: &[u8],
+        extents: &DisplayExtents
+    ) {
+    }
 }
 
 pub fn draw_cga_gfx_mode(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {

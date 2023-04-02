@@ -23,6 +23,7 @@ use crate::mouse::*;
 use crate::tracelogger::TraceLogger;
 use crate::videocard::{VideoCard, VideoCardDispatch};
 
+use crate::cga::{self, CGACard};
 use crate::ega::{self, EGACard};
 use crate::vga::{self, VGACard};
 use crate::cga::*;
@@ -101,7 +102,6 @@ pub enum IoDeviceDispatch {
     Dynamic(Box<dyn IoDevice + 'static>)
 }
 
-
 pub trait IoDevice {
     fn read_u8(&mut self, port: u16) -> u8;
     fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>);
@@ -112,6 +112,7 @@ pub struct MmioData {
     first_map: usize,
     last_map: usize
 }
+
 impl MmioData {
     fn new() -> Self {
         Self {
@@ -409,7 +410,7 @@ impl BusInterface {
                             IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                                 match &mut self.video {
                                     VideoCardDispatch::Cga(cga) => {
-                                        // CGA doesn't use mmio yet
+                                        return Ok((MemoryMappedDevice::read_u8(cga, address), DEFAULT_WAIT_STATES));
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         return Ok((MemoryMappedDevice::read_u8(ega, address), DEFAULT_WAIT_STATES));
@@ -467,7 +468,7 @@ impl BusInterface {
                             IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                                 match &mut self.video {
                                     VideoCardDispatch::Cga(cga) => {
-                                        // CGA doesn't use mmio yet
+                                        return Ok((cga.read_u16(address), DEFAULT_WAIT_STATES));
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         return Ok((ega.read_u16(address), DEFAULT_WAIT_STATES));
@@ -529,7 +530,7 @@ impl BusInterface {
                             IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                                 match &mut self.video {
                                     VideoCardDispatch::Cga(cga) => {
-                                        // CGA doesn't use mmio yet
+                                        MemoryMappedDevice::write_u8( cga, address, data);
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         MemoryMappedDevice::write_u8( ega, address, data);
@@ -598,7 +599,8 @@ impl BusInterface {
                             IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                                 match &mut self.video {
                                     VideoCardDispatch::Cga(cga) => {
-                                        // CGA doesn't use mmio yet
+                                        MemoryMappedDevice::write_u8(cga, address, (data & 0xFF) as u8);
+                                        MemoryMappedDevice::write_u8(cga, address + 1, (data >> 8) as u8);
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         MemoryMappedDevice::write_u8(ega, address, (data & 0xFF) as u8);
@@ -624,8 +626,6 @@ impl BusInterface {
                 }
                 return Ok(DEFAULT_WAIT_STATES);
             }
-
-            return Ok(DEFAULT_WAIT_STATES)
         }
         Err(MemError::ReadOutOfBoundsError)
     }
@@ -951,6 +951,10 @@ impl BusInterface {
                 let cga = CGACard::new();
                 let port_list = cga.port_list();
                 self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Cga)));
+
+                let mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false );
+                self.register_map(IoDeviceType::Cga, mem_descriptor);
+
                 self.video = VideoCardDispatch::Cga(cga)
             }
             VideoType::EGA => {
