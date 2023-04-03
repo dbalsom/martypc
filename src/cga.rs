@@ -103,7 +103,7 @@ const SCANLINE_HBLANK_US: f64 = 52.38095911;
 const CGA_HBLANK: f64 = 0.1785714;
 
 const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
-const CGA_CURSOR_BLINK_RATE_US: f64 = FRAME_TIME_US * CGA_DEFAULT_CURSOR_BLINK_RATE;
+const CGA_CURSOR_BLINK_RATE_US: f64 = FRAME_TIME_US * 8.0;
 
 const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
 
@@ -209,6 +209,7 @@ pub struct CGACard {
     crtc_cursor_address: usize,
 
     cc_register: u8,
+    clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
 
     // CRTC counters
     beam_x: u32,
@@ -231,8 +232,9 @@ pub struct CGACard {
     vsc_c3h: u8,
     hsc_c3l: u8,
     vtac_c5: u8,
-    vma: usize,
-    rba: usize,    
+    vma: usize,                     // Video memory address
+    vmws: usize,                    // Video memory word size
+    rba: usize,                     // Render buffer address
     blink_state: bool,              // Used to control blinking of cursor and text with blink attribute
     blink_accum_us: f64,            // Microsecond accumulator for blink state flipflop
     accumulated_us: f64,
@@ -387,6 +389,7 @@ impl CGACard {
 
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
+            clock_divisor: 1,
             beam_x: 0,
             beam_y: 0,
             scanline: 0,
@@ -408,6 +411,7 @@ impl CGACard {
             hsc_c3l: 0,
             vtac_c5: 0,
             vma: 0,
+            vmws: 1,    
             rba: 0,
             blink_state: false,
             blink_accum_us: 0.0,
@@ -584,13 +588,21 @@ impl CGACard {
     fn handle_mode_register(&mut self, mode_byte: u8) {
 
         self.mode_hires_txt = mode_byte & MODE_HIRES_TEXT != 0;
-        self.mode_graphics = mode_byte & MODE_GRAPHICS != 0;
-        self.mode_bw = mode_byte & MODE_BW != 0;
-        self.mode_enable = mode_byte & MODE_ENABLE != 0;
+        self.mode_graphics  = mode_byte & MODE_GRAPHICS != 0;
+        self.mode_bw        = mode_byte & MODE_BW != 0;
+        self.mode_enable    = mode_byte & MODE_ENABLE != 0;
         self.mode_hires_gfx = mode_byte & MODE_HIRES_GRAPHICS != 0;
-        self.mode_blinking = mode_byte & MODE_BLINKING != 0;
-        self.mode_byte = mode_byte;
-        
+        self.mode_blinking  = mode_byte & MODE_BLINKING != 0;
+        self.mode_byte      = mode_byte;
+
+        // In text mode, word size is 2 (char + attribute byte)
+        // In all other modes, word size is 1 byte
+        self.vmws = if self.mode_graphics { 1 } else { 2 };
+
+        // Clock divisor is 1 in high res text mode, 2 in all other modes
+        // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
+        self.clock_divisor = if self.mode_hires_txt { 1 } else { 2 };
+
         if mode_byte & MODE_ENABLE == 0 {
             self.display_mode = DisplayMode::Disabled;
         }
@@ -683,9 +695,11 @@ impl CGACard {
     
             if self.mode_blinking {
                 self.cur_bg = (self.cur_attr >> 4) & 0x07;
+                self.cur_blink = self.cur_attr & 0x80 != 0;
             }
             else {
                 self.cur_bg = self.cur_attr >> 4;
+                self.cur_blink = false;
             }
         }
         else {
@@ -925,6 +939,7 @@ impl VideoCard for CGACard {
         self.blink_accum_us += us;
         if self.blink_accum_us > CGA_CURSOR_BLINK_RATE_US {
             self.blink_state = !self.blink_state;
+            self.blink_accum_us -= CGA_CURSOR_BLINK_RATE_US;
         }
 
         // Tick the CRTC. Since the CGA is much faster clocked than the CPU this will 
@@ -934,7 +949,7 @@ impl VideoCard for CGACard {
             if self.in_display_area {
                 // Draw current pixel
                 if self.rba < CGA_MAX_CLOCK {
-                    self.buf[self.back_buf][self.rba] = 
+                    let mut new_pixel = 
                         match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.char_row) {
                             true => {
                                 if self.cur_blink {
@@ -947,12 +962,24 @@ impl VideoCard for CGACard {
                             false => self.cur_bg
                         };
 
-                        // Draw cursor
-                        if self.rba == self.get_cursor_address() {
-
+                    // Do cursor
+                    if self.vma == (self.crtc_cursor_address * 2) {
+                        // This cell has the cursor address
+                        if self.char_row >= self.crtc_cursor_start_line && self.char_row <= self.crtc_cursor_end_line {
+                            // We are in defined cursor boundaries
+                            if self.blink_state {
+                                // Cursor is not blinked
+                                new_pixel = self.cur_fg;
+                            }
                         }
+                    }
+                        
+                    self.buf[self.back_buf][self.rba] = new_pixel;
 
-                    //self.buf[self.back_buf][self.rba] = (self.rows_drawn & 0x0F) as u8;
+                    if self.clock_divisor == 2 {
+                        // If we are in a 320 column mode, duplicate the last pixel drawn
+                        self.buf[self.back_buf][self.rba + 1] = new_pixel;
+                    }
                 }
             }
             else if self.in_hblank {
@@ -977,7 +1004,7 @@ impl VideoCard for CGACard {
             // Update position to next pixel
             self.beam_x += 1;
             self.char_col += 1;
-            self.rba += 1;
+            self.rba += self.clock_divisor as usize; // Advance by 1 in high res txt mode, 2 in all other modes
 
             // Done with the current character      
             if self.char_col == CRTC_CHAR_CLOCK {
@@ -988,8 +1015,8 @@ impl VideoCard for CGACard {
                 self.debug_color = (self.debug_color + 1) & 0x0F;
 
                 // Advance video memory address offset and grab the next character + attr
-                self.vma += 2;
-                self.set_char_addr((self.crtc_start_address + self.vma) & 0x3FFF);
+                self.vma += self.vmws;
+                self.set_char_addr((self.crtc_start_address * self.vmws + self.vma) & 0x3FFF);
 
                 // Glyph colun reset to 0 for next char
                 self.char_col = 0;
@@ -1027,10 +1054,10 @@ impl VideoCard for CGACard {
                     self.char_row += 1;
 
                     // Return video memory address to starting position for next character row
-                    self.vma = self.vcc_c4 as usize * (self.crtc_horizontal_displayed * 2) as usize;
+                    self.vma = self.vcc_c4 as usize * ((self.crtc_horizontal_displayed as usize) * self.vmws);
                     
                     // Reset the current character glyph to start of row
-                    self.set_char_addr((self.crtc_start_address + self.vma) & 0x3FFF);
+                    self.set_char_addr((self.crtc_start_address * self.vmws + self.vma) & 0x3FFF);
 
                     if self.in_vblank {
                         // If we are in vblank, advance Vertical Sync Counter
@@ -1058,9 +1085,9 @@ impl VideoCard for CGACard {
                         self.vcc_c4 = self.vcc_c4.wrapping_add(1);
 
                         // Set vma to starting position for next character row
-                        self.vma = self.vcc_c4 as usize * (self.crtc_horizontal_displayed * 2) as usize;
+                        self.vma = self.vcc_c4 as usize * ((self.crtc_horizontal_displayed as usize) * self.vmws);
                         // Load next char + attr
-                        self.set_char_addr((self.crtc_start_address + self.vma) & 0x3FFF);
+                        self.set_char_addr((self.crtc_start_address * 2 + self.vma) & 0x3FFF);
 
                         if self.vcc_c4 == self.crtc_vertical_sync_pos {
                             // We've reached vertical sync
@@ -1093,15 +1120,20 @@ impl VideoCard for CGACard {
                         // Swap the display buffers
                         self.swap();
 
-                        // Write out preliminary DisplayExtents data for new front buffer based on current crtc values
-                        self.extents[self.front_buf].visible_w = self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32;
+                        // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
+
+                        // Width is total characters * character width * clock_divisor.
+                        // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
+                        self.extents[self.front_buf].visible_w = 
+                            self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32 * self.clock_divisor as u32;
+
                         self.extents[self.front_buf].visible_h = self.scanline;
                         //log::debug!("new extents: {}, {}", self.extents[self.front_buf].visible_w, self.extents[self.front_buf].visible_h);
 
                         self.scanline = 0;
 
                         // Load first char + attr
-                        self.set_char_addr(self.crtc_start_address & 0x3FFF);
+                        self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);
                     }
                 }
             }
