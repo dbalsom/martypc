@@ -919,7 +919,25 @@ fn main() {
                     // Check if there was a resolution change, if a video card is present
                     if let Some(video_card) = machine.videocard() {
 
-                        let (new_w, mut new_h) = video_card.get_display_size();
+                        let new_w;
+                        let mut new_h;
+
+                        match video_card.get_render_mode() {
+                            RenderMode::Direct => {
+                                let extents = video_card.get_display_extents();
+
+                                new_w = extents.visible_w;
+                                new_h = extents.visible_h;
+
+                                // Set a sane maximum
+                                if new_h > 240 { 
+                                    new_h = 240;
+                                }
+                            }
+                            RenderMode::Indirect => {
+                                (new_w, new_h) = video_card.get_display_size();
+                            }
+                        }
 
                         // If CGA, we will double scanlines later in the renderer, so make our buffer twice
                         // as high.

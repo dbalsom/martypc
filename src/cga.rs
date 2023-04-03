@@ -213,7 +213,7 @@ pub struct CGACard {
     // CRTC counters
     beam_x: u32,
     beam_y: u32,
-    rows_drawn: u32,
+    scanline: u32,
 
     overscan_left: u32,
     overscan_right: u32,
@@ -389,7 +389,7 @@ impl CGACard {
 
             beam_x: 0,
             beam_y: 0,
-            rows_drawn: 0,
+            scanline: 0,
 
             overscan_left: 0,
             overscan_right: 0,
@@ -433,9 +433,15 @@ impl CGACard {
         self.crtc_cursor_address
     }
 
+    /// Update the CRTC cursor address. Usually called after a CRTC register write updates the HO or LO byte.
     fn update_cursor_address(&mut self) {
         self.crtc_cursor_address = (self.crtc_cursor_address_ho as usize) << 8 | self.crtc_cursor_address_lo as usize
     }
+
+    /// Update the CRTC start address. Usually called after a CRTC register write updates the HO or LO byte.
+    fn update_start_address(&mut self) {
+        self.crtc_start_address = (self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize
+    }        
 
     fn get_cursor_status(&self) -> bool {
         self.cursor_status
@@ -544,9 +550,11 @@ impl CGACard {
             }
             CRTCRegister::StartAddressH => {
                 self.crtc_start_address_ho = byte;
+                self.update_start_address();
             }
             CRTCRegister::StartAddressL => {
                 self.crtc_start_address_lo = byte;
+                self.update_start_address();
             }
             _ => {
                 log::debug!("CGA: Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
@@ -664,19 +672,24 @@ impl CGACard {
     /// Set the character attributes for the current character.
     fn set_char_addr(&mut self, addr: usize) {
 
-        self.cur_char = self.mem[addr];
-        self.cur_attr = self.mem[addr + 1];
-
-        self.cur_fg = self.cur_attr & 0x0F;
-        // If blinking is enabled, the bg attribute is only 3 bytes and only low-intensity colors 
-        // are available. 
-        // If blinking is disabled, all 16 colors are available as background attributes.
-
-        if self.mode_blinking {
-            self.cur_bg = (self.cur_attr >> 4) & 0x07;
+        if addr < CGA_MEM_SIZE - 1 {
+            self.cur_char = self.mem[addr];
+            self.cur_attr = self.mem[addr + 1];
+    
+            self.cur_fg = self.cur_attr & 0x0F;
+            // If blinking is enabled, the bg attribute is only 3 bytes and only low-intensity colors 
+            // are available. 
+            // If blinking is disabled, all 16 colors are available as background attributes.
+    
+            if self.mode_blinking {
+                self.cur_bg = (self.cur_attr >> 4) & 0x07;
+            }
+            else {
+                self.cur_bg = self.cur_attr >> 4;
+            }
         }
         else {
-            self.cur_bg = self.cur_attr >> 4;
+            log::warn!("Character read out of range!");
         }
         
         //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
@@ -875,9 +888,9 @@ impl VideoCard for CGACard {
         
         let mut general_vec = Vec::new();
 
-        push_reg_str_enum!(general_vec, "Adapter Type:", "", self.get_video_type());
-        push_reg_str_enum!(general_vec, "Display Mode:", "", self.get_display_mode());
-        push_reg_str_enum!(general_vec, "Frame Count:", "", self.frame_count);
+        general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
+        general_vec.push((format!("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
+        general_vec.push((format!("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();
@@ -896,6 +909,7 @@ impl VideoCard for CGACard {
         push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "", self.crtc_cursor_end_line);
         push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "", self.crtc_start_address_ho);
         push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "", self.crtc_start_address_lo);
+        crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.crtc_start_address))));
         push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "", self.crtc_cursor_address_ho);
         push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "", self.crtc_cursor_address_lo);
         map.insert("CRTC".to_string(), crtc_vec);
@@ -1031,7 +1045,7 @@ impl VideoCard for CGACard {
                     else {
                         // Start the new row
                         if self.vcc_c4 < self.crtc_vertical_displayed {
-                            self.rows_drawn += 1;
+                            self.scanline += 1;
                             self.in_display_area = true;
                         }
                     }
@@ -1060,7 +1074,7 @@ impl VideoCard for CGACard {
                         self.in_display_area = false;
                     }
                     
-                    if self.vcc_c4 == self.crtc_vertical_total + 1 {
+                    if (self.vcc_c4 == self.crtc_vertical_total + 1) || (self.scanline == CRTC_SCANLINE_MAX) {
 
                         // Completed a frame.
                         self.frame_count += 1;
@@ -1081,10 +1095,10 @@ impl VideoCard for CGACard {
 
                         // Write out preliminary DisplayExtents data for new front buffer based on current crtc values
                         self.extents[self.front_buf].visible_w = self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32;
-                        self.extents[self.front_buf].visible_h = self.rows_drawn;
+                        self.extents[self.front_buf].visible_h = self.scanline;
                         //log::debug!("new extents: {}, {}", self.extents[self.front_buf].visible_w, self.extents[self.front_buf].visible_h);
 
-                        self.rows_drawn = 0;
+                        self.scanline = 0;
 
                         // Load first char + attr
                         self.set_char_addr(self.crtc_start_address & 0x3FFF);

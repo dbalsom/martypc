@@ -567,16 +567,16 @@ impl Video {
         // in the framebuffer
         if extents.visible_h > (h / 2) {
             
-            log::warn!("Height: {} too small for visible_h: {}", h, extents.visible_h);
-            return
+            //log::warn!("Height: {} too small for visible_h: {}", h, extents.visible_h);
+            //return
         }
 
         // Assume display buffer visible data starts at offset 0
 
-        let max_y = std::cmp::min(h, extents.visible_h);
+        let max_y = std::cmp::min(h / 2, extents.visible_h);
         let max_x = std::cmp::min(w, extents.visible_w);
 
-        //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
+        log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
 
         for y in 0..max_y {
 
