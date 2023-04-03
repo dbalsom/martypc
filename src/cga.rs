@@ -151,7 +151,14 @@ const CRTC_VBLANK_HEIGHT: u8 = 16;
 const CRTC_R0_HORIZONTAL_MAX: u32 = 113;
 const CRTC_SCANLINE_MAX: u32 = 262;
 
-
+const CGA_PALETTES: [[u8; 4]; 6] = [
+    [0, 2, 4, 6],       // Red / Green / Brown
+    [0, 10, 12, 14],    // Red / Green / Brown High Intensity
+    [0, 3, 5, 7],       // Cyan / Magenta / White
+    [0, 11, 13, 15],    // Cyan / Magenta / White High Intensity
+    [0, 2, 3, 7],       // Red / Cyan / White
+    [0, 10, 11, 15],    // Red / Cyan / White High Intensity
+];
 
 pub enum Resolution {
     Res640by200,
@@ -173,6 +180,7 @@ pub struct CGACard {
     mode_hires_gfx: bool,
     mode_hires_txt: bool,
     mode_blinking: bool,
+    mode_palette: usize,
     scanline_us: f64,
     scanline_cycles: u32,
     frame_us: f64,
@@ -352,6 +360,7 @@ impl CGACard {
             mode_hires_gfx: false,
             mode_hires_txt: true,
             mode_blinking: true,
+            mode_palette: 0,
             frame_us: 0.0,
             frame_cycles: 0,
             cursor_frames: 0,
@@ -411,7 +420,7 @@ impl CGACard {
             hsc_c3l: 0,
             vtac_c5: 0,
             vma: 0,
-            vmws: 1,    
+            vmws: 2,    
             rba: 0,
             blink_state: false,
             blink_accum_us: 0.0,
@@ -595,9 +604,9 @@ impl CGACard {
         self.mode_blinking  = mode_byte & MODE_BLINKING != 0;
         self.mode_byte      = mode_byte;
 
-        // In text mode, word size is 2 (char + attribute byte)
-        // In all other modes, word size is 1 byte
-        self.vmws = if self.mode_graphics { 1 } else { 2 };
+        // In high res gfx mode, word size is 1
+        // In all other modes, word size is 2 bytes
+        self.vmws = if self.mode_hires_gfx { 1 } else { 2 };
 
         // Clock divisor is 1 in high res text mode, 2 in all other modes
         // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
@@ -650,6 +659,18 @@ impl CGACard {
 
     fn handle_cc_register_write(&mut self, data: u8) {
         //log::trace!("Write to color control register: {:02X}", data);
+
+        if data & CC_PALETTE_BIT != 0 {
+            self.mode_palette = 2; // Select Magenta, Cyan, White palette
+        }
+        else {
+            self.mode_palette = 0; // Select Red, Green, 'Yellow' palette
+        }
+
+        if data & CC_BRIGHT_BIT != 0 {
+            self.mode_palette += 1; // Switch to high-intensity palette
+        }
+
         self.cc_register = data;
     }
 
@@ -707,6 +728,68 @@ impl CGACard {
         }
         
         //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
+    }
+
+    pub fn draw_text_mode_pixel(&mut self) {
+        let mut new_pixel = 
+        match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.char_row) {
+            true => {
+                if self.cur_blink {
+                    if self.blink_state { self.cur_fg } else { self.cur_bg }
+                } 
+                else {
+                    self.cur_fg
+                }
+            },
+            false => self.cur_bg
+        };
+
+        // Do cursor
+        if self.vma == (self.crtc_cursor_address * 2) {
+            // This cell has the cursor address
+            if self.char_row >= self.crtc_cursor_start_line && self.char_row <= self.crtc_cursor_end_line {
+                // We are in defined cursor boundaries
+                if self.blink_state {
+                    // Cursor is not blinked
+                    new_pixel = self.cur_fg;
+                }
+            }
+        }
+
+        self.buf[self.back_buf][self.rba] = new_pixel;
+
+        if self.clock_divisor == 2 {
+            // If we are in a 320 column mode, duplicate the last pixel drawn
+            self.buf[self.back_buf][self.rba + 1] = new_pixel;
+        }
+    }
+
+    pub fn draw_gfx_mode_pixel(&mut self) {
+        let new_pixel = self.get_pixel_color(self.char_row, self.char_col);
+
+        self.buf[self.back_buf][self.rba] = new_pixel;
+
+        if self.clock_divisor == 2 {
+            // If we are in a 320 column mode, duplicate the last pixel drawn
+
+            if self.rba < CGA_MAX_CLOCK - 1 {
+                self.buf[self.back_buf][self.rba + 1] = new_pixel;
+            }
+        }
+    }
+
+    pub fn get_pixel_color(&self, row: u8, col: u8) -> u8 {
+
+        let mut base_addr = self.vma;
+        if row > 0 {
+            base_addr += 0x2000;
+        }
+
+        let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
+
+        let idx = ((word >> ((CRTC_CHAR_CLOCK * 2) - (col + 1) * 2)) & 0x03) as usize;
+
+        CGA_PALETTES[self.mode_palette][idx]
     }
 
 }
@@ -949,36 +1032,12 @@ impl VideoCard for CGACard {
             if self.in_display_area {
                 // Draw current pixel
                 if self.rba < CGA_MAX_CLOCK {
-                    let mut new_pixel = 
-                        match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.char_row) {
-                            true => {
-                                if self.cur_blink {
-                                    if self.blink_state { self.cur_fg } else { self.cur_bg }
-                                } 
-                                else {
-                                    self.cur_fg
-                                }
-                            },
-                            false => self.cur_bg
-                        };
 
-                    // Do cursor
-                    if self.vma == (self.crtc_cursor_address * 2) {
-                        // This cell has the cursor address
-                        if self.char_row >= self.crtc_cursor_start_line && self.char_row <= self.crtc_cursor_end_line {
-                            // We are in defined cursor boundaries
-                            if self.blink_state {
-                                // Cursor is not blinked
-                                new_pixel = self.cur_fg;
-                            }
-                        }
+                    if !self.is_graphics_mode() {
+                        self.draw_text_mode_pixel();
                     }
-                        
-                    self.buf[self.back_buf][self.rba] = new_pixel;
-
-                    if self.clock_divisor == 2 {
-                        // If we are in a 320 column mode, duplicate the last pixel drawn
-                        self.buf[self.back_buf][self.rba + 1] = new_pixel;
+                    else {
+                        self.draw_gfx_mode_pixel();
                     }
                 }
             }
