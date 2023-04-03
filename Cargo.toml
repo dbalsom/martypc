@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0.58"
 arraydeque = "0.4.5"
 bpaf = { version = "0.7.7", features = ["derive"] }
+cgmath = "0.18.0"
 cpal = "0.13.5"
 egui = "0.20"
 emath = "0.20"

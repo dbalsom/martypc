@@ -85,7 +85,7 @@ const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
 // Calculate the maximum possible area of buf field (including refresh period)
 const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CRTC_CHAR_CLOCK as u32;
 const CGA_YRES_MAX: u32 = CRTC_SCANLINE_MAX;
-const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Should be 238944
+pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Should be 238944
 
 // For derivision of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
 // We run the CGA card independent of the CPU frequency.

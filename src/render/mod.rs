@@ -1,11 +1,49 @@
-#![allow(dead_code)]
-#![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting. Dunno.
+/*
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
-// Video module
-// This module takes an internal representation from the cga module and actually draws the screen
-// It also defines representational details such as colors
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    ---------------------------------------------------------------------------
+
+    render/mod.rs
+
+    This module implements various Video rendering functions. Video card devices
+    render in either Direct or Indirect mode.
+
+    In direct mode, the video device draws directly to intermediate representation
+    framebuffer, which the render module displays.
+
+    In indirect mode, the render module draws the video device's VRAM directly. 
+    This is fast, but not always accurate if register writes happen mid-frame.
+
+*/
+
+#![allow(dead_code)]
+#![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
+
 use std::rc::Rc;
 use std::cell::RefCell;
+
+pub mod resize;
+pub mod composite;
+
+// Re-export submodules
+pub use self::resize::*;
+pub use self::composite::*;
+
 
 use crate::config::VideoType;
 use crate::videocard::*;
@@ -18,14 +56,14 @@ use rand::{
     Rng,
 }; 
 
-pub const ATTR_BLUE_FG: u8 = 0b0000_0001;
-pub const ATTR_GREEN_FG: u8 = 0b0000_0010;
-pub const ATTR_RED_FG: u8 = 0b0000_0100;
-pub const ATTR_BRIGHT_FG: u8 = 0b0000_1000;
-pub const ATTR_BLUE_BG: u8 = 0b0001_0000;
-pub const ATTR_GREEN_BG: u8 = 0b0010_0000;
-pub const ATTR_RED_BG: u8 = 0b0100_0000;
-pub const ATTR_BRIGHT_BG: u8 = 0b1000_0000;
+pub const ATTR_BLUE_FG: u8      = 0b0000_0001;
+pub const ATTR_GREEN_FG: u8     = 0b0000_0010;
+pub const ATTR_RED_FG: u8       = 0b0000_0100;
+pub const ATTR_BRIGHT_FG: u8    = 0b0000_1000;
+pub const ATTR_BLUE_BG: u8      = 0b0001_0000;
+pub const ATTR_GREEN_BG: u8     = 0b0010_0000;
+pub const ATTR_RED_BG: u8       = 0b0100_0000;
+pub const ATTR_BRIGHT_BG: u8    = 0b1000_0000;
 
 // Font is encoded as a bit pattern with a span of 256 bits per row
 //static CGA_FONT: &'static [u8; 2048] = include_bytes!("cga_font.bin");
@@ -326,18 +364,36 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
 }
 
 
-pub struct Video {
+pub struct VideoRenderer {
     mode: DisplayMode,
     cols: u32,
-    rows: u32
+    rows: u32,
+
+    composite_buf: Option<Vec<u8>>
 }
 
-impl Video {
-    pub fn new() -> Self {
+impl VideoRenderer {
+    pub fn new(video_type: VideoType) -> Self {
+
+        // Create a buffer to hold composite conversion of CGA graphics.
+        // This buffer will need to be twice as large as the largest possible
+        // CGA screen (CGA_MAX_CLOCK * 4) to account for half-hdots used in the 
+        // composite conversion process.
+        let composite_vec_opt = match video_type {
+            VideoType::CGA => {
+                Some(vec![0; cga::CGA_MAX_CLOCK * 4])
+            }
+            _ => {
+                None
+            }
+        };
+
         Self {
             mode: DisplayMode::Mode3TextCo80,
             cols: 80,
-            rows: 25
+            rows: 25,
+
+            composite_buf: composite_vec_opt
         }
     }
 
@@ -549,7 +605,7 @@ impl Video {
     }
 
     pub fn draw_cga_direct(
-        &self,
+        &mut self,
         frame: &mut [u8],
         w: u32,
         h: u32,
@@ -604,13 +660,26 @@ impl Video {
     }
 
     pub fn draw_cga_direct_composite(
-        &self,
+        &mut self,
         frame: &mut [u8],
         w: u32,
         h: u32,        
         dbuf: &[u8],
         extents: &DisplayExtents
     ) {
+
+        if let Some(composite_buf) = &mut self.composite_buf {
+            let max_w = std::cmp::min(w, extents.visible_w);
+            let max_h = std::cmp::min(h / 2, extents.visible_h);
+            
+    
+            log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
+
+
+            process_cga_composite_int(dbuf, max_w, max_h, extents.row_stride as u32, composite_buf);
+
+            artifact_colors_fast(composite_buf, 1280, max_h, frame, 640, max_h, 1.5, 1.0, 1.0);
+        }
     }
 }
 
@@ -1367,39 +1436,6 @@ pub fn draw_glyph1x1(
 
 
 
-/// Performs a linear resize of the specified src into dst. 
-/// 
-/// Since we are only doing this for aspect correction, we don't need a bi-linear filter
-pub fn resize_linear(src: &[u8], src_w: u32, src_h: u32, dst: &mut[u8], dst_w: u32, dst_h: u32) {
-
-    let ratio: f64 = (src_h - 1) as f64 / (dst_h - 1) as f64;
-
-    for y in 0..dst_h {
-
-        let low = f64::floor(ratio * y as f64) as u32;
-        let high = f64::ceil(ratio * y as f64) as u32;
-        let weight: f64 = (ratio * y as f64) - low as f64;
-
-        let y_off_low = (low * src_w * 4) as usize;
-        let y_off_high = (high * src_w * 4) as usize;
-
-        let dy_offset = (y * dst_w * 4) as usize;
-        for x in 0..dst_w {
-            
-            let low_off: usize = y_off_low + (x as usize * 4);
-            let high_off: usize = y_off_high + (x as usize * 4);
-
-            let r = (src[low_off+0] as f64 * (1.0 - weight) + src[high_off + 0] as f64 * weight) as u8;
-            let g = (src[low_off+1] as f64 * (1.0 - weight) + src[high_off + 1] as f64 * weight) as u8;
-            let b = (src[low_off+2] as f64 * (1.0 - weight) + src[high_off + 2] as f64 * weight) as u8;
-
-            dst[dy_offset + x as usize * 4 + 0] = r;
-            dst[dy_offset + x as usize * 4 + 1] = g;
-            dst[dy_offset + x as usize * 4 + 2] = b;
-            dst[dy_offset + x as usize * 4 + 3] = 255;
-        }
-    }
-}
 
 
 pub fn draw_ega_lowres_gfx_mode(ega: Box<&dyn VideoCard>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {

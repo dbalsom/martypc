@@ -71,7 +71,7 @@ mod util;
 
 mod vhd;
 mod vhd_manager;
-mod video;
+mod render;
 mod videocard; // VideoCard trait
 mod input;
 
@@ -399,7 +399,7 @@ fn main() {
     }
 
     // Create the video renderer
-    let video = video::Video::new();
+    let mut video = render::VideoRenderer::new(config.machine.video);
 
     // Init graphics & GUI 
     let event_loop = EventLoop::new();
@@ -997,7 +997,7 @@ fn main() {
                                             composite_enabled
                                         );
 
-                                        video::resize_linear(
+                                        render::resize_linear(
                                             &render_src, 
                                             video_data.render_w, 
                                             video_data.render_h, 
@@ -1022,7 +1022,7 @@ fn main() {
                                 match aspect_correct {
                                     true => {
                                         video.draw(&mut render_src, video_card, bus, composite_enabled);
-                                        video::resize_linear(
+                                        render::resize_linear(
                                             &render_src, 
                                             video_data.render_w, 
                                             video_data.render_h, 
