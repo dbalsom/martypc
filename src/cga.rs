@@ -180,7 +180,8 @@ pub struct CGACard {
     mode_hires_gfx: bool,
     mode_hires_txt: bool,
     mode_blinking: bool,
-    mode_palette: usize,
+    cc_palette: usize,
+    cc_altcolor: u8,
     scanline_us: f64,
     scanline_cycles: u32,
     frame_us: f64,
@@ -360,7 +361,8 @@ impl CGACard {
             mode_hires_gfx: false,
             mode_hires_txt: true,
             mode_blinking: true,
-            mode_palette: 0,
+            cc_palette: 0,
+            cc_altcolor: 0,
             frame_us: 0.0,
             frame_cycles: 0,
             cursor_frames: 0,
@@ -604,9 +606,7 @@ impl CGACard {
         self.mode_blinking  = mode_byte & MODE_BLINKING != 0;
         self.mode_byte      = mode_byte;
 
-        // In high res gfx mode, word size is 1
-        // In all other modes, word size is 2 bytes
-        self.vmws = if self.mode_hires_gfx { 1 } else { 2 };
+        self.vmws = 2;
 
         // Clock divisor is 1 in high res text mode, 2 in all other modes
         // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
@@ -661,16 +661,17 @@ impl CGACard {
         //log::trace!("Write to color control register: {:02X}", data);
 
         if data & CC_PALETTE_BIT != 0 {
-            self.mode_palette = 2; // Select Magenta, Cyan, White palette
+            self.cc_palette = 2; // Select Magenta, Cyan, White palette
         }
         else {
-            self.mode_palette = 0; // Select Red, Green, 'Yellow' palette
+            self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
         }
 
         if data & CC_BRIGHT_BIT != 0 {
-            self.mode_palette += 1; // Switch to high-intensity palette
+            self.cc_palette += 1; // Switch to high-intensity palette
         }
 
+        self.cc_altcolor = data & 0x0F;
         self.cc_register = data;
     }
 
@@ -764,21 +765,52 @@ impl CGACard {
         }
     }
 
-    pub fn draw_gfx_mode_pixel(&mut self) {
-        let new_pixel = self.get_pixel_color(self.char_row, self.char_col);
+    /// Draw a character column in low resolution graphics mode (320x200)
+    /// In this mode, one pixel is drawn twice for each character column.
+    pub fn draw_lowres_gfx_mode_pixel(&mut self) {
+        let new_pixel = self.get_lowres_pixel_color(self.char_row, self.char_col);
 
-        self.buf[self.back_buf][self.rba] = new_pixel;
-
-        if self.clock_divisor == 2 {
-            // If we are in a 320 column mode, duplicate the last pixel drawn
-
-            if self.rba < CGA_MAX_CLOCK - 1 {
-                self.buf[self.back_buf][self.rba + 1] = new_pixel;
-            }
+        if self.rba >= CGA_MAX_CLOCK - 2 {
+            return;
         }
+        self.buf[self.back_buf][self.rba] = new_pixel;
+        self.buf[self.back_buf][self.rba + 1] = new_pixel;
     }
 
-    pub fn get_pixel_color(&self, row: u8, col: u8) -> u8 {
+    /// Draw a character column in high resolution graphics mode. (640x200)
+    /// In this mode, two pixels are drawn for each character column.
+    pub fn draw_hires_gfx_mode_pixel(&mut self) {
+        let mut base_addr = self.vma;
+        if self.char_row > 0 {
+            base_addr += 0x2000;
+        }
+
+        if self.rba >= CGA_MAX_CLOCK - 2 {
+            return;
+        }
+
+        let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
+
+        
+        let bit1 = ((word >> ((CRTC_CHAR_CLOCK * 2) - (self.char_col * 2 + 1))) & 0x01) as usize;
+        let bit2 = ((word >> ((CRTC_CHAR_CLOCK * 2) - (self.char_col * 2 + 2))) & 0x01) as usize;
+
+        if bit1 == 0 {
+            self.buf[self.back_buf][self.rba] = 0;
+        }
+        else {
+            self.buf[self.back_buf][self.rba] = self.cc_altcolor;
+        }
+
+        if bit2 == 0 {
+            self.buf[self.back_buf][self.rba + 1] = 0;
+        }
+        else {
+            self.buf[self.back_buf][self.rba + 1] = self.cc_altcolor;
+        }
+    }    
+
+    pub fn get_lowres_pixel_color(&self, row: u8, col: u8) -> u8 {
 
         let mut base_addr = self.vma;
         if row > 0 {
@@ -789,8 +821,16 @@ impl CGACard {
 
         let idx = ((word >> ((CRTC_CHAR_CLOCK * 2) - (col + 1) * 2)) & 0x03) as usize;
 
-        CGA_PALETTES[self.mode_palette][idx]
+        if idx == 0 {
+            self.cc_altcolor
+        }
+        else {
+            CGA_PALETTES[self.cc_palette][idx]
+        }
     }
+
+
+
 
 }
 
@@ -1036,8 +1076,11 @@ impl VideoCard for CGACard {
                     if !self.is_graphics_mode() {
                         self.draw_text_mode_pixel();
                     }
+                    else if self.mode_hires_gfx {
+                        self.draw_hires_gfx_mode_pixel();
+                    }   
                     else {
-                        self.draw_gfx_mode_pixel();
+                        self.draw_lowres_gfx_mode_pixel();
                     }
                 }
             }
