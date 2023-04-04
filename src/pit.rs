@@ -959,7 +959,17 @@ impl ProgrammableIntervalTimer {
             c.tick(bus, buffer_producer);
 
             if i == 2 {
-                _ = buffer_producer.push((*c.output && speaker_data) as u8);
+
+                let mut speaker_sample = *c.output && speaker_data;
+
+                if let ChannelMode::SquareWaveGenerator = *c.mode {
+                    // Silence speaker if frequency is > 17Khz (approx)
+                    if *c.count_register <= 140 {
+                        speaker_sample = false;
+                    }
+                }
+
+                _ = buffer_producer.push((speaker_sample) as u8);
             }
         }
     }
