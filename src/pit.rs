@@ -963,8 +963,8 @@ impl ProgrammableIntervalTimer {
                 let mut speaker_sample = *c.output && speaker_data;
 
                 if let ChannelMode::SquareWaveGenerator = *c.mode {
-                    // Silence speaker if frequency is > 17Khz (approx)
-                    if *c.count_register <= 140 {
+                    // Silence speaker if frequency is > 14Khz (approx)
+                    if *c.count_register <= 170 {
                         speaker_sample = false;
                     }
                 }
