@@ -369,7 +369,9 @@ pub struct VideoRenderer {
     cols: u32,
     rows: u32,
 
-    composite_buf: Option<Vec<u8>>
+    composite_buf: Option<Vec<u8>>,
+    sync_table_w: u32,
+    sync_table: Vec<(f32, f32, f32)>
 }
 
 impl VideoRenderer {
@@ -393,7 +395,9 @@ impl VideoRenderer {
             cols: 80,
             rows: 25,
 
-            composite_buf: composite_vec_opt
+            composite_buf: composite_vec_opt,
+            sync_table_w: 0,
+            sync_table: Vec::new()
         }
     }
 
@@ -632,7 +636,7 @@ impl VideoRenderer {
         let max_y = std::cmp::min(h / 2, extents.visible_h);
         let max_x = std::cmp::min(w, extents.visible_w);
 
-        log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
+        //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
 
         for y in 0..max_y {
 
@@ -673,14 +677,35 @@ impl VideoRenderer {
             let max_h = std::cmp::min(h / 2, extents.visible_h);
             
     
-            log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
+            //log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
 
 
             process_cga_composite_int(dbuf, max_w, max_h, extents.row_stride as u32, composite_buf);
 
-            artifact_colors_fast(composite_buf, 1280, max_h, frame, 640, max_h, 1.5, 1.0, 1.0);
+            // Regen sync table if width changed
+            if self.sync_table_w != (max_w * 2) {
+                self.sync_table.resize(((max_w * 2) + CCYCLE as u32) as usize, (0.0, 0.0, 0.0));
+                regen_sync_table(&mut self.sync_table,(max_w * 2) as usize);
+                // Update to new width
+                self.sync_table_w = max_w * 2;
+            }
+
+            artifact_colors_fast(
+                composite_buf, 
+                max_w * 2, 
+                max_h, 
+                &self.sync_table, 
+                frame, 
+                max_w, 
+                max_h, 
+                1.5, 
+                1.0,
+                1.0
+            );
         }
     }
+
+
 }
 
 pub fn draw_cga_gfx_mode(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette, intensity: bool) {

@@ -948,7 +948,7 @@ impl BusInterface {
         // Create video card depending on VideoType
         match video_type {
             VideoType::CGA => {
-                let cga = CGACard::new();
+                let cga = CGACard::new(video_trace);
                 let port_list = cga.port_list();
                 self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Cga)));
 

@@ -66,7 +66,7 @@ pub const COLOR_GEN_EDGES_HALF: [[bool; 8]; 8] = [
 ];
 
 // NTSC stuff
-const CCYCLE: i32 = 8;
+pub const CCYCLE: i32 = 8;
 const CCYCLE_HALF: i32 = CCYCLE / 2;
 
 const PI: f32 = 3.1415926;
@@ -179,6 +179,7 @@ pub fn artifact_colors_fast(
     img_in: &[u8],
     img_in_w: u32,
     img_in_h: u32,    
+    sync_table: &[(f32, f32, f32)],
     img_out: &mut [u8],
     img_out_w: u32,
     img_out_h: u32,
@@ -186,14 +187,7 @@ pub fn artifact_colors_fast(
     sat: f32,
     luma: f32,
 ) {
-    let mut sync_table: [(f32, f32, f32); 1280 + CCYCLE as usize] =
-        [(0.0, 0.0, 0.0); 1280 + CCYCLE as usize];
 
-    // Precalculate sync
-    for x in 0..(1280 + CCYCLE) {
-        let phase: f32 = ((x - CCYCLE_HALF) as f32) * TAU / 8.0;
-        sync_table[x as usize] = (phase, phase.cos(), phase.sin());
-    }
 
     for y in 0..img_in_h {
 
@@ -278,5 +272,14 @@ pub fn to_u8_clamped(f: f32) -> u8 {
         0
     } else {
         f as u8
+    }
+}
+
+pub fn regen_sync_table(table: &mut [(f32, f32, f32)], table_len: usize) {
+
+    // Precalculate sync
+    for x in 0..(table_len as i32 + CCYCLE) {
+        let phase: f32 = ((x - CCYCLE_HALF) as f32) * TAU / 8.0;
+        table[x as usize] = (phase, phase.cos(), phase.sin());
     }
 }

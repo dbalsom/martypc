@@ -946,7 +946,13 @@ fn main() {
                         }
                         
                         if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
-                            if new_w != video_data.render_w || new_h != video_data.render_h {
+
+                            let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
+
+                            // Hack for 8088mph. If vertical resolution is decreasing by less than N, do not
+                            // make a new buffer. 8088mph alternates between 239 and 240 scanlines when displaying
+                            // its 1024 color mode. 
+                            if (new_w != video_data.render_w || (new_h != video_data.render_h) && (vertical_delta <= 2)) {
                                 // Resize buffers
                                 log::info!("Setting internal resolution to ({},{})", new_w, new_h);
                                 // Calculate new aspect ratio (make this option)

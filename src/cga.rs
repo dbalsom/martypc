@@ -31,8 +31,9 @@
 #![allow(dead_code)]
 use std::collections::HashMap;
 
-use crate::config::VideoType;
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
+use crate::config::VideoType;
+use crate::tracelogger::TraceLogger;
 use crate::videocard::*;
 
 static DUMMY_PLANE: [u8; 1] = [0];
@@ -160,6 +161,26 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 10, 11, 15],    // Red / Cyan / White High Intensity
 ];
 
+macro_rules! trace {
+    ($self:ident, $($t:tt)*) => {{
+        $self.trace_logger.print(&format!($($t)*));
+        $self.trace_logger.print("\n".to_string());
+    }};
+}
+
+macro_rules! trace_regs {
+    ($self:ident) => {
+        $self.trace_logger.print(
+            &format!(
+                "[SL:{:03} VCC:{:03} VT:{:02}] ", 
+                $self.scanline,
+                $self.vcc_c4,
+                $self.crtc_vertical_total
+            )
+        );
+    };
+}
+
 pub enum Resolution {
     Res640by200,
     Res320by200
@@ -217,6 +238,8 @@ pub struct CGACard {
     crtc_cursor_address_ho: u8,
     crtc_cursor_address: usize,
 
+    crtc_next_address: usize,
+
     cc_register: u8,
     clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
 
@@ -248,14 +271,17 @@ pub struct CGACard {
     blink_accum_us: f64,            // Microsecond accumulator for blink state flipflop
     accumulated_us: f64,
 
-    mem: Vec<u8>,
+    mem: Box<[u8; CGA_MEM_SIZE]>,
 
     back_buf: usize,
     front_buf: usize,
     extents: [DisplayExtents; 2],
-    buf: Vec<Vec<u8>>,
+    //buf: Vec<Vec<u8>>,
+    buf: [Box<[u8; CGA_MAX_CLOCK]>; 2],
 
-    debug_color: u8
+    debug_color: u8,
+
+    trace_logger: TraceLogger,
 }
 
 #[derive(Debug)]
@@ -351,7 +377,8 @@ impl Default for DisplayExtents {
 
 impl CGACard {
 
-    pub fn new() -> Self {
+    pub fn new(trace_logger: TraceLogger) -> Self {
+
         Self {
             mode_byte: 0,
             display_mode: DisplayMode::Mode3TextCo80,
@@ -398,6 +425,8 @@ impl CGACard {
             crtc_cursor_address_ho: 0,
             crtc_cursor_address: 0,
 
+            crtc_next_address: 0,
+
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
             clock_divisor: 1,
@@ -429,14 +458,24 @@ impl CGACard {
 
             accumulated_us: 0.0,
 
-            mem: vec![0; CGA_MEM_SIZE],
+            mem: vec![0; CGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
 
             back_buf: 1,
             front_buf: 0,
             extents: [Default::default(); 2],
-            buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
+            //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
+
+            // Theoretically, boxed arrays may have some performance advantages over 
+            // vectors due to having a fixed size known by the compiler.  However they 
+            // are a pain to initialize without overflowing the stack.
+            buf: [  
+                vec![0; CGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
+                vec![0; CGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap()
+            ],
 
             debug_color: 0,
+
+            trace_logger
         }
     }
 
@@ -455,7 +494,15 @@ impl CGACard {
 
     /// Update the CRTC start address. Usually called after a CRTC register write updates the HO or LO byte.
     fn update_start_address(&mut self) {
-        self.crtc_start_address = (self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize
+
+        self.crtc_next_address = (self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize;
+
+        trace_regs!(self);
+        trace!(
+            self,
+            "Start address updated: {:04X}",
+            self.crtc_next_address
+        )
     }        
 
     fn get_cursor_status(&self) -> bool {
@@ -516,6 +563,13 @@ impl CGACard {
             CRTCRegister::VerticalTotal => {
                 // (R4) 7 bit write only
                 self.crtc_vertical_total = byte & 0x7F;
+
+                trace_regs!(self);
+                trace!(
+                    self,
+                    "CRTC Register Write (04h): VerticalTotal updated: {}",
+                    self.crtc_vertical_total
+                )
             },
             CRTCRegister::VerticalTotalAdjust => {
                 // (R5) 5 bit write only
@@ -528,6 +582,13 @@ impl CGACard {
             CRTCRegister::VerticalSync => {
                 // (R7) 7 bit write only
                 self.crtc_vertical_sync_pos = byte & 0x7F;
+
+                trace_regs!(self);
+                trace!(
+                    self,
+                    "CRTC Register Write (07h): VerticalSync updated: {}",
+                    self.crtc_vertical_sync_pos
+                )
             },
             CRTCRegister::InterlaceMode => {
                 self.crtc_interlace_mode = byte;
@@ -565,13 +626,26 @@ impl CGACard {
             }
             CRTCRegister::StartAddressH => {
                 self.crtc_start_address_ho = byte;
+                trace_regs!(self);
+                trace!(
+                    self,
+                    "CRTC Register Write (0Ch): StartAddressH updated: {:02X}",
+                    byte
+                );
                 self.update_start_address();
             }
             CRTCRegister::StartAddressL => {
                 self.crtc_start_address_lo = byte;
+                trace_regs!(self);
+                trace!(
+                    self,
+                    "CRTC Register Write (0Dh): StartAddressL updated: {:02X}",
+                    byte
+                );                
                 self.update_start_address();
             }
             _ => {
+                trace!(self, "Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
                 log::debug!("CGA: Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
             }
         }
@@ -610,7 +684,7 @@ impl CGACard {
 
         // Clock divisor is 1 in high res text mode, 2 in all other modes
         // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
-        self.clock_divisor = if self.mode_hires_txt { 1 } else { 2 };
+        self.clock_divisor = if (self.mode_hires_txt || !self.mode_enable) { 1 } else { 2 };
 
         if mode_byte & MODE_ENABLE == 0 {
             self.display_mode = DisplayMode::Disabled;
@@ -626,10 +700,19 @@ impl CGACard {
                 0b1_1110 => DisplayMode::Mode6HiResGraphics,
                 0b1_1010 => DisplayMode::Mode7LowResComposite,
                 _ => {
-                    log::error!("CGA: Invalid buf mode selected: {:02X}", mode_byte & 0x0F);
+                    trace!(self, "Invalid display mode selected: {:02X}", mode_byte & 0x0F);
+                    log::error!("CGA: Invalid display mode selected: {:02X}", mode_byte & 0x0F);
                     DisplayMode::Mode3TextCo80
                 }
             };
+
+            trace!(
+                self,
+                "[SL:{}] Display mode set: {:?}. Mode byte: {:02X}", 
+                self.scanline, 
+                self.display_mode, 
+                mode_byte
+            );
         }
 
         log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {}", 
@@ -646,7 +729,7 @@ impl CGACard {
 
         // https://www.vogons.org/viewtopic.php?t=47052
         
-        if self.in_hblank {
+        let byte = if self.in_hblank {
             STATUS_DISPLAY_ENABLE
         }
         else if self.in_vblank {
@@ -654,7 +737,18 @@ impl CGACard {
         }
         else {
             0
-        }
+        };
+
+        trace_regs!(self);
+        trace!(
+            self,
+            "Status register read: byte: {:02X} hblank: {} vblank: {} ",
+            byte,
+            self.in_hblank, 
+            self.in_vblank
+        );
+
+        byte
     }
 
     fn handle_cc_register_write(&mut self, data: u8) {
@@ -780,10 +874,10 @@ impl CGACard {
     /// Draw a character column in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn for each character column.
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
-        let mut base_addr = self.vma;
-        if self.char_row > 0 {
-            base_addr += 0x2000;
-        }
+        let offset = if self.char_row > 0 { 0x2000 } else { 0 };
+        let base_addr = (self.vma + offset + (self.crtc_start_address * 2)) & 0x3FFF;
+
+        
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -812,10 +906,8 @@ impl CGACard {
 
     pub fn get_lowres_pixel_color(&self, row: u8, col: u8) -> u8 {
 
-        let mut base_addr = self.vma;
-        if row > 0 {
-            base_addr += 0x2000;
-        }
+        let offset = if row > 0 { 0x2000 } else { 0 };
+        let base_addr = (self.vma + offset + (self.crtc_start_address * 2)) & 0x3FFF;
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
@@ -834,9 +926,11 @@ impl CGACard {
 
 }
 
+// Helper macro for pushing video card state entries. 
+// For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
 macro_rules! push_reg_str {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{}", $val))))
+        $vec.push((format!("{} {:?}", $decorator, $reg ), VideoCardStateEntry::String(format!("{}", $val))))
     };
 }
 
@@ -1032,23 +1126,23 @@ impl VideoCard for CGACard {
 
         let mut crtc_vec = Vec::new();
 
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "", self.crtc_horizontal_total);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayed, "", self.crtc_horizontal_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalSyncPosition, "", self.crtc_horizontal_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::SyncWidth, "", self.crtc_sync_width);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "", self.crtc_vertical_total);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotalAdjust, "", self.crtc_vertical_total_adjust);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayed, "", self.crtc_vertical_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalSync, "", self.crtc_vertical_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::InterlaceMode, "", self.crtc_interlace_mode);
-        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLineAddress, "", self.crtc_maximum_scanline_address);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "", self.crtc_cursor_start_line);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "", self.crtc_cursor_end_line);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "", self.crtc_start_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "", self.crtc_start_address_lo);
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "[R0]", self.crtc_horizontal_total);
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayed, "[R1]", self.crtc_horizontal_displayed);
+        push_reg_str!(crtc_vec, CRTCRegister::HorizontalSyncPosition, "[R2]", self.crtc_horizontal_sync_pos);
+        push_reg_str!(crtc_vec, CRTCRegister::SyncWidth, "[R3]", self.crtc_sync_width);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R4]", self.crtc_vertical_total);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotalAdjust, "[R5]", self.crtc_vertical_total_adjust);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayed, "[R6]", self.crtc_vertical_displayed);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalSync, "[R7]", self.crtc_vertical_sync_pos);
+        push_reg_str!(crtc_vec, CRTCRegister::InterlaceMode, "[R8]", self.crtc_interlace_mode);
+        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLineAddress, "[R9]", self.crtc_maximum_scanline_address);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R10]", self.crtc_cursor_start_line);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R11]", self.crtc_cursor_end_line);
+        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R12]", self.crtc_start_address_ho);
+        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "[R13]", self.crtc_start_address_lo);
         crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.crtc_start_address))));
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "", self.crtc_cursor_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "", self.crtc_cursor_address_lo);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "[R14]", self.crtc_cursor_address_ho);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "[R15]", self.crtc_cursor_address_lo);
         map.insert("CRTC".to_string(), crtc_vec);
 
         map       
@@ -1114,23 +1208,12 @@ impl VideoCard for CGACard {
                 // Update horizontal character counter
                 self.hcc_c0 = self.hcc_c0.wrapping_add(1);
 
-                self.debug_color = (self.debug_color + 1) & 0x0F;
-
                 // Advance video memory address offset and grab the next character + attr
                 self.vma += self.vmws;
                 self.set_char_addr((self.crtc_start_address * self.vmws + self.vma) & 0x3FFF);
 
                 // Glyph colun reset to 0 for next char
                 self.char_col = 0;
-
-                //if self.hcc_c0 == self.overscan_left as u8 {
-                //    // We entered buf area
-                //    self.in_display_area = true
-                //}
-                //if self.hcc_c0 == self.overscan_left as u8 + self.crtc_horizontal_displayed {
-                //    // We left buf area
-                //    self.in_display_area = false
-                //}
 
                 if self.hcc_c0 == self.crtc_horizontal_displayed {
                     // Enter right overscan
@@ -1143,6 +1226,7 @@ impl VideoCard for CGACard {
                 else if self.hcc_c0 == self.crtc_horizontal_sync_pos + (self.crtc_sync_width & 0x0F) { 
                     // We've left horizontal blank, enter left overscan
                     self.in_hblank = false;
+                    self.scanline += 1;
 
                     // Reset beam to left of screen
                     self.beam_x = 0;
@@ -1161,20 +1245,55 @@ impl VideoCard for CGACard {
                     // Reset the current character glyph to start of row
                     self.set_char_addr((self.crtc_start_address * self.vmws + self.vma) & 0x3FFF);
 
+                    // Reflect any mid-scanline address updates
+                    self.crtc_start_address = self.crtc_next_address;
+
                     if self.in_vblank {
                         // If we are in vblank, advance Vertical Sync Counter
                         self.vsc_c3h += 1;
                         
                         if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
-                            // We are leaving vblank period
+                            
+                            // We are leaving vblank period. Generate a frame.
+
+                            // Previously, we generated frames upon reaching vertical total. This was convenient as 
+                            // the display area would be at the top of the render buffer and both overscan periods
+                            // beneath it.
+                            // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple 
+                            // 'screens' per frame in between vsyncs. To enable these tricks to work, we must render 
+                            // like a monitor would.
+                            
+                            // A frame will still be generated if we reach maximum scanline count, so we don't 
+                            // overrun the render buffer.
                             self.in_vblank = false;
                             self.vsc_c3h = 0;
+
+                            self.beam_x = 0;
+                            self.beam_y = 0;
+                            self.rba = 0;
+
+                            // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
+
+                            // Width is total characters * character width * clock_divisor.
+                            // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
+                            self.extents[self.front_buf].visible_w = 
+                                self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32 * self.clock_divisor as u32;
+
+                            trace_regs!(self);
+                            trace!(self, "Leaving vsync and flipping buffers");
+
+                            // Save last scanline into extents
+                            self.extents[self.front_buf].visible_h = self.scanline; 
+
+                            self.scanline = 0;
+                            self.frame_count += 1;
+                            // Swap the display buffers
+                            self.swap();                                                  
                         }
                     }
                     else {
                         // Start the new row
                         if self.vcc_c4 < self.crtc_vertical_displayed {
-                            self.scanline += 1;
                             self.in_display_area = true;
                         }
                     }
@@ -1193,6 +1312,8 @@ impl VideoCard for CGACard {
 
                         if self.vcc_c4 == self.crtc_vertical_sync_pos {
                             // We've reached vertical sync
+                            trace_regs!(self);
+                            trace!(self, "Entering vsync");
                             self.in_vblank = true;
                             self.in_display_area = false;
                         }
@@ -1203,39 +1324,72 @@ impl VideoCard for CGACard {
                         self.in_display_area = false;
                     }
                     
-                    if (self.vcc_c4 == self.crtc_vertical_total + 1) || (self.scanline == CRTC_SCANLINE_MAX) {
+                    if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
 
-                        // Completed a frame.
+                        // If we have reached vertical total + 1, we are actually at the end of the top overscan
+                        // area, so visible scanline counting begins at 0.
+
+                        if self.crtc_vertical_total > self.crtc_vertical_sync_pos {
+                            // Completed a frame.
+                            self.frame_count += 1;
+
+                            self.hcc_c0 = 0;
+                            self.vcc_c4 = 0;
+
+                            self.char_row = 0;
+                            self.char_col = 0;
+                            self.vma = 0;
+                            self.rba = 0;
+                            self.in_display_area = true;
+
+                            //self.extents[self.front_buf].visible_h = self.scanline;
+                            //log::debug!("new extents: {}, {}", self.extents[self.front_buf].visible_w, self.extents[self.front_buf].visible_h);
+
+                            self.scanline = 0;
+
+                            // Load first char + attr
+                            self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);
+                        }
+                        else {
+                            trace_regs!(self);
+                            trace!(self, "Vertical total reached: Vblank suppressed");
+                            // VBlank suppressed by CRTC shenanigans. 
+                            self.hcc_c0 = 0;
+                            self.vcc_c4 = 0;
+                            self.beam_x = 0;
+                            self.vma = 0;
+                            self.in_display_area = true;
+                        }
+                    }
+
+                    if self.scanline == CRTC_SCANLINE_MAX {
+                        // We have somehow reached the maximum number of possible scanlines in a NTSC field.
+                        // I am not sure what happens on real hardware, but in our case, we have to force a frame generation
+                        // or we would run off the end of the render buffer.
+
+                        trace_regs!(self);
+                        trace!(self, "Maximum scanline reached, frame generation forced.");
                         self.frame_count += 1;
-
-                        // Set beam to top left of screen.
-                        self.hcc_c0 = 0;
-                        self.vcc_c4 = 0;
-                        self.beam_x = 0;
-                        self.beam_y = 0;
-                        self.char_row = 0;
-                        self.char_col = 0;
-                        self.vma = 0;
-                        self.rba = 0;
-                        self.in_display_area = true;
-
-                        // Swap the display buffers
-                        self.swap();
-
-                        // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
 
                         // Width is total characters * character width * clock_divisor.
                         // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
                         self.extents[self.front_buf].visible_w = 
                             self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32 * self.clock_divisor as u32;
 
-                        self.extents[self.front_buf].visible_h = self.scanline;
-                        //log::debug!("new extents: {}, {}", self.extents[self.front_buf].visible_w, self.extents[self.front_buf].visible_h);
+                        // Save last scanline into extents
+                        self.extents[self.front_buf].visible_h = self.scanline;          
 
                         self.scanline = 0;
 
-                        // Load first char + attr
-                        self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);
+                        self.hcc_c0 = 0;
+                        self.vcc_c4 = 0;
+                        self.beam_x = 0;
+                        self.vma = 0;
+                        self.rba = 0;
+                        self.in_display_area = true;
+
+                        // Swap the display buffers
+                        self.swap();            
                     }
                 }
             }
@@ -1290,7 +1444,7 @@ impl VideoCard for CGACard {
     fn dump_mem(&self) {
         let filename = format!("./dumps/cga.bin");
         
-        match std::fs::write(filename.clone(), &self.mem) {
+        match std::fs::write(filename.clone(), &*self.mem) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename)
             }
