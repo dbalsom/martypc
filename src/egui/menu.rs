@@ -133,6 +133,15 @@ impl GuiState {
             });
             ui.menu_button("Options", |ui| {
                 if ui.checkbox(&mut self.get_option_mut(GuiFlag::CorrectAspect), "Correct Aspect Ratio").clicked() {
+
+                    let new_opt = self.get_option(GuiFlag::CorrectAspect).unwrap();
+
+                    self.event_queue.push_back(
+                        GuiEvent::OptionChanged(
+                            GuiFlag::CorrectAspect, 
+                            new_opt 
+                        )
+                    );
                     ui.close_menu();
                 }
                 if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {

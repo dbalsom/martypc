@@ -91,7 +91,7 @@ pub(crate) enum GuiWindow {
 }
 
 #[derive(PartialEq, Eq, Hash)]
-pub(crate) enum GuiFlag {
+pub enum GuiFlag {
     CompositeDisplay,
     CorrectAspect
 }
@@ -107,7 +107,8 @@ pub enum GuiEvent {
     DumpCS,
     EditBreakpoint,
     MemoryUpdate,
-    TokenHover(usize)
+    TokenHover(usize),
+    OptionChanged(GuiFlag, bool),
 }
 
 /// Manages all state required for rendering egui over `Pixels`.

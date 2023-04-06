@@ -967,6 +967,14 @@ fn main() {
                                 video_data.render_w = new_w;
                                 video_data.render_h = new_h;
                                 render_src.resize((new_w * new_h * 4) as usize, 0);
+
+                                /*
+                                if pixels.resize_surface(new_w, new_h).is_err() {
+                                    // Some error occured but not much we can do about it.
+                                    // Errors get thrown when the window minimizes.
+                                }
+                                */
+                                
                                 render_src.fill(0);
     
                                 video_data.aspect_w = video_data.render_w;
@@ -1069,6 +1077,19 @@ fn main() {
                     // Handle custom user events received from our gui windows
                     loop {
                         match framework.gui.get_event() {
+
+                            Some(GuiEvent::OptionChanged(opt, val)) => {
+                                match (opt, val) {
+                                    (GuiFlag::CorrectAspect, false) => {
+                                        // Aspect correction was turned off. We want to clear the render buffer as the 
+                                        // display buffer is shrinking vertically.
+                                        let surface = pixels.get_frame_mut();
+                                        surface.fill(0);
+                                    }
+                                    _ => {}
+                                }
+                            }
+
                             Some(GuiEvent::CreateVHD(filename, fmt)) => {
                                 log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
