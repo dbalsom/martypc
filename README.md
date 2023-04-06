@@ -16,7 +16,7 @@ Since Nov 2022, I have been working diligently to make Marty's 8088 CPU emulatio
 
 The 8088 processor instruction queue is fully implemented. Bus delays, prefetch aborts, etc are all modelled so that instructions run in the proper time whether they are prefetched or not.
 
-Currently, 8088mph reports my CPU is within 3% of expected. I believe that this is mostly due to missing DMA for DRAM refresh.
+As of April 2023, MartyPC is accurate enough to run the infamous PC demo, 8088mph from start to finish with only minor glitches.
 
 ## Requirements
 
@@ -34,8 +34,8 @@ The following devices are at least partially implemented:
 * µPD764 Floppy Disk Controller - Enough FDC commands are implemented to make DOS happy.
 * IBM 20MB Fixed Disk Controller - Emulated with basic VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
 * 8255 PPI - Dip switches, speaker gate, keyboard input.
-* 8259 PIC - Mostly implemented.
-* 8253 PIT - Mostly implemented; currently lacking BCD mode.
+* 8259 PIC
+* 8253 PIT
 * 8237 DMA Controller - Mostly implemented, but DMA transfers are currently "faked"
 * 8250 UART - COM1 hard-coded to mouse, COM2 is available for serial passthrough to a host adapter.
 * Mouse - A standard Microsoft Mouse is implemented on COM1.
@@ -46,6 +46,7 @@ Marty has a GUI with a few useful debugging displays including the current instr
 
 
 ## Screenshots
+![8088mph](https://user-images.githubusercontent.com/7229541/230502288-1d6f9d42-88b9-4e6c-8257-21378e68ff85.PNG)
 ![win30](https://user-images.githubusercontent.com/7229541/222996518-479e2c3a-40cd-4a69-b2fb-145a30219812.PNG)
 ![monkey_ega](https://user-images.githubusercontent.com/7229541/190879975-6ecba7c4-0529-4e34-ac6b-53827944e288.PNG)
 ![keen4](https://user-images.githubusercontent.com/7229541/182751737-85f2b9d1-d3b4-4b96-888c-3e8762c6c458.PNG)
