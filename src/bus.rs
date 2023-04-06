@@ -26,7 +26,6 @@ use crate::videocard::{VideoCard, VideoCardDispatch};
 use crate::cga::{self, CGACard};
 use crate::ega::{self, EGACard};
 use crate::vga::{self, VGACard};
-use crate::cga::*;
 use crate::memerror::MemError;
 
 pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from a unconnected IO address.
@@ -531,6 +530,7 @@ impl BusInterface {
                                 match &mut self.video {
                                     VideoCardDispatch::Cga(cga) => {
                                         MemoryMappedDevice::write_u8( cga, address, data);
+                                        return Ok(6); // temporary wait state value. 
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         MemoryMappedDevice::write_u8( ega, address, data);
@@ -601,6 +601,7 @@ impl BusInterface {
                                     VideoCardDispatch::Cga(cga) => {
                                         MemoryMappedDevice::write_u8(cga, address, (data & 0xFF) as u8);
                                         MemoryMappedDevice::write_u8(cga, address + 1, (data >> 8) as u8);
+                                        return Ok(6); // temporary wait state value. 
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         MemoryMappedDevice::write_u8(ega, address, (data & 0xFF) as u8);

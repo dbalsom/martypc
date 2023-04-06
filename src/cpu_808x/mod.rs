@@ -1141,12 +1141,12 @@ impl<'a> Cpu<'a> {
                             }
                             (BusStatus::MemWrite, TransferSize::Byte) => {
                                 self.i8288.mwtc = true;
-                                self.bus.write_u8(self.address_bus as usize, (self.data_bus & 0x00FF) as u8).unwrap();
+                                self.wait_states = self.bus.write_u8(self.address_bus as usize, (self.data_bus & 0x00FF) as u8).unwrap();
                                 self.transfer_n += 1;
                             }
                             (BusStatus::MemWrite, TransferSize::Word) => {
                                 self.i8288.mwtc = true;
-                                self.bus.write_u16(self.address_bus as usize, self.data_bus).unwrap();
+                                self.wait_states = self.bus.write_u16(self.address_bus as usize, self.data_bus).unwrap();
                                 self.transfer_n += 1;
                             }                                                          
                             _=> {

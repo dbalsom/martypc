@@ -45,18 +45,19 @@ pub const CGA_MEM_APERTURE: usize = 0x8000;
 pub const CGA_MEM_SIZE: usize = 0x4000; // 16384 bytes
 pub const CGA_MEM_MASK: usize = !0x4000; // Applying this mask will implement memory mirror.
 
-// Sensible defaults for CRTC registers. A real CRTC is probably
-// uninitialized
-const DEFAULT_CURSOR_START_LINE: u8 = 6;
-const DEFAULT_CURSOR_END_LINE: u8 = 7;
-const DEFAULT_HORIZONTAL_TOTAL: u8 = 113;
-const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 80;
-const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 90;
+// Sensible defaults for CRTC registers. A real CRTC is probably uninitialized. 
+// 4/5/2023: Changed these values to 40 column mode.
+const DEFAULT_HORIZONTAL_TOTAL: u8 = 56;
+const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 40;
+const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 45;
 const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 10;
 const DEFAULT_VERTICAL_TOTAL: u8 = 31;
 const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 6;
 const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
 const DEFAULT_VERTICAL_SYNC_POS: u8 = 28;
+const DEFAULT_MAXIMUM_SCANLINE: u8 = 7;
+const DEFAULT_CURSOR_START_LINE: u8 = 6;
+const DEFAULT_CURSOR_END_LINE: u8 = 7;
 
 // CGA is clocked at 14.318180Mhz, which is the main clock of the entire PC system.
 // The original CGA card did not have its own crystal.
@@ -161,6 +162,8 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 10, 11, 15],    // Red / Cyan / White High Intensity
 ];
 
+const CGA_DEBUG_COLOR: u8 = 1;
+
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
         $self.trace_logger.print(&format!($($t)*));
@@ -172,10 +175,11 @@ macro_rules! trace_regs {
     ($self:ident) => {
         $self.trace_logger.print(
             &format!(
-                "[SL:{:03} VCC:{:03} VT:{:02}] ", 
+                "[SL:{:03} VCC:{:03} VT:{:03} VS:{:03}] ", 
                 $self.scanline,
                 $self.vcc_c4,
-                $self.crtc_vertical_total
+                $self.crtc_vertical_total,
+                $self.crtc_vertical_sync_pos
             )
         );
     };
@@ -211,6 +215,8 @@ pub struct CGACard {
     in_hblank: bool,
     in_vblank: bool,
     frame_count: u64,
+
+    draw_enabled: bool,
 
     cursor_status: bool,
     cursor_slowblink: bool,
@@ -381,7 +387,7 @@ impl CGACard {
 
         Self {
             mode_byte: 0,
-            display_mode: DisplayMode::Mode3TextCo80,
+            display_mode: DisplayMode::Mode0TextBw40,
             mode_enable: true,
             mode_graphics: false,
             mode_bw: false,
@@ -399,6 +405,8 @@ impl CGACard {
             in_vblank: false,
             frame_count: 0,
 
+            draw_enabled: false,
+
             cursor_status: false,
             cursor_slowblink: false,
             cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
@@ -415,7 +423,7 @@ impl CGACard {
             crtc_vertical_displayed: DEFAULT_VERTICAL_DISPLAYED,
             crtc_vertical_sync_pos: DEFAULT_VERTICAL_SYNC_POS,
             crtc_interlace_mode: 0,
-            crtc_maximum_scanline_address: 7,
+            crtc_maximum_scanline_address: DEFAULT_MAXIMUM_SCANLINE,
             crtc_cursor_start_line: DEFAULT_CURSOR_START_LINE,
             crtc_cursor_end_line: DEFAULT_CURSOR_END_LINE,
             crtc_start_address: 0,
@@ -684,41 +692,44 @@ impl CGACard {
 
         // Clock divisor is 1 in high res text mode, 2 in all other modes
         // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
-        self.clock_divisor = if (self.mode_hires_txt || !self.mode_enable) { 1 } else { 2 };
+        self.clock_divisor = if self.mode_hires_txt { 1 } else { 2 };
 
-        if mode_byte & MODE_ENABLE == 0 {
-            self.display_mode = DisplayMode::Disabled;
-        }
-        else {
-            self.display_mode = match mode_byte & 0x1F {
-                0b0_1100 => DisplayMode::Mode0TextBw40,
-                0b0_1000 => DisplayMode::Mode1TextCo40,
-                0b0_1101 => DisplayMode::Mode2TextBw80,
-                0b0_1001 => DisplayMode::Mode3TextCo80,
-                0b0_1010 => DisplayMode::Mode4LowResGraphics,
-                0b0_1110 => DisplayMode::Mode5LowResAltPalette,
-                0b1_1110 => DisplayMode::Mode6HiResGraphics,
-                0b1_1010 => DisplayMode::Mode7LowResComposite,
-                _ => {
-                    trace!(self, "Invalid display mode selected: {:02X}", mode_byte & 0x0F);
-                    log::error!("CGA: Invalid display mode selected: {:02X}", mode_byte & 0x0F);
-                    DisplayMode::Mode3TextCo80
-                }
-            };
+        // Updated mask to exclude enable bit in mode calculation.
+        // "Disabled" isn't really a video mode, it just controls whether
+        // the CGA card outputs video at a given moment. This can be toggled on
+        // and off during a single frame, such as done in VileR's fontcmp.com
+        self.display_mode = match mode_byte & 0b1_0111 {
+            0b0_0100 => DisplayMode::Mode0TextBw40,
+            0b0_0000 => DisplayMode::Mode1TextCo40,
+            0b0_0101 => DisplayMode::Mode2TextBw80,
+            0b0_0001 => DisplayMode::Mode3TextCo80,
+            0b0_0010 => DisplayMode::Mode4LowResGraphics,
+            0b0_0110 => DisplayMode::Mode5LowResAltPalette,
+            0b1_0110 => DisplayMode::Mode6HiResGraphics,
+            0b1_0010 => DisplayMode::Mode7LowResComposite,
+            _ => {
+                trace!(self, "Invalid display mode selected: {:02X}", mode_byte & 0x0F);
+                log::error!("CGA: Invalid display mode selected: {:02X}", mode_byte & 0x0F);
+                DisplayMode::Mode3TextCo80
+            }
+        };
 
-            trace!(
-                self,
-                "[SL:{}] Display mode set: {:?}. Mode byte: {:02X}", 
-                self.scanline, 
-                self.display_mode, 
-                mode_byte
-            );
-        }
+        trace_regs!(self);
+        trace!(
+            self,
+            "Display mode set: {:?}. Mode byte: {:02X} Enabled: {} Clock: {}", 
+            self.display_mode, 
+            mode_byte,
+            self.mode_enable,
+            self.clock_divisor                
+        );
 
-        log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {}", 
+        log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {} Clock: {}", 
             self.display_mode,
             mode_byte, 
-            self.mode_enable );
+            self.mode_enable,
+            self.clock_divisor
+        );
     }
 
     fn handle_status_register_read(&mut self) -> u8 {
@@ -729,11 +740,13 @@ impl CGACard {
 
         // https://www.vogons.org/viewtopic.php?t=47052
         
-        let byte = if self.in_hblank {
-            STATUS_DISPLAY_ENABLE
-        }
-        else if self.in_vblank {
+        // Addendum: The DE line is from the MC6845, and actually includes anything outside of the 
+        // active display area. This gives a much wider window to hit for scanline wait loops.
+        let byte = if self.in_vblank {
             STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
+        }
+        else if !self.in_display_area {
+            STATUS_DISPLAY_ENABLE
         }
         else {
             0
@@ -742,9 +755,9 @@ impl CGACard {
         trace_regs!(self);
         trace!(
             self,
-            "Status register read: byte: {:02X} hblank: {} vblank: {} ",
+            "Status register read: byte: {:02X} in_display_area: {} vblank: {} ",
             byte,
-            self.in_hblank, 
+            self.in_display_area, 
             self.in_vblank
         );
 
@@ -851,6 +864,10 @@ impl CGACard {
             }
         }
 
+        if !self.mode_enable {
+            new_pixel = CGA_DEBUG_COLOR;
+        }
+
         self.buf[self.back_buf][self.rba] = new_pixel;
 
         if self.clock_divisor == 2 {
@@ -862,11 +879,16 @@ impl CGACard {
     /// Draw a character column in low resolution graphics mode (320x200)
     /// In this mode, one pixel is drawn twice for each character column.
     pub fn draw_lowres_gfx_mode_pixel(&mut self) {
-        let new_pixel = self.get_lowres_pixel_color(self.char_row, self.char_col);
+        let mut new_pixel = self.get_lowres_pixel_color(self.char_row, self.char_col);
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
         }
+
+        if !self.mode_enable {
+            new_pixel = CGA_DEBUG_COLOR;
+        }
+
         self.buf[self.back_buf][self.rba] = new_pixel;
         self.buf[self.back_buf][self.rba + 1] = new_pixel;
     }
@@ -876,8 +898,6 @@ impl CGACard {
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
         let offset = if self.char_row > 0 { 0x2000 } else { 0 };
         let base_addr = (self.vma + offset + (self.crtc_start_address * 2)) & 0x3FFF;
-
-        
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -889,18 +909,24 @@ impl CGACard {
         let bit1 = ((word >> ((CRTC_CHAR_CLOCK * 2) - (self.char_col * 2 + 1))) & 0x01) as usize;
         let bit2 = ((word >> ((CRTC_CHAR_CLOCK * 2) - (self.char_col * 2 + 2))) & 0x01) as usize;
 
-        if bit1 == 0 {
-            self.buf[self.back_buf][self.rba] = 0;
-        }
-        else {
-            self.buf[self.back_buf][self.rba] = self.cc_altcolor;
-        }
+        if self.mode_enable {
+            if bit1 == 0 {
+                self.buf[self.back_buf][self.rba] = 0;
+            }
+            else {
+                self.buf[self.back_buf][self.rba] = self.cc_altcolor;
+            }
 
-        if bit2 == 0 {
-            self.buf[self.back_buf][self.rba + 1] = 0;
+            if bit2 == 0 {
+                self.buf[self.back_buf][self.rba + 1] = 0;
+            }
+            else {
+                self.buf[self.back_buf][self.rba + 1] = self.cc_altcolor;
+            }
         }
         else {
-            self.buf[self.back_buf][self.rba + 1] = self.cc_altcolor;
+            self.buf[self.back_buf][self.rba] = CGA_DEBUG_COLOR;
+            self.buf[self.back_buf][self.rba + 1] = CGA_DEBUG_COLOR;
         }
     }    
 
@@ -1121,6 +1147,8 @@ impl VideoCard for CGACard {
 
         general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
         general_vec.push((format!("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
+        general_vec.push((format!("Display Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
+        general_vec.push((format!("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
         general_vec.push((format!("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
@@ -1165,7 +1193,7 @@ impl VideoCard for CGACard {
             
             if self.in_display_area {
                 // Draw current pixel
-                if self.rba < CGA_MAX_CLOCK {
+                if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
 
                     if !self.is_graphics_mode() {
                         self.draw_text_mode_pixel();
@@ -1288,7 +1316,8 @@ impl VideoCard for CGACard {
                             self.scanline = 0;
                             self.frame_count += 1;
                             // Swap the display buffers
-                            self.swap();                                                  
+                            self.swap();              
+                            //self.in_display_area = true;                                    
                         }
                     }
                     else {
@@ -1359,6 +1388,7 @@ impl VideoCard for CGACard {
                             self.beam_x = 0;
                             self.vma = 0;
                             self.in_display_area = true;
+                            self.in_vblank = false;
                         }
                     }
 
@@ -1454,6 +1484,10 @@ impl VideoCard for CGACard {
         }
     }
 
+    fn write_trace_log(&mut self, msg: String) {
+        self.trace_logger.print(msg);
+    }    
+
 }
 
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
@@ -1492,4 +1526,5 @@ impl MemoryMappedDevice for CGACard {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
     }
+
 }

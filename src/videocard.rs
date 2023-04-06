@@ -236,4 +236,7 @@ pub trait VideoCard {
     /// Dump graphics memory to disk
     fn dump_mem(&self);
 
+    /// Write a string to the video device's trace log (if one is configured)
+    fn write_trace_log(&mut self, msg: String);
+
 }

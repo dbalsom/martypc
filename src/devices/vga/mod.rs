@@ -1817,6 +1817,10 @@ impl VideoCard for VGACard {
         0
     }
 
+    fn write_trace_log(&mut self, msg: String) {
+        self.trace_logger.print(msg);
+    }
+
 }
 
 impl MemoryMappedDevice for VGACard {

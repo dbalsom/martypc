@@ -1429,7 +1429,11 @@ impl VideoCard for EGACard {
     fn get_frame_count(&self) -> u64 {
         0
     }
-    
+
+    fn write_trace_log(&mut self, msg: String) {
+        //self.trace_logger.print(msg);
+    }
+
 }
 
 impl MemoryMappedDevice for EGACard {
