@@ -24,7 +24,7 @@ use crate::{
     ega::{self, EGACard},
     vga::{self, VGACard},
     cpu_808x::{self, Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
-    cpu_common::CpuType,
+    cpu_common::{CpuType, CpuOption},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
@@ -225,6 +225,14 @@ impl<'a> Machine<'a> {
             #[cfg(feature = "cpu_validator")]
             config.validator.vtype.unwrap()
         );
+
+        // Enable DRAM refresh simulation if appropriate model
+        match machine_type {
+            MachineType::IBM_PC_5150 | MachineType::IBM_XT_5160 => {
+                cpu.set_option(CpuOption::SimulateDramRefresh(true, 76));
+            },
+            _ => {}
+        }
 
         let reset_vector = cpu.get_reset_vector();
         cpu.reset(reset_vector);        

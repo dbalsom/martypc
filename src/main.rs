@@ -1298,7 +1298,7 @@ fn main() {
                     // -- Update register viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::CpuStateViewer) {
                         let cpu_state = machine.cpu().get_string_state();
-                        framework.gui.update_cpu_state(cpu_state);
+                        framework.gui.cpu_viewer.update_state(cpu_state);
                     }
 
                     // -- Update PIT viewer window
@@ -1328,7 +1328,7 @@ fn main() {
                     // -- Update DMA viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::DmaViewer) {
                         let dma_state = machine.dma_state();
-                        framework.gui.update_dma_state(dma_state);
+                        framework.gui.dma_viewer.update_state(dma_state);
                     }
                     
                     // -- Update VideoCard Viewer (Replace CRTC Viewer)

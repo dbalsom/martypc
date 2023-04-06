@@ -359,10 +359,6 @@ impl<'a> Cpu<'a> {
 
     pub fn biu_write_u8(&mut self, seg: Segment, addr: u32, byte: u8, flag: ReadWriteFlag) {
 
-        if addr == 0xABFFE {
-            log::trace!("break me");
-        }
-
         self.biu_bus_begin(
             BusStatus::MemWrite, 
             seg, 
@@ -378,6 +374,43 @@ impl<'a> Cpu<'a> {
         };
         
         validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
+    }
+
+    pub fn biu_io_read_u8(&mut self, addr: u16) -> u8 {
+
+        self.biu_bus_begin(
+            BusStatus::IORead, 
+            Segment::None, 
+            addr as u32, 
+            0, 
+            TransferSize::Byte,
+            OperandSize::Operand8,
+            true
+        );
+        let _cycles_waited = self.biu_bus_wait_finish();
+        
+        //validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
+
+        (self.data_bus & 0x00FF) as u8
+    }
+
+    pub fn biu_io_write_u8(&mut self, addr: u16, byte: u8, flag: ReadWriteFlag) {
+        
+        self.biu_bus_begin(
+            BusStatus::IOWrite, 
+            Segment::None, 
+            addr as u32, 
+            byte as u16, 
+            TransferSize::Byte,
+            OperandSize::Operand8,
+            true
+        );
+        match flag {
+            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
+        };
+        
+        //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
     }
 
     pub fn biu_read_u16(&mut self, seg: Segment, addr: u32, flag: ReadWriteFlag) -> u16 {

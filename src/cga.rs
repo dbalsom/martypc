@@ -1189,7 +1189,7 @@ impl VideoCard for CGACard {
 
         // Tick the CRTC. Since the CGA is much faster clocked than the CPU this will 
         // probably happen several times per CPU instruction.
-        while self.accumulated_us > US_PER_CLOCK {
+        while self.accumulated_us > (US_PER_CLOCK * self.clock_divisor as f64) {
             
             if self.in_display_area {
                 // Draw current pixel
@@ -1428,7 +1428,7 @@ impl VideoCard for CGACard {
                 }
             }
 
-            self.accumulated_us -= US_PER_CLOCK;
+            self.accumulated_us -= (US_PER_CLOCK * self.clock_divisor as f64);
         }
 
         /*

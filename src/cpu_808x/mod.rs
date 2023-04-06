@@ -39,7 +39,7 @@ use crate::cpu_808x::addressing::AddressingMode;
 use crate::cpu_808x::queue::InstructionQueue;
 use crate::cpu_808x::biu::*;
 
-use crate::cpu_common::CpuType;
+use crate::cpu_common::{CpuType, CpuOption};
 
 use crate::config::TraceMode;
 #[cfg(feature = "cpu_validator")]
@@ -711,7 +711,14 @@ pub struct Cpu<'a>
     #[cfg(feature = "cpu_validator")]
     cycle_states: Vec<CycleState>,
 
-    service_events: VecDeque<ServiceEvent>
+    service_events: VecDeque<ServiceEvent>,
+
+    // DMA stuff
+    dram_refresh_simulation: bool,
+    dram_refresh_cycle_target: u32,
+    dram_refresh_cycles: u32,
+    dram_transfer_cycles: u32,
+    dram_refresh_has_bus: bool
 }
 
 pub struct CpuRegisterState {
@@ -774,6 +781,7 @@ pub struct CpuStringState {
     pub d_fl: String,
     pub o_fl: String,
     pub instruction_count: String,
+    pub cycle_count: String
 }
     
 pub enum RegisterType {
@@ -1123,32 +1131,49 @@ impl<'a> Cpu<'a> {
                         match (self.bus_status, self.transfer_size) {
                             (BusStatus::CodeFetch, TransferSize::Byte) => {
                                 (byte, self.wait_states) = self.bus.read_u8(self.address_bus as usize).unwrap();
+                                self.wait_states += self.dram_transfer_cycles;
                                 self.data_bus = byte as u16;
                                 self.transfer_n += 1;
                             }
                             (BusStatus::CodeFetch, TransferSize::Word) => {
                                 (self.data_bus, self.wait_states) = self.bus.read_u16(self.address_bus as usize).unwrap();
+                                self.wait_states += self.dram_transfer_cycles;
                                 self.transfer_n += 1;
                             }
                             (BusStatus::MemRead, TransferSize::Byte) => {
                                 (byte, self.wait_states) = self.bus.read_u8(self.address_bus as usize).unwrap();
+                                self.wait_states += self.dram_transfer_cycles;
                                 self.data_bus = byte as u16;
                                 self.transfer_n += 1;
-                            }
+                            }                            
                             (BusStatus::MemRead, TransferSize::Word) => {
                                 (self.data_bus, self.wait_states) = self.bus.read_u16(self.address_bus as usize).unwrap();
+                                self.wait_states += self.dram_transfer_cycles;
                                 self.transfer_n += 1;
-                            }
+                            }                         
                             (BusStatus::MemWrite, TransferSize::Byte) => {
                                 self.i8288.mwtc = true;
                                 self.wait_states = self.bus.write_u8(self.address_bus as usize, (self.data_bus & 0x00FF) as u8).unwrap();
+                                self.wait_states += self.dram_transfer_cycles;
                                 self.transfer_n += 1;
                             }
                             (BusStatus::MemWrite, TransferSize::Word) => {
                                 self.i8288.mwtc = true;
                                 self.wait_states = self.bus.write_u16(self.address_bus as usize, self.data_bus).unwrap();
+                                self.wait_states += self.dram_transfer_cycles;
                                 self.transfer_n += 1;
-                            }                                                          
+                            }
+                            (BusStatus::IORead, TransferSize::Byte) => {
+                                byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16);
+                                self.wait_states = self.dram_transfer_cycles;
+                                self.data_bus = byte as u16;
+                                self.transfer_n += 1;
+                            }
+                            (BusStatus::IOWrite, TransferSize::Byte) => {
+                                self.bus.io_write_u8((self.address_bus & 0xFFFF) as u16, (self.data_bus & 0x00FF) as u8);
+                                self.wait_states = self.dram_transfer_cycles;
+                                self.transfer_n += 1;
+                            }                                                                                                                     
                             _=> {
                                 // Handle other bus operations
                             }
@@ -1223,6 +1248,7 @@ impl<'a> Cpu<'a> {
             }
             TCycle::Tw => {
                 if self.wait_states > 0 {
+                    //log::debug!("wait states: {}", self.wait_states);
                     self.wait_states -= 1;
                     TCycle::Tw
                 }
@@ -1295,6 +1321,32 @@ impl<'a> Cpu<'a> {
 
         self.instr_cycle += 1 ;
         self.cycle_num += 1;
+        
+        // Do DRAM refresh (DMA channel 0) simulation
+        if self.dram_refresh_simulation {
+            self.dram_refresh_cycles += 1;
+
+            if self.dram_refresh_has_bus {
+                // the DMA controller has control of the bus now. Increment the 
+                // DMA transfer cycles.
+                self.dram_transfer_cycles = self.dram_transfer_cycles.saturating_sub(1);
+
+                if self.dram_transfer_cycles == 0 {
+                    // 4 transfer cycles have elapsed, so release bus.
+                    self.dram_refresh_has_bus = false;
+                }
+            }
+
+            if self.dram_refresh_cycles == self.dram_refresh_cycle_target {
+                // DRAM refresh cycle counter has hit target. 
+                // DMA controller is now in control of bus.
+                self.dram_refresh_has_bus = true;
+                self.dram_transfer_cycles = 4;
+
+                // Reset counter.
+                self.dram_refresh_cycles = 0;
+            }
+        }
 
         self.trace_comment = ""; 
         self.trace_instr = MC_NONE;
@@ -1350,7 +1402,7 @@ impl<'a> Cpu<'a> {
                     finalize_timeout += 1;
                     if finalize_timeout == 16 {
                         self.trace_flush();
-                        panic!("Finalize timeout!");
+                        panic!("Finalize timeout! wait states: {}", self.wait_states);
                     }
                     self.queue.len() == 0
                 } {}
@@ -1820,7 +1872,8 @@ impl<'a> Cpu<'a> {
             },
             
             flags: format!("{:04}", self.flags),
-            instruction_count: format!("{}", self.instruction_count)
+            instruction_count: format!("{}", self.instruction_count),
+            cycle_count: format!("{}", self.cycle_num),
         }
     }
     
@@ -2933,7 +2986,20 @@ impl<'a> Cpu<'a> {
 
     pub fn get_service_event(&mut self) -> Option<ServiceEvent> {
         self.service_events.pop_front()
-    }    
+    }
+
+    pub fn set_option(&mut self, opt: CpuOption) {
+
+        match opt {
+            CpuOption::InstructionHistory(state) => {
+                self.instruction_history_on = state;
+            }
+            CpuOption::SimulateDramRefresh(state, cycles) => {
+                self.dram_refresh_simulation = state;
+                self.dram_refresh_cycle_target = cycles;
+            }
+        }
+    }
 }
 
 

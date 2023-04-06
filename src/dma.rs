@@ -130,6 +130,7 @@ pub struct DMAChannelStringState {
 pub struct DMAControllerStringState {
     pub enabled: String,
     pub flipflop: String,
+    pub dreq: String,
     pub dma_channel_state: Vec<DMAChannelStringState>
 }
 pub struct DMAController {
@@ -145,7 +146,9 @@ pub struct DMAController {
     command_register: u8,
     request_reg: u8,
     status_reg: u8,
-    temp_reg: u8
+    temp_reg: u8,
+
+    dreq: bool
 }
 
 impl IoDevice for DMAController {
@@ -322,7 +325,9 @@ impl DMAController {
             command_register: 0,
             request_reg: 0,
             status_reg: 0,
-            temp_reg: 0
+            temp_reg: 0,
+
+            dreq: false
         }
     }
 
@@ -587,6 +592,7 @@ impl DMAController {
         DMAControllerStringState { 
             enabled: format!("{:?}", self.enabled),
             flipflop: format!("{:?}", self.flipflop),
+            dreq: format!("{:?}", self.dreq),
             dma_channel_state: chan_vec 
         }
     }

@@ -11,6 +11,11 @@ impl Default for CpuType {
     fn default() -> Self { CpuType::Intel8088 }
 }
 
+pub enum CpuOption {
+    InstructionHistory(bool),
+    SimulateDramRefresh(bool, u32)
+}
+
 use crate::cpu_808x::*;
 
 pub mod alu;
