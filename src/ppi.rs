@@ -11,7 +11,7 @@
 use std::cell::Cell;
 
 use crate::config::{MachineType, VideoType};
-use crate::bus::{BusInterface, IoDevice};
+use crate::bus::{BusInterface, IoDevice, NO_IO_BYTE};
 use crate::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
@@ -233,6 +233,9 @@ impl IoDevice for Ppi {
             PPI_PORT_C => {
                 self.calc_port_c_value()
             },
+            PPI_COMMAND_PORT => {
+                NO_IO_BYTE
+            }            
             _ => panic!("PPI: Bad port #")
         }
     }
