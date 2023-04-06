@@ -1392,6 +1392,7 @@ impl VideoCard for CGACard {
                         }
                     }
 
+                    /*
                     if self.scanline == CRTC_SCANLINE_MAX {
                         // We have somehow reached the maximum number of possible scanlines in a NTSC field.
                         // I am not sure what happens on real hardware, but in our case, we have to force a frame generation
@@ -1421,6 +1422,7 @@ impl VideoCard for CGACard {
                         // Swap the display buffers
                         self.swap();            
                     }
+                    */
                 }
             }
 

@@ -409,7 +409,7 @@ impl BusInterface {
                             IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                                 match &mut self.video {
                                     VideoCardDispatch::Cga(cga) => {
-                                        return Ok((MemoryMappedDevice::read_u8(cga, address), DEFAULT_WAIT_STATES));
+                                        return Ok((MemoryMappedDevice::read_u8(cga, address), 6)); // Temporary wait state value
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         return Ok((MemoryMappedDevice::read_u8(ega, address), DEFAULT_WAIT_STATES));
@@ -467,7 +467,7 @@ impl BusInterface {
                             IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                                 match &mut self.video {
                                     VideoCardDispatch::Cga(cga) => {
-                                        return Ok((cga.read_u16(address), DEFAULT_WAIT_STATES));
+                                        return Ok((cga.read_u16(address), 6)); // Temporary wait state value
                                     }
                                     VideoCardDispatch::Ega(ega) => {
                                         return Ok((ega.read_u16(address), DEFAULT_WAIT_STATES));
