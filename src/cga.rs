@@ -162,7 +162,10 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 10, 11, 15],    // Red / Cyan / White High Intensity
 ];
 
-const CGA_DEBUG_COLOR: u8 = 1;
+const CGA_DEBUG_COLOR: u8 = 0;
+const CGA_HBLANK_COLOR: u8 = 0;
+const CGA_VBLANK_COLOR: u8 = 0;
+const CGA_OVERSCAN_COLOR: u8 = 0;
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -1209,19 +1212,19 @@ impl VideoCard for CGACard {
             else if self.in_hblank {
                 // Draw hblank area blue
                 if self.rba < CGA_MAX_CLOCK {
-                    self.buf[self.back_buf][self.rba] = 1;
+                    self.buf[self.back_buf][self.rba] = CGA_HBLANK_COLOR;
                 }
             }
             else if self.in_vblank {
                 // Draw vblank area magenta
                 if self.rba < CGA_MAX_CLOCK {
-                    self.buf[self.back_buf][self.rba] = 5;
+                    self.buf[self.back_buf][self.rba] = CGA_VBLANK_COLOR;
                 }
             }
             else {
                 // Draw overscan green
                 if self.rba < CGA_MAX_CLOCK {
-                    self.buf[self.back_buf][self.rba] = 2;
+                    self.buf[self.back_buf][self.rba] = CGA_OVERSCAN_COLOR;
                 }
             }
 
