@@ -1207,7 +1207,7 @@ impl VideoCard for CGACard {
                 }
             }
             else if self.in_hblank {
-                // Draw overscan area blue
+                // Draw hblank area blue
                 if self.rba < CGA_MAX_CLOCK {
                     self.buf[self.back_buf][self.rba] = 1;
                 }
@@ -1311,7 +1311,7 @@ impl VideoCard for CGACard {
                             trace!(self, "Leaving vsync and flipping buffers");
 
                             // Save last scanline into extents
-                            self.extents[self.front_buf].visible_h = self.scanline; 
+                            // self.extents[self.front_buf].visible_h = self.scanline; <- do this when leaving display area not vblank
 
                             self.scanline = 0;
                             self.frame_count += 1;
@@ -1349,7 +1349,9 @@ impl VideoCard for CGACard {
                     }
 
                     if self.vcc_c4 == self.crtc_vertical_displayed {
-                        // Enter lower overscan area
+                        // Enter lower overscan area.
+                        // This represents reaching the lowest visible scanline, so save the scanline in extents.
+                        self.extents[self.front_buf].visible_h = self.scanline;
                         self.in_display_area = false;
                     }
                     
