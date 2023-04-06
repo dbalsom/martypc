@@ -137,6 +137,9 @@ pub struct Emulator {
     #[serde(default = "_default_false")]
     pub warpspeed: bool,    
 
+    #[serde(default = "_default_false")]
+    pub correct_aspect: bool,    
+
     #[serde(default)]
     pub trace_mode: TraceMode,
     pub trace_file: Option<String>,
@@ -201,6 +204,9 @@ pub struct CmdLineArgs {
     pub warpspeed: bool,       
 
     #[bpaf(long, switch)]
+    pub correct_aspect: bool,      
+
+    #[bpaf(long, switch)]
     pub reverse_mouse_buttons: bool,    
 
     #[bpaf(long)]
@@ -222,6 +228,7 @@ impl ConfigFileParams {
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.autostart |= shell_args.autostart;
         self.emulator.warpspeed |= shell_args.warpspeed;
+        self.emulator.correct_aspect |= shell_args.correct_aspect;
         self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
     }
 }

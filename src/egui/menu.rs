@@ -1,4 +1,4 @@
-use crate::egui::{GuiState, GuiWindow, GuiEvent};
+use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiFlag};
 
 
 impl GuiState {
@@ -132,7 +132,7 @@ impl GuiState {
             
             });
             ui.menu_button("Options", |ui| {
-                if ui.checkbox(&mut self.aspect_correct, "Correct Aspect Ratio").clicked() {
+                if ui.checkbox(&mut self.get_option_mut(GuiFlag::CorrectAspect), "Correct Aspect Ratio").clicked() {
                     ui.close_menu();
                 }
                 if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {

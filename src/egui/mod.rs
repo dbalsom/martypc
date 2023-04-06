@@ -90,6 +90,12 @@ pub(crate) enum GuiWindow {
     VHDCreator,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub(crate) enum GuiFlag {
+    CompositeDisplay,
+    CorrectAspect
+}
+
 pub enum GuiEvent {
     #[allow (dead_code)]
     LoadVHD(u32,OsString),
@@ -128,6 +134,8 @@ pub(crate) struct GuiState {
     window_open_flags: HashMap::<GuiWindow, bool>,
     error_dialog_open: bool,
     
+    option_flags: HashMap::<GuiFlag, bool>,
+
     video_mem: ColorImage,
 
     video_data: VideoData,
@@ -379,12 +387,19 @@ impl GuiState {
             (GuiWindow::VHDCreator, false),
         ].into();
 
+        let option_flags: HashMap<GuiFlag, bool> = [
+            (GuiFlag::CompositeDisplay, false),
+            (GuiFlag::CorrectAspect, false)
+        ].into();
+
         Self { 
 
             texture: None,
             event_queue: VecDeque::new(),
             window_open_flags,
             error_dialog_open: false,
+
+            option_flags,
 
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
@@ -466,6 +481,20 @@ impl GuiState {
         else {
             false
         }
+    }
+
+    pub fn set_option(&mut self, option: GuiFlag, state: bool) {
+        if let Some(opt) = self.option_flags.get_mut(&option) {
+            *opt = state
+        }
+    }
+
+    pub fn get_option(&mut self, option: GuiFlag) -> Option<bool> {
+        self.option_flags.get(&option).copied()
+    }
+
+    pub fn get_option_mut(&mut self, option: GuiFlag) -> &mut bool {
+        self.option_flags.get_mut(&option).unwrap()
     }
 
     pub fn show_error(&mut self, err_str: &String) {

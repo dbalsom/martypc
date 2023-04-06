@@ -96,7 +96,7 @@ use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use videocard::{RenderMode};
 use bytequeue::ByteQueue;
-use crate::egui::{GuiEvent, GuiWindow};
+use crate::egui::{GuiEvent, GuiFlag, GuiWindow};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
 
@@ -248,7 +248,8 @@ struct VideoData {
     render_w: u32,
     render_h: u32,
     aspect_w: u32,
-    aspect_h: u32
+    aspect_h: u32,
+    aspect_correction_enabled: bool
 }
 
 fn main() {
@@ -428,7 +429,8 @@ fn main() {
         render_w: DEFAULT_RENDER_WIDTH,
         render_h: DEFAULT_RENDER_HEIGHT,
         aspect_w: 640,
-        aspect_h: 480
+        aspect_h: 480,
+        aspect_correction_enabled: false
     };
 
     let (mut pixels, mut framework) = {
@@ -449,6 +451,10 @@ fn main() {
 
         (pixels, framework)
     };
+
+
+    // Set options from config
+    framework.gui.set_option(GuiFlag::CorrectAspect, config.emulator.correct_aspect);
 
     // Set list of serial ports
     framework.gui.update_serial_ports(serial_ports);
@@ -979,7 +985,7 @@ fn main() {
 
                     // -- Draw video memory --
                     let composite_enabled = framework.gui.get_composite_enabled();
-                    let aspect_correct = framework.gui.get_aspect_correct_enabled();
+                    let aspect_correct = framework.gui.get_option(GuiFlag::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
 
