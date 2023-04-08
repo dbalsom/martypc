@@ -44,7 +44,6 @@ pub mod composite;
 pub use self::resize::*;
 pub use self::composite::*;
 
-
 use crate::config::VideoType;
 use crate::videocard::*;
 use crate::cga;
@@ -89,6 +88,22 @@ const VGA_LORES_GFX_H: u32 = 200;
 const VGA_HIRES_GFX_W: u32 = 640;
 const VGA_HIRES_GFX_H: u32 = 480;
 
+#[derive (Copy, Clone)]
+pub struct CompositeParams {
+    pub hue: f32,
+    pub sat: f32,
+    pub luma: f32
+}
+
+impl Default for CompositeParams {
+    fn default() -> Self {
+        Self {
+            hue: 1.5,
+            sat: 1.0,
+            luma: 1.0
+        }
+    }
+}
 
 //const frame_w: u32 = 640;
 //const frame_h: u32 = 400;
@@ -370,6 +385,7 @@ pub struct VideoRenderer {
     rows: u32,
 
     composite_buf: Option<Vec<u8>>,
+    composite_params: CompositeParams,
     sync_table_w: u32,
     sync_table: Vec<(f32, f32, f32)>
 }
@@ -396,6 +412,7 @@ impl VideoRenderer {
             rows: 25,
 
             composite_buf: composite_vec_opt,
+            composite_params: Default::default(),
             sync_table_w: 0,
             sync_table: Vec::new()
         }
@@ -615,11 +632,12 @@ impl VideoRenderer {
         h: u32,
         dbuf: &[u8],
         extents: &DisplayExtents,
-        composite_enabled: bool
+        composite_enabled: bool,
+        composite_params: &CompositeParams
     ) {
 
         if composite_enabled {
-            self.draw_cga_direct_composite(frame, w, h, dbuf, extents);
+            self.draw_cga_direct_composite(frame, w, h, dbuf, extents, composite_params);
             return
         }
 
@@ -669,7 +687,8 @@ impl VideoRenderer {
         w: u32,
         h: u32,        
         dbuf: &[u8],
-        extents: &DisplayExtents
+        extents: &DisplayExtents,
+        composite_params: &CompositeParams
     ) {
 
         if let Some(composite_buf) = &mut self.composite_buf {
@@ -698,9 +717,9 @@ impl VideoRenderer {
                 frame, 
                 max_w, 
                 max_h, 
-                1.5, 
-                1.0,
-                1.0
+                composite_params.hue, 
+                composite_params.sat,
+                composite_params.luma
             );
         }
     }

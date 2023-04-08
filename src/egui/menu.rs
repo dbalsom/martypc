@@ -132,21 +132,31 @@ impl GuiState {
             
             });
             ui.menu_button("Options", |ui| {
-                if ui.checkbox(&mut self.get_option_mut(GuiFlag::CorrectAspect), "Correct Aspect Ratio").clicked() {
 
-                    let new_opt = self.get_option(GuiFlag::CorrectAspect).unwrap();
 
-                    self.event_queue.push_back(
-                        GuiEvent::OptionChanged(
-                            GuiFlag::CorrectAspect, 
-                            new_opt 
-                        )
-                    );
-                    ui.close_menu();
-                }
-                if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {
-                    ui.close_menu();
-                }
+                ui.menu_button("Display", |ui| {
+                    if ui.checkbox(&mut self.get_option_mut(GuiFlag::CorrectAspect), "Correct Aspect Ratio").clicked() {
+
+                        let new_opt = self.get_option(GuiFlag::CorrectAspect).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiFlag::CorrectAspect, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {
+                        ui.close_menu();
+                    }
+
+                    if ui.button("Composite Adjustments...").clicked() {
+                        *self.window_flag(GuiWindow::CompositeAdjust) = true;
+                        ui.close_menu();
+                    }             
+                });                
+
                 ui.menu_button("Attach COM2: ...", |ui| {
                     for port in &self.serial_ports {
 

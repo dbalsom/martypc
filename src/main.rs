@@ -97,6 +97,7 @@ use vhd::{VirtualHardDisk};
 use videocard::{RenderMode};
 use bytequeue::ByteQueue;
 use crate::egui::{GuiEvent, GuiFlag, GuiWindow};
+use render::CompositeParams;
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
 
@@ -249,7 +250,8 @@ struct VideoData {
     render_h: u32,
     aspect_w: u32,
     aspect_h: u32,
-    aspect_correction_enabled: bool
+    aspect_correction_enabled: bool,
+    composite_params: CompositeParams
 }
 
 fn main() {
@@ -430,7 +432,8 @@ fn main() {
         render_h: DEFAULT_RENDER_HEIGHT,
         aspect_w: 640,
         aspect_h: 480,
-        aspect_correction_enabled: false
+        aspect_correction_enabled: false,
+        composite_params: Default::default(),
     };
 
     let (mut pixels, mut framework) = {
@@ -1002,6 +1005,10 @@ fn main() {
 
                     if let Some(video_card) = bus.video() {
 
+                        if composite_enabled {
+                            video_data.composite_params = framework.gui.composite_adjust.get_params().clone();
+                        }
+
                         // Get the render mode from the device and render appropriately
                         match (video_card.get_video_type(), video_card.get_render_mode()) {
 
@@ -1016,7 +1023,8 @@ fn main() {
                                             video_data.render_h,                                             
                                             video_card.get_display_buf(),
                                             video_card.get_display_extents(),
-                                            composite_enabled
+                                            composite_enabled,
+                                            &video_data.composite_params
                                         );
 
                                         render::resize_linear(
@@ -1034,7 +1042,8 @@ fn main() {
                                             video_data.render_h,                                                                                         
                                             video_card.get_display_buf(),
                                             video_card.get_display_extents(),
-                                            composite_enabled
+                                            composite_enabled,
+                                            &video_data.composite_params                                            
                                         );
                                     }
                                 }

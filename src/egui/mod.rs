@@ -35,19 +35,21 @@ use super::VideoData;
 
 use serialport::SerialPortInfo;
 
-mod constants;
+// Bring in submodules
 mod color;
-mod cpu_state_viewer;
-mod image;
-mod menu;
 mod color_swatch;
-mod token_listview;
+mod composite_adjust;
+mod constants;
+mod cpu_state_viewer;
 mod disassembly_viewer;
 mod dma_viewer;
-mod videocard_viewer;
-mod memory_viewer;
-mod pit_viewer;
+mod image;
 mod instruction_trace_viewer;
+mod memory_viewer;
+mod menu;
+mod pit_viewer;
+mod token_listview;
+mod videocard_viewer;
 
 use crate::{
 
@@ -55,6 +57,7 @@ use crate::{
     egui::color::{darken_c32, lighten_c32, add_c32},
 
     // Use custom windows
+    egui::composite_adjust::CompositeAdjustControl,
     egui::cpu_state_viewer::CpuViewerControl,
     egui::memory_viewer::MemoryViewerControl,
     egui::disassembly_viewer::DisassemblyControl,
@@ -69,6 +72,7 @@ use crate::{
     pit::PitDisplayState, 
     pic::PicStringState,
     ppi::PpiStringState, 
+    render::CompositeParams,
     videocard::{VideoCardState, VideoCardStateEntry}
     
 };
@@ -81,6 +85,7 @@ pub(crate) enum GuiWindow {
     CpuControl,
     PerfViewer,
     MemoryViewer,
+    CompositeAdjust,
     CpuStateViewer,
     TraceViewer,
     DiassemblyViewer,
@@ -113,6 +118,7 @@ pub enum GuiEvent {
     MemoryUpdate,
     TokenHover(usize),
     OptionChanged(GuiFlag, bool),
+    CompositeAdjust(CompositeParams)
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -199,7 +205,9 @@ pub(crate) struct GuiState {
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
     pub trace_viewer: InstructionTraceControl,
-
+    
+    pub composite_adjust: CompositeAdjustControl,
+    
     trace_string: String,
     call_stack_string: String,
 
@@ -380,6 +388,7 @@ impl GuiState {
             (GuiWindow::CpuControl, true),
             (GuiWindow::PerfViewer, false),
             (GuiWindow::MemoryViewer, false),
+            (GuiWindow::CompositeAdjust, false),
             (GuiWindow::CpuStateViewer, false),
             (GuiWindow::TraceViewer, false),
             (GuiWindow::DiassemblyViewer, true),
@@ -460,6 +469,7 @@ impl GuiState {
             dma_viewer: DmaViewerControl::new(),
             trace_viewer: InstructionTraceControl::new(),
             trace_string: String::new(),
+            composite_adjust: CompositeAdjustControl::new(),
             call_stack_string: String::new(),
 
             // Options menu items
@@ -849,7 +859,7 @@ impl GuiState {
 
             });               
 
-            egui::Window::new("PIC View")
+        egui::Window::new("PIC View")
             .open(self.window_open_flags.get_mut(&GuiWindow::PicViewer).unwrap())
             .resizable(true)
             .default_width(600.0)
@@ -909,7 +919,7 @@ impl GuiState {
                 });
             });           
             
-            egui::Window::new("PPI View")
+        egui::Window::new("PPI View")
             .open(self.window_open_flags.get_mut(&GuiWindow::PpiViewer).unwrap())
             .resizable(true)
             .default_width(600.0)
@@ -954,54 +964,60 @@ impl GuiState {
                 });
             });
 
-            egui::Window::new("DMA View")
+        egui::Window::new("DMA View")
             .open(self.window_open_flags.get_mut(&GuiWindow::DmaViewer).unwrap())
             .resizable(false)
             .default_width(200.0)
             .show(ctx, |ui| {
                 self.dma_viewer.draw(ui, &mut self.event_queue);
-
-
             });                       
 
-            egui::Window::new("Video Card View")
-                .open(self.window_open_flags.get_mut(&GuiWindow::VideoCardViewer).unwrap())
-                .resizable(false)
-                .default_width(300.0)
-                .show(ctx, |ui| {
-                   GuiState::draw_video_card_panel(ui, &self.videocard_state);
-                });         
+        egui::Window::new("Video Card View")
+            .open(self.window_open_flags.get_mut(&GuiWindow::VideoCardViewer).unwrap())
+            .resizable(false)
+            .default_width(300.0)
+            .show(ctx, |ui| {
+                GuiState::draw_video_card_panel(ui, &self.videocard_state);
+            });         
 
-            egui::Window::new("Create VHD")
-                .open(self.window_open_flags.get_mut(&GuiWindow::VHDCreator).unwrap())
-                .resizable(false)
-                .default_width(400.0)
-                .show(ctx, |ui| {
+        egui::Window::new("Create VHD")
+            .open(self.window_open_flags.get_mut(&GuiWindow::VHDCreator).unwrap())
+            .resizable(false)
+            .default_width(400.0)
+            .show(ctx, |ui| {
 
-                    if !self.vhd_formats.is_empty() {
-                        egui::ComboBox::from_label("Format")
-                        .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
-                        .show_ui(ui, |ui| {
-                            for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
-                                ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
-                            }
-                        });
+                if !self.vhd_formats.is_empty() {
+                    egui::ComboBox::from_label("Format")
+                    .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
+                    .show_ui(ui, |ui| {
+                        for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
+                            ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
+                        }
+                    });
 
-                        ui.horizontal(|ui| {
-                            ui.label("Filename: ");
-                            ui.text_edit_singleline(&mut self.new_vhd_filename);
-                        });               
+                    ui.horizontal(|ui| {
+                        ui.label("Filename: ");
+                        ui.text_edit_singleline(&mut self.new_vhd_filename);
+                    });               
 
-                        let enabled = self.vhd_regex.is_match(&self.new_vhd_filename.to_lowercase());
+                    let enabled = self.vhd_regex.is_match(&self.new_vhd_filename.to_lowercase());
 
-                        if ui.add_enabled(enabled, egui::Button::new("Create"))
-                            .clicked() {
-                            self.event_queue.push_back(GuiEvent::CreateVHD(OsString::from(&self.new_vhd_filename), self.vhd_formats[self.selected_format_idx].clone()))
-                        };                        
-                    }
+                    if ui.add_enabled(enabled, egui::Button::new("Create"))
+                        .clicked() {
+                        self.event_queue.push_back(GuiEvent::CreateVHD(OsString::from(&self.new_vhd_filename), self.vhd_formats[self.selected_format_idx].clone()))
+                    };                        
+                }
             });
 
-        }
+        egui::Window::new("Composite Adjustment")
+            .open(self.window_open_flags.get_mut(&GuiWindow::CompositeAdjust).unwrap())
+            .resizable(false)
+            .default_width(300.0)
+            .show(ctx, |ui| {
+                self.composite_adjust.draw(ui, &mut self.event_queue);
+            });     
+
     }
+}
 
 

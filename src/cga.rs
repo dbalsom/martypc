@@ -165,7 +165,7 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
 const CGA_DEBUG_COLOR: u8 = 0;
 const CGA_HBLANK_COLOR: u8 = 0;
 const CGA_VBLANK_COLOR: u8 = 0;
-const CGA_OVERSCAN_COLOR: u8 = 0;
+const CGA_OVERSCAN_COLOR: u8 = 1;
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -188,16 +188,6 @@ macro_rules! trace_regs {
     };
 }
 
-pub enum Resolution {
-    Res640by200,
-    Res320by200
-}
-
-pub enum BitDepth {
-    Depth1,
-    Depth2,
-    Depth4,
-}
 pub struct CGACard {
 
     mode_byte: u8,
