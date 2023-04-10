@@ -97,7 +97,7 @@ use vhd::{VirtualHardDisk};
 use videocard::{RenderMode};
 use bytequeue::ByteQueue;
 use crate::egui::{GuiEvent, GuiFlag, GuiWindow};
-use render::CompositeParams;
+use render::{VideoRenderer, CompositeParams};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
 
@@ -410,7 +410,7 @@ fn main() {
     let window = {
         let size = LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
         WindowBuilder::new()
-            .with_title("Marty")
+            .with_title("MartyPC")
             .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
@@ -509,6 +509,82 @@ fn main() {
         floppy_manager,
     );
 
+    // Resize window if video card is in Direct mode and specifies a display aperature
+    {
+        if let Some(card) = machine.videocard() {
+            if let RenderMode::Direct = card.get_render_mode() {
+
+                let (aper_x, mut aper_y) = card.get_display_aperture();
+
+                if card.get_scanline_double() {
+                    aper_y *= 2;
+                }
+
+                let (aper_correct_x, aper_correct_y) = 
+                    VideoRenderer::get_aspect_corrected_res(
+                        (aper_x, aper_y),
+                        render::AspectRatio{ h: 4, v: 3 }
+                    );
+
+                let mut double_res = false;
+
+                // Get the current monitor resolution. 
+                if let Some(monitor) = window.current_monitor() {
+                    let monitor_size = monitor.size();
+                    
+                    log::debug!("Current monitor resolution: {}x{}", monitor_size.width, monitor_size.height);
+
+                    if ((aper_correct_x * 2) <= monitor_size.width) && ((aper_correct_y * 2) <= monitor_size.height) {
+                        // Monitor is large enough to double the display window
+                        double_res = true;
+                    }
+                }
+
+                let window_resize_w = if double_res { aper_correct_x * 2 } else { aper_correct_x };
+                let window_resize_h = if double_res { aper_correct_y * 2 } else { aper_correct_y };
+
+                log::debug!("Resizing window to {}x{}", window_resize_w, window_resize_h);
+                //resize_h = if card.get_scanline_double() { resize_h * 2 } else { resize_h };
+
+                window.set_inner_size(winit::dpi::LogicalSize::new(window_resize_w, window_resize_h));
+
+                log::debug!("Reiszing render buffer to {}x{}", aper_x, aper_y);
+
+                render_src.resize((aper_x * aper_y * 4) as usize, 0);
+                render_src.fill(0);
+
+                let (pixel_buf_w, pixel_buf_h) = if config.emulator.correct_aspect {
+                    (aper_x, aper_correct_y)
+                }
+                else {
+                    (aper_x, aper_y)
+                };
+                
+                log::debug!("Resizing pixel buffer to {}x{}", pixel_buf_w, pixel_buf_h);
+                pixels.resize_buffer(pixel_buf_w, pixel_buf_h).expect("Failed to resize Pixels buffer.");
+
+                // Pixels will resize itself from window size event
+                /*
+                if pixels.resize_surface(aper_correct_x, aper_correct_y).is_err() {
+                    // Some error occured but not much we can do about it.
+                    // Errors get thrown when the window minimizes.
+                    log::error!("Unable to resize pixels surface!");
+                }
+
+                framework.resize(window_resize_w, window_resize_h);
+                */
+
+                video_data.render_w = aper_x;
+                video_data.render_h = aper_y;
+                video_data.aspect_w = aper_correct_x;
+                video_data.aspect_h = aper_correct_y;
+
+                // Update internal state and request a redraw
+                window.request_redraw();
+            }
+        }
+    }
+        
     // Try to load default vhd
     if let Some(vhd_name) = config.machine.drive0 {
         let vhd_os_name: OsString = vhd_name.into();
@@ -565,6 +641,7 @@ fn main() {
 
             // Resize the window
             if let Some(size) = input.window_resized() {
+                log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
                 if pixels.resize_surface(size.width, size.height).is_err() {
                     // Some error occured but not much we can do about it.
                     // Errors get thrown when the window minimizes.
@@ -933,10 +1010,14 @@ fn main() {
 
                         match video_card.get_render_mode() {
                             RenderMode::Direct => {
+                                /*
                                 let extents = video_card.get_display_extents();
 
                                 new_w = extents.visible_w;
                                 new_h = extents.visible_h;
+                                */
+
+                                (new_w, new_h) = video_card.get_display_aperture();
 
                                 // Set a sane maximum
                                 if new_h > 240 { 
@@ -969,15 +1050,7 @@ fn main() {
                                 // Calculate new aspect ratio (make this option)
                                 video_data.render_w = new_w;
                                 video_data.render_h = new_h;
-                                render_src.resize((new_w * new_h * 4) as usize, 0);
-
-                                /*
-                                if pixels.resize_surface(new_w, new_h).is_err() {
-                                    // Some error occured but not much we can do about it.
-                                    // Errors get thrown when the window minimizes.
-                                }
-                                */
-                                
+                                render_src.resize((new_w * new_h * 4) as usize, 0);                                
                                 render_src.fill(0);
     
                                 video_data.aspect_w = video_data.render_w;
@@ -1009,6 +1082,18 @@ fn main() {
                             video_data.composite_params = framework.gui.composite_adjust.get_params().clone();
                         }
 
+                        let video_buffer;
+                        // Get the appropriate buffer depending on run mode. If execution is paused 
+                        // (debugging) show the back buffer instead of front buffer. 
+                        // TODO: Discriminate between paused in debug mode vs user paused state
+                        // TODO: buffer and extents may not match due to extents being for front buffer
+                        if let ExecutionState::Paused = exec_control.borrow_mut().get_state() {
+                            video_buffer = video_card.get_back_buf();
+                        }
+                        else {
+                            video_buffer = video_card.get_display_buf();
+                        }
+
                         // Get the render mode from the device and render appropriately
                         match (video_card.get_video_type(), video_card.get_render_mode()) {
 
@@ -1021,7 +1106,7 @@ fn main() {
                                             &mut render_src,
                                             video_data.render_w, 
                                             video_data.render_h,                                             
-                                            video_card.get_display_buf(),
+                                            video_buffer,
                                             video_card.get_display_extents(),
                                             composite_enabled,
                                             &video_data.composite_params
@@ -1040,7 +1125,7 @@ fn main() {
                                             pixels.get_frame_mut(),
                                             video_data.render_w, 
                                             video_data.render_h,                                                                                         
-                                            video_card.get_display_buf(),
+                                            video_buffer,
                                             video_card.get_display_extents(),
                                             composite_enabled,
                                             &video_data.composite_params                                            

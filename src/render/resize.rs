@@ -29,6 +29,8 @@
 /// Since we are only doing this for aspect correction, we don't need a bi-linear filter
 pub fn resize_linear(src: &[u8], src_w: u32, src_h: u32, dst: &mut[u8], dst_w: u32, dst_h: u32) {
 
+    assert!(dst.len() >= (dst_w * dst_h * 4) as usize);
+
     let ratio: f64 = (src_h - 1) as f64 / (dst_h - 1) as f64;
 
     for y in 0..dst_h {

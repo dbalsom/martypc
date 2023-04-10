@@ -89,6 +89,12 @@ const VGA_HIRES_GFX_W: u32 = 640;
 const VGA_HIRES_GFX_H: u32 = 480;
 
 #[derive (Copy, Clone)]
+pub struct AspectRatio {
+    pub h: u32,
+    pub v: u32,
+}
+
+#[derive (Copy, Clone)]
 pub struct CompositeParams {
     pub hue: f32,
     pub sat: f32,
@@ -103,6 +109,18 @@ impl Default for CompositeParams {
             luma: 1.0
         }
     }
+}
+
+#[derive (Copy, Clone)]
+pub enum RenderColor {
+    CgaIndex(u8),
+    Rgb(u8, u8, u8)
+}
+
+#[derive (Copy, Clone)]
+pub struct DebugRenderParams {
+    pub draw_scanline: Option<u32>,
+    pub draw_scanline_color: Option<RenderColor>
 }
 
 //const frame_w: u32 = 640;
@@ -418,6 +436,17 @@ impl VideoRenderer {
         }
     }
 
+    /// Given the specified resolution and desired aspect ratio, return an aspect corrected resolution
+    /// by adjusting the vertical resolution (Horizontal resolution will never be changed)
+    pub fn get_aspect_corrected_res(res: (u32, u32), aspect: AspectRatio) -> (u32, u32) {
+
+        let desired_ratio: f64 = aspect.h as f64 / aspect.v as f64;
+
+        let adjusted_h = (res.0 as f64 / desired_ratio) as u32; // Result should be slightly larger than integer, ok to cast
+
+        (res.0, adjusted_h)
+    }
+
     pub fn draw(&self, frame: &mut [u8], video_card: Box<&dyn VideoCard>, bus: &BusInterface, composite: bool) {
 
         //let video_card = video.borrow();        
@@ -641,18 +670,20 @@ impl VideoRenderer {
             return
         }
 
-        // We want to double each scanline on output, abort if there's not enough froom
-        // in the framebuffer
-        if extents.visible_h > (h / 2) {
-            
-            //log::warn!("Height: {} too small for visible_h: {}", h, extents.visible_h);
-            //return
+        // Attempt to center the image by reducing right overscan 
+        let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
+        let overscan_half = overscan_total / 2;
+
+        let mut horiz_adjust = 0;
+        if overscan_half < extents.overscan_l {
+            // We want to shift image to the right 
+            horiz_adjust = extents.overscan_l - overscan_half;
         }
 
         // Assume display buffer visible data starts at offset 0
 
-        let max_y = std::cmp::min(h / 2, extents.visible_h);
-        let max_x = std::cmp::min(w, extents.visible_w);
+        let max_y = std::cmp::min(h / 2, extents.aperture_h);
+        let max_x = std::cmp::min(w, extents.aperture_w);
 
         //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
 
@@ -662,11 +693,11 @@ impl VideoRenderer {
             let frame_row0_offset = ((y * 2) * (w * 4)) as usize;
             let frame_row1_offset = (((y * 2) * (w * 4)) + (w * 4)) as usize;
 
-            for x in 0..max_x {
+            for x in 0..(max_x - horiz_adjust) {
                 let fo0 = frame_row0_offset + (x * 4) as usize;
                 let fo1 = frame_row1_offset + (x * 4) as usize;
 
-                let dbo = dbuf_row_offset + x as usize;
+                let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
 
                 frame[fo0]       = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][0];
                 frame[fo0 + 1]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][1];
@@ -678,6 +709,7 @@ impl VideoRenderer {
                 frame[fo1 + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
                 frame[fo1 + 3]   = 0xFFu8;                
             }
+
         }
     }
 

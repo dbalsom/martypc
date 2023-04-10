@@ -996,6 +996,11 @@ impl VideoCard for EGACard {
         &self.extents
     }
 
+    /// Get the current scanline being rendered.
+    fn get_scanline(&self) -> u32 {
+        0
+    }
+
     /// Return whether to double scanlines produced by this adapter.
     /// For EGA, this is false.
     fn get_scanline_double(&self) -> bool {
@@ -1006,7 +1011,21 @@ impl VideoCard for EGACard {
     fn get_display_buf(&self) -> &[u8] {
         &[0]
     }
+
+    /// Unimplemented for indirect rendering.
+    fn get_back_buf(&self) -> &[u8] {
+        &[0]
+    }      
     
+    /// Unimplemented for indirect rendering.
+    fn get_display_aperture(&self) -> (u32, u32) {
+        (0, 0)
+    }
+
+    fn get_overscan_color(&self) -> u8 {
+        0
+    }
+
     /// Return the current refresh rate.
     /// TODO: Handle VGA 70Hz modes.
     fn get_refresh_rate(&self) -> u32 {

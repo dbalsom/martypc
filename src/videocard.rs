@@ -146,6 +146,8 @@ pub enum CGAColor {
 pub struct DisplayExtents {
     pub field_w: u32,       // The total width of the video field, including all clocks except the horizontal retrace period
     pub field_h: u32,       // The total height of the video field, including all clocks except the vertical retrace period
+    pub aperture_w: u32,    // Width in pixels of the 'viewport' into the video field. 
+    pub aperture_h: u32,    // Height in pixels of the 'viewport' into the video field.
     pub visible_w: u32,     // The width in pixels of the visible display area
     pub visible_h: u32,     // The height in pixels of the visible display area
     pub overscan_l: u32,    // Size in pixels of the left overscan area
@@ -175,10 +177,28 @@ pub trait VideoCard {
     /// Return the DisplayExtents struct corresponding to the last rendered frame.
     fn get_display_extents(&self) -> &DisplayExtents;
 
-    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
+    /// Return the DisplayExtents struct corresponding to the current back buffer.
+    //fn get_back_buf_extents(&self) -> &DisplayExtents;    
+
+    /// Return the visible resolution of the current video adapter's display field.
+    /// For CGA, this will be a fixed value. For EGA & VGA it may vary.
+    fn get_display_aperture(&self) -> (u32, u32);
+
+    /// Return the 16 color CGA color index for the active overscan color.
+    fn get_overscan_color(&self) -> u8;
+
+    /// Return the u8 slice representing the front buffer of the device. (Direct rendering only)
     fn get_display_buf(&self) -> &[u8];
 
+    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
+    /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
+    /// progress.
+    fn get_back_buf(&self) -> &[u8];
+
     fn get_clock_divisor(&self) -> u32;
+
+    /// Get the current scanline being rendered.
+    fn get_scanline(&self) -> u32;
 
     /// Return a bool determining whether we double scanlines for this device (for CGA mostly)
     fn get_scanline_double(&self) -> bool;

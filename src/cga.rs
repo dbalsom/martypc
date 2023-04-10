@@ -89,6 +89,13 @@ const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CRTC_CHAR_CLOCK as u32;
 const CGA_YRES_MAX: u32 = CRTC_SCANLINE_MAX;
 pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Should be 238944
 
+// Display aperature. This is an attempt to represent the maximum visible display extents,
+// including overscan. Anything more is likely to be hidden by the monitor bezel or not 
+// shown for some other reason. This is mostly calculated based off Area5150's highest
+// resolution modes.
+const CGA_DISPLAY_EXTENT_X: u32 = 768;
+const CGA_DISPLAY_EXTENT_Y: u32 = 236;
+
 // For derivision of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
 // We run the CGA card independent of the CPU frequency.
 // Timings in 4.77Mhz CPU cycles are provided for reference.
@@ -165,7 +172,9 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
 const CGA_DEBUG_COLOR: u8 = 0;
 const CGA_HBLANK_COLOR: u8 = 0;
 const CGA_VBLANK_COLOR: u8 = 0;
-const CGA_OVERSCAN_COLOR: u8 = 1;
+const CGA_OVERSCAN_COLOR: u8 = 3;
+const CGA_FILL_COLOR: u8 = 4;
+const CGA_SCANLINE_COLOR: u8 = 13;
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -178,8 +187,9 @@ macro_rules! trace_regs {
     ($self:ident) => {
         $self.trace_logger.print(
             &format!(
-                "[SL:{:03} VCC:{:03} VT:{:03} VS:{:03}] ", 
+                "[SL:{:03} HCC:{:03} VCC:{:03} VT:{:03} VS:{:03}] ", 
                 $self.scanline,
+                $self.hcc_c0,
                 $self.vcc_c4,
                 $self.crtc_vertical_total,
                 $self.crtc_vertical_sync_pos
@@ -200,6 +210,7 @@ pub struct CGACard {
     mode_blinking: bool,
     cc_palette: usize,
     cc_altcolor: u8,
+    cc_overscan_color: u8,
     scanline_us: f64,
     scanline_cycles: u32,
     frame_us: f64,
@@ -248,7 +259,10 @@ pub struct CGACard {
     scanline: u32,
 
     overscan_left: u32,
+    overscan_right_start: u32,
     overscan_right: u32,
+    vsync_len: u32,
+
     in_display_area: bool,
     cur_char: u8,                   // Current character being drawn
     cur_attr: u8,                   // Current attribute byte being drawn
@@ -363,6 +377,8 @@ impl Default for DisplayExtents {
         Self {
             field_w: CGA_XRES_MAX,
             field_h: CGA_YRES_MAX,
+            aperture_w: CGA_DISPLAY_EXTENT_X,
+            aperture_h: CGA_DISPLAY_EXTENT_Y,
             visible_w: 0,
             visible_h: 0,
             overscan_l: 0,
@@ -389,6 +405,7 @@ impl CGACard {
             mode_blinking: true,
             cc_palette: 0,
             cc_altcolor: 0,
+            cc_overscan_color: 0,            
             frame_us: 0.0,
             frame_cycles: 0,
             cursor_frames: 0,
@@ -436,7 +453,9 @@ impl CGACard {
             scanline: 0,
 
             overscan_left: 0,
+            overscan_right_start: 0,
             overscan_right: 0,
+            vsync_len: 0,
             in_display_area: false,
             cur_char: 0,
             cur_attr: 0,
@@ -682,6 +701,10 @@ impl CGACard {
         self.mode_byte      = mode_byte;
 
         self.vmws = 2;
+        
+        // Use color control register value for overscan unless high res graphics mode, 
+        // in which case overscan must be black (0).
+        self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.cc_altcolor };
 
         // Clock divisor is 1 in high res text mode, 2 in all other modes
         // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
@@ -754,6 +777,13 @@ impl CGACard {
             self.in_vblank
         );
 
+        if self.in_vblank {
+            trace!(
+                self,
+                "in vblank: vsc: {:03}",
+                self.vsc_c3h
+            );            
+        }
         byte
     }
 
@@ -772,6 +802,11 @@ impl CGACard {
         }
 
         self.cc_altcolor = data & 0x0F;
+
+        if !self.mode_hires_gfx {
+            self.cc_overscan_color = self.cc_altcolor;
+        }
+
         self.cc_register = data;
     }
 
@@ -829,6 +864,15 @@ impl CGACard {
         }
         
         //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
+    }
+
+    pub fn draw_overscan_pixel(&mut self) {
+        self.buf[self.back_buf][self.rba] = self.cc_overscan_color;
+
+        if self.clock_divisor == 2 {
+            // If we are in a 320 column mode, duplicate the last pixel drawn
+            self.buf[self.back_buf][self.rba + 1] = self.cc_overscan_color;
+        }
     }
 
     pub fn draw_text_mode_pixel(&mut self) {
@@ -940,7 +984,17 @@ impl CGACard {
         }
     }
 
+    pub fn draw_horiz_line(&mut self, scanline: u32, buf_idx: usize) {
 
+        if scanline >= CGA_YRES_MAX {
+            return
+        }
+
+        for x in 0..CGA_XRES_MAX {
+            let dst_o = ((scanline * CGA_XRES_MAX) + x) as usize;
+            self.buf[buf_idx][dst_o] = CGA_SCANLINE_COLOR;
+        }
+    }
 
 
 }
@@ -999,14 +1053,47 @@ impl VideoCard for CGACard {
         &self.extents[self.back_buf]
     }
 
+    fn get_display_aperture(&self) -> (u32, u32) {
+        (CGA_DISPLAY_EXTENT_X, CGA_DISPLAY_EXTENT_Y)
+    }
+
+    #[inline]
+    fn get_overscan_color(&self) -> u8 {
+        if self.mode_hires_gfx {
+            // In highres mode, the color control register controls the foreground color, not overscan
+            // so overscan must be black.
+            0
+        }
+        else {
+            self.cc_altcolor
+        }
+    }
+
+    /// Get the current scanline being rendered.
+    fn get_scanline(&self) -> u32 {
+        self.scanline
+    }
+
+    /// Return whether or not to double scanlines for this video device. For CGA, this is always
+    /// true.
     fn get_scanline_double(&self) -> bool {
         true
     }
 
+    /// Return the u8 slice representing the front buffer of the device. (Direct rendering only)
     fn get_display_buf(&self) -> &[u8] {
         &self.buf[self.front_buf][..]
     }
-    
+
+    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
+    /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
+    /// progress.    
+    fn get_back_buf(&self) -> &[u8] {
+
+        &self.buf[self.back_buf][..]
+    }  
+
+    /// Get the current display refresh rate of the device. For CGA, this is always 60.
     fn get_refresh_rate(&self) -> u32 {
         60
     }
@@ -1166,6 +1253,20 @@ impl VideoCard for CGACard {
         push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "[R15]", self.crtc_cursor_address_lo);
         map.insert("CRTC".to_string(), crtc_vec);
 
+        let mut internal_vec = Vec::new();
+
+        internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
+        internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
+        internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
+        internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
+        internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
+        internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
+        internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
+        internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
+        internal_vec.push((format!("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
+
+        map.insert("Internal".to_string(), internal_vec);
+
         map       
     }
 
@@ -1200,21 +1301,21 @@ impl VideoCard for CGACard {
                 }
             }
             else if self.in_hblank {
-                // Draw hblank area blue
+                // Draw hblank in debug color
                 if self.rba < CGA_MAX_CLOCK {
                     self.buf[self.back_buf][self.rba] = CGA_HBLANK_COLOR;
                 }
             }
             else if self.in_vblank {
-                // Draw vblank area magenta
+                // Draw vblank in debug color
                 if self.rba < CGA_MAX_CLOCK {
                     self.buf[self.back_buf][self.rba] = CGA_VBLANK_COLOR;
                 }
             }
             else {
-                // Draw overscan green
+                // Draw overscan
                 if self.rba < CGA_MAX_CLOCK {
-                    self.buf[self.back_buf][self.rba] = CGA_OVERSCAN_COLOR;
+                    self.draw_overscan_pixel();
                 }
             }
 
@@ -1238,10 +1339,16 @@ impl VideoCard for CGACard {
 
                 if self.hcc_c0 == self.crtc_horizontal_displayed {
                     // Enter right overscan
+
+                    // Save right overscan start position to calculate width of right overscan later
+                    self.overscan_right_start = self.beam_x;
                     self.in_display_area = false;
                 }
                 if self.hcc_c0 == self.crtc_horizontal_sync_pos {
                     // We entered horizontal blank
+
+                    // Save width of right overscan
+                    self.extents[self.front_buf].overscan_l = self.beam_x - self.overscan_right_start;
                     self.in_hblank = true;
                 }
                 else if self.hcc_c0 == self.crtc_horizontal_sync_pos + (self.crtc_sync_width & 0x0F) { 
@@ -1252,13 +1359,17 @@ impl VideoCard for CGACard {
                     // Reset beam to left of screen
                     self.beam_x = 0;
                     self.char_col = 0;
+
+                    self.rba = (CGA_XRES_MAX * self.scanline) as usize;
                 }                 
                 else if self.hcc_c0 == self.crtc_horizontal_total + 1 {
-                    // Finished scanning row
+                    // Leaving left overscan, finished scanning row
 
                     // Reset Horizontal Character Counter and increment character row counter
                     self.hcc_c0 = 0;
                     self.char_row += 1;
+
+                    self.extents[self.front_buf].overscan_l = self.beam_x;
 
                     // Return video memory address to starting position for next character row
                     self.vma = self.vcc_c4 as usize * ((self.crtc_horizontal_displayed as usize) * self.vmws);
@@ -1284,8 +1395,6 @@ impl VideoCard for CGACard {
                             // 'screens' per frame in between vsyncs. To enable these tricks to work, we must render 
                             // like a monitor would.
                             
-                            // A frame will still be generated if we reach maximum scanline count, so we don't 
-                            // overrun the render buffer.
                             self.in_vblank = false;
                             self.vsc_c3h = 0;
 
@@ -1350,8 +1459,11 @@ impl VideoCard for CGACard {
                     
                     if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
 
-                        // If we have reached vertical total + 1, we are actually at the end of the top overscan
-                        // area, so visible scanline counting begins at 0.
+                        // If we have reached vertical total + 1, we are at the end of the top overscan
+                        if self.in_vblank {
+                            // If a vblank is in process, end it
+                            self.vsc_c3h = CRTC_VBLANK_HEIGHT - 1;
+                        }
 
                         if self.crtc_vertical_total > self.crtc_vertical_sync_pos {
                             // Completed a frame.
@@ -1359,25 +1471,19 @@ impl VideoCard for CGACard {
 
                             self.hcc_c0 = 0;
                             self.vcc_c4 = 0;
-
                             self.char_row = 0;
                             self.char_col = 0;
                             self.vma = 0;
-                            self.rba = 0;
                             self.in_display_area = true;
-
-                            //self.extents[self.front_buf].visible_h = self.scanline;
-                            //log::debug!("new extents: {}, {}", self.extents[self.front_buf].visible_w, self.extents[self.front_buf].visible_h);
-
-                            self.scanline = 0;
 
                             // Load first char + attr
                             self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);
                         }
                         else {
+                            // VBlank suppressed by CRTC register shenanigans. 
                             trace_regs!(self);
                             trace!(self, "Vertical total reached: Vblank suppressed");
-                            // VBlank suppressed by CRTC shenanigans. 
+                            
                             self.hcc_c0 = 0;
                             self.vcc_c4 = 0;
                             self.beam_x = 0;
@@ -1385,6 +1491,7 @@ impl VideoCard for CGACard {
                             self.in_display_area = true;
                             self.in_vblank = false;
                         }
+
                     }
 
                     /*
