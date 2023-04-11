@@ -760,7 +760,6 @@ impl GuiState {
                         };
 
                         if ui.input().key_pressed(egui::Key::F11) {
-                            log::debug!("f11 pressed!");
                             exec_control.set_op(ExecutionOperation::Step);
                         }                             
                     });                 

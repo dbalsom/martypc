@@ -90,7 +90,15 @@ pub fn get_cycle_hdot(x: i32) -> usize {
 /// The output image should be a slice of u8 values to receive the grayscale composite signal.
 /// 
 /// Uses integer math.
-pub fn process_cga_composite_int(cga_buf: &[u8], img_w: u32, img_h: u32, stride: u32, img_out: &mut [u8], ) {
+pub fn process_cga_composite_int(
+    cga_buf: &[u8], 
+    img_w: u32, 
+    img_h: u32, 
+    x_offset: u32,
+    y_offset: u32,
+    stride: u32, 
+    img_out: &mut [u8]
+) {
 
     //bench_t = Instant::now();
 

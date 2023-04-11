@@ -515,7 +515,7 @@ impl CGACard {
     /// Update the CRTC start address. Usually called after a CRTC register write updates the HO or LO byte.
     fn update_start_address(&mut self) {
 
-        self.crtc_next_address = (self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize;
+        self.crtc_next_address = ((self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize) & 0x3FFF;
 
         trace_regs!(self);
         trace!(
@@ -724,8 +724,8 @@ impl CGACard {
             0b1_0110 => DisplayMode::Mode6HiResGraphics,
             0b1_0010 => DisplayMode::Mode7LowResComposite,
             _ => {
-                trace!(self, "Invalid display mode selected: {:02X}", mode_byte & 0x0F);
-                log::error!("CGA: Invalid display mode selected: {:02X}", mode_byte & 0x0F);
+                trace!(self, "Invalid display mode selected: {:02X}", mode_byte & 0x1F);
+                log::error!("CGA: Invalid display mode selected: {:02X}", mode_byte & 0x1F);
                 DisplayMode::Mode3TextCo80
             }
         };
@@ -864,6 +864,10 @@ impl CGACard {
         }
         
         //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
+    }
+
+    pub fn reset_beam(&mut self) {
+
     }
 
     pub fn draw_overscan_pixel(&mut self) {
@@ -1360,9 +1364,19 @@ impl VideoCard for CGACard {
                     self.beam_x = 0;
                     self.char_col = 0;
 
-                    self.rba = (CGA_XRES_MAX * self.scanline) as usize;
+                    let new_rba = (CGA_XRES_MAX * self.scanline) as usize;
+                    
+                    if new_rba < self.rba {
+                        //log::warn!("Warning: Render buffer index would go backwards: old:{:04X} new:{:04X}", self.rba, new_rba );
+                        self.rba = new_rba;
+                    }
+                    else {
+                        self.rba = new_rba;
+                    }
+                    
                 }                 
-                else if self.hcc_c0 == self.crtc_horizontal_total + 1 {
+
+                if self.hcc_c0 == self.crtc_horizontal_total + 1 {
                     // Leaving left overscan, finished scanning row
 
                     // Reset Horizontal Character Counter and increment character row counter
@@ -1459,38 +1473,55 @@ impl VideoCard for CGACard {
                     
                     if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
 
-                        // If we have reached vertical total + 1, we are at the end of the top overscan
-                        if self.in_vblank {
-                            // If a vblank is in process, end it
-                            self.vsc_c3h = CRTC_VBLANK_HEIGHT - 1;
-                        }
+                        // We are at vertical total, start incrementing vertical total adjust counter.
+                        self.vtac_c5 += 1;
 
-                        if self.crtc_vertical_total > self.crtc_vertical_sync_pos {
-                            // Completed a frame.
-                            self.frame_count += 1;
-
-                            self.hcc_c0 = 0;
-                            self.vcc_c4 = 0;
-                            self.char_row = 0;
-                            self.char_col = 0;
-                            self.vma = 0;
-                            self.in_display_area = true;
-
-                            // Load first char + attr
-                            self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);
-                        }
-                        else {
-                            // VBlank suppressed by CRTC register shenanigans. 
-                            trace_regs!(self);
-                            trace!(self, "Vertical total reached: Vblank suppressed");
+                        if self.vtac_c5 > self.crtc_vertical_total_adjust {
+                            // We have reached vertical total adjust. We are at the end of the top overscan.
                             
-                            self.hcc_c0 = 0;
-                            self.vcc_c4 = 0;
-                            self.beam_x = 0;
-                            self.vma = 0;
-                            self.in_display_area = true;
-                            self.in_vblank = false;
+                            if self.in_vblank {
+                                // If a vblank is in process, end it
+                                self.vsc_c3h = CRTC_VBLANK_HEIGHT - 1;
+                            }
+
+                            if self.crtc_vertical_total > self.crtc_vertical_sync_pos {
+                                // Completed a frame.
+                                self.frame_count += 1;
+
+                                self.hcc_c0 = 0;
+                                self.vcc_c4 = 0;
+                                self.vtac_c5 = 0;
+                                self.beam_x = 0;
+                                self.char_row = 0;
+                                self.char_col = 0;
+                                self.vma = 0;
+                                self.in_display_area = true;
+
+                                // Load first char + attr
+                                self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);
+                            }
+                            else {
+                                // VBlank suppressed by CRTC register shenanigans. 
+                                trace_regs!(self);
+                                trace!(self, "Vertical total reached: Vblank suppressed");
+
+                                self.hcc_c0 = 0;
+                                self.vcc_c4 = 0;
+                                self.vtac_c5 = 0;
+                                self.beam_x = 0;
+                                self.char_row = 0;
+                                self.char_col = 0;                            
+                                self.vma = 0;
+                                self.in_display_area = true;
+                                self.in_vblank = false;
+
+                                // Load first char + attr
+                                self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);                            
+                            }
+
+
                         }
+
 
                     }
 

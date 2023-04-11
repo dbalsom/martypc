@@ -724,14 +724,21 @@ impl VideoRenderer {
     ) {
 
         if let Some(composite_buf) = &mut self.composite_buf {
-            let max_w = std::cmp::min(w, extents.visible_w);
-            let max_h = std::cmp::min(h / 2, extents.visible_h);
+            let max_w = std::cmp::min(w, extents.aperture_w);
+            let max_h = std::cmp::min(h / 2, extents.aperture_h);
             
     
             //log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
 
 
-            process_cga_composite_int(dbuf, max_w, max_h, extents.row_stride as u32, composite_buf);
+            process_cga_composite_int(
+                dbuf, 
+                extents.aperture_w, 
+                extents.aperture_h, 
+                extents.overscan_l,
+                extents.overscan_t,
+                extents.row_stride as u32, 
+                composite_buf);
 
             // Regen sync table if width changed
             if self.sync_table_w != (max_w * 2) {
