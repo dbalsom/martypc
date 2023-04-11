@@ -1020,9 +1020,8 @@ impl BusInterface {
         // Put the PIT back.
         self.pit = Some(pit);
         
-        // Run the DMA controller.
+        
         let mut dma1 = self.dma1.take().unwrap();
-        dma1.run(self);
 
         // Run the FDC, passing it DMA controller while DMA is still unattached.
         if let Some(mut fdc) = self.fdc.take() {
@@ -1035,6 +1034,9 @@ impl BusInterface {
             hdc.run(&mut dma1, self, us);
             self.hdc = Some(hdc);
         }
+        
+        // Run the DMA controller.
+        dma1.run(self);
 
         // Replace the DMA controller.
         self.dma1 = Some(dma1);

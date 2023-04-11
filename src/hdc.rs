@@ -1157,7 +1157,10 @@ impl HardDiskController {
                 if tc {
                     log::trace!("DMA terminal count triggered end of WriteSectorBuffer command.");
                     if self.operation_status.dma_bytes_left != 0 {
-                        log::warn!("Incomplete DMA transfer on terminal count!")
+                        log::warn!(
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {}",
+                            self.operation_status.dma_bytes_left
+                        );
                     }
 
                     log::trace!("Completed WriteSectorBuffer command.");
@@ -1235,7 +1238,10 @@ impl HardDiskController {
                 if tc {
                     log::trace!("DMA terminal count triggered end of Read command.");
                     if self.operation_status.dma_bytes_left != 0 {
-                        log::warn!("Incomplete DMA transfer on terminal count!")
+                        log::warn!(
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {}",
+                            self.operation_status.dma_bytes_left
+                        );
                     }
 
                     log::trace!("Completed Read Command");
@@ -1282,6 +1288,12 @@ impl HardDiskController {
 
                                     Ok(_) => {
                                         // Sector write successful
+                                        log::debug!(
+                                            "Sector write successful: c: {} h: {} s: {}",
+                                            self.drives[self.drive_select].cylinder,
+                                            self.drives[self.drive_select].head,
+                                            self.drives[self.drive_select].sector
+                                        );
                                     }
                                     Err(err) => {
                                         log::error!("Sector write failed: {}", err);
@@ -1311,7 +1323,10 @@ impl HardDiskController {
                 if tc {
                     log::trace!("DMA terminal count triggered end of Write command.");
                     if self.operation_status.dma_bytes_left != 0 {
-                        log::warn!("Incomplete DMA transfer on terminal count!")
+                        log::warn!(
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {}",
+                            self.operation_status.dma_bytes_left
+                        );
                     }
 
                     self.end_dma_command(0, false);
