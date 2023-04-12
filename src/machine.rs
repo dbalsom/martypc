@@ -229,7 +229,7 @@ impl<'a> Machine<'a> {
         // Enable DRAM refresh simulation if appropriate model
         match machine_type {
             MachineType::IBM_PC_5150 | MachineType::IBM_XT_5160 => {
-                cpu.set_option(CpuOption::SimulateDramRefresh(true, 76));
+                cpu.set_option(CpuOption::SimulateDramRefresh(true, 72));
             },
             _ => {}
         }
