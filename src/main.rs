@@ -56,6 +56,7 @@ mod bus_io;
 mod interrupt;
 mod machine;
 mod machine_manager;
+mod mc6845;
 mod memerror;
 mod mouse;
 mod pic;
