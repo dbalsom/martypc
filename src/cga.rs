@@ -23,8 +23,6 @@
     Implementation of the IBM CGA card, built around the Motorola MC6845 
     display controller.
 
-
-
 */
 
 
@@ -147,9 +145,9 @@ const STATUS_LIGHTPEN_TRIGGER_SET: u8   = 0b0000_0010;
 const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
 const STATUS_VERTICAL_RETRACE: u8       = 0b0000_1000;
 
-/// Include the standard 8x8 CGA font.
-/// TODO: Support alternate font with thinner glyphs? It was normally not accessable except 
-/// by soldering a jumper
+// Include the standard 8x8 CGA font.
+// TODO: Support alternate font with thinner glyphs? It was normally not accessable except 
+// by soldering a jumper
 static CGA_FONT: &'static [u8] = include_bytes!("../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
@@ -159,6 +157,12 @@ const CRTC_VBLANK_HEIGHT: u8 = 16;
 
 const CRTC_R0_HORIZONTAL_MAX: u32 = 113;
 const CRTC_SCANLINE_MAX: u32 = 262;
+
+// The CGA card decodes different numbers of address lines from the CRTC depending on 
+// whether it is in text or graphics modes. This causes wrapping at 0x2000 bytes in 
+// text mode, and 0x4000 bytes in graphics modes.
+const CGA_TEXT_MODE_WRAP: usize = 0x1FFF;
+const CGA_GFX_MODE_WRAP: usize = 0x3FFF;
 
 const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 2, 4, 6],       // Red / Green / Brown
@@ -248,8 +252,6 @@ pub struct CGACard {
     crtc_cursor_address_ho: u8,
     crtc_cursor_address: usize,
 
-    crtc_next_address: usize,
-
     cc_register: u8,
     clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
 
@@ -270,14 +272,14 @@ pub struct CGACard {
     cur_bg: u8,                     // Current glyph bg color
     cur_blink: bool,                // Current glyph blink attribute
     char_col: u8,                   // Column of character glyph being drawn
-    char_row: u8,                   // Row of character glyph being drawn
     hcc_c0: u8,                     // Horizontal character counter (x pos of character)
-    vlc_c9: u8,                     // Vertical line counter - counts during vsync period
+    vlc_c9: u8,                     // Vertical line counter - row of character being drawn
     vcc_c4: u8,                     // Vertical character counter (y pos of character)
-    vsc_c3h: u8,
+    vsc_c3h: u8,                    // Vertical sync counter - counts during vsync period
     hsc_c3l: u8,
     vtac_c5: u8,
-    vma: usize,                     // Video memory address
+    vma: usize,                     // VMA register - Video memory address
+    vma_t: usize,                   // VMA' register - Video memory address temporary
     vmws: usize,                    // Video memory word size
     rba: usize,                     // Render buffer address
     blink_state: bool,              // Used to control blinking of cursor and text with blink attribute
@@ -443,8 +445,6 @@ impl CGACard {
             crtc_cursor_address_ho: 0,
             crtc_cursor_address: 0,
 
-            crtc_next_address: 0,
-
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
             clock_divisor: 1,
@@ -463,7 +463,6 @@ impl CGACard {
             cur_bg: 0,
             cur_blink: false,
             char_col: 0,
-            char_row: 0,
             hcc_c0: 0,
             vlc_c9: 0,
             vcc_c4: 0,
@@ -471,6 +470,7 @@ impl CGACard {
             hsc_c3l: 0,
             vtac_c5: 0,
             vma: 0,
+            vma_t: 0,
             vmws: 2,    
             rba: 0,
             blink_state: false,
@@ -515,13 +515,13 @@ impl CGACard {
     /// Update the CRTC start address. Usually called after a CRTC register write updates the HO or LO byte.
     fn update_start_address(&mut self) {
 
-        self.crtc_next_address = ((self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize) & 0x3FFF;
+        self.crtc_start_address = ((self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize) & 0x3FFF;
 
         trace_regs!(self);
         trace!(
             self,
             "Start address updated: {:04X}",
-            self.crtc_next_address
+            self.crtc_start_address
         )
     }        
 
@@ -645,7 +645,9 @@ impl CGACard {
                 self.update_cursor_address();
             }
             CRTCRegister::StartAddressH => {
-                self.crtc_start_address_ho = byte;
+                // Start Address HO register is only 6 bits wide.
+                // Entire Start Address register is 14 bits.
+                self.crtc_start_address_ho = byte & 0x3F;
                 trace_regs!(self);
                 trace!(
                     self,
@@ -839,7 +841,11 @@ impl CGACard {
     }
 
     /// Set the character attributes for the current character.
-    fn set_char_addr(&mut self, addr: usize) {
+    /// This applies to text mode only, but is computed in all modes at appropriate times.
+    fn set_char_addr(&mut self) {
+
+        // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
+        let addr = (self.vma & CGA_TEXT_MODE_WRAP) << 1;
 
         if addr < CGA_MEM_SIZE - 1 {
             self.cur_char = self.mem[addr];
@@ -880,8 +886,7 @@ impl CGACard {
     }
 
     pub fn draw_text_mode_pixel(&mut self) {
-        let mut new_pixel = 
-        match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.char_row) {
+        let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
             true => {
                 if self.cur_blink {
                     if self.blink_state { self.cur_fg } else { self.cur_bg }
@@ -894,9 +899,9 @@ impl CGACard {
         };
 
         // Do cursor
-        if self.vma == (self.crtc_cursor_address * 2) {
+        if self.vma == self.crtc_cursor_address {
             // This cell has the cursor address
-            if self.char_row >= self.crtc_cursor_start_line && self.char_row <= self.crtc_cursor_end_line {
+            if self.vlc_c9 >= self.crtc_cursor_start_line && self.vlc_c9 <= self.crtc_cursor_end_line {
                 // We are in defined cursor boundaries
                 if self.blink_state {
                     // Cursor is not blinked
@@ -920,7 +925,7 @@ impl CGACard {
     /// Draw a character column in low resolution graphics mode (320x200)
     /// In this mode, one pixel is drawn twice for each character column.
     pub fn draw_lowres_gfx_mode_pixel(&mut self) {
-        let mut new_pixel = self.get_lowres_pixel_color(self.char_row, self.char_col);
+        let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, self.char_col);
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -937,8 +942,8 @@ impl CGACard {
     /// Draw a character column in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn for each character column.
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
-        let offset = if self.char_row > 0 { 0x2000 } else { 0 };
-        let base_addr = (self.vma + offset + (self.crtc_start_address * 2)) & 0x3FFF;
+        let offset = if self.vlc_c9 > 0 { 0x2000 } else { 0 };
+        let base_addr = (((self.vma & 0x3FFF) << 1) + offset) & 0x3FFF;
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -974,7 +979,7 @@ impl CGACard {
     pub fn get_lowres_pixel_color(&self, row: u8, col: u8) -> u8 {
 
         let offset = if row > 0 { 0x2000 } else { 0 };
-        let base_addr = (self.vma + offset + (self.crtc_start_address * 2)) & 0x3FFF;
+        let base_addr = (((self.vma & 0x3FFF) << 1) + offset) & 0x3FFF;
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
@@ -1262,10 +1267,12 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
         internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
         internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
+        internal_vec.push((format!("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
         internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
         internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
         internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
         internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
+        internal_vec.push((format!("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
         internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
         internal_vec.push((format!("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
 
@@ -1335,14 +1342,20 @@ impl VideoCard for CGACard {
                 self.hcc_c0 = self.hcc_c0.wrapping_add(1);
 
                 // Advance video memory address offset and grab the next character + attr
-                self.vma += self.vmws;
-                self.set_char_addr((self.crtc_start_address * self.vmws + self.vma) & 0x3FFF);
+                self.vma += 1;
+                self.set_char_addr();
 
                 // Glyph colun reset to 0 for next char
                 self.char_col = 0;
 
                 if self.hcc_c0 == self.crtc_horizontal_displayed {
-                    // Enter right overscan
+                    // C0 == R1. Entering right overscan.
+
+                    if self.vlc_c9 == self.crtc_maximum_scanline_address {
+                        // Save VMA in VMA'
+                        //log::debug!("Updating vma_t: {:04X}", self.vma_t);
+                        self.vma_t = self.vma;
+                    }
 
                     // Save right overscan start position to calculate width of right overscan later
                     self.overscan_right_start = self.beam_x;
@@ -1381,18 +1394,23 @@ impl VideoCard for CGACard {
 
                     // Reset Horizontal Character Counter and increment character row counter
                     self.hcc_c0 = 0;
-                    self.char_row += 1;
+
+                    /*
+                    if self.vlc_c9 < self.crtc_maximum_scanline_address {
+                        // Character row in progress. Load VMA from VMA'
+                        self.vma = self.vma_t;
+                    }
+                    */
+
+                    self.vlc_c9 += 1;
 
                     self.extents[self.front_buf].overscan_l = self.beam_x;
 
                     // Return video memory address to starting position for next character row
-                    self.vma = self.vcc_c4 as usize * ((self.crtc_horizontal_displayed as usize) * self.vmws);
+                    self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_start_address;
                     
                     // Reset the current character glyph to start of row
-                    self.set_char_addr((self.crtc_start_address * self.vmws + self.vma) & 0x3FFF);
-
-                    // Reflect any mid-scanline address updates
-                    self.crtc_start_address = self.crtc_next_address;
+                    self.set_char_addr();
 
                     if self.in_vblank {
                         // If we are in vblank, advance Vertical Sync Counter
@@ -1443,17 +1461,18 @@ impl VideoCard for CGACard {
                         }
                     }
                     
-                    if self.char_row > self.crtc_maximum_scanline_address  {
-                        // We finished drawing this row of characters 
+                    if self.vlc_c9 > self.crtc_maximum_scanline_address  {
+                        // C9 == R9 We finished drawing this row of characters 
 
-                        self.char_row = 0;
+                        self.vlc_c9 = 0;
                         // Advance Vertical Character Counter
                         self.vcc_c4 = self.vcc_c4.wrapping_add(1);
 
                         // Set vma to starting position for next character row
-                        self.vma = self.vcc_c4 as usize * ((self.crtc_horizontal_displayed as usize) * self.vmws);
+                        self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_start_address;
                         // Load next char + attr
-                        self.set_char_addr((self.crtc_start_address * 2 + self.vma) & 0x3FFF);
+                        
+                        self.set_char_addr();
 
                         if self.vcc_c4 == self.crtc_vertical_sync_pos {
                             // We've reached vertical sync
@@ -1492,13 +1511,14 @@ impl VideoCard for CGACard {
                                 self.vcc_c4 = 0;
                                 self.vtac_c5 = 0;
                                 self.beam_x = 0;
-                                self.char_row = 0;
+                                self.vlc_c9 = 0;
                                 self.char_col = 0;
-                                self.vma = 0;
+                                self.vma = self.crtc_start_address;
+                                self.vma_t = self.vma;
                                 self.in_display_area = true;
 
                                 // Load first char + attr
-                                self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);
+                                self.set_char_addr();
                             }
                             else {
                                 // VBlank suppressed by CRTC register shenanigans. 
@@ -1509,14 +1529,15 @@ impl VideoCard for CGACard {
                                 self.vcc_c4 = 0;
                                 self.vtac_c5 = 0;
                                 self.beam_x = 0;
-                                self.char_row = 0;
+                                self.vlc_c9 = 0;
                                 self.char_col = 0;                            
-                                self.vma = 0;
+                                self.vma = self.crtc_start_address;
+                                self.vma_t = self.vma;
                                 self.in_display_area = true;
                                 self.in_vblank = false;
 
                                 // Load first char + attr
-                                self.set_char_addr((self.crtc_start_address * self.vmws) & 0x3FFF);                            
+                                self.set_char_addr();                    
                             }
 
 
