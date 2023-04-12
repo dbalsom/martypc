@@ -150,6 +150,7 @@ pub(crate) struct GuiState {
     video_mem: ColorImage,
 
     video_data: VideoData,
+    current_ups: u32,
     current_fps: u32,
     emulated_fps: u32,
     current_cps: u64,
@@ -419,6 +420,7 @@ impl GuiState {
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
             video_data: Default::default(),
+            current_ups: 0,
             current_fps: 0,
             emulated_fps: 0,
             current_cps: 0,
@@ -599,7 +601,17 @@ impl GuiState {
         self.serial_ports = ports;
     }
 
-    pub fn update_perf_view(&mut self, current_fps: u32, emulated_fps: u32, current_cps: u64, current_ips: u64, emulation_time: Duration, render_time: Duration) {
+    pub fn update_perf_view(
+        &mut self, 
+        current_ups: u32,
+        current_fps: u32, 
+        emulated_fps: u32, 
+        current_cps: u64, 
+        current_ips: u64,
+        emulation_time: Duration, 
+        render_time: Duration) 
+    {
+        self.current_ups = current_ups;
         self.current_fps = current_fps;
         self.emulated_fps = emulated_fps;
         self.current_cps = current_cps;
@@ -700,6 +712,9 @@ impl GuiState {
                             .background_color(egui::Color32::BLACK));
                         ui.end_row();
 
+                        ui.label("UPS: ");
+                        ui.label(egui::RichText::new(format!("{}", self.current_ups)).background_color(egui::Color32::BLACK));
+                        ui.end_row();
                         ui.label("FPS: ");
                         ui.label(egui::RichText::new(format!("{}", self.current_fps)).background_color(egui::Color32::BLACK));
                         ui.end_row();
