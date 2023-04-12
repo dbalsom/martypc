@@ -134,6 +134,7 @@ struct Counter {
     cycle_count: u64,
     instr_count: u64,
 
+    current_ups: u32,
     current_cps: u64,
     current_fps: u32,
     current_ips: u64,
@@ -141,6 +142,7 @@ struct Counter {
     current_emulated_frames: u64,
     emulated_frames: u64,
 
+    ups: u32,
     fps: u32,
     last_frame: Instant,
     #[allow (dead_code)]
@@ -163,6 +165,7 @@ impl Counter {
             cycle_count: 0,
             instr_count: 0,
             
+            current_ups: 0,
             current_cps: 0,
             current_fps: 0,
             current_ips: 0,
@@ -171,6 +174,7 @@ impl Counter {
             current_emulated_frames: 0,
             emulated_frames: 0,
 
+            ups: 0,
             fps: 0,
             last_second: Instant::now(),
             last_sndbuf: Instant::now(),
@@ -808,6 +812,8 @@ fn main() {
             // Draw the current frame
             Event::MainEventsCleared => {
 
+                stat_counter.current_ups += 1;
+
                 // Calculate FPS
                 let elapsed_ms = stat_counter.last_second.elapsed().as_millis();
                 if elapsed_ms > 1000 {
@@ -826,6 +832,8 @@ fn main() {
                     //    stat_counter.current_cpu_cps, 
                     //    stat_counter.current_pit_tps);
 
+                    stat_counter.ups = stat_counter.current_ups;
+                    stat_counter.current_ups = 0;
                     stat_counter.fps = stat_counter.current_fps;
                     stat_counter.current_fps = 0;
 
@@ -914,7 +922,6 @@ fn main() {
                             // Reset mouse for next frame
                             mouse_data.reset();
                         }
-
                     }
 
 
@@ -1363,6 +1370,7 @@ fn main() {
                     if framework.gui.is_window_open(egui::GuiWindow::PerfViewer) {
                         framework.gui.update_video_data(video_data);
                         framework.gui.update_perf_view(
+                            stat_counter.ups,
                             stat_counter.fps,
                             stat_counter.emulated_fps,
                             stat_counter.current_cps,
