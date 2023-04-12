@@ -1158,8 +1158,9 @@ impl HardDiskController {
                     log::trace!("DMA terminal count triggered end of WriteSectorBuffer command.");
                     if self.operation_status.dma_bytes_left != 0 {
                         log::warn!(
-                            "Incomplete DMA transfer on terminal count! Bytes remaining: {}",
-                            self.operation_status.dma_bytes_left
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {} count: {}",
+                            self.operation_status.dma_bytes_left,
+                            self.operation_status.dma_byte_count
                         );
                     }
 
@@ -1239,8 +1240,9 @@ impl HardDiskController {
                     log::trace!("DMA terminal count triggered end of Read command.");
                     if self.operation_status.dma_bytes_left != 0 {
                         log::warn!(
-                            "Incomplete DMA transfer on terminal count! Bytes remaining: {}",
-                            self.operation_status.dma_bytes_left
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {} count: {}",
+                            self.operation_status.dma_bytes_left,
+                            self.operation_status.dma_byte_count
                         );
                     }
 
@@ -1324,8 +1326,9 @@ impl HardDiskController {
                     log::trace!("DMA terminal count triggered end of Write command.");
                     if self.operation_status.dma_bytes_left != 0 {
                         log::warn!(
-                            "Incomplete DMA transfer on terminal count! Bytes remaining: {}",
-                            self.operation_status.dma_bytes_left
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {} count: {}",
+                            self.operation_status.dma_bytes_left,
+                            self.operation_status.dma_byte_count
                         );
                     }
 

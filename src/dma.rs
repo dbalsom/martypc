@@ -667,6 +667,7 @@ impl DMAController {
         let mut _cost = 0;
         let bus_address = self.get_dma_transfer_address(channel);
 
+        
         match self.channels[channel].address_mode {
             AddressMode::Increment => {
                 if self.channels[channel].current_word_count_reg > 0 {
@@ -680,7 +681,7 @@ impl DMAController {
                     // Internal address register wraps around
                     self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
                     self.channels[channel].current_word_count_reg -= 1;
-
+                    
                     //log::trace!("DMA read {:02X} from address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
                 }
                 else if self.channels[channel].current_word_count_reg == 0 && !self.channels[channel].terminal_count {
@@ -748,7 +749,7 @@ impl DMAController {
                     log::trace!("Terminal count reached on DMA channel {:01X}", channel);
                     log::debug!(
                         "Completed DMA of {} bytes to address {:05X}", 
-                        self.channels[channel].base_word_count_reg, 
+                        self.channels[channel].base_word_count_reg + 1, 
                         ((self.channels[channel].page as u32) << 16) + (self.channels[channel].base_address_reg as u32)
                     );
                         
@@ -778,7 +779,9 @@ impl DMAController {
                         // We can handle single byte mode
                         match self.channels[i].transfer_type {
                             TransferType::Read | TransferType::Verify => {
-                                self.do_dma_read_u8(bus, i);
+                                if i == 0 {
+                                    self.do_dma_read_u8(bus, i);
+                                }
                             }
                             TransferType::Write => {
                                 // nothing to do here
