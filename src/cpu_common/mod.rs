@@ -13,7 +13,9 @@ impl Default for CpuType {
 
 pub enum CpuOption {
     InstructionHistory(bool),
-    SimulateDramRefresh(bool, u32)
+    SimulateDramRefresh(bool, u32),
+    OffRailsDetection(bool),
+    EnableWaitStates(bool)
 }
 
 use crate::cpu_808x::*;

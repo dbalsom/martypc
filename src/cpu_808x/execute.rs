@@ -123,10 +123,13 @@ impl<'a> Cpu<'a> {
 
         // Keep a tally of how many Opcode 0x00's we've executed in a row. Too many likely means we've run 
         // off the rails into uninitialized memory, whereupon we halt so we can check things out.
+
+        // This is now optional in the configuration file, as some test applications like acid88 won't work
+        // otherwise.
         if self.i.opcode == 0x00 {
             self.opcode0_counter = self.opcode0_counter.wrapping_add(1);
 
-            if self.opcode0_counter > 5 {
+            if self.off_rails_detection && (self.opcode0_counter > 5) {
                 // Halt permanently by clearing interrupt flag
 
                 self.clear_flag(Flag::Interrupt);

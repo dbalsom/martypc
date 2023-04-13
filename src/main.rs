@@ -90,6 +90,7 @@ use breakpoints::BreakPointType;
 use config::*;
 use machine::{Machine, ExecutionState};
 use cpu_808x::{Cpu, CpuAddress};
+use cpu_common::CpuOption;
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
 use machine_manager::MACHINE_DESCS;
@@ -1188,6 +1189,16 @@ fn main() {
                                         let surface = pixels.get_frame_mut();
                                         surface.fill(0);
                                     }
+                                    (GuiFlag::CpuEnableWaitStates, state) => {
+                                        {
+                                            machine.set_cpu_option(CpuOption::EnableWaitStates(state));
+                                        }
+                                    }
+                                    (GuiFlag::CpuInstructionHistory, state) => {
+                                        {
+                                            machine.set_cpu_option(CpuOption::InstructionHistory(state));
+                                        }
+                                    }                                    
                                     _ => {}
                                 }
                             }

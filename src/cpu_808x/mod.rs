@@ -701,6 +701,7 @@ pub struct Cpu<'a>
     trace_comment: &'static str,
     trace_instr: u16,
 
+    enable_wait_states: bool,
     off_rails_detection: bool,
     opcode0_counter: u32,
 
@@ -927,7 +928,7 @@ impl<'a> Cpu<'a> {
         cpu.trace_writer = trace_writer.map_or(None, |trace_writer| Some(Box::new(trace_writer)));
         cpu.cpu_type = cpu_type;
 
-        cpu.instruction_history_on = true; // TODO: Control this from config/GUI
+        //cpu.instruction_history_on = true; // TODO: Control this from config/GUI
         cpu.instruction_history = VecDeque::with_capacity(16);
 
         cpu.reset_vector = CpuAddress::Segmented(0xFFFF, 0x0000);
@@ -1175,8 +1176,13 @@ impl<'a> Cpu<'a> {
                                 self.transfer_n += 1;
                             }                                                                                                                     
                             _=> {
-                                // Handle other bus operations
+                                log::warn!("Unhandled bus status: {:?}!", self.bus_status);
                             }
+                        }
+
+                        if !self.enable_wait_states {
+                            // No wait states for you!
+                            self.wait_states = 0;
                         }
 
                         if self.is_last_wait() && self.is_operand_complete() {
@@ -2561,10 +2567,12 @@ impl<'a> Cpu<'a> {
                 // continue to process interrupts. We passed pending_interrupt to execute
                 // earlier so that a REP string operation can call RPTI to be ready for
                 // an interrupt to occur.
-                if self.instruction_history.len() == CPU_HISTORY_LEN {
-                    self.instruction_history.pop_front();
+                if self.instruction_history_on {
+                    if self.instruction_history.len() == CPU_HISTORY_LEN {
+                        self.instruction_history.pop_front();
+                    }
+                    self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
                 }
-                self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
                 self.instruction_count += 1;
                 check_interrupts = true;
 
@@ -2992,12 +3000,23 @@ impl<'a> Cpu<'a> {
 
         match opt {
             CpuOption::InstructionHistory(state) => {
+                log::debug!("Setting InstructionHistory to: {:?}", state);
+                self.instruction_history.clear();
                 self.instruction_history_on = state;
             }
             CpuOption::SimulateDramRefresh(state, cycles) => {
+                log::debug!("Setting SimulateDramRefresh to: {:?}", state);
                 self.dram_refresh_simulation = state;
                 self.dram_refresh_cycle_target = cycles;
             }
+            CpuOption::OffRailsDetection(state) => {
+                log::debug!("Setting OffRailsDetection to: {:?}", state);
+                self.off_rails_detection = state;
+            }
+            CpuOption::EnableWaitStates(state) => {
+                log::debug!("Setting EnableWaitStates to: {:?}", state);
+                self.enable_wait_states = state;
+            }            
         }
     }
 }

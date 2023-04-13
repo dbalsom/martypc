@@ -92,7 +92,33 @@ impl GuiState {
                 if ui.button("CPU State...").clicked() {
                     *self.window_flag(GuiWindow::CpuStateViewer) = true;
                     ui.close_menu();
-                }                
+                }
+                ui.menu_button("CPU Debug Options", |ui| {
+                    if ui.checkbox(&mut self.get_option_mut(GuiFlag::CpuEnableWaitStates), "Enable Wait States").clicked() {
+
+                        let new_opt = self.get_option(GuiFlag::CpuEnableWaitStates).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiFlag::CpuEnableWaitStates, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.get_option_mut(GuiFlag::CpuInstructionHistory), "Instruction History").clicked() {
+
+                        let new_opt = self.get_option(GuiFlag::CpuInstructionHistory).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiFlag::CpuInstructionHistory, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }                         
+                });                            
                 if ui.button("Memory...").clicked() {
                     *self.window_flag(GuiWindow::MemoryViewer) = true;
                     ui.close_menu();

@@ -170,6 +170,13 @@ pub struct Machine {
     pub drive1: Option<String>,
 }
 
+
+#[derive(Debug, Deserialize)]
+pub struct Cpu {
+    pub off_rails_detection: bool,
+    pub instruction_history: bool,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Input {
     pub reverse_mouse_buttons: bool,
@@ -180,6 +187,7 @@ pub struct ConfigFileParams {
     pub emulator: Emulator,
     pub input: Input,
     pub machine: Machine,
+    pub cpu: Cpu,
     pub validator: Validator
 }
 
@@ -201,7 +209,10 @@ pub struct CmdLineArgs {
     pub autostart: bool,
 
     #[bpaf(long, switch)]
-    pub warpspeed: bool,       
+    pub warpspeed: bool,
+
+    #[bpaf(long, switch)]
+    pub off_rails_detection: bool,
 
     #[bpaf(long, switch)]
     pub correct_aspect: bool,      
@@ -229,6 +240,9 @@ impl ConfigFileParams {
         self.emulator.autostart |= shell_args.autostart;
         self.emulator.warpspeed |= shell_args.warpspeed;
         self.emulator.correct_aspect |= shell_args.correct_aspect;
+
+        self.cpu.off_rails_detection |= shell_args.off_rails_detection;
+        
         self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
     }
 }

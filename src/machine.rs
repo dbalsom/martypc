@@ -185,7 +185,6 @@ impl<'a> Machine<'a> {
         ) -> Machine<'a> 
     {
 
-
         //let mut io_bus = IoBusInterface::new();
         
         //let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
@@ -233,6 +232,8 @@ impl<'a> Machine<'a> {
             },
             _ => {}
         }
+
+        cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection));
 
         let reset_vector = cpu.get_reset_vector();
         cpu.reset(reset_vector);        
@@ -316,6 +317,10 @@ impl<'a> Machine<'a> {
 
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
+    }
+
+    pub fn set_cpu_option(&mut self, opt: CpuOption) {
+        self.cpu.set_option(opt);
     }
 
     pub fn fdc(&mut self) -> &mut Option<FloppyController> {

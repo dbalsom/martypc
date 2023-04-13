@@ -102,7 +102,9 @@ pub(crate) enum GuiWindow {
 #[derive(PartialEq, Eq, Hash)]
 pub enum GuiFlag {
     CompositeDisplay,
-    CorrectAspect
+    CorrectAspect,
+    CpuEnableWaitStates,
+    CpuInstructionHistory,
 }
 
 pub enum GuiEvent {
@@ -118,7 +120,7 @@ pub enum GuiEvent {
     MemoryUpdate,
     TokenHover(usize),
     OptionChanged(GuiFlag, bool),
-    CompositeAdjust(CompositeParams)
+    CompositeAdjust(CompositeParams),
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -405,7 +407,9 @@ impl GuiState {
 
         let option_flags: HashMap<GuiFlag, bool> = [
             (GuiFlag::CompositeDisplay, false),
-            (GuiFlag::CorrectAspect, false)
+            (GuiFlag::CorrectAspect, false),
+            (GuiFlag::CpuEnableWaitStates, true),
+            (GuiFlag::CpuInstructionHistory, false),
         ].into();
 
         Self { 
