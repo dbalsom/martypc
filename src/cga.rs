@@ -251,6 +251,7 @@ pub struct CGACard {
     crtc_cursor_address_lo: u8,
     crtc_cursor_address_ho: u8,
     crtc_cursor_address: usize,
+    crtc_frame_address: usize,
 
     cc_register: u8,
     clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
@@ -444,6 +445,7 @@ impl CGACard {
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
             crtc_cursor_address: 0,
+            crtc_frame_address: 0,
 
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
@@ -1382,7 +1384,7 @@ impl VideoCard for CGACard {
                     
                     if new_rba < self.rba {
                         //log::warn!("Warning: Render buffer index would go backwards: old:{:04X} new:{:04X}", self.rba, new_rba );
-                        self.rba = new_rba;
+
                     }
                     else {
                         self.rba = new_rba;
@@ -1408,7 +1410,8 @@ impl VideoCard for CGACard {
                     self.extents[self.front_buf].overscan_l = self.beam_x;
 
                     // Return video memory address to starting position for next character row
-                    self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_start_address;
+                    self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
+                    //self.vma = self.vma_t;
                     
                     // Reset the current character glyph to start of row
                     self.set_char_addr();
@@ -1470,7 +1473,7 @@ impl VideoCard for CGACard {
                         self.vcc_c4 = self.vcc_c4.wrapping_add(1);
 
                         // Set vma to starting position for next character row
-                        self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_start_address;
+                        self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
                         // Load next char + attr
                         
                         self.set_char_addr();
@@ -1501,7 +1504,7 @@ impl VideoCard for CGACard {
                             
                             if self.in_vblank {
                                 // If a vblank is in process, end it
-                                self.vsc_c3h = CRTC_VBLANK_HEIGHT - 1;
+                                //self.vsc_c3h = CRTC_VBLANK_HEIGHT - 1;
                             }
 
                             if self.crtc_vertical_total > self.crtc_vertical_sync_pos {
@@ -1514,6 +1517,7 @@ impl VideoCard for CGACard {
                                 self.beam_x = 0;
                                 self.vlc_c9 = 0;
                                 self.char_col = 0;
+                                self.crtc_frame_address = self.crtc_start_address;
                                 self.vma = self.crtc_start_address;
                                 self.vma_t = self.vma;
                                 self.in_display_area = true;
@@ -1532,6 +1536,7 @@ impl VideoCard for CGACard {
                                 self.beam_x = 0;
                                 self.vlc_c9 = 0;
                                 self.char_col = 0;                            
+                                self.crtc_frame_address = self.crtc_start_address;
                                 self.vma = self.crtc_start_address;
                                 self.vma_t = self.vma;
                                 self.in_display_area = true;
