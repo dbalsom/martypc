@@ -62,8 +62,10 @@ use crate::arduino8088_validator::{ArduinoValidator};
 
 macro_rules! trace_print {
     ($self:ident, $($t:tt)*) => {{
-        if let TraceMode::Cycle = $self.trace_mode {
-            $self.trace_print(&format!($($t)*));
+        if $self.trace_enabled {
+            if let TraceMode::Cycle = $self.trace_mode  {
+                $self.trace_print(&format!($($t)*));
+            }
         }
     }};
 }
@@ -696,10 +698,12 @@ pub struct Cpu<'a>
 
     reset_vector: CpuAddress,
 
+    trace_enabled: bool,
     trace_mode: TraceMode,
     trace_writer: Option<Box<dyn Write + 'a>>,
     trace_comment: &'static str,
     trace_instr: u16,
+    trace_str_vec: Vec<String>,
 
     enable_wait_states: bool,
     off_rails_detection: bool,
@@ -928,7 +932,7 @@ impl<'a> Cpu<'a> {
         cpu.trace_writer = trace_writer.map_or(None, |trace_writer| Some(Box::new(trace_writer)));
         cpu.cpu_type = cpu_type;
 
-        //cpu.instruction_history_on = true; // TODO: Control this from config/GUI
+        //cpu.instruction_history_on = true; // Control this from config/GUI instead
         cpu.instruction_history = VecDeque::with_capacity(16);
 
         cpu.reset_vector = CpuAddress::Segmented(0xFFFF, 0x0000);
@@ -1217,8 +1221,10 @@ impl<'a> Cpu<'a> {
         };
 
         // Perform cycle tracing, if enabled
-        if self.trace_mode == TraceMode::Cycle {
-            self.trace_print(&self.cycle_state_string());   
+        if self.trace_enabled && self.trace_mode == TraceMode::Cycle {
+            let trace_str = self.cycle_state_string();
+            self.trace_print(&trace_str);   
+            self.trace_str_vec.push(trace_str);
         }
 
         #[cfg(feature = "cpu_validator")]
@@ -2333,6 +2339,11 @@ impl<'a> Cpu<'a> {
 
         self.instr_cycle = 0;
 
+        // If tracing is enabled, clear the trace string vector that holds the trace from the last instruction.
+        if self.trace_enabled {
+            self.trace_str_vec.clear();
+        }
+
         // Check for interrupts but do not process yet (unless CPU is halted) 
         // This is so we can send an interrupt flag to execute() so that string instructions can call RPTI
         // if there is a pending interrupt.
@@ -2528,7 +2539,7 @@ impl<'a> Cpu<'a> {
                 check_interrupts = true;
 
                 // Perform instruction tracing, if enabled
-                if self.trace_mode == TraceMode::Instruction {
+                if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
                     self.trace_print(&self.instruction_state_string());   
                 }                
 
@@ -3016,9 +3027,44 @@ impl<'a> Cpu<'a> {
             CpuOption::EnableWaitStates(state) => {
                 log::debug!("Setting EnableWaitStates to: {:?}", state);
                 self.enable_wait_states = state;
-            }            
+            }   
+            CpuOption::TraceLoggingEnabled(state) => {
+                log::debug!("Setting {:?} to: {:?}", opt, state);
+                self.trace_enabled = state;
+
+                // Flush the trace log file on stopping trace so that we can immediately
+                // see results otherwise buffered
+                if state == false {
+                    self.trace_flush();
+                }
+            }                       
         }
     }
+
+    pub fn get_option(&mut self, opt: CpuOption) -> bool {
+        match opt {
+            CpuOption::InstructionHistory(_) => {
+                self.instruction_history_on
+            }
+            CpuOption::SimulateDramRefresh(_, _) => {
+                self.dram_refresh_simulation
+            }
+            CpuOption::OffRailsDetection(_) => {
+                self.off_rails_detection
+            }
+            CpuOption::EnableWaitStates(_) => {
+                self.enable_wait_states
+            }   
+            CpuOption::TraceLoggingEnabled(_) => {
+                self.trace_enabled
+            }                       
+        }        
+    }
+
+    pub fn get_cycle_trace(&self ) -> &Vec<String> {
+        &self.trace_str_vec
+    }
+
 }
 
 

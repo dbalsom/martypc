@@ -11,11 +11,13 @@ impl Default for CpuType {
     fn default() -> Self { CpuType::Intel8088 }
 }
 
+#[derive (Debug)]
 pub enum CpuOption {
     InstructionHistory(bool),
     SimulateDramRefresh(bool, u32),
     OffRailsDetection(bool),
-    EnableWaitStates(bool)
+    EnableWaitStates(bool),
+    TraceLoggingEnabled(bool)
 }
 
 use crate::cpu_808x::*;

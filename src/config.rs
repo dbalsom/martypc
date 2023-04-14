@@ -141,6 +141,7 @@ pub struct Emulator {
     pub correct_aspect: bool,    
 
     #[serde(default)]
+    pub trace_on: bool,
     pub trace_mode: TraceMode,
     pub trace_file: Option<String>,
 
@@ -173,6 +174,7 @@ pub struct Machine {
 
 #[derive(Debug, Deserialize)]
 pub struct Cpu {
+    pub wait_states_enabled: bool,
     pub off_rails_detection: bool,
     pub instruction_history: bool,
 }
@@ -242,7 +244,7 @@ impl ConfigFileParams {
         self.emulator.correct_aspect |= shell_args.correct_aspect;
 
         self.cpu.off_rails_detection |= shell_args.off_rails_detection;
-        
+
         self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
     }
 }

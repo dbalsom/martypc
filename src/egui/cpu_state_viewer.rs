@@ -1,7 +1,7 @@
 /*
-  Marty PC Emulator 
-  (C)2023 Daniel Balsom
-  https://github.com/dbalsom/marty
+    MartyPC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by

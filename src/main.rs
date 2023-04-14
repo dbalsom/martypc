@@ -98,7 +98,7 @@ use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use videocard::{RenderMode};
 use bytequeue::ByteQueue;
-use crate::egui::{GuiEvent, GuiFlag, GuiWindow};
+use crate::egui::{GuiEvent, GuiOption , GuiWindow};
 use render::{VideoRenderer, CompositeParams};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
@@ -382,7 +382,7 @@ fn main() {
         std::process::exit(1);        
     } 
 
-    // Enumerate serial ports
+    // Enumerate host serial ports
     let serial_ports = match serialport::available_ports() {
         Ok(ports) => ports,
         Err(e) => {
@@ -461,10 +461,6 @@ fn main() {
         (pixels, framework)
     };
 
-
-    // Set options from config
-    framework.gui.set_option(GuiFlag::CorrectAspect, config.emulator.correct_aspect);
-
     // Set list of serial ports
     framework.gui.update_serial_ports(serial_ports);
 
@@ -514,6 +510,19 @@ fn main() {
         rom_manager, 
         floppy_manager,
     );
+
+    // Set options from config. We do this now so that we can set the same state for both GUI and machine
+    framework.gui.set_option(GuiOption::CorrectAspect, config.emulator.correct_aspect);
+
+    framework.gui.set_option(GuiOption::CpuEnableWaitStates, config.cpu.wait_states_enabled);
+    machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled));
+
+    framework.gui.set_option(GuiOption::CpuInstructionHistory, config.cpu.instruction_history);
+    machine.set_cpu_option(CpuOption::InstructionHistory(config.cpu.instruction_history));
+
+    framework.gui.set_option(GuiOption::CpuTraceLoggingEnabled, config.emulator.trace_on);
+    machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+
 
     // Resize window if video card is in Direct mode and specifies a display aperature
     {
@@ -1078,7 +1087,7 @@ fn main() {
 
                     // -- Draw video memory --
                     let composite_enabled = framework.gui.get_composite_enabled();
-                    let aspect_correct = framework.gui.get_option(GuiFlag::CorrectAspect).unwrap_or(false);
+                    let aspect_correct = framework.gui.get_option(GuiOption::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
 
@@ -1183,22 +1192,27 @@ fn main() {
 
                             Some(GuiEvent::OptionChanged(opt, val)) => {
                                 match (opt, val) {
-                                    (GuiFlag::CorrectAspect, false) => {
+                                    (GuiOption::CorrectAspect, false) => {
                                         // Aspect correction was turned off. We want to clear the render buffer as the 
                                         // display buffer is shrinking vertically.
                                         let surface = pixels.get_frame_mut();
                                         surface.fill(0);
                                     }
-                                    (GuiFlag::CpuEnableWaitStates, state) => {
+                                    (GuiOption::CpuEnableWaitStates, state) => {
                                         {
                                             machine.set_cpu_option(CpuOption::EnableWaitStates(state));
                                         }
                                     }
-                                    (GuiFlag::CpuInstructionHistory, state) => {
+                                    (GuiOption::CpuInstructionHistory, state) => {
                                         {
                                             machine.set_cpu_option(CpuOption::InstructionHistory(state));
                                         }
-                                    }                                    
+                                    }
+                                    (GuiOption::CpuTraceLoggingEnabled, state) => {
+                                        {
+                                            machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
+                                        }
+                                    }                                                        
                                     _ => {}
                                 }
                             }
@@ -1454,7 +1468,7 @@ fn main() {
                     }
 
                     // -- Update Instruction Trace window
-                    if framework.gui.is_window_open(egui::GuiWindow::TraceViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::HistoryViewer) {
                         let trace = machine.cpu().dump_instruction_history_tokens();
                         framework.gui.trace_viewer.set_content(trace);
                     }
@@ -1463,6 +1477,15 @@ fn main() {
                     if framework.gui.is_window_open(egui::GuiWindow::CallStack) {
                         let stack = machine.cpu().dump_call_stack();
                         framework.gui.update_call_stack_state(stack);
+                    }
+
+                    // -- Update cycle trace viewer window
+                    if framework.gui.is_window_open(egui::GuiWindow::CycleTraceViewer) {
+
+                        if machine.get_cpu_option(CpuOption::TraceLoggingEnabled(true)) {
+                            let trace_vec = machine.cpu().get_cycle_trace();
+                            framework.gui.cycle_trace_viewer.update(trace_vec);
+                        }
                     }
 
                     // -- Update disassembly viewer window

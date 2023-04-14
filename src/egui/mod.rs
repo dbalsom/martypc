@@ -40,11 +40,13 @@ mod color;
 mod color_swatch;
 mod composite_adjust;
 mod constants;
+mod cpu_control;
 mod cpu_state_viewer;
+mod cycle_trace_viewer;
 mod disassembly_viewer;
 mod dma_viewer;
 mod image;
-mod instruction_trace_viewer;
+mod instruction_history_viewer;
 mod memory_viewer;
 mod menu;
 mod pit_viewer;
@@ -58,12 +60,14 @@ use crate::{
 
     // Use custom windows
     egui::composite_adjust::CompositeAdjustControl,
+    egui::cpu_control::CpuControl,
     egui::cpu_state_viewer::CpuViewerControl,
+    egui::cycle_trace_viewer::CycleTraceViewerControl,
     egui::memory_viewer::MemoryViewerControl,
     egui::disassembly_viewer::DisassemblyControl,
     egui::dma_viewer::DmaViewerControl,
     egui::pit_viewer::PitViewerControl,
-    egui::instruction_trace_viewer::InstructionTraceControl,
+    egui::instruction_history_viewer::InstructionHistoryControl,
 
     machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
@@ -87,7 +91,7 @@ pub(crate) enum GuiWindow {
     MemoryViewer,
     CompositeAdjust,
     CpuStateViewer,
-    TraceViewer,
+    HistoryViewer,
     DiassemblyViewer,
     PitViewer,
     PicViewer,
@@ -97,14 +101,16 @@ pub(crate) enum GuiWindow {
     VideoMemViewer,
     CallStack,
     VHDCreator,
+    CycleTraceViewer,
 }
 
 #[derive(PartialEq, Eq, Hash)]
-pub enum GuiFlag {
+pub enum GuiOption {
     CompositeDisplay,
     CorrectAspect,
     CpuEnableWaitStates,
     CpuInstructionHistory,
+    CpuTraceLoggingEnabled
 }
 
 pub enum GuiEvent {
@@ -119,7 +125,7 @@ pub enum GuiEvent {
     EditBreakpoint,
     MemoryUpdate,
     TokenHover(usize),
-    OptionChanged(GuiFlag, bool),
+    OptionChanged(GuiOption, bool),
     CompositeAdjust(CompositeParams),
 }
 
@@ -147,7 +153,7 @@ pub(crate) struct GuiState {
     window_open_flags: HashMap::<GuiWindow, bool>,
     error_dialog_open: bool,
     
-    option_flags: HashMap::<GuiFlag, bool>,
+    option_flags: HashMap::<GuiOption, bool>,
 
     video_mem: ColorImage,
 
@@ -186,12 +192,11 @@ pub(crate) struct GuiState {
 
     error_string: String,
 
+    pub cpu_control: CpuControl,
     pub cpu_viewer: CpuViewerControl,
+    pub cycle_trace_viewer: CycleTraceViewerControl,
     pub memory_viewer: MemoryViewerControl,
     pub cpu_state: CpuStringState,
-    
-    pub breakpoint: String,
-    pub mem_breakpoint: String,
     
     pub pit_viewer: PitViewerControl,
     pub pic_state: PicStringState,
@@ -207,7 +212,7 @@ pub(crate) struct GuiState {
     disassembly_viewer_address: String,
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
-    pub trace_viewer: InstructionTraceControl,
+    pub trace_viewer: InstructionHistoryControl,
     
     pub composite_adjust: CompositeAdjustControl,
     
@@ -393,7 +398,7 @@ impl GuiState {
             (GuiWindow::MemoryViewer, false),
             (GuiWindow::CompositeAdjust, false),
             (GuiWindow::CpuStateViewer, false),
-            (GuiWindow::TraceViewer, false),
+            (GuiWindow::HistoryViewer, false),
             (GuiWindow::DiassemblyViewer, true),
             (GuiWindow::PitViewer, false),
             (GuiWindow::PicViewer, false),
@@ -403,13 +408,15 @@ impl GuiState {
             (GuiWindow::VideoMemViewer, false),
             (GuiWindow::CallStack, false),
             (GuiWindow::VHDCreator, false),
+            (GuiWindow::CycleTraceViewer, false),
         ].into();
 
-        let option_flags: HashMap<GuiFlag, bool> = [
-            (GuiFlag::CompositeDisplay, false),
-            (GuiFlag::CorrectAspect, false),
-            (GuiFlag::CpuEnableWaitStates, true),
-            (GuiFlag::CpuInstructionHistory, false),
+        let option_flags: HashMap<GuiOption, bool> = [
+            (GuiOption::CompositeDisplay, false),
+            (GuiOption::CorrectAspect, false),
+            (GuiOption::CpuEnableWaitStates, true),
+            (GuiOption::CpuInstructionHistory, false),
+            (GuiOption::CpuTraceLoggingEnabled, false),
         ].into();
 
         Self { 
@@ -451,16 +458,17 @@ impl GuiState {
             serial_ports: Vec::new(),
             serial_port_name: String::new(),
 
-            exec_control,
+            exec_control: exec_control.clone(),
 
             error_string: String::new(),
 
+            cpu_control: CpuControl::new(exec_control.clone()),
             cpu_viewer: CpuViewerControl::new(),
+            cycle_trace_viewer: CycleTraceViewerControl::new(),
             memory_viewer_dump: String::new(),
             memory_viewer: MemoryViewerControl::new(),
             cpu_state: Default::default(),
-            breakpoint: String::new(),
-            mem_breakpoint: String::new(),
+
             pit_viewer: PitViewerControl::new(),
             pic_state: Default::default(),
             ppi_state: Default::default(),
@@ -473,7 +481,7 @@ impl GuiState {
             disassembly_viewer_address: "cs:ip".to_string(),
             disassembly_viewer: DisassemblyControl::new(),
             dma_viewer: DmaViewerControl::new(),
-            trace_viewer: InstructionTraceControl::new(),
+            trace_viewer: InstructionHistoryControl::new(),
             trace_string: String::new(),
             composite_adjust: CompositeAdjustControl::new(),
             call_stack_string: String::new(),
@@ -507,17 +515,17 @@ impl GuiState {
         }
     }
 
-    pub fn set_option(&mut self, option: GuiFlag, state: bool) {
+    pub fn set_option(&mut self, option: GuiOption, state: bool) {
         if let Some(opt) = self.option_flags.get_mut(&option) {
             *opt = state
         }
     }
 
-    pub fn get_option(&mut self, option: GuiFlag) -> Option<bool> {
+    pub fn get_option(&mut self, option: GuiOption) -> Option<bool> {
         self.option_flags.get(&option).copied()
     }
 
-    pub fn get_option_mut(&mut self, option: GuiFlag) -> &mut bool {
+    pub fn get_option_mut(&mut self, option: GuiOption) -> &mut bool {
         self.option_flags.get_mut(&option).unwrap()
     }
 
@@ -582,7 +590,7 @@ impl GuiState {
     }
 
     pub fn get_breakpoints(&mut self) -> (&str, &str) {
-        (&self.breakpoint, &self.mem_breakpoint)
+        self.cpu_control.get_breakpoints()
     }
 
     pub fn update_pit_state(&mut self, state: &PitDisplayState) {
@@ -746,78 +754,7 @@ impl GuiState {
         egui::Window::new("CPU Control")
             .open(self.window_open_flags.get_mut(&GuiWindow::CpuControl).unwrap())
             .show(ctx, |ui| {
-
-                let mut exec_control = self.exec_control.borrow_mut();
-
-                let (pause_enabled, step_enabled, run_enabled) = match exec_control.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => (false, true, true),
-                    ExecutionState::Running => (true, false, false),
-                    ExecutionState::Halted => (false, false, false),
-                };
-
-                ui.horizontal(|ui|{
-
-                    ui.add_enabled_ui(pause_enabled, |ui| {
-                        if ui.button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0))).clicked() {
-                            exec_control.set_state(ExecutionState::Paused);
-                        };
-                    });
-
-                    ui.add_enabled_ui(step_enabled, |ui| {
-                        if ui.button(egui::RichText::new("⤵").font(egui::FontId::proportional(20.0))).clicked() {
-                           exec_control.set_op(ExecutionOperation::StepOver);
-                        };
-
-                        if ui.input().key_pressed(egui::Key::F10) {
-                            exec_control.set_op(ExecutionOperation::StepOver);
-                        }                             
-                    });   
-
-                    ui.add_enabled_ui(step_enabled, |ui| {
-                        if ui.button(egui::RichText::new("➡").font(egui::FontId::proportional(20.0))).clicked() {
-                           exec_control.set_op(ExecutionOperation::Step);
-                        };
-
-                        if ui.input().key_pressed(egui::Key::F11) {
-                            exec_control.set_op(ExecutionOperation::Step);
-                        }                             
-                    });                 
-
-                    ui.add_enabled_ui(run_enabled, |ui| {
-                        if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
-                            exec_control.set_op(ExecutionOperation::Run);
-                        };
-
-                        if ui.input().key_pressed(egui::Key::F5) {
-                            exec_control.set_op(ExecutionOperation::Run);
-                        }                        
-                    });
-
-                    if ui.button(egui::RichText::new("⟲").font(egui::FontId::proportional(20.0))).clicked() {
-                        exec_control.set_op(ExecutionOperation::Reset);
-                    };
-                });
-
-                let state_str = format!("{:?}", exec_control.get_state());
-                ui.separator();
-                ui.horizontal(|ui|{
-                    ui.label("Run state: ");
-                    ui.label(&state_str);
-                });
-                ui.separator();
-                ui.horizontal(|ui|{
-                    ui.label("Exec Breakpoint: ");
-                    if ui.text_edit_singleline(&mut self.breakpoint).changed() {
-                        self.event_queue.push_back(GuiEvent::EditBreakpoint);
-                    };
-                });
-                ui.separator();
-                ui.horizontal(|ui|{
-                    ui.label("Mem Breakpoint: ");
-                    if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
-                        self.event_queue.push_back(GuiEvent::EditBreakpoint);
-                    }
-                });                
+                self.cpu_control.draw(ui, &mut self.option_flags, &mut self.event_queue);
             });
 
         egui::Window::new("Memory View")
@@ -828,13 +765,21 @@ impl GuiState {
                 self.memory_viewer.draw(ui, &mut self.event_queue);
             });
 
-        egui::Window::new("Instruction Trace")
-            .open(self.window_open_flags.get_mut(&GuiWindow::TraceViewer).unwrap())
+        egui::Window::new("Instruction History")
+            .open(self.window_open_flags.get_mut(&GuiWindow::HistoryViewer).unwrap())
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
                 self.trace_viewer.draw(ui, &mut self.event_queue);
             });       
+
+        egui::Window::new("Cycle Trace")
+            .open(self.window_open_flags.get_mut(&GuiWindow::CycleTraceViewer).unwrap())
+            .resizable(true)
+            .default_width(540.0)
+            .show(ctx, |ui| {
+                self.cycle_trace_viewer.draw(ui, &mut self.event_queue);
+            });               
 
         egui::Window::new("Call Stack")
             .open(self.window_open_flags.get_mut(&GuiWindow::CallStack).unwrap())

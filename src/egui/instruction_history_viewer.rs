@@ -17,9 +17,9 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-    egui::instruction_trace_viewer.rs
+    egui::instruction_history_viewer.rs
 
-    Implements the instruction trace viewer control.
+    Implements the instruction history viewer control.
     The control is a virtual window that will display the disassembly of 
     the last X executed instructions. 
 
@@ -30,7 +30,7 @@ use crate::egui::*;
 use crate::egui::token_listview::*;
 use crate::syntax_token::*;
 
-pub struct InstructionTraceControl {
+pub struct InstructionHistoryControl {
 
     pub address: String,
     pub row: usize,
@@ -38,7 +38,7 @@ pub struct InstructionTraceControl {
     tlv: TokenListView,
 }
 
-impl InstructionTraceControl {
+impl InstructionHistoryControl {
 
     pub fn new() -> Self {
         Self {

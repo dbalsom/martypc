@@ -323,6 +323,10 @@ impl<'a> Machine<'a> {
         self.cpu.set_option(opt);
     }
 
+    pub fn get_cpu_option(&mut self, opt: CpuOption) -> bool {
+        self.cpu.get_option(opt)
+    }    
+
     pub fn fdc(&mut self) -> &mut Option<FloppyController> {
         self.cpu.bus_mut().fdc_mut()
     }

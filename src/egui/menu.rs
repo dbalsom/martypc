@@ -1,4 +1,4 @@
-use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiFlag};
+use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption};
 
 
 impl GuiState {
@@ -94,39 +94,55 @@ impl GuiState {
                     ui.close_menu();
                 }
                 ui.menu_button("CPU Debug Options", |ui| {
-                    if ui.checkbox(&mut self.get_option_mut(GuiFlag::CpuEnableWaitStates), "Enable Wait States").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuEnableWaitStates), "Enable Wait States").clicked() {
 
-                        let new_opt = self.get_option(GuiFlag::CpuEnableWaitStates).unwrap();
+                        let new_opt = self.get_option(GuiOption::CpuEnableWaitStates).unwrap();
     
                         self.event_queue.push_back(
                             GuiEvent::OptionChanged(
-                                GuiFlag::CpuEnableWaitStates, 
+                                GuiOption::CpuEnableWaitStates, 
                                 new_opt 
                             )
                         );
                         ui.close_menu();
                     }
-                    if ui.checkbox(&mut self.get_option_mut(GuiFlag::CpuInstructionHistory), "Instruction History").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuInstructionHistory), "Instruction History").clicked() {
 
-                        let new_opt = self.get_option(GuiFlag::CpuInstructionHistory).unwrap();
+                        let new_opt = self.get_option(GuiOption::CpuInstructionHistory).unwrap();
     
                         self.event_queue.push_back(
                             GuiEvent::OptionChanged(
-                                GuiFlag::CpuInstructionHistory, 
+                                GuiOption::CpuInstructionHistory, 
                                 new_opt 
                             )
                         );
                         ui.close_menu();
-                    }                         
-                });                            
+                    }
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuInstructionHistory), "Trace Logging Enabled").clicked() {
+
+                        let new_opt = self.get_option(GuiOption::CpuInstructionHistory).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiOption::CpuInstructionHistory, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }                                        
+                });
                 if ui.button("Memory...").clicked() {
                     *self.window_flag(GuiWindow::MemoryViewer) = true;
                     ui.close_menu();
                 }
-                if ui.button("Instruction Trace...").clicked() {
-                    *self.window_flag(GuiWindow::TraceViewer) = true;
+                if ui.button("Instruction History...").clicked() {
+                    *self.window_flag(GuiWindow::HistoryViewer) = true;
                     ui.close_menu();
                 }
+                if ui.button("Instruction Cycle Trace...").clicked() {
+                    *self.window_flag(GuiWindow::CycleTraceViewer) = true;
+                    ui.close_menu();
+                }                
                 if ui.button("Call Stack...").clicked() {
                     *self.window_flag(GuiWindow::CallStack) = true;
                     ui.close_menu();
@@ -161,13 +177,13 @@ impl GuiState {
 
 
                 ui.menu_button("Display", |ui| {
-                    if ui.checkbox(&mut self.get_option_mut(GuiFlag::CorrectAspect), "Correct Aspect Ratio").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CorrectAspect), "Correct Aspect Ratio").clicked() {
 
-                        let new_opt = self.get_option(GuiFlag::CorrectAspect).unwrap();
+                        let new_opt = self.get_option(GuiOption::CorrectAspect).unwrap();
     
                         self.event_queue.push_back(
                             GuiEvent::OptionChanged(
-                                GuiFlag::CorrectAspect, 
+                                GuiOption::CorrectAspect, 
                                 new_opt 
                             )
                         );
