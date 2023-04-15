@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum CpuType {
     Intel8088,
     Intel8086,
