@@ -1316,19 +1316,19 @@ impl VideoCard for CGACard {
             }
             else if self.in_hblank {
                 // Draw hblank in debug color
-                if self.rba < CGA_MAX_CLOCK {
+                if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
                     self.buf[self.back_buf][self.rba] = CGA_HBLANK_COLOR;
                 }
             }
             else if self.in_vblank {
                 // Draw vblank in debug color
-                if self.rba < CGA_MAX_CLOCK {
+                if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
                     self.buf[self.back_buf][self.rba] = CGA_VBLANK_COLOR;
                 }
             }
             else {
                 // Draw overscan
-                if self.rba < CGA_MAX_CLOCK {
+                if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
                     self.draw_overscan_pixel();
                 }
             }
@@ -1368,7 +1368,9 @@ impl VideoCard for CGACard {
                     // We entered horizontal blank
 
                     // Save width of right overscan
-                    self.extents[self.front_buf].overscan_l = self.beam_x - self.overscan_right_start;
+                    if self.beam_x > self.overscan_right_start {
+                        self.extents[self.front_buf].overscan_r = self.beam_x - self.overscan_right_start;
+                    }
                     self.in_hblank = true;
                 }
                 else if self.hcc_c0 == self.crtc_horizontal_sync_pos + (self.crtc_sync_width & 0x0F) { 
