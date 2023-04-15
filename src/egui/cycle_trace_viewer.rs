@@ -32,12 +32,14 @@ use crate::egui::*;
 pub struct CycleTraceViewerControl {
 
     pub content_str: String,
+    pub instr_len: usize
 }
 
 impl CycleTraceViewerControl {
     pub fn new() -> Self {
         Self {
-            content_str: String::new()
+            content_str: String::new(),
+            instr_len: 0,
         }
     }
 
@@ -48,10 +50,18 @@ impl CycleTraceViewerControl {
                     .font(egui::TextStyle::Monospace));
             ui.end_row()
         });
+
+        ui.separator();
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new("Cycles:").text_style(egui::TextStyle::Monospace));
+            ui.label(egui::RichText::new(format!("{}", self.instr_len)).text_style(egui::TextStyle::Monospace));
+        }); 
+
     }
 
     pub fn update(&mut self, trace_vec: &Vec<String>) {
 
+        self.instr_len = trace_vec.len();
         self.content_str = trace_vec.join("\n");
     }
 
