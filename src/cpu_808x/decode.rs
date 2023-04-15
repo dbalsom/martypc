@@ -459,9 +459,11 @@ impl<'a> Cpu<'a> {
             loaded_modrm = true;
         }
 
-        // Begin instruction execution after opcode fetch (if no modrm) or after modrm on next cycle
         if !loaded_modrm {
-            bytes.wait(1);
+            // No modrm. Set a one cycle fetch delay. This has no effect when reading from memory.
+            // When fetching from the processor instruction queue, the 2nd byte must be a modrm or 
+            // the fetch is skipped for that cycle.            
+            bytes.delay(1);
         }
 
         if loaded_modrm && (op_flags & I_LOAD_EA == 0) {
