@@ -544,9 +544,11 @@ impl<'a> Cpu<'a> {
                 let op_reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
                 let ax_value = self.ax;
                 let op_reg_value = self.get_register16(op_reg);
+
+                self.cycles_i(2, &[0x084, 0x085]);
+
                 self.set_register16(Register16::AX, op_reg_value);
                 self.set_register16(op_reg, ax_value);
-                self.cycles(2);
             }
             0x98 => {
                 // CBW - Convert Byte to Word
