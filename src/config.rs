@@ -165,6 +165,7 @@ pub struct Validator {
 #[derive(Debug, Deserialize)]
 pub struct Machine {
     pub model: MachineType,
+    pub turbo: bool,
     pub video: VideoType,
     pub hdc: HardDiskControllerType,
     pub drive0: Option<String>,
@@ -226,6 +227,9 @@ pub struct CmdLineArgs {
     pub machine_model: Option<MachineType>,
 
     #[bpaf(long)]
+    pub turbo: bool,
+
+    #[bpaf(long)]
     pub validator: Option<ValidatorType>,
 }
 
@@ -242,6 +246,8 @@ impl ConfigFileParams {
         self.emulator.autostart |= shell_args.autostart;
         self.emulator.warpspeed |= shell_args.warpspeed;
         self.emulator.correct_aspect |= shell_args.correct_aspect;
+
+        self.machine.turbo |= shell_args.turbo;
 
         self.cpu.off_rails_detection |= shell_args.off_rails_detection;
 
