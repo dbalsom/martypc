@@ -60,9 +60,11 @@ impl InstructionQueue {
 
     pub fn set_preload(&mut self) {
         if self.len > 0 {
-
             let byte = self.pop();
             self.preload = Some(byte);
+        }
+        else {
+            log::error!("Tried to preload with empty queue.")
         }
     }
 
