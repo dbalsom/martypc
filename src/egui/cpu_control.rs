@@ -103,7 +103,30 @@ impl CpuControl {
             };
 
             ui.menu_button(egui::RichText::new("⏷").font(egui::FontId::proportional(20.0)), |ui| {
+                if ui.checkbox(&mut gui_options.get_mut(&GuiOption::CpuEnableWaitStates).unwrap(), "Enable Wait States").clicked() {
 
+                    let new_opt = gui_options.get(&GuiOption::CpuEnableWaitStates).unwrap();
+
+                    events.push_back(
+                        GuiEvent::OptionChanged(
+                            GuiOption::CpuEnableWaitStates, 
+                            *new_opt 
+                        )
+                    );
+                    ui.close_menu();
+                } 
+                if ui.checkbox(&mut gui_options.get_mut(&GuiOption::CpuInstructionHistory).unwrap(), "Instruction History").clicked() {
+
+                    let new_opt = gui_options.get(&GuiOption::CpuInstructionHistory).unwrap();
+
+                    events.push_back(
+                        GuiEvent::OptionChanged(
+                            GuiOption::CpuInstructionHistory, 
+                            *new_opt 
+                        )
+                    );
+                    ui.close_menu();
+                }   
                 if ui.checkbox(&mut gui_options.get_mut(&GuiOption::CpuTraceLoggingEnabled).unwrap(), "Trace Logging Enabled").clicked() {
 
                     let new_opt = gui_options.get(&GuiOption::CpuTraceLoggingEnabled).unwrap();
