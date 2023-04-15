@@ -208,6 +208,12 @@ impl CpuViewerControl {
           
             ui.end_row();  
         });
+
+    ui.separator();
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new("PIQ:").text_style(egui::TextStyle::Monospace));
+        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.piq).font(egui::TextStyle::Monospace));
+    }); 
     ui.separator();
     ui.horizontal(|ui| {
         ui.label(egui::RichText::new("Instruction #:").text_style(egui::TextStyle::Monospace));
