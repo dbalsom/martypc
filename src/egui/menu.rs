@@ -118,13 +118,13 @@ impl GuiState {
                         );
                         ui.close_menu();
                     }
-                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuInstructionHistory), "Trace Logging Enabled").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuTraceLoggingEnabled), "Trace Logging Enabled").clicked() {
 
-                        let new_opt = self.get_option(GuiOption::CpuInstructionHistory).unwrap();
+                        let new_opt = self.get_option(GuiOption::CpuTraceLoggingEnabled).unwrap();
     
                         self.event_queue.push_back(
                             GuiEvent::OptionChanged(
-                                GuiOption::CpuInstructionHistory, 
+                                GuiOption::CpuTraceLoggingEnabled, 
                                 new_opt 
                             )
                         );
