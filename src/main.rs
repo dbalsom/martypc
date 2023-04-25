@@ -273,7 +273,7 @@ fn main() {
     let mut features = Vec::new();
 
     // Read config file
-    let config = match config::get_config("./marty.toml"){
+    let mut config = match config::get_config("./marty.toml"){
         Ok(config) => config,
         Err(e) => {
             match e.downcast_ref::<std::io::Error>() {
@@ -528,6 +528,21 @@ fn main() {
 
     framework.gui.set_option(GuiOption::CpuTraceLoggingEnabled, config.emulator.trace_on);
     machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+
+    // Debug mode on? 
+    if config.emulator.debug_mode {
+        // Open default debug windows
+        framework.gui.set_window_open(GuiWindow::CpuControl, true);
+        framework.gui.set_window_open(GuiWindow::DiassemblyViewer, true);
+        framework.gui.set_window_open(GuiWindow::CpuStateViewer, true);
+
+        // Override CpuInstructionHistory
+        framework.gui.set_option(GuiOption::CpuInstructionHistory, true);
+        machine.set_cpu_option(CpuOption::InstructionHistory(true));
+
+        // Disable autostart
+        config.emulator.autostart = false;
+    }
 
 
     // Resize window if video card is in Direct mode and specifies a display aperature

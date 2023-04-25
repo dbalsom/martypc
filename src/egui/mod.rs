@@ -360,8 +360,6 @@ impl Framework {
 
         // Render egui with WGPU
         {
-            
-
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("egui"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -393,13 +391,13 @@ impl GuiState {
         // Set default values for window open flags
         let window_open_flags: HashMap<GuiWindow, bool> = [
             (GuiWindow::About, false),
-            (GuiWindow::CpuControl, true),
+            (GuiWindow::CpuControl, false),
             (GuiWindow::PerfViewer, false),
             (GuiWindow::MemoryViewer, false),
             (GuiWindow::CompositeAdjust, false),
             (GuiWindow::CpuStateViewer, false),
             (GuiWindow::HistoryViewer, false),
-            (GuiWindow::DiassemblyViewer, true),
+            (GuiWindow::DiassemblyViewer, false),
             (GuiWindow::PitViewer, false),
             (GuiWindow::PicViewer, false),
             (GuiWindow::PpiViewer, false),
@@ -514,6 +512,11 @@ impl GuiState {
             false
         }
     }
+
+    pub fn set_window_open(&mut self, window: GuiWindow, state: bool) {
+
+        *self.window_open_flags.get_mut(&window).unwrap() = state;
+    }    
 
     pub fn set_option(&mut self, option: GuiOption, state: bool) {
         if let Some(opt) = self.option_flags.get_mut(&option) {
