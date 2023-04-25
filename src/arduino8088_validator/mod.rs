@@ -869,7 +869,6 @@ impl RemoteCpu {
         while self.program_state != ProgramState::ExecuteDone {
             let cycle_state = self.cycle(instr, emu_prefetch, emu_mem_ops, cpu_prefetch, cpu_mem_ops)?;
             
-            
             if !self.finalize {
                 cycle_vec.push(cycle_state);
             }
@@ -889,28 +888,6 @@ impl RemoteCpu {
         Ok(true)
     }
 
-    /*
-    pub fn store(&mut self) -> Result<VRegisters, CpuClientError> {
-
-        // Enter store state
-        self.cpu_client.begin_store()?;
-
-        // Run Store state until StoreDone
-        while self.program_state != ProgramState::StoreDone {
-            //log::trace!("Validator state: {:?}", self.program_state);
-            self.cpu_client.cycle()?;
-            self.program_state = self.cpu_client.get_program_state().expect("Failed to get program state!");
-        }
-
-        let mut buf: [u8; 28] = [0; 28];
-        self.cpu_client.store_registers_to_buf(&mut buf)?;
-
-        let regs = ArduinoValidator::buf_to_regs(&buf);
-        
-        RemoteCpu::print_regs(&regs);
-        Ok(regs)
-    } 
-    */
     pub fn store(&mut self) -> Result<VRegisters, CpuClientError> {
         let mut buf: [u8; 28] = [0; 28];
         self.cpu_client.store_registers_to_buf(&mut buf)?;

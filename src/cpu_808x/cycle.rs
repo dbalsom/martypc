@@ -29,6 +29,30 @@ use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
 use crate::cpu_808x::addressing::*;
 
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::ReadType;
+
+macro_rules! validate_read_u8 {
+    ($myself: expr, $addr: expr, $data: expr, $rtype: expr) => {
+        {
+            #[cfg(feature = "cpu_validator")]
+            if let Some(ref mut validator) = &mut $myself.validator {
+                validator.emu_read_byte($addr, $data, $rtype)
+            }
+        }
+    };
+}
+
+macro_rules! validate_write_u8 {
+    ($myself: expr, $addr: expr, $data: expr) => {
+        {
+            #[cfg(feature = "cpu_validator")]
+            if let Some(ref mut validator) = &mut $myself.validator {
+                validator.emu_write_byte($addr, $data)
+            }
+        }
+    };
+}
 
 impl<'a> Cpu<'a> {
     #[inline]
@@ -106,92 +130,85 @@ impl<'a> Cpu<'a> {
                             }
                         }
                     }
-                    TCycle::T3 => {
-                        // Reading/writing occurs on T3. The READY handshake is not simulated, instead the BusInterface
-                        // methods will return the number of wait states appropriate for each read/write.
+                    TCycle::T3 | TCycle::Tw => {
+                        if self.t_cycle == TCycle::T3 {
+                            self.wait_states += self.bus_wait_states;
+                        }
 
-                        match (self.bus_status, self.transfer_size) {
-                            (BusStatus::CodeFetch, TransferSize::Byte) => {
-                                (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                self.instr_elapsed = 0;
-                                self.wait_states += self.bus_wait_states;
-                                
-                                self.data_bus = byte as u16;
-                                self.transfer_n += 1;
+                        // Reading/writing occurs on T3 (with 0 wait states) or the last Tw state.
+                        if self.is_last_wait() {
+                            match (self.bus_status, self.transfer_size) {
+                                (BusStatus::CodeFetch, TransferSize::Byte) => {
+                                    (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
+                                    self.instr_elapsed = 0;
+                                    self.data_bus = byte as u16;
+                                    self.transfer_n += 1;
+
+                                    validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, ReadType::Code);
+                                }
+                                (BusStatus::CodeFetch, TransferSize::Word) => {
+                                    (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
+                                    self.instr_elapsed = 0;  
+                                    self.transfer_n += 1;
+                                }
+                                (BusStatus::MemRead, TransferSize::Byte) => {
+                                    (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
+                                    self.instr_elapsed = 0;
+                                    self.data_bus = byte as u16;
+                                    self.transfer_n += 1;
+
+                                    validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, ReadType::Data);
+                                }                            
+                                (BusStatus::MemRead, TransferSize::Word) => {
+                                    (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
+                                    self.instr_elapsed = 0;
+                                    self.transfer_n += 1;
+                                }                         
+                                (BusStatus::MemWrite, TransferSize::Byte) => {
+                                    self.i8288.mwtc = true;
+                                    _ = 
+                                        self.bus.write_u8(
+                                            self.address_bus as usize, 
+                                            (self.data_bus & 0x00FF) as u8, 
+                                            self.instr_elapsed
+                                        ).unwrap();
+                                    self.instr_elapsed = 0;
+                                    self.transfer_n += 1;
+
+                                    validate_write_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8);
+                                }
+                                (BusStatus::MemWrite, TransferSize::Word) => {
+                                    self.i8288.mwtc = true;
+                                    _ = self.bus.write_u16(self.address_bus as usize, self.data_bus, self.instr_elapsed).unwrap();
+                                    self.instr_elapsed = 0;
+                                    self.transfer_n += 1;
+                                }
+                                (BusStatus::IORead, TransferSize::Byte) => {
+                                    byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16);
+                                    self.data_bus = byte as u16;
+                                    self.transfer_n += 1;
+                                }
+                                (BusStatus::IOWrite, TransferSize::Byte) => {
+                                    self.i8288.iowc = true;
+                                    self.bus.io_write_u8((self.address_bus & 0xFFFF) as u16, (self.data_bus & 0x00FF) as u8);
+                                    self.transfer_n += 1;
+                                }                                                                                                                     
+                                _=> {
+                                    log::warn!("Unhandled bus status: {:?}!", self.bus_status);
+                                }
                             }
-                            (BusStatus::CodeFetch, TransferSize::Word) => {
-                                (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                self.instr_elapsed = 0;
-                                self.wait_states += self.bus_wait_states;
-                                
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::MemRead, TransferSize::Byte) => {
-                                (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                self.instr_elapsed = 0;
-                                self.wait_states += self.bus_wait_states;
-                                
-                                self.data_bus = byte as u16;
-                                self.transfer_n += 1;
-                            }                            
-                            (BusStatus::MemRead, TransferSize::Word) => {
-                                (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                self.instr_elapsed = 0;
-                                self.wait_states += self.bus_wait_states;
-                                
-                                self.transfer_n += 1;
-                            }                         
-                            (BusStatus::MemWrite, TransferSize::Byte) => {
-                                self.i8288.mwtc = true;
-                                _ = 
-                                    self.bus.write_u8(
-                                        self.address_bus as usize, 
-                                        (self.data_bus & 0x00FF) as u8, 
-                                        self.instr_elapsed
-                                    ).unwrap();
-                                self.instr_elapsed = 0;
-                                self.wait_states += self.bus_wait_states;
-                                
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::MemWrite, TransferSize::Word) => {
-                                self.i8288.mwtc = true;
-                                _ = self.bus.write_u16(self.address_bus as usize, self.data_bus, self.instr_elapsed).unwrap();
-                                self.instr_elapsed = 0;
-                                self.wait_states += self.bus_wait_states;
-                                
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::IORead, TransferSize::Byte) => {
-                                byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16);
-                                self.wait_states += 1;
-                                self.data_bus = byte as u16;
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::IOWrite, TransferSize::Byte) => {
-                                self.i8288.iowc = true;
-                                self.bus.io_write_u8((self.address_bus & 0xFFFF) as u16, (self.data_bus & 0x00FF) as u8);
-                                self.wait_states += 1;
-                                self.transfer_n += 1;
-                            }                                                                                                                     
-                            _=> {
-                                log::warn!("Unhandled bus status: {:?}!", self.bus_status);
+
+                            // If we're not in the middle of a word transfer, schedule a prefetch if appropriate.
+                            if self.is_operand_complete() {
+                                self.biu_make_fetch_decision();
                             }
                         }
 
                         if !self.enable_wait_states {
                             // No wait states for you!
+                            self.bus_wait_states = 0;
                             self.wait_states = 0;
                         }
-
-                        if self.is_last_wait() && self.is_operand_complete() {
-                            self.biu_make_fetch_decision();
-                        }
-                    }
-                    TCycle::Tw => {
-                        if self.is_last_wait() && self.is_operand_complete() {
-                            self.biu_make_fetch_decision();
-                        }                        
                     }
                     TCycle::T4 => {
                         match (self.bus_status, self.transfer_size) {

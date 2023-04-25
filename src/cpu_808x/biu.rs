@@ -2,31 +2,6 @@
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
 
-#[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::ReadType;
-
-macro_rules! validate_read_u8 {
-    ($myself: expr, $addr: expr, $data: expr, $rtype: expr) => {
-        {
-            #[cfg(feature = "cpu_validator")]
-            if let Some(ref mut validator) = &mut $myself.validator {
-                validator.emu_read_byte($addr, $data, $rtype)
-            }
-        }
-    };
-}
-
-macro_rules! validate_write_u8 {
-    ($myself: expr, $addr: expr, $data: expr) => {
-        {
-            #[cfg(feature = "cpu_validator")]
-            if let Some(ref mut validator) = &mut $myself.validator {
-                validator.emu_write_byte($addr, $data)
-            }
-        }
-    };
-}
-
 pub enum ReadWriteFlag {
     Normal,
     RNI
@@ -336,7 +311,7 @@ impl<'a> Cpu<'a> {
             QueueType::Subsequent => QueueOp::Subsequent
         };
         //self.cycle(); // It takes 1 cycle to read from the queue.
-        
+
         byte
     }
 
@@ -353,7 +328,7 @@ impl<'a> Cpu<'a> {
         );
         let _cycles_waited = self.biu_bus_wait_finish();
         
-        validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
+        //validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
 
         (self.data_bus & 0x00FF) as u8
     }
@@ -374,7 +349,7 @@ impl<'a> Cpu<'a> {
             ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
         };
         
-        validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
+        //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
     }
 
     pub fn biu_io_read_u8(&mut self, addr: u16) -> u8 {
@@ -433,7 +408,7 @@ impl<'a> Cpu<'a> {
                 self.biu_bus_wait_finish();
                 word = self.data_bus & 0x00FF;
 
-                validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
+                //validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
 
                 self.biu_bus_begin(
                     BusStatus::MemRead, 
@@ -453,7 +428,7 @@ impl<'a> Cpu<'a> {
                 };
                 word |= (self.data_bus & 0x00FF) << 8;
 
-                validate_read_u8!(self, addr + 1, (self.data_bus & 0x00FF) as u8, ReadType::Data);
+                //validate_read_u8!(self, addr + 1, (self.data_bus & 0x00FF) as u8, ReadType::Data);
                 word
             }
             CpuType::Intel8086 => {
@@ -490,7 +465,7 @@ impl<'a> Cpu<'a> {
                     OperandSize::Operand16,
                     true);
 
-                validate_write_u8!(self, addr, (word & 0x00FF) as u8);
+                //validate_write_u8!(self, addr, (word & 0x00FF) as u8);
 
                 self.biu_bus_wait_finish();
 
@@ -503,7 +478,7 @@ impl<'a> Cpu<'a> {
                     OperandSize::Operand16,
                     false);
 
-                validate_write_u8!(self, addr + 1, ((word >> 8) & 0x00FF) as u8);
+                //validate_write_u8!(self, addr + 1, ((word >> 8) & 0x00FF) as u8);
 
                 match flag {
                     ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
