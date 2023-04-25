@@ -551,7 +551,10 @@ impl<'a> Cpu<'a> {
     }
 
     /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
-    /// This function is usually used on a terminal write to wait for T2 to process RNI
+    /// 
+    /// This function is usually used on a terminal write to wait for T3-TwLast to 
+    /// handle RNI in microcode. The next instruction byte will be fetched on this 
+    /// terminating cycle and the beginning of execution will overlap with T4.
     pub fn biu_bus_wait_until(&mut self, target_state: TCycle) -> u32 {
         let mut bus_cycles_elapsed = 0;
         match self.bus_status {
