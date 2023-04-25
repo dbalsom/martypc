@@ -51,6 +51,13 @@ pub const NUM_HDDS: u32 = 2;
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
 #[derive(Copy, Clone, Debug)]
+pub enum MachineState {
+    Running,
+    Paused,
+    Off
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum ExecutionState {
     Paused,
     BreakpointHit,
@@ -350,12 +357,14 @@ impl<'a> Machine<'a> {
     /// Set the specified state of the turbo button. True will enable turbo mode
     /// and switch to the turbo mode CPU clock factor.
     pub fn set_turbo_mode(&mut self, state: bool) {
+        
         if state {
             self.cpu_factor = self.machine_desc.cpu_turbo_factor;
         }
         else {
             self.cpu_factor = self.machine_desc.cpu_factor;
         }
+        log::debug!("Set turbo mode to: {} New cpu factor is {:?}", state, self.cpu_factor);
     }
 
     pub fn fdc(&mut self) -> &mut Option<FloppyController> {

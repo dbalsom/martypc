@@ -17,10 +17,42 @@ impl GuiState {
                     ui.close_menu();
                 }                    
             });
-            ui.menu_button("Media", |ui| {
-                ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
+            ui.menu_button("Machine", |ui| {
+                if ui.button("⚡ Power on").clicked() {
+                    
+                    ui.close_menu();
+                } 
+                if ui.checkbox(&mut self.get_option_mut(GuiOption::TurboButton), "Turbo Button").clicked() {
 
-                ui.menu_button("Load Floppy in Drive A:...", |ui| {
+                    let new_opt = self.get_option(GuiOption::TurboButton).unwrap();
+
+                    self.event_queue.push_back(
+                        GuiEvent::OptionChanged(
+                            GuiOption::TurboButton, 
+                            new_opt 
+                        )
+                    );
+                    ui.close_menu();
+                }
+                if ui.button("⏸ Pause").clicked() {
+                    
+                    ui.close_menu();
+                }
+                if ui.button("⟲ Reboot").clicked() {
+                    
+                    ui.close_menu();
+                }                    
+                if ui.button("🔌 Power off").clicked() {
+                    
+                    ui.close_menu();
+                }                   
+            });
+            ui.menu_button("Media", |ui| {
+
+                ui.set_min_size(egui::vec2(200.0, 0.0));
+                //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
+
+                ui.menu_button("💾 Load Floppy in Drive A:...", |ui| {
                     for name in &self.floppy_names {
                         if ui.button(name.to_str().unwrap()).clicked() {
                             
@@ -33,7 +65,7 @@ impl GuiState {
                     }
                 });
 
-                ui.menu_button("Load Floppy in Drive B:...", |ui| {
+                ui.menu_button("💾 Load Floppy in Drive B:...", |ui| {
                     for name in &self.floppy_names {
                         if ui.button(name.to_str().unwrap()).clicked() {
                             
@@ -46,17 +78,17 @@ impl GuiState {
                     }
                 });      
                 
-                if ui.button("Eject Floppy in Drive A:...").clicked() {
+                if ui.button("⏏ Eject Floppy in Drive A:").clicked() {
                     self.event_queue.push_back(GuiEvent::EjectFloppy(0));
                     ui.close_menu();
                 };       
                 
-                if ui.button("Eject Floppy in Drive B:...").clicked() {
+                if ui.button("⏏ Eject Floppy in Drive B:").clicked() {
                     self.event_queue.push_back(GuiEvent::EjectFloppy(1));
                     ui.close_menu();
                 };                              
 
-                ui.menu_button("Load VHD in Drive 0:...", |ui| {
+                ui.menu_button("🖴 Load VHD in Drive 0:...", |ui| {
                     for name in &self.vhd_names {
 
                         if ui.radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap()).clicked() {
@@ -68,7 +100,7 @@ impl GuiState {
                     }
                 });                               
 
-                if ui.button("Create new VHD...").clicked() {
+                if ui.button("🖹 Create new VHD...").clicked() {
                     *self.window_flag(GuiWindow::VHDCreator) = true;
                     ui.close_menu();
                 };

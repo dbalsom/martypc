@@ -110,7 +110,8 @@ pub enum GuiOption {
     CorrectAspect,
     CpuEnableWaitStates,
     CpuInstructionHistory,
-    CpuTraceLoggingEnabled
+    CpuTraceLoggingEnabled,
+    TurboButton
 }
 
 pub enum GuiEvent {
@@ -415,6 +416,7 @@ impl GuiState {
             (GuiOption::CpuEnableWaitStates, true),
             (GuiOption::CpuInstructionHistory, false),
             (GuiOption::CpuTraceLoggingEnabled, false),
+            (GuiOption::TurboButton, false),
         ].into();
 
         Self { 

@@ -1235,20 +1235,17 @@ fn main() {
                                         surface.fill(0);
                                     }
                                     (GuiOption::CpuEnableWaitStates, state) => {
-                                        {
-                                            machine.set_cpu_option(CpuOption::EnableWaitStates(state));
-                                        }
+                                        machine.set_cpu_option(CpuOption::EnableWaitStates(state));
                                     }
                                     (GuiOption::CpuInstructionHistory, state) => {
-                                        {
-                                            machine.set_cpu_option(CpuOption::InstructionHistory(state));
-                                        }
+                                        machine.set_cpu_option(CpuOption::InstructionHistory(state));
                                     }
                                     (GuiOption::CpuTraceLoggingEnabled, state) => {
-                                        {
-                                            machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
-                                        }
-                                    }                                                        
+                                        machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
+                                    }
+                                    (GuiOption::TurboButton, state) => {
+                                        machine.set_turbo_mode(state);
+                                    }
                                     _ => {}
                                 }
                             }
