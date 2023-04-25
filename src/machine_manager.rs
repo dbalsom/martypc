@@ -28,41 +28,51 @@ use lazy_static::lazy_static;
 use crate::pit::PitType;
 use crate::config::MachineType;
 use crate::cpu_common::CpuType;
+use crate::bus::ClockFactor;
 
+// Clock derivision from reenigne
+// See https://www.vogons.org/viewtopic.php?t=55049
+pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5/11.0;
+pub const PIT_DIVISOR: u32 = 12;
 
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum KbControllerType {
     Ppi,
     At
 }
 
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum PicType {
     Single,
     Chained
 }
 
-
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum DmaType {
     Single,
     Chained
 }
 
 
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum BusType {
     Isa8,
     Isa16
 }
 
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub struct MachineDescriptor {
     pub machine_type: MachineType,
+    pub system_crystal: f64,            // The main system crystal speed in MHz. 
+    pub timer_crystal: Option<f64>,     // The main timer crystal speed in MHz. On PC/AT, there is a separate timer
+                                        // crystal to run the PIT at the same speed as PC/XT. 
+    pub bus_crystal: f64,
     pub cpu_type: CpuType,
-    pub cpu_freq: f64,
+    pub cpu_factor: ClockFactor,        // Specifies the CPU speed in either a divisor or multiplier of system crystal.
+    pub cpu_turbo_factor: ClockFactor,  // Same as above, but when turbo button is active
     pub bus_type: BusType,
-    pub bus_freq: f64,
+    pub bus_factor: ClockFactor,        // Specifies the ISA bus speed in either a divisor or multiplier of bus crystal.
+    pub timer_divisor: u32,             // Specifies the PIT timer speed in a divisor of timer clock speed.
     pub have_ppi: bool,
     pub kb_controller: KbControllerType,
     pub pit_type: PitType,
@@ -84,16 +94,21 @@ lazy_static! {
                     MachineType::IBM_PC_5150,
                     MachineDescriptor {
                         machine_type: MachineType::IBM_PC_5150,
+                        system_crystal: IBM_PC_SYSTEM_CLOCK,
+                        timer_crystal: None,
+                        bus_crystal: IBM_PC_SYSTEM_CLOCK,
                         cpu_type: CpuType::Intel8088,
-                        cpu_freq: 4.77272666,
+                        cpu_factor: ClockFactor::Divisor(3),
+                        cpu_turbo_factor: ClockFactor::Divisor(2),
                         bus_type: BusType::Isa8,
-                        bus_freq: 4.77272666,
+                        bus_factor: ClockFactor::Divisor(1),
+                        timer_divisor: PIT_DIVISOR,
                         have_ppi: true,
                         kb_controller: KbControllerType::Ppi,
                         pit_type: PitType::Model8253,
                         pic_type: PicType::Single,
                         dma_type: DmaType::Single,
-                        conventional_ram: 0x1000000,
+                        conventional_ram: 0x100000,
                         conventional_ram_speed: 200.0,
                         num_floppies: 2,
                         serial_ports: true,
@@ -104,16 +119,21 @@ lazy_static! {
                     MachineType::IBM_XT_5160,
                     MachineDescriptor {
                         machine_type: MachineType::IBM_XT_5160,
+                        system_crystal: IBM_PC_SYSTEM_CLOCK,
+                        timer_crystal: None,
+                        bus_crystal: IBM_PC_SYSTEM_CLOCK,
                         cpu_type: CpuType::Intel8088,
-                        cpu_freq: 4.77272666,
+                        cpu_factor: ClockFactor::Divisor(3),
+                        cpu_turbo_factor: ClockFactor::Divisor(2),
                         bus_type: BusType::Isa8,
-                        bus_freq: 4.77272666,
+                        bus_factor: ClockFactor::Divisor(1),
+                        timer_divisor: PIT_DIVISOR,
                         have_ppi: true,
                         kb_controller: KbControllerType::Ppi,
                         pit_type: PitType::Model8253,
                         pic_type: PicType::Single,
                         dma_type: DmaType::Single,
-                        conventional_ram: 0x1000000,
+                        conventional_ram: 0x100000,
                         conventional_ram_speed: 200.0,
                         num_floppies: 2,
                         serial_ports: true,

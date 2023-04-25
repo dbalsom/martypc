@@ -672,7 +672,7 @@ impl DMAController {
             AddressMode::Increment => {
                 if self.channels[channel].current_word_count_reg > 0 {
 
-                    (data, _cost) = bus.read_u8(bus_address).unwrap();
+                    (data, _cost) = bus.read_u8(bus_address, 0).unwrap();
                     
                     if self.channels[channel].current_word_count_reg == 1 {
                         //log::trace!("car: {} cwc: {} ", self.channels[channel].current_address_reg, self.channels[channel].current_word_count_reg);
@@ -687,7 +687,7 @@ impl DMAController {
                 else if self.channels[channel].current_word_count_reg == 0 && !self.channels[channel].terminal_count {
                     
                     // Transfer one more on a 0 count, then set TC
-                    (data, _cost) = bus.read_u8(bus_address).unwrap();
+                    (data, _cost) = bus.read_u8(bus_address, 0).unwrap();
 
                     //self.channels[channel].current_address_reg += 1;
 
@@ -728,7 +728,7 @@ impl DMAController {
                     
                     // Don't transfer anything if in Verify mode
                     if let TransferType::Write = self.channels[channel].transfer_type {
-                        bus.write_u8(bus_address, data).unwrap();
+                        bus.write_u8(bus_address, data, 0).unwrap();
                     }
                     
                     self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
@@ -740,7 +740,7 @@ impl DMAController {
                     
                     // Transfer one more on a 0 count, then set TC
                     if let TransferType::Write = self.channels[channel].transfer_type {
-                        bus.write_u8(bus_address, data).unwrap();
+                        bus.write_u8(bus_address, data, 0).unwrap();
                     }
                     //self.channels[channel].current_address_reg += 1;
 
@@ -795,7 +795,7 @@ impl DMAController {
                         self.request_reg &= !(0x01 << i);
                     }
                     _=> {
-                        log::warn!("Unhandled DMA service mode: {:?}", self.channels[i].service_mode);
+                        //log::warn!("Unhandled DMA service mode: {:?}", self.channels[i].service_mode);
                     }
                 }
             }

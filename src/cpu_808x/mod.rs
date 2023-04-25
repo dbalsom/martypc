@@ -21,6 +21,7 @@ mod alu;
 mod bcd;
 mod bitwise;
 mod biu;
+mod cycle;
 mod decode;
 mod display;
 mod execute;
@@ -70,8 +71,6 @@ macro_rules! trace_print {
     }};
 }
 pub(crate) use trace_print;
-
-pub const CPU_MHZ: f64 = 4.77272666;
 
 const QUEUE_MAX: usize = 6;
 const FETCH_DELAY: u8 = 2;
@@ -377,6 +376,22 @@ pub enum Displacement {
     Disp16(i16),
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum DmaState {
+    Idle,
+    Dreq,
+    Hrq,
+    HoldA,
+    Operating(u8),
+    //DmaWait(u8)
+}
+
+impl Default for DmaState {
+    fn default() -> Self {
+        DmaState::Idle
+    }
+}
+
 impl Displacement {
     pub fn get_i16(&self) -> i16 {
         match self {
@@ -631,6 +646,7 @@ pub struct Cpu<'a>
 
     address_bus: u32,
     data_bus: u16,
+    pending_data_bus: u16,
     last_ea: u16,                   // Last calculated effective address. Used by 0xFE instructions
     bus: BusInterface,              // CPU owns Bus
     i8288: I8288,                   // Intel 8288 Bus Controller
@@ -645,6 +661,7 @@ pub struct Cpu<'a>
     result_16: u16,
 
     // BIU stuff
+    ready: bool,                    // READY line from 8284
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
@@ -660,6 +677,7 @@ pub struct Cpu<'a>
     transfer_size: TransferSize,    // Width of current bus transfer
     operand_size: OperandSize,      // Width of the operand being transferred. Prefetch 
     transfer_n: u32,                // Byte number of current operand (ex: 1/2 bytes of Word operand)
+    bus_wait_states: u32,
     wait_states: u32,
 
     // Bookkeeping
@@ -678,6 +696,7 @@ pub struct Cpu<'a>
     error_string: String,
     cycle_num: u64,
     instr_cycle: u32,
+    instr_elapsed: u32,
     instruction_count: u64,
     i: Instruction,                 // Currently executing instruction 
     instruction_history_on: bool,
@@ -719,11 +738,12 @@ pub struct Cpu<'a>
     service_events: VecDeque<ServiceEvent>,
 
     // DMA stuff
+    dma_state: DmaState,
     dram_refresh_simulation: bool,
     dram_refresh_cycle_target: u32,
     dram_refresh_cycles: u32,
-    dram_transfer_cycles: u32,
-    dram_refresh_has_bus: bool
+    dram_bus_owner_cycles: u32,
+    dma_aen: bool
 }
 
 pub struct CpuRegisterState {
@@ -785,6 +805,7 @@ pub struct CpuStringState {
     pub i_fl: String,
     pub d_fl: String,
     pub o_fl: String,
+    pub piq: String,
     pub instruction_count: String,
     pub cycle_count: String
 }
@@ -1067,335 +1088,6 @@ impl<'a> Cpu<'a> {
             }
             _ => true
         }
-    }
-
-    #[inline]
-    pub fn cycle(&mut self) {
-        self.cycle_i(MC_NONE);
-    }
-
-    pub fn cycle_i(&mut self, instr: u16) {
-
-        let byte;
-
-        // Bus is idle, or previous bus cycle is ending. Make a prefetch decision.
-
-        //self.trace_print(&format!("{:?}", self.is_operand_complete()));
-        //self.trace_print(&format!("{:?}, {:?}, {:?}, {}", self.fetch_suspended, self.bus_status, self.t_cycle, self.fetch_delay));
-        
-        //self.trace_print(&format!("cycle(): {:?} bus_status: {:?}", self.fetch_state, self.bus_status));
-
-        // Transition to next t-state
-
-        //self.trace_print(&format!("t_cycle: {:?}", self.t_cycle));
-
-        self.trace_instr = instr;
-
-        if self.t_cycle == TCycle::TInit {
-            self.t_cycle = TCycle::T1;
-        }
-
-        // Operate current t-state
-        match self.bus_status {
-            BusStatus::Passive => {
-                self.transfer_n = 0;
-            }
-            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
-                match self.t_cycle {
-                    TCycle::TInit => {
-                        panic!("Can't execute TInit state");
-                    },
-                    TCycle::T1 => {
-                    },
-                    TCycle::T2 => {
-                        // Turn off ale signal on T2
-                        self.i8288.ale = false;
-
-                        // Read/write signals go high on T2.
-                        match self.bus_status {
-                            BusStatus::CodeFetch | BusStatus::MemRead => {
-                                self.i8288.mrdc = true;
-                            }
-                            BusStatus::MemWrite => {
-                                // Only AMWC goes high on T2. MWTC delayed to T3.
-                                self.i8288.amwc = true;
-                            }
-                            BusStatus::IORead => {
-                                self.i8288.iorc = true;
-                            }
-                            BusStatus::IOWrite => {
-                                // Only AIOWC goes high on T2. IOWC delayed to T3.
-                                self.i8288.aiowc = true;
-                            }
-                            _ => {}
-                        }
-                    }
-                    TCycle::T3 => {
-                        // Reading/writing occurs on T3. The READY handshake is not simulated, instead the BusInterface
-                        // methods will return the number of wait states appropriate for each read/write.
-                        match (self.bus_status, self.transfer_size) {
-                            (BusStatus::CodeFetch, TransferSize::Byte) => {
-                                (byte, self.wait_states) = self.bus.read_u8(self.address_bus as usize).unwrap();
-                                self.wait_states += self.dram_transfer_cycles;
-                                self.data_bus = byte as u16;
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::CodeFetch, TransferSize::Word) => {
-                                (self.data_bus, self.wait_states) = self.bus.read_u16(self.address_bus as usize).unwrap();
-                                self.wait_states += self.dram_transfer_cycles;
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::MemRead, TransferSize::Byte) => {
-                                (byte, self.wait_states) = self.bus.read_u8(self.address_bus as usize).unwrap();
-                                self.wait_states += self.dram_transfer_cycles;
-                                self.data_bus = byte as u16;
-                                self.transfer_n += 1;
-                            }                            
-                            (BusStatus::MemRead, TransferSize::Word) => {
-                                (self.data_bus, self.wait_states) = self.bus.read_u16(self.address_bus as usize).unwrap();
-                                self.wait_states += self.dram_transfer_cycles;
-                                self.transfer_n += 1;
-                            }                         
-                            (BusStatus::MemWrite, TransferSize::Byte) => {
-                                self.i8288.mwtc = true;
-                                self.wait_states = self.bus.write_u8(self.address_bus as usize, (self.data_bus & 0x00FF) as u8).unwrap();
-                                self.wait_states += self.dram_transfer_cycles;
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::MemWrite, TransferSize::Word) => {
-                                self.i8288.mwtc = true;
-                                self.wait_states = self.bus.write_u16(self.address_bus as usize, self.data_bus).unwrap();
-                                self.wait_states += self.dram_transfer_cycles;
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::IORead, TransferSize::Byte) => {
-                                byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16);
-                                self.wait_states = self.dram_transfer_cycles;
-                                self.data_bus = byte as u16;
-                                self.transfer_n += 1;
-                            }
-                            (BusStatus::IOWrite, TransferSize::Byte) => {
-                                self.bus.io_write_u8((self.address_bus & 0xFFFF) as u16, (self.data_bus & 0x00FF) as u8);
-                                self.wait_states = self.dram_transfer_cycles;
-                                self.transfer_n += 1;
-                            }                                                                                                                     
-                            _=> {
-                                log::warn!("Unhandled bus status: {:?}!", self.bus_status);
-                            }
-                        }
-
-                        if !self.enable_wait_states {
-                            // No wait states for you!
-                            self.wait_states = 0;
-                        }
-
-                        if self.is_last_wait() && self.is_operand_complete() {
-                            self.biu_make_fetch_decision();
-                        }
-                    }
-                    TCycle::Tw => {
-                        if self.is_last_wait() && self.is_operand_complete() {
-                            self.biu_make_fetch_decision();
-                        }                        
-                    }
-                    TCycle::T4 => {
-                        match (self.bus_status, self.transfer_size) {
-                            (BusStatus::CodeFetch, TransferSize::Byte) => {
-                                //log::debug!("Code fetch completed!");
-                                //log::debug!("Pushed byte {:02X} to queue!", self.data_bus as u8);
-                                self.queue.push8(self.data_bus as u8);
-                                self.pc = (self.pc + 1) & 0xFFFFFu32;
-                            }
-                            (BusStatus::CodeFetch, TransferSize::Word) => {
-                                self.queue.push16(self.data_bus);
-                                self.pc = (self.pc + 2) & 0xFFFFFu32;
-                            }
-                            _=> {}                        
-                        }
-                    }
-                }
-            }
-            _ => {
-                // Handle other states
-            }
-        };
-
-        // Perform cycle tracing, if enabled
-        if self.trace_enabled && self.trace_mode == TraceMode::Cycle {
-            let trace_str = self.cycle_state_string();
-            self.trace_print(&trace_str);   
-            self.trace_str_vec.push(trace_str);
-        }
-
-        #[cfg(feature = "cpu_validator")]
-        {
-            let cycle_state = self.get_cycle_state();
-            self.cycle_states.push(cycle_state);
-        }
-
-        // Transition to next T state
-        self.t_cycle = match self.t_cycle {
-            TCycle::TInit => {
-                // A new bus cycle has been initiated, begin it
-                TCycle::T1
-            }
-            TCycle::T1 => {
-                match self.bus_status {
-                    BusStatus::Passive => TCycle::T1,
-                    BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
-                        TCycle::T2
-                    },
-                    _=> self.t_cycle
-                }
-            }
-            TCycle::T2 => TCycle::T3,
-            TCycle::T3 => {
-                if self.wait_states == 0 {
-                    self.biu_bus_end();
-                    TCycle::T4
-                }
-                else {
-                    TCycle::Tw
-                }
-            }
-            TCycle::Tw => {
-                if self.wait_states > 0 {
-                    //log::debug!("wait states: {}", self.wait_states);
-                    self.wait_states -= 1;
-                    TCycle::Tw
-                }
-                else {
-                    self.biu_bus_end();
-                    TCycle::T4
-                }                
-            }
-            TCycle::T4 => {
-
-                //self.trace_print(&format!("In T4: {:?}, {:?}", self.bus_status, self.transfer_size));
-                
-                self.bus_status = BusStatus::Passive;
-                TCycle::T1
-            }            
-        };
-
-        // Handle prefetching
-        self.biu_tick_prefetcher();
-
-        match self.fetch_state {
-            FetchState::Scheduled(n) if n > 1 => {
-                //self.trace_print("Scheduled fetch!");
-                if !self.fetch_suspended {
-                    if self.biu_queue_has_room() {
-
-                        //trace_print!(self, "Fetch started");
-                        self.fetch_state = FetchState::InProgress;
-                        self.bus_status = BusStatus::CodeFetch;
-                        self.bus_segment = Segment::CS;
-                        self.t_cycle = TCycle::T1;
-                        self.address_bus = self.pc;
-                        self.i8288.ale = true;
-                        self.data_bus = 0;
-                        self.transfer_size = self.fetch_size;
-                        self.operand_size = match self.fetch_size {
-                            TransferSize::Byte => OperandSize::Operand8,
-                            TransferSize::Word => OperandSize::Operand16
-                        };
-                        self.transfer_n = 0;
-                    }
-                    else if !self.bus_pending_eu {
-                        /*
-                        // Cancel fetch if queue is full and no pending bus request from EU that 
-                        // would otherwise trigger an abort.
-                        self.fetch_state = FetchState::Idle;
-                        trace_print!(self, "Fetch cancelled. bus_pending_eu: {}", self.bus_pending_eu);
-                        */
-                    }
-                }
-            }
-            FetchState::Idle => {
-                if self.queue_op == QueueOp::Flush {
-                    trace_print!(self, "Flush scheduled fetch!");
-                    self.biu_schedule_fetch();
-                }
-                if (self.bus_status == BusStatus::Passive) && (self.t_cycle == TCycle::T1) {
-                    // Nothing is scheduled, suspended, aborted, and bus is idle. Make a prefetch decision.
-                    //self.biu_make_fetch_decision();
-                }
-            }
-            _ => {}
-        } 
-
-        // Reset queue operation
-        self.last_queue_op = self.queue_op;
-        self.queue_op = QueueOp::Idle;
-
-        self.last_queue_byte = 0;
-
-        self.instr_cycle += 1 ;
-        self.cycle_num += 1;
-        
-        // Do DRAM refresh (DMA channel 0) simulation
-        if self.dram_refresh_simulation {
-            self.dram_refresh_cycles += 1;
-
-            if self.dram_refresh_has_bus {
-                // the DMA controller has control of the bus now. Increment the 
-                // DMA transfer cycles.
-                self.dram_transfer_cycles = self.dram_transfer_cycles.saturating_sub(1);
-
-                if self.dram_transfer_cycles == 0 {
-                    // 4 transfer cycles have elapsed, so release bus.
-                    self.dram_refresh_has_bus = false;
-                }
-            }
-
-            if self.dram_refresh_cycles == self.dram_refresh_cycle_target {
-                // DRAM refresh cycle counter has hit target. 
-                // DMA controller is now in control of bus.
-                self.dram_refresh_has_bus = true;
-                self.dram_transfer_cycles = 4;
-
-                // Reset counter.
-                self.dram_refresh_cycles = 0;
-            }
-        }
-
-        self.trace_comment = ""; 
-        self.trace_instr = MC_NONE;
-    }
-
-    #[inline]
-    pub fn cycle_nx(&self) {
-        // Do nothing
-    }
-
-    #[inline]
-    pub fn cycle_nx_i(&self, _instr: u16) {
-        // Do nothing
-    }
-
-    #[inline]
-    pub fn cycles(&mut self, ct: u32) {
-        for _ in 0..ct {
-            self.cycle();
-        }
-    }
-
-    #[inline]
-    pub fn cycles_i(&mut self, ct: u32, instrs: &[u16]) {
-        for i in 0..ct as usize {
-            self.cycle_i(instrs[i]);
-        }
-    }
-
-    #[inline]
-    pub fn cycles_nx(&mut self, ct: u32) {
-        self.cycles(ct - 1);
-    }
-
-    #[inline]
-    pub fn cycles_nx_i(&mut self, ct: u32, instrs: &[u16]) {
-        self.cycles_i(ct - 1, instrs);
     }
 
     /// Finalize an instruction that has terminated before there is a new byte in the queue.
@@ -1823,7 +1515,10 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    /// Get a string representation of the CPU state.
+    /// This is used to display the CPU state viewer window in the debug GUI.
     pub fn get_string_state(&self) -> CpuStringState {
+
         CpuStringState {
             ah: format!("{:02x}", self.ah),
             al: format!("{:02x}", self.al),
@@ -1883,12 +1578,15 @@ impl<'a> Cpu<'a> {
                 format!("{:1}", fl as u8)
             },
             
+            piq: self.queue.to_string(),
             flags: format!("{:04}", self.flags),
             instruction_count: format!("{}", self.instruction_count),
             cycle_count: format!("{}", self.cycle_num),
         }
     }
     
+    /// Evaluate an string expression such as 'cs:ip' to an address.
+    /// Basic forms supported are [reg:reg], [reg:offset], [seg:offset]
     pub fn eval_address(&self, expr: &str) -> Option<CpuAddress> {
 
         lazy_static! {
@@ -2203,8 +1901,8 @@ impl<'a> Cpu<'a> {
         }
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
-        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
+        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize, 0).unwrap();
+        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize, 0).unwrap();
 
         // Add interrupt to call stack
         self.push_call_stack(
@@ -2283,8 +1981,8 @@ impl<'a> Cpu<'a> {
 
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize).unwrap();
-        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize ).unwrap();
+        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize, 0).unwrap();
+        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize, 0).unwrap();
 
         // Add interrupt to call stack
         self.push_call_stack(
@@ -2338,6 +2036,7 @@ impl<'a> Cpu<'a> {
     ) -> Result<(StepResult, u32), CpuError> {
 
         self.instr_cycle = 0;
+        self.instr_elapsed = 0;
 
         // If tracing is enabled, clear the trace string vector that holds the trace from the last instruction.
         if self.trace_enabled {
@@ -2351,24 +2050,24 @@ impl<'a> Cpu<'a> {
         let mut irq = 7;
 
         if self.interrupts_enabled() {
-            // There will always be a primary PIC present, so safe to unwrap.
-            let pic = self.bus.pic_mut().as_mut().unwrap();
-            if pic.query_interrupt_line() {
-                match pic.get_interrupt_vector() {
-                    Some(iv) => {
-                        irq = iv;
-                        // Resume from halt on interrupt
-                        if self.halted {
-                            self.resume();
-                            // We will be jumping into an ISR now. Set the step result to Call and return
-                            // the address of the next instruction. (Step Over skips ISRs)
-                            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), 3));
-                            self.hw_interrupt(irq);
-                            return step_result
-                        }
-                        self.pending_interrupt = true;
-                    },
-                    None => {}
+            if let Some(pic) = self.bus.pic_mut().as_mut() {
+                if pic.query_interrupt_line() {
+                    match pic.get_interrupt_vector() {
+                        Some(iv) => {
+                            irq = iv;
+                            // Resume from halt on interrupt
+                            if self.halted {
+                                self.resume();
+                                // We will be jumping into an ISR now. Set the step result to Call and return
+                                // the address of the next instruction. (Step Over skips ISRs)
+                                let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), 3));
+                                self.hw_interrupt(irq);
+                                return step_result
+                            }
+                            self.pending_interrupt = true;
+                        },
+                        None => {}
+                    }
                 }
             }
         }
@@ -2768,7 +2467,7 @@ impl<'a> Cpu<'a> {
         call_stack_string
     }
 
-    pub fn cycle_state_string(&self) -> String {
+    pub fn cycle_state_string(&self, short: bool) -> String {
 
         let ale_str = match self.i8288.ale {
             true => "A:",
@@ -2792,6 +2491,11 @@ impl<'a> Cpu<'a> {
             QueueOp::First => 'F',
             QueueOp::Flush => 'E',
             QueueOp::Subsequent => 'S'
+        };
+
+        let q_preload_char = match self.queue.has_preload() {
+            true => '*',
+            false => ' '
         };
 
         let mut f_op_chr = match self.fetch_state {
@@ -2868,7 +2572,6 @@ impl<'a> Cpu<'a> {
 
         let mut instr_str = String::new();
 
-
         if self.last_queue_op == QueueOp::First || self.last_queue_op == QueueOp::Subsequent {
             // Queue byte was read.
             q_read_str = format!("<-q {:02X}", self.last_queue_byte);
@@ -2903,31 +2606,91 @@ impl<'a> Cpu<'a> {
             _ => MICROCODE_NUL.to_string()
         };
 
-        let cycle_str = format!(
-            "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} {:04} {:02} {:06} ({}) | {:1}{:1} {:<16} | {:1}{:1} [{:08}] {} | {}: {} | {}{}",
-            self.cycle_num,
-            self.instr_cycle,
-            ale_str,
-            self.address_bus,
-            seg_str,
-            rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
-            bus_str,
-            t_str,
-            xfer_str,
-            self.transfer_n,
-            f_op_chr,
-            self.fetch_delay,
-            format!("{:?}", self.fetch_state),
-            q_op_chr,
-            self.queue.len(),
-            self.queue.to_string(),
-            q_read_str,
-            microcode_line_str,
-            microcode_op_str,
-            instr_str,
-            self.trace_comment
-        );        
+        let dma_dreq_chr = match self.dma_aen {
+            true => 'R',
+            false => '.'
+        };
 
+        let ready_chr = if self.wait_states > 0 {
+            '.'
+        }
+        else {
+            'R'
+        };
+
+        let dma_str = match self.dma_state {
+            DmaState::Idle => "  ",
+            DmaState::Dreq => "DREQ",
+            DmaState::Hrq => "HRQ ",
+            DmaState::HoldA => "HLDA",
+            DmaState::Operating(n) => {
+                match n {
+                    4 => "S1",
+                    3 => "S2",
+                    2 => "S3",
+                    1 => "S4",
+                    _ => "S?"
+                }
+            }
+            //DmaState::DmaWait(..) => "DMAW"
+        };
+
+        let cycle_str;
+        if short {
+            cycle_str = format!(
+                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:1}{:1} {:<16} | {:1}{:1}{:1}[{:08}] {} | {:03} | {}{}",
+                self.instr_cycle,
+                ale_str,
+                self.address_bus,
+                seg_str,
+                ready_chr,
+                rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
+                dma_str,
+                bus_str,
+                t_str,
+                xfer_str,
+                f_op_chr,
+                self.fetch_delay,
+                format!("{:?}", self.fetch_state),
+                q_op_chr,
+                self.queue.len(),
+                q_preload_char,
+                self.queue.to_string(),
+                q_read_str,
+                microcode_line_str,
+                instr_str,
+                self.trace_comment
+            ); 
+        }
+        else {
+            cycle_str = format!(
+                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} D:{} {:04} {:02} {:06} ({}) | {:1}{:1} {:<16} | {:1}{:1}{:1}[{:08}] {} | {}: {} | {}{}",
+                self.cycle_num,
+                self.instr_cycle,
+                ale_str,
+                self.address_bus,
+                seg_str,
+                rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
+                dma_dreq_chr,
+                bus_str,
+                t_str,
+                xfer_str,
+                self.transfer_n,
+                f_op_chr,
+                self.fetch_delay,
+                format!("{:?}", self.fetch_state),
+                q_op_chr,
+                self.queue.len(),
+                q_preload_char,
+                self.queue.to_string(),
+                q_read_str,
+                microcode_line_str,
+                microcode_op_str,
+                instr_str,
+                self.trace_comment
+            ); 
+        }
+       
         cycle_str
     }
 
@@ -2991,7 +2754,10 @@ impl<'a> Cpu<'a> {
         
         let filename = format!("./dumps/cs.bin");
         
-        let cs_slice = self.bus.get_slice_at((self.cs << 4) as usize, 0x10000);
+        let len = 0x10000;
+        let address = (self.cs as usize) << 4;
+        log::debug!("Dumping {} bytes at address {:05X}", len, address);
+        let cs_slice = self.bus.get_slice_at(address, len);
 
         match std::fs::write(filename.clone(), &cs_slice) {
             Ok(_) => {
@@ -3015,10 +2781,11 @@ impl<'a> Cpu<'a> {
                 self.instruction_history.clear();
                 self.instruction_history_on = state;
             }
-            CpuOption::SimulateDramRefresh(state, cycles) => {
-                log::debug!("Setting SimulateDramRefresh to: {:?}", state);
+            CpuOption::SimulateDramRefresh(state, cycle_target, cycles) => {
+                log::debug!("Setting SimulateDramRefresh to: {:?} ({},{})", state, cycle_target, cycles);
                 self.dram_refresh_simulation = state;
-                self.dram_refresh_cycle_target = cycles;
+                self.dram_refresh_cycle_target = cycle_target;
+                self.dram_refresh_cycles = cycles;
             }
             CpuOption::OffRailsDetection(state) => {
                 log::debug!("Setting OffRailsDetection to: {:?}", state);
@@ -3046,7 +2813,7 @@ impl<'a> Cpu<'a> {
             CpuOption::InstructionHistory(_) => {
                 self.instruction_history_on
             }
-            CpuOption::SimulateDramRefresh(_, _) => {
+            CpuOption::SimulateDramRefresh(..) => {
                 self.dram_refresh_simulation
             }
             CpuOption::OffRailsDetection(_) => {

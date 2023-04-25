@@ -116,7 +116,9 @@ const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
-const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
+
+// Remove static frequency references
+//const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
 
 pub struct PerformanceStats {
@@ -156,6 +158,8 @@ struct Counter {
     emulation_time: Duration,
     render_time: Duration,
     accumulated_us: u128,
+    cpu_mhz: f64,
+    cycles_per_frame: u32,
     cycle_target: u32,
 }
 
@@ -187,7 +191,9 @@ impl Counter {
             emulation_time: Duration::ZERO,
             render_time: Duration::ZERO,
             accumulated_us: 0,
-            cycle_target: CYCLES_PER_FRAME
+            cpu_mhz: 0.0,
+            cycles_per_frame: 0,
+            cycle_target: 0,
         }
     }
 }
@@ -503,7 +509,7 @@ fn main() {
     let mut machine = Machine::new(
         &config,
         config.machine.model,
-        &machine_desc_opt.unwrap(),
+        *machine_desc_opt.unwrap(),
         config.emulator.trace_mode,
         config.machine.video, 
         sp, 
@@ -934,9 +940,18 @@ fn main() {
                         }
                     }
 
-
-
                     // Emulate a frame worth of instructions
+                    // ---------------------------------------------------------------------------
+
+                    // Recalculate cycle target based on current CPU speed if it has changed (or uninitialized)
+                    let mhz = machine.get_cpu_mhz();
+                    if mhz != stat_counter.cpu_mhz {
+                        stat_counter.cycles_per_frame = (machine.get_cpu_mhz() * 1000000.0 / FPS_TARGET) as u32;
+                        stat_counter.cycle_target = stat_counter.cycles_per_frame;
+                        log::info!("CPU clock has changed to {}Mhz; new cycle target: {}", mhz, stat_counter.cycle_target);
+                        stat_counter.cpu_mhz = mhz;
+                    }
+                    
                     let emulation_start = Instant::now();
                     stat_counter.instr_count += machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut());
                     stat_counter.emulation_time = Instant::now() - emulation_start;
@@ -985,37 +1000,43 @@ fn main() {
                         );
                         */
                     }
-                    else if emulation_time < emulation_time_allowed_ms {
-                        // ignore spurious 0-duration emulation loops
-                        if emulation_time > 0 {
-                            // Emulation could be faster
+                    else if (emulation_time > 0) && (emulation_time < emulation_time_allowed_ms) {
+                        // Emulation could run faster
                             
-                            // Increase speed by half of scaling factor
-                            let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+                        // Increase speed by half of scaling factor
+                        let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
 
-                            let old_target = stat_counter.cycle_target;
-                            let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
-                            stat_counter.cycle_target += (new_target - old_target) / 2;
+                        let old_target = stat_counter.cycle_target;
+                        let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
+                        stat_counter.cycle_target += (new_target - old_target) / 2;
 
-                            if stat_counter.cycle_target > CYCLES_PER_FRAME {
-                                // Comment to run as fast as possible
-                                
-                                if !config.emulator.warpspeed {
-                                    stat_counter.cycle_target = CYCLES_PER_FRAME;
-                                }
-                            }
-                            else {
-                                /*
-                                log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
-                                    emulation_time,
-                                    emulation_time_allowed_ms,
-                                    old_target,
-                                    stat_counter.cycle_target
-                                );
-                                */
+                        if stat_counter.cycle_target > stat_counter.cycles_per_frame {
+                            // Warpspeed runs entire emulator as fast as possible 
+                            // TODO: Limit cycle target based on render/gui time to maintain 60fps GUI updates
+                            if !config.emulator.warpspeed {
+                                stat_counter.cycle_target = stat_counter.cycles_per_frame;
                             }
                         }
+                        else {
+                            /*
+                            log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
+                                emulation_time,
+                                emulation_time_allowed_ms,
+                                old_target,
+                                stat_counter.cycle_target
+                            );
+                            */
+                        }
                     }
+
+                    /*
+                    log::debug!(
+                        "Cycle target: {} emulation time: {} allowed_ms: {}", 
+                        stat_counter.cycle_target, 
+                        emulation_time,
+                        emulation_time_allowed_ms
+                    );
+                    */
 
                     // Do per-frame updates (Serial port emulation)
                     machine.frame_update();
@@ -1636,7 +1657,7 @@ pub fn main_headless(
     let mut machine = Machine::new(
         config,
         config.machine.model,
-        &machine_desc_opt.unwrap(),
+        *machine_desc_opt.unwrap(),
         config.emulator.trace_mode,
         config.machine.video, 
         sp, 
@@ -1657,10 +1678,17 @@ pub fn main_headless(
 
 
 #[cfg(feature = "cpu_validator")]
-use std::io::{BufWriter, Write};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
 #[cfg(feature = "cpu_validator")]
-use cpu_808x::*;
-use crate::cpu_808x::mnemonic::Mnemonic;
+use cpu_808x::{
+    *,
+    mnemonic::Mnemonic,
+};
+#[cfg(feature = "cpu_validator")]
+use cpu_common::CpuType;
 
 #[cfg(feature = "cpu_validator")]
 pub fn main_fuzzer <'a>(
@@ -1684,11 +1712,11 @@ pub fn main_fuzzer <'a>(
         }
     }
 
-    let mut io_bus = IoBusInterface::new();
+    //let mut io_bus = IoBusInterface::new();
     let pic = Rc::new(RefCell::new(pic::Pic::new()));    
 
     let mut cpu = Cpu::new(
-        CpuType::Cpu8088,
+        CpuType::Intel8088,
         config.emulator.trace_mode,
         Some(trace_file_option),
         #[cfg(feature = "cpu_validator")]
@@ -1713,7 +1741,7 @@ pub fn main_fuzzer <'a>(
         // Generate specific opcodes (optional)
 
         // ALU ops
-        /*
+        
         cpu.random_inst_from_opcodes(
             &[
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
@@ -1727,7 +1755,8 @@ pub fn main_fuzzer <'a>(
             ]
         );
         // Completed 5000 tests
-        */
+        
+
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
 
@@ -1828,7 +1857,7 @@ pub fn main_fuzzer <'a>(
         //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
         //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
           
-        cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
+        //cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
         //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
 
         //cpu.random_inst_from_opcodes(&[0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD]); // CLC, STC, CLI, STI, CLD, STD
@@ -1851,7 +1880,7 @@ pub fn main_fuzzer <'a>(
             );
 
         cpu.bus_mut().seek(instruction_address as usize);
-        let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize).expect("mem err");
+        let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
 
         let mut i = match Cpu::decode(cpu.bus_mut()) {
             Ok(i) => i,
@@ -1927,7 +1956,7 @@ pub fn main_fuzzer <'a>(
         // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
         // execution per iteration. The 8088 makes no such distinction.
         loop {
-            match cpu.step(&mut io_bus, pic.clone(), false) {
+            match cpu.step(false) {
                 Ok((_, cycles)) => {
                     log::trace!("Instruction reported {} cycles", cycles);
 

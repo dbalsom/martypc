@@ -37,6 +37,11 @@ use crate::videocard::*;
 static DUMMY_PLANE: [u8; 1] = [0];
 static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
 
+// Precalculated waits in system ticks for each of the possible 16 phases of the 
+// CGA clock could issue a memory request on. 
+static WAIT_TABLE: [u32; 16] = [14,13,12,11,10,9,24,23,22,21,20,19,18,17,16,15];
+// in cpu cycles: 5,5,4,4,4,3,8,8,8,7,7,7,6,6,6,5
+
 pub const CGA_MEM_ADDRESS: usize = 0xB8000;
 // CGA memory is repeated twice due to incomplete address decoding.
 pub const CGA_MEM_APERTURE: usize = 0x8000;
@@ -204,6 +209,8 @@ macro_rules! trace_regs {
 
 pub struct CGACard {
 
+    cycles: u64,
+
     mode_byte: u8,
     display_mode: DisplayMode,
     mode_enable: bool,
@@ -216,9 +223,8 @@ pub struct CGACard {
     cc_altcolor: u8,
     cc_overscan_color: u8,
     scanline_us: f64,
-    scanline_cycles: u32,
     frame_us: f64,
-    frame_cycles: u32,
+
     cursor_frames: u32,
     in_hblank: bool,
     in_vblank: bool,
@@ -398,6 +404,9 @@ impl CGACard {
     pub fn new(trace_logger: TraceLogger) -> Self {
 
         Self {
+
+            cycles: 0,
+
             mode_byte: 0,
             display_mode: DisplayMode::Mode0TextBw40,
             mode_enable: true,
@@ -410,10 +419,10 @@ impl CGACard {
             cc_altcolor: 0,
             cc_overscan_color: 0,            
             frame_us: 0.0,
-            frame_cycles: 0,
+
             cursor_frames: 0,
             scanline_us: 0.0,
-            scanline_cycles: 0,
+
             in_hblank: false,
             in_vblank: false,
             frame_count: 0,
@@ -1278,6 +1287,7 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
         internal_vec.push((format!("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
         internal_vec.push((format!("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
+        internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
 
         map.insert("Internal".to_string(), internal_vec);
 
@@ -1298,7 +1308,9 @@ impl VideoCard for CGACard {
         // Tick the CRTC. Since the CGA is much faster clocked than the CPU this will 
         // probably happen several times per CPU instruction.
         while self.accumulated_us > (US_PER_CLOCK * self.clock_divisor as f64) {
-            
+
+            self.cycles += self.clock_divisor as u64;
+
             if self.in_display_area {
                 // Draw current pixel
                 if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
@@ -1591,28 +1603,6 @@ impl VideoCard for CGACard {
             self.accumulated_us -= (US_PER_CLOCK * self.clock_divisor as f64);
         }
 
-        /*
-         old impl
-        self.frame_cycles += cpu_cycles;
-        self.scanline_cycles += cpu_cycles;
-        if self.frame_cycles > FRAME_CPU_TIME {
-            self.frame_cycles -= FRAME_CPU_TIME;
-            self.cursor_frames += 1;
-            // Blink the cursor
-            let cursor_cycle = CGA_DEFAULT_CURSOR_FRAME_CYCLE * (self.cursor_slowblink as u32 + 1);
-            if self.cursor_frames > cursor_cycle {
-                self.cursor_frames -= cursor_cycle;
-                self.cursor_status = !self.cursor_status;
-            }
-        }
-        if self.scanline_cycles > SCANLINE_CPU_TIME {
-            self.scanline_cycles -= SCANLINE_CPU_TIME;
-        }
-        // Are we in HBLANK interval?
-        self.in_hblank = self.scanline_cycles > SCANLINE_HBLANK_START;
-        // Are we in VBLANK interval?
-        self.in_vblank = self.frame_cycles > FRAME_VBLANK_START;
-        */
     }
 
     fn reset(&mut self) {
@@ -1658,37 +1648,100 @@ impl VideoCard for CGACard {
 /// but we handle the mirroring of VRAM this way, and for consistency with other devices
 impl MemoryMappedDevice for CGACard {
 
-    fn read_u8(&mut self, address: usize) -> u8 {
+    fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+        // Look up wait states given the last ticked clock cycle + elapsed cycles
+        // passed in.
+        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+        let waits = WAIT_TABLE[phase];
+
+        trace!(
+            self, 
+            "READ_U8 (T2): PHASE: {:02X}, WAITS: {}", 
+            phase,
+            waits
+        );
+        waits
+    }
+
+    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
+        // Look up wait states given the last ticked clock cycle + elapsed cycles
+        // passed in.
+        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+        let waits = WAIT_TABLE[phase];
+
+        trace!(
+            self, 
+            "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", 
+            phase,
+            waits
+        );
+        waits
+    }
+
+    fn read_u8(&mut self, address: usize, cycles: u32) -> (u8, u32) {
 
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
         if a_offset < CGA_MEM_SIZE {
-            self.mem[a_offset]
+            // Read within memory range
+
+            // Look up wait states given the last ticked clock cycle + elapsed cycles
+            // passed in.
+            let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+            let waits = WAIT_TABLE[phase];
+
+            trace!(
+                self, 
+                "READ_U8: {:04X}:{:02X} PHASE: {:02X}, WAITS: {}", 
+                a_offset, 
+                self.mem[a_offset],
+                phase,
+                waits
+            );
+            (self.mem[a_offset], waits)
         }
         else {
             // Read out of range, shouldn't happen...
-            0xFF
+            (0xFF, 0)
         }
     }
 
-    fn write_u8(&mut self, address: usize, byte: u8) {
+    fn write_u8(&mut self, address: usize, byte: u8, cycles: u32) -> u32 {
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
         if a_offset < CGA_MEM_SIZE {
-            self.mem[a_offset] = byte
+            self.mem[a_offset] = byte;
+
+            // Look up wait states given the last ticked clock cycle + elapsed cycles
+            // passed in.
+            let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
+            trace!(
+                self, 
+                "WRITE_U8: {:04X}:{:02X} PHASE: {:02X}, WAITS: {}", 
+                a_offset, 
+                byte,
+                phase,
+                WAIT_TABLE[phase]
+            );            
+            WAIT_TABLE[phase]
+        }
+        else {
+            // Write out of range, shouldn't happen...
+            0
         }
     }
 
-    fn read_u16(&mut self, address: usize) -> u16 {
+    fn read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
 
-        let lo_byte = MemoryMappedDevice::read_u8(self, address);
-        let ho_byte = MemoryMappedDevice::read_u8(self, address + 1);
+        let (lo_byte, wait1) = MemoryMappedDevice::read_u8(self, address, 0);
+        let (ho_byte, wait2) = MemoryMappedDevice::read_u8(self, address + 1, 0);
 
         log::warn!("Unsupported 16 bit read from VRAM");
-        return (ho_byte as u16) << 8 | lo_byte as u16
+        return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }    
 
-    fn write_u16(&mut self, _address: usize, _data: u16) {
+    fn write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
+        0
     }
 
 }

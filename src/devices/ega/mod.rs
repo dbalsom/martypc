@@ -1457,18 +1457,26 @@ impl VideoCard for EGACard {
 
 impl MemoryMappedDevice for EGACard {
 
-    fn read_u8(&mut self, address: usize) -> u8 {
+    fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
+        0
+    }
+
+    fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
+        0
+    }
+    
+    fn read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
-            return 0;
+            return (0, 0);
         }
 
         // Validate address is within current memory map and get the offset
         let offset = match self.plane_bounds_check(address) {
             Some(offset) => offset,
             None => {
-                return 0;
+                return (0, 0);
             }
         };
 
@@ -1484,40 +1492,39 @@ impl MemoryMappedDevice for EGACard {
                 // by the read map select register.
                 let plane = (self.graphics_read_map_select & 0x03) as usize;
                 let byte = self.planes[plane].buf[offset];
-                return byte;
+                return (byte, 0);
             }
             ReadMode::ReadComparedPlanes => {
                 // In Read Mode 1, the processor reads the result of a comparison with the value in the 
                 // Color Compare register, from the set of enabled planes in the Color Dont Care register
                 self.get_pixels(offset);
                 let comparison = self.pixel_op_compare();
-                return comparison;
+                return (comparison, 0);
             }
         }
     }
 
-    fn read_u16(&mut self, address: usize) -> u16 {
+    fn read_u16(&mut self, address: usize, cycles: u32) -> (u16, u32) {
 
-        let lo_byte = MemoryMappedDevice::read_u8(self, address);
-        let ho_byte = MemoryMappedDevice::read_u8(self, address + 1);
-
+        let (lo_byte, wait1) = MemoryMappedDevice::read_u8(self, address, cycles);
+        let (ho_byte, wait2) = MemoryMappedDevice::read_u8(self, address + 1, cycles);
 
         //log::warn!("Unsupported 16 bit read from VRAM");
-        return (ho_byte as u16) << 8 | lo_byte as u16
+        ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
-    fn write_u8(&mut self, address: usize, byte: u8) {
+    fn write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
-            return
+            return 0
         }
 
         // Validate address is within current memory map and get the offset
         let offset = match self.plane_bounds_check(address) {
             Some(offset) => offset,
             None => {
-                return
+                return 0
             }
         };        
 
@@ -1628,14 +1635,16 @@ impl MemoryMappedDevice for EGACard {
             }
             WriteMode::Invalid => {
                 log::warn!("Invalid write mode!");
-                return
+                return 0
             }
         }
 
+        0
     }
 
-    fn write_u16(&mut self, _address: usize, _data: u16) {
+    fn write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
         log::warn!("Unsupported 16 bit write to VRAM");
+        0
     }
 }
 

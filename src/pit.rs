@@ -31,8 +31,7 @@ use std::collections::BTreeMap;
 
 use modular_bitfield::prelude::*;
 
-use crate::bus::{BusInterface, IoDevice};
-use crate::cpu_808x::CPU_MHZ;
+use crate::bus::{BusInterface, IoDevice, DeviceRunTimeUnit};
 
 use crate::syntax_token::*;
 use crate::updatable::*;
@@ -205,7 +204,10 @@ pub struct Channel {
 }
 pub struct ProgrammableIntervalTimer {
     ptype: PitType,
+    crystal: f64,
+    clock_divisor: u32,
     pit_cycles: u64,
+    sys_tick_accumulator: u32,
     cycle_accumulator: f64,
     channels: Vec<Channel>,
 }
@@ -801,7 +803,7 @@ impl Channel {
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new(ptype: PitType) -> Self {
+    pub fn new(ptype: PitType, crystal: f64, clock_divisor: u32) -> Self {
         /*
             The Intel documentation says: 
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -815,7 +817,10 @@ impl ProgrammableIntervalTimer {
         }
         Self {
             ptype,
+            crystal,
+            clock_divisor,
             pit_cycles: 0,
+            sys_tick_accumulator: 0,
             cycle_accumulator: 0.0,
             channels: vec
         }
@@ -914,20 +919,33 @@ impl ProgrammableIntervalTimer {
         &mut self, 
         bus: &mut BusInterface, 
         buffer_producer: &mut ringbuf::Producer<u8>,
-        us: f64 ) {
+        run_unit: DeviceRunTimeUnit ) 
+    {
 
-        let mut pit_cycles = Pit::get_pit_cycles(us);
-        //log::debug!("Got {:?} pit cycles", pit_cycles);
-
-        // Add up fractional cycles until we can make a whole one. 
-        self.cycle_accumulator += pit_cycles;
-        while self.cycle_accumulator > 1.0 {
-            // We have one or more full PIT cycles. Drain the cycle accumulator
-            // by ticking the PIT until the accumulator drops below 1.0.
-            pit_cycles += 1.0;
-            self.cycle_accumulator -= 1.0;
-            self.tick(bus, buffer_producer);
-        }        
+        match run_unit {
+            DeviceRunTimeUnit::Microseconds(us) => {
+                let mut pit_cycles = Pit::get_pit_cycles(us);
+                //log::debug!("Got {:?} pit cycles", pit_cycles);
+        
+                // Add up fractional cycles until we can make a whole one. 
+                self.cycle_accumulator += pit_cycles;
+                while self.cycle_accumulator > 1.0 {
+                    // We have one or more full PIT cycles. Drain the cycle accumulator
+                    // by ticking the PIT until the accumulator drops below 1.0.
+                    self.cycle_accumulator -= 1.0;
+                    self.tick(bus, buffer_producer);
+                } 
+            }
+            DeviceRunTimeUnit::SystemTicks(ticks) => { 
+                // Add up system ticks, then tick the PIT if we have enough ticks for 
+                // a PIT cycle.
+                self.sys_tick_accumulator += ticks;
+                while self.sys_tick_accumulator >= self.clock_divisor {
+                    self.sys_tick_accumulator -= self.clock_divisor;
+                    self.tick(bus, buffer_producer);
+                }
+            }
+        }
     }
 
     pub fn get_cycles(&self) -> u64 {
@@ -936,6 +954,12 @@ impl ProgrammableIntervalTimer {
 
     pub fn get_output_state(&self, channel: usize) -> bool {
         *self.channels[channel].output
+    }
+
+    /// Returns the specified channels' count register (reload value) and counting element
+    /// in a tuple.
+    pub fn get_channel_count(&self, channel: usize) -> (u16, u16) {
+        (*self.channels[channel].count_register.get(), *self.channels[channel].counting_element.get())
     }
 
     pub fn tick(

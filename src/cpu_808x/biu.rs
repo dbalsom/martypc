@@ -81,22 +81,22 @@ impl ByteQueue for Cpu<'_> {
     }
 
     fn q_peek_u8(&mut self) -> u8 {
-        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len()).unwrap();
+        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len(), 0).unwrap();
         byte
     }
 
     fn q_peek_i8(&mut self) -> i8 {
-        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len()).unwrap();
+        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len(), 0).unwrap();
         byte as i8
     }
 
     fn q_peek_u16(&mut self) -> u16 {
-        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len()).unwrap();
+        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len(), 0).unwrap();
         word
     }    
 
     fn q_peek_i16(&mut self) -> i16 {
-        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len()).unwrap();
+        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len(), 0).unwrap();
         word as i16
     }        
 }
@@ -113,7 +113,7 @@ impl<'a> Cpu<'a> {
 
         if let Some(preload_byte) = self.queue.get_preload() {
             // We have a pre-loaded byte from finalizing the last instruction
-            self.queue_op = QueueOp::First;
+            self.last_queue_op = QueueOp::First;
             self.cycle();
             self.last_queue_byte = preload_byte;
             return preload_byte
@@ -127,14 +127,17 @@ impl<'a> Cpu<'a> {
             // Handle fetch delays.
             // Delays are set during decode from instructions with no modrm or jcxz, loop & loopne/loope
             while self.fetch_delay > 0 {
-                log::trace!("Fetch delay skip: {}", self.fetch_delay);
+                //log::trace!("Fetch delay skip: {}", self.fetch_delay);
                 self.fetch_delay -= 1;
+                self.trace_comment("fetch delay");
                 self.cycle();
             }
 
             //self.trace_print("biu_queue_read: pop()");
             self.trace_comment("Q_READ");
             byte = self.queue.pop();
+
+            // TODO: These enums duplicate functionality
             self.queue_op = match dtype {
                 QueueType::First => QueueOp::First,
                 QueueType::Subsequent => QueueOp::Subsequent
@@ -146,8 +149,6 @@ impl<'a> Cpu<'a> {
         else {
             // Queue is empty, first fetch byte
             byte = self.biu_fetch_u8(dtype);
-
-
             self.last_queue_byte = byte;
 
             //trace_print!(self, "biu_queue_read: cycle()");
@@ -370,7 +371,7 @@ impl<'a> Cpu<'a> {
         );
         match flag {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
+            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
         };
         
         validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
@@ -407,7 +408,7 @@ impl<'a> Cpu<'a> {
         );
         match flag {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
+            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
         };
         
         //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
@@ -467,7 +468,7 @@ impl<'a> Cpu<'a> {
                 );
                 match flag {
                     ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
+                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
                 };
 
                 self.data_bus
@@ -506,7 +507,7 @@ impl<'a> Cpu<'a> {
 
                 match flag {
                     ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
+                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
                 };
             }
             CpuType::Intel8086 => {
@@ -520,7 +521,7 @@ impl<'a> Cpu<'a> {
                     true);
                 match flag {
                     ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::T3)
+                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
                 };
             }
         }
@@ -559,9 +560,38 @@ impl<'a> Cpu<'a> {
                 return 0
             }
             BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
-                while self.t_cycle != target_state {
-                    self.cycle();
-                    bus_cycles_elapsed += 1;
+        
+                if target_state == TCycle::Tw {
+                    // Interpret waiting for Tw as waiting for T3 or Last Tw
+                    loop {
+                        match (self.t_cycle, self.wait_states) {
+                            (TCycle::T3, 0) => {
+                                if self.bus_wait_states == 0 {
+                                    return bus_cycles_elapsed
+                                }
+                                else {
+                                    self.cycle();
+                                }
+                            }
+                            (TCycle::T3, n) | (TCycle::Tw, n) => {
+                                for _ in 0..n {
+                                    self.cycle();
+                                    bus_cycles_elapsed += 1;
+                                }
+                                return bus_cycles_elapsed
+                            }
+                            _ => {
+                                self.cycle();
+                                bus_cycles_elapsed += 1;
+                            }
+                        }
+                    }
+                }
+                else {
+                    while self.t_cycle != target_state {
+                        self.cycle();
+                        bus_cycles_elapsed += 1;
+                    }
                 }
                 //self.cycle();
                 return bus_cycles_elapsed
@@ -585,6 +615,7 @@ impl<'a> Cpu<'a> {
         first: bool,
     ) {
 
+        /*
         trace_print!(
             self,
             "Bus begin! {:?}:[{:05X}] in {:?}", 
@@ -592,6 +623,7 @@ impl<'a> Cpu<'a> {
             address, 
             self.t_cycle
         );
+        */
 
         // Check this address for a memory access breakpoint
         if self.bus.get_flags(address as usize) & MEM_BPA_BIT != 0 {

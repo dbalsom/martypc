@@ -19,7 +19,7 @@ use std::{
 use crate::{
     config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
     breakpoints::BreakPointType,
-    bus::{BusInterface, MemRangeDescriptor, MEM_CP_BIT},
+    bus::{BusInterface, ClockFactor, MemRangeDescriptor, DeviceEvent, MEM_CP_BIT},
     cga,
     ega::{self, EGACard},
     vga::{self, VGACard},
@@ -158,6 +158,7 @@ pub struct PitData {
 pub struct Machine<'a> 
 {
     machine_type: MachineType,
+    machine_desc: MachineDescriptor,
     video_type: VideoType,
     sound_player: SoundPlayer,
     rom_manager: RomManager,
@@ -169,6 +170,7 @@ pub struct Machine<'a>
     kb_buf: VecDeque<u8>,
     error: bool,
     error_str: Option<String>,
+    cpu_factor: ClockFactor,
     cpu_cycles: u64,
 }
 
@@ -176,7 +178,7 @@ impl<'a> Machine<'a> {
     pub fn new(
         config: &ConfigFileParams,
         machine_type: MachineType,
-        machine_desc: &MachineDescriptor,
+        machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
         video_type: VideoType,
         sound_player: SoundPlayer,
@@ -225,14 +227,6 @@ impl<'a> Machine<'a> {
             config.validator.vtype.unwrap()
         );
 
-        // Enable DRAM refresh simulation if appropriate model
-        match machine_type {
-            MachineType::IBM_PC_5150 | MachineType::IBM_XT_5160 => {
-                cpu.set_option(CpuOption::SimulateDramRefresh(true, 72));
-            },
-            _ => {}
-        }
-
         cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection));
 
         let reset_vector = cpu.get_reset_vector();
@@ -268,7 +262,7 @@ impl<'a> Machine<'a> {
         }
 
         // Install devices
-        cpu.bus_mut().install_devices(video_type, machine_desc, video_trace);
+        cpu.bus_mut().install_devices(video_type, &machine_desc, video_trace);
 
         // Load BIOS ROM images
         rom_manager.copy_into_memory(cpu.bus_mut());
@@ -282,8 +276,18 @@ impl<'a> Machine<'a> {
         cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
         cpu.reset_address();
 
+        // Set CPU clock divisor/multiplier
+        let cpu_factor;
+        if config.machine.turbo { 
+            cpu_factor = machine_desc.cpu_turbo_factor;
+        }
+        else {
+            cpu_factor = machine_desc.cpu_factor;
+        }
+
         Machine {
             machine_type,
+            machine_desc,
             video_type,
             sound_player,
             rom_manager,
@@ -296,6 +300,7 @@ impl<'a> Machine<'a> {
             error: false,
             error_str: None,
             cpu_cycles: 0,
+            cpu_factor
         }
     }
 
@@ -326,6 +331,32 @@ impl<'a> Machine<'a> {
     pub fn get_cpu_option(&mut self, opt: CpuOption) -> bool {
         self.cpu.get_option(opt)
     }    
+
+    /// Return the current CPU clock frequency in MHz.
+    /// This can vary during system execution if state of turbo button is toggled.
+    /// CPU speed is always some factor of the main system crystal frequency.
+    /// The CPU itself has no concept of its operational frequency.
+    pub fn get_cpu_mhz(&self) -> f64 {
+        match self.cpu_factor {
+            ClockFactor::Divisor(n) => {
+                self.machine_desc.system_crystal / (n as f64)
+            }
+            ClockFactor::Multiplier(n) => {
+                self.machine_desc.system_crystal * (n as f64)
+            }
+        }
+    }
+
+    /// Set the specified state of the turbo button. True will enable turbo mode
+    /// and switch to the turbo mode CPU clock factor.
+    pub fn set_turbo_mode(&mut self, state: bool) {
+        if state {
+            self.cpu_factor = self.machine_desc.cpu_turbo_factor;
+        }
+        else {
+            self.cpu_factor = self.machine_desc.cpu_factor;
+        }
+    }
 
     pub fn fdc(&mut self) -> &mut Option<FloppyController> {
         self.cpu.bus_mut().fdc_mut()
@@ -452,11 +483,29 @@ impl<'a> Machine<'a> {
         self.cpu.bus_mut().reset_devices();
     }
 
-    fn cycles_to_us(&self, cycles: u32) -> f64 {
+    #[inline]
+    /// Convert a count of CPU cycles to microseconds based on the current CPU clock
+    /// divisor and system crystal speed.
+    fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
 
-        1.0 / cpu_808x::CPU_MHZ * cycles as f64
+        let mhz = match self.cpu_factor {
+            ClockFactor::Divisor(n) => self.machine_desc.system_crystal / (n as f64),
+            ClockFactor::Multiplier(n) => self.machine_desc.system_crystal * (n as f64)
+        };
+
+        1.0 / mhz * cycles as f64
     }
     
+    #[inline]
+    /// Convert a count of CPU cycles to system clock ticks based on the current CPU
+    /// clock divisor.
+    fn cpu_cycles_to_system_ticks(&self, cycles: u32) -> u32 {
+        match self.cpu_factor {
+            ClockFactor::Divisor(n) => cycles * (n as u32),
+            ClockFactor::Multiplier(n) => cycles / (n as u32)
+        }
+    }
+
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) -> u64 {
 
         let mut kb_event_processed = false;
@@ -613,6 +662,10 @@ impl<'a> Machine<'a> {
                 } 
             }
 
+            if cpu_cycles > 200 {
+                log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
+            }
+
             instr_count += 1;
             cycles_elapsed += cpu_cycles;
             self.cpu_cycles += cpu_cycles as u64;            
@@ -706,8 +759,10 @@ impl<'a> Machine<'a> {
     pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) {
 
         // Convert cycles into elapsed microseconds
-        let us;
-        us = self.cycles_to_us(cpu_cycles);
+        let us = self.cpu_cycles_to_us(cpu_cycles);
+
+        // Convert cycles into system clock ticks
+        let sys_ticks = self.cpu_cycles_to_system_ticks(cpu_cycles);
 
         // Process a keyboard event once per frame.
         // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
@@ -727,13 +782,53 @@ impl<'a> Machine<'a> {
         // Run devices.
         // We send the IO bus the elapsed time in us, and a mutable reference to the PIT channel #2 ring buffer
         // so that we can collect output from the timer.
-        self.cpu.bus_mut().run_devices(us, kb_byte_opt, &mut self.speaker_buf_producer);
+        let device_event = self.cpu.bus_mut().run_devices(
+            us, 
+            sys_ticks,
+            kb_byte_opt, 
+            &self.machine_desc, 
+            &mut self.speaker_buf_producer
+        );
+
+        // Currently only one device run event type
+        if let Some(DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val)) = device_event {
+            self.cpu.set_option(
+                CpuOption::SimulateDramRefresh(
+                    true, 
+                    self.timer_ticks_to_cpu_cycles(dma_counter), 
+                    self.timer_ticks_to_cpu_cycles(dma_counter_val)
+                )
+            )
+        }
 
         // Sample the PIT channel #2 for sound
         while self.speaker_buf_producer.len() >= self.pit_data.next_sample_size {
             self.pit_buf_to_sound_buf();
         }
 
+    }
+
+    fn timer_ticks_to_cpu_cycles(&self, timer_ticks: u16) -> u32 {
+
+        let timer_multiplier = 
+            if let Some(timer_crystal) = self.machine_desc.timer_crystal {
+                // We have an alternate 
+                todo!("Unimplemented conversion for AT timer");
+                1
+            }
+            else {
+                match self.machine_desc.cpu_factor {
+                    ClockFactor::Divisor(n) => {
+                        self.machine_desc.timer_divisor / (n as u32)
+                    }
+                    ClockFactor::Multiplier(n) => {
+                        todo!("unimplemented conversion for CPU multiplier");
+                        1
+                    }
+                }
+            };
+
+        timer_ticks as u32 * timer_multiplier
     }
 
     /// Called to update machine once per frame.

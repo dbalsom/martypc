@@ -80,7 +80,7 @@ impl<'a> Cpu<'a> {
         for i in 0..self.bus.size() {
 
             let n: u8 = get_rand!(self);
-            self.bus.write_u8(i, n).expect("Mem err");
+            self.bus.write_u8(i, n, 0).expect("Mem err");
         }
     }
 
