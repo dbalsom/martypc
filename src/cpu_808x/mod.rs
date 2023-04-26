@@ -957,11 +957,11 @@ impl<'a> Cpu<'a> {
         cpu.instruction_history = VecDeque::with_capacity(16);
 
         cpu.reset_vector = CpuAddress::Segmented(0xFFFF, 0x0000);
-        cpu.reset(cpu.reset_vector);
+        cpu.reset();
         cpu
     }
 
-    pub fn reset(&mut self, reset_vector: CpuAddress) {
+    pub fn reset(&mut self) {
         
         self.state = CpuState::Normal;
         
@@ -982,7 +982,7 @@ impl<'a> Cpu<'a> {
         
         self.queue.flush();
 
-        if let CpuAddress::Segmented(segment, offset) = reset_vector {
+        if let CpuAddress::Segmented(segment, offset) = self.reset_vector {
             self.set_register16(Register16::CS, segment);
             self.set_register16(Register16::IP, offset);
             self.pc = Cpu::calc_linear_address(segment, offset);

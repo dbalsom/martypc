@@ -17,9 +17,9 @@ Thumbs.db
 /dumps
 /builds
 /traces
-marty.toml
+/program
+*.toml
 !/install/marty.toml
-marty_fuzzer.toml
 *.pcm
 *.cfg
 *.log

@@ -237,7 +237,7 @@ impl<'a> Machine<'a> {
         cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection));
 
         let reset_vector = cpu.get_reset_vector();
-        cpu.reset(reset_vector);        
+        cpu.reset();        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
@@ -271,8 +271,9 @@ impl<'a> Machine<'a> {
         // Install devices
         cpu.bus_mut().install_devices(video_type, &machine_desc, video_trace);
 
+        // Load BIOS ROM images unless config option suppressed rom loading
         if !config.emulator.no_bios {
-            // Load BIOS ROM images
+
             rom_manager.copy_into_memory(cpu.bus_mut());
 
             // Load checkpoint flags into memory
@@ -311,6 +312,18 @@ impl<'a> Machine<'a> {
             cpu_cycles: 0,
             cpu_factor
         }
+    }
+
+    pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
+
+        let location = Cpu::calc_linear_address(program_seg, program_ofs);
+        
+        self.cpu.bus_mut().copy_from(program, location as usize, 0, false)?;
+
+        self.cpu.set_reset_vector(CpuAddress::Segmented(program_seg, program_ofs));
+        self.cpu.reset_address();
+
+        Ok(())
     }
 
     pub fn bus(&self) -> &BusInterface {
@@ -490,7 +503,7 @@ impl<'a> Machine<'a> {
         self.error_str = None;
 
         // Reset CPU.
-        self.cpu.reset(CpuAddress::Segmented(0xFFFF, 0x0000));
+        self.cpu.reset();
 
         // Clear RAM
         self.cpu.bus_mut().clear();

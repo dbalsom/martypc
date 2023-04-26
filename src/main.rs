@@ -544,6 +544,34 @@ fn main() {
         config.emulator.autostart = false;
     }
 
+    // Load program binary if one was specified in config options
+    if let Some(prog_bin) = config.emulator.run_bin {
+
+        if let Some(prog_seg) = config.emulator.run_bin_seg {
+            if let Some(prog_ofs) = config.emulator.run_bin_ofs {
+                let prog_vec = match std::fs::read(prog_bin.clone()) {
+                    Ok(vec) => vec,
+                    Err(e) => {
+                        eprintln!("Error opening filename {:?}: {}", prog_bin, e);
+                        std::process::exit(1);
+                    }
+                };
+
+                if let Err(_) = machine.load_program(&prog_vec, prog_seg, prog_ofs) {
+                    eprintln!("Error loading program into memory at {:04X}:{:04X}.", prog_seg, prog_ofs);
+                    std::process::exit(1);
+                };
+            }
+            else {
+                eprintln!("Must specifiy program load offset.");
+                std::process::exit(1);
+            }
+        }
+        else {
+            eprintln!("Must specifiy program load segment.");
+            std::process::exit(1);  
+        }
+    }
 
     // Resize window if video card is in Direct mode and specifies a display aperature
     {

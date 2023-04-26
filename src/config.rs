@@ -146,6 +146,10 @@ pub struct Emulator {
     #[serde(default)]
     pub no_bios: bool,
 
+    pub run_bin: Option<String>,
+    pub run_bin_seg: Option<u16>,
+    pub run_bin_ofs: Option<u16>,
+
     #[serde(default)]
     pub trace_on: bool,
     pub trace_mode: TraceMode,
@@ -242,7 +246,14 @@ pub struct CmdLineArgs {
     pub debug_mode: bool,
 
     #[bpaf(long, switch)]
-    pub no_bios: bool    
+    pub no_bios: bool,
+
+    #[bpaf(long)]
+    pub run_bin: Option<String>,
+    #[bpaf(long)]
+    pub run_bin_seg: Option<u16>,
+    #[bpaf(long)]
+    pub run_bin_ofs: Option<u16>,    
 }
 
 impl ConfigFileParams {
@@ -260,6 +271,18 @@ impl ConfigFileParams {
         self.emulator.correct_aspect |= shell_args.correct_aspect;
         self.emulator.debug_mode |= shell_args.debug_mode;
         self.emulator.no_bios |= shell_args.no_bios;
+
+        if let Some(run_bin) = shell_args.run_bin {
+            self.emulator.run_bin = Some(run_bin);
+        }
+
+        if let Some(run_bin_seg) = shell_args.run_bin_seg {
+            self.emulator.run_bin_seg = Some(run_bin_seg);
+        }
+
+        if let Some(run_bin_ofs) = shell_args.run_bin_ofs {
+            self.emulator.run_bin_ofs = Some(run_bin_ofs);
+        }                
 
         self.machine.turbo |= shell_args.turbo;
 
