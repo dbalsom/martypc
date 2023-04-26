@@ -1453,6 +1453,10 @@ impl VideoCard for EGACard {
         //self.trace_logger.print(msg);
     }
 
+    fn trace_flush(&mut self) {
+        //self.trace_logger.print(msg);
+    }
+
 }
 
 impl MemoryMappedDevice for EGACard {
@@ -1464,7 +1468,7 @@ impl MemoryMappedDevice for EGACard {
     fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
-    
+
     fn read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
 
         // RAM Enable disables memory mapped IO

@@ -1642,6 +1642,10 @@ impl VideoCard for CGACard {
         self.trace_logger.print(msg);
     }    
 
+    fn trace_flush(&mut self) {
+        self.trace_logger.flush();
+    }
+
 }
 
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,

@@ -203,7 +203,10 @@ impl GuiState {
                     *self.window_flag(GuiWindow::VideoCardViewer) = true;
                     ui.close_menu();
                 }
-            
+                if ui.button("Flush Trace Logs").clicked() {
+                    self.event_queue.push_back(GuiEvent::FlushLogs);
+                    ui.close_menu();
+                }
             });
             ui.menu_button("Options", |ui| {
 

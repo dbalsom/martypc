@@ -128,6 +128,7 @@ pub enum GuiEvent {
     TokenHover(usize),
     OptionChanged(GuiOption, bool),
     CompositeAdjust(CompositeParams),
+    FlushLogs
 }
 
 /// Manages all state required for rendering egui over `Pixels`.

@@ -1356,11 +1356,12 @@ fn main() {
                             }
                             Some(GuiEvent::TokenHover(addr)) => {
                                 // Hovered over a token in a TokenListView.
-
                                 let debug = machine.bus_mut().get_memory_debug(addr);
-
                                 framework.gui.memory_viewer.set_hover_text(format!("{}", debug));
-
+                            }
+                            Some(GuiEvent::FlushLogs) => {
+                                // Request to flush trace logs.
+                                machine.flush_trace_logs();
                             }
                             None => break,
                             _ => {

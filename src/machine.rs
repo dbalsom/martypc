@@ -333,13 +333,23 @@ impl<'a> Machine<'a> {
         &self.cpu
     }
 
+    /// Set a CPU option. Avoids needing to borrow CPU.
     pub fn set_cpu_option(&mut self, opt: CpuOption) {
         self.cpu.set_option(opt);
     }
 
+    /// Get a CPU option. Avoids needing to borrow CPU.
     pub fn get_cpu_option(&mut self, opt: CpuOption) -> bool {
         self.cpu.get_option(opt)
     }    
+
+    /// Flush all trace logs for devices that have one
+    pub fn flush_trace_logs(&mut self) {
+        self.cpu.trace_flush();
+        if let Some(video) = self.cpu.bus_mut().video_mut() {
+            video.trace_flush();   
+        }
+    }
 
     /// Return the current CPU clock frequency in MHz.
     /// This can vary during system execution if state of turbo button is toggled.

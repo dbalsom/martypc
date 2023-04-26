@@ -259,4 +259,6 @@ pub trait VideoCard {
     /// Write a string to the video device's trace log (if one is configured)
     fn write_trace_log(&mut self, msg: String);
 
+    /// Flush the trace log (if one is configured)
+    fn trace_flush(&mut self);
 }

@@ -1840,6 +1840,10 @@ impl VideoCard for VGACard {
         self.trace_logger.print(msg);
     }
 
+    fn trace_flush(&mut self) {
+        self.trace_logger.flush();
+    }
+
 }
 
 impl MemoryMappedDevice for VGACard {
