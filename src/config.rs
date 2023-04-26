@@ -144,6 +144,9 @@ pub struct Emulator {
     pub debug_mode: bool,
 
     #[serde(default)]
+    pub no_bios: bool,
+
+    #[serde(default)]
     pub trace_on: bool,
     pub trace_mode: TraceMode,
     pub trace_file: Option<String>,
@@ -236,7 +239,10 @@ pub struct CmdLineArgs {
     pub validator: Option<ValidatorType>,
 
     #[bpaf(long, switch)]
-    pub debug_mode: bool
+    pub debug_mode: bool,
+
+    #[bpaf(long, switch)]
+    pub no_bios: bool    
 }
 
 impl ConfigFileParams {
@@ -253,6 +259,7 @@ impl ConfigFileParams {
         self.emulator.warpspeed |= shell_args.warpspeed;
         self.emulator.correct_aspect |= shell_args.correct_aspect;
         self.emulator.debug_mode |= shell_args.debug_mode;
+        self.emulator.no_bios |= shell_args.no_bios;
 
         self.machine.turbo |= shell_args.turbo;
 
