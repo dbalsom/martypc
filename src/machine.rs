@@ -169,6 +169,7 @@ pub struct Machine<'a>
     video_type: VideoType,
     sound_player: SoundPlayer,
     rom_manager: RomManager,
+    load_bios: bool,
     floppy_manager: FloppyManager,
     cpu: Cpu<'a>, 
     speaker_buf_producer: Producer<u8>,
@@ -235,8 +236,6 @@ impl<'a> Machine<'a> {
         );
 
         cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection));
-
-        let reset_vector = cpu.get_reset_vector();
         cpu.reset();        
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
@@ -301,6 +300,7 @@ impl<'a> Machine<'a> {
             video_type,
             sound_player,
             rom_manager,
+            load_bios: !config.emulator.no_bios,
             floppy_manager,
             cpu,
             speaker_buf_producer,
@@ -498,6 +498,8 @@ impl<'a> Machine<'a> {
 
     pub fn reset(&mut self) {
 
+        // TODO: Reload any program specified here?
+
         // Clear any error state.
         self.error = false;
         self.error_str = None;
@@ -509,9 +511,11 @@ impl<'a> Machine<'a> {
         self.cpu.bus_mut().clear();
 
         // Reload BIOS ROM images
-        self.rom_manager.copy_into_memory(self.cpu.bus_mut());
-        // Clear patch installation status
-        self.rom_manager.reset_patches();
+        if self.load_bios {
+            self.rom_manager.copy_into_memory(self.cpu.bus_mut());
+            // Clear patch installation status
+            self.rom_manager.reset_patches();
+        }
 
         // Reset all installed devices.
         self.cpu.bus_mut().reset_devices();
