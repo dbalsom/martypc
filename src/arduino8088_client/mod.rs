@@ -1,5 +1,5 @@
 /*
-    Marty PC Emulator 
+    MartyPC Emulator 
     (C)2023 Daniel Balsom
     https://github.com/dbalsom/marty
 

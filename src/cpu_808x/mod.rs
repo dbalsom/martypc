@@ -55,7 +55,7 @@ use crate::bytequeue::*;
 use crate::syntax_token::*;
 
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, CycleState, VRegisters, BusCycle, BusState, AccessType};
+use crate::cpu_validator::{CpuValidator, CycleState, ValidatorResult, VRegisters, BusCycle, BusState, AccessType};
 #[cfg(feature = "pi_validator")]
 use crate::pi_cpu_validator::{PiValidator};
 #[cfg(feature = "arduino_validator")]
@@ -661,6 +661,7 @@ pub struct Cpu<'a>
     result_16: u16,
 
     // BIU stuff
+    biu_state: BiuState,            // State of BIU. Operating / Suspended / Resuming
     ready: bool,                    // READY line from 8284
     queue: InstructionQueue,
     fetch_size: TransferSize,
@@ -670,6 +671,8 @@ pub struct Cpu<'a>
     bus_pending_eu: bool,           // Has the EU requested a bus operation?
     queue_op: QueueOp,
     last_queue_op: QueueOp,
+    last_queue_direction: QueueDirection,
+    queue_byte: u8,
     last_queue_byte: u8,
     t_cycle: TCycle,
     bus_status: BusStatus,
@@ -734,6 +737,12 @@ pub struct Cpu<'a>
     validator: Option<Box<dyn CpuValidator>>,
     #[cfg(feature = "cpu_validator")]
     cycle_states: Vec<CycleState>,
+    #[cfg(feature = "cpu_validator")]
+    validator_state: CpuValidatorState,
+    #[cfg(feature = "cpu_validator")]
+    validator_end: usize,
+
+    end_addr: usize,
 
     service_events: VecDeque<ServiceEvent>,
 
@@ -744,6 +753,22 @@ pub struct Cpu<'a>
     dram_refresh_cycles: u32,
     dram_bus_owner_cycles: u32,
     dma_aen: bool
+}
+
+#[cfg(feature = "cpu_validator")]
+#[derive (PartialEq, Copy, Clone)]
+pub enum CpuValidatorState {
+    Uninitialized,
+    Running,
+    Hung,
+    Ended
+}
+
+#[cfg(feature = "cpu_validator")]
+impl Default for CpuValidatorState {
+    fn default() -> Self {
+        CpuValidatorState::Uninitialized
+    }
 }
 
 pub struct CpuRegisterState {
@@ -821,7 +846,8 @@ pub enum StepResult {
     // If a call occurred, we return the address of the next instruction after the call
     // so that we can step over the call in the debugger.
     Call(CpuAddress),
-    BreakpointHit
+    BreakpointHit,
+    ProgramEnd
 }
 
 #[derive (Debug, PartialEq)]
@@ -870,6 +896,20 @@ impl Default for BusStatus {
 }
 
 #[derive (Copy, Clone, Debug, PartialEq)]
+pub enum QueueDirection {
+    None,
+    Read,
+    Write,
+}
+
+impl Default for QueueDirection {
+    fn default() -> Self {
+        QueueDirection::None
+    }
+}
+
+
+#[derive (Copy, Clone, Debug, PartialEq)]
 pub enum QueueOp {
     Idle,
     First,
@@ -889,6 +929,7 @@ pub enum FetchState {
     InProgress,
     Suspended,
     Scheduled(u8),
+    Delayed(u8),
     Aborted(u8),
     BlockedByEU,
     BusBusy,
@@ -1028,6 +1069,11 @@ impl<'a> Cpu<'a> {
         self.biu_queue_flush();
         self.cycles_i(3, &[0x1e6, 0x1e7, 0x1e8]);
 
+        #[cfg(feature = "cpu_validator")]
+        {
+            self.validator_state = CpuValidatorState::Uninitialized;
+        }
+
         trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip);
 
     }
@@ -1112,14 +1158,19 @@ impl<'a> Cpu<'a> {
                 } {}
                 // Should be a byte in the queue now. Preload it
                 self.queue.set_preload();
+                
+                self.last_queue_direction = QueueDirection::Read;
                 self.trace_comment("FINALIZE_END");
                 self.cycle();
             }
             else {
-                // Check if reading the queue will cause a prefetch.
-                self.trigger_prefetch_on_queue_read();
-
                 self.queue.set_preload();
+                
+                self.last_queue_direction = QueueDirection::Read;
+
+                // Check if reading the queue will resume the BIU if stalled.
+                self.biu_resume_on_queue_read();
+
                 self.trace_comment("FINALIZE_END");
                 self.cycle();
             }
@@ -1128,6 +1179,9 @@ impl<'a> Cpu<'a> {
 
     #[cfg(feature = "cpu_validator")]
     pub fn get_cycle_state(&mut self) -> CycleState {
+
+        let mut q = [0; 4];
+        self.queue.to_slice(&mut q);
 
         CycleState {
             n: self.instr_cycle,
@@ -1171,6 +1225,7 @@ impl<'a> Cpu<'a> {
             q_op: self.last_queue_op,
             q_byte: self.last_queue_byte,
             q_len: self.queue.len() as u32,
+            q,
             data_bus: self.data_bus,
         }
     }
@@ -1944,10 +1999,6 @@ impl<'a> Cpu<'a> {
                     0x02 => {
                         log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
                             interrupt, self.ah, self.bh, self.dh, self.dl);
-                        
-                        if self.dh == 0xFF {
-                            log::trace!(" >>>>>>>>>>>>>>>>>> Row was set to 0xff at address [{:04X}:{:04X}]", self.cs, self.ip);
-                        }
                     }
                     0x09 => {
                         log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
@@ -2083,6 +2134,11 @@ impl<'a> Cpu<'a> {
         // It is more convenient for us to maintain IP as a separate register that always points to the current
         // instruction. Otherwise, when single-stepping in the debugger, the IP value will read ahead. 
         let instruction_address = Cpu::calc_linear_address(self.cs, self.ip);
+        //log::warn!("instruction address: {:05X}", instruction_address);
+
+        if self.end_addr == (instruction_address as usize) { 
+            return Ok((StepResult::ProgramEnd, 0))
+        }
 
         // Check if we are in BreakpointHit state. This state must be cleared before we can execute another instruction.
         if self.get_breakpoint_flag() {
@@ -2100,15 +2156,18 @@ impl<'a> Cpu<'a> {
         // Fetch the next instruction unless we are executing a REP
         if !self.in_rep {
 
-            // Initialize the CPU validator with the current register state.
+            // Clear the validator cycle states from the last instruction.
             #[cfg(feature = "cpu_validator")]
             {
-                self.cycle_states.clear();
-
-                // Begin validation of current instruction
-                let vregs = self.get_vregisters();
-                if let Some(ref mut validator) = self.validator {
-                    validator.begin(&vregs);
+                if self.validator_state == CpuValidatorState::Running {
+                    if let Some(ref mut validator) = self.validator { 
+                        validator.reset_instruction();
+                    }
+                    self.cycle_states.clear();
+                }
+                else {
+                    // Clear cycle states spent in reset but not initial prefetch
+                    self.clear_reset_cycle_states();
                 }
             }
 
@@ -2141,6 +2200,30 @@ impl<'a> Cpu<'a> {
                     return Err(CpuError::InstructionDecodeError(instruction_address))
                 }                
             };
+
+            // Begin the current instruction validation context.
+            #[cfg(feature = "cpu_validator")]
+            {
+                let vregs = self.get_vregisters();
+                if let Some(ref mut validator) = self.validator {
+
+                    if (instruction_address as usize) == self.validator_end {
+                        log::info!("Validation reached end address. Stopping.");
+                        self.validator_state = CpuValidatorState::Ended;
+                    }
+
+                    if self.validator_state == CpuValidatorState::Uninitialized 
+                        || self.validator_state == CpuValidatorState::Running {
+
+                        validator.begin_instruction(
+                            &vregs, 
+                            (instruction_address + self.i.size) as usize & 0xFFFFF,
+                            self.validator_end
+                        );
+                    }
+                }
+            }
+
             self.trace_comment("EXECUTE");
         }
 
@@ -2149,9 +2232,12 @@ impl<'a> Cpu<'a> {
 
         let mut check_interrupts = false;
 
-        //let (opcode, _cost) = self.bus.read_u8(instruction_address as usize).expect("mem err");
+        let (opcode, _cost) = self.bus.read_u8(instruction_address as usize, 0).expect("mem err");
         //trace_print!(self, "Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
         //trace_print!(self, "Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
+
+        log::warn!("Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
+        log::warn!("Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
 
         let last_cs = self.cs;
         let last_ip = self.ip;
@@ -2160,7 +2246,7 @@ impl<'a> Cpu<'a> {
         let exec_result = self.execute_instruction();
 
         // Finalize execution. This runs cycles until the next instruction byte has been fetched. This fetch period is technically
-        // part of the current instruction execution time, but not part of the instruction's microcode other than executing RNI.
+        // part of the current instruction execution time.
         self.finalize();
 
         // If a CPU validator is configured, validate the executed instruction.
@@ -2170,38 +2256,81 @@ impl<'a> Cpu<'a> {
                 ExecutionResult::Okay | ExecutionResult::OkayJump => {
 
                     // End validation of current instruction
-                    let mut vregs = self.get_vregisters();
+                    let vregs = self.get_vregisters();
 
+                    /*
                     if exec_result == ExecutionResult::Okay {
                         vregs.ip = self.ip.wrapping_add(self.i.size as u16);
                     }
+                    */
                     
+                    let (peek_fetch, _) = self.bus.read_u8(self.pc as usize, 0).unwrap();
                     let instr_slice = self.bus.get_slice_at(instruction_address as usize, self.i.size as usize);
 
                     if self.i.size == 0 {
                         log::error!("Invalid length: [{:05X}] {}", instruction_address, self.i);
                     }
 
+                    let cpu_address = self.get_linear_ip() as usize;
+                    
                     if let Some(ref mut validator) = self.validator {
-                        match validator.validate(
-                            self.i.to_string(), 
-                            &instr_slice,
-                            self.i.flags & I_HAS_MODRM != 0,
-                            0,
-                            &vregs,
-                            &self.cycle_states
-                        ) {
 
-                            Ok(_) => {},
-                            Err(e) => {
-                                log::debug!("Validation failure: {} Halting execution.", e);
-                                self.is_running = false;
-                                self.is_error = true;
-                                return Err(CpuError::CpuHaltedError(instruction_address))
-                            }
+                        // If validator unininitalized, set register state now and move into running state.
+                        if self.validator_state == CpuValidatorState::Uninitialized {
+                            validator.set_regs();
+                            self.validator_state = CpuValidatorState::Running;
                         }
 
+                        if self.validator_state == CpuValidatorState::Running {
 
+                            match validator.validate_instruction(
+                                self.i.to_string(), 
+                                &instr_slice,
+                                peek_fetch as u16,
+                                self.i.flags & I_HAS_MODRM != 0,
+                                0,
+                                &vregs,
+                                &self.cycle_states
+                            ) {
+    
+                                Ok(result) => {
+                                    match result {
+                                        ValidatorResult::Ok => {},
+                                        ValidatorResult::OkEnd => {
+    
+                                            if self.validator_end == cpu_address {
+
+                                                self.validator_state = CpuValidatorState::Ended;
+
+                                                // Validation has reached program end address
+                                                if let Err(e) = validator.validate_regs(&vregs) {
+                                                    log::warn!("Validation failure: {} Halting execution.", e);
+                                                    self.is_running = false;
+                                                    self.is_error = true;
+                                                    return Err(CpuError::CpuHaltedError(instruction_address))
+                                                }
+                                                else {
+                                                    log::debug!("Registers validated. Validation ended successfully.");
+                                                    self.validator_state = CpuValidatorState::Ended;
+                                                }                                                
+                                            }
+                                        }
+                                        _=> {
+                                            log::warn!("Validation failure: Halting execution.");
+                                            self.is_running = false;
+                                            self.is_error = true;
+                                            return Err(CpuError::CpuHaltedError(instruction_address))
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("Validation failure: {} Halting execution.", e);
+                                    self.is_running = false;
+                                    self.is_error = true;
+                                    return Err(CpuError::CpuHaltedError(instruction_address))
+                                }
+                            }
+                        }
                     }                    
                 }
                 _ => {}
@@ -2211,22 +2340,7 @@ impl<'a> Cpu<'a> {
        let mut step_result = match exec_result {
 
             ExecutionResult::Okay => {
-                // Normal non-jump instruction updates CS:IP to next instruction
-
-                /*
-                // temp debugging
-                {
-                    //let dbg_addr = self.calc_linear_address_seg(Segment::ES, self.bx);
-                    let (word, _) = self.bus.read_u16(0x2905C as usize).unwrap();
-                    if word == 0xCCCC {
-                        log::trace!("Jump target trashed at {:05X}: {}", self.i.address, self.i);
-                    }
-                }
-                */
-                
-                //println!("instruction {} is of size: {} ip: {:05X} new ip: {:05X}", self.i, self.i.size, self.ip, self.ip.wrapping_add(self.i.size as u16));
-                self.ip = self.ip.wrapping_add(self.i.size as u16);
-
+                // Normal non-jump instruction updates CS:IP to next instruction during execute()
                 if self.instruction_history_on {
                     if self.instruction_history.len() == CPU_HISTORY_LEN {
                         self.instruction_history.pop_front();
@@ -2245,7 +2359,7 @@ impl<'a> Cpu<'a> {
                 Ok((StepResult::Normal, self.instr_cycle))
             }
             ExecutionResult::OkayJump => {
-                // A control flow instruction updated CS:IP. (Does not differ from ::Okay anymore?)
+                // A control flow instruction updated CS:IP.
                 if self.instruction_history_on {
                     if self.instruction_history.len() == CPU_HISTORY_LEN {
                         self.instruction_history.pop_front();
@@ -2268,7 +2382,6 @@ impl<'a> Cpu<'a> {
                 else {
                     Ok((StepResult::Normal, self.instr_cycle))
                 }
-                
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
@@ -2360,6 +2473,24 @@ impl<'a> Cpu<'a> {
         self.assert_state();
 
         step_result
+    }
+
+    /// Set a terminating code address for the CPU. This is mostly used in conjunction with the 
+    /// CPU validator or running standalone binaries.
+    pub fn set_end_address(&mut self, end: usize) {
+
+        #[cfg(feature = "cpu_validator")]
+        {
+            self.validator_end = end;
+        }   
+
+        self.end_addr = end;
+    }
+
+    /// Removes any cycle states at address 0
+    #[cfg(feature = "cpu_validator")]
+    fn clear_reset_cycle_states(&mut self) {
+        self.cycle_states.retain(|&x| x.addr != 0);
     }
 
     /// Set CPU breakpoints from provided list. 
@@ -2490,7 +2621,13 @@ impl<'a> Cpu<'a> {
             QueueOp::Idle => ' ',
             QueueOp::First => 'F',
             QueueOp::Flush => 'E',
-            QueueOp::Subsequent => 'S'
+            QueueOp::Subsequent => 'S',
+        };
+
+        let q_dir_chr = match self.last_queue_direction {
+            QueueDirection::None => ' ',
+            QueueDirection::Read => 'R',
+            QueueDirection::Write => 'W',
         };
 
         let q_preload_char = match self.queue.has_preload() {
@@ -2498,6 +2635,13 @@ impl<'a> Cpu<'a> {
             false => ' '
         };
 
+        let mut biu_chr = match self.biu_state {
+            BiuState::Operating => '.',
+            BiuState::Suspended => 'S',
+            BiuState::Resuming(_) => 'R'
+        };
+
+        /*
         let mut f_op_chr = match self.fetch_state {
             FetchState::Scheduled(_) => 'S',
             FetchState::Aborted(_) => 'A',
@@ -2508,6 +2652,7 @@ impl<'a> Cpu<'a> {
         if self.fetch_suspended {
             f_op_chr = '!'
         }
+        */
 
         // All read/write signals are active/low
         let rs_chr = match self.i8288.mrdc {
@@ -2638,7 +2783,7 @@ impl<'a> Cpu<'a> {
         let cycle_str;
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:1}{:1} {:<16} | {:1}{:1}{:1}[{:08}] {} | {:03} | {}{}",
+                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {:03} | {}{}",
                 self.instr_cycle,
                 ale_str,
                 self.address_bus,
@@ -2649,11 +2794,11 @@ impl<'a> Cpu<'a> {
                 bus_str,
                 t_str,
                 xfer_str,
-                f_op_chr,
-                self.fetch_delay,
+                format!("{:?}", self.biu_state),
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
                 self.queue.len(),
+                q_dir_chr,
                 q_preload_char,
                 self.queue.to_string(),
                 q_read_str,
@@ -2664,7 +2809,7 @@ impl<'a> Cpu<'a> {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} D:{} {:04} {:02} {:06} ({}) | {:1}{:1} {:<16} | {:1}{:1}{:1}[{:08}] {} | {}: {} | {}{}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} D:{} {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}{}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
@@ -2675,12 +2820,11 @@ impl<'a> Cpu<'a> {
                 bus_str,
                 t_str,
                 xfer_str,
-                self.transfer_n,
-                f_op_chr,
-                self.fetch_delay,
+                format!("{:?}", self.biu_state),
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
                 self.queue.len(),
+                q_dir_chr,
                 q_preload_char,
                 self.queue.to_string(),
                 q_read_str,
@@ -2830,6 +2974,11 @@ impl<'a> Cpu<'a> {
 
     pub fn get_cycle_trace(&self ) -> &Vec<String> {
         &self.trace_str_vec
+    }
+
+    #[cfg(feature = "cpu_validator")]
+    pub fn get_validator_state(&self) -> CpuValidatorState {
+        self.validator_state
     }
 
 }

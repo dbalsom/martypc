@@ -2,6 +2,19 @@
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
 
+#[derive (Debug)]
+pub enum BiuState {
+    Operating,
+    Suspended,
+    Resuming(u8)
+}
+
+impl Default for BiuState {
+    fn default() -> Self {
+        BiuState::Operating
+    }
+}
+
 pub enum ReadWriteFlag {
     Normal,
     RNI
@@ -84,20 +97,20 @@ impl<'a> Cpu<'a> {
     /// Either return a byte currently in the queue, or fetch a byte into the queue and 
     /// then return it.
     pub fn biu_queue_read(&mut self, dtype: QueueType) -> u8 {
+
         let byte;
+        //trace_print!(self, "biu_queue_read()");
 
         if let Some(preload_byte) = self.queue.get_preload() {
             // We have a pre-loaded byte from finalizing the last instruction
             self.last_queue_op = QueueOp::First;
-            self.cycle();
             self.last_queue_byte = preload_byte;
+            //self.cycle();
             return preload_byte
         }
 
         if self.queue.len() > 0 {
             // The queue is not empty. Return byte from queue.
-
-            self.trigger_prefetch_on_queue_read();
 
             // Handle fetch delays.
             // Delays are set during decode from instructions with no modrm or jcxz, loop & loopne/loope
@@ -118,13 +131,18 @@ impl<'a> Cpu<'a> {
                 QueueType::Subsequent => QueueOp::Subsequent
             };
 
+            //trace_print!(self, "Queue direction -> Read!");
+            self.last_queue_direction = QueueDirection::Read;
+
+            self.biu_resume_on_queue_read();
+            self.queue_byte = byte;
             self.cycle();
-            self.last_queue_byte = byte;
         }
         else {
             // Queue is empty, first fetch byte
             byte = self.biu_fetch_u8(dtype);
-            self.last_queue_byte = byte;
+            trace_print!(self, " ...................queue_byte byte (2): {:02X}", byte);
+            self.queue_byte = byte;
 
             //trace_print!(self, "biu_queue_read: cycle()");
             self.cycle();            
@@ -132,18 +150,25 @@ impl<'a> Cpu<'a> {
         byte
     }
 
-    pub fn trigger_prefetch_on_queue_read(&mut self) {
-        match self.cpu_type {
-            CpuType::Intel8088 => {
-                if self.queue.len() == 4 {
-                    // We can fetch again after this read
-                    self.biu_schedule_fetch();
+    pub fn biu_resume_on_queue_read(&mut self) {
+
+        if matches!(self.biu_state, BiuState::Suspended) {
+            match self.cpu_type {
+                // 8088 will have room in queue at 3 bytes,
+                // 8086 will have room in queue at 4 bytes
+                CpuType::Intel8088 => {
+                    if self.queue.len() == 3 {
+                        self.biu_state = BiuState::Resuming(3);
+                        trace_print!(self, "Resuming from suspend due to queue read.");
+                        self.biu_schedule_fetch();
+                    }
                 }
-            }
-            CpuType::Intel8086 => {
-                if self.queue.len() == 5 {
-                    // We can fetch again after this read
-                    self.biu_schedule_fetch();
+                CpuType::Intel8086 => {
+                    if self.queue.len() == 4 {
+                        // We can fetch again after this read
+                        self.biu_state = BiuState::Resuming(3);
+                        self.biu_schedule_fetch();
+                    }
                 }
             }
         }
@@ -185,17 +210,51 @@ impl<'a> Cpu<'a> {
             self.biu_bus_wait_finish();
             //self.cycle();
         }
+
+        self.biu_state = BiuState::Suspended;
     }
 
+    /// Schedule a prefetch to occur after either 2 or 4 cycles, depending on queue
+    /// length. If the queue is full, nothing happens.
     pub fn biu_schedule_fetch(&mut self) {
         if let FetchState::Scheduled(_) = self.fetch_state {
             // Fetch already scheduled, do nothing
+            return
         }
-        else {
-            self.fetch_state = FetchState::Scheduled(0);
+        
+        // The 8088 introduces a 2-cycle scheduling delay when there are 3
+        // bytes in the queue.
+        // The 8086 introduces a 2-cycle scheduling delay when there are either
+        // 3 or 4 bytes in the queue.
+
+        let fetch_delay = 
+            if matches!(self.biu_state, BiuState::Operating) && matches!(self.last_queue_direction, QueueDirection::Read) 
+            { 
+                4 
+            } 
+            else { 
+                2 
+            };
+
+        match self.cpu_type {
+            CpuType::Intel8088 => {
+                match self.queue.len() {
+                    0..=2 => self.fetch_state = FetchState::Scheduled(2),
+                    3 => self.fetch_state = FetchState::Scheduled(fetch_delay),
+                    _ => {}
+                }
+            }
+            CpuType::Intel8086 => {
+                match self.queue.len() {
+                    0..=2 => self.fetch_state = FetchState::Scheduled(2),
+                    3..=4 => self.fetch_state = FetchState::Scheduled(fetch_delay),
+                    _ => {}
+                }
+            }
         }
     }
 
+    /// Abort a scheduled fetch when an EU bus request has been received.
     pub fn biu_abort_fetch(&mut self) {
 
         self.fetch_state = FetchState::Aborted(0);
@@ -206,10 +265,19 @@ impl<'a> Cpu<'a> {
         self.cycles(2);
     }
 
+    /// Abort a scheduled fetch when it cannot be completed because the queue is full.
+    pub fn biu_abort_fetch_full(&mut self) {
+        self.biu_state = BiuState::Suspended;
+        self.fetch_state = FetchState::Idle;
+        self.bus_status = BusStatus::Passive;
+        self.trace_comment("BIU_STALL");
+    }
+
+    /*
     pub fn biu_try_cancel_fetch(&mut self) {
 
         match self.fetch_state {
-            FetchState::Scheduled(0) => {
+            FetchState::Scheduled(3) => {
                 // Fetch was scheduled this cycle, cancel it
                 self.trace_comment("CANCEL");
 
@@ -220,6 +288,7 @@ impl<'a> Cpu<'a> {
             }
         }
     }
+    */
 
     pub fn biu_queue_flush(&mut self) {
         self.pc -= self.queue.len() as u32;
@@ -231,6 +300,8 @@ impl<'a> Cpu<'a> {
         //trace_print!("Fetch state to idle");
         self.fetch_state = FetchState::Idle;
         self.fetch_suspended = false;
+
+        self.biu_state = BiuState::Resuming(3);
     }
 
     pub fn biu_update_pc(&mut self) {
@@ -280,15 +351,29 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    #[inline]
+    pub fn biu_tick_state(&mut self) {
+
+        if let BiuState::Resuming(ref mut c) = self.biu_state {
+            *c = c.saturating_sub(1);
+
+            // Resume BIU if resume operation completed
+            if *c == 0 {
+                self.biu_state = BiuState::Operating;
+            }
+        }       
+    }
+
+    #[inline]
     pub fn biu_tick_prefetcher(&mut self) {
         match &mut self.fetch_state {
             FetchState::Scheduled(c) => {
-                *c = c.saturating_add(1);
+                *c = c.saturating_sub(1);
             }
             FetchState::Aborted(c) => {
-                *c = c.saturating_add(1);
+                *c = c.saturating_sub(1);
 
-                if *c == FETCH_DELAY {
+                if *c == 0 {
                     self.fetch_state = FetchState::Idle;
                 }                
             }
@@ -310,7 +395,8 @@ impl<'a> Cpu<'a> {
             QueueType::First => QueueOp::First,
             QueueType::Subsequent => QueueOp::Subsequent
         };
-        //self.cycle(); // It takes 1 cycle to read from the queue.
+
+        self.last_queue_direction = QueueDirection::Read;
 
         byte
     }
@@ -593,7 +679,7 @@ impl<'a> Cpu<'a> {
         first: bool,
     ) {
 
-        /*
+
         trace_print!(
             self,
             "Bus begin! {:?}:[{:05X}] in {:?}", 
@@ -601,7 +687,6 @@ impl<'a> Cpu<'a> {
             address, 
             self.t_cycle
         );
-        */
 
         // Check this address for a memory access breakpoint
         if self.bus.get_flags(address as usize) & MEM_BPA_BIT != 0 {
@@ -659,34 +744,26 @@ impl<'a> Cpu<'a> {
 
             let fetch_scheduled = if let FetchState::Scheduled(_) = self.fetch_state { true } else { false };
 
-            //self.trace_print(&format!("biu_bus_begin(): fetch is scheduled? {}", fetch_scheduled));
-            if new_bus_status != BusStatus::CodeFetch && (fetch_scheduled || self.fetch_state == FetchState::InProgress) {
-                // A fetch was scheduled already, so we have to abort and incur a two cycle penalty.
-                //self.trace_print("Aborting prefetch!");
-
-                let mut penalty_cycle = false;
-                if self.fetch_suspended {
-                    // Oddly, suspending prefetch does not avoid a prefetch abort on a bus request if a prefetch was already scheduled.
-                    // This costs an extra cycle.
-                    penalty_cycle = true;
-                }
-
-                // If the prefetcher is unable to fetch after two cycles due to the queue being full, it enters a 'paused' state that
-                // incurs a one cycle delay to abort. Detect if our bus request originated during this state.
-                if let FetchState::Scheduled(x) = old_fetch_state {
-                    if !self.biu_queue_has_room() && (x > 1) {
-                        penalty_cycle = true;
+            match self.biu_state {
+                BiuState::Operating => {
+                    if new_bus_status != BusStatus::CodeFetch && (fetch_scheduled || self.fetch_state == FetchState::InProgress) {
+                        // A fetch was scheduled already, so we have to abort and incur a two cycle penalty.
+                        //self.trace_print("Aborting prefetch!");
+                        self.biu_abort_fetch(); 
                     }
                 }
-
-                if penalty_cycle {
-                    trace_print!(self, "Stalled prefetch penalty cycle");
-                    self.cycle();
+                BiuState::Suspended => {
+                    // The BIU is suspended. Spend 3 cycles resuming.
+                    self.biu_state = BiuState::Resuming(3);
+                    // Claim the bus for the EU.
+                    self.fetch_state = FetchState::BlockedByEU;
+                    self.cycles(3);
+                    self.fetch_state = FetchState::Idle;
                 }
-
-                self.biu_abort_fetch(); 
+                BiuState::Resuming(_) => {
+                    unreachable!("Shouldn't be in resuming state on bus request");
+                }
             }
-            
             
             self.bus_status = new_bus_status;
             self.bus_segment = bus_segment;

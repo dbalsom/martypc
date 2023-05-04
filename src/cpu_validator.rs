@@ -25,6 +25,13 @@ use std::{
 
 use crate::cpu_808x::QueueOp;
 
+#[derive (PartialEq, Debug, Copy, Clone)]
+pub enum ValidatorResult {
+    Ok,
+    OkEnd,
+    Error
+}
+
 #[derive (PartialEq, Copy, Clone)]
 pub enum ReadType {
     Code,
@@ -85,7 +92,7 @@ impl Display for ValidatorError{
     }
 }
 
-#[derive (Copy, Clone, PartialEq)]
+#[derive (Copy, Clone, Debug, PartialEq)]
 pub enum BusCycle {
     T1,
     T2,
@@ -132,8 +139,8 @@ pub struct CycleState {
     pub q_op: QueueOp,
     pub q_byte: u8,
     pub q_len: u32,
+    pub q: [u8; 4],
     pub data_bus: u16,
-    
 }
 
 impl PartialEq<CycleState> for CycleState {
@@ -176,17 +183,20 @@ impl PartialEq<CycleState> for CycleState {
 
 pub trait CpuValidator {
     fn init(&mut self, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool;
-    fn begin(&mut self, regs: &VRegisters );
-    fn validate(
+    fn reset_instruction(&mut self);
+    fn begin_instruction(&mut self, regs: &VRegisters, end_instr: usize, end_program: usize );
+    fn set_regs(&mut self);
+    fn validate_instruction(
         &mut self, 
         name: String, 
         instr: &[u8], 
+        peek_fetch: u16,
         has_modrm: bool, 
         cycles: i32, 
         regs: &VRegisters, 
-        emu_states: &[CycleState]) 
-            -> Result<bool, ValidatorError>;
-
+        emu_states: &[CycleState]
+    ) -> Result<ValidatorResult, ValidatorError>;
+    fn validate_regs(&mut self, regs: &VRegisters) -> Result<(), ValidatorError>;
     fn emu_read_byte(&mut self, addr: u32, data: u8, read_type: ReadType);
     fn emu_write_byte(&mut self, addr: u32, data: u8);
     fn discard_op(&mut self);

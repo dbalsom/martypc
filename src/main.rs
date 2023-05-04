@@ -1706,6 +1706,35 @@ pub fn main_headless(
         floppy_manager,
     );
 
+    // Load program binary if one was specified in config options
+    if let Some(prog_bin) = &config.emulator.run_bin {
+
+        if let Some(prog_seg) = config.emulator.run_bin_seg {
+            if let Some(prog_ofs) = config.emulator.run_bin_ofs {
+                let prog_vec = match std::fs::read(prog_bin.clone()) {
+                    Ok(vec) => vec,
+                    Err(e) => {
+                        eprintln!("Error opening filename {:?}: {}", prog_bin, e);
+                        std::process::exit(1);
+                    }
+                };
+
+                if let Err(_) = machine.load_program(&prog_vec, prog_seg, prog_ofs) {
+                    eprintln!("Error loading program into memory at {:04X}:{:04X}.", prog_seg, prog_ofs);
+                    std::process::exit(1);
+                };
+            }
+            else {
+                eprintln!("Must specifiy program load offset.");
+                std::process::exit(1);
+            }
+        }
+        else {
+            eprintln!("Must specifiy program load segment.");
+            std::process::exit(1);  
+        }
+    }
+
     let mut exec_control = machine::ExecutionControl::new();
     exec_control.set_state(ExecutionState::Running);
 
@@ -1727,6 +1756,7 @@ use std::{
 use cpu_808x::{
     *,
     mnemonic::Mnemonic,
+    CpuValidatorState
 };
 #[cfg(feature = "cpu_validator")]
 use cpu_common::CpuType;
@@ -1783,6 +1813,7 @@ pub fn main_fuzzer <'a>(
 
         // ALU ops
         
+        /*
         cpu.random_inst_from_opcodes(
             &[
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
@@ -1795,6 +1826,7 @@ pub fn main_fuzzer <'a>(
                 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, // CMP
             ]
         );
+        */
         // Completed 5000 tests
         
 
@@ -1842,7 +1874,7 @@ pub fn main_fuzzer <'a>(
 
         //cpu.random_inst_from_opcodes(&[0x8F]); // POP  (Weird behavior when REG != 0)
 
-        //cpu.random_inst_from_opcodes(&[0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]); // XCHG reg, ax
+        cpu.random_inst_from_opcodes(&[0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]); // XCHG reg, ax
         //cpu.random_inst_from_opcodes(&[0x98, 0x99]); // CBW, CWD
         //cpu.random_inst_from_opcodes(&[0x9A]); // CALLF
         //cpu.random_inst_from_opcodes(&[0x9C, 0x9D]); // PUSHF, POPF
@@ -1938,6 +1970,11 @@ pub fn main_fuzzer <'a>(
             continue;
         }
 
+
+        if test_num > 3 {
+            return;
+
+        }
         match i.opcode {
             0xFE | 0xD2 | 0xD3 | 0x8F => {
                 continue;
@@ -1994,6 +2031,9 @@ pub fn main_fuzzer <'a>(
    
         log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
         
+        // Set terminating address for CPU validator.
+        cpu.set_end_address((i.address + i.size) as usize);
+
         // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
         // execution per iteration. The 8088 makes no such distinction.
         loop {
@@ -2012,6 +2052,8 @@ pub fn main_fuzzer <'a>(
                 } 
             }
         }
+
+        cpu.reset();
 
     }
     

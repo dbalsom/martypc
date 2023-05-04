@@ -35,20 +35,24 @@ impl InstructionQueue {
         self.size = size;
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.len
     }
 
+    #[inline]
     pub fn is_full(&self) -> bool {
         self.len == self.size
     }
 
+    #[inline]
     pub fn get_preload(&mut self) -> Option<u8> {
         let preload = self.preload;
         self.preload = None;
         preload
     }
 
+    #[inline]
     pub fn has_preload(&self) -> bool {
         if let Some(_) = self.preload {
             true
@@ -58,13 +62,14 @@ impl InstructionQueue {
         }
     }
 
+    #[inline]
     pub fn set_preload(&mut self) {
         if self.len > 0 {
             let byte = self.pop();
             self.preload = Some(byte);
         }
         else {
-            log::error!("Tried to preload with empty queue.")
+            panic!("Tried to preload with empty queue.")
         }
     }
 
@@ -108,6 +113,7 @@ impl InstructionQueue {
         self.preload = None;
     }
 
+    /// Convert the contents of the processor instruction queue to a hexadecimal string.
     pub fn to_string(&self) -> String {
 
         let mut base_str = "".to_string();
@@ -117,5 +123,17 @@ impl InstructionQueue {
         }
 
         base_str
+    }
+
+    /// Write the contents of the processor instruction queue in order to the
+    /// provided slice of u8. The slice must be the same size as the current piq 
+    /// length for the given cpu type.
+    pub fn to_slice(&self, slice: &mut [u8]) {
+
+        assert_eq!(self.size, slice.len());
+
+        for i in 0..self.len {
+            slice[i] = self.q[(self.back + i) % self.size];
+        }
     }
 }

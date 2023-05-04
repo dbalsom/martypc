@@ -1,7 +1,7 @@
 /*
-  Marty PC Emulator 
-  (C)2023 Daniel Balsom
-  https://github.com/dbalsom/marty
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -20,9 +20,10 @@
 
 pub const QUEUE_SIZE: usize = 4;
 
-#[derive (Copy, Clone, PartialEq)]
+#[derive (Copy, Clone, Debug, PartialEq)]
 pub enum QueueDataType {
     Program,
+    EndInstruction,
     Finalize
 }
 
@@ -109,5 +110,13 @@ impl InstructionQueue {
         base_str
     }
 
+    /// Write the contents of the processor instruction queue in order to the
+    /// provided slice of u8. 
+    pub fn to_slice(&self, slice: &mut [u8]) {
+
+        for i in 0..self.len {
+            slice[i] = self.q[(self.back + i) % QUEUE_SIZE].opcode;
+        }
+    }
 
 }

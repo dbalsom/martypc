@@ -113,6 +113,9 @@ impl<'a> Cpu<'a> {
                 _=> op_segment_override
             };
 
+            // Reading a segment override prefix takes two cycles
+            bytes.wait(1);
+
             // Reset first-fetch flag on each prefix read
             opcode = bytes.q_read_u8(QueueType::First);
             size += 1;

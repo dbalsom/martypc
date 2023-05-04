@@ -219,7 +219,7 @@ impl<'a> Cpu<'a> {
                 let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 let byte = self.biu_read_u8(segment, flat_addr);
-                self.cycles_i(2, &[0x1e2, MC_NONE]); // Return delay cycle from EALOAD
+                self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD
                 Some(byte)
             }
             OperandType::NearAddress(_u16) => None,
@@ -269,7 +269,7 @@ impl<'a> Cpu<'a> {
                 let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
                 let flat_addr = self.calc_linear_address_seg(segment, offset);
                 let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);             
-                self.cycles_i(2, &[0x1e2, MC_NONE]); // Return delay cycle from EALOAD
+                self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD
                 Some(word)
             }
             OperandType::NearAddress(_u16) => None,

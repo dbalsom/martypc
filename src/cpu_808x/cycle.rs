@@ -215,10 +215,13 @@ impl<'a> Cpu<'a> {
                             (BusStatus::CodeFetch, TransferSize::Byte) => {
                                 //log::debug!("Code fetch completed!");
                                 //log::debug!("Pushed byte {:02X} to queue!", self.data_bus as u8);
+                                //trace_print!(self, "Queue direction -> Write!");
+                                self.last_queue_direction = QueueDirection::Write;
                                 self.queue.push8(self.data_bus as u8);
                                 self.pc = (self.pc + 1) & 0xFFFFFu32;
                             }
                             (BusStatus::CodeFetch, TransferSize::Word) => {
+                                self.last_queue_direction = QueueDirection::Write;
                                 self.queue.push16(self.data_bus);
                                 self.pc = (self.pc + 2) & 0xFFFFFu32;
                             }
@@ -291,13 +294,15 @@ impl<'a> Cpu<'a> {
             }            
         };
 
+        self.biu_tick_state();
+
         // Handle prefetching
         self.biu_tick_prefetcher();
 
         match self.fetch_state {
-            FetchState::Scheduled(n) if n > 1 => {
+            FetchState::Scheduled(n) if n == 0 => {
                 //self.trace_print("Scheduled fetch!");
-                if !self.fetch_suspended {
+                if matches!(self.biu_state, BiuState::Operating) {
                     if self.biu_queue_has_room() {
 
                         //trace_print!(self, "Fetch started");
@@ -316,6 +321,8 @@ impl<'a> Cpu<'a> {
                         self.transfer_n = 0;
                     }
                     else if !self.bus_pending_eu {
+
+                        self.biu_abort_fetch_full();
                         /*
                         // Cancel fetch if queue is full and no pending bus request from EU that 
                         // would otherwise trigger an abort.
@@ -340,6 +347,7 @@ impl<'a> Cpu<'a> {
 
         // Reset queue operation
         self.last_queue_op = self.queue_op;
+        self.last_queue_byte = self.queue_byte;
         self.queue_op = QueueOp::Idle;
 
         self.instr_cycle += 1;

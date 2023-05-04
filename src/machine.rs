@@ -235,8 +235,8 @@ impl<'a> Machine<'a> {
             config.validator.vtype.unwrap()
         );
 
-        cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection));
-        cpu.reset();        
+        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+        cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection)); 
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
@@ -282,7 +282,6 @@ impl<'a> Machine<'a> {
     
             let rom_entry_point = rom_manager.get_entrypoint();
             cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
-            cpu.reset_address();
         }
 
         // Set CPU clock divisor/multiplier
@@ -293,6 +292,8 @@ impl<'a> Machine<'a> {
         else {
             cpu_factor = machine_desc.cpu_factor;
         }
+
+        cpu.reset();
 
         Machine {
             machine_type,
@@ -321,7 +322,9 @@ impl<'a> Machine<'a> {
         self.cpu.bus_mut().copy_from(program, location as usize, 0, false)?;
 
         self.cpu.set_reset_vector(CpuAddress::Segmented(program_seg, program_ofs));
-        self.cpu.reset_address();
+        self.cpu.reset();
+
+        self.cpu.set_end_address(((location as usize) + program.len()) & 0xFFFFF );
 
         Ok(())
     }
@@ -685,12 +688,18 @@ impl<'a> Machine<'a> {
                             exec_control.state = ExecutionState::BreakpointHit;
                             return 1
                         }
+                        StepResult::ProgramEnd => {
+                            log::debug!("Program ended execution.");
+                            exec_control.state = ExecutionState::Halted;
+                            return 1
+                        }                        
                     }
                     
                 },
                 Err(err) => {
                     if let CpuError::CpuHaltedError(_) = err {
                         log::error!("CPU Halted!");
+                        self.cpu.trace_flush();
                         exec_control.state = ExecutionState::Halted;
                     }
                     self.error = true;
@@ -742,6 +751,10 @@ impl<'a> Machine<'a> {
                                         // We can hit an 'inner' breakpoint while stepping over. This is fine, and ends the step
                                         // over operation at the breakpoint.
                                         exec_control.state = ExecutionState::BreakpointHit;
+                                        return instr_count
+                                    }
+                                    StepResult::ProgramEnd => {
+                                        exec_control.state = ExecutionState::Halted;
                                         return instr_count
                                     }
                                 }

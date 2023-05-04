@@ -153,10 +153,10 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles_nx_i(2, &[0x001,]);
+                self.cycles_nx_i(2, &[0x008, 0x009]);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(3, &[0x01, 0x02, 0x03]);
+                    self.cycles_i(2, &[0x009, 0x00a]);
                 }
 
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
@@ -175,10 +175,10 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles_nx_i(2, &[0x001, 0x002]);
+                self.cycles_nx_i(2, &[0x008, 0x009]);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(3, &[0x01, 0x02, 0x03]);
+                    self.cycles_i(2, &[0x009, 0x00a]);
                 }
 
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
@@ -1735,7 +1735,7 @@ impl<'a> Cpu<'a> {
                             let segment_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset + 2);
 
                             let offset = self.biu_read_u8(ea_segment, offset_addr);
-                            self.cycles_i(3, &[0x1e2, MC_JUMP, 0x068]); // RTN delay
+                            self.cycles_i(3, &[0x1e2, MC_RTN, 0x068]); // RTN delay
                             let segment = self.biu_read_u8(ea_segment, segment_addr);
 
                             self.cycle_i(0x06a);
@@ -2075,6 +2075,11 @@ impl<'a> Cpu<'a> {
             }
         }
 
+        // A lot of software out there has invalid or at least useless segment override bytes. Not sure why! But it makes 
+        // this very noisy. We have a good confidence that we have handled all of them correctly at this point. The CPU
+        // validator is more useful for verifying correctness than trying to warn on an unhandled segment overrides.
+        
+        /*
         match self.i.segment_override {
             SegmentOverride::None => {},
             _ => {
@@ -2084,17 +2089,26 @@ impl<'a> Cpu<'a> {
                 }
             }
         }
+        */
 
         // Reset REP init flag. This flag is set after a rep-prefixed instruction is executed for the first time. It
         // should be preserved between executions of a rep-prefixed instruction unless an interrupt occurs, in which
-        // case the rep-prefix instruction terminates normally after RPTI. This flag determins whether RPTS is 
+        // case the rep-prefix instruction terminates normally after RPTI. This flag determines whether RPTS is 
         // run when executing the instruction.
         if !self.in_rep {
             self.rep_init = false;
         }
 
+        // Update IP to next instruction if we didn't jump.
+        if !jump {
+            self.ip = self.ip.wrapping_add(self.i.size as u16);
+        }
+
         if unhandled {
-            ExecutionResult::UnsupportedOpcode(self.i.opcode)
+            // This won't happen - the 8088 has no concept of an invalid instruction and we have implemented
+            // all opcodes. 
+            unreachable!("Invalid opcode!");
+            //ExecutionResult::UnsupportedOpcode(self.i.opcode)
         }
         else if self.halted && !self.get_flag(Flag::Interrupt) {
             // CPU was halted with interrupts disabled - will not continue
