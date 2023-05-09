@@ -21,7 +21,7 @@ use std::any::Any;
 use modular_bitfield::prelude::*;
 
 use crate::config::VideoType;
-use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
+use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 use crate::tracelogger::TraceLogger;
 
 use crate::videocard::*;
@@ -1675,7 +1675,14 @@ impl VideoCard for VGACard {
         map
     }
 
-    fn run(&mut self, elapsed_us: f64) {
+    fn run(&mut self, time: DeviceRunTimeUnit) {
+
+        let elapsed_us = if let DeviceRunTimeUnit::Microseconds(us) = time {
+            us
+        }
+        else {
+            panic!("VGA requires us time unit");
+        };
 
         //let vga_cycles = match self.misc_output_register.clock_select() {
         //    ClockSelect::Clock25 => elapsed_us / US_PER_CLOCK_1,

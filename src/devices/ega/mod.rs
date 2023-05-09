@@ -23,7 +23,7 @@ use modular_bitfield::prelude::*;
 use log;
 
 use crate::config::VideoType;
-use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
+use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 
 use crate::videocard::*;
 
@@ -1310,7 +1310,7 @@ impl VideoCard for EGACard {
         map
     }
 
-    fn run(&mut self, us: f64) {
+    fn run(&mut self, time: DeviceRunTimeUnit) {
 
     }
 

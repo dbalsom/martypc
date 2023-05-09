@@ -33,6 +33,7 @@
       12  Gfx     640x480     VGA     16    a000
 */
 
+use crate::bus::DeviceRunTimeUnit;
 use crate::vga::VGACard;
 use crate::ega::EGACard;
 use crate::cga::CGACard;
@@ -236,7 +237,7 @@ pub trait VideoCard {
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
     /// Runs the video card device for the specified period of time
-    fn run(&mut self, us: f64);
+    fn run(&mut self, time: DeviceRunTimeUnit);
 
     /// Reset the video card
     fn reset(&mut self);

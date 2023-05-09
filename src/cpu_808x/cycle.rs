@@ -213,7 +213,7 @@ impl<'a> Cpu<'a> {
                                 }
                                 (BusStatus::IoRead, TransferSize::Byte) => {
                                     self.i8288.iorc = true;
-                                    byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16);
+                                    byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16, self.instr_elapsed);
                                     self.data_bus = byte as u16;
                                     self.instr_elapsed = 0;
                                     self.transfer_n += 1;
@@ -222,7 +222,11 @@ impl<'a> Cpu<'a> {
                                 }
                                 (BusStatus::IoWrite, TransferSize::Byte) => {
                                     self.i8288.iowc = true;
-                                    self.bus.io_write_u8((self.address_bus & 0xFFFF) as u16, (self.data_bus & 0x00FF) as u8);
+                                    self.bus.io_write_u8(
+                                        (self.address_bus & 0xFFFF) as u16, 
+                                        (self.data_bus & 0x00FF) as u8,
+                                        self.instr_elapsed
+                                    );
                                     self.instr_elapsed = 0;
                                     self.transfer_n += 1;
 

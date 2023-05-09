@@ -1189,13 +1189,13 @@ impl BusInterface {
         // Run the video device.
         match &mut self.video {
             VideoCardDispatch::Cga(cga) => {
-                cga.run(us);
+                cga.run(DeviceRunTimeUnit::SystemTicks(sys_ticks));
             },
             VideoCardDispatch::Ega(ega) => {
-                ega.run(us);
+                ega.run(DeviceRunTimeUnit::Microseconds(us));
             }
             VideoCardDispatch::Vga(vga) => {
-                vga.run(us);
+                vga.run(DeviceRunTimeUnit::Microseconds(us));
             }
             VideoCardDispatch::None => {}
         }
@@ -1210,7 +1210,11 @@ impl BusInterface {
         //self.video.borrow_mut().reset();
     }
 
-    pub fn io_read_u8(&mut self, port: u16) -> u8 {
+    /// Read an 8-bit value from an IO port.
+    /// 
+    /// We provide the elapsed cycle count for the current instruction. This allows a device
+    /// to optionally tick itself to bring itself in sync with CPU state.
+    pub fn io_read_u8(&mut self, port: u16, cycles: u32) -> u8 {
         /*
         let handler_opt = self.handlers.get_mut(&port);
         if let Some(handler) = handler_opt {
@@ -1316,7 +1320,11 @@ impl BusInterface {
 
     }
 
-    pub fn io_write_u8(&mut self, port: u16, data: u8) {
+    /// Write an 8-bit value to an IO port.
+    /// 
+    /// We provide the elapsed cycle count for the current instruction. This allows a device
+    /// to optionally tick itself to bring itself in sync with CPU state.
+    pub fn io_write_u8(&mut self, port: u16, data: u8, cycles: u32) {
         /*
         let handler_opt = self.handlers.get_mut(&port);
         if let Some(handler) = handler_opt {
