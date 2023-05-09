@@ -2416,19 +2416,8 @@ impl<'a> Cpu<'a> {
                     Ok((StepResult::Call(step_over_target), self.instr_cycle))
                 }
                 else {
-
-                    // If we jump to the same jump instruction (not LOOP) we will hang the CPU. 
-                    if (self.i.opcode & 0xFC != 0xE0) && (last_cs == self.cs) && (last_ip == self.ip) {
-                        self.is_running = false;
-                        self.is_error = true;
-                        log::error!("Self-referential jump. CPU is hung.");
-                        //Err(CpuError::CpuHaltedError(instruction_address))
-                        Ok((StepResult::Normal, self.instr_cycle))
-                    }
-                    else {
-                        Ok((StepResult::Normal, self.instr_cycle))
-                    }
-                }
+                    Ok((StepResult::Normal, self.instr_cycle))
+                }                
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
