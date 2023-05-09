@@ -227,12 +227,20 @@ impl<'a> Machine<'a> {
             }
         }
 
+        // Create the validator trace file, if specified
+        let mut validator_trace = TraceLogger::None;
+        if let Some(trace_filename) = &config.validator.trace_file {
+            validator_trace = TraceLogger::from_filename(&trace_filename);
+        }
+
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
             trace_mode,
             trace_file_option,
             #[cfg(feature = "cpu_validator")]
-            config.validator.vtype.unwrap()
+            config.validator.vtype.unwrap(),
+            #[cfg(feature = "cpu_validator")]
+            validator_trace
         );
 
         cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));

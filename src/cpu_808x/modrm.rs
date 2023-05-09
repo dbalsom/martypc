@@ -36,22 +36,22 @@ const EA_INSTR_TABLE_PRE: [[u16; 5]; 24] = [
     [0x1da, MC_JUMP, 0x1d8, 0x1d9, MC_JUMP], // MODRM_ADDR_BX_DI  
     [0x1db, MC_JUMP, 0x1d5, 0x1d6, MC_JUMP], // MODRM_ADDR_BP_SI   
     [0x1d7, 0x1d8, 0x1d9, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_DI  
-    [0x003, MC_JUMP, MC_NONE, MC_NONE, MC_NONE],   // MODRM_ADDR_SI    
-    [0x01f, MC_JUMP, MC_NONE, MC_NONE, MC_NONE],   // MODRM_ADDR_DI     
+    [0x003, MC_JUMP, MC_NONE, MC_NONE, MC_NONE],   // MODRM_ADDR_SI
+    [0x01f, MC_JUMP, MC_NONE, MC_NONE, MC_NONE],   // MODRM_ADDR_DI
     [MC_NONE, MC_NONE, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_DISP16
     [0x037, MC_JUMP, MC_NONE, MC_NONE, MC_NONE],   // MODRM_ADDR_BX
     [0x1d4, 0x1d5, 0x1d6, MC_JUMP, MC_NONE], // MODRM_ADDR_BX_SI_DISP8
     [0x1da, MC_JUMP, 0x1d8, 0x1d9, MC_JUMP], // MODRM_ADDR_BX_DI_DISP8
     [0x1db, MC_JUMP, 0x1d5, 0x1d6, MC_JUMP], // MODRM_ADDR_BP_SI_DISP8
     [0x1d7, 0x1d8, 0x1d9, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_DI_DISP8
-    [0x023, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_DI_DISP8
     [0x003, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_SI_DISP8
+    [0x01f, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_DI_DISP8
     [0x023, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BP_DISP8
     [0x037, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BX_DISP8
-    [0x1d4, 0x1d5, 0x1d6, MC_JUMP, MC_NONE], // MODRM_ADDR_BX_SI_DISP1
-    [0x1da, MC_JUMP, 0x1d8, 0x1d9, MC_JUMP], // MODRM_ADDR_BX_DI_DISP1
-    [0x1db, MC_JUMP, 0x1d5, 0x1d6, MC_JUMP], // MODRM_ADDR_BP_SI_DISP1
-    [0x1d7, 0x1d8, 0x1d9, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_DI_DISP1
+    [0x1d4, 0x1d5, 0x1d6, MC_JUMP, MC_NONE], // MODRM_ADDR_BX_SI_DISP16
+    [0x1da, MC_JUMP, 0x1d8, 0x1d9, MC_JUMP], // MODRM_ADDR_BX_DI_DISP16
+    [0x1db, MC_JUMP, 0x1d5, 0x1d6, MC_JUMP], // MODRM_ADDR_BP_SI_DISP16
+    [0x1d7, 0x1d8, 0x1d9, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_DI_DISP16
     [0x003, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_SI_DISP16
     [0x01f, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_DI_DISP16
     [0x023, MC_JUMP, MC_NONE, MC_NONE, MC_NONE], // MODRM_ADDR_BP_DISP16
@@ -76,8 +76,8 @@ const EA_INSTR_TABLE_POST: [[u16; 3]; 24] = [
     [MC_JUMP, 0x1e0, MC_JUMP], // MODRM_ADDR_SI_DISP8
     [MC_JUMP, 0x1e0, MC_JUMP], // MODRM_ADDR_BP_DISP8
     [MC_JUMP, 0x1e0, MC_JUMP], // MODRM_ADDR_BX_DISP8
-    [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_BX_DI_DISP16
-    [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_SI_DISP16
+    [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_BX_SI_DISP16
+    [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_DI_DISP16
     [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_BX_SI_DISP16
     [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_BP_DI_DISP16
     [0x1e0, MC_JUMP, MC_NONE], // MODRM_ADDR_SI_DISP16
@@ -224,7 +224,7 @@ impl ModRmByte {
     /// Load any displacement, then return modrm struct and size of modrm + displacement.
     pub fn read(bytes: &mut impl ByteQueue) -> (ModRmByte, u32) {
 
-        let byte = bytes.q_read_u8(QueueType::Subsequent);
+        let byte = bytes.q_read_u8(QueueType::Subsequent, QueueReader::Biu);
         let mut modrm = MODRM_TABLE[byte as usize];
         let mut disp_size = 0;
         /*
@@ -249,7 +249,7 @@ impl ModRmByte {
             bytes.wait_i(modrm.post_disp_cost as u32, &EA_INSTR_TABLE_POST[(modrm.b_mod << 3 | modrm.b_rm) as usize]);
         }
         else {
-            bytes.wait(1);
+            //bytes.wait(1);
         }
         
         (modrm, disp_size + 1)
@@ -262,11 +262,13 @@ impl ModRmByte {
         let (displacement, size) = match self.disp {
 
             Displacement::Pending8 => {
-                let tdisp = bytes.q_read_i8(QueueType::Subsequent);
+                bytes.set_pc(0x1de);
+                let tdisp = bytes.q_read_i8(QueueType::Subsequent, QueueReader::Biu);
                 (Displacement::Disp8(tdisp), 1)
             }
             Displacement::Pending16 => {
-                let tdisp = bytes.q_read_i16(QueueType::Subsequent);
+                bytes.set_pc(0x1de);                
+                let tdisp = bytes.q_read_i16(QueueType::Subsequent, QueueReader::Biu);
                 (Displacement::Disp16(tdisp), 2)
             }
             _ => (Displacement::NoDisp, 0)

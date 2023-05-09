@@ -29,7 +29,7 @@ pub enum OperandTemplate {
     Offset16,
     FixedRegister8(Register8),
     FixedRegister16(Register16),
-    NearAddress,
+    //NearAddress,
     FarAddress
 }
 
@@ -76,7 +76,7 @@ impl<'a> Cpu<'a> {
         //let op_address = bytes.tell() as u32;
         bytes.clear_delay();
 
-        let mut opcode = bytes.q_read_u8(QueueType::First);
+        let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
 
         let mut mnemonic;
@@ -117,7 +117,7 @@ impl<'a> Cpu<'a> {
             bytes.wait(1);
 
             // Reset first-fetch flag on each prefix read
-            opcode = bytes.q_read_u8(QueueType::First);
+            opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
             size += 1;
         }
 
@@ -329,6 +329,8 @@ impl<'a> Cpu<'a> {
             loaded_modrm = true;
             let op_ext = modrm.get_op_extension();
             
+            // FX group opcodes seem to have a one-cycle delay. TODO: Why not all groups?
+
             (mnemonic, operand1_template, operand2_template, op_flags) = match (opcode, op_ext) {
                 (0x80 | 0x82, 0x00) => (Mnemonic::ADD,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
                 (0x80 | 0x82, 0x01) => (Mnemonic::OR,   OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
@@ -393,41 +395,41 @@ impl<'a> Cpu<'a> {
                 (0xD3, 0x06) => (Mnemonic::SETMOC,OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
                 (0xD3, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM16,   OperandTemplate::FixedRegister8(Register8::CL),    I_LOAD_EA ),
 
-                (0xF6, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     I_LOAD_EA ),
-                (0xF6, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     I_LOAD_EA ),
-                (0xF6, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xF6, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xF6, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xF6, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xF6, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xF6, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
+                (0xF6, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF6, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF6, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF6, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF6, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF6, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF6, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY),
+                (0xF6, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
 
-                (0xF7, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   I_LOAD_EA ),
-                (0xF7, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   I_LOAD_EA ),
-                (0xF7, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xF7, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xF7, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xF7, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xF7, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xF7, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),                
+                (0xF7, 0x00) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF7, 0x01) => (Mnemonic::TEST,  OperandTemplate::ModRM16,   OperandTemplate::Immediate16,   I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF7, 0x02) => (Mnemonic::NOT,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF7, 0x03) => (Mnemonic::NEG,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF7, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF7, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF7, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xF7, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),                
 
-                (0xFE, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xFE, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xFE, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xFE, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xFE, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xFE, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xFE, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                (0xFE, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),                    
+                (0xFE, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY),
+                (0xFE, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFE, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY),
+                (0xFE, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY),
+                (0xFE, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFE, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFE, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFE, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA | I_GROUP_DELAY ),                    
                     
-                (0xFF, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ), 
+                (0xFF, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFF, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFF, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFF, 0x03) => (Mnemonic::CALLF, OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFF, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFF, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFF, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ),
+                (0xFF, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA | I_GROUP_DELAY ), 
                 
                 _=> (Mnemonic::NoOpcode, OperandTemplate::NoOperand, OperandTemplate::NoOperand, 0)
             };
@@ -466,7 +468,7 @@ impl<'a> Cpu<'a> {
             // No modrm. Set a one cycle fetch delay. This has no effect when reading from memory.
             // When fetching from the processor instruction queue, the 2nd byte must be a modrm or 
             // the fetch is skipped for that cycle.            
-            bytes.delay(1);
+            //bytes.delay(1);
         }
 
         if loaded_modrm && (op_flags & I_LOAD_EA == 0) {
@@ -560,22 +562,26 @@ impl<'a> Cpu<'a> {
                     Ok((OperandType::Immediate8s(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Relative8 => {
-                    let operand = bytes.q_read_i8(QueueType::Subsequent);
+                    // Peek at rel8 value now, fetch during execute
+                    let operand = bytes.q_peek_i8();
                     size += 1;
                     Ok((OperandType::Relative8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Relative16 => {
-                    let operand = bytes.q_read_i16(QueueType::Subsequent);
+                    // Peek at rel16 value now, fetch during execute
+                    let operand = bytes.q_peek_i16();
                     size += 2;
                     Ok((OperandType::Relative16(operand), OperandSize::Operand16))                
                 }
                 OperandTemplate::Offset8 => {
-                    let operand = bytes.q_read_u16(QueueType::Subsequent);
+                    // Peek at offset8 value now, fetch during execute
+                    let operand = bytes.q_peek_u16();
                     size += 2;
                     Ok((OperandType::Offset8(operand), OperandSize::Operand8))
                 }
                 OperandTemplate::Offset16 => {
-                    let operand = bytes.q_read_u16(QueueType::Subsequent);
+                    // Peek at offset16 value now, fetch during execute
+                    let operand = bytes.q_peek_u16();
                     size += 2;
                     Ok((OperandType::Offset16(operand), OperandSize::Operand16))
                 }
@@ -585,14 +591,15 @@ impl<'a> Cpu<'a> {
                 OperandTemplate::FixedRegister16(r16) => {
                     Ok((OperandType::Register16(r16), OperandSize::Operand16))
                 }
+                /*
                 OperandTemplate::NearAddress => {
-                    let offset = bytes.q_read_u16(QueueType::Subsequent);
+                    let offset = bytes.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                     size += 2;
                     Ok((OperandType::NearAddress(offset), OperandSize::NoSize))
                 }
+                */
                 OperandTemplate::FarAddress => {
-                    let offset = bytes.q_read_u16(QueueType::Subsequent);
-                    let segment = bytes.q_read_u16(QueueType::Subsequent);
+                    let (segment, offset) = bytes.q_peek_farptr16();
                     size += 4;
                     Ok((OperandType::FarAddress(segment,offset), OperandSize::NoSize))
                 }

@@ -179,27 +179,82 @@ impl<'a> Cpu<'a> {
         None
     }
 
+    /// Load the EA operand for the current instruction, if applicable
+    /// (not all instructions with a mod r/m will load, ie, write-only instructions)
+    pub fn load_operand(&mut self) {
+        if self.i.flags & I_LOAD_EA != 0 {
+            // This instruction loads its EA operand. Load and save into OPR.
+
+            let ea_mode: AddressingMode;
+            let ea_size;
+            if let OperandType::AddressingMode(mode) = self.i.operand1_type {
+                ea_size = self.i.operand1_size;
+                ea_mode = mode;
+            }
+            else if let OperandType::AddressingMode(mode) = self.i.operand2_type {
+                ea_size = self.i.operand2_size;
+                ea_mode = mode;
+            }
+            else {
+                return;
+            }
+
+            self.mc_pc = 0x1e0; // EALOAD - 1
+            let (_segment_val, segment, offset) = self.calc_effective_address(ea_mode, self.i.segment_override);
+            let flat_addr = self.calc_linear_address_seg(segment, offset);
+
+            self.trace_comment("EALOAD");
+
+            /*
+            // We can use the width bit (bit 0) of the opcode to determine size of operand when a modrm is present,
+            // but 8C and 8E are exceptions to the rule...
+            let wide = match self.i.opcode {
+                0xC4 | 0x8C | 0x8E => true,
+                _ => self.i.opcode & 0x01 == 1 
+            };
+            */
+
+            if ea_size == OperandSize::Operand16 {
+                // Width is word
+                assert!(ea_size == OperandSize::Operand16);
+                self.ea_opr = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
+            }
+            else {
+                // Width is byte
+                assert!(ea_size == OperandSize::Operand8);
+                self.ea_opr = self.biu_read_u8(segment, flat_addr) as u16;
+            }
+            self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD            
+        }
+    }
+
     /// Return the value of an 8-bit Operand
     pub fn read_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<u8> {
 
+        // The operand enums contain values peeked from instruction fetch. However for accurate cycle
+        // timing, we have to fetch them again now.
+
+        // Ideally we would assert that the peeked operand values equal the fetched values, but this can 
+        // fail with self-modifying code, such as the end credits of 8088mph.
+
         match operand {
             OperandType::Immediate8(_imm8) => {
-                // Immediate value was peeked during instruction decode, but we have to fetch it now.
-                let byte = self.q_read_u8(QueueType::Subsequent);
-                //assert!(byte == imm8); // Fetched value should match peeked value (this can fail with self-modifying code)
+                let byte = self.q_read_u8(QueueType::Subsequent, QueueReader::Eu);
                 Some(byte)
             }
             OperandType::Immediate8s(_imm8s) => {
-                // Immediate value was peeked during instruction decode, but we have to fetch it now.
-                let byte = self.q_read_i8(QueueType::Subsequent);
-                //assert!(byte == imm8s); // Fetched value should match peeked value
+                let byte = self.q_read_i8(QueueType::Subsequent, QueueReader::Eu);
                 Some(byte as u8)
             }
-            OperandType::Relative8(rel8) => Some(rel8 as u8),
-            OperandType::Offset8(offset8) => {
+            OperandType::Relative8(_rel8) => {
+                let byte = self.q_read_i8(QueueType::Subsequent, QueueReader::Eu);
+                Some(byte as u8)
+            }
+            OperandType::Offset8(_offset8) => {
+                let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
 
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset8);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
                 let byte = self.biu_read_u8(segment, flat_addr);
                 Some(byte)
             },
@@ -215,17 +270,13 @@ impl<'a> Cpu<'a> {
                     Register8::DL => Some(self.dl)
                 }
             },
-            OperandType::AddressingMode(mode) => {
-                let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                let byte = self.biu_read_u8(segment, flat_addr);
-                self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD
-                Some(byte)
+            OperandType::AddressingMode(_mode) => {
+                // EA operand was already fetched into ea_opr. Return masked byte.
+                if self.i.opcode & 0x01 != 0 {
+                    panic!("Reading byte operand for word size instruction");
+                }
+                Some((self.ea_opr & 0xFF) as u8)
             }
-            OperandType::NearAddress(_u16) => None,
-            OperandType::FarAddress(_segment, _offset) => None,
-            OperandType::NoOperand => None,
-            OperandType::InvalidOperand => None,
             _=> None
         }
     }
@@ -233,17 +284,26 @@ impl<'a> Cpu<'a> {
     /// Return the value of a 16-bit Operand
     pub fn read_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride) -> Option<u16> {
 
+        // The operand enums contain values peeked from instruction fetch. However for accurate cycle
+        // timing, we have to fetch them again now.
+
+        // Ideally we would assert that the peeked operand values equal the fetched values, but this can 
+        // fail with self-modifying code, such as the end credits of 8088mph.
+
         match operand {
-            OperandType::Immediate16(imm16) => {
-                // Immediate value was peeked during instruction decode, but we have to fetch it now.
-                let word = self.q_read_u16(QueueType::Subsequent);
-                assert!(word == imm16); // Fetched value should match peeked value
+            OperandType::Immediate16(_imm16) => {
+                let word = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 Some(word)                
             },
-            OperandType::Relative16(rel16) => Some(rel16 as u16),
-            OperandType::Offset16(offset16) => {
+            OperandType::Relative16(_rel16) => {
+                let word = self.q_read_i16(QueueType::Subsequent, QueueReader::Eu);
+                Some(word as u16)
+            }
+            OperandType::Offset16(_offset16) => {
+                let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
+
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset16);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
                 let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
 
                 Some(word)
@@ -265,30 +325,33 @@ impl<'a> Cpu<'a> {
                     _=> panic!("read_operand16(): Invalid Register16 operand: {:?}", reg16)
                 }
             },
-            OperandType::AddressingMode(mode) => {
-                let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);             
-                self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD
-                Some(word)
+            OperandType::AddressingMode(_mode) => {
+                // EA operand was already fetched into ea_opr. Return it.             
+                Some(self.ea_opr)
             }
-            OperandType::NearAddress(_u16) => None,
-            OperandType::FarAddress(_segment, _offset) => None,
-            OperandType::NoOperand => None,
-            OperandType::InvalidOperand => None,
             _ => None
         }
     }    
+
+    /// Load a far address operand from instruction queue and return the segment, offset tuple.
+    pub fn read_operand_faraddr(&mut self) -> (u16, u16) {
+
+        let o1 = self.biu_queue_read(QueueType::Subsequent, QueueReader::Eu);
+        let o2 = self.biu_queue_read(QueueType::Subsequent, QueueReader::Eu);
+        let s1 = self.biu_queue_read(QueueType::Subsequent, QueueReader::Eu);
+        let s2 = self.biu_queue_read(QueueType::Subsequent, QueueReader::Eu);
+
+        ((s1 as u16) | (s2 as u16) << 8, (o1 as u16) | (o2 as u16) << 8)
+    }
 
     pub fn read_operand_farptr(&mut self, operand: OperandType, seg_override: SegmentOverride, flag: ReadWriteFlag) -> Option<(u16, u16)> {
 
         match operand {
             OperandType::AddressingMode(mode) => {
-                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment_val, offset);
+                let offset = self.ea_opr;
 
-                let offset = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
-                self.cycles(4);
+                let (segment_val, segment, ea_offset) = self.calc_effective_address(mode, seg_override);
+                let flat_addr = Cpu::calc_linear_address(segment_val, ea_offset);
                 let segment = self.biu_read_u16(segment, flat_addr + 2, flag);
                 Some((segment, offset))
             },
@@ -351,9 +414,12 @@ impl<'a> Cpu<'a> {
     pub fn write_operand8(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u8, flag: ReadWriteFlag) {
 
         match operand {
-            OperandType::Offset8(offset8) => {
+            OperandType::Offset8(_offset8) => {
+                let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
+                self.cycle();
+
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset8);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
                 self.biu_write_u8(segment, flat_addr, value, flag);
             }
             OperandType::Register8(reg8) => {
@@ -381,9 +447,12 @@ impl<'a> Cpu<'a> {
     pub fn write_operand16(&mut self, operand: OperandType, seg_override: SegmentOverride, value: u16, flag: ReadWriteFlag) {
 
         match operand {
-            OperandType::Offset16(offset16) => {
+            OperandType::Offset16(_offset16) => {
+                let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
+                self.cycle();
+
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset16);
+                let flat_addr = self.calc_linear_address_seg(segment, offset);
                 self.biu_write_u16(segment, flat_addr, value, flag);
             }
             OperandType::Register16(reg16) => {

@@ -358,28 +358,6 @@ impl<'a> Cpu<'a> {
 
             // Call negate with skip flag to enter at line 7 (tmpa unused)
             (_, tmpb, tmpc, carry, negate) = (0u8).cor_negate(self, tmpb, tmpc, negate, true);
-
-            /*
-            // 1bb:              | LRCY tmpb
-            // 1bc: SIGMA->tmpb  | NEG tmpb
-            //(_, carry) = rcl_u8_with_carry(tmpb as u8, 1, carry); // Set carry flag if operand is negative
-            carry = tmpb & 0x80 != 0; // LRCY is just checking msb of tmpb
-            (sigma, _, _, _) = tmpb.alu_neg();
-
-            self.cycles_i(2, &[0x1bb, 0x1bc]);
-
-            // 1bd:             | NCY 11
-            if !carry {
-                // Operand is positive
-                self.cycles_i(4, &[0x1bd, MC_JUMP, 0x1bf, MC_RTN]); // 1bf:         | RTN
-            }
-            else {
-                // Operand is negative
-                tmpb = sigma; // 1be: SIGMA->tmpb  | CF1 RTN
-                negate = !negate;
-                self.cycles_i(3, &[0x1bd, 0x1be, MC_RTN]);
-            }
-            */
         }
 
         // 152:            | UNC CORX
@@ -400,55 +378,9 @@ impl<'a> Cpu<'a> {
         // -------------------------------------------------------------------------
         if negate {
             self.cycle_i(MC_JUMP); // Jump to NEGATE
-            //println!("PRE-NEG: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa, tmpb, tmpc, carry);
-            
+            //println!("PRE-NEG: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa, tmpb, tmpc, carry); 
             (tmpa, tmpb, tmpc, carry, negate) = (tmpa as u8).cor_negate(self, tmpb, tmpc, negate, false);
             //println!("POST-NEG2: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa2, tmpb2, tmpc2, carry2);
-            
-            /*
-            
-            //sigma = -(tmpc as  i8) as u8;
-            //carry = if (tmpc & 0x80) != (sigma & 0x80) { true } else { false };
-
-            (sigma, carry, _, _) = tmpc.alu_neg(); // 1b6
-
-            //println!("corx_carry: {} neg_carry: {}", corx_carry, carry);
-            tmpc = sigma;
-
-            if carry {
-                sigma = !tmpa; // 1b8, jump, 1ba: SIGMA->tmpa | CF1 
-                self.cycles_i(5, &[0x1b6, 0x1b7, 0x1b8, MC_JUMP, 0x1ba]);
-            }
-            else {
-                (sigma, _, _, _) = tmpa.alu_neg(); // 1b8, 1b9, 1ba: SIGMA->tmpa | CF1 
-                self.cycles_i(5, &[0x1b6, 0x1b7, 0x1b8, 0x1b9, 0x1ba]);
-            }
-
-            tmpa = sigma; // 1ba
-            //negate = !negate;
-
-            // 1bb:     | LRCY tmpb
-            // 1bc: SIGMA->tmpb  | NEG tmpb
-            //(_, carry) = rcl_u8_with_carry(tmpb as u8, 1, carry); // Set carry flag if tmpb is negative
-            carry = tmpb & 0x80 != 0; // LRCY is just checking msb of tmpb
-            (_, _, _, _) = tmpb.alu_neg();
-
-            self.cycles_i(2, &[0x1bb, 0x1bc]);
-            println!("POST-NEG: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa, tmpb, tmpc, carry);
-            // 1bd:             | NCY 11
-            if !carry { 
-                // tmpb was positive, Jump to 11
-                self.cycles_i(4, &[0x1bd, MC_JUMP, 0x1bf, MC_RTN]); // RTN delay
-            }
-            else {
-                // tmpb was negative
-                // 1be: SIGMA->tmpb  | CF1 RTN
-                //tmpb = sigma; (unused after PREIMUL)
-                //negate = !negate; (unused after PREIMUL)
-                self.cycles_i(3, &[0x1bd, 0x1be, MC_RTN]); // RTN delay
-            }
-            
-            */
         }
 
         // 154:                | X0 IMULCOF
@@ -562,28 +494,6 @@ impl<'a> Cpu<'a> {
 
             // Call negate with skip flag to enter at line 7
             (_, tmpb, tmpc, carry, negate) = 0u16.cor_negate(self, tmpb, tmpc, negate, true);
-
-            /*
-            // 1bb:              | LRCY tmpb
-            // 1bc: SIGMA->tmpb  | NEG tmpb
-            //(_, carry) = rcl_u16_with_carry(tmpb, 1, carry); // Test if operand is negative
-            carry = tmpb & 0x8000 != 0; // LRCY is just checking msb
-            (sigma, _, _, _) = tmpb.alu_neg();
-
-            self.cycles_i(2, &[0x1bb, 0x1bc]);
-
-            // 1bd:             | NCY 11
-            if !carry {
-                // Operand is positive
-                self.cycles_i(4, &[0x1bd, MC_JUMP, 0x1bf, MC_RTN]); // 1bf:         | RTN
-            }
-            else {
-                // Operand is negative
-                tmpb = sigma; // 1be: SIGMA->tmpb  | CF1 RTN
-                negate = !negate;
-                self.cycles_i(3, &[0x1bd, 0x1be, MC_RTN]);
-            }
-            */
         }
 
         // 15a:            | UNC CORX
@@ -599,60 +509,8 @@ impl<'a> Cpu<'a> {
         // NEGATE if REP
         // -------------------------------------------------------------------------
         if negate {
-            
             self.cycle_i(MC_JUMP); // Jump to NEGATE
-
             (tmpa, tmpb, tmpc, carry, negate) = tmpa.cor_negate(self, tmpb, tmpc, negate, false);
-
-            /*
-            println!("    >> a: {} b: {} c: {} carry: {} negate: {}", tmpa2, tmpb2, tmpc2, carry2, negate2);
-            
-            //sigma = -(tmpc as  i8) as u8;
-            //carry = if (tmpc & 0x80) != (sigma & 0x80) { true } else { false };
-            (sigma, carry, _, _) = tmpc.alu_neg();
-
-            tmpc = sigma;
-
-            if carry {
-                println!("tmpa = !tmpa");
-                sigma = !tmpa; // 1b8, jump, 1ba: SIGMA->tmpa | CF1 
-                self.cycles_i(5, &[0x1b6, 0x1b7, 0x1b8, MC_JUMP, 0x1ba]);
-            }
-            else {
-                println!("tmpa = neg(tmpa)");
-                (sigma, _, _, _) = tmpa.alu_neg(); // 1b8, 1b9, 1ba: SIGMA->tmpa | CF1 
-                self.cycles_i(5, &[0x1b6, 0x1b7, 0x1b8, 0x1b9, 0x1ba]);
-            }
-
-            tmpa = sigma; // 1ba
-            println!("new tmpa: {}", tmpa);
-            negate = !negate;
-
-            // 1bb:     | LRCY tmpb
-
-            // 1bc: SIGMA->tmpb  | NEG tmpb
-            //(_, carry) = rcl_u8_with_carry(tmpb as u8, 1, carry);
-            carry = tmpb & 0x8000 != 0; // LRCY is just checking msb
-            (_, _, _, _) = tmpb.alu_neg();
-
-            self.cycles_i(2, &[0x1bb, 0x1bc]);
-
-            // 1bd:             | NCY 11
-            if !carry {
-                // tmpb was positive, Jump to 11
-                self.cycles_i(4, &[0x1bd, MC_JUMP, 0x1bf, MC_JUMP]); // RTN delay
-            }
-            else {
-                // tmpb was negative
-                // 1be: SIGMA->tmpb  | CF1 RTN
-                tmpb = sigma; //(unused after PREIMUL)
-                negate = !negate; //(unused after PREIMUL)
-                self.cycles_i(3, &[0x1bd, 0x1be, MC_JUMP]); // RTN delay
-            }
-            
-
-            println!("    >> a: {} b: {} c: {} carry: {} negate: {}", tmpa, tmpb, tmpc, carry, negate);
-            */
         }
 
         // 15c:                | X0 IMULCOF
@@ -686,7 +544,7 @@ impl<'a> Cpu<'a> {
             // 15d: tmpc -> A      | X0 7
             // JUMP
             // 15f: tmpa -> X      | RNI
-            // self.cycles_i(3, &[0x15d, MC_JUMP, 0x15f]);
+            //self.cycles_i(3, &[0x15d, MC_JUMP, 0x15f]);
             self.cycles_i(2, &[0x15d, MC_JUMP]);
             return (tmpa, tmpc)    
         }
@@ -840,8 +698,6 @@ impl<'a> Cpu<'a> {
             // clear carry, overflow flag here
             self.cycles_i(2, &[0x1cc, MC_RTN]);
         }
-
-
 
         tmpc = sigma16; // 166: SIGMA -> AL  (Quotient)
 

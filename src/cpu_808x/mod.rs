@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+//#![allow(dead_code)]
 #![allow(clippy::unusual_byte_groupings)]
 
 use std::{
@@ -25,6 +25,7 @@ mod cycle;
 mod decode;
 mod display;
 mod execute;
+mod jump;
 mod microcode;
 pub mod mnemonic;
 mod modrm;
@@ -53,11 +54,13 @@ use crate::bytequeue::*;
 //use crate::interrupt::log_post_interrupt;
 
 use crate::syntax_token::*;
+use crate::tracelogger::TraceLogger;
 
 #[cfg(feature = "cpu_validator")]
-use crate::cpu_validator::{CpuValidator, CycleState, ValidatorResult, VRegisters, BusCycle, BusState, AccessType};
-#[cfg(feature = "pi_validator")]
-use crate::pi_cpu_validator::{PiValidator};
+use crate::cpu_validator::{
+    CpuValidator, CycleState, ValidatorMode, ValidatorResult, 
+    VRegisters, BusCycle, BusState, AccessType
+};
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::{ArduinoValidator};
 
@@ -155,7 +158,8 @@ const I_USES_MEM:    u32 = 0b0000_0001; // Instruction has a memory operand
 const I_HAS_MODRM:   u32 = 0b0000_0010; // Instruction has a modrm byte
 const I_LOCKABLE:    u32 = 0b0000_0100; // Instruction compatible with LOCK prefix
 const I_REL_JUMP:    u32 = 0b0000_1000; 
-const I_LOAD_EA:  u32 = 0b0001_0000; // Instruction loads from its effective address
+const I_LOAD_EA:     u32 = 0b0001_0000; // Instruction loads from its effective address
+const I_GROUP_DELAY: u32 = 0b0010_0000; // Instruction has cycle delay for being a specific group instruction
 
 // Instruction prefixes
 pub const OPCODE_PREFIX_ES_OVERRIDE: u32     = 0b_0000_0000_0001;
@@ -646,19 +650,24 @@ pub struct Cpu<'a>
 
     address_bus: u32,
     data_bus: u16,
-    pending_data_bus: u16,
     last_ea: u16,                   // Last calculated effective address. Used by 0xFE instructions
     bus: BusInterface,              // CPU owns Bus
     i8288: I8288,                   // Intel 8288 Bus Controller
     pc: u32,                        // Program counter points to the next instruction to be fetched
+    mc_pc: u16,                     // Microcode program counter. 
+    nx: bool,
+    rni: bool,
+    ea_opr: u16,                    // Operand loaded by EALOAD. Masked to 8 bits as appropriate.
 
     // Operand and result state
+    /*
     op1_8: u8,
     op1_16: u16,
     op2_8: u8,
     op2_16: u16,
     result_8: u8,
     result_16: u16,
+    */
 
     // BIU stuff
     biu_state: BiuState,            // State of BIU. Operating / Suspended / Resuming
@@ -666,6 +675,7 @@ pub struct Cpu<'a>
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
+    next_fetch_state: FetchState,
     fetch_suspended: bool,
     fetch_delay: u32,               // Number of cycles until prefetch starts
     bus_pending_eu: bool,           // Has the EU requested a bus operation?
@@ -674,6 +684,8 @@ pub struct Cpu<'a>
     last_queue_direction: QueueDirection,
     queue_byte: u8,
     last_queue_byte: u8,
+    last_queue_len: usize,
+    last_queue_delay: bool,
     t_cycle: TCycle,
     bus_status: BusStatus,
     bus_segment: Segment,
@@ -696,7 +708,6 @@ pub struct Cpu<'a>
     rep_mnemonic: Mnemonic,
     rep_type: RepType,
     
-    error_string: String,
     cycle_num: u64,
     instr_cycle: u32,
     instr_elapsed: u32,
@@ -723,7 +734,7 @@ pub struct Cpu<'a>
     trace_enabled: bool,
     trace_mode: TraceMode,
     trace_writer: Option<Box<dyn Write + 'a>>,
-    trace_comment: &'static str,
+    trace_comment: Vec<&'static str>,
     trace_instr: u16,
     trace_str_vec: Vec<String>,
 
@@ -880,8 +891,8 @@ impl Default for TCycle {
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum BusStatus {
     InterruptAck = 0,   // IRQ Acknowledge
-    IORead  = 1,        // IO Read
-    IOWrite = 2,        // IO Write
+    IoRead = 1,         // IO Read
+    IoWrite = 2,        // IO Write
     Halt = 3,           // Halt
     CodeFetch = 4,      // Code Access
     MemRead = 5,        // Memory Read
@@ -948,7 +959,9 @@ impl<'a> Cpu<'a> {
         trace_mode: TraceMode,
         trace_writer: Option<TraceWriter>,
         #[cfg(feature = "cpu_validator")]
-        validator_type: ValidatorType
+        validator_type: ValidatorType,
+        #[cfg(feature = "cpu_validator")]
+        validator_trace: TraceLogger
     ) -> Self {
         let mut cpu: Cpu = Default::default();
         
@@ -966,13 +979,10 @@ impl<'a> Cpu<'a> {
         #[cfg(feature = "cpu_validator")] 
         {
             cpu.validator = match validator_type {
-                #[cfg(feature = "pi_validator")]
-                ValidatorType::Pi8088 => {
-                    Some(Box::new(PiValidator::new()))
-                }
+
                 #[cfg(feature = "arduino_validator")]
                 ValidatorType::Arduino8088 => {
-                    Some(Box::new(ArduinoValidator::new()))
+                    Some(Box::new(ArduinoValidator::new(validator_trace)))
                 }
                 _=> {
                     None
@@ -980,7 +990,7 @@ impl<'a> Cpu<'a> {
             };
 
             if let Some(ref mut validator) = cpu.validator {
-                match validator.init(true, true, true) {
+                match validator.init(ValidatorMode::Cycle, true, true, true) {
                     true => {},
                     false => {
                         panic!("Failed to init cpu validator.");
@@ -1038,6 +1048,7 @@ impl<'a> Cpu<'a> {
         self.instruction_count = 0; 
         self.int_count = 0;
         self.iret_count = 0;
+        self.instr_cycle = 0;
         
         self.in_rep = false;
         self.halted = false;
@@ -1047,6 +1058,10 @@ impl<'a> Cpu<'a> {
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
+
+        self.queue_op = QueueOp::Idle;
+        self.last_queue_op = QueueOp::Idle;
+        self.last_queue_delay = false;
 
         self.step_over_target = None;
 
@@ -1072,6 +1087,7 @@ impl<'a> Cpu<'a> {
         #[cfg(feature = "cpu_validator")]
         {
             self.validator_state = CpuValidatorState::Uninitialized;
+            self.cycle_states.clear();
         }
 
         trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip);
@@ -1146,9 +1162,20 @@ impl<'a> Cpu<'a> {
             self.trace_comment("FINALIZE");
             let mut finalize_timeout = 0;
     
+            if MICROCODE_FLAGS_8088[self.mc_pc as usize] == RNI {
+                trace_print!(self, "Executed terminating RNI!");
+            }
+
             if self.queue.len() == 0 {
                 while { 
+                    if self.nx {
+                        self.trace_comment("NX");
+                        self.next_mc();
+                        self.nx = false;
+                        self.rni = false;
+                    }
                     self.cycle();
+                    self.mc_pc = MC_NONE;
                     finalize_timeout += 1;
                     if finalize_timeout == 16 {
                         self.trace_flush();
@@ -1158,19 +1185,29 @@ impl<'a> Cpu<'a> {
                 } {}
                 // Should be a byte in the queue now. Preload it
                 self.queue.set_preload();
-                
+                self.queue_op = QueueOp::First;
                 self.last_queue_direction = QueueDirection::Read;
                 self.trace_comment("FINALIZE_END");
                 self.cycle();
             }
             else {
                 self.queue.set_preload();
-                
+                self.queue_op = QueueOp::First;
                 self.last_queue_direction = QueueDirection::Read;
 
                 // Check if reading the queue will resume the BIU if stalled.
                 self.biu_resume_on_queue_read();
 
+                if self.nx {
+                    self.trace_comment("NX");
+                    self.next_mc();
+                }
+
+                if self.rni {
+                    self.trace_comment("RNI");
+                    self.rni = false;
+                }
+                
                 self.trace_comment("FINALIZE_END");
                 self.cycle();
             }
@@ -1199,13 +1236,13 @@ impl<'a> Cpu<'a> {
                 Segment::DS => AccessType::Data,
                 Segment::None | Segment::CS => AccessType::CodeOrNone,
             },
-            // Unify these enums?
+            // TODO: Unify these enums?
             b_state: match self.t_cycle {
                 
                 TCycle::T1 | TCycle::T2 => match self.bus_status {
                         BusStatus::InterruptAck => BusState::INTA,
-                        BusStatus::IORead => BusState::IOR,
-                        BusStatus::IOWrite => BusState::IOW,
+                        BusStatus::IoRead => BusState::IOR,
+                        BusStatus::IoWrite => BusState::IOW,
                         BusStatus::Halt => BusState::HALT,
                         BusStatus::CodeFetch => BusState::CODE,
                         BusStatus::MemRead => BusState::MEMR,
@@ -1232,10 +1269,6 @@ impl<'a> Cpu<'a> {
 
     pub fn is_error(&self) -> bool {
         self.is_error
-    }
-
-    pub fn error_string(&self) -> &str {
-        &self.error_string
     }
 
     pub fn set_flag(&mut self, flag: Flag ) {
@@ -1807,7 +1840,6 @@ impl<'a> Cpu<'a> {
         self.pop_register16(Register16::IP, ReadWriteFlag::Normal);
         self.biu_suspend_fetch();
         self.cycles_i(3, &[0x0c3, 0x0c4, MC_JUMP]);
-        //self.cycle(); // TODO: account for this extra cycle?
 
         self.pop_register16(Register16::CS, ReadWriteFlag::Normal);
         //log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
@@ -2190,8 +2222,8 @@ impl<'a> Cpu<'a> {
                 self.i.address = instruction_address;
             }
             
-            // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait implementation, 
-            // which fetches instruction bytes through the processor instruction queue.
+            // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait 
+            // implementation, which fetches instruction bytes through the processor instruction queue.
             self.i = match Cpu::decode(self) {
                 Ok(i) => i,
                 Err(_) => {
@@ -2223,8 +2255,6 @@ impl<'a> Cpu<'a> {
                     }
                 }
             }
-
-            self.trace_comment("EXECUTE");
         }
 
         // Since Cpu::decode doesn't know anything about the current IP, it can't set it, so we do that now.
@@ -2232,15 +2262,18 @@ impl<'a> Cpu<'a> {
 
         let mut check_interrupts = false;
 
-        let (opcode, _cost) = self.bus.read_u8(instruction_address as usize, 0).expect("mem err");
+        //let (opcode, _cost) = self.bus.read_u8(instruction_address as usize, 0).expect("mem err");
         //trace_print!(self, "Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
         //trace_print!(self, "Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
 
-        log::warn!("Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
-        log::warn!("Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
+        //log::warn!("Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
+        //log::warn!("Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
 
         let last_cs = self.cs;
         let last_ip = self.ip;
+
+        // Load the mod/rm operand for the instruction, if applicable.
+        self.load_operand();
 
         // Execute the current decoded instruction.
         let exec_result = self.execute_instruction();
@@ -2277,6 +2310,8 @@ impl<'a> Cpu<'a> {
 
                         // If validator unininitalized, set register state now and move into running state.
                         if self.validator_state == CpuValidatorState::Uninitialized {
+                            // This resets the validator CPU
+                            log::debug!("Validator Uninitialized. Resetting validator and setting registers...");
                             validator.set_regs();
                             self.validator_state = CpuValidatorState::Running;
                         }
@@ -2312,6 +2347,7 @@ impl<'a> Cpu<'a> {
                                                 else {
                                                     log::debug!("Registers validated. Validation ended successfully.");
                                                     self.validator_state = CpuValidatorState::Ended;
+                                                    self.trace_flush();
                                                 }                                                
                                             }
                                         }
@@ -2371,7 +2407,7 @@ impl<'a> Cpu<'a> {
                 check_interrupts = true;
 
                 // Perform instruction tracing, if enabled
-                if self.trace_mode == TraceMode::Instruction {
+                if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
                     self.trace_print(&self.instruction_state_string());   
                 }
    
@@ -2380,7 +2416,18 @@ impl<'a> Cpu<'a> {
                     Ok((StepResult::Call(step_over_target), self.instr_cycle))
                 }
                 else {
-                    Ok((StepResult::Normal, self.instr_cycle))
+
+                    // If we jump to the same jump instruction (not LOOP) we will hang the CPU. 
+                    if (self.i.opcode & 0xFC != 0xE0) && (last_cs == self.cs) && (last_ip == self.ip) {
+                        self.is_running = false;
+                        self.is_error = true;
+                        log::error!("Self-referential jump. CPU is hung.");
+                        //Err(CpuError::CpuHaltedError(instruction_address))
+                        Ok((StepResult::Normal, self.instr_cycle))
+                    }
+                    else {
+                        Ok((StepResult::Normal, self.instr_cycle))
+                    }
                 }
             }
             ExecutionResult::OkayRep => {
@@ -2590,7 +2637,7 @@ impl<'a> Cpu<'a> {
                     call_stack_string.push_str(&format!("{:04X}:{:04X} CALL FAR {:04X}:{:04X}\n", ret_cs, ret_ip, call_cs, call_ip));
                 }
                 CallStackEntry::Interrupt{ ret_cs, ret_ip, call_cs, call_ip, itype, number, ah } => {
-                    call_stack_string.push_str(&format!("{:04X}:{:04X} INT {:02X} {:04X}:{:04X} type={:?} AH=={:02X}\n", ret_cs, call_cs, call_ip, ret_ip, number, itype, ah));
+                    call_stack_string.push_str(&format!("{:04X}:{:04X} INT {:02X} {:04X}:{:04X} type={:?} AH=={:02X}\n", ret_cs, ret_ip, number, call_cs, call_ip, itype, ah));
                 }
             }   
         }
@@ -2638,7 +2685,8 @@ impl<'a> Cpu<'a> {
         let mut biu_chr = match self.biu_state {
             BiuState::Operating => '.',
             BiuState::Suspended => 'S',
-            BiuState::Resuming(_) => 'R'
+            BiuState::Resuming(_) => 'R',
+            BiuState::SDelayed(_) => 'D'
         };
 
         /*
@@ -2682,8 +2730,8 @@ impl<'a> Cpu<'a> {
 
         let bus_str = match self.bus_status {
             BusStatus::InterruptAck => "IRQA",
-            BusStatus::IORead => "IOR ",
-            BusStatus::IOWrite => "IOW ",
+            BusStatus::IoRead=> "IOR ",
+            BusStatus::IoWrite => "IOW ",
             BusStatus::Halt => "HALT",
             BusStatus::CodeFetch => "CODE",
             BusStatus::MemRead => "MEMR",
@@ -2780,10 +2828,10 @@ impl<'a> Cpu<'a> {
             //DmaState::DmaWait(..) => "DMAW"
         };
 
-        let cycle_str;
+        let mut cycle_str;
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {:03} | {}{}",
+                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
                 self.address_bus,
@@ -2797,19 +2845,18 @@ impl<'a> Cpu<'a> {
                 format!("{:?}", self.biu_state),
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
-                self.queue.len(),
+                self.last_queue_len,
                 q_dir_chr,
                 q_preload_char,
                 self.queue.to_string(),
                 q_read_str,
                 microcode_line_str,
-                instr_str,
-                self.trace_comment
+                instr_str
             ); 
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} D:{} {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}{}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} D:{} {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
@@ -2823,18 +2870,21 @@ impl<'a> Cpu<'a> {
                 format!("{:?}", self.biu_state),
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
-                self.queue.len(),
+                self.last_queue_len,
                 q_dir_chr,
                 q_preload_char,
                 self.queue.to_string(),
                 q_read_str,
                 microcode_line_str,
                 microcode_op_str,
-                instr_str,
-                self.trace_comment
+                instr_str
             ); 
         }
        
+        for c in &self.trace_comment {
+            cycle_str.push_str(&format!("; {}", c));
+        }
+
         cycle_str
     }
 
@@ -2866,7 +2916,9 @@ impl<'a> Cpu<'a> {
 
     #[inline]
     pub fn trace_comment(&mut self, comment: &'static str) {
-        self.trace_comment = comment;
+        if self.trace_enabled {
+            self.trace_comment.push(comment);
+        }
     }
 
     #[inline]

@@ -20,6 +20,7 @@
 
 use std::cmp;
 
+use crate::tracelogger::TraceLogger;
 use crate::cpu_808x::{
     QueueOp,
     CPU_FLAG_CARRY,
@@ -56,6 +57,29 @@ const DATA_PROGRAM: u8 = 0;
 const DATA_FINALIZE: u8 = 1;
 
 const OPCODE_NOP: u8 = 0x90;
+
+macro_rules! trace {
+    ($self:ident, $($t:tt)*) => {{
+        $self.trace_logger.print(&format!($($t)*));
+        $self.trace_logger.print("\n".to_string());
+    }};
+}
+
+macro_rules! trace_debug {
+    ($self:ident, $($t:tt)*) => {{
+        log::debug!("{}", &format!($($t)*));
+        $self.trace_logger.print(&format!($($t)*));
+        $self.trace_logger.print("\n".to_string());
+    }};
+}
+
+macro_rules! trace_error {
+    ($self:ident, $($t:tt)*) => {{
+        log::error!("{}", &format!($($t)*));
+        $self.trace_logger.print(&format!($($t)*));
+        $self.trace_logger.print("\n".to_string());
+    }};
+}
 
 #[derive (PartialEq, Debug)]
 pub enum ValidatorState {
@@ -132,13 +156,14 @@ impl InstructionContext {
 pub struct ArduinoValidator {
 
     //cpu_client: Option<CpuClient>,
+    mode: ValidatorMode,
     cpu: RemoteCpu,
 
     current_instr: InstructionContext,
     state: ValidatorState,
 
     cycle_count: u64,
-    cycle_trace: bool,
+    do_cycle_trace: bool,
 
     rd_signal: bool,
     wr_signal: bool,
@@ -161,12 +186,13 @@ pub struct ArduinoValidator {
     visit_once: bool,
     visited: Vec<bool>,
 
-    log_prefix: String
+    log_prefix: String,
+    trace_logger: TraceLogger
 }
 
 impl ArduinoValidator {
 
-    pub fn new() -> Self {
+    pub fn new(trace_logger: TraceLogger) -> Self {
 
         // Trigger addr is address at which to start validation
         // if trigger_addr == V_INVALID_POINTER then validate        
@@ -180,13 +206,14 @@ impl ArduinoValidator {
         };
 
         ArduinoValidator {
+            mode: ValidatorMode::Cycle,
             cpu: RemoteCpu::new(cpu_client),
 
             current_instr: InstructionContext::new(),
             state: ValidatorState::Setup,
 
             cycle_count: 0,
-            cycle_trace: false,
+            do_cycle_trace: false,
             rd_signal: false,
             wr_signal: false, 
             iom_signal: false,
@@ -204,7 +231,8 @@ impl ArduinoValidator {
             visit_once: VISIT_ONCE,
             visited: vec![false; 0x100000],
 
-            log_prefix: String::new()
+            log_prefix: String::new(),
+            trace_logger
         }
     }
 
@@ -281,7 +309,7 @@ impl ArduinoValidator {
         if discard {
             if self.current_instr.emu_ops.len() > 0 {
                 if self.current_instr.emu_ops[0].op_type != BusOpType::CodeRead {
-                    log::error!("Cannot discard op type of {:?}!", self.current_instr.emu_ops[0].op_type);
+                    trace_error!(self, "Cannot discard op type of {:?}!", self.current_instr.emu_ops[0].op_type);
                     return false;
                 }
                 else {
@@ -289,13 +317,14 @@ impl ArduinoValidator {
                 }
             }
             else {
-                log::error!("Discard flag set but no emu ops!");
+                trace_error!(self, "Discard flag set but no emu ops!");
                 return false;
             }
         }
 
         if self.current_instr.emu_ops.len() != self.current_instr.cpu_ops.len() {
-            log::error!(
+            trace_error!(
+                self, 
                 "Validator error: Memory op count mismatch. Emu: {} CPU: {}", 
                 self.current_instr.emu_ops.len(),
                 self.current_instr.cpu_ops.len()
@@ -308,7 +337,8 @@ impl ArduinoValidator {
         for i in 0..self.current_instr.emu_ops.len() {
 
             if self.current_instr.emu_ops[i].op_type != self.current_instr.cpu_ops[i].op_type {
-                log::error!(
+                trace_error!(
+                    self,
                     "Bus op #{} type mismatch: EMU:{:?} CPU:{:?}",
                     i,
                     self.current_instr.emu_ops[i].op_type,
@@ -318,7 +348,8 @@ impl ArduinoValidator {
             }
 
             if self.current_instr.emu_ops[i].addr != self.current_instr.cpu_ops[i].addr {
-                log::error!(
+                trace_error!(
+                    self,
                     "Bus op #{} addr mismatch: EMU:{:?}:{:05X} CPU:{:?}:{:05X}",
                     i,
                     self.current_instr.emu_ops[i].op_type,
@@ -330,7 +361,8 @@ impl ArduinoValidator {
             }
 
             if self.current_instr.emu_ops[i].data != self.current_instr.cpu_ops[i].data {
-                log::error!(
+                trace_error!(
+                    self,
                     "Bus op #{} data mismatch: EMU:{:?}:{:05X} CPU:{:?}:{:05X}",
                     i,
                     self.current_instr.emu_ops[i].op_type,
@@ -402,38 +434,38 @@ impl ArduinoValidator {
 
         if emu_flags_masked != cpu_flags_masked {
 
-            log::error!("CPU flags mismatch! EMU: 0b{:08b} != CPU: 0b{:08b}", emu_flags_masked, cpu_flags_masked);
-            //log::error!("Unmasked: EMU: 0b{:08b} != CPU: 0b{:08b}", self.current_frame.regs[1].flags, regs.flags);            
+            trace_error!(self, "CPU flags mismatch! EMU: 0b{:08b} != CPU: 0b{:08b}", emu_flags_masked, cpu_flags_masked);
+            //trace_error!(self, "Unmasked: EMU: 0b{:08b} != CPU: 0b{:08b}", self.current_frame.regs[1].flags, regs.flags);            
             regs_validate = false;
 
             let flag_diff = emu_flags_masked ^ cpu_flags_masked;
 
             if flag_diff & CPU_FLAG_CARRY != 0 {
-                log::error!("CARRY flag differs.");
+                trace_error!(self, "CARRY flag differs.");
             }
             if flag_diff & CPU_FLAG_PARITY != 0 {
-                log::error!("PARITY flag differs.");
+                trace_error!(self, "PARITY flag differs.");
             }
             if flag_diff & CPU_FLAG_AUX_CARRY != 0 {
-                log::error!("AUX CARRY flag differs.");
+                trace_error!(self, "AUX CARRY flag differs.");
             }
             if flag_diff & CPU_FLAG_ZERO != 0 {
-                log::error!("ZERO flag differs.");
+                trace_error!(self, "ZERO flag differs.");
             }
             if flag_diff & CPU_FLAG_SIGN != 0 {
-                log::error!("SIGN flag differs.");
+                trace_error!(self, "SIGN flag differs.");
             }
             if flag_diff & CPU_FLAG_TRAP != 0 {
-                log::error!("TRAP flag differs.");
+                trace_error!(self, "TRAP flag differs.");
             }
             if flag_diff & CPU_FLAG_INT_ENABLE != 0 {
-                log::error!("INT flag differs.");
+                trace_error!(self, "INT flag differs.");
             }
             if flag_diff & CPU_FLAG_DIRECTION != 0 {
-                log::error!("DIRECTION flag differs.");
+                trace_error!(self, "DIRECTION flag differs.");
             }
             if flag_diff & CPU_FLAG_OVERFLOW != 0 {
-                log::error!("OVERFLOW flag differs.");
+                trace_error!(self, "OVERFLOW flag differs.");
             }                    
             //panic!("CPU flag mismatch!")
         }
@@ -508,7 +540,7 @@ impl ArduinoValidator {
                 emu_str = String::new();
             }
 
-            println!("{:<80} | {:<80}", cpu_str, emu_str);
+            trace!(self, "{:<80} | {:<80}", cpu_str, emu_str);
         }
     }    
 }
@@ -519,9 +551,9 @@ pub fn make_pointer(base: u16, offset: u16) -> u32 {
 
 impl CpuValidator for ArduinoValidator {
 
-    fn init(&mut self, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool {
-
-        self.cycle_trace = cycle_trace;
+    fn init(&mut self, mode: ValidatorMode, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool {
+        self.mode = mode;
+        self.do_cycle_trace = cycle_trace;
         self.mask_flags = mask_flags;
         self.visit_once = visit_once;
         true
@@ -557,10 +589,15 @@ impl CpuValidator for ArduinoValidator {
             return;
         }
         */
-        if self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize] {
-            self.current_instr.discard = true;
-        }
 
+        if let ValidatorMode::Instruction = self.mode {
+            // Cannot discard instructions in Cycle mode.
+            if self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize] {
+                log::warn!("Discarding BIOS instruction");
+                self.current_instr.discard = true;
+            }
+        }
+ 
         self.end_addr = end_program;
 
         self.current_instr.instr_end = end_instr;
@@ -572,7 +609,7 @@ impl CpuValidator for ArduinoValidator {
     /// Initialize the physical CPU with a provided register state.
     /// Can only be done after a reset or jump
     fn set_regs(&mut self) {
-        log::debug!("Setting register state...");
+        trace_debug!(self, "Setting register state...");
         self.cpu.reset();
 
         let mut reg_buf: [u8; 28] = [0; 28];
@@ -602,7 +639,7 @@ impl CpuValidator for ArduinoValidator {
         */
 
         if instr.len() == 0 {
-            log::error!("Instruction length was 0");
+            trace_error!(self, "Instruction length was 0");
             return Err(ValidatorError::ParameterError);
         }
 
@@ -632,18 +669,17 @@ impl CpuValidator for ArduinoValidator {
         self.current_instr.regs[1] = regs.clone();
 
         if self.current_instr.regs[1].flags == 0 {
-            log::error!("Invalid emulator flags");
+            trace_error!(self, "Invalid emulator flags");
             return Err(ValidatorError::ParameterError);
         }
 
         //self.current_frame.emu_states.clone_from(&emu_states);
-
-        RemoteCpu::print_regs(&self.current_instr.regs[0]);
+        //RemoteCpu::print_regs(&self.current_instr.regs[0]);
 
         if has_modrm {
             if i > (instr.len() - 2) {
-                log::error!("validate(): modrm specified but instruction length < ");
-                log::error!(
+                trace_error!(self, "validate(): modrm specified but instruction length < ");
+                trace_error!(self, 
                     "instruction: {} opcode: {} instr: {:02X?}",
                     self.current_instr.name,
                     self.current_instr.opcode,
@@ -664,7 +700,8 @@ impl CpuValidator for ArduinoValidator {
 
         self.cpu.set_instr_string(name.clone());
 
-        log::debug!(
+        trace_debug!(
+            self,
             "{}: {} {:02X?} @ [{:04X}:{:04X}] Memops: {} End: {:05X}", 
             discard_or_validate, 
             name, 
@@ -688,24 +725,30 @@ impl CpuValidator for ArduinoValidator {
         let (mut cpu_states, discard) = self.cpu.step(
             &self.current_instr.instr,
             instr_addr,
-            self.cycle_trace,
+            self.do_cycle_trace,
             peek_fetch,
             &mut self.current_instr.emu_prefetch, 
             &mut self.current_instr.emu_ops, 
             &mut self.current_instr.cpu_prefetch, 
-            &mut self.current_instr.cpu_ops
+            &mut self.current_instr.cpu_ops,
+            &mut self.trace_logger
         )?;
 
-        if !self.validate_mem_ops(discard) {
-            log::error!("Memory validation failure. EMU:");
-            RemoteCpu::print_regs(&self.current_instr.regs[1]);
-            log::error!("CPU:");    
-            RemoteCpu::print_regs(&regs);
-
-            self.print_cycle_diff(&cpu_states, &emu_states);
-
-            return Err(ValidatorError::MemOpMismatch);            
+        if self.current_instr.opcode != 0x9C {
+            // We ignore PUSHF results due to undefined flags causing write mismatches
+            if !self.validate_mem_ops(discard) {
+    
+                trace_error!(self, "Memory validation failure. EMU:");
+                RemoteCpu::print_regs(&self.current_instr.regs[1]);
+                trace_error!(self, "CPU:");    
+                RemoteCpu::print_regs(&regs);
+    
+                self.print_cycle_diff(&cpu_states, &emu_states);
+    
+                return Err(ValidatorError::MemOpMismatch);            
+            }
         }
+
 
         if emu_states.len() > 0 {
             // Only validate CPU cycles if any were provided
@@ -714,12 +757,12 @@ impl CpuValidator for ArduinoValidator {
             let (result, cycle_num) = self.validate_cycles(&cpu_states, &emu_states);
 
             if !result {
-                log::error!("Cycle state validation failure @ cycle {}", cycle_num);    
+                trace_error!(self, "Cycle state validation failure @ cycle {}", cycle_num);    
                 self.print_cycle_diff(&cpu_states, &emu_states);
-                log::error!("EMU AFTER:");
+                trace_error!(self, "EMU AFTER:");
                 RemoteCpu::print_regs(&self.current_instr.regs[1]);
     
-                log::error!("CPU AFTER:");   
+                trace_error!(self, "CPU AFTER:");   
                 RemoteCpu::print_regs(&regs);                
                 return Err(ValidatorError::CycleMismatch);
             }
@@ -728,16 +771,17 @@ impl CpuValidator for ArduinoValidator {
             }
         }
 
+        self.reset_instruction();
+
         // Did this instruction enter finalize state?
         if self.cpu.in_finalize() {
-            log::trace!(" >>> Validator finalizing!");
+            trace!(self, " >>> Validator finalizing!");
             Ok(ValidatorResult::OkEnd)   
         }
         else {
-            log::trace!(" >>> Validator finished validating instruction");
+            trace!(self, " >>> Validator finished validating instruction");
             Ok(ValidatorResult::Ok)
         }
-
     }
 
     fn validate_regs(&mut self, regs: &VRegisters) -> Result<(), ValidatorError> {
@@ -746,12 +790,12 @@ impl CpuValidator for ArduinoValidator {
         self.cpu.adjust_ip(&mut store_regs);
 
         if !self.validate_registers(&regs) {
-            log::error!("Register validation failure. EMU BEFORE:");    
+            trace_error!(self, "Register validation failure. EMU BEFORE:");    
             RemoteCpu::print_regs(&self.current_instr.regs[0]);
-            log::error!("EMU AFTER:");
+            trace_error!(self, "EMU AFTER:");
             RemoteCpu::print_regs(&self.current_instr.regs[1]);
 
-            log::error!("CPU AFTER:");   
+            trace_error!(self, "CPU AFTER:");   
             RemoteCpu::print_regs(&regs);
 
             return Err(ValidatorError::RegisterMismatch);
@@ -760,13 +804,13 @@ impl CpuValidator for ArduinoValidator {
         Ok(())
     }
 
-    fn emu_read_byte(&mut self, addr: u32, data: u8, read_type: ReadType) {
+    fn emu_read_byte(&mut self, addr: u32, data: u8, bus_type: BusType, read_type: ReadType) {
         if self.current_instr.discard {
             return;
         }
-
-        match read_type { 
-            ReadType::Code => {
+        
+        match (bus_type, read_type) { 
+            (BusType::Mem, ReadType::Code) => {
                 self.current_instr.emu_ops.push(
                     BusOp {
                         op_type: BusOpType::CodeRead,
@@ -775,18 +819,9 @@ impl CpuValidator for ArduinoValidator {
                         flags: MOF_EMULATOR
                     }
                 );
-                log::trace!("EMU fetch: [{:05X}] -> 0x{:02X} ({})", addr, data, self.current_instr.emu_ops.len());
+                trace!(self, "EMU fetch: [{:05X}] -> 0x{:02X} ({})", addr, data, self.current_instr.emu_ops.len());
             }
-            ReadType::Data => {
-                /*
-                let ops_len = self.current_frame.emu_ops.len();
-                if ops_len > 0 {
-                    if self.current_frame.emu_ops[ops_len - 1].addr == addr {
-                        log::trace!("EMU duplicate read!");
-                        println!("Custom backtrace: {}", Backtrace::force_capture());
-                    }
-                }
-                */
+            (BusType::Mem, ReadType::Data) => {
                 self.current_instr.emu_ops.push(
                     BusOp {
                         op_type: BusOpType::MemRead,
@@ -795,13 +830,24 @@ impl CpuValidator for ArduinoValidator {
                         flags: MOF_EMULATOR
                     }
                 );
-                log::trace!("EMU read: [{:05X}] -> 0x{:02X} ({})", addr, data, self.current_instr.emu_ops.len());
+                trace!(self, "EMU read: [{:05X}] -> 0x{:02X} ({})", addr, data, self.current_instr.emu_ops.len());
+            }
+            (BusType::Io, _) => {
+                self.current_instr.emu_ops.push(
+                    BusOp {
+                        op_type: BusOpType::IoRead,
+                        addr,
+                        data,
+                        flags: MOF_EMULATOR
+                    }
+                );
+                trace!(self, "EMU IN: [{:05X}] -> 0x{:02X} ({})", addr, data, self.current_instr.emu_ops.len());
             }
         }
 
     }
 
-    fn emu_write_byte(&mut self, addr: u32, data: u8) {
+    fn emu_write_byte(&mut self, addr: u32, data: u8, bus_type: BusType) {
         
         self.visited[(addr & 0xFFFFF) as usize] = false;
         
@@ -809,15 +855,32 @@ impl CpuValidator for ArduinoValidator {
             return;
         }
 
-        self.current_instr.emu_ops.push(
-            BusOp {
-                op_type: BusOpType::MemWrite,
-                addr,
-                data,
-                flags: MOF_EMULATOR
+        match bus_type {
+            BusType::Mem => {
+                self.current_instr.emu_ops.push(
+                    BusOp {
+                        op_type: BusOpType::MemWrite,
+                        addr,
+                        data,
+                        flags: MOF_EMULATOR
+                    }
+                );
+
+                trace!(self, "EMU write: [{:05X}] <- 0x{:02X}", addr, data);
             }
-        );
-        //log::trace!("EMU write: [{:05X}] <- 0x{:02X}", addr, data);
+            BusType::Io => {
+                self.current_instr.emu_ops.push(
+                    BusOp {
+                        op_type: BusOpType::IoWrite,
+                        addr,
+                        data,
+                        flags: MOF_EMULATOR
+                    }
+                );
+
+                trace!(self, "EMU OUT: [{:05X}] <- 0x{:02X}", addr, data);
+            }
+        }
     }
 
     fn discard_op(&mut self) {

@@ -182,9 +182,11 @@ impl ByteQueue for BusInterface {
     fn delay(&mut self, _delay: u32) {}
     fn wait(&mut self, _cycles: u32) {}
     fn wait_i(&mut self, _cycles: u32, _instr: &[u16]) {}
+    fn wait_comment(&mut self, comment: &str) {}
+    fn set_pc(&mut self, _pc: u16) {}
     fn clear_delay(&mut self) {}
 
-    fn q_read_u8(&mut self, _dtype: QueueType) -> u8 {
+    fn q_read_u8(&mut self, _dtype: QueueType, _reader: QueueReader) -> u8 {
         if self.cursor < self.memory.len() {
             let b: u8 = self.memory[self.cursor];
             self.cursor += 1;
@@ -193,7 +195,7 @@ impl ByteQueue for BusInterface {
         0xffu8
     }
 
-    fn q_read_i8(&mut self, _dtype: QueueType) -> i8 {
+    fn q_read_i8(&mut self, _dtype: QueueType, _reader: QueueReader) -> i8 {
         if self.cursor < self.memory.len() {
             let b: i8 = self.memory[self.cursor] as i8;
             self.cursor += 1;
@@ -202,7 +204,7 @@ impl ByteQueue for BusInterface {
         -1i8       
     }
 
-    fn q_read_u16(&mut self, _dtype: QueueType) -> u16 {
+    fn q_read_u16(&mut self, _dtype: QueueType, _reader: QueueReader) -> u16 {
         if self.cursor < self.memory.len() - 1 {
             let w: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
             self.cursor += 2;
@@ -211,7 +213,7 @@ impl ByteQueue for BusInterface {
         0xffffu16   
     }
 
-    fn q_read_i16(&mut self, _dtype: QueueType) -> i16 {
+    fn q_read_i16(&mut self, _dtype: QueueType, _reader: QueueReader) -> i16 {
         if self.cursor < self.memory.len() - 1 {
             let w: i16 = (self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8) as i16;
             self.cursor += 2;
@@ -250,7 +252,16 @@ impl ByteQueue for BusInterface {
             return w
         }
         -1i16
-    }      
+    } 
+
+    fn q_peek_farptr16(&mut self) -> (u16, u16) {         
+        if self.cursor < self.memory.len() - 3 {
+            let offset: u16 = self.memory[self.cursor] as u16 | (self.memory[self.cursor+1] as u16) << 8;
+            let segment: u16 = self.memory[self.cursor+2] as u16 | (self.memory[self.cursor+3] as u16) << 8;
+            return (segment, offset)
+        }
+        (0xffffu16, 0xffffu16)
+    }
 }
 
 impl Default for BusInterface {
@@ -834,13 +845,12 @@ impl BusInterface {
     /// Dump memory to a vector of vectors of SyntaxTokens.
     /// 
     /// Does not honor memory mappings.
-    pub fn dump_flat_tokens(&self, address: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
+    pub fn dump_flat_tokens(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
 
         let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
 
         if address >= self.memory.len() {
             // Start address is invalid. Send only an error token.
-
             let mut linevec = Vec::new();
 
             linevec.push(SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string()));
@@ -850,64 +860,76 @@ impl BusInterface {
         }
         else if address + size >= self.memory.len() {
             // Request size invalid. Send truncated result.
-
             let new_size = size - ((address + size) - self.memory.len());
-
             size = new_size
         }
 
+        let dump_slice = &self.memory[address..address+size];
+        let mut display_address = address;
 
-            let dump_slice = &self.memory[address..address+size];
-            let mut display_address = address;
+        for dump_row in dump_slice.chunks_exact(16) {
 
-            for dump_row in dump_slice.chunks_exact(16) {
+            let mut line_vec = Vec::new();
 
-                let mut line_vec = Vec::new();
+            // Push memory flat address tokens
+            line_vec.push(
+                SyntaxToken::MemoryAddressFlat(
+                    display_address as u32,
+                    format!("{:05X}", display_address)
+                )
+            );
 
-                // Push memory flat address tokens
-                line_vec.push(
-                    SyntaxToken::MemoryAddressFlat(
-                        display_address as u32,
-                        format!("{:05X}", display_address)
-                    )
-                );
+            // Build hex byte value tokens
+            let mut i = 0;
+            for byte in dump_row {
 
-                // Build hex byte value tokens
-                let mut i = 0;
-                for byte in dump_row {
+                if (display_address + i) == cursor {
                     line_vec.push(
                         SyntaxToken::MemoryByteHexValue(
                             (display_address + i) as u32, 
                             *byte,
                             format!("{:02X}", *byte),
+                            true, // Set cursor on this byte
                             0
                         )
                     );
-                    i += 1;
                 }
-
-                // Build ASCII representation tokens
-                let mut i = 0;
-                for byte in dump_row {
-                    let char_str = match byte {
-                        00..=31 => ".".to_string(),
-                        32..=127 => format!("{}", *byte as char),
-                        128.. => ".".to_string()
-                    };
+                else {
                     line_vec.push(
-                        SyntaxToken::MemoryByteAsciiValue(
-                            (display_address + i) as u32,
+                        SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32, 
                             *byte,
-                            char_str, 
+                            format!("{:02X}", *byte),
+                            false,
                             0
                         )
                     );
-                    i += 1;
                 }
-
-                vec.push(line_vec);
-                display_address += 16;
+                i += 1;
             }
+
+            // Build ASCII representation tokens
+            let mut i = 0;
+            for byte in dump_row {
+                let char_str = match byte {
+                    00..=31 => ".".to_string(),
+                    32..=127 => format!("{}", *byte as char),
+                    128.. => ".".to_string()
+                };
+                line_vec.push(
+                    SyntaxToken::MemoryByteAsciiValue(
+                        (display_address + i) as u32,
+                        *byte,
+                        char_str, 
+                        0
+                    )
+                );
+                i += 1;
+            }
+
+            vec.push(line_vec);
+            display_address += 16;
+        }
 
         vec
     }

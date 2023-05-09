@@ -358,6 +358,9 @@ impl DMAController {
         // Set MSB when flipflop set, LSB when clear
         match self.flipflop {
             true => {
+                if data == 0x0C {
+                    log::debug!("break on me!");
+                }
                 chan.base_address_reg = (chan.base_address_reg & 0xFF) | ((data as u16) << 8);
                 chan.current_address_reg = (chan.current_address_reg & 0xFF) | ((data as u16) << 8);
             },

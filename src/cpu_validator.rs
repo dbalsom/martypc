@@ -26,10 +26,22 @@ use std::{
 use crate::cpu_808x::QueueOp;
 
 #[derive (PartialEq, Debug, Copy, Clone)]
+pub enum ValidatorMode {
+    Instruction,
+    Cycle,
+}
+
+#[derive (PartialEq, Debug, Copy, Clone)]
 pub enum ValidatorResult {
     Ok,
     OkEnd,
     Error
+}
+
+#[derive (PartialEq, Copy, Clone)]
+pub enum BusType {
+    Mem,
+    Io
 }
 
 #[derive (PartialEq, Copy, Clone)]
@@ -182,7 +194,7 @@ impl PartialEq<CycleState> for CycleState {
 }
 
 pub trait CpuValidator {
-    fn init(&mut self, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool;
+    fn init(&mut self, mode: ValidatorMode, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool;
     fn reset_instruction(&mut self);
     fn begin_instruction(&mut self, regs: &VRegisters, end_instr: usize, end_program: usize );
     fn set_regs(&mut self);
@@ -197,8 +209,8 @@ pub trait CpuValidator {
         emu_states: &[CycleState]
     ) -> Result<ValidatorResult, ValidatorError>;
     fn validate_regs(&mut self, regs: &VRegisters) -> Result<(), ValidatorError>;
-    fn emu_read_byte(&mut self, addr: u32, data: u8, read_type: ReadType);
-    fn emu_write_byte(&mut self, addr: u32, data: u8);
+    fn emu_read_byte(&mut self, addr: u32, data: u8, bus_type: BusType, read_type: ReadType);
+    fn emu_write_byte(&mut self, addr: u32, data: u8, bus_type: BusType);
     fn discard_op(&mut self);
 }
 

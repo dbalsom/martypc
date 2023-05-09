@@ -2,10 +2,11 @@
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
 
-#[derive (Debug)]
+#[derive (Debug, PartialEq)]
 pub enum BiuState {
     Operating,
     Suspended,
+    SDelayed(u8),
     Resuming(u8)
 }
 
@@ -42,28 +43,36 @@ impl ByteQueue for Cpu<'_> {
         self.cycles_i(cycles, instr);
     }
 
+    fn wait_comment(&mut self, comment: &'static str) {
+        self.trace_comment(comment);
+    }
+
+    fn set_pc(&mut self, pc: u16) {
+        self.mc_pc = pc;
+    }
+
     fn clear_delay(&mut self) {
         self.fetch_delay = 0;
     }
 
-    fn q_read_u8(&mut self, dtype: QueueType) -> u8 {
-        self.biu_queue_read(dtype)
+    fn q_read_u8(&mut self, dtype: QueueType, reader: QueueReader) -> u8 {
+        self.biu_queue_read(dtype, reader)
     }
 
-    fn q_read_i8(&mut self, dtype: QueueType) -> i8 {
-        self.biu_queue_read(dtype) as i8
+    fn q_read_i8(&mut self, dtype: QueueType, reader: QueueReader) -> i8 {
+        self.biu_queue_read(dtype, reader) as i8
     }
 
-    fn q_read_u16(&mut self, dtype: QueueType) -> u16 {
-        let lo = self.biu_queue_read(dtype);
-        let ho = self.biu_queue_read(QueueType::Subsequent);
+    fn q_read_u16(&mut self, dtype: QueueType, reader: QueueReader) -> u16 {
+        let lo = self.biu_queue_read(dtype, reader);
+        let ho = self.biu_queue_read(QueueType::Subsequent, reader);
         
         (ho as u16) << 8 | (lo as u16)
     }
 
-    fn q_read_i16(&mut self, dtype: QueueType) -> i16 {
-        let lo = self.biu_queue_read(dtype);
-        let ho = self.biu_queue_read(QueueType::Subsequent);
+    fn q_read_i16(&mut self, dtype: QueueType, reader: QueueReader) -> i16 {
+        let lo = self.biu_queue_read(dtype, reader);
+        let ho = self.biu_queue_read(QueueType::Subsequent, reader);
         
         ((ho as u16) << 8 | (lo as u16)) as i16
     }
@@ -86,34 +95,56 @@ impl ByteQueue for Cpu<'_> {
     fn q_peek_i16(&mut self) -> i16 {
         let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len(), 0).unwrap();
         word as i16
-    }        
+    }
+
+    fn q_peek_farptr16(&mut self) -> (u16, u16) {
+        let read_offset = self.pc as usize - self.queue.len();
+
+        let (offset, _cost) = self.bus.read_u16(read_offset, 0).unwrap();
+        let (segment, _cost) = self.bus.read_u16(read_offset + 2, 0).unwrap();
+        (segment, offset)
+    }
 }
 
 
 impl<'a> Cpu<'a> {
 
     /// Read a byte from the instruction queue.
-    /// Regardless of 8088 or 8086, the queue is read from one byte at a time.
     /// Either return a byte currently in the queue, or fetch a byte into the queue and 
     /// then return it.
-    pub fn biu_queue_read(&mut self, dtype: QueueType) -> u8 {
+    /// 
+    /// Regardless of 8088 or 8086, the queue is read from one byte at a time.
+    /// 
+    /// QueueType is used to set the QS status lines for first/subsequent byte fetches.
+    /// QueueReader is used to advance the microcode instruction if the queue read is
+    /// from the EU executing an instruction. The BIU reading the queue to fetch an
+    /// instruction will not advance the microcode PC.
+    pub fn biu_queue_read(&mut self, dtype: QueueType, reader: QueueReader) -> u8 {
 
         let byte;
         //trace_print!(self, "biu_queue_read()");
 
         if let Some(preload_byte) = self.queue.get_preload() {
-            // We have a pre-loaded byte from finalizing the last instruction
+            // We have a pre-loaded byte from finalizing the last instruction.
             self.last_queue_op = QueueOp::First;
             self.last_queue_byte = preload_byte;
-            //self.cycle();
+
+            // Since we have a pre-loaded fetch, the next instruction will always begin 
+            // execution on the next cycle. If NX bit is set, advance the MC PC to 
+            // execute the RNI from the previous instruction.
+            self.next_mc();
+            if self.nx {
+                self.nx = false;
+            }   
+
             return preload_byte
         }
 
         if self.queue.len() > 0 {
-            // The queue is not empty. Return byte from queue.
+            // The queue has an available byte. Return it.
 
             // Handle fetch delays.
-            // Delays are set during decode from instructions with no modrm or jcxz, loop & loopne/loope
+            // Delays are set during decode from instructions with no modrm
             while self.fetch_delay > 0 {
                 //log::trace!("Fetch delay skip: {}", self.fetch_delay);
                 self.fetch_delay -= 1;
@@ -122,30 +153,50 @@ impl<'a> Cpu<'a> {
             }
 
             //self.trace_print("biu_queue_read: pop()");
-            self.trace_comment("Q_READ");
+            //self.trace_comment("Q_READ");
             byte = self.queue.pop();
-
-            // TODO: These enums duplicate functionality
-            self.queue_op = match dtype {
-                QueueType::First => QueueOp::First,
-                QueueType::Subsequent => QueueOp::Subsequent
-            };
-
-            //trace_print!(self, "Queue direction -> Read!");
             self.last_queue_direction = QueueDirection::Read;
-
             self.biu_resume_on_queue_read();
-            self.queue_byte = byte;
-            self.cycle();
         }
         else {
-            // Queue is empty, first fetch byte
-            byte = self.biu_fetch_u8(dtype);
-            trace_print!(self, " ...................queue_byte byte (2): {:02X}", byte);
-            self.queue_byte = byte;
+            // Queue is empty, wait for a byte to be fetched into the queue then return it.
+            // Fetching is automatic, therefore, just cycle the cpu until a byte appears...
+            while self.queue.len() == 0 {
+                self.cycle();
+            }
 
-            //trace_print!(self, "biu_queue_read: cycle()");
-            self.cycle();            
+            // ...and pop it out.
+            byte = self.queue.pop();
+            self.last_queue_direction = QueueDirection::Read;         
+        }
+
+        self.queue_byte = byte;
+
+        let mut advance_pc = false;
+
+        // TODO: These enums duplicate functionality
+        self.queue_op = match dtype {
+            QueueType::First => {
+                QueueOp::First
+            },
+            QueueType::Subsequent => {
+                match reader {
+                    QueueReader::Biu => QueueOp::Subsequent,
+                    QueueReader::Eu => {
+                        // Advance the microcode PC.
+                        advance_pc = true;
+                        QueueOp::Subsequent
+                    }
+                }
+            }
+        };
+
+        self.cycle();
+        if advance_pc {
+            if self.nx {
+                self.nx = false;
+            }
+            self.mc_pc += 1;
         }
         byte
     }
@@ -214,6 +265,22 @@ impl<'a> Cpu<'a> {
         self.biu_state = BiuState::Suspended;
     }
 
+    pub fn biu_suspend_fetch_i(&mut self, mc: u16) {
+        self.trace_comment("SUSP");
+        self.fetch_suspended = true;
+
+        // SUSP waits for any current fetch to complete.
+        if self.bus_status == BusStatus::CodeFetch {
+            self.biu_bus_wait_finish();
+            self.biu_state = BiuState::Suspended;
+            self.cycle_i(mc);
+        }
+        else {
+            self.biu_state = BiuState::Suspended;
+        }
+        //trace_print!(self, "Suspending BIU");
+    }    
+
     /// Schedule a prefetch to occur after either 2 or 4 cycles, depending on queue
     /// length. If the queue is full, nothing happens.
     pub fn biu_schedule_fetch(&mut self) {
@@ -222,20 +289,25 @@ impl<'a> Cpu<'a> {
             return
         }
         
-        // The 8088 introduces a 2-cycle scheduling delay when there are 3
+        // The 8088 introduces a 3-cycle scheduling delay when there are 3
         // bytes in the queue.
-        // The 8086 introduces a 2-cycle scheduling delay when there are either
-        // 3 or 4 bytes in the queue.
+        // The 8086 introduces a 3-cycle scheduling delay when there are either
+        // 3 or 4 bytes in the queue (guessing)
 
-        let fetch_delay = 
-            if matches!(self.biu_state, BiuState::Operating) && matches!(self.last_queue_direction, QueueDirection::Read) 
-            { 
-                4 
-            } 
-            else { 
-                2 
-            };
+        if self.bus_status == BusStatus::CodeFetch && 
+            (
+                self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)
+            ) 
+        {
+            self.fetch_state = FetchState::Scheduled(2);
+            self.next_fetch_state = FetchState::Delayed(3);
+        }
+        else {
+            self.fetch_state = FetchState::Scheduled(2);
+            self.next_fetch_state = FetchState::InProgress;
+        };
 
+        /*
         match self.cpu_type {
             CpuType::Intel8088 => {
                 match self.queue.len() {
@@ -252,12 +324,13 @@ impl<'a> Cpu<'a> {
                 }
             }
         }
+        */
     }
 
     /// Abort a scheduled fetch when an EU bus request has been received.
     pub fn biu_abort_fetch(&mut self) {
 
-        self.fetch_state = FetchState::Aborted(0);
+        self.fetch_state = FetchState::Aborted(2);
         self.t_cycle = TCycle::T1;
         self.bus_status = BusStatus::Passive;
         self.i8288.ale = false;
@@ -301,11 +374,15 @@ impl<'a> Cpu<'a> {
         self.fetch_state = FetchState::Idle;
         self.fetch_suspended = false;
 
-        self.biu_state = BiuState::Resuming(3);
+        // BIU can be resumed after a SUSP by a request from the EU.
+        // So don't enter resuming state unless we are still suspended.
+        if self.biu_state == BiuState::Suspended {
+            self.biu_state = BiuState::Resuming(3);
+        }
     }
 
     pub fn biu_update_pc(&mut self) {
-        //log::trace!("Resetting PC to CS:IP: {:04X}:{:04X}", self.cs, self.ip);
+        //log::debug!("Resetting PC to CS:IP: {:04X}:{:04X}", self.cs, self.ip);
         self.pc = Cpu::calc_linear_address(self.cs, self.ip);
     }
 
@@ -338,15 +415,26 @@ impl<'a> Cpu<'a> {
         }
         */
 
-        let can_fetch = match self.fetch_state {
-            //FetchState::BlockedByEU | FetchState::Suspended => false,
-            FetchState::BlockedByEU => false,  // we CAN schedule a fetch while suspended (?)
-            _=> true
+        if (self.queue.len() == 3 && self.queue_op == QueueOp::Idle) || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle) {
+            self.trace_comment("THREE");
+        }
+
+        // If the BIU is operating, we can schedule a fetch if the EU does not own the bus
+        let can_fetch = match (&self.biu_state, &self.fetch_state) {
+            (_, FetchState::BlockedByEU) => false,  // 
+            (BiuState::Operating, _) => true,
+            _=> false
         };
 
+        /*
         //if self.biu_queue_has_room() && can_fetch && self.queue_op != QueueOp::Flush {
         if can_fetch && self.queue_op != QueueOp::Flush { 
             // 8088 schedules fetch even when queue is full
+            self.biu_schedule_fetch();
+        }
+        */
+
+        if can_fetch {
             self.biu_schedule_fetch();
         }
     }
@@ -367,6 +455,16 @@ impl<'a> Cpu<'a> {
     #[inline]
     pub fn biu_tick_prefetcher(&mut self) {
         match &mut self.fetch_state {
+            FetchState::Delayed(c) => {
+                *c = c.saturating_sub(1);
+
+                if *c == 0 {
+                    // Trigger fetch on expiry of Delayed state.
+                    // We reset the next_fetch_state so we don't loop back to Delayed again.
+                    self.fetch_state = FetchState::Scheduled(0);
+                    self.next_fetch_state = FetchState::InProgress;
+                }                   
+            }
             FetchState::Scheduled(c) => {
                 *c = c.saturating_sub(1);
             }
@@ -379,26 +477,6 @@ impl<'a> Cpu<'a> {
             }
             _=> {}
         }
-    }
-
-    pub fn biu_fetch_u8(&mut self, dtype: QueueType) -> u8 {
-        // Fetching should be automatic, we shouldn't have to request it.
-        // Therefore, just cycle the cpu until there is a byte in the queue and return it.
-
-        while self.queue.len() == 0 {
-            self.cycle();
-        }
-
-        self.trace_comment("Q_READ");
-        let byte = self.queue.pop();
-        self.queue_op = match dtype {
-            QueueType::First => QueueOp::First,
-            QueueType::Subsequent => QueueOp::Subsequent
-        };
-
-        self.last_queue_direction = QueueDirection::Read;
-
-        byte
     }
 
     pub fn biu_read_u8(&mut self, seg: Segment, addr: u32) -> u8 {
@@ -441,7 +519,7 @@ impl<'a> Cpu<'a> {
     pub fn biu_io_read_u8(&mut self, addr: u16) -> u8 {
 
         self.biu_bus_begin(
-            BusStatus::IORead, 
+            BusStatus::IoRead, 
             Segment::None, 
             addr as u32, 
             0, 
@@ -459,7 +537,7 @@ impl<'a> Cpu<'a> {
     pub fn biu_io_write_u8(&mut self, addr: u16, byte: u8, flag: ReadWriteFlag) {
         
         self.biu_bus_begin(
-            BusStatus::IOWrite, 
+            BusStatus::IoWrite, 
             Segment::None, 
             addr as u32, 
             byte as u16, 
@@ -597,7 +675,7 @@ impl<'a> Cpu<'a> {
                 // No active bus transfer
                 return 0
             }
-            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
+            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | BusStatus::IoWrite | BusStatus::CodeFetch => {
                 while self.t_cycle != TCycle::T4 {
                     self.cycle();
                     bus_cycles_elapsed += 1;
@@ -607,6 +685,30 @@ impl<'a> Cpu<'a> {
             _ => {
                 // Handle other statuses
                 return 0
+            }
+        }
+    }
+
+    /// If the BIU state is not Operating, wait until it is.
+    pub fn biu_bus_wait_resume(&mut self) -> u32 {
+        let mut bus_cycles_elapsed = 0;
+
+        loop {
+            match self.biu_state {
+                BiuState::Operating => {
+                    return bus_cycles_elapsed;
+                }
+                BiuState::Resuming(_) => {
+                    self.cycle();
+                    bus_cycles_elapsed += 1;
+                    continue;
+                }
+                BiuState::Suspended => {
+                    return 0
+                }
+                BiuState::SDelayed(_) => {
+                    return 0
+                }
             }
         }
     }
@@ -623,17 +725,21 @@ impl<'a> Cpu<'a> {
                 // No active bus transfer
                 return 0
             }
-            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IORead | BusStatus::IOWrite | BusStatus::CodeFetch => {
+            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | BusStatus::IoWrite | BusStatus::CodeFetch => {
         
+                
                 if target_state == TCycle::Tw {
                     // Interpret waiting for Tw as waiting for T3 or Last Tw
                     loop {
                         match (self.t_cycle, self.wait_states) {
                             (TCycle::T3, 0) => {
+                                self.trace_comment(" >> wait match!");
                                 if self.bus_wait_states == 0 {
+                                    self.trace_comment(">> no bus_wait_states");
                                     return bus_cycles_elapsed
                                 }
                                 else {
+                                    self.trace_comment(">> wait state!");
                                     self.cycle();
                                 }
                             }
@@ -679,7 +785,7 @@ impl<'a> Cpu<'a> {
         first: bool,
     ) {
 
-
+        /*
         trace_print!(
             self,
             "Bus begin! {:?}:[{:05X}] in {:?}", 
@@ -687,6 +793,8 @@ impl<'a> Cpu<'a> {
             address, 
             self.t_cycle
         );
+        */
+        self.trace_comment("BUS_BEGIN");
 
         // Check this address for a memory access breakpoint
         if self.bus.get_flags(address as usize) & MEM_BPA_BIT != 0 {
@@ -695,18 +803,22 @@ impl<'a> Cpu<'a> {
         }
 
         // Save current fetch state
-        let old_fetch_state = self.fetch_state;
+        let _old_fetch_state = self.fetch_state;
 
         if new_bus_status != BusStatus::CodeFetch {
             // The EU has requested a Read/Write cycle, if we haven't scheduled a prefetch, block 
             // prefetching until the bus transfer is complete.
 
+            if self.transfer_n == 0 {
+                // First transfer, advance MC PC to next instruction.
+                self.next_mc();
+            }
+            
             self.bus_pending_eu = true; 
             if let FetchState::Scheduled(_) = self.fetch_state {
                 // Don't block prefetching if already scheduled.
             }
             else if self.is_before_last_wait() && !self.fetch_suspended {
-
                 //trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);
                 self.fetch_state = FetchState::BlockedByEU;
             }
@@ -718,8 +830,9 @@ impl<'a> Cpu<'a> {
             self.cycle();
             _waited_cycles += 1;
         }
-        
-        //trace_print!(self, "biu_bus_begin(): Done waiting for mcycle complete: ({})", waited_cycles);
+
+        // Wait for to leave Resuming state.
+        _waited_cycles += self.biu_bus_wait_resume();
 
         if self.fetch_state == FetchState::BlockedByEU {
             self.fetch_state = FetchState::Idle;
@@ -731,8 +844,6 @@ impl<'a> Cpu<'a> {
         if first {
             self.transfer_n = 0;
         }        
-        
-        //log::trace!("Bus begin! {:?}:[{:05X}]", bus_status, address);
 
         if new_bus_status == BusStatus::CodeFetch {
             // Prefetch is starting so reset prefetch scheculed flag
@@ -742,39 +853,49 @@ impl<'a> Cpu<'a> {
 
         if self.bus_status == BusStatus::Passive || self.bus_status == BusStatus::CodeFetch || self.t_cycle == TCycle::T4 {
 
-            let fetch_scheduled = if let FetchState::Scheduled(_) = self.fetch_state { true } else { false };
+            let fetch_scheduled = match self.fetch_state {
+                FetchState::Scheduled(_) => true,
+                FetchState::Delayed(3) => true,
+                _ => false,
+            };
 
             match self.biu_state {
                 BiuState::Operating => {
                     if new_bus_status != BusStatus::CodeFetch && (fetch_scheduled || self.fetch_state == FetchState::InProgress) {
                         // A fetch was scheduled already, so we have to abort and incur a two cycle penalty.
-                        //self.trace_print("Aborting prefetch!");
                         self.biu_abort_fetch(); 
                     }
                 }
                 BiuState::Suspended => {
-                    // The BIU is suspended. Spend 3 cycles resuming.
-                    self.biu_state = BiuState::Resuming(3);
-                    // Claim the bus for the EU.
-                    self.fetch_state = FetchState::BlockedByEU;
-                    self.cycles(3);
-                    self.fetch_state = FetchState::Idle;
+                    // The BIU is suspended. Delay the first operation of any bus transfer by 3 cycles.
+                    if self.transfer_n == 0 {
+                        self.biu_state = BiuState::SDelayed(3);
+                        // Claim the bus for the EU.
+                        self.fetch_state = FetchState::BlockedByEU;
+                        self.cycles(3);
+                        // Return to Suspended state after bus op.
+                        self.biu_state = BiuState::Suspended; 
+                    }
                 }
                 BiuState::Resuming(_) => {
+                    self.trace_flush();
                     unreachable!("Shouldn't be in resuming state on bus request");
+                }
+                BiuState::SDelayed(_) => {
+                    self.trace_flush();
+                    unreachable!("Shouldn't be in SDelayed state on bus request");
                 }
             }
             
             self.bus_status = new_bus_status;
             self.bus_segment = bus_segment;
             self.t_cycle = TCycle::TInit;
-
-            //trace_print!(self, "biu_bus_begin(): address {:05X}", address);
             self.address_bus = address;
             self.i8288.ale = true;
             self.data_bus = data as u16;
             self.transfer_size = size;
             self.operand_size = op_size;
+
             if self.transfer_n > 1 {
                 self.transfer_n = 0;
             }

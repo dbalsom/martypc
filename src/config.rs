@@ -169,7 +169,8 @@ pub struct Emulator {
 pub struct Validator {
     #[serde(rename = "type")]
     pub vtype: Option<ValidatorType>,
-    pub trigger_address: Option<u32>
+    pub trigger_address: Option<u32>,
+    pub trace_file: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

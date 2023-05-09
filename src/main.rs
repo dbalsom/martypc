@@ -77,12 +77,12 @@ mod videocard; // VideoCard trait
 mod input;
 
 mod cpu_validator; // CpuValidator trait
-#[cfg(feature = "pi_validator")]
-mod pi_cpu_validator;
+
 #[cfg(feature = "arduino_validator")]
 #[macro_use]
 mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
+#[macro_use]
 mod arduino8088_validator;
 
 use input::MouseButton;
@@ -102,6 +102,7 @@ use crate::egui::{GuiEvent, GuiOption , GuiWindow};
 use render::{VideoRenderer, CompositeParams};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
+use tracelogger::TraceLogger;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -1471,15 +1472,16 @@ fn main() {
                     if framework.gui.is_window_open(egui::GuiWindow::MemoryViewer) {
                         let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
                         // Show address 0 if expression evail fails
-                        let mem_dump_addr: u32 = match machine.cpu().eval_address(&mem_dump_addr_str) {
+                        let (addr, mem_dump_addr) = match machine.cpu().eval_address(&mem_dump_addr_str) {
                             Some(i) => {
                                 let addr: u32 = i.into();
-                                addr & !0x0F
+                                // Dump at 16 byte block boundaries
+                                (addr, addr & !0x0F)
                             }
-                            None => 0
+                            None => (0,0)
                         };
 
-                        let mem_dump_vec = machine.bus().dump_flat_tokens(mem_dump_addr as usize, 256);
+                        let mem_dump_vec = machine.bus().dump_flat_tokens(mem_dump_addr as usize, addr as usize, 256);
                     
                         //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
                         framework.gui.memory_viewer.set_memory(mem_dump_vec);
@@ -1786,12 +1788,20 @@ pub fn main_fuzzer <'a>(
     //let mut io_bus = IoBusInterface::new();
     let pic = Rc::new(RefCell::new(pic::Pic::new()));    
 
+    // Create the validator trace file, if specified
+    let mut validator_trace = TraceLogger::None;
+    if let Some(trace_filename) = &config.validator.trace_file {
+        validator_trace = TraceLogger::from_filename(&trace_filename);
+    }
+
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
         config.emulator.trace_mode,
         Some(trace_file_option),
         #[cfg(feature = "cpu_validator")]
-        config.validator.vtype.unwrap()
+        config.validator.vtype.unwrap(),
+        #[cfg(feature = "cpu_validator")]
+        validator_trace
     );
 
     cpu.randomize_seed(1234);
@@ -1800,6 +1810,8 @@ pub fn main_fuzzer <'a>(
     let mut test_num = 0;
 
     'testloop: loop {
+
+        cpu.reset();
 
         test_num += 1;
         cpu.randomize_regs();
@@ -1874,7 +1886,7 @@ pub fn main_fuzzer <'a>(
 
         //cpu.random_inst_from_opcodes(&[0x8F]); // POP  (Weird behavior when REG != 0)
 
-        cpu.random_inst_from_opcodes(&[0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]); // XCHG reg, ax
+        //cpu.random_inst_from_opcodes(&[0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97]); // XCHG reg, ax
         //cpu.random_inst_from_opcodes(&[0x98, 0x99]); // CBW, CWD
         //cpu.random_inst_from_opcodes(&[0x9A]); // CALLF
         //cpu.random_inst_from_opcodes(&[0x9C, 0x9D]); // PUSHF, POPF
@@ -1943,7 +1955,7 @@ pub fn main_fuzzer <'a>(
         //cpu.random_grp_instruction(0xFE, &[4, 5]); // JMP & JMPF
         //cpu.random_grp_instruction(0xFF, &[4, 5]); // JMP & JMPF
         //cpu.random_grp_instruction(0xFE, &[6, 7]); // 8-bit broken PUSH & POP
-        //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
+        cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
         let instruction_address = 
@@ -1962,7 +1974,7 @@ pub fn main_fuzzer <'a>(
                 continue;
             }                
         };
-        
+
         // Skip N successful instructions
 
         // was at 13546
@@ -1970,11 +1982,9 @@ pub fn main_fuzzer <'a>(
             continue;
         }
 
+        cpu.set_option(CpuOption::EnableWaitStates(false));
+        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));        
 
-        if test_num > 3 {
-            return;
-
-        }
         match i.opcode {
             0xFE | 0xD2 | 0xD3 | 0x8F => {
                 continue;
@@ -1984,9 +1994,11 @@ pub fn main_fuzzer <'a>(
 
         let mut rep = false;
         match i.mnemonic {
+            /*
             Mnemonic::INT | Mnemonic::INT3 | Mnemonic::INTO | Mnemonic::IRET => {
                 continue;
             },
+            */
             Mnemonic::FWAIT => {
                 continue;
             }
@@ -2048,13 +2060,11 @@ pub fn main_fuzzer <'a>(
                 },
                 Err(err) => {
                     log::error!("CPU Error: {}\n", err);
+                    cpu.trace_flush();
                     break 'testloop;
                 } 
             }
         }
-
-        cpu.reset();
-
     }
     
     //std::process::exit(0);
