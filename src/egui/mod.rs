@@ -28,6 +28,7 @@ use egui::{
 };
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
+use ::image::Delay;
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
 use winit::{window::Window, event_loop::EventLoopWindowTarget};
@@ -43,12 +44,15 @@ mod constants;
 mod cpu_control;
 mod cpu_state_viewer;
 mod cycle_trace_viewer;
+mod delay_adjust;
 mod disassembly_viewer;
 mod dma_viewer;
 mod image;
 mod instruction_history_viewer;
+mod ivr_viewer;
 mod memory_viewer;
 mod menu;
+mod performance_viewer;
 mod pit_viewer;
 mod token_listview;
 mod videocard_viewer;
@@ -64,10 +68,13 @@ use crate::{
     egui::cpu_state_viewer::CpuViewerControl,
     egui::cycle_trace_viewer::CycleTraceViewerControl,
     egui::memory_viewer::MemoryViewerControl,
+    egui::delay_adjust::DelayAdjustControl,
     egui::disassembly_viewer::DisassemblyControl,
     egui::dma_viewer::DmaViewerControl,
+    egui::performance_viewer::PerformanceViewerControl,
     egui::pit_viewer::PitViewerControl,
     egui::instruction_history_viewer::InstructionHistoryControl,
+    egui::ivr_viewer::IvrViewerControl,
 
     machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
@@ -92,6 +99,8 @@ pub(crate) enum GuiWindow {
     CompositeAdjust,
     CpuStateViewer,
     HistoryViewer,
+    IvrViewer,
+    DelayAdjust,
     DiassemblyViewer,
     PitViewer,
     PicViewer,
@@ -123,12 +132,14 @@ pub enum GuiEvent {
     BridgeSerialPort(String),
     DumpVRAM,
     DumpCS,
+    DumpAllMem,
     EditBreakpoint,
     MemoryUpdate,
     TokenHover(usize),
     OptionChanged(GuiOption, bool),
     CompositeAdjust(CompositeParams),
-    FlushLogs
+    FlushLogs,
+    DelayAdjust
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -143,6 +154,20 @@ pub(crate) struct Framework {
 
     // State for the GUI
     pub gui: GuiState,
+}
+
+#[derive (Copy, Clone, Default)]
+pub struct PerformanceStats {
+    pub current_ups: u32,
+    pub current_fps: u32,
+    pub emulated_fps: u32,
+    pub cycle_target: u32,
+    pub current_cps: u64,
+    pub current_tps: u64,
+    pub current_ips: u64,
+    pub emulation_time: Duration,
+    pub render_time: Duration,
+    pub gui_time: Duration,
 }
 
 /// Example application state. A real application will need a lot more state than this.
@@ -160,14 +185,7 @@ pub(crate) struct GuiState {
     video_mem: ColorImage,
 
     video_data: VideoData,
-    current_ups: u32,
-    current_fps: u32,
-    emulated_fps: u32,
-    current_cps: u64,
-    current_ips: u64,
-    emulation_time: Duration,
-    render_time: Duration,
-    gui_time: Duration,
+    perf_stats: PerformanceStats,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -199,6 +217,9 @@ pub(crate) struct GuiState {
     pub cycle_trace_viewer: CycleTraceViewerControl,
     pub memory_viewer: MemoryViewerControl,
     pub cpu_state: CpuStringState,
+
+    pub perf_viewer: PerformanceViewerControl,
+    pub delay_adjust: DelayAdjustControl,
     
     pub pit_viewer: PitViewerControl,
     pub pic_state: PicStringState,
@@ -215,8 +236,8 @@ pub(crate) struct GuiState {
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
     pub trace_viewer: InstructionHistoryControl,
-    
     pub composite_adjust: CompositeAdjustControl,
+    pub ivr_viewer: IvrViewerControl,
     
     trace_string: String,
     call_stack_string: String,
@@ -331,7 +352,7 @@ impl Framework {
             .handle_platform_output(window, &self.egui_ctx, output.platform_output);
         self.paint_jobs = self.egui_ctx.tessellate(output.shapes);
 
-        self.gui.gui_time = Instant::now() - gui_start;
+        self.gui.perf_stats.gui_time = Instant::now() - gui_start;
     }
 
     /// Render egui.
@@ -399,6 +420,8 @@ impl GuiState {
             (GuiWindow::CompositeAdjust, false),
             (GuiWindow::CpuStateViewer, false),
             (GuiWindow::HistoryViewer, false),
+            (GuiWindow::IvrViewer, false),
+            (GuiWindow::DelayAdjust, false),
             (GuiWindow::DiassemblyViewer, false),
             (GuiWindow::PitViewer, false),
             (GuiWindow::PicViewer, false),
@@ -432,14 +455,7 @@ impl GuiState {
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
             video_data: Default::default(),
-            current_ups: 0,
-            current_fps: 0,
-            emulated_fps: 0,
-            current_cps: 0,
-            current_ips: 0,
-            emulation_time: Default::default(),
-            render_time: Default::default(),
-            gui_time: Default::default(),
+            perf_stats: Default::default(),
         
             floppy_names: Vec::new(),
             new_floppy_name0: Option::None,
@@ -470,6 +486,8 @@ impl GuiState {
             memory_viewer: MemoryViewerControl::new(),
             cpu_state: Default::default(),
 
+            perf_viewer: PerformanceViewerControl::new(),
+            delay_adjust: DelayAdjustControl::new(),
             pit_viewer: PitViewerControl::new(),
             pic_state: Default::default(),
             ppi_state: Default::default(),
@@ -485,6 +503,7 @@ impl GuiState {
             trace_viewer: InstructionHistoryControl::new(),
             trace_string: String::new(),
             composite_adjust: CompositeAdjustControl::new(),
+            ivr_viewer: IvrViewerControl::new(),
             call_stack_string: String::new(),
 
             // Options menu items
@@ -595,7 +614,7 @@ impl GuiState {
         self.pic_state = state;
     }
 
-    pub fn get_breakpoints(&mut self) -> (&str, &str) {
+    pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {
         self.cpu_control.get_breakpoints()
     }
 
@@ -617,29 +636,6 @@ impl GuiState {
 
     pub fn update_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
         self.serial_ports = ports;
-    }
-
-    pub fn update_perf_view(
-        &mut self, 
-        current_ups: u32,
-        current_fps: u32, 
-        emulated_fps: u32, 
-        current_cps: u64, 
-        current_ips: u64,
-        emulation_time: Duration, 
-        render_time: Duration) 
-    {
-        self.current_ups = current_ups;
-        self.current_fps = current_fps;
-        self.emulated_fps = emulated_fps;
-        self.current_cps = current_cps;
-        self.current_ips = current_ips;
-        self.emulation_time = emulation_time;
-        self.render_time = render_time;
-    }
-
-    pub fn update_video_data(&mut self, video_data: VideoData) {
-        self.video_data = video_data;
     }
 
     pub fn update_videocard_state(&mut self, state: HashMap<String,Vec<(String, VideoCardStateEntry)>>) {
@@ -713,48 +709,7 @@ impl GuiState {
             .open(self.window_open_flags.get_mut(&GuiWindow::PerfViewer).unwrap())
             .show(ctx, |ui| {
 
-                egui::Grid::new("perf")
-                    .striped(true)
-                    .min_col_width(100.0)
-                    .show(ui, |ui| {
-                        ui.label("Internal resolution: ");
-                        ui.label(egui::RichText::new(format!("{}, {}", 
-                            self.video_data.render_w, 
-                            self.video_data.render_h))
-                            .background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Display buffer resolution: ");
-                        ui.label(egui::RichText::new(format!("{}, {}", 
-                            self.video_data.aspect_w, 
-                            self.video_data.aspect_h))
-                            .background_color(egui::Color32::BLACK));
-                        ui.end_row();
-
-                        ui.label("UPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.current_ups)).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("FPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.current_fps)).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Emulated FPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.emulated_fps)).background_color(egui::Color32::BLACK));
-                        ui.end_row();                        
-                        ui.label("IPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.current_ips)).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("CPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.current_cps)).background_color(egui::Color32::BLACK));
-                        ui.end_row();                         
-                        ui.label("Emulation time: ");
-                        ui.label(egui::RichText::new(format!("{}", ((self.emulation_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Render time: ");
-                        ui.label(egui::RichText::new(format!("{}", ((self.render_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Gui Render time: ");
-                        ui.label(egui::RichText::new(format!("{}", ((self.gui_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
-                        ui.end_row();                        
-                    });      
+                self.perf_viewer.draw(ui, &mut self.event_queue);
             });
 
         egui::Window::new("CPU Control")
@@ -809,13 +764,30 @@ impl GuiState {
                 self.disassembly_viewer.draw(ui, &mut self.event_queue);
             });             
 
+        egui::Window::new("IVR Viewer")
+            .open(self.window_open_flags.get_mut(&GuiWindow::IvrViewer).unwrap())
+            .resizable(true)
+            .default_width(400.0)
+            .show(ctx, |ui| {
+                self.ivr_viewer.draw(ui, &mut self.event_queue);
+            }
+        );  
+
         egui::Window::new("CPU State")
             .open(self.window_open_flags.get_mut(&GuiWindow::CpuStateViewer).unwrap())
             .resizable(false)
             .default_width(220.0)
             .show(ctx, |ui| {
                 self.cpu_viewer.draw(ui, &mut self.event_queue);
-            });        
+            });      
+
+        egui::Window::new("Delay Adjust")
+            .open(self.window_open_flags.get_mut(&GuiWindow::DelayAdjust).unwrap())
+            .resizable(false)
+            .default_width(400.0)
+            .show(ctx, |ui| {
+                self.delay_adjust.draw(ui, &mut self.event_queue);
+            });                 
             
         egui::Window::new("PIT View")
             .open(self.window_open_flags.get_mut(&GuiWindow::PitViewer).unwrap())

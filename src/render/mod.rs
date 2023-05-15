@@ -88,6 +88,8 @@ const VGA_LORES_GFX_H: u32 = 200;
 const VGA_HIRES_GFX_W: u32 = 640;
 const VGA_HIRES_GFX_H: u32 = 480;
 
+const XOR_COLOR: u8 = 0x80;
+
 #[derive (Copy, Clone)]
 pub struct AspectRatio {
     pub h: u32,
@@ -654,6 +656,74 @@ impl VideoRenderer {
         }
     }
 
+    pub fn draw_horizontal_xor_line(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        y: u32
+    ) {
+
+        if y > (h-1) {
+            return;
+        }
+
+        let frame_row0_offset = ((y * 2) * (span * 4)) as usize;
+        let frame_row1_offset = (((y * 2) * (span * 4)) + (span * 4)) as usize;
+
+        for x in 0..w {
+
+            let fo0 = frame_row0_offset + (x * 4) as usize;
+            let fo1 = frame_row1_offset + (x * 4) as usize;
+
+            let r = frame[fo0];
+            let g = frame[fo0 + 1];
+            let b = frame[fo0 + 2];
+
+            frame[fo1] = r ^ XOR_COLOR;
+            frame[fo1 + 1] = g ^ XOR_COLOR;
+            frame[fo1 + 2] = b ^ XOR_COLOR;
+        }
+    }
+
+    pub fn draw_vertical_xor_line(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        x: u32
+    ) {
+
+        if x > (w-1) {
+            return;
+        }
+
+        let frame_x0_offset = (x * 4) as usize;
+
+        for y in 0..h {
+            let fo0 = frame_x0_offset + ((y * 2) * (span * 4)) as usize;
+            let fo1 = frame_x0_offset + (((y * 2) * (span * 4)) + (span * 4)) as usize;
+
+            let r = frame[fo0];
+            let g = frame[fo0 + 1];
+            let b = frame[fo0 + 2];
+
+            frame[fo0] = r ^ XOR_COLOR;
+            frame[fo0 + 1] = g ^ XOR_COLOR;
+            frame[fo0 + 2] = b ^ XOR_COLOR;
+
+            frame[fo1] = r ^ XOR_COLOR;
+            frame[fo1 + 1] = g ^ XOR_COLOR;
+            frame[fo1 + 2] = b ^ XOR_COLOR;
+        }
+
+    }    
+
+    /// Draw the CGA card in Direct Mode. 
+    /// Cards in Direct Mode generate their own framebuffers, we simply display the current back buffer
+    /// Optionally composite processing is performed.
     pub fn draw_cga_direct(
         &mut self,
         frame: &mut [u8],
@@ -662,7 +732,8 @@ impl VideoRenderer {
         dbuf: &[u8],
         extents: &DisplayExtents,
         composite_enabled: bool,
-        composite_params: &CompositeParams
+        composite_params: &CompositeParams,
+        beam_pos: Option<(u32, u32)>
     ) {
 
         if composite_enabled {
@@ -675,10 +746,12 @@ impl VideoRenderer {
         let overscan_half = overscan_total / 2;
 
         let mut horiz_adjust = 0;
+        /*
         if overscan_half < extents.overscan_l {
             // We want to shift image to the right 
             horiz_adjust = extents.overscan_l - overscan_half;
         }
+        */
 
         // Assume display buffer visible data starts at offset 0
 
@@ -709,7 +782,12 @@ impl VideoRenderer {
                 frame[fo1 + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
                 frame[fo1 + 3]   = 0xFFu8;                
             }
+        }
 
+        // Draw crosshairs for debugging crt beam pos
+        if let Some(beam) = beam_pos {
+            self.draw_horizontal_xor_line(frame, w, max_x, max_y, beam.1);
+            self.draw_vertical_xor_line(frame, w, max_x, max_y, beam.0);
         }
     }
 

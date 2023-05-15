@@ -1069,7 +1069,7 @@ impl<'a> Cpu<'a> {
             }
             0xCF => {
                 // IRET instruction
-                self.end_interrupt();
+                self.iret_routine();
                 jump = true;
             }
             0xD0 => {
@@ -1284,10 +1284,15 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();                
                 self.cycles_i(2, &[0x0b1, 0x0b2]);
 
+                // Write to consecutive ports
+                self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
+
+                /*
                 // Write first 8 bits to first port
                 self.biu_io_write_u8(op1_value as u16, (op2_value & 0xFF) as u8, ReadWriteFlag::Normal);
                 // Write next 8 bits to port + 1
                 self.biu_io_write_u8((op1_value + 1) as u16, (op2_value >> 8 & 0xFF) as u8, ReadWriteFlag::RNI);
+                */
             }
             0xE8 => {
                 // CALL rel16
@@ -1395,10 +1400,15 @@ impl<'a> Cpu<'a> {
                     log::debug!("OUT of {:02X}", op2_value);
                 }
 
+                // Write to consecutive ports
+                self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
+
+                /*
                 // Write first 8 bits to first port
                 self.biu_io_write_u8(op1_value, (op2_value & 0xFF) as u8, ReadWriteFlag::Normal);
                 // Write next 8 bits to port + 1
                 self.biu_io_write_u8(op1_value + 1, (op2_value >> 8 & 0xFF) as u8, ReadWriteFlag::RNI);
+                */
             }
             0xF0 => {
                 unhandled = true;
@@ -1417,7 +1427,9 @@ impl<'a> Cpu<'a> {
                 // HLT - Halt
                 self.halted = true;
                 log::trace!("Halted at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
-                self.cycles(2);
+                // HLT is non-microcoded, so these cycles have no pc
+                self.cycles(3);
+                self.biu_halt();
             }
             0xF5 => {
                 // CMC - Complement (invert) Carry Flag

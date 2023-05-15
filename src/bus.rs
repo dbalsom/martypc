@@ -45,6 +45,8 @@ pub enum ClockFactor {
     Divisor(u8),
     Multiplier(u8)
 }
+
+#[derive (Copy, Clone, Debug)]
 pub enum DeviceRunTimeUnit {
     SystemTicks(u32),
     Microseconds(f64),
@@ -118,8 +120,8 @@ pub enum IoDeviceDispatch {
 }
 
 pub trait IoDevice {
-    fn read_u8(&mut self, port: u16) -> u8;
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>);
+    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit ) -> u8;
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, delta: DeviceRunTimeUnit);
     fn port_list(&self) -> Vec<u16>;
 }
 
@@ -934,6 +936,41 @@ impl BusInterface {
         vec
     }
 
+    pub fn dump_mem(&self) {
+        
+        let filename = format!("./dumps/mem.bin");
+        
+        let len = 0x100000;
+        let address = 0;
+        log::debug!("Dumping {} bytes at address {:05X}", len, address);
+
+        match std::fs::write(filename.clone(), &self.memory) {
+            Ok(_) => {
+                log::debug!("Wrote memory dump: {}", filename)
+            }
+            Err(e) => {
+                log::error!("Failed to write memory dump '{}': {}", filename, e)
+            }
+        }
+    }
+
+    pub fn dump_ivr_tokens(&mut self) -> Vec<Vec<SyntaxToken>> {
+
+        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+
+        for v in 0..256 {
+            let mut ivr_vec = Vec::new();
+            let (ip, _) = self.read_u16((v * 4) as usize, 0).unwrap();
+            let (cs, _) = self.read_u16(((v*4) + 2) as usize, 0).unwrap();
+
+            ivr_vec.push(SyntaxToken::Text(format!("{:03}", v)));
+            ivr_vec.push(SyntaxToken::Colon);
+            ivr_vec.push(SyntaxToken::MemoryAddressSeg16(cs, ip, format!("[{:04X}]:[{:04X}]", cs, ip)));
+            vec.push(ivr_vec);
+        }
+        vec
+    }
+
     pub fn get_memory_debug(&mut self, address: usize) -> MemoryDebug {
         let mut debug = MemoryDebug {
             addr: format!("{:05X}", address),
@@ -967,8 +1004,6 @@ impl BusInterface {
                 "Invalid".to_string()
             }
         };
-
-
         debug
     }
     
@@ -976,7 +1011,8 @@ impl BusInterface {
         &mut self, 
         video_type: VideoType, 
         machine_desc: &MachineDescriptor, 
-        video_trace: TraceLogger
+        video_trace: TraceLogger,
+        video_frame_debug: bool,
     ) 
     {
 
@@ -1057,7 +1093,7 @@ impl BusInterface {
         // Create video card depending on VideoType
         match video_type {
             VideoType::CGA => {
-                let cga = CGACard::new(video_trace);
+                let cga = CGACard::new(video_trace, video_frame_debug);
                 let port_list = cga.port_list();
                 self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Cga)));
 
@@ -1134,7 +1170,7 @@ impl BusInterface {
         // The PIT may have a separate clock crystal, such as in the IBM AT. In this case, there may not 
         // be an integer number of PIT ticks per system ticks. Therefore the PIT can take either
         // system ticks (PC/XT) or microseconds as an update parameter.
-        if let Some(crystal) = machine_desc.timer_crystal {
+        if let Some(_crystal) = machine_desc.timer_crystal {
             pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::Microseconds(us));
         }
         else {
@@ -1228,11 +1264,23 @@ impl BusInterface {
             0xFF
         }
         */
+
+        // Convert cycles to system clock ticks
+        let sys_ticks = match self.cpu_factor {
+            ClockFactor::Divisor(d) => {
+                d as u32 * cycles
+            }
+            ClockFactor::Multiplier(m) => {
+                cycles / m as u32
+            }
+        };
+        let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
+
         if let Some(device_id) = self.io_map.get(&port) {
             match device_id {
                 IoDeviceType::Ppi => {
                     if let Some(ppi) = &mut self.ppi {
-                        ppi.read_u8(port)
+                        ppi.read_u8(port, nul_delta)
                     }
                     else {
                         NO_IO_BYTE
@@ -1240,16 +1288,16 @@ impl BusInterface {
                 }
                 IoDeviceType::Pit => {
                     // There will always be a PIT, so safe to unwrap
-                    self.pit.as_mut().unwrap().read_u8(port)
+                    self.pit.as_mut().unwrap().read_u8(port, nul_delta)
                 }
                 IoDeviceType::DmaPrimary => {
                     // There will always be a primary DMA, so safe to unwrap                    
-                    self.dma1.as_mut().unwrap().read_u8(port)
+                    self.dma1.as_mut().unwrap().read_u8(port, nul_delta)
                 }
                 IoDeviceType::DmaSecondary => {
                     // Secondary DMA may not exist
                     if let Some(dma2) = &mut self.dma2 {
-                        dma2.read_u8(port)
+                        dma2.read_u8(port, nul_delta)
                     }
                     else {
                         NO_IO_BYTE
@@ -1257,12 +1305,12 @@ impl BusInterface {
                 }
                 IoDeviceType::PicPrimary => {
                     // There will always be a primary PIC, so safe to unwrap
-                    self.pic1.as_mut().unwrap().read_u8(port)
+                    self.pic1.as_mut().unwrap().read_u8(port, nul_delta)
                 }
                 IoDeviceType::PicSecondary => {
                     // Secondary PIC may not exist
                     if let Some(pic2) = &mut self.pic2 {
-                        pic2.read_u8(port)
+                        pic2.read_u8(port, nul_delta)
                     }
                     else {
                         NO_IO_BYTE
@@ -1270,7 +1318,7 @@ impl BusInterface {
                 }
                 IoDeviceType::FloppyController => {
                     if let Some(fdc) = &mut self.fdc {
-                        fdc.read_u8(port)
+                        fdc.read_u8(port, nul_delta)
                     }                     
                     else {
                         NO_IO_BYTE
@@ -1278,7 +1326,7 @@ impl BusInterface {
                 }
                 IoDeviceType::HardDiskController => {
                     if let Some(hdc) = &mut self.hdc {
-                        hdc.read_u8(port)
+                        hdc.read_u8(port, nul_delta)
                     }
                     else {
                         NO_IO_BYTE
@@ -1287,7 +1335,7 @@ impl BusInterface {
                 IoDeviceType::Serial => {
                     if let Some(serial) = &mut self.serial {
                         // Serial port write does not need bus.
-                        serial.read_u8(port)
+                        serial.read_u8(port, nul_delta)
                     } 
                     else {
                         NO_IO_BYTE
@@ -1297,13 +1345,13 @@ impl BusInterface {
                 IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                     match &mut self.video {
                         VideoCardDispatch::Cga(cga) => {
-                            IoDevice::read_u8(cga, port)
+                            IoDevice::read_u8(cga, port, DeviceRunTimeUnit::SystemTicks(sys_ticks))
                         },
                         VideoCardDispatch::Ega(ega) => {
-                            IoDevice::read_u8(ega, port)
+                            IoDevice::read_u8(ega, port, nul_delta)
                         }
                         VideoCardDispatch::Vga(vga) => {
-                            IoDevice::read_u8(vga, port)
+                            IoDevice::read_u8(vga, port, nul_delta)
                         }
                         VideoCardDispatch::None => NO_IO_BYTE
                     }
@@ -1335,72 +1383,83 @@ impl BusInterface {
         }
         */
 
+        // Convert cycles to system clock ticks
+        let sys_ticks = match self.cpu_factor {
+            ClockFactor::Divisor(d) => {
+                d as u32 * cycles
+            }
+            ClockFactor::Multiplier(m) => {
+                cycles / m as u32
+            }
+        };
+        let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
+
         if let Some(device_id) = self.io_map.get(&port) {
             match device_id {
                 IoDeviceType::Ppi => {
                     if let Some(mut ppi) = self.ppi.take() {
-                        ppi.write_u8(port, data, Some(self));
+                        ppi.write_u8(port, data, Some(self), nul_delta);
                         self.ppi = Some(ppi);
                     }
                 }
                 IoDeviceType::Pit => {
                     if let Some(mut pit) = self.pit.take() {
-                        pit.write_u8(port, data, Some(self));
+                        pit.write_u8(port, data, Some(self), DeviceRunTimeUnit::SystemTicks(sys_ticks));
                         self.pit = Some(pit);
                     }
                 }
                 IoDeviceType::DmaPrimary => {
                     if let Some(mut dma1) = self.dma1.take() {
-                        dma1.write_u8(port, data, Some(self));
+                        dma1.write_u8(port, data, Some(self), nul_delta);
                         self.dma1 = Some(dma1);
                     }
                 }
                 IoDeviceType::DmaSecondary => {
                     if let Some(mut dma2) = self.dma2.take() {
-                        dma2.write_u8(port, data, Some(self));
+                        dma2.write_u8(port, data, Some(self), nul_delta);
                         self.dma2 = Some(dma2);
                     }                    
                 }
                 IoDeviceType::PicPrimary => {
                     if let Some(mut pic1) = self.pic1.take() {
-                        pic1.write_u8(port, data, Some(self));
+                        pic1.write_u8(port, data, Some(self), nul_delta);
                         self.pic1 = Some(pic1);
                     }                    
                 }
                 IoDeviceType::PicSecondary => {
                     if let Some(mut pic2) = self.pic2.take() {
-                        pic2.write_u8(port, data, Some(self));
+                        pic2.write_u8(port, data, Some(self), nul_delta);
                         self.pic2 = Some(pic2);
                     }                               
                 }
                 IoDeviceType::FloppyController => {
                     if let Some(mut fdc) = self.fdc.take() {
-                        fdc.write_u8(port, data, Some(self));
+                        fdc.write_u8(port, data, Some(self), nul_delta);
                         self.fdc = Some(fdc);
                     }                           
                 }
                 IoDeviceType::HardDiskController => {
                     if let Some(mut hdc) = self.hdc.take() {
-                        hdc.write_u8(port, data, Some(self));
+                        hdc.write_u8(port, data, Some(self), nul_delta);
                         self.hdc = Some(hdc);
                     }                            
                 }
                 IoDeviceType::Serial => {
                     if let Some(serial) = &mut self.serial {
                         // Serial port write does not need bus.
-                        serial.write_u8(port, data, None);
+                        serial.write_u8(port, data, None, nul_delta);
                     }
                 }
                 IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
                     match &mut self.video {
                         VideoCardDispatch::Cga(cga) => {
-                            IoDevice::write_u8(cga, port, data, None)
+                            IoDevice::write_u8(cga, port, data, None, DeviceRunTimeUnit::SystemTicks(sys_ticks))
                         },
                         VideoCardDispatch::Ega(ega) => {
-                            IoDevice::write_u8(ega, port, data, None)
+                            IoDevice::write_u8(ega, port, data, None, nul_delta)
                         }
                         VideoCardDispatch::Vga(vga) => {
-                            IoDevice::write_u8(vga, port, data, None)
+                            IoDevice::write_u8(vga, port, data, None, nul_delta)
                         }
                         VideoCardDispatch::None => {}
                     }

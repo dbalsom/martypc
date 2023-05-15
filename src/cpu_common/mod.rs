@@ -15,6 +15,7 @@ impl Default for CpuType {
 pub enum CpuOption {
     InstructionHistory(bool),
     SimulateDramRefresh(bool, u32, u32),
+    DramRefreshAdjust(u32),
     OffRailsDetection(bool),
     EnableWaitStates(bool),
     TraceLoggingEnabled(bool)

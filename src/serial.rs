@@ -13,7 +13,7 @@ use std::{
     collections::VecDeque
 };
 
-use crate::bus::{BusInterface, IoDevice};
+use crate::bus::{BusInterface, IoDevice, DeviceRunTimeUnit};
 use crate::pic;
 
 /*  1.8Mhz Oscillator. 
@@ -98,7 +98,7 @@ const MODEM_STATUS_RI: u8 = 0b0100_0000;
 const MODEM_STATUS_RLSD: u8 = 0b1000_0000;
 
 impl IoDevice for SerialPortController {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
 
         match port {
             SERIAL1_RX_TX_BUFFER => self.port[0].rx_buffer_read(),
@@ -119,7 +119,7 @@ impl IoDevice for SerialPortController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             SERIAL1_RX_TX_BUFFER => self.port[0].tx_buffer_write(byte),
             SERIAL2_RX_TX_BUFFER => self.port[1].tx_buffer_write(byte),

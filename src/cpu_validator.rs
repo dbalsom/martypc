@@ -212,5 +212,6 @@ pub trait CpuValidator {
     fn emu_read_byte(&mut self, addr: u32, data: u8, bus_type: BusType, read_type: ReadType);
     fn emu_write_byte(&mut self, addr: u32, data: u8, bus_type: BusType);
     fn discard_op(&mut self);
+    fn flush(&mut self);
 }
 

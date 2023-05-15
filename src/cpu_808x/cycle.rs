@@ -100,7 +100,8 @@ impl<'a> Cpu<'a> {
             BusStatus::Passive => {
                 self.transfer_n = 0;
             }
-            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | BusStatus::IoWrite | BusStatus::CodeFetch => {
+            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | 
+            BusStatus::IoWrite | BusStatus::CodeFetch | BusStatus::InterruptAck => {
                 match self.t_cycle {
                     TCycle::TInit => {
                         panic!("Can't execute TInit state");
@@ -108,6 +109,7 @@ impl<'a> Cpu<'a> {
                     TCycle::T1 => {
                     },
                     TCycle::T2 => {
+
                         // Turn off ale signal on T2
                         self.i8288.ale = false;
 
@@ -118,14 +120,20 @@ impl<'a> Cpu<'a> {
                             }
                             BusStatus::MemWrite => {
                                 // Only AMWC goes high on T2. MWTC delayed to T3.
-                                self.i8288.amwc = true;
+                                self.i8288.amwc = true;                             
                             }
                             BusStatus::IoRead => {
-                                self.i8288.iorc = true;
+                                self.i8288.iorc = true;                          
                             }
                             BusStatus::IoWrite => {
                                 // Only AIOWC goes high on T2. IOWC delayed to T3.
-                                self.i8288.aiowc = true;
+                                self.i8288.aiowc = true;                              
+                            }
+                            BusStatus::InterruptAck => {
+                                self.i8288.inta = true;
+                                if self.transfer_n == 0 {
+                                    self.lock = true;
+                                }
                             }
                             _ => {}
                         }
@@ -145,9 +153,7 @@ impl<'a> Cpu<'a> {
                             BusStatus::IoWrite => {
                                 self.bus_wait_states = 1;
                             }                                                                                                                     
-                            _=> {
-                                log::warn!("Unhandled bus status: {:?}!", self.bus_status);
-                            }
+                            _=> {}
                         }
 
                         if !self.enable_wait_states {
@@ -231,8 +237,20 @@ impl<'a> Cpu<'a> {
                                     self.transfer_n += 1;
 
                                     validate_write_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Io );
-                                }                                                                                                                     
+                                }          
+                                (BusStatus::InterruptAck, TransferSize::Byte) => {
+                                    // The vector is read from the PIC directly before we even enter an INTA bus state, so there's
+                                    // nothing to do.
+
+                                    // Deassert lock 
+                                    if self.transfer_n == 1 {
+                                        //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
+                                        self.lock = false;
+                                    }
+                                    self.transfer_n += 1;
+                                }
                                 _=> {
+                                    trace_print!(self, "Unhandled bus state!");
                                     log::warn!("Unhandled bus status: {:?}!", self.bus_status);
                                 }
                             }
@@ -263,8 +281,9 @@ impl<'a> Cpu<'a> {
                     }
                 }
             }
-            _ => {
-                // Handle other states
+            BusStatus::Halt => {
+                self.trace_comment("HALT");
+                self.halted = true;
             }
         };
 
@@ -291,13 +310,19 @@ impl<'a> Cpu<'a> {
             }
             TCycle::T1 => {
                 // If bus status is PASV, stay in T1 (no bus transfer occurring)
-                // Otherwise if there is a valid bus status on T1, transition to T2.
+                // Otherwise if there is a valid bus status on T1, transition to T2, unless
+                // status is HALT, which only lasts one cycle.
                 match self.bus_status {
                     BusStatus::Passive => TCycle::T1,
-                    BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | BusStatus::IoWrite | BusStatus::CodeFetch => {
+                    BusStatus::Halt => {
+                        // Halt only lasts for one cycle. Reset status and ALE.
+                        self.bus_status = BusStatus::Passive;
+                        self.i8288.ale = false;
+                        TCycle::T1
+                    }
+                    _ => {
                         TCycle::T2
-                    },
-                    _=> self.t_cycle
+                    }
                 }
             }
             TCycle::T2 => TCycle::T3,
@@ -414,13 +439,17 @@ impl<'a> Cpu<'a> {
         self.queue_op = QueueOp::Idle;
 
         self.instr_cycle += 1;
-        if !self.in_rep && self.instr_cycle > 200 {
+        self.instr_elapsed += 1;
+        self.cycle_num += 1;
+
+        /* 
+        // Try to catch a runaway instruction?
+        if !self.halted && !self.in_rep && self.instr_cycle > 200 {
             log::error!("Exceeded max cycles for instruction.");
             self.trace_flush();
             panic!("Exceeded max cycles for instruction.");
         }
-        self.instr_elapsed += 1;
-        self.cycle_num += 1;
+        */
 
         self.last_queue_delay = self.queue.have_delay();
         self.last_queue_len = self.queue.len();
@@ -433,13 +462,13 @@ impl<'a> Cpu<'a> {
 
             match &mut self.dma_state {
                 DmaState::Idle => {
-                    if self.dram_refresh_cycles == self.dram_refresh_cycle_target {
+                    if self.dram_refresh_cycles == self.dram_refresh_cycle_target + self.dram_refresh_adjust {
                         // DRAM refresh cycle counter has hit target. 
                         // Begin DMA transfer simulation by issuing a DREQ.
                         self.dma_state = DmaState::Dreq;
 
                         // Reset counter.
-                        self.dram_refresh_cycles = 0;
+                        self.dram_refresh_cycles = self.dram_refresh_adjust;
                     }
                 }
                 DmaState::Dreq => {
@@ -451,7 +480,7 @@ impl<'a> Cpu<'a> {
                     // DMA Hold Request.
                     // DMA Hold request waits for issuance of HOLDA (Hold Acknowledge)
                     // This signal is generated by miscellaneous TTL logic when S0 & S1 state 
-                    // indicates PASV or HALT. (1,1) (Note, bus goes PASV after T2)
+                    // indicates PASV or HALT and !LOCK. (1,1) (Note, bus goes PASV after T2)
 
                     if self.bus_status == BusStatus::Passive || 
                         match self.t_cycle {
@@ -459,8 +488,10 @@ impl<'a> Cpu<'a> {
                             _ => false
                         }
                     {
-                        // S0 & S1 are idle. Issue hold acknowledge.
-                        self.dma_state = DmaState::HoldA;
+                        // S0 & S1 are idle. Issue hold acknowledge if LOCK not asserted.
+                        if !self.lock {
+                            self.dma_state = DmaState::HoldA;
+                        }
                     }             
                 }
                 DmaState::HoldA => {

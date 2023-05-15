@@ -98,7 +98,7 @@ use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
 use videocard::{RenderMode};
 use bytequeue::ByteQueue;
-use crate::egui::{GuiEvent, GuiOption , GuiWindow};
+use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
 use render::{VideoRenderer, CompositeParams};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
@@ -120,16 +120,6 @@ const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 
 // Remove static frequency references
 //const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
-
-
-pub struct PerformanceStats {
-    emulation_time: Duration,
-    render_time: Duration,
-    fps: u32,
-    emulated_fps: u32,
-    cps: u64,
-    ips: u64,
-}
 
 
 // Rendering Stats
@@ -154,7 +144,9 @@ struct Counter {
     last_second: Instant,
     last_cpu_cycles: u64,
     current_cpu_cps: u64,
+    last_system_ticks: u64,
     last_pit_ticks: u64,
+    current_sys_tps: u64,
     current_pit_tps: u64,
     emulation_time: Duration,
     render_time: Duration,
@@ -187,7 +179,9 @@ impl Counter {
             last_frame: Instant::now(),
             last_cpu_cycles: 0,
             current_cpu_cps: 0,
+            last_system_ticks: 0,
             last_pit_ticks: 0,
+            current_sys_tps: 0,
             current_pit_tps: 0,
             emulation_time: Duration::ZERO,
             render_time: Duration::ZERO,
@@ -258,7 +252,7 @@ impl KeyboardData {
 }
 
 #[derive (Copy, Clone, Default)]
-struct VideoData {
+pub struct VideoData {
     render_w: u32,
     render_h: u32,
     aspect_w: u32,
@@ -880,12 +874,16 @@ fn main() {
                     // One second elapsed, calculate FPS/CPS
                     let pit_ticks = machine.pit_cycles();
                     let cpu_cycles = machine.cpu_cycles();
+                    let system_ticks = machine.system_ticks();
 
                     stat_counter.current_cpu_cps = cpu_cycles - stat_counter.last_cpu_cycles;
                     stat_counter.last_cpu_cycles = cpu_cycles;
 
                     stat_counter.current_pit_tps = pit_ticks - stat_counter.last_pit_ticks;
                     stat_counter.last_pit_ticks = pit_ticks;
+
+                    stat_counter.current_sys_tps = system_ticks - stat_counter.last_system_ticks;
+                    stat_counter.last_system_ticks = system_ticks;
 
                     //println!("fps: {} | cps: {} | pit tps: {}", 
                     //    stat_counter.current_fps,
@@ -1165,16 +1163,21 @@ fn main() {
                             video_data.composite_params = framework.gui.composite_adjust.get_params().clone();
                         }
 
+                        let beam_pos;
                         let video_buffer;
                         // Get the appropriate buffer depending on run mode. If execution is paused 
                         // (debugging) show the back buffer instead of front buffer. 
                         // TODO: Discriminate between paused in debug mode vs user paused state
                         // TODO: buffer and extents may not match due to extents being for front buffer
-                        if let ExecutionState::Paused = exec_control.borrow_mut().get_state() {
-                            video_buffer = video_card.get_back_buf();
-                        }
-                        else {
-                            video_buffer = video_card.get_display_buf();
+                        match exec_control.borrow_mut().get_state() {
+                            ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
+                                video_buffer = video_card.get_back_buf();
+                                beam_pos = video_card.get_beam_pos();
+                            }
+                            _ => {
+                                video_buffer = video_card.get_display_buf();
+                                beam_pos = None;
+                            }
                         }
 
                         // Get the render mode from the device and render appropriately
@@ -1192,7 +1195,8 @@ fn main() {
                                             video_buffer,
                                             video_card.get_display_extents(),
                                             composite_enabled,
-                                            &video_data.composite_params
+                                            &video_data.composite_params,
+                                            beam_pos
                                         );
 
                                         render::resize_linear(
@@ -1211,7 +1215,8 @@ fn main() {
                                             video_buffer,
                                             video_card.get_display_extents(),
                                             composite_enabled,
-                                            &video_data.composite_params                                            
+                                            &video_data.composite_params,
+                                            beam_pos                                         
                                         );
                                     }
                                 }
@@ -1346,9 +1351,12 @@ fn main() {
                             Some(GuiEvent::DumpCS) => {
                                 machine.cpu().dump_cs();
                             }
+                            Some(GuiEvent::DumpAllMem) => {
+                                machine.bus().dump_mem();
+                            }
                             Some(GuiEvent::EditBreakpoint) => {
                                 // Get breakpoints from GUI
-                                let (bp_str, bp_mem_str) = framework.gui.get_breakpoints();
+                                let (bp_str, bp_mem_str, bp_int_str) = framework.gui.get_breakpoints();
 
                                 let mut breakpoints = Vec::new();
 
@@ -1364,8 +1372,15 @@ fn main() {
                                     if addr > 0 && addr < 0x100000 {
                                         breakpoints.push(BreakPointType::MemAccessFlat(addr));
                                     }
-                                }                                     
+                                }
                             
+                                // Push int breakpoint to list 
+                                if let Ok(addr) = u32::from_str_radix(bp_int_str, 10) {
+                                    if addr > 0 && addr < 256 {
+                                        breakpoints.push(BreakPointType::Interrupt(addr as u8));
+                                    }
+                                }
+
                                 machine.set_breakpoints(breakpoints);
                             }
                             Some(GuiEvent::MemoryUpdate) => {
@@ -1391,6 +1406,11 @@ fn main() {
                             Some(GuiEvent::FlushLogs) => {
                                 // Request to flush trace logs.
                                 machine.flush_trace_logs();
+                            }
+                            Some(GuiEvent::DelayAdjust) => {
+                                let delay_params = framework.gui.delay_adjust.get_params();
+
+                                machine.set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
                             }
                             None => break,
                             _ => {
@@ -1456,15 +1476,20 @@ fn main() {
 
                     // Update performance viewer
                     if framework.gui.is_window_open(egui::GuiWindow::PerfViewer) {
-                        framework.gui.update_video_data(video_data);
-                        framework.gui.update_perf_view(
-                            stat_counter.ups,
-                            stat_counter.fps,
-                            stat_counter.emulated_fps,
-                            stat_counter.current_cps,
-                            stat_counter.current_ips,
-                            stat_counter.emulation_time,
-                            stat_counter.render_time
+                        framework.gui.perf_viewer.update_video_data(video_data);
+                        framework.gui.perf_viewer.update_stats(
+                            &PerformanceStats {
+                                current_ups: stat_counter.ups,
+                                current_fps: stat_counter.fps,
+                                emulated_fps: stat_counter.emulated_fps,
+                                cycle_target: stat_counter.cycle_target,
+                                current_cps: stat_counter.current_cps,
+                                current_tps: stat_counter.current_sys_tps,
+                                current_ips: stat_counter.current_ips,
+                                emulation_time: stat_counter.emulation_time,
+                                render_time: stat_counter.render_time,
+                                gui_time: Default::default()
+                            }
                         )
                     }
 
@@ -1486,6 +1511,12 @@ fn main() {
                         //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
                         framework.gui.memory_viewer.set_memory(mem_dump_vec);
                     }   
+
+                    // -- Update IVR viewer window if open
+                    if framework.gui.is_window_open(egui::GuiWindow::IvrViewer) {
+                        let vec = machine.bus_mut().dump_ivr_tokens();
+                        framework.gui.ivr_viewer.set_content(vec);
+                    }                     
 
                     // -- Update register viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::CpuStateViewer) {

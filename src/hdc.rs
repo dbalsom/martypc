@@ -17,7 +17,7 @@ use std::{
 
 use core::fmt::Display;
 
-use crate::bus::BusInterface;
+use crate::bus::{BusInterface, DeviceRunTimeUnit};
 use crate::dma;
 //use crate::fdc::Operation;
 use crate::bus::IoDevice;
@@ -128,7 +128,7 @@ pub enum Command {
 type CommandDispatchFn = fn (&mut HardDiskController, &mut BusInterface) -> Continuation;
 
 impl IoDevice for HardDiskController {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
             HDC_DATA_REGISTER  => {
                 self.handle_data_register_read()
@@ -146,7 +146,7 @@ impl IoDevice for HardDiskController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             HDC_DATA_REGISTER => {
                 // Bus will always call us with Bus defined, so safe to unwrap

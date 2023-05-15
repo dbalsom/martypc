@@ -38,6 +38,7 @@ pub struct CpuControl {
     exec_control: Rc<RefCell<ExecutionControl>>,
     breakpoint: String,
     mem_breakpoint: String,
+    int_breakpoint: String,
 }
 
 impl CpuControl {
@@ -47,6 +48,7 @@ impl CpuControl {
             exec_control,
             breakpoint: String::new(),
             mem_breakpoint: String::new(),
+            int_breakpoint: String::new(),
         }
     }
 
@@ -161,11 +163,18 @@ impl CpuControl {
             if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
                 events.push_back(GuiEvent::EditBreakpoint);
             }
-        });        
+        });
+        ui.separator();
+        ui.horizontal(|ui|{
+            ui.label("Int Breakpoint: ");
+            if ui.text_edit_singleline(&mut self.int_breakpoint).changed() {
+                events.push_back(GuiEvent::EditBreakpoint);
+            }
+        });                
     }
 
-    pub fn get_breakpoints(&mut self) -> (&str, &str) {
-        (&self.breakpoint, &self.mem_breakpoint)
+    pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {
+        (&self.breakpoint, &self.mem_breakpoint, &self.int_breakpoint)
     }
 
 

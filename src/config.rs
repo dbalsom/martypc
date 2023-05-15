@@ -158,6 +158,8 @@ pub struct Emulator {
     #[serde(default)]
     pub video_trace_file: Option<String>,
 
+    pub video_frame_debug: bool,
+
     #[serde(default)]
     pub pit_output_file: Option<String>,
     #[serde(default = "_default_false")]
@@ -249,6 +251,9 @@ pub struct CmdLineArgs {
     #[bpaf(long, switch)]
     pub no_bios: bool,
 
+    #[bpaf(long, switch)]
+    pub video_frame_debug: bool,
+
     #[bpaf(long)]
     pub run_bin: Option<String>,
     #[bpaf(long)]
@@ -272,6 +277,7 @@ impl ConfigFileParams {
         self.emulator.correct_aspect |= shell_args.correct_aspect;
         self.emulator.debug_mode |= shell_args.debug_mode;
         self.emulator.no_bios |= shell_args.no_bios;
+        self.emulator.video_frame_debug |= shell_args.video_frame_debug;
 
         if let Some(run_bin) = shell_args.run_bin {
             self.emulator.run_bin = Some(run_bin);

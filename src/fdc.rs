@@ -7,7 +7,7 @@
 use std::collections::{VecDeque, HashMap};
 use lazy_static::lazy_static;
 
-use crate::bus::IoDevice;
+use crate::bus::{IoDevice, DeviceRunTimeUnit};
 use crate::dma;
 use crate::bus::BusInterface;
 use crate::pic;
@@ -297,7 +297,7 @@ pub struct FloppyController {
 /// IO Port handlers for the FDC
 impl IoDevice for FloppyController {
 
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
             FDC_DIGITAL_OUTPUT_REGISTER => {
                 log::warn!("Read from Write-only DOR register");
@@ -313,7 +313,7 @@ impl IoDevice for FloppyController {
         }        
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             FDC_DIGITAL_OUTPUT_REGISTER => {
                 self.handle_dor_write(data);

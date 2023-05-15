@@ -479,6 +479,51 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    /// Issue a HALT.  HALT is a unique bus state, and must wait for a free bus cycle to 
+    /// begin.
+    pub fn biu_halt(&mut self) {
+
+        self.biu_bus_begin(
+            BusStatus::Halt,
+            Segment::None,
+            0,
+            0,
+            TransferSize::Byte,
+            OperandSize::Operand8,
+            true
+        );
+
+        self.cycle();
+    }
+
+    /// Issue an interrupt acknowledge, consisting of two consecutive INTA bus cycles.
+    pub fn biu_inta(&mut self, vector: u8) {
+
+        self.biu_bus_begin(
+            BusStatus::InterruptAck,
+            Segment::None,
+            0,
+            0,
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            true
+        );
+
+        self.biu_bus_wait_finish();
+
+        self.biu_bus_begin(
+            BusStatus::InterruptAck,
+            Segment::None,
+            0,
+            vector as u16,
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            false
+        );
+
+        self.biu_bus_wait_finish();
+    }
+
     pub fn biu_read_u8(&mut self, seg: Segment, addr: u32) -> u8 {
 
         self.biu_bus_begin(
@@ -552,6 +597,64 @@ impl<'a> Cpu<'a> {
         
         //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
     }
+
+    pub fn biu_io_read_u16(&mut self, addr: u16, word: u16, flag: ReadWriteFlag) {
+        
+        self.biu_bus_begin(
+            BusStatus::IoRead, 
+            Segment::None, 
+            addr as u32, 
+            0, 
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            true
+        );
+        self.biu_bus_wait_finish();
+
+        self.biu_bus_begin(
+            BusStatus::IoRead, 
+            Segment::None, 
+            addr as u32, 
+            0, 
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            false
+        );
+
+        match flag {
+            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+        };
+    }        
+
+    pub fn biu_io_write_u16(&mut self, addr: u16, word: u16, flag: ReadWriteFlag) {
+        
+        self.biu_bus_begin(
+            BusStatus::IoWrite, 
+            Segment::None, 
+            addr as u32, 
+            word & 0x00FF,
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            true
+        );
+        self.biu_bus_wait_finish();
+
+        self.biu_bus_begin(
+            BusStatus::IoWrite, 
+            Segment::None, 
+            addr.wrapping_add(1) as u32, 
+            (word >> 8) & 0x00FF, 
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            false
+        );
+
+        match flag {
+            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+        };
+    }    
 
     pub fn biu_read_u16(&mut self, seg: Segment, addr: u32, flag: ReadWriteFlag) -> u16 {
 
@@ -675,16 +778,12 @@ impl<'a> Cpu<'a> {
                 // No active bus transfer
                 return 0
             }
-            BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | BusStatus::IoWrite | BusStatus::CodeFetch => {
+            _ => {
                 while self.t_cycle != TCycle::T4 {
                     self.cycle();
                     bus_cycles_elapsed += 1;
                 }
                 return bus_cycles_elapsed
-            }
-            _ => {
-                // Handle other statuses
-                return 0
             }
         }
     }
@@ -887,6 +986,11 @@ impl<'a> Cpu<'a> {
                 }
             }
             
+            if new_bus_status == BusStatus::Halt {
+                // Halt is delayed by one cycle.
+                self.cycle();
+            }
+
             self.bus_status = new_bus_status;
             self.bus_segment = bus_segment;
             self.t_cycle = TCycle::TInit;

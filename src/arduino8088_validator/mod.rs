@@ -744,6 +744,7 @@ impl CpuValidator for ArduinoValidator {
                 RemoteCpu::print_regs(&regs);
     
                 self.print_cycle_diff(&cpu_states, &emu_states);
+                self.trace_logger.flush();
     
                 return Err(ValidatorError::MemOpMismatch);            
             }
@@ -763,7 +764,9 @@ impl CpuValidator for ArduinoValidator {
                 RemoteCpu::print_regs(&self.current_instr.regs[1]);
     
                 trace_error!(self, "CPU AFTER:");   
-                RemoteCpu::print_regs(&regs);                
+                RemoteCpu::print_regs(&regs);       
+                self.trace_logger.flush();
+
                 return Err(ValidatorError::CycleMismatch);
             }
             else {
@@ -885,5 +888,9 @@ impl CpuValidator for ArduinoValidator {
 
     fn discard_op(&mut self) {
         self.current_instr.discard = true;
+    }
+
+    fn flush(&mut self) {
+        self.trace_logger.flush();
     }
 }

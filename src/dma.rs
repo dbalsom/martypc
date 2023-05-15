@@ -5,7 +5,7 @@
 
 */
 
-use crate::bus::{BusInterface, IoDevice};
+use crate::bus::{BusInterface, IoDevice, DeviceRunTimeUnit};
 
 pub const DMA_CHANNEL_0_ADDR_PORT: u16  = 0x00; // R/W
 pub const DMA_CHANNEL_0_WC_PORT: u16    = 0x01; // R/W
@@ -152,7 +152,7 @@ pub struct DMAController {
 }
 
 impl IoDevice for DMAController {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {
                 self.handle_addr_port_read(0)
@@ -204,7 +204,7 @@ impl IoDevice for DMAController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
 
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {

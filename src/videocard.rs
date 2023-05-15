@@ -57,6 +57,9 @@ pub enum RenderMode {
     Indirect
 }
 
+// Display the whole display frame visually for debugging, including blanking periods
+pub const VIDEO_OPTION_DEBUGFRAME: u8 = 0b0000_0001; 
+
 use std::collections::HashMap;
 
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
@@ -197,6 +200,9 @@ pub trait VideoCard {
     fn get_back_buf(&self) -> &[u8];
 
     fn get_clock_divisor(&self) -> u32;
+
+    /// Get the position of the CRT beam (Direct rendering only)
+    fn get_beam_pos(&self) -> Option<(u32, u32)>;
 
     /// Get the current scanline being rendered.
     fn get_scanline(&self) -> u32;

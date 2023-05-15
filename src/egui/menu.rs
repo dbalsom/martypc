@@ -115,7 +115,11 @@ impl GuiState {
                     if ui.button("Code Segment").clicked() {
                         self.event_queue.push_back(GuiEvent::DumpCS);
                         ui.close_menu();
-                    }                        
+                    }
+                    if ui.button("All Memory").clicked() {
+                        self.event_queue.push_back(GuiEvent::DumpAllMem);
+                        ui.close_menu();
+                    }                    
                 });
                 if ui.button("CPU Control...").clicked() {
                     *self.window_flag(GuiWindow::CpuControl) = true;
@@ -161,7 +165,12 @@ impl GuiState {
                             )
                         );
                         ui.close_menu();
-                    }                                        
+                    }   
+                    if ui.button("Delays...").clicked() {
+                        *self.window_flag(GuiWindow::DelayAdjust) = true;
+                        ui.close_menu();
+                    }
+
                 });
                 if ui.button("Memory...").clicked() {
                     *self.window_flag(GuiWindow::MemoryViewer) = true;
@@ -183,6 +192,10 @@ impl GuiState {
                     *self.window_flag(GuiWindow::DiassemblyViewer) = true;
                     ui.close_menu();
                 }
+                if ui.button("IVR...").clicked() {
+                    *self.window_flag(GuiWindow::IvrViewer) = true;
+                    ui.close_menu();
+                }                
                 if ui.button("PIC...").clicked() {
                     *self.window_flag(GuiWindow::PicViewer) = true;
                     ui.close_menu();

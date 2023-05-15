@@ -76,6 +76,11 @@ pub enum ExecutionOperation {
     Reset
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub struct DelayParams {
+    pub dram_delay: u32
+}
+
 pub struct ExecutionControl {
     pub state: ExecutionState,
     op: Cell<ExecutionOperation>,
@@ -180,6 +185,7 @@ pub struct Machine<'a>
     error_str: Option<String>,
     cpu_factor: ClockFactor,
     cpu_cycles: u64,
+    system_ticks: u64,
 }
 
 impl<'a> Machine<'a> {
@@ -276,7 +282,12 @@ impl<'a> Machine<'a> {
         }
 
         // Install devices
-        cpu.bus_mut().install_devices(video_type, &machine_desc, video_trace);
+        cpu.bus_mut().install_devices(
+            video_type, 
+            &machine_desc, 
+            video_trace, 
+            config.emulator.video_frame_debug
+        );
 
         // Load BIOS ROM images unless config option suppressed rom loading
         if !config.emulator.no_bios {
@@ -318,8 +329,9 @@ impl<'a> Machine<'a> {
             kb_buf: VecDeque::new(),
             error: false,
             error_str: None,
+            cpu_factor,
             cpu_cycles: 0,
-            cpu_factor
+            system_ticks: 0
         }
     }
 
@@ -417,6 +429,10 @@ impl<'a> Machine<'a> {
 
     pub fn cpu_cycles(&self) -> u64 {
         self.cpu_cycles
+    }
+
+    pub fn system_ticks(&self) -> u64 {
+        self.system_ticks
     }
 
     /// Return the number of cycles the PIT has ticked.
@@ -812,10 +828,12 @@ impl<'a> Machine<'a> {
             }
         }
 
+        //log::debug!("cycles_elapsed: {}", cycles_elapsed);
+
         instr_count
     }
 
-    pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) {
+    pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) -> u32 {
 
         // Convert cycles into elapsed microseconds
         let us = self.cpu_cycles_to_us(cpu_cycles);
@@ -855,7 +873,8 @@ impl<'a> Machine<'a> {
                 CpuOption::SimulateDramRefresh(
                     true, 
                     self.timer_ticks_to_cpu_cycles(dma_counter), 
-                    self.timer_ticks_to_cpu_cycles(dma_counter_val)
+                    //self.timer_ticks_to_cpu_cycles(dma_counter_val)
+                    self.timer_ticks_to_cpu_cycles(0)
                 )
             )
         }
@@ -865,6 +884,8 @@ impl<'a> Machine<'a> {
             self.pit_buf_to_sound_buf();
         }
 
+        self.system_ticks += sys_ticks as u64;
+        sys_ticks
     }
 
     fn timer_ticks_to_cpu_cycles(&self, timer_ticks: u16) -> u32 {

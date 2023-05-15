@@ -25,6 +25,7 @@ mod cycle;
 mod decode;
 mod display;
 mod execute;
+mod interrupt;
 mod jump;
 mod microcode;
 pub mod mnemonic;
@@ -82,6 +83,7 @@ const CPU_HISTORY_LEN: usize = 32;
 const CPU_CALL_STACK_LEN: usize = 16;
 
 const INTERRUPT_VEC_LEN: usize = 4;
+const INTERRUPT_BREAKPOINT: u8 = 1;
 
 pub const CPU_FLAG_CARRY: u16      = 0b0000_0000_0000_0001;
 pub const CPU_FLAG_RESERVED1: u16  = 0b0000_0000_0000_0010;
@@ -694,6 +696,7 @@ pub struct Cpu<'a>
     transfer_n: u32,                // Byte number of current operand (ex: 1/2 bytes of Word operand)
     bus_wait_states: u32,
     wait_states: u32,
+    lock: bool,                     // LOCK pin. Asserted during 2nd INTA bus cycle. 
 
     // Bookkeeping
     halted: bool,
@@ -762,8 +765,11 @@ pub struct Cpu<'a>
     dram_refresh_simulation: bool,
     dram_refresh_cycle_target: u32,
     dram_refresh_cycles: u32,
+    dram_refresh_adjust: u32,
     dram_bus_owner_cycles: u32,
-    dma_aen: bool
+    dma_aen: bool,
+
+    int_flags: Vec<u8>,
 }
 
 #[cfg(feature = "cpu_validator")]
@@ -1058,6 +1064,7 @@ impl<'a> Cpu<'a> {
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
+        self.int_flags = vec![0; 256];
 
         self.queue_op = QueueOp::Idle;
         self.last_queue_op = QueueOp::Idle;
@@ -1271,6 +1278,7 @@ impl<'a> Cpu<'a> {
         self.is_error
     }
 
+    #[inline(always)]
     pub fn set_flag(&mut self, flag: Flag ) {
 
         if let Flag::Interrupt = flag {
@@ -1295,6 +1303,7 @@ impl<'a> Cpu<'a> {
         };
     }
 
+    #[inline(always)]
     pub fn clear_flag(&mut self, flag: Flag) {
         self.flags &= match flag {
             Flag::Carry => !CPU_FLAG_CARRY,
@@ -1833,269 +1842,6 @@ impl<'a> Cpu<'a> {
             log::warn!("rewind_call_stack(): no matching return for [{:05X}]", addr);
         }
     }    
-
-    pub fn end_interrupt(&mut self) {
-
-        self.cycles_i(2, &[0x0c8, MC_JUMP]); // JMP to FARRET
-        self.pop_register16(Register16::IP, ReadWriteFlag::Normal);
-        self.biu_suspend_fetch();
-        self.cycles_i(3, &[0x0c3, 0x0c4, MC_JUMP]);
-
-        self.pop_register16(Register16::CS, ReadWriteFlag::Normal);
-        //log::trace!("CPU: Return from interrupt to [{:04X}:{:04X}]", self.cs, self.ip);
-
-        self.biu_queue_flush();        
-        self.cycles_i(2,&[0x0c7, MC_RTN]);
-        self.pop_flags();
-        self.cycle_i(0x0ca);
-    }
-
-    /// Perform a software interrupt
-    pub fn sw_interrupt(&mut self, interrupt: u8) {
-
-        // Interrupt FC, emulator internal services.
-        if interrupt == 0xFC {
-            match self.ah {
-                0x01 => {
-
-                    // TODO: Make triggering pit logging a separate service number. Just re-using this one
-                    // out of laziness.
-                    self.service_events.push_back(ServiceEvent::TriggerPITLogging);
-
-                    log::debug!("Received emulator trap interrupt: CS: {:04X} IP: {:04X}", self.bx, self.cx);
-                    self.biu_suspend_fetch();
-                    self.cycles(4);
-
-                    self.cs = self.bx;
-                    self.ip = self.cx;
-
-                    // Set execution segments
-                    self.ds = self.cs;
-                    self.es = self.cs;
-                    self.ss = self.cs;
-                    // Create stack
-                    self.sp = 0xFFFE;
-
-                    self.biu_queue_flush();
-                    self.cycles(4);
-                    self.set_breakpoint_flag();  
-                }
-                _ => {}
-            }
-
-            return
-        }
-
-        self.cycles_i(3, &[0x19d, 0x19e, 0x19f]);
-        // Read the IVT
-        let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
-        let new_ip = self.biu_read_u16(Segment::None, ivt_addr, ReadWriteFlag::Normal);
-        self.cycle_i(0x1a1);
-        let new_cs = self.biu_read_u16(Segment::None, ivt_addr + 2, ReadWriteFlag::Normal);
-
-        // Add interrupt to call stack
-        self.push_call_stack(
-            CallStackEntry::Interrupt {
-                ret_cs: self.cs,
-                ret_ip: self.ip,
-                call_cs: new_cs,
-                call_ip: new_ip,
-                itype: InterruptType::Software,
-                number: interrupt,
-                ah: self.ah
-            },
-            self.cs,
-            self.ip
-        );
-
-        self.biu_suspend_fetch(); // 1a3 SUSP
-        self.cycles_i(2, &[0x1a3, 0x1a4]);
-        self.push_flags(ReadWriteFlag::Normal);
-        self.clear_flag(Flag::Interrupt);
-        self.clear_flag(Flag::Trap);
-
-        // FARCALL2
-        self.cycles_i(4, &[0x1a6, MC_JUMP, 0x06c, MC_CORR]);
-        // Push return segment
-        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-        self.cs = new_cs;        
-        self.cycle_i(0x06e);
-
-        // NEARCALL
-        let old_ip = self.ip;
-        self.cycles_i(2, &[0x06f, MC_JUMP]);
-        self.ip = new_ip;    
-        self.biu_queue_flush();  
-        self.cycles_i(3, &[0x077, 0x078, 0x079]);
-        // Finally, push return address
-        self.push_u16(old_ip, ReadWriteFlag::RNI);
-
-        if interrupt == 0x13 {
-            // Disk interrupts
-            if self.dl & 0x80 != 0 {
-                // Hard disk request
-                match self.ah {
-                    0x03 => {
-                        log::trace!("Hard disk int13h: Write Sectors: Num: {} Drive: {:02X} C: {} H: {} S: {}",
-                            self.al,
-                            self.dl,
-                            self.ch,
-                            self.dh,
-                            self.cl)
-                    }
-                    _=> log::trace!("Hard disk requested in int13h. AH: {:02X}", self.ah)
-                }
-                
-            }
-        }
-
-        if interrupt == 0x10 && self.ah==0x00 {
-            log::trace!("CPU: int10h: Set Mode {:02X} Return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
-        }        
-
-        if interrupt == 0x21 {
-            //log::trace!("CPU: int21h: AH: {:02X} [{:04X}:{:04X}]", self.ah, self.cs, self.ip);
-            if self.ah == 0x4B {
-                log::trace!("int21,4B: EXEC/Load and Execute Program @ [{:04X}:{:04X}] es:bx: [{:04X}:{:04X}]", self.cs, self.ip, self.es, self.bx);
-            }
-            if self.ah == 0x55 {
-                log::trace!("int21,55:  @ [{:04X}]:[{:04X}]", self.cs, self.ip);
-            }            
-        }         
-
-        if interrupt == 0x16 {
-            if self.ah == 0x01 {
-                //log::trace!("int16,01: Poll keyboard @ [{:04X}]:[{:04X}]", self.cs, self.ip);
-            }
-        }
-
-        self.int_count += 1;
-    }
-
-    /// Handle a CPU exception
-    pub fn handle_exception(&mut self, exception: u8) {
-
-        self.push_flags(ReadWriteFlag::Normal);
-
-        // Push return address of next instruction onto stack
-        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-
-        // Don't push address of next instruction
-        self.push_u16(self.ip, ReadWriteFlag::Normal);
-        
-        if exception == 0x0 {
-            log::trace!("CPU Exception: {:02X} Saving return: {:04X}:{:04X}", exception, self.cs, self.ip);
-        }
-        // Read the IVT
-        let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize, 0).unwrap();
-        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize, 0).unwrap();
-
-        // Add interrupt to call stack
-        self.push_call_stack(
-            CallStackEntry::Interrupt {
-                ret_cs: self.cs,
-                ret_ip: self.ip,
-                call_cs: new_cs,
-                call_ip: new_ip,
-                itype: InterruptType::Exception,
-                number: exception,
-                ah: self.ah
-            },
-            self.cs,
-            self.ip
-        );
-
-        self.ip = new_ip;
-        self.cs = new_cs;
-
-        // Flush queue
-        self.biu_queue_flush();
-        self.biu_update_pc();        
-    }    
-
-    pub fn log_interrupt(&self, interrupt: u8) {
-
-        match interrupt {
-            0x10 => {
-                // Video Services
-                match self.ah {
-                    0x00 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}", 
-                            interrupt, self.ah, self.al);
-                    }
-                    0x01 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})", 
-                            interrupt, self.ah, self.ch, self.cl);
-                    }
-                    0x02 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
-                            interrupt, self.ah, self.bh, self.dh, self.dl);
-                    }
-                    0x09 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
-                            interrupt, self.ah, self.al as char, self.bh, self.bl, self.cx);
-                    }
-                    0x10 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}", 
-                            interrupt, self.ah, self.al as char, self.bh, self.cx);
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        };
-    }
-
-    /// Perform a hardware interrupt
-    pub fn hw_interrupt(&mut self, interrupt: u8) {
-
-        // Push flags
-        self.push_flags(ReadWriteFlag::Normal);
-
-        // Clear interrupt & trap flag
-        
-        self.clear_flag(Flag::Interrupt);
-        self.clear_flag(Flag::Trap);
-
-        // Push cs:ip return address to stack
-        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-        self.push_register16(Register16::IP, ReadWriteFlag::Normal);
-
-        // Read the IVT
-        let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize, 0).unwrap();
-        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize, 0).unwrap();
-
-        // Add interrupt to call stack
-        self.push_call_stack(
-            CallStackEntry::Interrupt {
-                ret_cs: self.cs,
-                ret_ip: self.ip,
-                call_cs: new_cs,
-                call_ip: new_ip,
-                itype: InterruptType::Hardware,
-                number: interrupt,
-                ah: self.ah
-            },
-            self.cs,
-            self.ip
-        );
-
-        self.ip = new_ip;
-        self.cs = new_cs;
-
-        // Flush queue
-        self.biu_queue_flush();
-        self.biu_update_pc();
-
-        self.int_count += 1;
-    }
-
-    /// Return true if an interrupt can occur under current execution state
-    pub fn interrupts_enabled(&self) -> bool {
-        self.get_flag(Flag::Interrupt) && !self.interrupt_inhibit
-    }
     
     /// Resume from halted state
     pub fn resume(&mut self) {
@@ -2126,37 +1872,56 @@ impl<'a> Cpu<'a> {
             self.trace_str_vec.clear();
         }
 
-        // Check for interrupts but do not process yet (unless CPU is halted) 
-        // This is so we can send an interrupt flag to execute() so that string instructions can call RPTI
-        // if there is a pending interrupt.
+        // Check for interrupts.
+        //
+        // If an INTR is active at the beginning of an instruction, we should execute the interrupt
+        // instead of the instruction, except if we are in a REP prefixed string instruction, where we set a
+        // pending interrupt flag and run the REP iteration.
+        //
+        // In a real CPU, REP instructions run for the entire period in which they repeat and handle checking
+        // interrupts themselves in microcode. Therefore we want to model that behavior. This allows the 
+        // microcode routine for RPTI to execute within the REP-prefixed instruction. The interrupt then
+        // fires after.
         self.pending_interrupt = false;
         let mut irq = 7;
 
         if self.interrupts_enabled() {
             if let Some(pic) = self.bus.pic_mut().as_mut() {
+                // Is INTR active? TODO: Could combine these calls (return Option<iv>) on query?
                 if pic.query_interrupt_line() {
-                    match pic.get_interrupt_vector() {
-                        Some(iv) => {
-                            irq = iv;
-                            // Resume from halt on interrupt
-                            if self.halted {
-                                self.resume();
-                                // We will be jumping into an ISR now. Set the step result to Call and return
-                                // the address of the next instruction. (Step Over skips ISRs)
-                                let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), 3));
-                                self.hw_interrupt(irq);
-                                return step_result
-                            }
+                    if let Some(iv) = pic.get_interrupt_vector() {
+                        irq = iv;
+                        if self.in_rep {
+                            // Set pending interrupt to execute after RPTI
                             self.pending_interrupt = true;
-                        },
-                        None => {}
+                        }
+                        else {
+                            if self.halted {
+                                // Resume from halt on interrupt
+                                self.resume();
+                            }
+                            // We will be jumping into an ISR now. Set the step result to Call and return
+                            // the address of the next instruction. (Step Over skips ISRs)
+
+                            // Set breakpoint flag if we have a breakpoint for this interrupt.
+                            if self.int_flags[irq as usize] != 0 {
+                                self.set_breakpoint_flag();
+                            }
+
+                            // Do interrupt
+                            self.hw_interrupt(irq);
+                            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
+                            return step_result                                                 
+                        }
                     }
                 }
             }
         }
 
         if self.halted {
-            return Ok((StepResult::Normal, 3))
+            // Run one cycle of halt state
+            self.cycle_i(self.mc_pc);
+            return Ok((StepResult::Normal, 1))
         }
 
         // A real 808X CPU maintains a single Program Counter or PC register that points to the next instruction
@@ -2280,7 +2045,10 @@ impl<'a> Cpu<'a> {
 
         // Finalize execution. This runs cycles until the next instruction byte has been fetched. This fetch period is technically
         // part of the current instruction execution time.
-        self.finalize();
+        if !self.halted {
+            // Do not finalize a HLT instruction
+            self.finalize();
+        }
 
         // If a CPU validator is configured, validate the executed instruction.
         #[cfg(feature = "cpu_validator")]
@@ -2474,32 +2242,18 @@ impl<'a> Cpu<'a> {
             }
         };
 
-        /*
-        if check_interrupts {
-            // Check for hardware interrupts if Interrupt Flag is set and not in wait cycle
-            if self.interrupts_enabled() {
-                let mut pic = pic_ref.borrow_mut();
-                if pic.query_interrupt_line() {
-
-                    // If we are executing a rep instruction, emulate calling RPTI
-                    match pic.get_interrupt_vector() {
-                        Some(irq) => {
-                            self.hw_interrupt(irq);
-                            self.resume();
-                        },
-                        None => {}
-                    }
-                }
-            }
-        }*/
-
-        // Handle pending interrupts now that execution has completed.
+        // Handle pending interrupts now that execution has completed. This is to to allow execution of
+        // RPTI microcode routine.
         if check_interrupts && self.pending_interrupt {
 
             // We will be jumping into an ISR now. Set the step result to Call and return
             // the address of the next instruction. (Step Over skips ISRs)
             step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
             
+            if self.int_flags[irq as usize] != 0 {
+                // This interrupt has a breakpoint
+                self.set_breakpoint_flag();
+            }            
             self.hw_interrupt(irq);
             self.resume();
         }
@@ -2544,6 +2298,9 @@ impl<'a> Cpu<'a> {
                 BreakPointType::MemAccessFlat(addr) => {
                     self.bus.clear_flags(*addr as usize, MEM_BPA_BIT );
                 }
+                BreakPointType::Interrupt(vector) => {
+                    self.int_flags[*vector as usize] = 0;
+                }
                 _ => {}
             }
         });
@@ -2562,6 +2319,9 @@ impl<'a> Cpu<'a> {
                     log::debug!("Setting breakpoint on memory access at address: {:05X}", *addr);
                     self.bus.set_flags(*addr as usize, MEM_BPA_BIT );
                 }
+                BreakPointType::Interrupt(vector) => {
+                    self.int_flags[*vector as usize] = INTERRUPT_BREAKPOINT;
+                }                
                 _ => {}
             }
         });
@@ -2901,6 +2661,13 @@ impl<'a> Cpu<'a> {
         if let Some(w) = self.trace_writer.as_mut() {
             w.flush().unwrap();
         }
+
+        #[cfg(feature = "cpu_validator")]
+        {
+            if let Some(val) = &mut self.validator {
+                val.flush();
+            }
+        }
     }
 
     #[inline]
@@ -2972,6 +2739,12 @@ impl<'a> Cpu<'a> {
                 self.dram_refresh_cycle_target = cycle_target;
                 self.dram_refresh_cycles = cycles;
             }
+            CpuOption::DramRefreshAdjust(adj) => {
+
+                log::debug!("Setting DramRefreshAdjust to: {}", adj);
+
+                self.dram_refresh_adjust = adj;
+            }
             CpuOption::OffRailsDetection(state) => {
                 log::debug!("Setting OffRailsDetection to: {:?}", state);
                 self.off_rails_detection = state;
@@ -3000,6 +2773,9 @@ impl<'a> Cpu<'a> {
             }
             CpuOption::SimulateDramRefresh(..) => {
                 self.dram_refresh_simulation
+            }
+            CpuOption::DramRefreshAdjust(..) => {
+                true
             }
             CpuOption::OffRailsDetection(_) => {
                 self.off_rails_detection

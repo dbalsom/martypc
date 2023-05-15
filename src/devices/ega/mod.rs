@@ -358,7 +358,7 @@ pub enum RetracePolarity {
 }
 
 impl IoDevice for EGACard {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
             INPUT_STATUS_REGISTER_0 => {
                 self.read_input_status_register_0()
@@ -400,7 +400,7 @@ impl IoDevice for EGACard {
             }
         }
     }
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             MISC_OUTPUT_REGISTER => {
                 self.write_external_misc_output_register(data);
@@ -994,6 +994,11 @@ impl VideoCard for EGACard {
     /// Unimplemented for indirect rendering.
     fn get_display_extents(&self) -> &DisplayExtents {
         &self.extents
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_beam_pos(&self) -> Option<(u32, u32)> {
+        None
     }
 
     /// Get the current scanline being rendered.
