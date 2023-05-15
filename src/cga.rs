@@ -191,6 +191,9 @@ const CGA_HBLANK_COLOR: u8 = 0;
 const CGA_HBLANK_DEBUG_COLOR: u8 = 1;
 const CGA_VBLANK_COLOR: u8 = 0;
 const CGA_VBLANK_DEBUG_COLOR: u8 = 14;
+const CGA_DISABLE_COLOR: u8 = 0;
+const CGA_DISABLE_DEBUG_COLOR: u8 = 2;
+
 /*
 const CGA_OVERSCAN_COLOR: u8 = 1;
 const CGA_FILL_COLOR: u8 = 4;
@@ -290,6 +293,7 @@ pub struct CGACard {
 
     hblank_color: u8,
     vblank_color: u8,
+    disable_color: u8,
 
     overscan_left: u32,
     overscan_right_start: u32,
@@ -521,6 +525,7 @@ impl CGACard {
 
             hblank_color: CGA_HBLANK_COLOR,
             vblank_color: CGA_VBLANK_COLOR,
+            disable_color: CGA_DISABLE_COLOR,
 
             overscan_left: 0,
             overscan_right_start: 0,
@@ -578,6 +583,7 @@ impl CGACard {
             cga.extents[1].aperture_h = CGA_YRES_MAX;
             cga.vblank_color = CGA_VBLANK_DEBUG_COLOR;
             cga.hblank_color = CGA_HBLANK_DEBUG_COLOR;
+            cga.disable_color = CGA_DISABLE_DEBUG_COLOR;
         }
         cga
     }
@@ -1013,7 +1019,7 @@ impl CGACard {
         }
 
         if !self.mode_enable {
-            new_pixel = CGA_DEBUG_COLOR;
+            new_pixel = self.disable_color;
         }
 
         self.buf[self.back_buf][self.rba] = new_pixel;
@@ -1034,7 +1040,7 @@ impl CGACard {
         }
 
         if !self.mode_enable {
-            new_pixel = CGA_DEBUG_COLOR;
+            new_pixel = self.disable_color;
         }
 
         self.buf[self.back_buf][self.rba] = new_pixel;
@@ -1072,8 +1078,8 @@ impl CGACard {
             }
         }
         else {
-            self.buf[self.back_buf][self.rba] = CGA_DEBUG_COLOR;
-            self.buf[self.back_buf][self.rba + 1] = CGA_DEBUG_COLOR;
+            self.buf[self.back_buf][self.rba] = self.disable_color;
+            self.buf[self.back_buf][self.rba + 1] = self.disable_color;
         }
     }    
 
