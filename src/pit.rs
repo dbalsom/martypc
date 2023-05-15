@@ -542,7 +542,7 @@ impl Channel {
                 self.finalize_load();
             }
             RwMode::LsbMsb => {
-                log::debug!("rw mode: {:?} byte: {:02X} load_state: {:?}", *self.rw_mode, byte, self.load_state);
+                //log::debug!("rw mode: {:?} byte: {:02X} load_state: {:?}", *self.rw_mode, byte, self.load_state);
                 match self.load_state {
                     LoadState::WaitingForLsb => {
                         self.count_register.update(byte as u16);
@@ -555,11 +555,11 @@ impl Channel {
                         }
 
                         self.load_state = LoadState::WaitingForMsb;
-                        log::debug!("got lsb in lsbmsb mode: {:02X} new load_state: {:?}", byte, self.load_state);
+                        //log::debug!("got lsb in lsbmsb mode: {:02X} new load_state: {:?}", byte, self.load_state);
                     }
                     LoadState::WaitingForMsb => {
                         let new_count = (*self.count_register & 0x00FF) | ((byte as u16) << 8);
-                        log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
+                        //log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
                         self.count_register.update(new_count);
                         self.load_state = LoadState::WaitingForLsb;
                         self.finalize_load();
