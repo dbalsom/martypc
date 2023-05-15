@@ -1847,6 +1847,13 @@ impl<'a> Cpu<'a> {
     pub fn resume(&mut self) {
         if self.halted {
             log::trace!("Resuming from halt");
+            // It takes 7 cycles after INTR to enter INTA. 
+            // 3 of these are resuming from suspend, so not accounted from here.
+            self.trace_comment("INTR");
+            self.cycles(4);
+        }
+        else {
+            log::warn!("resume() called but not halted!");
         }
         self.halted = false;
     }

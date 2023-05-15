@@ -967,7 +967,10 @@ impl<'a> Cpu<'a> {
                 }
                 BiuState::Suspended => {
                     // The BIU is suspended. Delay the first operation of any bus transfer by 3 cycles.
-                    if self.transfer_n == 0 {
+                    if new_bus_status == BusStatus::Halt {
+                        self.cycle();
+                    }
+                    else if self.transfer_n == 0 {
                         self.biu_state = BiuState::SDelayed(3);
                         // Claim the bus for the EU.
                         self.fetch_state = FetchState::BlockedByEU;
@@ -984,11 +987,6 @@ impl<'a> Cpu<'a> {
                     self.trace_flush();
                     unreachable!("Shouldn't be in SDelayed state on bus request");
                 }
-            }
-            
-            if new_bus_status == BusStatus::Halt {
-                // Halt is delayed by one cycle.
-                self.cycle();
             }
 
             self.bus_status = new_bus_status;

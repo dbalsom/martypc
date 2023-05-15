@@ -19,9 +19,12 @@ impl<'a> Cpu<'a> {
 
     /// Execute the FARCALL microcode routine.
     #[inline]
-    pub fn farcall(&mut self, new_cs: u16, new_ip: u16) {
+    pub fn farcall(&mut self, new_cs: u16, new_ip: u16, jump: bool) {
+        if jump {
+            self.cycle_i(MC_JUMP);
+        }
         self.biu_suspend_fetch();
-        self.cycles_i(2, &[0x06b, 0x06c]);
+        self.cycles_i(3, &[0x06b, 0x06c, MC_CORR]);
         // Push return segment to stack
         self.push_u16(self.cs, ReadWriteFlag::Normal);
         self.cs = new_cs;
@@ -32,7 +35,8 @@ impl<'a> Cpu<'a> {
     /// Execute the FARCALL2 microcode routine. Called by interrupt procedures.
     #[inline]
     pub fn farcall2(&mut self, new_cs: u16, new_ip: u16) {
-        self.cycle_i(0x06c);
+        
+        self.cycles_i(3, &[MC_JUMP, 0x06c, MC_CORR]);
         // Push return segment to stack
         self.push_u16(self.cs, ReadWriteFlag::Normal);
         self.cs = new_cs;
