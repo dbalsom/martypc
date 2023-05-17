@@ -826,6 +826,11 @@ impl GuiState {
                     });
                     ui.end_row();
                     ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("INTR Status: ").text_style(egui::TextStyle::Monospace));
+                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.intr).font(egui::TextStyle::Monospace));
+                    });
+                    ui.end_row();                    
+                    ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Auto-EOI: ").text_style(egui::TextStyle::Monospace));
                         ui.add(egui::TextEdit::singleline(&mut self.pic_state.autoeoi).font(egui::TextStyle::Monospace));
                     });
