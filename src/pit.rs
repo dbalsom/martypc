@@ -207,9 +207,10 @@ pub struct ProgrammableIntervalTimer {
     clock_divisor: u32,
     pit_cycles: u64,
     sys_tick_accumulator: u32,
+    sys_tick_accumulator_advance: u32,
     cycle_accumulator: f64,
     channels: Vec<Channel>,
-    ticks_advanced: u32,
+    ticks_advance: u32,
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -248,8 +249,8 @@ impl IoDevice for ProgrammableIntervalTimer {
     fn write_u8(&mut self, port: u16, data: u8, bus_opt: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
 
         // Catch PIT up to CPU.
-        let ticks = self.ticks_from_time(delta);
-        self.ticks_advanced += ticks;
+        let ticks = self.ticks_from_time_advance(delta);
+        self.ticks_advance += ticks;
 
         let bus = bus_opt.unwrap();
 
@@ -839,9 +840,10 @@ impl ProgrammableIntervalTimer {
             clock_divisor,
             pit_cycles: 0,
             sys_tick_accumulator: 0,
+            sys_tick_accumulator_advance: 0,
             cycle_accumulator: 0.0,
             channels: vec,
-            ticks_advanced: 0,
+            ticks_advance: 0,
         }
     }
 
@@ -954,16 +956,52 @@ impl ProgrammableIntervalTimer {
             DeviceRunTimeUnit::SystemTicks(ticks) => { 
                 // Add up system ticks, then tick the PIT if we have enough ticks for 
                 // a PIT cycle.
+                self.sys_tick_accumulator = self.sys_tick_accumulator - self.sys_tick_accumulator_advance + ticks;
+                
+                while self.sys_tick_accumulator >= self.clock_divisor {
+                    self.sys_tick_accumulator -= self.clock_divisor;
+                    do_ticks += 1;
+                }
+                self.sys_tick_accumulator_advance = 0;
+                do_ticks
+            }
+        }
+    }
+
+    pub fn ticks_from_time_advance(&mut self, run_unit: DeviceRunTimeUnit) -> u32 {
+        let mut do_ticks = 0;
+        match run_unit {
+            DeviceRunTimeUnit::Microseconds(us) => {
+                let pit_cycles = Pit::get_pit_cycles(us);
+                //log::debug!("Got {:?} pit cycles", pit_cycles);
+        
+                // Add up fractional cycles until we can make a whole one. 
+                self.cycle_accumulator += pit_cycles;
+                while self.cycle_accumulator > 1.0 {
+                    // We have one or more full PIT cycles. Drain the cycle accumulator
+                    // by ticking the PIT until the accumulator drops below 1.0.
+                    self.cycle_accumulator -= 1.0;
+                    do_ticks += 1;
+                }
+                do_ticks
+            }
+            DeviceRunTimeUnit::SystemTicks(ticks) => { 
+                // Add up system ticks, then tick the PIT if we have enough ticks for 
+                // a PIT cycle.
+                let accum_old = self.sys_tick_accumulator;
                 self.sys_tick_accumulator += ticks;
                 
                 while self.sys_tick_accumulator >= self.clock_divisor {
                     self.sys_tick_accumulator -= self.clock_divisor;
                     do_ticks += 1;
                 }
+
+                self.sys_tick_accumulator_advance = self.sys_tick_accumulator - accum_old;
+
                 do_ticks
             }
         }
-    }
+    }    
 
     pub fn run(
         &mut self, 
@@ -974,9 +1012,10 @@ impl ProgrammableIntervalTimer {
 
         let mut do_ticks = self.ticks_from_time(run_unit);
 
-        assert!(do_ticks >= self.ticks_advanced);
-        do_ticks -= self.ticks_advanced;
-        self.ticks_advanced = 0;
+        assert!(do_ticks >= self.ticks_advance);
+
+        do_ticks -= self.ticks_advance;
+        self.ticks_advance = 0;
 
         for _ in 0..do_ticks {
             self.tick(bus, Some(buffer_producer));
