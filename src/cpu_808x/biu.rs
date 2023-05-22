@@ -461,7 +461,7 @@ impl<'a> Cpu<'a> {
                 if *c == 0 {
                     // Trigger fetch on expiry of Delayed state.
                     // We reset the next_fetch_state so we don't loop back to Delayed again.
-                    self.fetch_state = FetchState::Scheduled(0);
+                    self.fetch_state = FetchState::DelayDone;
                     self.next_fetch_state = FetchState::InProgress;
                 }                   
             }
@@ -789,7 +789,7 @@ impl<'a> Cpu<'a> {
     }
 
     /// If the BIU state is not Operating, wait until it is.
-    pub fn biu_bus_wait_resume(&mut self) -> u32 {
+    pub fn biu_bus_wait_for_resume(&mut self) -> u32 {
         let mut bus_cycles_elapsed = 0;
 
         loop {
@@ -810,6 +810,22 @@ impl<'a> Cpu<'a> {
                 }
             }
         }
+    }
+
+    /// If the fetch state is Delayed(_), wait until it is not.
+    pub fn biu_bus_wait_on_delay(&mut self) -> u32 {
+        let mut delay_cycles_elapsed = 0;
+        loop {
+            if let FetchState::Delayed(_) = self.fetch_state {
+                self.trace_comment("BUS_WAIT_ON_DELAY");
+                self.cycle();
+                delay_cycles_elapsed += 1;
+            }
+            else {
+                break
+            }
+        }
+        delay_cycles_elapsed
     }
 
     /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
@@ -914,12 +930,16 @@ impl<'a> Cpu<'a> {
             }
             
             self.bus_pending_eu = true; 
-            if let FetchState::Scheduled(_) = self.fetch_state {
-                // Don't block prefetching if already scheduled.
-            }
-            else if self.is_before_last_wait() && !self.fetch_suspended {
-                //trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);
-                self.fetch_state = FetchState::BlockedByEU;
+            match self.fetch_state {
+                FetchState::Scheduled(_) | FetchState::Delayed(_) => {
+                    // Don't block prefetching if already scheduled.
+                }
+                _ => {
+                    if self.is_before_last_wait() && !self.fetch_suspended {
+                        //trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);
+                        self.fetch_state = FetchState::BlockedByEU;
+                    }
+                }
             }
         }
 
@@ -930,8 +950,10 @@ impl<'a> Cpu<'a> {
             _waited_cycles += 1;
         }
 
-        // Wait for to leave Resuming state.
-        _waited_cycles += self.biu_bus_wait_resume();
+        // Wait until we have left Resuming bus state.
+        _waited_cycles += self.biu_bus_wait_for_resume();
+        // Wait until we have left Delayed fetch state.
+        _waited_cycles += self.biu_bus_wait_on_delay();
 
         if self.fetch_state == FetchState::BlockedByEU {
             self.fetch_state = FetchState::Idle;

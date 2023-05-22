@@ -1429,7 +1429,7 @@ impl<'a> Cpu<'a> {
                 log::trace!("Halted at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
                 // HLT is non-microcoded, so these cycles have no pc
                 self.biu_suspend_fetch();
-                //self.cycles(3);
+                self.cycles(2);
                 self.biu_halt();
             }
             0xF5 => {

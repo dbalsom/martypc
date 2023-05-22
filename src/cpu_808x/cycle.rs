@@ -361,7 +361,9 @@ impl<'a> Cpu<'a> {
         match self.fetch_state {
             FetchState::Scheduled(1) => {
                 //trace_print!(self, "fetch decision: {}", self.queue.len());
-                if (self.queue.len() == 3 && self.queue_op == QueueOp::Idle) || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle) {
+                if (self.queue.len() == 3 && self.queue_op == QueueOp::Idle) 
+                    || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle) 
+                {
                     if self.bus_status == BusStatus::CodeFetch {
                         trace_print!(self, "fetch delay here?");
                     }
@@ -369,46 +371,30 @@ impl<'a> Cpu<'a> {
             }
             FetchState::Scheduled(0) => {
 
-                // Handle Sc2 delays
-                //self.bus_status == BusStatus::CodeFetch && 
-                if self.last_queue_delay && self.biu_state == BiuState::Operating && !matches!(self.next_fetch_state, FetchState::Delayed(_)) {
+                if matches!(self.next_fetch_state, FetchState::Delayed(_)) {
+                    // Don't begin a fetch delay if the queue is full, stall the BIU immediately.
+                    if !self.biu_queue_has_room() {
+                        self.biu_abort_fetch_full();
+                    }
+                }
+                else if self.last_queue_delay == QueueDelay::Read 
+                    && self.biu_state == BiuState::Operating 
+                {
+                    // Sc2 delay
                     self.next_fetch_state = FetchState::Delayed(2);
                     self.trace_comment("DELAY2");
-                }
+                }                
 
                 if self.next_fetch_state == FetchState::InProgress {
-
-                    if let BiuState::Operating | BiuState::Resuming(1) = self.biu_state {
-                            //trace_print!(self, "scheduling fetch: {}", self.queue.len());
-                            
-                            if self.biu_queue_has_room() {
-                            
-                                //trace_print!(self, "Setting address bus to PC: {:05X}", self.pc);
-                                self.fetch_state = FetchState::InProgress;
-                                self.bus_status = BusStatus::CodeFetch;
-                                self.bus_segment = Segment::CS;
-                                self.t_cycle = TCycle::T1;
-                                self.address_bus = self.pc;
-                                self.i8288.ale = true;
-                                self.data_bus = 0;
-                                self.transfer_size = self.fetch_size;
-                                self.operand_size = match self.fetch_size {
-                                    TransferSize::Byte => OperandSize::Operand8,
-                                    TransferSize::Word => OperandSize::Operand16
-                                };
-                                self.transfer_n = 0;
-                            }
-                            else if !self.bus_pending_eu {
-                            
-                                self.biu_abort_fetch_full();
-                                /*
-                                // Cancel fetch if queue is full and no pending bus request from EU that 
-                                // would otherwise trigger an abort.
-                                self.fetch_state = FetchState::Idle;
-                                trace_print!(self, "Fetch cancelled. bus_pending_eu: {}", self.bus_pending_eu);
-                                */
-                            }
-                    }
+                    self.begin_fetch();
+                }
+                else {
+                    self.fetch_state = self.next_fetch_state;
+                }
+            }
+            FetchState::DelayDone => {
+                if self.next_fetch_state == FetchState::InProgress {
+                    self.begin_fetch();
                 }
                 else {
                     self.fetch_state = self.next_fetch_state;
@@ -426,7 +412,6 @@ impl<'a> Cpu<'a> {
                     //trace_print!(self, "schedule fetch due to bus idle");
                     //self.biu_make_fetch_decision();
                 }
-                
             }
             _ => {}
         } 
@@ -441,6 +426,7 @@ impl<'a> Cpu<'a> {
         self.instr_cycle += 1;
         self.instr_elapsed += 1;
         self.cycle_num += 1;
+        self.wait_states = self.wait_states.saturating_sub(1);
 
         /* 
         // Try to catch a runaway instruction?
@@ -451,13 +437,11 @@ impl<'a> Cpu<'a> {
         }
         */
 
-        self.last_queue_delay = self.queue.have_delay();
+        self.last_queue_delay = self.queue.get_delay();
         self.last_queue_len = self.queue.len();
 
-        self.wait_states = self.wait_states.saturating_sub(1);
-
         // Do DRAM refresh (DMA channel 0) simulation
-        if self.dram_refresh_simulation {
+        if self.enable_wait_states && self.dram_refresh_simulation {
             self.dram_refresh_cycles += 1;
 
             match &mut self.dma_state {
@@ -518,6 +502,35 @@ impl<'a> Cpu<'a> {
                     }
                 }
             }            
+        }
+    }
+
+    pub fn begin_fetch(&mut self) {
+        if let BiuState::Operating | BiuState::Resuming(1) = self.biu_state {
+            //trace_print!(self, "scheduling fetch: {}", self.queue.len());
+            
+            if self.biu_queue_has_room() {
+            
+                //trace_print!(self, "Setting address bus to PC: {:05X}", self.pc);
+                self.fetch_state = FetchState::InProgress;
+                self.bus_status = BusStatus::CodeFetch;
+                self.bus_segment = Segment::CS;
+                self.t_cycle = TCycle::T1;
+                self.address_bus = self.pc;
+                self.i8288.ale = true;
+                self.data_bus = 0;
+                self.transfer_size = self.fetch_size;
+                self.operand_size = match self.fetch_size {
+                    TransferSize::Byte => OperandSize::Operand8,
+                    TransferSize::Word => OperandSize::Operand16
+                };
+                self.transfer_n = 0;
+            }
+            else if !self.bus_pending_eu {
+                // Cancel fetch if queue is full and no pending bus request from EU that 
+                // would otherwise trigger an abort.
+                self.biu_abort_fetch_full();
+            }
         }
     }
 

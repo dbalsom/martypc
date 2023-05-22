@@ -78,7 +78,8 @@ pub enum ExecutionOperation {
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct DelayParams {
-    pub dram_delay: u32
+    pub dram_delay: u32,
+    pub halt_resume_delay: u32
 }
 
 pub struct ExecutionControl {
