@@ -27,7 +27,7 @@
 
 use log;
 
-use std::collections::BTreeMap;
+use std::collections::{VecDeque, BTreeMap};
 
 use modular_bitfield::prelude::*;
 
@@ -207,10 +207,11 @@ pub struct ProgrammableIntervalTimer {
     clock_divisor: u32,
     pit_cycles: u64,
     sys_tick_accumulator: u32,
-    sys_tick_accumulator_advance: u32,
+    sys_ticks_advance: u32,
     cycle_accumulator: f64,
     channels: Vec<Channel>,
-    ticks_advance: u32,
+    timewarp: DeviceRunTimeUnit,
+    speaker_buf: VecDeque<u8>
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -249,8 +250,8 @@ impl IoDevice for ProgrammableIntervalTimer {
     fn write_u8(&mut self, port: u16, data: u8, bus_opt: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
 
         // Catch PIT up to CPU.
-        let ticks = self.ticks_from_time_advance(delta);
-        self.ticks_advance += ticks;
+        let ticks = self.ticks_from_time(delta, self.timewarp);
+        self.timewarp = delta;
 
         let bus = bus_opt.unwrap();
 
@@ -316,7 +317,7 @@ impl Channel {
             gate: Updatable::Dirty(false, false),
             one_shot_triggered: false,
             gate_triggered: false,
-            reload_next_cycle: false,
+            reload_next_cycle: false
         }
     }
 
@@ -840,10 +841,11 @@ impl ProgrammableIntervalTimer {
             clock_divisor,
             pit_cycles: 0,
             sys_tick_accumulator: 0,
-            sys_tick_accumulator_advance: 0,
+            sys_ticks_advance: 0,
             cycle_accumulator: 0.0,
             channels: vec,
-            ticks_advance: 0,
+            timewarp: DeviceRunTimeUnit::SystemTicks(0),
+            speaker_buf: VecDeque::new()
         }
     }
 
@@ -936,10 +938,10 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].set_gate(state, bus);
     }
 
-    pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit) -> u32 {
+    pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit, advance: DeviceRunTimeUnit) -> u32 {
         let mut do_ticks = 0;
-        match run_unit {
-            DeviceRunTimeUnit::Microseconds(us) => {
+        match (run_unit, advance) {
+            (DeviceRunTimeUnit::Microseconds(us), DeviceRunTimeUnit::Microseconds(warp_us)) => {
                 let pit_cycles = Pit::get_pit_cycles(us);
                 //log::debug!("Got {:?} pit cycles", pit_cycles);
         
@@ -953,17 +955,23 @@ impl ProgrammableIntervalTimer {
                 }
                 do_ticks
             }
-            DeviceRunTimeUnit::SystemTicks(ticks) => { 
+            (DeviceRunTimeUnit::SystemTicks(ticks), DeviceRunTimeUnit::SystemTicks(warp_ticks)) => { 
                 // Add up system ticks, then tick the PIT if we have enough ticks for 
                 // a PIT cycle.
-                self.sys_tick_accumulator = self.sys_tick_accumulator - self.sys_tick_accumulator_advance + ticks;
-                
+
+                // We subtract warp ticks - ticks processed during CPU execution to warp 
+                // device to current CPU cycle. Warp ticks should always be less than or equal to
+                // ticks provided to run.
+                self.sys_tick_accumulator += ticks - warp_ticks;
+
                 while self.sys_tick_accumulator >= self.clock_divisor {
                     self.sys_tick_accumulator -= self.clock_divisor;
                     do_ticks += 1;
                 }
-                self.sys_tick_accumulator_advance = 0;
                 do_ticks
+            }
+            _ => {
+                panic!("Invalid TimeUnit combination");
             }
         }
     }
@@ -988,15 +996,17 @@ impl ProgrammableIntervalTimer {
             DeviceRunTimeUnit::SystemTicks(ticks) => { 
                 // Add up system ticks, then tick the PIT if we have enough ticks for 
                 // a PIT cycle.
-                let accum_old = self.sys_tick_accumulator;
+
+                // We want to save the number of ticks advanced now so they can be subtracted
+                // from the number of ticks in the post-step() run() call. However, drain
+                // the accumulator now as this represents time between the last run() and now.
+                
                 self.sys_tick_accumulator += ticks;
                 
                 while self.sys_tick_accumulator >= self.clock_divisor {
                     self.sys_tick_accumulator -= self.clock_divisor;
                     do_ticks += 1;
                 }
-
-                self.sys_tick_accumulator_advance = self.sys_tick_accumulator - accum_old;
 
                 do_ticks
             }
@@ -1010,12 +1020,11 @@ impl ProgrammableIntervalTimer {
         run_unit: DeviceRunTimeUnit ) 
     {
 
-        let mut do_ticks = self.ticks_from_time(run_unit);
+        let mut do_ticks = self.ticks_from_time(run_unit, self.timewarp);
 
-        assert!(do_ticks >= self.ticks_advance);
+        //assert!(do_ticks >= self.timewarp);
 
-        do_ticks -= self.ticks_advance;
-        self.ticks_advance = 0;
+        self.timewarp = DeviceRunTimeUnit::SystemTicks(0);
 
         for _ in 0..do_ticks {
             self.tick(bus, Some(buffer_producer));
@@ -1066,8 +1075,19 @@ impl ProgrammableIntervalTimer {
             }
         }
 
+        // If we have been passed a buffer, fill it with any queued samples
+        // and the current sample.
         if let Some(buffer) = buffer_producer {
+            // Copy any samples that have accumulated in the buffer.
+
+            for s in self.speaker_buf.drain(0..) {
+                _ = buffer.push(s);
+            }
             _ = buffer.push((speaker_sample) as u8);
+        }
+        else {
+            // Otherwise, put the sample in the buffer.
+            self.speaker_buf.push_back(speaker_sample as u8);
         }
 
     }

@@ -1309,6 +1309,9 @@ impl VideoCard for VGACard {
         None
     }
 
+    fn debug_tick(&mut self, _ticks: u32) {
+        self.tick();
+    }
 
     fn get_overscan_color(&self) -> u8 {
         0

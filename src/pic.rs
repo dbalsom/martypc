@@ -79,6 +79,7 @@ pub struct Pic {
     imr: u8,                 // Interrupt Mask Register
     isr: u8,                 // In-Service Register
     irr: u8,                 // Interrupt Request Register
+    ir: u8,                  // IR lines (bitfield)
     read_select: ReadSelect, // Select register to read.  True=ISR, False=IRR
     irq: u8,                 // IRQ Number
     intr: bool,       // INT request line of PIC
@@ -96,11 +97,12 @@ pub struct Pic {
     interrupt_stats: Vec<InterruptStats>
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct PicStringState {
     pub imr: String,
     pub isr: String,
     pub irr: String,
+    pub ir: String,
     pub intr: String,
     pub autoeoi: String,
     pub trigger_mode: String,
@@ -145,6 +147,7 @@ impl Pic {
             imr: 0xFF,                           // All IRQs initially masked
             isr: 0x00,
             irr: 0,
+            ir: 0,
             read_select: ReadSelect::IRR,
             irq: 0,
             intr: false,
@@ -167,6 +170,7 @@ impl Pic {
         self.imr = 0xFF;
         self.isr = 0x00;
         self.irr = 0x00;
+        self.ir = 0x00;
         self.read_select = ReadSelect::IRR;
         self.irq = 0;
         self.intr = false;
@@ -271,7 +275,7 @@ impl Pic {
             // Is there a corresponding bit set in the IRR?
             if Pic::check_bit(self.irr, ir) {
                 // Raise INTR for new interrupt.
-                self.intr = true;
+                //self.intr = true;
             }            
         }
     }
@@ -421,7 +425,8 @@ impl Pic {
 
         // Interrupts 0-7 map to bits 0-7 in IMR register
         let intr_bit: u8 = 0x01 << interrupt;
-        // Set the request bit in the IR register
+        // Set IR line high and set the request bit in the IRR register 
+        self.ir |= intr_bit;
         self.irr |= intr_bit; 
 
         if self.imr & intr_bit != 0 {
@@ -447,9 +452,9 @@ impl Pic {
             panic!("PIC: Received interrupt out of range: {}", interrupt);
         }
 
-        // Clear the corresponding bit in the IRR register
+        // Clear the corresponding bit in the IR lines
         let intr_bit: u8 = 0x01 << interrupt;
-        self.irr &= !intr_bit;
+        self.ir &= !intr_bit;
     }
 
     pub fn query_interrupt_line(&self) -> bool {
@@ -498,8 +503,9 @@ impl Pic {
     
         let mut state = PicStringState {
             imr: format!("{:08b}", self.imr),
-            irr: format!("{:08b}", self.irr),
             isr: format!("{:08b}", self.isr),
+            irr: format!("{:08b}", self.irr),
+            ir: format!("{:08b}", self.ir),
             intr: format!("{}", self.intr),
             autoeoi: format!("{:?}", self.auto_eoi),
             trigger_mode: format!("{:?}", self.trigger_mode),

@@ -245,6 +245,11 @@ pub trait VideoCard {
     /// Runs the video card device for the specified period of time
     fn run(&mut self, time: DeviceRunTimeUnit);
 
+    /// Runs the video card for a the specified number of video clocks
+    /// Used for debugging by advancing the video card independent of machine state.
+    /// An implementor of VideoCard will have its own internal tick procedure.
+    fn debug_tick(&mut self, ticks: u32);
+
     /// Reset the video card
     fn reset(&mut self);
 

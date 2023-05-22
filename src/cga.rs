@@ -94,8 +94,11 @@ pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Shou
 
 // Monitor sync position. The monitor will eventually perform an hsync at a fixed position 
 // if hsync signal is late from the CGA card.
-const CGA_HSYNC_POS: u32 = 832;
-const CGA_HSYNC_WIDTH: u32 = 80;
+const CGA_MONITOR_HSYNC_POS: u32 = 832;
+const CGA_MONITOR_HSYNC_WIDTH: u32 = 80;
+const CGA_MONITOR_VSYNC_POS: u32 = 246;
+// Minimum scanline value after which we can perform a vsync. A vsync before this scanline will be ignored.
+const CGA_MONITOR_VSYNC_MIN: u32 = 0; 
 
 // Display aperature. This is an attempt to represent the maximum visible display extents,
 // including overscan. Anything more is likely to be hidden by the monitor bezel or not 
@@ -226,6 +229,8 @@ pub struct CGACard {
     
     debug: bool,
     cycles: u64,
+    last_vsync_cycles: u64,
+    cycles_per_vsync: u64,
 
     mode_byte: u8,
     display_mode: DisplayMode,
@@ -245,8 +250,6 @@ pub struct CGACard {
 
     frame_count: u64,
     status_reads: u64,
-
-    draw_enabled: bool,
 
     cursor_status: bool,
     cursor_slowblink: bool,
@@ -276,6 +279,7 @@ pub struct CGACard {
     crtc_frame_address: usize,
     in_crtc_hblank: bool,
     in_crtc_vblank: bool,
+    in_last_vblank_line: bool,
     hborder: bool,
     vborder: bool,
 
@@ -310,7 +314,7 @@ pub struct CGACard {
     hcc_c0: u8,                     // Horizontal character counter (x pos of character)
     vlc_c9: u8,                     // Vertical line counter - row of character being drawn
     vcc_c4: u8,                     // Vertical character counter (y pos of character)
-    vsc_c3v: u8,                    // Vertical sync counter - counts during vsync period
+    vsc_c3h: u8,                    // Vertical sync counter - counts during vsync period
     hsc_c3l: u8,                    // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
     vma: usize,                     // VMA register - Video memory address
@@ -457,6 +461,8 @@ impl CGACard {
 
             debug: video_frame_debug,
             cycles: 0,
+            last_vsync_cycles: 0,
+            cycles_per_vsync: 0,
 
             mode_byte: 0,
             display_mode: DisplayMode::Mode0TextBw40,
@@ -476,8 +482,6 @@ impl CGACard {
 
             frame_count: 0,
             status_reads: 0,
-
-            draw_enabled: false,
 
             cursor_status: false,
             cursor_slowblink: false,
@@ -508,6 +512,7 @@ impl CGACard {
 
             in_crtc_hblank: false,
             in_crtc_vblank: false,
+            in_last_vblank_line: false,
             hborder: true,
             vborder: true,
 
@@ -541,7 +546,7 @@ impl CGACard {
             hcc_c0: 0,
             vlc_c9: 0,
             vcc_c4: 0,
-            vsc_c3v: 0,
+            vsc_c3h: 0,
             hsc_c3l: 0,
             vtac_c5: 0,
             vma: 0,
@@ -876,7 +881,7 @@ impl CGACard {
             trace!(
                 self,
                 "in vblank: vsc: {:03}",
-                self.vsc_c3v
+                self.vsc_c3h
             );            
         }
 
@@ -1018,9 +1023,11 @@ impl CGACard {
             }
         }
 
+        /*
         if !self.mode_enable {
             new_pixel = self.disable_color;
         }
+        */
 
         self.buf[self.back_buf][self.rba] = new_pixel;
 
@@ -1219,15 +1226,18 @@ impl CGACard {
                 // End horizontal sync when we reach R3
                 if self.hsc_c3l == self.crtc_sync_width {
                     // We've left horizontal blank, enter left overscan
+                    self.hsc_c3l = 0;
                     self.in_crtc_hblank = false;
 
                     if self.in_crtc_vblank {
 
                         // If we are in vblank, advance Vertical Sync Counter
-                        self.vsc_c3v += 1;
+                        self.vsc_c3h += 1;
                     
-                        if self.vsc_c3v == CRTC_VBLANK_HEIGHT {
+                        //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
+                        if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
 
+                            self.in_last_vblank_line = true;
                             // We are leaving vblank period. Generate a frame.
 
                             // Previously, we generated frames upon reaching vertical total. This was convenient as 
@@ -1236,6 +1246,8 @@ impl CGACard {
                             // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple 
                             // 'screens' per frame in between vsyncs. To enable these tricks to work, we must render 
                             // like a monitor would.                        
+
+                            self.vsc_c3h = 0;
                             self.do_vsync();
                             return
                         }                        
@@ -1290,8 +1302,19 @@ impl CGACard {
                 self.hsc_c3l = 0;
             }
 
+            if self.hcc_c0 == self.crtc_horizontal_total && self.in_last_vblank_line {
+                // We are one char away from the beginning of the new frame.
+                // Draw one char of border
+                self.hborder = true;
+            }
+
             if self.hcc_c0 == self.crtc_horizontal_total + 1 {
                 // Leaving left overscan, finished scanning row
+
+                if self.in_last_vblank_line {
+                    self.in_last_vblank_line = false;
+                    self.in_crtc_vblank = false;
+                }
 
                 // Reset Horizontal Character Counter and increment character row counter
                 self.hcc_c0 = 0;
@@ -1445,26 +1468,37 @@ impl CGACard {
 
     pub fn do_vsync(&mut self) {
         
-        self.in_crtc_vblank = false;
-        self.vsc_c3v = 0;
-        self.beam_x = 0;
-        self.beam_y = 0;
-        self.rba = 0;
-        // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
+        self.cycles_per_vsync = self.cycles - self.last_vsync_cycles;
+        self.last_vsync_cycles = self.cycles;
 
-        // Width is total characters * character width * clock_divisor.
-        // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
-        self.extents[self.front_buf].visible_w = 
-            self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32 * self.clock_divisor as u32;
+        // Only do a vsync if we are past the minimum scanline #.
+        // A monitor will refuse to vsync too quickly.
+        if self.beam_y > CGA_MONITOR_VSYNC_MIN {
 
-        trace_regs!(self);
-        trace!(self, "Leaving vsync and flipping buffers");
+            // vblank remains set through the entire last line, including the right overscan of the new screen.
+            // So we need to delay resetting vblank flag until then.
 
-        self.scanline = 0;
-        self.frame_count += 1;
+            //self.in_crtc_vblank = false;
+            
+            self.beam_x = 0;
+            self.beam_y = 0;
+            self.rba = 0;
+            // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
 
-        // Swap the display buffers
-        self.swap();              
+            // Width is total characters * character width * clock_divisor.
+            // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
+            self.extents[self.front_buf].visible_w = 
+                self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32 * self.clock_divisor as u32;
+
+            trace_regs!(self);
+            trace!(self, "Leaving vsync and flipping buffers");
+
+            self.scanline = 0;
+            self.frame_count += 1;
+
+            // Swap the display buffers
+            self.swap();   
+        }
     }
 
 }
@@ -1530,6 +1564,14 @@ impl VideoCard for CGACard {
     /// Get the position of the electron beam.
     fn get_beam_pos(&self) -> Option<(u32, u32)> {
         Some((self.beam_x, self.beam_y))
+    }
+
+    /// Tick the CGA the specified number of video clock cycles.
+    fn debug_tick(&mut self, ticks: u32) {
+
+        for _ in 0..ticks {
+            self.tick();
+        }
     }
 
     #[inline]
@@ -1734,7 +1776,7 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
         internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
         internal_vec.push((format!("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
-        internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3v))));
+        internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
         internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
         internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
         internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
@@ -1749,6 +1791,7 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
         internal_vec.push((format!("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
         internal_vec.push((format!("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
+        internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
         internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
 
         map.insert("Internal".to_string(), internal_vec);

@@ -10,7 +10,8 @@ use std::{
     ffi::OsString
 };
 
-use crate::egui::Framework;
+use crate::egui::{Framework, DeviceSelection};
+
 
 use log::error;
 use pixels::{Pixels, SurfaceTexture};
@@ -528,7 +529,7 @@ fn main() {
     if config.emulator.debug_mode {
         // Open default debug windows
         framework.gui.set_window_open(GuiWindow::CpuControl, true);
-        framework.gui.set_window_open(GuiWindow::DiassemblyViewer, true);
+        framework.gui.set_window_open(GuiWindow::DisassemblyViewer, true);
         framework.gui.set_window_open(GuiWindow::CpuStateViewer, true);
 
         // Override CpuInstructionHistory
@@ -1171,7 +1172,12 @@ fn main() {
                         // TODO: buffer and extents may not match due to extents being for front buffer
                         match exec_control.borrow_mut().get_state() {
                             ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
-                                video_buffer = video_card.get_back_buf();
+                                if framework.gui.get_option(GuiOption::ShowBackBuffer).unwrap_or(false) {
+                                    video_buffer = video_card.get_back_buf();
+                                }
+                                else {
+                                    video_buffer = video_card.get_display_buf();
+                                }
                                 beam_pos = video_card.get_beam_pos();
                             }
                             _ => {
@@ -1249,7 +1255,7 @@ fn main() {
                     // Is the machine in an error state? If so, display an error dialog.
                     if let Some(err) = machine.get_error_str() {
                         framework.gui.show_error(err);
-                        framework.gui.show_window(GuiWindow::DiassemblyViewer);
+                        framework.gui.show_window(GuiWindow::DisassemblyViewer);
                     }
                     else {
                         // No error? Make sure we close the error dialog.
@@ -1411,6 +1417,21 @@ fn main() {
                                 let delay_params = framework.gui.delay_adjust.get_params();
 
                                 machine.set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
+                                machine.set_cpu_option(CpuOption::HaltResumeDelay(delay_params.halt_resume_delay));
+                            }
+                            Some(GuiEvent::TickDevice(dev, ticks)) => {
+
+                                match dev {
+                                    DeviceSelection::Timer(t) => {
+
+                                    }
+                                    DeviceSelection::VideoCard => {
+                                        if let Some(video_card) = machine.videocard() {
+                                            video_card.debug_tick(ticks);
+                                        }                                        
+                                    }
+                                }
+
                             }
                             None => break,
                             _ => {
@@ -1536,7 +1557,7 @@ fn main() {
                     // -- Update PIC viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::PicViewer) {
                         let pic_state = machine.pic_state();
-                        framework.gui.update_pic_state(pic_state);
+                        framework.gui.pic_viewer.update_state(&pic_state);
                     }
 
                     // -- Update PPI viewer window
@@ -1584,7 +1605,7 @@ fn main() {
                     }
 
                     // -- Update disassembly viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::DiassemblyViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::DisassemblyViewer) {
                         let start_addr_str = framework.gui.disassembly_viewer.get_address();
 
                         // The expression evaluation could result in a segment:offset address or a flat address.
