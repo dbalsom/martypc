@@ -76,13 +76,21 @@ impl DeviceControl {
                         };           
                         if ui.button(egui::RichText::new("Tick CGA -100").font(egui::FontId::proportional(20.0))).clicked() {
                             events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard, 238844))
-                        };            
+                        };       
+                        if ui.button(egui::RichText::new("Tick CGA +912").font(egui::FontId::proportional(20.0))).clicked() {
+                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard,  912))
+                        };                                   
                         if ui.button(egui::RichText::new("Tick CGA -1 (no vadj)").font(egui::FontId::proportional(20.0))).clicked() {
                             events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard, 233471))
                         };           
                         if ui.button(egui::RichText::new("Tick CGA -100 (no vadj)").font(egui::FontId::proportional(20.0))).clicked() {
                             events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard,  233372))
-                        };                                                   
+                        };     
+                        if ui.button(egui::RichText::new("Tick CGA -912 (no vadj").font(egui::FontId::proportional(20.0))).clicked() {
+                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard,  232560))
+                        };                               
+
+                                                                  
                 });
             });     
 
