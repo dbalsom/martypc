@@ -1849,7 +1849,7 @@ impl<'a> Cpu<'a> {
     /// Resume from halted state
     pub fn resume(&mut self) {
         if self.halted {
-            log::debug!("Resuming from halt");
+            //log::debug!("Resuming from halt");
             // It takes 7 cycles after INTR to enter INTA. 
             // 3 of these are resuming from suspend, so not accounted from here.
             self.trace_comment("INTR");
@@ -1920,7 +1920,7 @@ impl<'a> Cpu<'a> {
 
                             // Do interrupt
                             self.hw_interrupt(irq);
-                            log::debug!("hardware interrupt took {} cycles", self.instr_cycle);
+                            //log::debug!("hardware interrupt took {} cycles", self.instr_cycle);
                             let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
                             return step_result                                                 
                         }
