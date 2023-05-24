@@ -324,7 +324,7 @@ fn main() {
     // Instantiate the rom manager to load roms for the requested machine type    
     let mut rom_manager = RomManager::new(config.machine.model, features);
 
-    if let Err(e) = rom_manager.try_load_from_dir("./rom") {
+    if let Err(e) = rom_manager.try_load_from_dir("./roms") {
         match e {
             RomError::DirNotFound => {
                 eprintln!("ROM directory not found")

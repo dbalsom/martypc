@@ -12,6 +12,7 @@ Thumbs.db
 
 # Emulator files
 /rom
+/roms
 /floppy
 /hdd
 /dumps
