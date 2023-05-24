@@ -745,7 +745,7 @@ impl VideoRenderer {
         let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
         let overscan_half = overscan_total / 2;
 
-        let mut horiz_adjust = 0;
+        let mut horiz_adjust = extents.aperture_x;
         /*
         if overscan_half < extents.overscan_l {
             // We want to shift image to the right 
@@ -766,7 +766,7 @@ impl VideoRenderer {
             let frame_row0_offset = ((y * 2) * (w * 4)) as usize;
             let frame_row1_offset = (((y * 2) * (w * 4)) + (w * 4)) as usize;
 
-            for x in 0..(max_x - horiz_adjust) {
+            for x in 0..max_x {
                 let fo0 = frame_row0_offset + (x * 4) as usize;
                 let fo1 = frame_row1_offset + (x * 4) as usize;
 

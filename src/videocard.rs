@@ -152,6 +152,8 @@ pub struct DisplayExtents {
     pub field_h: u32,       // The total height of the video field, including all clocks except the vertical retrace period
     pub aperture_w: u32,    // Width in pixels of the 'viewport' into the video field. 
     pub aperture_h: u32,    // Height in pixels of the 'viewport' into the video field.
+    pub aperture_x: u32,    // X offset of aperture.
+    pub aperture_y: u32,    // Y offset of aperture.
     pub visible_w: u32,     // The width in pixels of the visible display area
     pub visible_h: u32,     // The height in pixels of the visible display area
     pub overscan_l: u32,    // Size in pixels of the left overscan area

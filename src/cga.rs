@@ -180,13 +180,32 @@ const CRTC_SCANLINE_MAX: u32 = 262;
 const CGA_TEXT_MODE_WRAP: usize = 0x1FFF;
 const CGA_GFX_MODE_WRAP: usize = 0x3FFF;
 
+/*
+pub enum CGAColor {
+    Black,
+    Blue,
+    Green,
+    Cyan,
+    Red,
+    Magenta,
+    Brown,
+    White,
+    BlackBright,
+    BlueBright,
+    GreenBright,
+    CyanBright,
+    RedBright,
+    MagentaBright,
+    Yellow,
+    WhiteBright
+} */
 const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 2, 4, 6],       // Red / Green / Brown
     [0, 10, 12, 14],    // Red / Green / Brown High Intensity
     [0, 3, 5, 7],       // Cyan / Magenta / White
     [0, 11, 13, 15],    // Cyan / Magenta / White High Intensity
-    [0, 2, 3, 7],       // Red / Cyan / White
-    [0, 10, 11, 15],    // Red / Cyan / White High Intensity
+    [0, 3, 4, 7],       // Red / Cyan / White
+    [0, 11, 12, 15],    // Red / Cyan / White High Intensity
 ];
 
 const CGA_DEBUG_COLOR: u8 = 5;
@@ -445,6 +464,8 @@ impl Default for DisplayExtents {
             field_h: CGA_YRES_MAX,
             aperture_w: CGA_DISPLAY_EXTENT_X,
             aperture_h: CGA_DISPLAY_EXTENT_Y,
+            aperture_x: 8,
+            aperture_y: 0,
             visible_w: 0,
             visible_h: 0,
             overscan_l: 0,
@@ -905,11 +926,16 @@ impl CGACard {
     fn handle_cc_register_write(&mut self, data: u8) {
         //log::trace!("Write to color control register: {:02X}", data);
 
-        if data & CC_PALETTE_BIT != 0 {
-            self.cc_palette = 2; // Select Magenta, Cyan, White palette
+        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
+            self.cc_palette = 4; // Select Red, Cyan and White palette (undocumented)
         }
         else {
-            self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
+            if data & CC_PALETTE_BIT != 0 {
+                self.cc_palette = 2; // Select Magenta, Cyan, White palette
+            }
+            else {
+                self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
+            }
         }
 
         if data & CC_BRIGHT_BIT != 0 {
