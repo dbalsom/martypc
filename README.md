@@ -14,7 +14,7 @@ Since Nov 2022, I have been working diligently to make MartyPC's 8088 CPU emulat
 
 In April 2023, MartyPC became accurate enough to run the infamous PC demo, 8088MPH.
 
-In May 2023, MartyPC became the first PC emulator (that I am aware of) capable of running the PC demo Area5150 completely.
+In May 2023, MartyPC became the first PC emulator (that I am aware of) capable of running the PC demo Area5150 completely. (See video here: https://www.youtube.com/watch?v=zADeLm9g0Zg )
 
 ## Special Thanks
 
