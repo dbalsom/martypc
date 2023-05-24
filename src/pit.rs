@@ -200,6 +200,7 @@ pub struct Channel {
     one_shot_triggered: bool,
     gate_triggered: bool,
     reload_next_cycle: bool,
+    incomplete_reload: bool,
 }
 pub struct ProgrammableIntervalTimer {
     ptype: PitType,
@@ -251,7 +252,8 @@ impl IoDevice for ProgrammableIntervalTimer {
 
         // Catch PIT up to CPU.
         let ticks = self.ticks_from_time(delta, self.timewarp);
-        self.timewarp = delta;
+        //self.timewarp = self.time_from_ticks(ticks);
+        self.timewarp = delta;  // the above is technically the correct way but it breaks stuff(?)
 
         let bus = bus_opt.unwrap();
 
@@ -317,7 +319,8 @@ impl Channel {
             gate: Updatable::Dirty(false, false),
             one_shot_triggered: false,
             gate_triggered: false,
-            reload_next_cycle: false
+            reload_next_cycle: false,
+            incomplete_reload: false
         }
     }
 
@@ -563,6 +566,14 @@ impl Channel {
                         let new_count = (*self.count_register & 0x00FF) | ((byte as u16) << 8);
                         //log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
                         self.count_register.update(new_count);
+
+                        // If the counting element was reloaded between load of LSB and MSB, it is an incomplete load.
+                        // Reload the counting element again when we get the MSB.
+                        // Note: This is completely undocumented behavior
+                        if self.incomplete_reload {
+                            self.counting_element.update(new_count);
+                            self.incomplete_reload = false;
+                        }
                         self.load_state = LoadState::WaitingForLsb;
                         self.finalize_load();
                     }
@@ -675,6 +686,16 @@ impl Channel {
         if self.channel_state == ChannelState::WaitingForLoadCycle {
             // Load the current reload value into the counting element, applying the load mask
             self.counting_element.update(*self.count_register & self.load_mask);
+
+            if self.load_state == LoadState::WaitingForMsb {
+                // We are reloading during an incomplete counter load. Proceed, but set a flag to mark
+                // this load as incomplete.
+                self.incomplete_reload = true;
+            }
+            else {
+                self.incomplete_reload = false;
+            }
+
             //self.load_state = LoadState::Loaded;
 
             // Start counting.
@@ -936,6 +957,11 @@ impl ProgrammableIntervalTimer {
         // Note: Only the gate to PIT channel #2 is connected to anything (PPI port)
 
         self.channels[channel].set_gate(state, bus);
+    }
+
+    #[inline]
+    pub fn time_from_ticks(&mut self, ticks: u32 ) -> DeviceRunTimeUnit {
+        DeviceRunTimeUnit::SystemTicks(ticks * self.clock_divisor)
     }
 
     pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit, advance: DeviceRunTimeUnit) -> u32 {
