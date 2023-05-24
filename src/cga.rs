@@ -934,10 +934,11 @@ impl CGACard {
     fn get_glyph_bit(glyph: u8, col: u8, row: u8) -> bool {
 
         debug_assert!(col < CRTC_CHAR_CLOCK);
-        debug_assert!(row < CRTC_CHAR_CLOCK);
+        //debug_assert!(row < CRTC_CHAR_CLOCK);
+        let row_masked = row & 0x7;
 
         // Calculate byte offset 
-        let glyph_offset: usize = (row as usize * CGA_FONT_SPAN) + glyph as usize;
+        let glyph_offset: usize = (row_masked as usize * CGA_FONT_SPAN) + glyph as usize;
         CGA_FONT[glyph_offset] & (0x01 << (7 - col)) != 0
     }
 
@@ -1023,11 +1024,9 @@ impl CGACard {
             }
         }
 
-        /*
         if !self.mode_enable {
-            new_pixel = self.disable_color;
+            new_pixel = self.cc_altcolor;
         }
-        */
 
         self.buf[self.back_buf][self.rba] = new_pixel;
 
@@ -1047,7 +1046,7 @@ impl CGACard {
         }
 
         if !self.mode_enable {
-            new_pixel = self.disable_color;
+            new_pixel = self.cc_altcolor;
         }
 
         self.buf[self.back_buf][self.rba] = new_pixel;
