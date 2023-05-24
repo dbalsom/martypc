@@ -1224,7 +1224,7 @@ impl CGACard {
 
         if self.hcc_c0 == 0 && self.vcc_c4 == 0 {
             // We are at the first character of a CRTC frame. Update start address.
-            self.vma = self.crtc_start_address;
+            self.vma = self.crtc_frame_address;
         }
 
         // Done with the current character      
