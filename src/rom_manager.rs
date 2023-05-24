@@ -134,6 +134,7 @@ impl RomManager {
                         "6338a9808445de12109a2389b71ee2eb",  // 5150 BIOS v1 04/24/81
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
                         "eb28f0e8d3f641f2b58a3677b3b998cc",  // Basic v1.01
+                        //"66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                     ]
                 },
                 RomSet {
@@ -145,6 +146,7 @@ impl RomManager {
                         "6a1ed4e3f500d785a01ff4d3e000d79c", // 5150 BIOS v2 10/19/81
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
                         "eb28f0e8d3f641f2b58a3677b3b998cc",  // Basic v1.01
+                        //"66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                     ]
                 },
                 RomSet {
@@ -156,6 +158,7 @@ impl RomManager {
                         "f453eb2df6daf21ec644d33663d85434", // 5150 BIOS v3 10/27/83
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
                         "eb28f0e8d3f641f2b58a3677b3b998cc",  // Basic v1.01
+                        //"66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                     ]
                 },
                 RomSet {
