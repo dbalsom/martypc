@@ -1083,6 +1083,7 @@ impl<'a> Cpu<'a> {
         self.i8288.iowc = false;
 
         self.step_over_target = None;
+        self.end_addr = 0xFFFFF;
 
         // Reset takes 6 cycles before first fetch
         self.cycle();
