@@ -230,8 +230,11 @@ pub struct CGACard {
     debug: bool,
     cycles: u64,
     last_vsync_cycles: u64,
+    cur_screen_cycles: u64,
     cycles_per_vsync: u64,
+    sink_cycles: u64,
 
+    mode_pending: bool,
     mode_byte: u8,
     display_mode: DisplayMode,
     mode_enable: bool,
@@ -317,6 +320,7 @@ pub struct CGACard {
     vsc_c3h: u8,                    // Vertical sync counter - counts during vsync period
     hsc_c3l: u8,                    // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
+    effective_vta: u8,
     vma: usize,                     // VMA register - Video memory address
     vma_t: usize,                   // VMA' register - Video memory address temporary
     vmws: usize,                    // Video memory word size
@@ -325,7 +329,6 @@ pub struct CGACard {
     blink_accum_us: f64,            // Microsecond accumulator for blink state flipflop
     blink_accum_clocks: u32,        // CGA Clock accumulator for blink state flipflop
     accumulated_us: f64,
-
     ticks_advanced: u32,            // Number of ticks we have advanced mid-instruction via port or mmio access.
 
     mem: Box<[u8; CGA_MEM_SIZE]>,
@@ -462,9 +465,12 @@ impl CGACard {
             debug: video_frame_debug,
             cycles: 0,
             last_vsync_cycles: 0,
+            cur_screen_cycles: 0,
             cycles_per_vsync: 0,
+            sink_cycles: 0,
 
             mode_byte: 0,
+            mode_pending: false,
             display_mode: DisplayMode::Mode0TextBw40,
             mode_enable: true,
             mode_graphics: false,
@@ -549,6 +555,7 @@ impl CGACard {
             vsc_c3h: 0,
             hsc_c3l: 0,
             vtac_c5: 0,
+            effective_vta: 0,
             vma: 0,
             vma_t: 0,
             vmws: 2,    
@@ -558,7 +565,6 @@ impl CGACard {
             blink_accum_clocks: 0,
 
             accumulated_us: 0.0,
-
             ticks_advanced: 0,
 
             mem: vec![0; CGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
@@ -790,15 +796,14 @@ impl CGACard {
         }
     }
 
-    fn handle_mode_register(&mut self, mode_byte: u8) {
+    fn update_mode(&mut self) {
 
-        self.mode_hires_txt = mode_byte & MODE_HIRES_TEXT != 0;
-        self.mode_graphics  = mode_byte & MODE_GRAPHICS != 0;
-        self.mode_bw        = mode_byte & MODE_BW != 0;
-        self.mode_enable    = mode_byte & MODE_ENABLE != 0;
-        self.mode_hires_gfx = mode_byte & MODE_HIRES_GRAPHICS != 0;
-        self.mode_blinking  = mode_byte & MODE_BLINKING != 0;
-        self.mode_byte      = mode_byte;
+        self.mode_hires_txt = self.mode_byte & MODE_HIRES_TEXT != 0;
+        self.mode_graphics  = self.mode_byte & MODE_GRAPHICS != 0;
+        self.mode_bw        = self.mode_byte & MODE_BW != 0;
+        self.mode_enable    = self.mode_byte & MODE_ENABLE != 0;
+        self.mode_hires_gfx = self.mode_byte & MODE_HIRES_GRAPHICS != 0;
+        self.mode_blinking  = self.mode_byte & MODE_BLINKING != 0;
 
         self.vmws = 2;
         
@@ -814,7 +819,7 @@ impl CGACard {
         // "Disabled" isn't really a video mode, it just controls whether
         // the CGA card outputs video at a given moment. This can be toggled on
         // and off during a single frame, such as done in VileR's fontcmp.com
-        self.display_mode = match mode_byte & 0b1_0111 {
+        self.display_mode = match self.mode_byte & 0b1_0111 {
             0b0_0100 => DisplayMode::Mode0TextBw40,
             0b0_0000 => DisplayMode::Mode1TextCo40,
             0b0_0101 => DisplayMode::Mode2TextBw80,
@@ -824,8 +829,8 @@ impl CGACard {
             0b1_0110 => DisplayMode::Mode6HiResGraphics,
             0b1_0010 => DisplayMode::Mode7LowResComposite,
             _ => {
-                trace!(self, "Invalid display mode selected: {:02X}", mode_byte & 0x1F);
-                log::error!("CGA: Invalid display mode selected: {:02X}", mode_byte & 0x1F);
+                trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                log::error!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
                 DisplayMode::Mode3TextCo80
             }
         };
@@ -835,17 +840,24 @@ impl CGACard {
             self,
             "Display mode set: {:?}. Mode byte: {:02X} Enabled: {} Clock: {}", 
             self.display_mode, 
-            mode_byte,
+            self.mode_byte,
             self.mode_enable,
             self.clock_divisor                
         );
 
         log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {} Clock: {}", 
             self.display_mode,
-            mode_byte, 
+            self.mode_byte, 
             self.mode_enable,
             self.clock_divisor
         );
+    }
+
+    fn handle_mode_register(&mut self, mode_byte: u8) {
+
+        // Latch the mode change and mark it pending. We will change the mode on next hsync.
+        self.mode_byte = mode_byte;
+        self.mode_pending = true;
     }
 
     fn handle_status_register_read(&mut self) -> u8 {
@@ -1106,10 +1118,19 @@ impl CGACard {
         }
     }
 
+    pub fn get_screen_ticks(&self) -> u64 {
+        self.cur_screen_cycles
+    }
+
     /// Execute one CGA clock cycle.
     pub fn tick(&mut self) {
 
+        if self.sink_cycles > 0 {
+            self.sink_cycles = self.sink_cycles.saturating_sub(1);
+            return
+        }
         self.cycles += 1;
+        self.cur_screen_cycles += 1;
 
         // Don't execute odd cycles if we are in half-clock mode
         if self.clock_divisor == 2 && self.cycles & 0x01 == 0 {
@@ -1201,6 +1222,10 @@ impl CGACard {
             self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
         }
 
+        if self.hcc_c0 == 0 && self.vcc_c4 == 0 {
+            // We are at the first character of a CRTC frame. Update start address.
+            self.vma = self.crtc_start_address;
+        }
 
         // Done with the current character      
         if self.char_col == CRTC_CHAR_CLOCK {
@@ -1224,7 +1249,14 @@ impl CGACard {
 
                 // End horizontal sync when we reach R3
                 if self.hsc_c3l == self.crtc_sync_width {
-                    // We've left horizontal blank, enter left overscan
+                    // We've left horizontal blank, enter left overscan.
+
+                    // Update the video mode, if an update is pending.
+                    if self.mode_pending {
+                        self.update_mode();
+                        self.mode_pending = false;
+                    }
+
                     self.hsc_c3l = 0;
                     self.in_crtc_hblank = false;
 
@@ -1330,8 +1362,9 @@ impl CGACard {
                 self.extents[self.front_buf].overscan_l = self.beam_x;
 
                 // Return video memory address to starting position for next character row
-                self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
-                //self.vma = self.vma_t;
+
+                //self.vma = self.crtc_frame_address + (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize);
+                self.vma = self.vma_t;
                 
                 // Reset the current character glyph to start of row
                 self.set_char_addr();
@@ -1354,7 +1387,9 @@ impl CGACard {
                     self.vcc_c4 = self.vcc_c4.wrapping_add(1);
 
                     // Set vma to starting position for next character row
-                    self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
+                    //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
+                    self.vma = self.vma_t;
+                    
                     // Load next char + attr
                     
                     self.set_char_addr();
@@ -1467,7 +1502,8 @@ impl CGACard {
 
     pub fn do_vsync(&mut self) {
         
-        self.cycles_per_vsync = self.cycles - self.last_vsync_cycles;
+        self.cycles_per_vsync = self.cur_screen_cycles;
+        self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
 
         // Only do a vsync if we are past the minimum scanline #.
@@ -1476,9 +1512,15 @@ impl CGACard {
 
             // vblank remains set through the entire last line, including the right overscan of the new screen.
             // So we need to delay resetting vblank flag until then.
-
             //self.in_crtc_vblank = false;
             
+
+            if self.beam_y > 258 && self.beam_y < 262 {
+                // This is a "short" frame. Calculate delta.
+                let delta_y = 262 - self.beam_y;
+                self.sink_cycles = (delta_y * 912) as u64;
+            }
+
             self.beam_x = 0;
             self.beam_y = 0;
             self.rba = 0;
@@ -1791,6 +1833,7 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
         internal_vec.push((format!("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
         internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
+        internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
 
         map.insert("Internal".to_string(), internal_vec);
