@@ -275,7 +275,7 @@ impl Pic {
             // Is there a corresponding bit set in the IRR?
             if Pic::check_bit(self.irr, ir) {
                 // Raise INTR for new interrupt.
-                //self.intr = true;
+                self.intr = true;
             }            
         }
     }
