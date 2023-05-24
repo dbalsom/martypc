@@ -56,6 +56,7 @@ mod bus_io;
 mod interrupt;
 mod machine;
 mod machine_manager;
+mod mc6845;
 mod memerror;
 mod mouse;
 mod pic;
@@ -71,17 +72,17 @@ mod util;
 
 mod vhd;
 mod vhd_manager;
-mod video;
+mod render;
 mod videocard; // VideoCard trait
 mod input;
 
 mod cpu_validator; // CpuValidator trait
-#[cfg(feature = "pi_validator")]
-mod pi_cpu_validator;
+
 #[cfg(feature = "arduino_validator")]
 #[macro_use]
 mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
+#[macro_use]
 mod arduino8088_validator;
 
 use input::MouseButton;
@@ -89,15 +90,19 @@ use breakpoints::BreakPointType;
 use config::*;
 use machine::{Machine, ExecutionState};
 use cpu_808x::{Cpu, CpuAddress};
+use cpu_common::CpuOption;
 use rom_manager::{RomManager, RomError, RomFeature};
 use floppy_manager::{FloppyManager, FloppyError};
 use machine_manager::MACHINE_DESCS;
 use vhd_manager::{VHDManager, VHDManagerError};
 use vhd::{VirtualHardDisk};
+use videocard::{RenderMode};
 use bytequeue::ByteQueue;
-use crate::egui::{GuiEvent, GuiWindow};
+use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
+use render::{VideoRenderer, CompositeParams};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
+use tracelogger::TraceLogger;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -112,17 +117,9 @@ const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
-const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
-
-pub struct PerformanceStats {
-    emulation_time: Duration,
-    render_time: Duration,
-    fps: u32,
-    emulated_fps: u32,
-    cps: u64,
-    ips: u64,
-}
+// Remove static frequency references
+//const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
 
 // Rendering Stats
@@ -131,6 +128,7 @@ struct Counter {
     cycle_count: u64,
     instr_count: u64,
 
+    current_ups: u32,
     current_cps: u64,
     current_fps: u32,
     current_ips: u64,
@@ -138,6 +136,7 @@ struct Counter {
     current_emulated_frames: u64,
     emulated_frames: u64,
 
+    ups: u32,
     fps: u32,
     last_frame: Instant,
     #[allow (dead_code)]
@@ -145,11 +144,15 @@ struct Counter {
     last_second: Instant,
     last_cpu_cycles: u64,
     current_cpu_cps: u64,
+    last_system_ticks: u64,
     last_pit_ticks: u64,
+    current_sys_tps: u64,
     current_pit_tps: u64,
     emulation_time: Duration,
     render_time: Duration,
     accumulated_us: u128,
+    cpu_mhz: f64,
+    cycles_per_frame: u32,
     cycle_target: u32,
 }
 
@@ -160,6 +163,7 @@ impl Counter {
             cycle_count: 0,
             instr_count: 0,
             
+            current_ups: 0,
             current_cps: 0,
             current_fps: 0,
             current_ips: 0,
@@ -168,18 +172,23 @@ impl Counter {
             current_emulated_frames: 0,
             emulated_frames: 0,
 
+            ups: 0,
             fps: 0,
             last_second: Instant::now(),
             last_sndbuf: Instant::now(),
             last_frame: Instant::now(),
             last_cpu_cycles: 0,
             current_cpu_cps: 0,
+            last_system_ticks: 0,
             last_pit_ticks: 0,
+            current_sys_tps: 0,
             current_pit_tps: 0,
             emulation_time: Duration::ZERO,
             render_time: Duration::ZERO,
             accumulated_us: 0,
-            cycle_target: CYCLES_PER_FRAME
+            cpu_mhz: 0.0,
+            cycles_per_frame: 0,
+            cycle_target: 0,
         }
     }
 }
@@ -243,11 +252,13 @@ impl KeyboardData {
 }
 
 #[derive (Copy, Clone, Default)]
-struct VideoData {
+pub struct VideoData {
     render_w: u32,
     render_h: u32,
     aspect_w: u32,
-    aspect_h: u32
+    aspect_h: u32,
+    aspect_correction_enabled: bool,
+    composite_params: CompositeParams
 }
 
 fn main() {
@@ -257,7 +268,7 @@ fn main() {
     let mut features = Vec::new();
 
     // Read config file
-    let config = match config::get_config("./marty.toml"){
+    let mut config = match config::get_config("./marty.toml"){
         Ok(config) => config,
         Err(e) => {
             match e.downcast_ref::<std::io::Error>() {
@@ -372,7 +383,7 @@ fn main() {
         std::process::exit(1);        
     } 
 
-    // Enumerate serial ports
+    // Enumerate host serial ports
     let serial_ports = match serialport::available_ports() {
         Ok(ports) => ports,
         Err(e) => {
@@ -398,7 +409,7 @@ fn main() {
     }
 
     // Create the video renderer
-    let video = video::Video::new();
+    let mut video = render::VideoRenderer::new(config.machine.video);
 
     // Init graphics & GUI 
     let event_loop = EventLoop::new();
@@ -406,7 +417,7 @@ fn main() {
     let window = {
         let size = LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
         WindowBuilder::new()
-            .with_title("Marty")
+            .with_title("MartyPC")
             .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
@@ -427,7 +438,9 @@ fn main() {
         render_w: DEFAULT_RENDER_WIDTH,
         render_h: DEFAULT_RENDER_HEIGHT,
         aspect_w: 640,
-        aspect_h: 480
+        aspect_h: 480,
+        aspect_correction_enabled: false,
+        composite_params: Default::default(),
     };
 
     let (mut pixels, mut framework) = {
@@ -491,7 +504,7 @@ fn main() {
     let mut machine = Machine::new(
         &config,
         config.machine.model,
-        &machine_desc_opt.unwrap(),
+        *machine_desc_opt.unwrap(),
         config.emulator.trace_mode,
         config.machine.video, 
         sp, 
@@ -499,6 +512,138 @@ fn main() {
         floppy_manager,
     );
 
+    // Set options from config. We do this now so that we can set the same state for both GUI and machine
+    framework.gui.set_option(GuiOption::CorrectAspect, config.emulator.correct_aspect);
+
+    framework.gui.set_option(GuiOption::CpuEnableWaitStates, config.cpu.wait_states_enabled);
+    machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled));
+
+    framework.gui.set_option(GuiOption::CpuInstructionHistory, config.cpu.instruction_history);
+    machine.set_cpu_option(CpuOption::InstructionHistory(config.cpu.instruction_history));
+
+    framework.gui.set_option(GuiOption::CpuTraceLoggingEnabled, config.emulator.trace_on);
+    machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+
+    // Debug mode on? 
+    if config.emulator.debug_mode {
+        // Open default debug windows
+        framework.gui.set_window_open(GuiWindow::CpuControl, true);
+        framework.gui.set_window_open(GuiWindow::DiassemblyViewer, true);
+        framework.gui.set_window_open(GuiWindow::CpuStateViewer, true);
+
+        // Override CpuInstructionHistory
+        framework.gui.set_option(GuiOption::CpuInstructionHistory, true);
+        machine.set_cpu_option(CpuOption::InstructionHistory(true));
+
+        // Disable autostart
+        config.emulator.autostart = false;
+    }
+
+    // Load program binary if one was specified in config options
+    if let Some(prog_bin) = config.emulator.run_bin {
+
+        if let Some(prog_seg) = config.emulator.run_bin_seg {
+            if let Some(prog_ofs) = config.emulator.run_bin_ofs {
+                let prog_vec = match std::fs::read(prog_bin.clone()) {
+                    Ok(vec) => vec,
+                    Err(e) => {
+                        eprintln!("Error opening filename {:?}: {}", prog_bin, e);
+                        std::process::exit(1);
+                    }
+                };
+
+                if let Err(_) = machine.load_program(&prog_vec, prog_seg, prog_ofs) {
+                    eprintln!("Error loading program into memory at {:04X}:{:04X}.", prog_seg, prog_ofs);
+                    std::process::exit(1);
+                };
+            }
+            else {
+                eprintln!("Must specifiy program load offset.");
+                std::process::exit(1);
+            }
+        }
+        else {
+            eprintln!("Must specifiy program load segment.");
+            std::process::exit(1);  
+        }
+    }
+
+    // Resize window if video card is in Direct mode and specifies a display aperature
+    {
+        if let Some(card) = machine.videocard() {
+            if let RenderMode::Direct = card.get_render_mode() {
+
+                let (aper_x, mut aper_y) = card.get_display_aperture();
+
+                if card.get_scanline_double() {
+                    aper_y *= 2;
+                }
+
+                let (aper_correct_x, aper_correct_y) = 
+                    VideoRenderer::get_aspect_corrected_res(
+                        (aper_x, aper_y),
+                        render::AspectRatio{ h: 4, v: 3 }
+                    );
+
+                let mut double_res = false;
+
+                // Get the current monitor resolution. 
+                if let Some(monitor) = window.current_monitor() {
+                    let monitor_size = monitor.size();
+                    
+                    log::debug!("Current monitor resolution: {}x{}", monitor_size.width, monitor_size.height);
+
+                    if ((aper_correct_x * 2) <= monitor_size.width) && ((aper_correct_y * 2) <= monitor_size.height) {
+                        // Monitor is large enough to double the display window
+                        double_res = true;
+                    }
+                }
+
+                let window_resize_w = if double_res { aper_correct_x * 2 } else { aper_correct_x };
+                let window_resize_h = if double_res { aper_correct_y * 2 } else { aper_correct_y };
+
+                log::debug!("Resizing window to {}x{}", window_resize_w, window_resize_h);
+                //resize_h = if card.get_scanline_double() { resize_h * 2 } else { resize_h };
+
+                window.set_inner_size(winit::dpi::LogicalSize::new(window_resize_w, window_resize_h));
+
+                log::debug!("Reiszing render buffer to {}x{}", aper_x, aper_y);
+
+                render_src.resize((aper_x * aper_y * 4) as usize, 0);
+                render_src.fill(0);
+
+                let (pixel_buf_w, pixel_buf_h) = if config.emulator.correct_aspect {
+                    (aper_x, aper_correct_y)
+                }
+                else {
+                    (aper_x, aper_y)
+                };
+                
+                log::debug!("Resizing pixel buffer to {}x{}", pixel_buf_w, pixel_buf_h);
+                pixels.resize_buffer(pixel_buf_w, pixel_buf_h).expect("Failed to resize Pixels buffer.");
+
+                // Pixels will resize itself from window size event
+                /*
+                if pixels.resize_surface(aper_correct_x, aper_correct_y).is_err() {
+                    // Some error occured but not much we can do about it.
+                    // Errors get thrown when the window minimizes.
+                    log::error!("Unable to resize pixels surface!");
+                }
+
+                framework.resize(window_resize_w, window_resize_h);
+                */
+
+                video_data.render_w = aper_x;
+                video_data.render_h = aper_y;
+                video_data.aspect_w = aper_correct_x;
+                video_data.aspect_h = aper_correct_y;
+
+                // Update internal state and request a redraw
+                window.request_redraw();
+            }
+        }
+    }
+        
     // Try to load default vhd
     if let Some(vhd_name) = config.machine.drive0 {
         let vhd_os_name: OsString = vhd_name.into();
@@ -555,6 +700,7 @@ fn main() {
 
             // Resize the window
             if let Some(size) = input.window_resized() {
+                log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
                 if pixels.resize_surface(size.width, size.height).is_err() {
                     // Some error occured but not much we can do about it.
                     // Errors get thrown when the window minimizes.
@@ -720,12 +866,15 @@ fn main() {
             // Draw the current frame
             Event::MainEventsCleared => {
 
+                stat_counter.current_ups += 1;
+
                 // Calculate FPS
                 let elapsed_ms = stat_counter.last_second.elapsed().as_millis();
                 if elapsed_ms > 1000 {
                     // One second elapsed, calculate FPS/CPS
                     let pit_ticks = machine.pit_cycles();
                     let cpu_cycles = machine.cpu_cycles();
+                    let system_ticks = machine.system_ticks();
 
                     stat_counter.current_cpu_cps = cpu_cycles - stat_counter.last_cpu_cycles;
                     stat_counter.last_cpu_cycles = cpu_cycles;
@@ -733,11 +882,16 @@ fn main() {
                     stat_counter.current_pit_tps = pit_ticks - stat_counter.last_pit_ticks;
                     stat_counter.last_pit_ticks = pit_ticks;
 
+                    stat_counter.current_sys_tps = system_ticks - stat_counter.last_system_ticks;
+                    stat_counter.last_system_ticks = system_ticks;
+
                     //println!("fps: {} | cps: {} | pit tps: {}", 
                     //    stat_counter.current_fps,
                     //    stat_counter.current_cpu_cps, 
                     //    stat_counter.current_pit_tps);
 
+                    stat_counter.ups = stat_counter.current_ups;
+                    stat_counter.current_ups = 0;
                     stat_counter.fps = stat_counter.current_fps;
                     stat_counter.current_fps = 0;
 
@@ -826,12 +980,20 @@ fn main() {
                             // Reset mouse for next frame
                             mouse_data.reset();
                         }
-
                     }
 
-
-
                     // Emulate a frame worth of instructions
+                    // ---------------------------------------------------------------------------
+
+                    // Recalculate cycle target based on current CPU speed if it has changed (or uninitialized)
+                    let mhz = machine.get_cpu_mhz();
+                    if mhz != stat_counter.cpu_mhz {
+                        stat_counter.cycles_per_frame = (machine.get_cpu_mhz() * 1000000.0 / FPS_TARGET) as u32;
+                        stat_counter.cycle_target = stat_counter.cycles_per_frame;
+                        log::info!("CPU clock has changed to {}Mhz; new cycle target: {}", mhz, stat_counter.cycle_target);
+                        stat_counter.cpu_mhz = mhz;
+                    }
+                    
                     let emulation_start = Instant::now();
                     stat_counter.instr_count += machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut());
                     stat_counter.emulation_time = Instant::now() - emulation_start;
@@ -880,52 +1042,96 @@ fn main() {
                         );
                         */
                     }
-                    else if emulation_time < emulation_time_allowed_ms {
-                        // ignore spurious 0-duration emulation loops
-                        if emulation_time > 0 {
-                            // Emulation could be faster
+                    else if (emulation_time > 0) && (emulation_time < emulation_time_allowed_ms) {
+                        // Emulation could run faster
                             
-                            // Increase speed by half of scaling factor
-                            let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+                        // Increase speed by half of scaling factor
+                        let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
 
-                            let old_target = stat_counter.cycle_target;
-                            let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
-                            stat_counter.cycle_target += (new_target - old_target) / 2;
+                        let old_target = stat_counter.cycle_target;
+                        let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
+                        stat_counter.cycle_target += (new_target - old_target) / 2;
 
-                            if stat_counter.cycle_target > CYCLES_PER_FRAME {
-                                // Comment to run as fast as possible
-                                
-                                if !config.emulator.warpspeed {
-                                    stat_counter.cycle_target = CYCLES_PER_FRAME;
-                                }
-                            }
-                            else {
-                                /*
-                                log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
-                                    emulation_time,
-                                    emulation_time_allowed_ms,
-                                    old_target,
-                                    stat_counter.cycle_target
-                                );
-                                */
+                        if stat_counter.cycle_target > stat_counter.cycles_per_frame {
+                            // Warpspeed runs entire emulator as fast as possible 
+                            // TODO: Limit cycle target based on render/gui time to maintain 60fps GUI updates
+                            if !config.emulator.warpspeed {
+                                stat_counter.cycle_target = stat_counter.cycles_per_frame;
                             }
                         }
+                        else {
+                            /*
+                            log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
+                                emulation_time,
+                                emulation_time_allowed_ms,
+                                old_target,
+                                stat_counter.cycle_target
+                            );
+                            */
+                        }
                     }
+
+                    /*
+                    log::debug!(
+                        "Cycle target: {} emulation time: {} allowed_ms: {}", 
+                        stat_counter.cycle_target, 
+                        emulation_time,
+                        emulation_time_allowed_ms
+                    );
+                    */
 
                     // Do per-frame updates (Serial port emulation)
                     machine.frame_update();
 
                     // Check if there was a resolution change, if a video card is present
                     if let Some(video_card) = machine.videocard() {
-                        let (new_w, new_h) = video_card.get_display_extents();
+
+                        let new_w;
+                        let mut new_h;
+
+                        match video_card.get_render_mode() {
+                            RenderMode::Direct => {
+                                /*
+                                let extents = video_card.get_display_extents();
+
+                                new_w = extents.visible_w;
+                                new_h = extents.visible_h;
+                                */
+
+                                (new_w, new_h) = video_card.get_display_aperture();
+
+                                // Set a sane maximum
+                                if new_h > 240 { 
+                                    new_h = 240;
+                                }
+                            }
+                            RenderMode::Indirect => {
+                                (new_w, new_h) = video_card.get_display_size();
+                            }
+                        }
+
+                        // If CGA, we will double scanlines later in the renderer, so make our buffer twice
+                        // as high.
+                        if video_card.get_scanline_double() {
+                            new_h = new_h * 2;
+                        }
+                        
                         if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
-                            if new_w != video_data.render_w || new_h != video_data.render_h {
+
+                            let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
+
+                            // Hack for 8088mph. If vertical resolution is decreasing by less than N, do not
+                            // make a new buffer. 8088mph alternates between 239 and 240 scanlines when displaying
+                            // its 1024 color mode. 
+                            if (new_w != video_data.render_w) || ((new_h != video_data.render_h) && (vertical_delta <= 2)) {
                                 // Resize buffers
-                                log::info!("Setting internal resolution to ({},{})", new_w, new_h);
+                                log::debug!("Setting internal resolution to ({},{})", new_w, new_h);
+                                video_card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
+
                                 // Calculate new aspect ratio (make this option)
                                 video_data.render_w = new_w;
                                 video_data.render_h = new_h;
-                                render_src.resize((new_w * new_h * 4) as usize, 0);
+                                render_src.resize((new_w * new_h * 4) as usize, 0);                                
                                 render_src.fill(0);
     
                                 video_data.aspect_w = video_data.render_w;
@@ -944,7 +1150,7 @@ fn main() {
 
                     // -- Draw video memory --
                     let composite_enabled = framework.gui.get_composite_enabled();
-                    let aspect_correct = framework.gui.get_aspect_correct_enabled();
+                    let aspect_correct = framework.gui.get_option(GuiOption::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
 
@@ -952,20 +1158,88 @@ fn main() {
                     let bus = machine.bus_mut();
 
                     if let Some(video_card) = bus.video() {
-                        match aspect_correct {
-                            true => {
-                                video.draw(&mut render_src, video_card, bus, composite_enabled);
-                                video::resize_linear(
-                                    &render_src, 
-                                    video_data.render_w, 
-                                    video_data.render_h, 
-                                    pixels.get_frame_mut(), 
-                                    video_data.aspect_w, 
-                                    video_data.aspect_h);                            
+
+                        if composite_enabled {
+                            video_data.composite_params = framework.gui.composite_adjust.get_params().clone();
+                        }
+
+                        let beam_pos;
+                        let video_buffer;
+                        // Get the appropriate buffer depending on run mode. If execution is paused 
+                        // (debugging) show the back buffer instead of front buffer. 
+                        // TODO: Discriminate between paused in debug mode vs user paused state
+                        // TODO: buffer and extents may not match due to extents being for front buffer
+                        match exec_control.borrow_mut().get_state() {
+                            ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
+                                video_buffer = video_card.get_back_buf();
+                                beam_pos = video_card.get_beam_pos();
                             }
-                            false => {
-                                video.draw(pixels.get_frame_mut(), video_card, bus, composite_enabled);
+                            _ => {
+                                video_buffer = video_card.get_display_buf();
+                                beam_pos = None;
                             }
+                        }
+
+                        // Get the render mode from the device and render appropriately
+                        match (video_card.get_video_type(), video_card.get_render_mode()) {
+
+                            (VideoType::CGA, RenderMode::Direct) => {
+                                // Draw device's back buffer in direct mode (CGA only for now)
+
+                                match aspect_correct {
+                                    true => {
+                                        video.draw_cga_direct(
+                                            &mut render_src,
+                                            video_data.render_w, 
+                                            video_data.render_h,                                             
+                                            video_buffer,
+                                            video_card.get_display_extents(),
+                                            composite_enabled,
+                                            &video_data.composite_params,
+                                            beam_pos
+                                        );
+
+                                        render::resize_linear(
+                                            &render_src, 
+                                            video_data.render_w, 
+                                            video_data.render_h, 
+                                            pixels.get_frame_mut(), 
+                                            video_data.aspect_w, 
+                                            video_data.aspect_h);                            
+                                    }
+                                    false => {
+                                        video.draw_cga_direct(
+                                            pixels.get_frame_mut(),
+                                            video_data.render_w, 
+                                            video_data.render_h,                                                                                         
+                                            video_buffer,
+                                            video_card.get_display_extents(),
+                                            composite_enabled,
+                                            &video_data.composite_params,
+                                            beam_pos                                         
+                                        );
+                                    }
+                                }
+                            }
+                            (_, RenderMode::Indirect) => {
+                                // Draw VRAM in indirect mode
+                                match aspect_correct {
+                                    true => {
+                                        video.draw(&mut render_src, video_card, bus, composite_enabled);
+                                        render::resize_linear(
+                                            &render_src, 
+                                            video_data.render_w, 
+                                            video_data.render_h, 
+                                            pixels.get_frame_mut(), 
+                                            video_data.aspect_w, 
+                                            video_data.aspect_h);                            
+                                    }
+                                    false => {
+                                        video.draw(pixels.get_frame_mut(), video_card, bus, composite_enabled);
+                                    }
+                                }                                
+                            }
+                            _ => panic!("Invalid combination of VideoType and RenderMode")
                         }
                     }
                     stat_counter.render_time = Instant::now() - render_start;
@@ -985,6 +1259,31 @@ fn main() {
                     // Handle custom user events received from our gui windows
                     loop {
                         match framework.gui.get_event() {
+
+                            Some(GuiEvent::OptionChanged(opt, val)) => {
+                                match (opt, val) {
+                                    (GuiOption::CorrectAspect, false) => {
+                                        // Aspect correction was turned off. We want to clear the render buffer as the 
+                                        // display buffer is shrinking vertically.
+                                        let surface = pixels.get_frame_mut();
+                                        surface.fill(0);
+                                    }
+                                    (GuiOption::CpuEnableWaitStates, state) => {
+                                        machine.set_cpu_option(CpuOption::EnableWaitStates(state));
+                                    }
+                                    (GuiOption::CpuInstructionHistory, state) => {
+                                        machine.set_cpu_option(CpuOption::InstructionHistory(state));
+                                    }
+                                    (GuiOption::CpuTraceLoggingEnabled, state) => {
+                                        machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
+                                    }
+                                    (GuiOption::TurboButton, state) => {
+                                        machine.set_turbo_mode(state);
+                                    }
+                                    _ => {}
+                                }
+                            }
+
                             Some(GuiEvent::CreateVHD(filename, fmt)) => {
                                 log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
@@ -1052,9 +1351,12 @@ fn main() {
                             Some(GuiEvent::DumpCS) => {
                                 machine.cpu().dump_cs();
                             }
+                            Some(GuiEvent::DumpAllMem) => {
+                                machine.bus().dump_mem();
+                            }
                             Some(GuiEvent::EditBreakpoint) => {
                                 // Get breakpoints from GUI
-                                let (bp_str, bp_mem_str) = framework.gui.get_breakpoints();
+                                let (bp_str, bp_mem_str, bp_int_str) = framework.gui.get_breakpoints();
 
                                 let mut breakpoints = Vec::new();
 
@@ -1070,8 +1372,15 @@ fn main() {
                                     if addr > 0 && addr < 0x100000 {
                                         breakpoints.push(BreakPointType::MemAccessFlat(addr));
                                     }
-                                }                                     
+                                }
                             
+                                // Push int breakpoint to list 
+                                if let Ok(addr) = u32::from_str_radix(bp_int_str, 10) {
+                                    if addr > 0 && addr < 256 {
+                                        breakpoints.push(BreakPointType::Interrupt(addr as u8));
+                                    }
+                                }
+
                                 machine.set_breakpoints(breakpoints);
                             }
                             Some(GuiEvent::MemoryUpdate) => {
@@ -1091,11 +1400,17 @@ fn main() {
                             }
                             Some(GuiEvent::TokenHover(addr)) => {
                                 // Hovered over a token in a TokenListView.
-
                                 let debug = machine.bus_mut().get_memory_debug(addr);
-
                                 framework.gui.memory_viewer.set_hover_text(format!("{}", debug));
+                            }
+                            Some(GuiEvent::FlushLogs) => {
+                                // Request to flush trace logs.
+                                machine.flush_trace_logs();
+                            }
+                            Some(GuiEvent::DelayAdjust) => {
+                                let delay_params = framework.gui.delay_adjust.get_params();
 
+                                machine.set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
                             }
                             None => break,
                             _ => {
@@ -1161,14 +1476,20 @@ fn main() {
 
                     // Update performance viewer
                     if framework.gui.is_window_open(egui::GuiWindow::PerfViewer) {
-                        framework.gui.update_video_data(video_data);
-                        framework.gui.update_perf_view(
-                            stat_counter.fps,
-                            stat_counter.emulated_fps,
-                            stat_counter.current_cps,
-                            stat_counter.current_ips,
-                            stat_counter.emulation_time,
-                            stat_counter.render_time
+                        framework.gui.perf_viewer.update_video_data(video_data);
+                        framework.gui.perf_viewer.update_stats(
+                            &PerformanceStats {
+                                current_ups: stat_counter.ups,
+                                current_fps: stat_counter.fps,
+                                emulated_fps: stat_counter.emulated_fps,
+                                cycle_target: stat_counter.cycle_target,
+                                current_cps: stat_counter.current_cps,
+                                current_tps: stat_counter.current_sys_tps,
+                                current_ips: stat_counter.current_ips,
+                                emulation_time: stat_counter.emulation_time,
+                                render_time: stat_counter.render_time,
+                                gui_time: Default::default()
+                            }
                         )
                     }
 
@@ -1176,24 +1497,31 @@ fn main() {
                     if framework.gui.is_window_open(egui::GuiWindow::MemoryViewer) {
                         let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
                         // Show address 0 if expression evail fails
-                        let mem_dump_addr: u32 = match machine.cpu().eval_address(&mem_dump_addr_str) {
+                        let (addr, mem_dump_addr) = match machine.cpu().eval_address(&mem_dump_addr_str) {
                             Some(i) => {
                                 let addr: u32 = i.into();
-                                addr & !0x0F
+                                // Dump at 16 byte block boundaries
+                                (addr, addr & !0x0F)
                             }
-                            None => 0
+                            None => (0,0)
                         };
 
-                        let mem_dump_vec = machine.bus().dump_flat_tokens(mem_dump_addr as usize, 256);
+                        let mem_dump_vec = machine.bus().dump_flat_tokens(mem_dump_addr as usize, addr as usize, 256);
                     
                         //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
                         framework.gui.memory_viewer.set_memory(mem_dump_vec);
                     }   
 
+                    // -- Update IVR viewer window if open
+                    if framework.gui.is_window_open(egui::GuiWindow::IvrViewer) {
+                        let vec = machine.bus_mut().dump_ivr_tokens();
+                        framework.gui.ivr_viewer.set_content(vec);
+                    }                     
+
                     // -- Update register viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::CpuStateViewer) {
                         let cpu_state = machine.cpu().get_string_state();
-                        framework.gui.update_cpu_state(cpu_state);
+                        framework.gui.cpu_viewer.update_state(cpu_state);
                     }
 
                     // -- Update PIT viewer window
@@ -1223,7 +1551,7 @@ fn main() {
                     // -- Update DMA viewer window
                     if framework.gui.is_window_open(egui::GuiWindow::DmaViewer) {
                         let dma_state = machine.dma_state();
-                        framework.gui.update_dma_state(dma_state);
+                        framework.gui.dma_viewer.update_state(dma_state);
                     }
                     
                     // -- Update VideoCard Viewer (Replace CRTC Viewer)
@@ -1235,7 +1563,7 @@ fn main() {
                     }
 
                     // -- Update Instruction Trace window
-                    if framework.gui.is_window_open(egui::GuiWindow::TraceViewer) {
+                    if framework.gui.is_window_open(egui::GuiWindow::HistoryViewer) {
                         let trace = machine.cpu().dump_instruction_history_tokens();
                         framework.gui.trace_viewer.set_content(trace);
                     }
@@ -1244,6 +1572,15 @@ fn main() {
                     if framework.gui.is_window_open(egui::GuiWindow::CallStack) {
                         let stack = machine.cpu().dump_call_stack();
                         framework.gui.update_call_stack_state(stack);
+                    }
+
+                    // -- Update cycle trace viewer window
+                    if framework.gui.is_window_open(egui::GuiWindow::CycleTraceViewer) {
+
+                        if machine.get_cpu_option(CpuOption::TraceLoggingEnabled(true)) {
+                            let trace_vec = machine.cpu().get_cycle_trace();
+                            framework.gui.cycle_trace_viewer.update(trace_vec);
+                        }
                     }
 
                     // -- Update disassembly viewer window
@@ -1394,13 +1731,42 @@ pub fn main_headless(
     let mut machine = Machine::new(
         config,
         config.machine.model,
-        &machine_desc_opt.unwrap(),
+        *machine_desc_opt.unwrap(),
         config.emulator.trace_mode,
         config.machine.video, 
         sp, 
         rom_manager, 
         floppy_manager,
     );
+
+    // Load program binary if one was specified in config options
+    if let Some(prog_bin) = &config.emulator.run_bin {
+
+        if let Some(prog_seg) = config.emulator.run_bin_seg {
+            if let Some(prog_ofs) = config.emulator.run_bin_ofs {
+                let prog_vec = match std::fs::read(prog_bin.clone()) {
+                    Ok(vec) => vec,
+                    Err(e) => {
+                        eprintln!("Error opening filename {:?}: {}", prog_bin, e);
+                        std::process::exit(1);
+                    }
+                };
+
+                if let Err(_) = machine.load_program(&prog_vec, prog_seg, prog_ofs) {
+                    eprintln!("Error loading program into memory at {:04X}:{:04X}.", prog_seg, prog_ofs);
+                    std::process::exit(1);
+                };
+            }
+            else {
+                eprintln!("Must specifiy program load offset.");
+                std::process::exit(1);
+            }
+        }
+        else {
+            eprintln!("Must specifiy program load segment.");
+            std::process::exit(1);  
+        }
+    }
 
     let mut exec_control = machine::ExecutionControl::new();
     exec_control.set_state(ExecutionState::Running);
@@ -1415,10 +1781,18 @@ pub fn main_headless(
 
 
 #[cfg(feature = "cpu_validator")]
-use std::io::{BufWriter, Write};
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
 #[cfg(feature = "cpu_validator")]
-use cpu_808x::*;
-use crate::cpu_808x::mnemonic::Mnemonic;
+use cpu_808x::{
+    *,
+    mnemonic::Mnemonic,
+    CpuValidatorState
+};
+#[cfg(feature = "cpu_validator")]
+use cpu_common::CpuType;
 
 #[cfg(feature = "cpu_validator")]
 pub fn main_fuzzer <'a>(
@@ -1442,15 +1816,23 @@ pub fn main_fuzzer <'a>(
         }
     }
 
-    let mut io_bus = IoBusInterface::new();
+    //let mut io_bus = IoBusInterface::new();
     let pic = Rc::new(RefCell::new(pic::Pic::new()));    
 
+    // Create the validator trace file, if specified
+    let mut validator_trace = TraceLogger::None;
+    if let Some(trace_filename) = &config.validator.trace_file {
+        validator_trace = TraceLogger::from_filename(&trace_filename);
+    }
+
     let mut cpu = Cpu::new(
-        CpuType::Cpu8088,
+        CpuType::Intel8088,
         config.emulator.trace_mode,
         Some(trace_file_option),
         #[cfg(feature = "cpu_validator")]
-        config.validator.vtype.unwrap()
+        config.validator.vtype.unwrap(),
+        #[cfg(feature = "cpu_validator")]
+        validator_trace
     );
 
     cpu.randomize_seed(1234);
@@ -1459,6 +1841,8 @@ pub fn main_fuzzer <'a>(
     let mut test_num = 0;
 
     'testloop: loop {
+
+        cpu.reset();
 
         test_num += 1;
         cpu.randomize_regs();
@@ -1471,6 +1855,7 @@ pub fn main_fuzzer <'a>(
         // Generate specific opcodes (optional)
 
         // ALU ops
+        
         /*
         cpu.random_inst_from_opcodes(
             &[
@@ -1484,8 +1869,10 @@ pub fn main_fuzzer <'a>(
                 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, // CMP
             ]
         );
-        // Completed 5000 tests
         */
+        // Completed 5000 tests
+        
+
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
 
@@ -1586,7 +1973,7 @@ pub fn main_fuzzer <'a>(
         //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
         //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
           
-        cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
+        //cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
         //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
 
         //cpu.random_inst_from_opcodes(&[0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD]); // CLC, STC, CLI, STI, CLD, STD
@@ -1599,7 +1986,7 @@ pub fn main_fuzzer <'a>(
         //cpu.random_grp_instruction(0xFE, &[4, 5]); // JMP & JMPF
         //cpu.random_grp_instruction(0xFF, &[4, 5]); // JMP & JMPF
         //cpu.random_grp_instruction(0xFE, &[6, 7]); // 8-bit broken PUSH & POP
-        //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
+        cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
         let instruction_address = 
@@ -1609,7 +1996,7 @@ pub fn main_fuzzer <'a>(
             );
 
         cpu.bus_mut().seek(instruction_address as usize);
-        let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize).expect("mem err");
+        let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
 
         let mut i = match Cpu::decode(cpu.bus_mut()) {
             Ok(i) => i,
@@ -1618,13 +2005,16 @@ pub fn main_fuzzer <'a>(
                 continue;
             }                
         };
-        
+
         // Skip N successful instructions
 
         // was at 13546
         if test_num < 0 {
             continue;
         }
+
+        cpu.set_option(CpuOption::EnableWaitStates(false));
+        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));        
 
         match i.opcode {
             0xFE | 0xD2 | 0xD3 | 0x8F => {
@@ -1635,9 +2025,11 @@ pub fn main_fuzzer <'a>(
 
         let mut rep = false;
         match i.mnemonic {
+            /*
             Mnemonic::INT | Mnemonic::INT3 | Mnemonic::INTO | Mnemonic::IRET => {
                 continue;
             },
+            */
             Mnemonic::FWAIT => {
                 continue;
             }
@@ -1682,10 +2074,13 @@ pub fn main_fuzzer <'a>(
    
         log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
         
+        // Set terminating address for CPU validator.
+        cpu.set_end_address((i.address + i.size) as usize);
+
         // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
         // execution per iteration. The 8088 makes no such distinction.
         loop {
-            match cpu.step(&mut io_bus, pic.clone(), false) {
+            match cpu.step(false) {
                 Ok((_, cycles)) => {
                     log::trace!("Instruction reported {} cycles", cycles);
 
@@ -1696,11 +2091,11 @@ pub fn main_fuzzer <'a>(
                 },
                 Err(err) => {
                     log::error!("CPU Error: {}\n", err);
+                    cpu.trace_flush();
                     break 'testloop;
                 } 
             }
         }
-
     }
     
     //std::process::exit(0);

@@ -1,5 +1,5 @@
 /*
-    Marty PC Emulator 
+    MartyPC Emulator 
     (C)2023 Daniel Balsom
     https://github.com/dbalsom/marty
 
@@ -236,6 +236,7 @@ impl CpuClient {
         Err(CpuClientError::DiscoveryError)
     }
 
+    /// Try to access an Arduino8088 on the specified port. Return the port if successful, otherwise None.
     pub fn try_port(port_info: serialport::SerialPortInfo) -> Option<Box<dyn serialport::SerialPort>> {
 
         let port_result = serialport::new(port_info.port_name.clone(), ARD8088_BAUD)
@@ -297,6 +298,7 @@ impl CpuClient {
         }
     }
     
+    /// Send a command byte to the Arduino8088 CPU server.
     pub fn send_command_byte(&mut self, cmd: ServerCommand) -> Result<(), CpuClientError> {
         let cmd: [u8; 1] = [cmd as u8];
 
@@ -311,6 +313,7 @@ impl CpuClient {
         }
     }
 
+    /// Read the result code from the Arduino8088 CPU server after issuing a command.
     pub fn read_result_code(&mut self) -> Result<bool, CpuClientError> {
         let mut buf: [u8; 1] = [0; 1];
 
@@ -333,6 +336,7 @@ impl CpuClient {
         }
     }
 
+    /// Send a slice of u8 to the CPU Server.
     pub fn send_buf(&mut self, buf: &[u8]) -> Result<bool, CpuClientError> {
         match self.port.borrow_mut().write(&buf) {
             Ok(bytes) => {
@@ -349,6 +353,7 @@ impl CpuClient {
         }
     }
 
+    /// Receive a fixed number of bytes from the CPU Server.
     pub fn recv_buf(&mut self, buf: &mut [u8]) -> Result<bool, CpuClientError> {
         match self.port.borrow_mut().read(buf) {
             Ok(bytes) => {
@@ -407,11 +412,15 @@ impl CpuClient {
         self.read_result_code()
     }
 
+    /// Server command - Cycle
+    /// Cycle the CPU once.
     pub fn cycle(&mut self) -> Result<bool, CpuClientError> {
         self.send_command_byte(ServerCommand::CmdCycle)?;
         self.read_result_code()
     }
 
+    /// Server command - ReadAddress
+    /// Return the value of the address latches (Latched on ALE)
     pub fn read_address_latch(&mut self) -> Result<u32, CpuClientError> {
         let mut buf: [u8; 3] = [0; 3];
         self.send_command_byte(ServerCommand::CmdReadAddress)?;

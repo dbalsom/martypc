@@ -50,7 +50,7 @@ pub enum SyntaxToken {
     ErrorString(String),
     MemoryAddressSeg16(u16, u16, String),
     MemoryAddressFlat(u32, String),
-    MemoryByteHexValue(u32, u8, String, u8),
+    MemoryByteHexValue(u32, u8, String, bool, u8),
     MemoryByteAsciiValue(u32, u8, String, u8),
 
     // Disassembly tokens

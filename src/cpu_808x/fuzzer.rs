@@ -50,7 +50,8 @@ impl<'a> Cpu<'a> {
         self.cs = get_rand!(self);
         self.ip = get_rand!(self);
 
-        self.reset(CpuAddress::Segmented(self.cs, self.ip));
+        self.set_reset_vector(CpuAddress::Segmented(self.cs, self.ip));
+        self.reset();
 
         for i in 0..REGISTER16_LUT.len() {
             let n: u16 = get_rand!(self);
@@ -80,7 +81,7 @@ impl<'a> Cpu<'a> {
         for i in 0..self.bus.size() {
 
             let n: u8 = get_rand!(self);
-            self.bus.write_u8(i, n).expect("Mem err");
+            self.bus.write_u8(i, n, 0).expect("Mem err");
         }
     }
 

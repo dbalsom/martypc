@@ -55,6 +55,7 @@ impl<'a> Cpu<'a> {
                 // Store byte [ds:si] in AL   (Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
+                self.set_mc_pc(0x12d);
                 let data = self.biu_read_u8(segment_base_ds, src_addr);
 
                 self.set_register8(Register8::AL, data);
@@ -76,6 +77,7 @@ impl<'a> Cpu<'a> {
                 // Store word [ds:si] in AX   (Segment overrideable)
                 let src_addr = Cpu::calc_linear_address(segment_value_base_ds, self.si);
 
+                self.set_mc_pc(0x12d);
                 let data = self.biu_read_u16(segment_base_ds, src_addr, ReadWriteFlag::Normal);
 
                 self.set_register16(Register16::AX, data);  

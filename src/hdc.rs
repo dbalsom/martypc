@@ -17,7 +17,7 @@ use std::{
 
 use core::fmt::Display;
 
-use crate::bus::BusInterface;
+use crate::bus::{BusInterface, DeviceRunTimeUnit};
 use crate::dma;
 //use crate::fdc::Operation;
 use crate::bus::IoDevice;
@@ -128,7 +128,7 @@ pub enum Command {
 type CommandDispatchFn = fn (&mut HardDiskController, &mut BusInterface) -> Continuation;
 
 impl IoDevice for HardDiskController {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
             HDC_DATA_REGISTER  => {
                 self.handle_data_register_read()
@@ -146,7 +146,7 @@ impl IoDevice for HardDiskController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             HDC_DATA_REGISTER => {
                 // Bus will always call us with Bus defined, so safe to unwrap
@@ -1157,7 +1157,11 @@ impl HardDiskController {
                 if tc {
                     log::trace!("DMA terminal count triggered end of WriteSectorBuffer command.");
                     if self.operation_status.dma_bytes_left != 0 {
-                        log::warn!("Incomplete DMA transfer on terminal count!")
+                        log::warn!(
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {} count: {}",
+                            self.operation_status.dma_bytes_left,
+                            self.operation_status.dma_byte_count
+                        );
                     }
 
                     log::trace!("Completed WriteSectorBuffer command.");
@@ -1235,7 +1239,11 @@ impl HardDiskController {
                 if tc {
                     log::trace!("DMA terminal count triggered end of Read command.");
                     if self.operation_status.dma_bytes_left != 0 {
-                        log::warn!("Incomplete DMA transfer on terminal count!")
+                        log::warn!(
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {} count: {}",
+                            self.operation_status.dma_bytes_left,
+                            self.operation_status.dma_byte_count
+                        );
                     }
 
                     log::trace!("Completed Read Command");
@@ -1282,6 +1290,12 @@ impl HardDiskController {
 
                                     Ok(_) => {
                                         // Sector write successful
+                                        log::debug!(
+                                            "Sector write successful: c: {} h: {} s: {}",
+                                            self.drives[self.drive_select].cylinder,
+                                            self.drives[self.drive_select].head,
+                                            self.drives[self.drive_select].sector
+                                        );
                                     }
                                     Err(err) => {
                                         log::error!("Sector write failed: {}", err);
@@ -1311,7 +1325,11 @@ impl HardDiskController {
                 if tc {
                     log::trace!("DMA terminal count triggered end of Write command.");
                     if self.operation_status.dma_bytes_left != 0 {
-                        log::warn!("Incomplete DMA transfer on terminal count!")
+                        log::warn!(
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {} count: {}",
+                            self.operation_status.dma_bytes_left,
+                            self.operation_status.dma_byte_count
+                        );
                     }
 
                     self.end_dma_command(0, false);

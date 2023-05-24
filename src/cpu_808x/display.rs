@@ -389,6 +389,9 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect) -> Vec<SyntaxToken> {
         OperandType::Immediate8(imm8) => {
             op_vec.push(SyntaxToken::HexValue(format!("{:02X}h", imm8)));
         }
+        OperandType::Immediate8s(imm8s) => {
+            op_vec.push(SyntaxToken::HexValue(format!("{:02X}h", imm8s)));
+        }        
         OperandType::Immediate16(imm16) => {
             op_vec.push(SyntaxToken::HexValue(format!("{:04X}h", imm16)));
         }

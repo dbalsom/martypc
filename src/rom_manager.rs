@@ -564,15 +564,10 @@ impl RomManager {
                         (0xFE3DE, "Setup Interrupt Vector Table"),
                         (0xFE418, "Expansion I/O Box Test"),
                         (0xFE46A, "Additional R/W Storage Test"),
-
                         /*
-                        
-                        
-                        
                         (0xFE53C, "Optional ROM Scan"),
                         (0xFE55B, "Diskette Attachment Test"),
                         */
-
                     ])
                 }
             ),(

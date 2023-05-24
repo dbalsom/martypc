@@ -11,7 +11,7 @@
 use std::cell::Cell;
 
 use crate::config::{MachineType, VideoType};
-use crate::bus::{BusInterface, IoDevice};
+use crate::bus::{BusInterface, IoDevice, NO_IO_BYTE, DeviceRunTimeUnit};
 use crate::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
@@ -216,7 +216,7 @@ impl Ppi {
 }
 
 impl IoDevice for Ppi {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         //log::trace!("PPI Read from port: {:04X}", port);
         match port {
             PPI_PORT_A => {
@@ -233,11 +233,14 @@ impl IoDevice for Ppi {
             PPI_PORT_C => {
                 self.calc_port_c_value()
             },
+            PPI_COMMAND_PORT => {
+                NO_IO_BYTE
+            }            
             _ => panic!("PPI: Bad port #")
         }
     }
 
-    fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             PPI_PORT_A => {
                 // Read-only port

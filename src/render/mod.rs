@@ -1,14 +1,51 @@
-#![allow(dead_code)]
-#![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting. Dunno.
+/*
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
-// Video module
-// This module takes an internal representation from the cga module and actually draws the screen
-// It also defines representational details such as colors
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    ---------------------------------------------------------------------------
+
+    render/mod.rs
+
+    This module implements various Video rendering functions. Video card devices
+    render in either Direct or Indirect mode.
+
+    In direct mode, the video device draws directly to intermediate representation
+    framebuffer, which the render module displays.
+
+    In indirect mode, the render module draws the video device's VRAM directly. 
+    This is fast, but not always accurate if register writes happen mid-frame.
+
+*/
+
+#![allow(dead_code)]
+#![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
+
 use std::rc::Rc;
 use std::cell::RefCell;
 
+pub mod resize;
+pub mod composite;
+
+// Re-export submodules
+pub use self::resize::*;
+pub use self::composite::*;
+
 use crate::config::VideoType;
-use crate::videocard::{VideoCard, DisplayMode, CursorInfo, CGAColor, CGAPalette, FontInfo};
+use crate::videocard::*;
 use crate::cga;
 use crate::bus::BusInterface;
 
@@ -18,14 +55,14 @@ use rand::{
     Rng,
 }; 
 
-pub const ATTR_BLUE_FG: u8 = 0b0000_0001;
-pub const ATTR_GREEN_FG: u8 = 0b0000_0010;
-pub const ATTR_RED_FG: u8 = 0b0000_0100;
-pub const ATTR_BRIGHT_FG: u8 = 0b0000_1000;
-pub const ATTR_BLUE_BG: u8 = 0b0001_0000;
-pub const ATTR_GREEN_BG: u8 = 0b0010_0000;
-pub const ATTR_RED_BG: u8 = 0b0100_0000;
-pub const ATTR_BRIGHT_BG: u8 = 0b1000_0000;
+pub const ATTR_BLUE_FG: u8      = 0b0000_0001;
+pub const ATTR_GREEN_FG: u8     = 0b0000_0010;
+pub const ATTR_RED_FG: u8       = 0b0000_0100;
+pub const ATTR_BRIGHT_FG: u8    = 0b0000_1000;
+pub const ATTR_BLUE_BG: u8      = 0b0001_0000;
+pub const ATTR_GREEN_BG: u8     = 0b0010_0000;
+pub const ATTR_RED_BG: u8       = 0b0100_0000;
+pub const ATTR_BRIGHT_BG: u8    = 0b1000_0000;
 
 // Font is encoded as a bit pattern with a span of 256 bits per row
 //static CGA_FONT: &'static [u8; 2048] = include_bytes!("cga_font.bin");
@@ -51,17 +88,97 @@ const VGA_LORES_GFX_H: u32 = 200;
 const VGA_HIRES_GFX_W: u32 = 640;
 const VGA_HIRES_GFX_H: u32 = 480;
 
+const XOR_COLOR: u8 = 0x80;
+
+#[derive (Copy, Clone)]
+pub struct AspectRatio {
+    pub h: u32,
+    pub v: u32,
+}
+
+#[derive (Copy, Clone)]
+pub struct CompositeParams {
+    pub hue: f32,
+    pub sat: f32,
+    pub luma: f32
+}
+
+impl Default for CompositeParams {
+    fn default() -> Self {
+        Self {
+            hue: 1.5,
+            sat: 1.0,
+            luma: 1.0
+        }
+    }
+}
+
+#[derive (Copy, Clone)]
+pub enum RenderColor {
+    CgaIndex(u8),
+    Rgb(u8, u8, u8)
+}
+
+#[derive (Copy, Clone)]
+pub struct DebugRenderParams {
+    pub draw_scanline: Option<u32>,
+    pub draw_scanline_color: Option<RenderColor>
+}
 
 //const frame_w: u32 = 640;
 //const frame_h: u32 = 400;
 
+// This color-index to RGBA table supports two conversion palettes,
+// the "standard" palette given by most online references, and the 
+// alternate, more monitor-accurate "VileR palette"
+// See https://int10h.org/blog/2022/06/ibm-5153-color-true-cga-palette/ 
+// for details.
+const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
+    [
+        [0x10, 0x10, 0x10, 0xFF], // 0 - Black  (Slightly brighter for debugging)
+        [0x00, 0x00, 0xAA, 0xFF], // 1 - Blue
+        [0x00, 0xAA, 0x00, 0xFF], // 2 - Green
+        [0x00, 0xAA, 0xAA, 0xFF], // 3 - Cyan
+        [0xAA, 0x00, 0x00, 0xFF], // 4 - Red
+        [0xAA, 0x00, 0xAA, 0xFF], // 5 - Magenta
+        [0xAA, 0x55, 0x00, 0xFF], // 6 - Brown
+        [0xAA, 0xAA, 0xAA, 0xFF], // 7 - Light Gray
+        [0x55, 0x55, 0x55, 0xFF], // 8 - Dark Gray
+        [0x55, 0x55, 0xFF, 0xFF], // 9 - Light Blue
+        [0x55, 0xFF, 0x55, 0xFF], // 10 - Light Green
+        [0x55, 0xFF, 0xFF, 0xFF], // 11 - Light Cyan
+        [0xFF, 0x55, 0x55, 0xFF], // 12 - Light Red
+        [0xFF, 0x55, 0xFF, 0xFF], // 13 - Light Magenta
+        [0xFF, 0xFF, 0x55, 0xFF], // 14 - Yellow
+        [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+    ],
+    // VileR's palette
+    [
+        [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+        [0x00, 0x00, 0xC4, 0xFF], // 1 - Blue
+        [0x00, 0xC4, 0x00, 0xFF], // 2 - Green
+        [0x00, 0xC4, 0xC4, 0xFF], // 3 - Cyan
+        [0xC4, 0x00, 0x00, 0xFF], // 4 - Red
+        [0xC4, 0x00, 0xC4, 0xFF], // 5 - Magenta
+        [0xC4, 0x7E, 0x00, 0xFF], // 6 - Brown
+        [0xC4, 0xC4, 0xC4, 0xFF], // 7 - Light Gray
+        [0x4E, 0x4E, 0x4E, 0xFF], // 8 - Dark Gray
+        [0x4E, 0x4E, 0xDC, 0xFF], // 9 - Light Blue
+        [0x4E, 0xDC, 0x4E, 0xFF], // 10 - Light Green
+        [0x4E, 0xF3, 0xF3, 0xFF], // 11 - Light Cyan
+        [0xDC, 0x4E, 0x4E, 0xFF], // 12 - Light Red
+        [0xF3, 0x4E, 0xF3, 0xFF], // 13 - Light Magenta
+        [0xF3, 0xF3, 0x4E, 0xFF], // 14 - Yellow
+        [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+    ],
+];
 
-
-// Random color generator
+// Random CGA color generator. This was used very early in emulator development
+// to display random-color glyphs in the background while we debugged the 
+// very first CPU instructions.
 impl Distribution<CGAColor> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CGAColor {
-        // match rng.gen_range(0, 3) { // rand 0.5, 0.6, 0.7
-        match rng.gen_range(0..=15) { // rand 0.8
+        match rng.gen_range(0..=15) {
             0 => CGAColor::Black,
             1 => CGAColor::Blue,       
             2 => CGAColor::Green,        
@@ -282,19 +399,54 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
 }
 
 
-pub struct Video {
+pub struct VideoRenderer {
     mode: DisplayMode,
     cols: u32,
-    rows: u32
+    rows: u32,
+
+    composite_buf: Option<Vec<u8>>,
+    composite_params: CompositeParams,
+    sync_table_w: u32,
+    sync_table: Vec<(f32, f32, f32)>
 }
 
-impl Video {
-    pub fn new() -> Self {
+impl VideoRenderer {
+    pub fn new(video_type: VideoType) -> Self {
+
+        // Create a buffer to hold composite conversion of CGA graphics.
+        // This buffer will need to be twice as large as the largest possible
+        // CGA screen (CGA_MAX_CLOCK * 4) to account for half-hdots used in the 
+        // composite conversion process.
+        let composite_vec_opt = match video_type {
+            VideoType::CGA => {
+                Some(vec![0; cga::CGA_MAX_CLOCK * 4])
+            }
+            _ => {
+                None
+            }
+        };
+
         Self {
             mode: DisplayMode::Mode3TextCo80,
             cols: 80,
-            rows: 25
+            rows: 25,
+
+            composite_buf: composite_vec_opt,
+            composite_params: Default::default(),
+            sync_table_w: 0,
+            sync_table: Vec::new()
         }
+    }
+
+    /// Given the specified resolution and desired aspect ratio, return an aspect corrected resolution
+    /// by adjusting the vertical resolution (Horizontal resolution will never be changed)
+    pub fn get_aspect_corrected_res(res: (u32, u32), aspect: AspectRatio) -> (u32, u32) {
+
+        let desired_ratio: f64 = aspect.h as f64 / aspect.v as f64;
+
+        let adjusted_h = (res.0 as f64 / desired_ratio) as u32; // Result should be slightly larger than integer, ok to cast
+
+        (res.0, adjusted_h)
     }
 
     pub fn draw(&self, frame: &mut [u8], video_card: Box<&dyn VideoCard>, bus: &BusInterface, composite: bool) {
@@ -303,7 +455,7 @@ impl Video {
         let start_address = video_card.get_start_address() as usize;
         let mode_40_cols = video_card.is_40_columns();
 
-        let (frame_w, frame_h) = video_card.get_display_extents();
+        let (frame_w, frame_h) = video_card.get_display_size();
 
         match video_card.get_display_mode() {
             DisplayMode::Disabled => {
@@ -501,6 +653,191 @@ impl Video {
                 draw_cursor(cursor, frame, frame_w, frame_h, mem, font )
             }
             _=> {}
+        }
+    }
+
+    pub fn draw_horizontal_xor_line(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        y: u32
+    ) {
+
+        if y > (h-1) {
+            return;
+        }
+
+        let frame_row0_offset = ((y * 2) * (span * 4)) as usize;
+        let frame_row1_offset = (((y * 2) * (span * 4)) + (span * 4)) as usize;
+
+        for x in 0..w {
+
+            let fo0 = frame_row0_offset + (x * 4) as usize;
+            let fo1 = frame_row1_offset + (x * 4) as usize;
+
+            let r = frame[fo0];
+            let g = frame[fo0 + 1];
+            let b = frame[fo0 + 2];
+
+            frame[fo1] = r ^ XOR_COLOR;
+            frame[fo1 + 1] = g ^ XOR_COLOR;
+            frame[fo1 + 2] = b ^ XOR_COLOR;
+        }
+    }
+
+    pub fn draw_vertical_xor_line(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        x: u32
+    ) {
+
+        if x > (w-1) {
+            return;
+        }
+
+        let frame_x0_offset = (x * 4) as usize;
+
+        for y in 0..h {
+            let fo0 = frame_x0_offset + ((y * 2) * (span * 4)) as usize;
+            let fo1 = frame_x0_offset + (((y * 2) * (span * 4)) + (span * 4)) as usize;
+
+            let r = frame[fo0];
+            let g = frame[fo0 + 1];
+            let b = frame[fo0 + 2];
+
+            frame[fo0] = r ^ XOR_COLOR;
+            frame[fo0 + 1] = g ^ XOR_COLOR;
+            frame[fo0 + 2] = b ^ XOR_COLOR;
+
+            frame[fo1] = r ^ XOR_COLOR;
+            frame[fo1 + 1] = g ^ XOR_COLOR;
+            frame[fo1 + 2] = b ^ XOR_COLOR;
+        }
+
+    }    
+
+    /// Draw the CGA card in Direct Mode. 
+    /// Cards in Direct Mode generate their own framebuffers, we simply display the current back buffer
+    /// Optionally composite processing is performed.
+    pub fn draw_cga_direct(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,
+        dbuf: &[u8],
+        extents: &DisplayExtents,
+        composite_enabled: bool,
+        composite_params: &CompositeParams,
+        beam_pos: Option<(u32, u32)>
+    ) {
+
+        if composite_enabled {
+            self.draw_cga_direct_composite(frame, w, h, dbuf, extents, composite_params);
+            return
+        }
+
+        // Attempt to center the image by reducing right overscan 
+        let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
+        let overscan_half = overscan_total / 2;
+
+        let mut horiz_adjust = 0;
+        /*
+        if overscan_half < extents.overscan_l {
+            // We want to shift image to the right 
+            horiz_adjust = extents.overscan_l - overscan_half;
+        }
+        */
+
+        // Assume display buffer visible data starts at offset 0
+
+        let max_y = std::cmp::min(h / 2, extents.aperture_h);
+        let max_x = std::cmp::min(w, extents.aperture_w);
+
+        //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
+
+        for y in 0..max_y {
+
+            let dbuf_row_offset = y as usize * extents.row_stride;
+            let frame_row0_offset = ((y * 2) * (w * 4)) as usize;
+            let frame_row1_offset = (((y * 2) * (w * 4)) + (w * 4)) as usize;
+
+            for x in 0..(max_x - horiz_adjust) {
+                let fo0 = frame_row0_offset + (x * 4) as usize;
+                let fo1 = frame_row1_offset + (x * 4) as usize;
+
+                let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+
+                frame[fo0]       = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][0];
+                frame[fo0 + 1]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][1];
+                frame[fo0 + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
+                frame[fo0 + 3]   = 0xFFu8;
+
+                frame[fo1]       = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][0];
+                frame[fo1 + 1]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][1];
+                frame[fo1 + 2]   = CGA_RGBA_COLORS[0][(dbuf[dbo] & 0x0F) as usize][2];
+                frame[fo1 + 3]   = 0xFFu8;                
+            }
+        }
+
+        // Draw crosshairs for debugging crt beam pos
+        if let Some(beam) = beam_pos {
+            self.draw_horizontal_xor_line(frame, w, max_x, max_y, beam.1);
+            self.draw_vertical_xor_line(frame, w, max_x, max_y, beam.0);
+        }
+    }
+
+    pub fn draw_cga_direct_composite(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,        
+        dbuf: &[u8],
+        extents: &DisplayExtents,
+        composite_params: &CompositeParams
+    ) {
+
+        if let Some(composite_buf) = &mut self.composite_buf {
+            let max_w = std::cmp::min(w, extents.aperture_w);
+            let max_h = std::cmp::min(h / 2, extents.aperture_h);
+            
+    
+            //log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
+
+
+            process_cga_composite_int(
+                dbuf, 
+                extents.aperture_w, 
+                extents.aperture_h, 
+                extents.overscan_l,
+                extents.overscan_t,
+                extents.row_stride as u32, 
+                composite_buf);
+
+            // Regen sync table if width changed
+            if self.sync_table_w != (max_w * 2) {
+                self.sync_table.resize(((max_w * 2) + CCYCLE as u32) as usize, (0.0, 0.0, 0.0));
+                regen_sync_table(&mut self.sync_table,(max_w * 2) as usize);
+                // Update to new width
+                self.sync_table_w = max_w * 2;
+            }
+
+            artifact_colors_fast(
+                composite_buf, 
+                max_w * 2, 
+                max_h, 
+                &self.sync_table, 
+                frame, 
+                max_w, 
+                max_h, 
+                composite_params.hue, 
+                composite_params.sat,
+                composite_params.luma
+            );
         }
     }
 
@@ -1260,39 +1597,6 @@ pub fn draw_glyph1x1(
 
 
 
-/// Performs a linear resize of the specified src into dst. 
-/// 
-/// Since we are only doing this for aspect correction, we don't need a bi-linear filter
-pub fn resize_linear(src: &[u8], src_w: u32, src_h: u32, dst: &mut[u8], dst_w: u32, dst_h: u32) {
-
-    let ratio: f64 = (src_h - 1) as f64 / (dst_h - 1) as f64;
-
-    for y in 0..dst_h {
-
-        let low = f64::floor(ratio * y as f64) as u32;
-        let high = f64::ceil(ratio * y as f64) as u32;
-        let weight: f64 = (ratio * y as f64) - low as f64;
-
-        let y_off_low = (low * src_w * 4) as usize;
-        let y_off_high = (high * src_w * 4) as usize;
-
-        let dy_offset = (y * dst_w * 4) as usize;
-        for x in 0..dst_w {
-            
-            let low_off: usize = y_off_low + (x as usize * 4);
-            let high_off: usize = y_off_high + (x as usize * 4);
-
-            let r = (src[low_off+0] as f64 * (1.0 - weight) + src[high_off + 0] as f64 * weight) as u8;
-            let g = (src[low_off+1] as f64 * (1.0 - weight) + src[high_off + 1] as f64 * weight) as u8;
-            let b = (src[low_off+2] as f64 * (1.0 - weight) + src[high_off + 2] as f64 * weight) as u8;
-
-            dst[dy_offset + x as usize * 4 + 0] = r;
-            dst[dy_offset + x as usize * 4 + 1] = g;
-            dst[dy_offset + x as usize * 4 + 2] = b;
-            dst[dy_offset + x as usize * 4 + 3] = 255;
-        }
-    }
-}
 
 
 pub fn draw_ega_lowres_gfx_mode(ega: Box<&dyn VideoCard>, frame: &mut [u8], frame_w: u32, _frame_h: u32 ) {

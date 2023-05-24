@@ -19,12 +19,12 @@ use std::{
 use crate::{
     config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
     breakpoints::BreakPointType,
-    bus::{BusInterface, MemRangeDescriptor, MEM_CP_BIT},
+    bus::{BusInterface, ClockFactor, MemRangeDescriptor, DeviceEvent, MEM_CP_BIT},
     cga,
     ega::{self, EGACard},
     vga::{self, VGACard},
     cpu_808x::{self, Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
-    cpu_common::CpuType,
+    cpu_common::{CpuType, CpuOption},
     dma::{self, DMAControllerStringState},
     fdc::{self, FloppyController},
     hdc::{self, HardDiskController},
@@ -51,6 +51,13 @@ pub const NUM_HDDS: u32 = 2;
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
 #[derive(Copy, Clone, Debug)]
+pub enum MachineState {
+    Running,
+    Paused,
+    Off
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum ExecutionState {
     Paused,
     BreakpointHit,
@@ -67,6 +74,11 @@ pub enum ExecutionOperation {
     StepOver,
     Run,
     Reset
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct DelayParams {
+    pub dram_delay: u32
 }
 
 pub struct ExecutionControl {
@@ -158,9 +170,11 @@ pub struct PitData {
 pub struct Machine<'a> 
 {
     machine_type: MachineType,
+    machine_desc: MachineDescriptor,
     video_type: VideoType,
     sound_player: SoundPlayer,
     rom_manager: RomManager,
+    load_bios: bool,
     floppy_manager: FloppyManager,
     cpu: Cpu<'a>, 
     speaker_buf_producer: Producer<u8>,
@@ -169,14 +183,16 @@ pub struct Machine<'a>
     kb_buf: VecDeque<u8>,
     error: bool,
     error_str: Option<String>,
+    cpu_factor: ClockFactor,
     cpu_cycles: u64,
+    system_ticks: u64,
 }
 
 impl<'a> Machine<'a> {
     pub fn new(
         config: &ConfigFileParams,
         machine_type: MachineType,
-        machine_desc: &MachineDescriptor,
+        machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
         video_type: VideoType,
         sound_player: SoundPlayer,
@@ -184,7 +200,6 @@ impl<'a> Machine<'a> {
         floppy_manager: FloppyManager,
         ) -> Machine<'a> 
     {
-
 
         //let mut io_bus = IoBusInterface::new();
         
@@ -218,16 +233,24 @@ impl<'a> Machine<'a> {
             }
         }
 
+        // Create the validator trace file, if specified
+        let mut validator_trace = TraceLogger::None;
+        if let Some(trace_filename) = &config.validator.trace_file {
+            validator_trace = TraceLogger::from_filename(&trace_filename);
+        }
+
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
             trace_mode,
             trace_file_option,
             #[cfg(feature = "cpu_validator")]
-            config.validator.vtype.unwrap()
+            config.validator.vtype.unwrap(),
+            #[cfg(feature = "cpu_validator")]
+            validator_trace
         );
 
-        let reset_vector = cpu.get_reset_vector();
-        cpu.reset(reset_vector);        
+        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+        cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection)); 
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
@@ -259,25 +282,45 @@ impl<'a> Machine<'a> {
         }
 
         // Install devices
-        cpu.bus_mut().install_devices(video_type, machine_desc, video_trace);
+        cpu.bus_mut().install_devices(
+            video_type, 
+            &machine_desc, 
+            video_trace, 
+            config.emulator.video_frame_debug
+        );
 
-        // Load BIOS ROM images
-        rom_manager.copy_into_memory(cpu.bus_mut());
+        // Load BIOS ROM images unless config option suppressed rom loading
+        if !config.emulator.no_bios {
 
-        // Load checkpoint flags into memory
-        rom_manager.install_checkpoints(cpu.bus_mut());
+            rom_manager.copy_into_memory(cpu.bus_mut());
 
-        // Set entry point for ROM (mostly used for diagnostic ROMs that don't have a FAR JUMP reset vector)
+            // Load checkpoint flags into memory
+            rom_manager.install_checkpoints(cpu.bus_mut());
+
+            // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
     
-        let rom_entry_point = rom_manager.get_entrypoint();
-        cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
-        cpu.reset_address();
+            let rom_entry_point = rom_manager.get_entrypoint();
+            cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
+        }
+
+        // Set CPU clock divisor/multiplier
+        let cpu_factor;
+        if config.machine.turbo { 
+            cpu_factor = machine_desc.cpu_turbo_factor;
+        }
+        else {
+            cpu_factor = machine_desc.cpu_factor;
+        }
+
+        cpu.reset();
 
         Machine {
             machine_type,
+            machine_desc,
             video_type,
             sound_player,
             rom_manager,
+            load_bios: !config.emulator.no_bios,
             floppy_manager,
             cpu,
             speaker_buf_producer,
@@ -286,8 +329,24 @@ impl<'a> Machine<'a> {
             kb_buf: VecDeque::new(),
             error: false,
             error_str: None,
+            cpu_factor,
             cpu_cycles: 0,
+            system_ticks: 0
         }
+    }
+
+    pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
+
+        let location = Cpu::calc_linear_address(program_seg, program_ofs);
+        
+        self.cpu.bus_mut().copy_from(program, location as usize, 0, false)?;
+
+        self.cpu.set_reset_vector(CpuAddress::Segmented(program_seg, program_ofs));
+        self.cpu.reset();
+
+        self.cpu.set_end_address(((location as usize) + program.len()) & 0xFFFFF );
+
+        Ok(())
     }
 
     pub fn bus(&self) -> &BusInterface {
@@ -310,6 +369,52 @@ impl<'a> Machine<'a> {
         &self.cpu
     }
 
+    /// Set a CPU option. Avoids needing to borrow CPU.
+    pub fn set_cpu_option(&mut self, opt: CpuOption) {
+        self.cpu.set_option(opt);
+    }
+
+    /// Get a CPU option. Avoids needing to borrow CPU.
+    pub fn get_cpu_option(&mut self, opt: CpuOption) -> bool {
+        self.cpu.get_option(opt)
+    }    
+
+    /// Flush all trace logs for devices that have one
+    pub fn flush_trace_logs(&mut self) {
+        self.cpu.trace_flush();
+        if let Some(video) = self.cpu.bus_mut().video_mut() {
+            video.trace_flush();   
+        }
+    }
+
+    /// Return the current CPU clock frequency in MHz.
+    /// This can vary during system execution if state of turbo button is toggled.
+    /// CPU speed is always some factor of the main system crystal frequency.
+    /// The CPU itself has no concept of its operational frequency.
+    pub fn get_cpu_mhz(&self) -> f64 {
+        match self.cpu_factor {
+            ClockFactor::Divisor(n) => {
+                self.machine_desc.system_crystal / (n as f64)
+            }
+            ClockFactor::Multiplier(n) => {
+                self.machine_desc.system_crystal * (n as f64)
+            }
+        }
+    }
+
+    /// Set the specified state of the turbo button. True will enable turbo mode
+    /// and switch to the turbo mode CPU clock factor.
+    pub fn set_turbo_mode(&mut self, state: bool) {
+        
+        if state {
+            self.cpu_factor = self.machine_desc.cpu_turbo_factor;
+        }
+        else {
+            self.cpu_factor = self.machine_desc.cpu_factor;
+        }
+        log::debug!("Set turbo mode to: {} New cpu factor is {:?}", state, self.cpu_factor);
+    }
+
     pub fn fdc(&mut self) -> &mut Option<FloppyController> {
         self.cpu.bus_mut().fdc_mut()
     }
@@ -324,6 +429,10 @@ impl<'a> Machine<'a> {
 
     pub fn cpu_cycles(&self) -> u64 {
         self.cpu_cycles
+    }
+
+    pub fn system_ticks(&self) -> u64 {
+        self.system_ticks
     }
 
     /// Return the number of cycles the PIT has ticked.
@@ -416,30 +525,52 @@ impl<'a> Machine<'a> {
 
     pub fn reset(&mut self) {
 
+        // TODO: Reload any program specified here?
+
         // Clear any error state.
         self.error = false;
         self.error_str = None;
 
         // Reset CPU.
-        self.cpu.reset(CpuAddress::Segmented(0xFFFF, 0x0000));
+        self.cpu.reset();
 
         // Clear RAM
         self.cpu.bus_mut().clear();
 
         // Reload BIOS ROM images
-        self.rom_manager.copy_into_memory(self.cpu.bus_mut());
-        // Clear patch installation status
-        self.rom_manager.reset_patches();
+        if self.load_bios {
+            self.rom_manager.copy_into_memory(self.cpu.bus_mut());
+            // Clear patch installation status
+            self.rom_manager.reset_patches();
+        }
 
         // Reset all installed devices.
         self.cpu.bus_mut().reset_devices();
     }
 
-    fn cycles_to_us(&self, cycles: u32) -> f64 {
+    #[inline]
+    /// Convert a count of CPU cycles to microseconds based on the current CPU clock
+    /// divisor and system crystal speed.
+    fn cpu_cycles_to_us(&self, cycles: u32) -> f64 {
 
-        1.0 / cpu_808x::CPU_MHZ * cycles as f64
+        let mhz = match self.cpu_factor {
+            ClockFactor::Divisor(n) => self.machine_desc.system_crystal / (n as f64),
+            ClockFactor::Multiplier(n) => self.machine_desc.system_crystal * (n as f64)
+        };
+
+        1.0 / mhz * cycles as f64
     }
     
+    #[inline]
+    /// Convert a count of CPU cycles to system clock ticks based on the current CPU
+    /// clock divisor.
+    fn cpu_cycles_to_system_ticks(&self, cycles: u32) -> u32 {
+        match self.cpu_factor {
+            ClockFactor::Divisor(n) => cycles * (n as u32),
+            ClockFactor::Multiplier(n) => cycles / (n as u32)
+        }
+    }
+
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) -> u64 {
 
         let mut kb_event_processed = false;
@@ -581,12 +712,18 @@ impl<'a> Machine<'a> {
                             exec_control.state = ExecutionState::BreakpointHit;
                             return 1
                         }
+                        StepResult::ProgramEnd => {
+                            log::debug!("Program ended execution.");
+                            exec_control.state = ExecutionState::Halted;
+                            return 1
+                        }                        
                     }
                     
                 },
                 Err(err) => {
                     if let CpuError::CpuHaltedError(_) = err {
                         log::error!("CPU Halted!");
+                        self.cpu.trace_flush();
                         exec_control.state = ExecutionState::Halted;
                     }
                     self.error = true;
@@ -594,6 +731,10 @@ impl<'a> Machine<'a> {
                     log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
                     cpu_cycles = 0
                 } 
+            }
+
+            if cpu_cycles > 200 {
+                log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
             }
 
             instr_count += 1;
@@ -634,6 +775,10 @@ impl<'a> Machine<'a> {
                                         // We can hit an 'inner' breakpoint while stepping over. This is fine, and ends the step
                                         // over operation at the breakpoint.
                                         exec_control.state = ExecutionState::BreakpointHit;
+                                        return instr_count
+                                    }
+                                    StepResult::ProgramEnd => {
+                                        exec_control.state = ExecutionState::Halted;
                                         return instr_count
                                     }
                                 }
@@ -683,14 +828,18 @@ impl<'a> Machine<'a> {
             }
         }
 
+        //log::debug!("cycles_elapsed: {}", cycles_elapsed);
+
         instr_count
     }
 
-    pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) {
+    pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) -> u32 {
 
         // Convert cycles into elapsed microseconds
-        let us;
-        us = self.cycles_to_us(cpu_cycles);
+        let us = self.cpu_cycles_to_us(cpu_cycles);
+
+        // Convert cycles into system clock ticks
+        let sys_ticks = self.cpu_cycles_to_system_ticks(cpu_cycles);
 
         // Process a keyboard event once per frame.
         // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
@@ -710,13 +859,56 @@ impl<'a> Machine<'a> {
         // Run devices.
         // We send the IO bus the elapsed time in us, and a mutable reference to the PIT channel #2 ring buffer
         // so that we can collect output from the timer.
-        self.cpu.bus_mut().run_devices(us, kb_byte_opt, &mut self.speaker_buf_producer);
+        let device_event = self.cpu.bus_mut().run_devices(
+            us, 
+            sys_ticks,
+            kb_byte_opt, 
+            &self.machine_desc, 
+            &mut self.speaker_buf_producer
+        );
+
+        // Currently only one device run event type
+        if let Some(DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val)) = device_event {
+            self.cpu.set_option(
+                CpuOption::SimulateDramRefresh(
+                    true, 
+                    self.timer_ticks_to_cpu_cycles(dma_counter), 
+                    //self.timer_ticks_to_cpu_cycles(dma_counter_val)
+                    self.timer_ticks_to_cpu_cycles(0)
+                )
+            )
+        }
 
         // Sample the PIT channel #2 for sound
         while self.speaker_buf_producer.len() >= self.pit_data.next_sample_size {
             self.pit_buf_to_sound_buf();
         }
 
+        self.system_ticks += sys_ticks as u64;
+        sys_ticks
+    }
+
+    fn timer_ticks_to_cpu_cycles(&self, timer_ticks: u16) -> u32 {
+
+        let timer_multiplier = 
+            if let Some(timer_crystal) = self.machine_desc.timer_crystal {
+                // We have an alternate 
+                todo!("Unimplemented conversion for AT timer");
+                1
+            }
+            else {
+                match self.machine_desc.cpu_factor {
+                    ClockFactor::Divisor(n) => {
+                        self.machine_desc.timer_divisor / (n as u32)
+                    }
+                    ClockFactor::Multiplier(n) => {
+                        todo!("unimplemented conversion for CPU multiplier");
+                        1
+                    }
+                }
+            };
+
+        timer_ticks as u32 * timer_multiplier
     }
 
     /// Called to update machine once per frame.

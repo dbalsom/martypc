@@ -87,7 +87,7 @@ impl TokenListView {
                 for mut token in row {
 
                     match &mut token {
-                        SyntaxToken::MemoryByteHexValue(_,_,_,new_age) => {
+                        SyntaxToken::MemoryByteHexValue(_,_,_,_,new_age) => {
                             *new_age = TOKEN_MAX_AGE;
                         }
                         SyntaxToken::MemoryByteAsciiValue(_,_,_,new_age) => {
@@ -113,7 +113,7 @@ impl TokenListView {
 
                     match (new, old) {
 
-                        (SyntaxToken::MemoryByteHexValue(new_addr,new_val,_,new_age), SyntaxToken::MemoryByteHexValue(old_addr,old_val,_,old_age)) => {
+                        (SyntaxToken::MemoryByteHexValue(new_addr,new_val,_,_,new_age), SyntaxToken::MemoryByteHexValue(old_addr,old_val,_,_,old_age)) => {
                             if old_addr == new_addr {
                                 // This is the same byte as before. Compare values.
                                 if old_val == new_val {
@@ -161,7 +161,7 @@ impl TokenListView {
             egui::pos2(0.0, 0.0),
             egui::Align2::LEFT_TOP,
             match token {
-                SyntaxToken::MemoryByteHexValue(_, _, s, _) => s.clone(),
+                SyntaxToken::MemoryByteHexValue(_, _, s, _, _) => s.clone(),
                 _ => "0".to_string()
             },
             fontid,
@@ -227,7 +227,7 @@ impl TokenListView {
                 let label_rect = 
                     self.measure_token(
                         ui, 
-                        &SyntaxToken::MemoryByteHexValue(0, 0, "00".to_string(), 0),
+                        &SyntaxToken::MemoryByteHexValue(0, 0, "00".to_string(), false, 0),
                         font_id.clone()
                     );
 
@@ -263,12 +263,13 @@ impl TokenListView {
                                 used_rect = used_rect.union(text_rect);
                                 drawn = true;
                             }
-                            SyntaxToken::MemoryByteHexValue(addr, _, s, age) => {
+                            SyntaxToken::MemoryByteHexValue(addr, _, s, cursor, age) => {
 
                                 if ui.put(
-                                    Rect{
+                                    Rect {
                                         min: egui::pos2(token_x, y), 
-                                        max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y)},
+                                        max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y)
+                                    },
                                     egui::Label::new(
                                         egui::RichText::new(s)
                                             .text_style(egui::TextStyle::Monospace)
@@ -279,6 +280,18 @@ impl TokenListView {
                                 .hovered() {
                                     column_select = j;
                                     events.push_back(GuiEvent::TokenHover(*addr as usize));
+                                }
+
+                                if *cursor {
+                                    ui.painter().rect(
+                                        Rect {
+                                            min: egui::pos2(token_x, y), 
+                                            max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y)
+                                        },
+                                        egui::Rounding::none(),
+                                        Color32::TRANSPARENT,
+                                        egui::Stroke::new(1.0, Color32::WHITE)
+                                    );                                    
                                 }
 
                                 token_x += label_rect.max.x + 7.0;

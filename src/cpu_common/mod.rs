@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 
-#[derive (Debug)]
+#[derive (Copy, Clone, Debug)]
 pub enum CpuType {
     Intel8088,
     Intel8086,
@@ -9,6 +9,16 @@ pub enum CpuType {
 
 impl Default for CpuType {
     fn default() -> Self { CpuType::Intel8088 }
+}
+
+#[derive (Debug)]
+pub enum CpuOption {
+    InstructionHistory(bool),
+    SimulateDramRefresh(bool, u32, u32),
+    DramRefreshAdjust(u32),
+    OffRailsDetection(bool),
+    EnableWaitStates(bool),
+    TraceLoggingEnabled(bool)
 }
 
 use crate::cpu_808x::*;

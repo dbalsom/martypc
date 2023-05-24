@@ -28,6 +28,7 @@ use egui::{
 };
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
+use ::image::Delay;
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
 use winit::{window::Window, event_loop::EventLoopWindowTarget};
@@ -35,17 +36,26 @@ use super::VideoData;
 
 use serialport::SerialPortInfo;
 
-mod constants;
+// Bring in submodules
 mod color;
-mod image;
-mod menu;
 mod color_swatch;
-mod token_listview;
+mod composite_adjust;
+mod constants;
+mod cpu_control;
+mod cpu_state_viewer;
+mod cycle_trace_viewer;
+mod delay_adjust;
 mod disassembly_viewer;
-mod videocard_viewer;
+mod dma_viewer;
+mod image;
+mod instruction_history_viewer;
+mod ivr_viewer;
 mod memory_viewer;
+mod menu;
+mod performance_viewer;
 mod pit_viewer;
-mod instruction_trace_viewer;
+mod token_listview;
+mod videocard_viewer;
 
 use crate::{
 
@@ -53,10 +63,18 @@ use crate::{
     egui::color::{darken_c32, lighten_c32, add_c32},
 
     // Use custom windows
+    egui::composite_adjust::CompositeAdjustControl,
+    egui::cpu_control::CpuControl,
+    egui::cpu_state_viewer::CpuViewerControl,
+    egui::cycle_trace_viewer::CycleTraceViewerControl,
     egui::memory_viewer::MemoryViewerControl,
+    egui::delay_adjust::DelayAdjustControl,
     egui::disassembly_viewer::DisassemblyControl,
+    egui::dma_viewer::DmaViewerControl,
+    egui::performance_viewer::PerformanceViewerControl,
     egui::pit_viewer::PitViewerControl,
-    egui::instruction_trace_viewer::InstructionTraceControl,
+    egui::instruction_history_viewer::InstructionHistoryControl,
+    egui::ivr_viewer::IvrViewerControl,
 
     machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
@@ -65,6 +83,7 @@ use crate::{
     pit::PitDisplayState, 
     pic::PicStringState,
     ppi::PpiStringState, 
+    render::CompositeParams,
     videocard::{VideoCardState, VideoCardStateEntry}
     
 };
@@ -77,8 +96,11 @@ pub(crate) enum GuiWindow {
     CpuControl,
     PerfViewer,
     MemoryViewer,
+    CompositeAdjust,
     CpuStateViewer,
-    TraceViewer,
+    HistoryViewer,
+    IvrViewer,
+    DelayAdjust,
     DiassemblyViewer,
     PitViewer,
     PicViewer,
@@ -88,6 +110,17 @@ pub(crate) enum GuiWindow {
     VideoMemViewer,
     CallStack,
     VHDCreator,
+    CycleTraceViewer,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+pub enum GuiOption {
+    CompositeDisplay,
+    CorrectAspect,
+    CpuEnableWaitStates,
+    CpuInstructionHistory,
+    CpuTraceLoggingEnabled,
+    TurboButton
 }
 
 pub enum GuiEvent {
@@ -99,9 +132,14 @@ pub enum GuiEvent {
     BridgeSerialPort(String),
     DumpVRAM,
     DumpCS,
+    DumpAllMem,
     EditBreakpoint,
     MemoryUpdate,
-    TokenHover(usize)
+    TokenHover(usize),
+    OptionChanged(GuiOption, bool),
+    CompositeAdjust(CompositeParams),
+    FlushLogs,
+    DelayAdjust
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -118,6 +156,20 @@ pub(crate) struct Framework {
     pub gui: GuiState,
 }
 
+#[derive (Copy, Clone, Default)]
+pub struct PerformanceStats {
+    pub current_ups: u32,
+    pub current_fps: u32,
+    pub emulated_fps: u32,
+    pub cycle_target: u32,
+    pub current_cps: u64,
+    pub current_tps: u64,
+    pub current_ips: u64,
+    pub emulation_time: Duration,
+    pub render_time: Duration,
+    pub gui_time: Duration,
+}
+
 /// Example application state. A real application will need a lot more state than this.
 pub(crate) struct GuiState {
 
@@ -128,16 +180,12 @@ pub(crate) struct GuiState {
     window_open_flags: HashMap::<GuiWindow, bool>,
     error_dialog_open: bool,
     
+    option_flags: HashMap::<GuiOption, bool>,
+
     video_mem: ColorImage,
 
     video_data: VideoData,
-    current_fps: u32,
-    emulated_fps: u32,
-    current_cps: u64,
-    current_ips: u64,
-    emulation_time: Duration,
-    render_time: Duration,
-    gui_time: Duration,
+    perf_stats: PerformanceStats,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -164,17 +212,19 @@ pub(crate) struct GuiState {
 
     error_string: String,
 
+    pub cpu_control: CpuControl,
+    pub cpu_viewer: CpuViewerControl,
+    pub cycle_trace_viewer: CycleTraceViewerControl,
     pub memory_viewer: MemoryViewerControl,
     pub cpu_state: CpuStringState,
-    
-    pub breakpoint: String,
-    pub mem_breakpoint: String,
+
+    pub perf_viewer: PerformanceViewerControl,
+    pub delay_adjust: DelayAdjustControl,
     
     pub pit_viewer: PitViewerControl,
     pub pic_state: PicStringState,
     pub ppi_state: PpiStringState,
-    pub dma_state: DMAControllerStringState,
-
+    
     pub videocard_state: VideoCardState,
     videocard_set_select: String,
     dma_channel_select: u32,
@@ -184,8 +234,11 @@ pub(crate) struct GuiState {
     disassembly_viewer_string: String,
     disassembly_viewer_address: String,
     pub disassembly_viewer: DisassemblyControl,
-    pub trace_viewer: InstructionTraceControl,
-
+    pub dma_viewer: DmaViewerControl,
+    pub trace_viewer: InstructionHistoryControl,
+    pub composite_adjust: CompositeAdjustControl,
+    pub ivr_viewer: IvrViewerControl,
+    
     trace_string: String,
     call_stack_string: String,
 
@@ -299,7 +352,7 @@ impl Framework {
             .handle_platform_output(window, &self.egui_ctx, output.platform_output);
         self.paint_jobs = self.egui_ctx.tessellate(output.shapes);
 
-        self.gui.gui_time = Instant::now() - gui_start;
+        self.gui.perf_stats.gui_time = Instant::now() - gui_start;
     }
 
     /// Render egui.
@@ -330,8 +383,6 @@ impl Framework {
 
         // Render egui with WGPU
         {
-            
-
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("egui"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -363,12 +414,15 @@ impl GuiState {
         // Set default values for window open flags
         let window_open_flags: HashMap<GuiWindow, bool> = [
             (GuiWindow::About, false),
-            (GuiWindow::CpuControl, true),
+            (GuiWindow::CpuControl, false),
             (GuiWindow::PerfViewer, false),
             (GuiWindow::MemoryViewer, false),
+            (GuiWindow::CompositeAdjust, false),
             (GuiWindow::CpuStateViewer, false),
-            (GuiWindow::TraceViewer, false),
-            (GuiWindow::DiassemblyViewer, true),
+            (GuiWindow::HistoryViewer, false),
+            (GuiWindow::IvrViewer, false),
+            (GuiWindow::DelayAdjust, false),
+            (GuiWindow::DiassemblyViewer, false),
             (GuiWindow::PitViewer, false),
             (GuiWindow::PicViewer, false),
             (GuiWindow::PpiViewer, false),
@@ -377,6 +431,16 @@ impl GuiState {
             (GuiWindow::VideoMemViewer, false),
             (GuiWindow::CallStack, false),
             (GuiWindow::VHDCreator, false),
+            (GuiWindow::CycleTraceViewer, false),
+        ].into();
+
+        let option_flags: HashMap<GuiOption, bool> = [
+            (GuiOption::CompositeDisplay, false),
+            (GuiOption::CorrectAspect, false),
+            (GuiOption::CpuEnableWaitStates, true),
+            (GuiOption::CpuInstructionHistory, false),
+            (GuiOption::CpuTraceLoggingEnabled, false),
+            (GuiOption::TurboButton, false),
         ].into();
 
         Self { 
@@ -386,16 +450,12 @@ impl GuiState {
             window_open_flags,
             error_dialog_open: false,
 
+            option_flags,
+
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
             video_data: Default::default(),
-            current_fps: 0,
-            emulated_fps: 0,
-            current_cps: 0,
-            current_ips: 0,
-            emulation_time: Default::default(),
-            render_time: Default::default(),
-            gui_time: Default::default(),
+            perf_stats: Default::default(),
         
             floppy_names: Vec::new(),
             new_floppy_name0: Option::None,
@@ -415,18 +475,22 @@ impl GuiState {
             serial_ports: Vec::new(),
             serial_port_name: String::new(),
 
-            exec_control,
+            exec_control: exec_control.clone(),
 
             error_string: String::new(),
+
+            cpu_control: CpuControl::new(exec_control.clone()),
+            cpu_viewer: CpuViewerControl::new(),
+            cycle_trace_viewer: CycleTraceViewerControl::new(),
             memory_viewer_dump: String::new(),
             memory_viewer: MemoryViewerControl::new(),
             cpu_state: Default::default(),
-            breakpoint: String::new(),
-            mem_breakpoint: String::new(),
+
+            perf_viewer: PerformanceViewerControl::new(),
+            delay_adjust: DelayAdjustControl::new(),
             pit_viewer: PitViewerControl::new(),
             pic_state: Default::default(),
             ppi_state: Default::default(),
-            dma_state: Default::default(),
             dma_channel_select: 0,
             dma_channel_select_str: String::new(),
 
@@ -435,8 +499,11 @@ impl GuiState {
             disassembly_viewer_string: String::new(),
             disassembly_viewer_address: "cs:ip".to_string(),
             disassembly_viewer: DisassemblyControl::new(),
-            trace_viewer: InstructionTraceControl::new(),
+            dma_viewer: DmaViewerControl::new(),
+            trace_viewer: InstructionHistoryControl::new(),
             trace_string: String::new(),
+            composite_adjust: CompositeAdjustControl::new(),
+            ivr_viewer: IvrViewerControl::new(),
             call_stack_string: String::new(),
 
             // Options menu items
@@ -466,6 +533,25 @@ impl GuiState {
         else {
             false
         }
+    }
+
+    pub fn set_window_open(&mut self, window: GuiWindow, state: bool) {
+
+        *self.window_open_flags.get_mut(&window).unwrap() = state;
+    }    
+
+    pub fn set_option(&mut self, option: GuiOption, state: bool) {
+        if let Some(opt) = self.option_flags.get_mut(&option) {
+            *opt = state
+        }
+    }
+
+    pub fn get_option(&mut self, option: GuiOption) -> Option<bool> {
+        self.option_flags.get(&option).copied()
+    }
+
+    pub fn get_option_mut(&mut self, option: GuiOption) -> &mut bool {
+        self.option_flags.get_mut(&option).unwrap()
     }
 
     pub fn show_error(&mut self, err_str: &String) {
@@ -524,16 +610,12 @@ impl GuiState {
         self.composite
     }
 
-    pub fn update_cpu_state(&mut self, state: CpuStringState) {
-        self.cpu_state = state.clone();
-    }
-
     pub fn update_pic_state(&mut self, state: PicStringState) {
         self.pic_state = state;
     }
 
-    pub fn get_breakpoints(&mut self) -> (&str, &str) {
-        (&self.breakpoint, &self.mem_breakpoint)
+    pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {
+        self.cpu_control.get_breakpoints()
     }
 
     pub fn update_pit_state(&mut self, state: &PitDisplayState) {
@@ -548,29 +630,12 @@ impl GuiState {
         self.ppi_state = state;
     }
 
-    pub fn update_dma_state(&mut self, state: DMAControllerStringState) {
-        self.dma_state = state;
-    }
-
     pub fn update_vhd_formats(&mut self, formats: Vec<HardDiskFormat>) {
         self.vhd_formats = formats
     }
 
     pub fn update_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
         self.serial_ports = ports;
-    }
-
-    pub fn update_perf_view(&mut self, current_fps: u32, emulated_fps: u32, current_cps: u64, current_ips: u64, emulation_time: Duration, render_time: Duration) {
-        self.current_fps = current_fps;
-        self.emulated_fps = emulated_fps;
-        self.current_cps = current_cps;
-        self.current_ips = current_ips;
-        self.emulation_time = emulation_time;
-        self.render_time = render_time;
-    }
-
-    pub fn update_video_data(&mut self, video_data: VideoData) {
-        self.video_data = video_data;
     }
 
     pub fn update_videocard_state(&mut self, state: HashMap<String,Vec<(String, VideoCardStateEntry)>>) {
@@ -644,123 +709,13 @@ impl GuiState {
             .open(self.window_open_flags.get_mut(&GuiWindow::PerfViewer).unwrap())
             .show(ctx, |ui| {
 
-                egui::Grid::new("perf")
-                    .striped(true)
-                    .min_col_width(100.0)
-                    .show(ui, |ui| {
-                        ui.label("Internal resolution: ");
-                        ui.label(egui::RichText::new(format!("{}, {}", 
-                            self.video_data.render_w, 
-                            self.video_data.render_h))
-                            .background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Display buffer resolution: ");
-                        ui.label(egui::RichText::new(format!("{}, {}", 
-                            self.video_data.aspect_w, 
-                            self.video_data.aspect_h))
-                            .background_color(egui::Color32::BLACK));
-                        ui.end_row();
-
-                        ui.label("FPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.current_fps)).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Emulated FPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.emulated_fps)).background_color(egui::Color32::BLACK));
-                        ui.end_row();                        
-                        ui.label("IPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.current_ips)).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("CPS: ");
-                        ui.label(egui::RichText::new(format!("{}", self.current_cps)).background_color(egui::Color32::BLACK));
-                        ui.end_row();                         
-                        ui.label("Emulation time: ");
-                        ui.label(egui::RichText::new(format!("{}", ((self.emulation_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Render time: ");
-                        ui.label(egui::RichText::new(format!("{}", ((self.render_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
-                        ui.end_row();
-                        ui.label("Gui Render time: ");
-                        ui.label(egui::RichText::new(format!("{}", ((self.gui_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
-                        ui.end_row();                        
-                    });      
+                self.perf_viewer.draw(ui, &mut self.event_queue);
             });
 
         egui::Window::new("CPU Control")
             .open(self.window_open_flags.get_mut(&GuiWindow::CpuControl).unwrap())
             .show(ctx, |ui| {
-
-                let mut exec_control = self.exec_control.borrow_mut();
-
-                let (pause_enabled, step_enabled, run_enabled) = match exec_control.state {
-                    ExecutionState::Paused | ExecutionState::BreakpointHit => (false, true, true),
-                    ExecutionState::Running => (true, false, false),
-                    ExecutionState::Halted => (false, false, false),
-                };
-
-                ui.horizontal(|ui|{
-
-                    ui.add_enabled_ui(pause_enabled, |ui| {
-                        if ui.button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0))).clicked() {
-                            exec_control.set_state(ExecutionState::Paused);
-                        };
-                    });
-
-                    ui.add_enabled_ui(step_enabled, |ui| {
-                        if ui.button(egui::RichText::new("⤵").font(egui::FontId::proportional(20.0))).clicked() {
-                           exec_control.set_op(ExecutionOperation::StepOver);
-                        };
-
-                        if ui.input().key_pressed(egui::Key::F10) {
-                            exec_control.set_op(ExecutionOperation::StepOver);
-                        }                             
-                    });   
-
-                    ui.add_enabled_ui(step_enabled, |ui| {
-                        if ui.button(egui::RichText::new("➡").font(egui::FontId::proportional(20.0))).clicked() {
-                           exec_control.set_op(ExecutionOperation::Step);
-                        };
-
-                        if ui.input().key_pressed(egui::Key::F11) {
-                            log::debug!("f11 pressed!");
-                            exec_control.set_op(ExecutionOperation::Step);
-                        }                             
-                    });                 
-
-                    ui.add_enabled_ui(run_enabled, |ui| {
-                        if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
-                            exec_control.set_op(ExecutionOperation::Run);
-                        };
-
-                        if ui.input().key_pressed(egui::Key::F5) {
-                            exec_control.set_op(ExecutionOperation::Run);
-                        }                        
-                    });
-
-                    if ui.button(egui::RichText::new("⟲").font(egui::FontId::proportional(20.0))).clicked() {
-                        exec_control.set_op(ExecutionOperation::Reset);
-                    };
-                });
-
-                let state_str = format!("{:?}", exec_control.get_state());
-                ui.separator();
-                ui.horizontal(|ui|{
-                    ui.label("Run state: ");
-                    ui.label(&state_str);
-                });
-                ui.separator();
-                ui.horizontal(|ui|{
-                    ui.label("Exec Breakpoint: ");
-                    if ui.text_edit_singleline(&mut self.breakpoint).changed() {
-                        self.event_queue.push_back(GuiEvent::EditBreakpoint);
-                    };
-                });
-                ui.separator();
-                ui.horizontal(|ui|{
-                    ui.label("Mem Breakpoint: ");
-                    if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
-                        self.event_queue.push_back(GuiEvent::EditBreakpoint);
-                    }
-                });                
+                self.cpu_control.draw(ui, &mut self.option_flags, &mut self.event_queue);
             });
 
         egui::Window::new("Memory View")
@@ -771,13 +726,21 @@ impl GuiState {
                 self.memory_viewer.draw(ui, &mut self.event_queue);
             });
 
-        egui::Window::new("Instruction Trace")
-            .open(self.window_open_flags.get_mut(&GuiWindow::TraceViewer).unwrap())
+        egui::Window::new("Instruction History")
+            .open(self.window_open_flags.get_mut(&GuiWindow::HistoryViewer).unwrap())
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
                 self.trace_viewer.draw(ui, &mut self.event_queue);
             });       
+
+        egui::Window::new("Cycle Trace")
+            .open(self.window_open_flags.get_mut(&GuiWindow::CycleTraceViewer).unwrap())
+            .resizable(true)
+            .default_width(540.0)
+            .show(ctx, |ui| {
+                self.cycle_trace_viewer.draw(ui, &mut self.event_queue);
+            });               
 
         egui::Window::new("Call Stack")
             .open(self.window_open_flags.get_mut(&GuiWindow::CallStack).unwrap())
@@ -801,173 +764,30 @@ impl GuiState {
                 self.disassembly_viewer.draw(ui, &mut self.event_queue);
             });             
 
+        egui::Window::new("IVR Viewer")
+            .open(self.window_open_flags.get_mut(&GuiWindow::IvrViewer).unwrap())
+            .resizable(true)
+            .default_width(400.0)
+            .show(ctx, |ui| {
+                self.ivr_viewer.draw(ui, &mut self.event_queue);
+            }
+        );  
+
         egui::Window::new("CPU State")
             .open(self.window_open_flags.get_mut(&GuiWindow::CpuStateViewer).unwrap())
             .resizable(false)
             .default_width(220.0)
             .show(ctx, |ui| {
-                egui::Grid::new("reg_general")
-                    .striped(true)
-                    .min_col_width(100.0)
-                    .show(ui, |ui| {
+                self.cpu_viewer.draw(ui, &mut self.event_queue);
+            });      
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("AH:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.ah).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("AL:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.al).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("AX:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.ax).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();
-
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("BH:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.bh).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("BL:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.bl).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("BX:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.bx).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();
-
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("CH:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.ch).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("CL:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.cl).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("CX:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.cx).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();
-
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("DH:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.dh).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("DL:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.dl).font(egui::TextStyle::Monospace));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("DX:").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.cpu_state.dx).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();         
-                });
-
-                ui.separator();
-
-                egui::Grid::new("reg_segment")
-                    .striped(true)
-                    .min_col_width(100.0)
-                    .show(ui, |ui| {
-
-                        ui.horizontal( |ui| {
-                            //ui.add(egui::Label::new("SP:"));
-                            ui.label(egui::RichText::new("SP:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.sp).font(egui::TextStyle::Monospace));
-                        });
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("ES:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.es).font(egui::TextStyle::Monospace));
-                        });                        
-                        ui.end_row();  
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("BP:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.bp).font(egui::TextStyle::Monospace));
-                        });
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("CS:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.cs).font(egui::TextStyle::Monospace));
-                        });                         
-                        ui.end_row();  
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("SI:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.si).font(egui::TextStyle::Monospace));
-                        });
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("SS:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.ss).font(egui::TextStyle::Monospace));
-                        });                         
-                        ui.end_row();  
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("DI:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.di).font(egui::TextStyle::Monospace));
-                        });
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("DS:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.ds).font(egui::TextStyle::Monospace));
-                        });                         
-                        ui.end_row();  
-                        ui.label("");
-                        ui.horizontal( |ui| {
-                            ui.label(egui::RichText::new("IP:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.ip).font(egui::TextStyle::Monospace));
-                            //ui.text_edit_singleline(&mut self.memory_viewer_address);
-                        }); 
-                        ui.end_row();  
-                    });
-
-                ui.separator();
-
-                egui::Grid::new("reg_flags")
-                    .striped(true)
-                    .max_col_width(15.0)
-                    .show(ui, |ui| {
-                        //const CPU_FLAG_CARRY: u16      = 0b0000_0000_0001;
-                        //const CPU_FLAG_RESERVED1: u16  = 0b0000_0000_0010;
-                        //const CPU_FLAG_PARITY: u16     = 0b0000_0000_0100;
-                        //const CPU_FLAG_AUX_CARRY: u16  = 0b0000_0001_0000;
-                        //const CPU_FLAG_ZERO: u16       = 0b0000_0100_0000;
-                        //const CPU_FLAG_SIGN: u16       = 0b0000_1000_0000;
-                        //const CPU_FLAG_TRAP: u16       = 0b0001_0000_0000;
-                        //const CPU_FLAG_INT_ENABLE: u16 = 0b0010_0000_0000;
-                        //const CPU_FLAG_DIRECTION: u16  = 0b0100_0000_0000;
-                        //const CPU_FLAG_OVERFLOW: u16   = 0b1000_0000_0000;
-
-                        ui.horizontal( |ui| {
-                            //ui.add(egui::Label::new("SP:"));
-                            ui.label(egui::RichText::new("O:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.o_fl).font(egui::TextStyle::Monospace));
-                            ui.label(egui::RichText::new("D:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.d_fl).font(egui::TextStyle::Monospace)); 
-                            ui.label(egui::RichText::new("I:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.i_fl).font(egui::TextStyle::Monospace));  
-                            ui.label(egui::RichText::new("T:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.t_fl).font(egui::TextStyle::Monospace));
-                            ui.label(egui::RichText::new("S:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.s_fl).font(egui::TextStyle::Monospace));
-                            ui.label(egui::RichText::new("Z:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.z_fl).font(egui::TextStyle::Monospace));      
-                            ui.label(egui::RichText::new("A:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.a_fl).font(egui::TextStyle::Monospace));  
-                            ui.label(egui::RichText::new("P:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.p_fl).font(egui::TextStyle::Monospace));             
-                            ui.label(egui::RichText::new("C:").text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.cpu_state.c_fl).font(egui::TextStyle::Monospace));                                        
-                        });
-
-                        ui.end_row();  
-                    });
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("Instruction #:").text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.cpu_state.instruction_count).font(egui::TextStyle::Monospace));
-                }); 
-            });        
+        egui::Window::new("Delay Adjust")
+            .open(self.window_open_flags.get_mut(&GuiWindow::DelayAdjust).unwrap())
+            .resizable(false)
+            .default_width(400.0)
+            .show(ctx, |ui| {
+                self.delay_adjust.draw(ui, &mut self.event_queue);
+            });                 
             
         egui::Window::new("PIT View")
             .open(self.window_open_flags.get_mut(&GuiWindow::PitViewer).unwrap())
@@ -980,7 +800,7 @@ impl GuiState {
 
             });               
 
-            egui::Window::new("PIC View")
+        egui::Window::new("PIC View")
             .open(self.window_open_flags.get_mut(&GuiWindow::PicViewer).unwrap())
             .resizable(true)
             .default_width(600.0)
@@ -1040,7 +860,7 @@ impl GuiState {
                 });
             });           
             
-            egui::Window::new("PPI View")
+        egui::Window::new("PPI View")
             .open(self.window_open_flags.get_mut(&GuiWindow::PpiViewer).unwrap())
             .resizable(true)
             .default_width(600.0)
@@ -1085,133 +905,60 @@ impl GuiState {
                 });
             });
 
-            egui::Window::new("DMA View")
+        egui::Window::new("DMA View")
             .open(self.window_open_flags.get_mut(&GuiWindow::DmaViewer).unwrap())
             .resizable(false)
             .default_width(200.0)
             .show(ctx, |ui| {
-                egui::Grid::new("dma_view")
-                    .num_columns(2)
-                    .striped(true)
-                    .min_col_width(50.0)
-                    .show(ui, |ui| {
-
-                    ui.label(egui::RichText::new("Enabled:".to_string()).text_style(egui::TextStyle::Monospace));
-                    ui.add(egui::TextEdit::singleline(&mut self.dma_state.enabled).font(egui::TextStyle::Monospace));
-                    ui.end_row();     
-
-                    //ui.horizontal(|ui| {
-                    //    ui.separator();
-                    //});
-                    ui.separator();
-                    ui.separator();
-                    ui.end_row();    
-
-                    ui.horizontal(|ui| {
-                        egui::ComboBox::from_label("Channel #")
-                            .selected_text(format!("Channel #{}", self.dma_channel_select))
-                            .show_ui(ui, |ui| {
-                                for (i, _chan) in self.dma_state.dma_channel_state.iter_mut().enumerate() {
-                                    ui.selectable_value(&mut self.dma_channel_select, i as u32, format!("Channel #{}",i));
-                                }
-                            });
-                    });                        
-                    ui.end_row();   
-
-                    if (self.dma_channel_select as usize) < self.dma_state.dma_channel_state.len() {
-                        let chan = &mut self.dma_state.dma_channel_state[self.dma_channel_select as usize];
-                        
-                        ui.label(egui::RichText::new(format!("#{} CAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.current_address_reg).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new(format!("#{} Page:        ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.page).font(egui::TextStyle::Monospace));
-                        ui.end_row();                      
-
-                        ui.label(egui::RichText::new(format!("#{} CWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.current_word_count_reg).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new(format!("#{} BAR:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.base_address_reg).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new(format!("#{} BWC:         ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.base_word_count_reg).font(egui::TextStyle::Monospace));
-                        ui.end_row();    
-
-                        ui.label(egui::RichText::new(format!("#{} Service Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.service_mode).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new(format!("#{} Address Mode:", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.address_mode).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new(format!("#{} Xfer Type:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.transfer_type).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new(format!("#{} Auto Init:   ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.auto_init).font(egui::TextStyle::Monospace));
-                        ui.end_row();   
-
-                        ui.label(egui::RichText::new(format!("#{} Terminal Ct: ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.terminal_count).font(egui::TextStyle::Monospace));
-                        ui.end_row();  
-
-                        ui.label(egui::RichText::new(format!("#{} TC Reached:  ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.terminal_count_reached).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new(format!("#{} Masked:      ", self.dma_channel_select)).text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut chan.masked).font(egui::TextStyle::Monospace));
-                        ui.end_row();
-                    }
-
-
-                });
+                self.dma_viewer.draw(ui, &mut self.event_queue);
             });                       
 
-            egui::Window::new("Video Card View")
-                .open(self.window_open_flags.get_mut(&GuiWindow::VideoCardViewer).unwrap())
-                .resizable(false)
-                .default_width(300.0)
-                .show(ctx, |ui| {
-                   GuiState::draw_video_card_panel(ui, &self.videocard_state);
-                });         
+        egui::Window::new("Video Card View")
+            .open(self.window_open_flags.get_mut(&GuiWindow::VideoCardViewer).unwrap())
+            .resizable(false)
+            .default_width(300.0)
+            .show(ctx, |ui| {
+                GuiState::draw_video_card_panel(ui, &self.videocard_state);
+            });         
 
-            egui::Window::new("Create VHD")
-                .open(self.window_open_flags.get_mut(&GuiWindow::VHDCreator).unwrap())
-                .resizable(false)
-                .default_width(400.0)
-                .show(ctx, |ui| {
+        egui::Window::new("Create VHD")
+            .open(self.window_open_flags.get_mut(&GuiWindow::VHDCreator).unwrap())
+            .resizable(false)
+            .default_width(400.0)
+            .show(ctx, |ui| {
 
-                    if !self.vhd_formats.is_empty() {
-                        egui::ComboBox::from_label("Format")
-                        .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
-                        .show_ui(ui, |ui| {
-                            for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
-                                ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
-                            }
-                        });
+                if !self.vhd_formats.is_empty() {
+                    egui::ComboBox::from_label("Format")
+                    .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
+                    .show_ui(ui, |ui| {
+                        for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
+                            ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
+                        }
+                    });
 
-                        ui.horizontal(|ui| {
-                            ui.label("Filename: ");
-                            ui.text_edit_singleline(&mut self.new_vhd_filename);
-                        });               
+                    ui.horizontal(|ui| {
+                        ui.label("Filename: ");
+                        ui.text_edit_singleline(&mut self.new_vhd_filename);
+                    });               
 
-                        let enabled = self.vhd_regex.is_match(&self.new_vhd_filename.to_lowercase());
+                    let enabled = self.vhd_regex.is_match(&self.new_vhd_filename.to_lowercase());
 
-                        if ui.add_enabled(enabled, egui::Button::new("Create"))
-                            .clicked() {
-                            self.event_queue.push_back(GuiEvent::CreateVHD(OsString::from(&self.new_vhd_filename), self.vhd_formats[self.selected_format_idx].clone()))
-                        };                        
-                    }
+                    if ui.add_enabled(enabled, egui::Button::new("Create"))
+                        .clicked() {
+                        self.event_queue.push_back(GuiEvent::CreateVHD(OsString::from(&self.new_vhd_filename), self.vhd_formats[self.selected_format_idx].clone()))
+                    };                        
+                }
             });
 
-        }
+        egui::Window::new("Composite Adjustment")
+            .open(self.window_open_flags.get_mut(&GuiWindow::CompositeAdjust).unwrap())
+            .resizable(false)
+            .default_width(300.0)
+            .show(ctx, |ui| {
+                self.composite_adjust.draw(ui, &mut self.event_queue);
+            });     
+
     }
+}
 
 

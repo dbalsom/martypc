@@ -4,7 +4,6 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
-
         {
             "type": "lldb",
             "request": "launch",
@@ -24,7 +23,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "debug,wgpu_core=error,marty::cpu=debug,marty::machine=trace,marty::dma=debug,marty::pit=trace,marty::vga=trace,marty::egui=trace",
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty::cpu=debug,marty::machine=trace,marty::dma=debug,marty::pit=trace,marty::cga=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }

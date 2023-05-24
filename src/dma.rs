@@ -5,7 +5,7 @@
 
 */
 
-use crate::bus::{BusInterface, IoDevice};
+use crate::bus::{BusInterface, IoDevice, DeviceRunTimeUnit};
 
 pub const DMA_CHANNEL_0_ADDR_PORT: u16  = 0x00; // R/W
 pub const DMA_CHANNEL_0_WC_PORT: u16    = 0x01; // R/W
@@ -130,6 +130,7 @@ pub struct DMAChannelStringState {
 pub struct DMAControllerStringState {
     pub enabled: String,
     pub flipflop: String,
+    pub dreq: String,
     pub dma_channel_state: Vec<DMAChannelStringState>
 }
 pub struct DMAController {
@@ -145,11 +146,13 @@ pub struct DMAController {
     command_register: u8,
     request_reg: u8,
     status_reg: u8,
-    temp_reg: u8
+    temp_reg: u8,
+
+    dreq: bool
 }
 
 impl IoDevice for DMAController {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {
                 self.handle_addr_port_read(0)
@@ -201,7 +204,7 @@ impl IoDevice for DMAController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
 
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {
@@ -322,7 +325,9 @@ impl DMAController {
             command_register: 0,
             request_reg: 0,
             status_reg: 0,
-            temp_reg: 0
+            temp_reg: 0,
+
+            dreq: false
         }
     }
 
@@ -353,6 +358,9 @@ impl DMAController {
         // Set MSB when flipflop set, LSB when clear
         match self.flipflop {
             true => {
+                if data == 0x0C {
+                    log::debug!("break on me!");
+                }
                 chan.base_address_reg = (chan.base_address_reg & 0xFF) | ((data as u16) << 8);
                 chan.current_address_reg = (chan.current_address_reg & 0xFF) | ((data as u16) << 8);
             },
@@ -587,6 +595,7 @@ impl DMAController {
         DMAControllerStringState { 
             enabled: format!("{:?}", self.enabled),
             flipflop: format!("{:?}", self.flipflop),
+            dreq: format!("{:?}", self.dreq),
             dma_channel_state: chan_vec 
         }
     }
@@ -661,11 +670,12 @@ impl DMAController {
         let mut _cost = 0;
         let bus_address = self.get_dma_transfer_address(channel);
 
+        
         match self.channels[channel].address_mode {
             AddressMode::Increment => {
                 if self.channels[channel].current_word_count_reg > 0 {
 
-                    (data, _cost) = bus.read_u8(bus_address).unwrap();
+                    (data, _cost) = bus.read_u8(bus_address, 0).unwrap();
                     
                     if self.channels[channel].current_word_count_reg == 1 {
                         //log::trace!("car: {} cwc: {} ", self.channels[channel].current_address_reg, self.channels[channel].current_word_count_reg);
@@ -674,13 +684,13 @@ impl DMAController {
                     // Internal address register wraps around
                     self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
                     self.channels[channel].current_word_count_reg -= 1;
-
+                    
                     //log::trace!("DMA read {:02X} from address: {:06X} CWC: {}", data, bus_address, self.channels[channel].current_word_count_reg);
                 }
                 else if self.channels[channel].current_word_count_reg == 0 && !self.channels[channel].terminal_count {
                     
                     // Transfer one more on a 0 count, then set TC
-                    (data, _cost) = bus.read_u8(bus_address).unwrap();
+                    (data, _cost) = bus.read_u8(bus_address, 0).unwrap();
 
                     //self.channels[channel].current_address_reg += 1;
 
@@ -721,7 +731,7 @@ impl DMAController {
                     
                     // Don't transfer anything if in Verify mode
                     if let TransferType::Write = self.channels[channel].transfer_type {
-                        bus.write_u8(bus_address, data).unwrap();
+                        bus.write_u8(bus_address, data, 0).unwrap();
                     }
                     
                     self.channels[channel].current_address_reg = self.channels[channel].current_address_reg.wrapping_add(1);
@@ -733,7 +743,7 @@ impl DMAController {
                     
                     // Transfer one more on a 0 count, then set TC
                     if let TransferType::Write = self.channels[channel].transfer_type {
-                        bus.write_u8(bus_address, data).unwrap();
+                        bus.write_u8(bus_address, data, 0).unwrap();
                     }
                     //self.channels[channel].current_address_reg += 1;
 
@@ -742,7 +752,7 @@ impl DMAController {
                     log::trace!("Terminal count reached on DMA channel {:01X}", channel);
                     log::debug!(
                         "Completed DMA of {} bytes to address {:05X}", 
-                        self.channels[channel].base_word_count_reg, 
+                        self.channels[channel].base_word_count_reg + 1, 
                         ((self.channels[channel].page as u32) << 16) + (self.channels[channel].base_address_reg as u32)
                     );
                         
@@ -772,7 +782,9 @@ impl DMAController {
                         // We can handle single byte mode
                         match self.channels[i].transfer_type {
                             TransferType::Read | TransferType::Verify => {
-                                self.do_dma_read_u8(bus, i);
+                                if i == 0 {
+                                    self.do_dma_read_u8(bus, i);
+                                }
                             }
                             TransferType::Write => {
                                 // nothing to do here
@@ -786,7 +798,7 @@ impl DMAController {
                         self.request_reg &= !(0x01 << i);
                     }
                     _=> {
-                        log::warn!("Unhandled DMA service mode: {:?}", self.channels[i].service_mode);
+                        //log::warn!("Unhandled DMA service mode: {:?}", self.channels[i].service_mode);
                     }
                 }
             }

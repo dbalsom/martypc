@@ -39,8 +39,8 @@ pub fn log_post_interrupt21(ah: u8, regs: &CpuRegisterState, bus: &mut BusInterf
             let cs_addr = ((seg as usize) << 4) + cs_offset as usize;
             let ip_addr = ((seg as usize) << 4) + ip_offset as usize;
 
-            let (cs, _) = bus.read_u16(cs_addr).unwrap();
-            let (ip, _) = bus.read_u16(ip_addr).unwrap();
+            let (cs, _) = bus.read_u16(cs_addr, 0).unwrap();
+            let (ip, _) = bus.read_u16(ip_addr, 0).unwrap();
 
             log::trace!("int21h: 4B Load and Execute Program: CS:IP: [{:04X}]:[{:04X}]", cs, ip);
 

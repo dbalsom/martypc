@@ -31,15 +31,13 @@ use std::collections::BTreeMap;
 
 use modular_bitfield::prelude::*;
 
-use crate::bus::{BusInterface, IoDevice};
-use crate::cpu_808x::CPU_MHZ;
+use crate::bus::{BusInterface, IoDevice, DeviceRunTimeUnit};
 
 use crate::syntax_token::*;
 use crate::updatable::*;
 
 pub type PitDisplayState = Vec<BTreeMap<&'static str, SyntaxToken>>;
 
-const PIT_CHANNEL_PORT_BASE: u16 = 0x40;
 pub const PIT_CHANNEL_0_DATA_PORT: u16 = 0x40;
 pub const PIT_CHANNEL_1_DATA_PORT: u16 = 0x41;
 pub const PIT_CHANNEL_2_DATA_PORT: u16 = 0x42;
@@ -150,7 +148,7 @@ pub enum ChannelState {
 enum LoadState {
     WaitingForLsb,
     WaitingForMsb,
-    Loaded
+    //Loaded
 }
   
 
@@ -205,9 +203,13 @@ pub struct Channel {
 }
 pub struct ProgrammableIntervalTimer {
     ptype: PitType,
+    crystal: f64,
+    clock_divisor: u32,
     pit_cycles: u64,
+    sys_tick_accumulator: u32,
     cycle_accumulator: f64,
     channels: Vec<Channel>,
+    ticks_advanced: u32,
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -232,7 +234,8 @@ pub struct PitStringState {
 }
 
 impl IoDevice for ProgrammableIntervalTimer {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
+
         match port {
             PIT_COMMAND_REGISTER => 0,
             PIT_CHANNEL_0_DATA_PORT => self.data_read(0),
@@ -242,13 +245,25 @@ impl IoDevice for ProgrammableIntervalTimer {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, bus_opt: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
+
+        // Catch PIT up to CPU.
+        let ticks = self.ticks_from_time(delta);
+        self.ticks_advanced += ticks;
+
+        let bus = bus_opt.unwrap();
+
+        //log::debug!("ticking PIT {} times on IO write. delta: {:?}", ticks, delta);
+        for _ in 0..ticks {
+            self.tick(bus, None)
+        }
+
         // PIT will always receive a reference to bus, so it is safe to unwrap.
         match port {
-            PIT_COMMAND_REGISTER => self.control_register_write(data, bus.unwrap()),
-            PIT_CHANNEL_0_DATA_PORT => self.data_write(0, data, bus.unwrap()),
-            PIT_CHANNEL_1_DATA_PORT => self.data_write(1, data, bus.unwrap()),
-            PIT_CHANNEL_2_DATA_PORT => self.data_write(2, data, bus.unwrap()),
+            PIT_COMMAND_REGISTER => self.control_register_write(data, bus),
+            PIT_CHANNEL_0_DATA_PORT => self.data_write(0, data, bus),
+            PIT_CHANNEL_1_DATA_PORT => self.data_write(1, data, bus),
+            PIT_CHANNEL_2_DATA_PORT => self.data_write(2, data, bus),
             _ => panic!("PIT: Bad port #")
         }
     }
@@ -527,8 +542,9 @@ impl Channel {
                 self.finalize_load();
             }
             RwMode::LsbMsb => {
+                log::debug!("rw mode: {:?} byte: {:02X} load_state: {:?}", *self.rw_mode, byte, self.load_state);
                 match self.load_state {
-                    LoadState::Loaded | LoadState::WaitingForLsb => {
+                    LoadState::WaitingForLsb => {
                         self.count_register.update(byte as u16);
 
                         if *self.mode == ChannelMode::InterruptOnTerminalCount {
@@ -539,9 +555,13 @@ impl Channel {
                         }
 
                         self.load_state = LoadState::WaitingForMsb;
+                        log::debug!("got lsb in lsbmsb mode: {:02X} new load_state: {:?}", byte, self.load_state);
                     }
                     LoadState::WaitingForMsb => {
-                        self.count_register.update((*self.count_register & 0xFF) | ((byte as u16) << 8));
+                        let new_count = (*self.count_register & 0x00FF) | ((byte as u16) << 8);
+                        log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
+                        self.count_register.update(new_count);
+                        self.load_state = LoadState::WaitingForLsb;
                         self.finalize_load();
                     }
                 }
@@ -648,12 +668,12 @@ impl Channel {
         self.count();
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: &mut ringbuf::Producer<u8>) {
+    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
 
         if self.channel_state == ChannelState::WaitingForLoadCycle {
             // Load the current reload value into the counting element, applying the load mask
             self.counting_element.update(*self.count_register & self.load_mask);
-            self.load_state = LoadState::Loaded;
+            //self.load_state = LoadState::Loaded;
 
             // Start counting.
             self.change_channel_state(ChannelState::Counting);
@@ -801,7 +821,7 @@ impl Channel {
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new(ptype: PitType) -> Self {
+    pub fn new(ptype: PitType, crystal: f64, clock_divisor: u32) -> Self {
         /*
             The Intel documentation says: 
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -815,9 +835,13 @@ impl ProgrammableIntervalTimer {
         }
         Self {
             ptype,
+            crystal,
+            clock_divisor,
             pit_cycles: 0,
+            sys_tick_accumulator: 0,
             cycle_accumulator: 0.0,
-            channels: vec
+            channels: vec,
+            ticks_advanced: 0,
         }
     }
 
@@ -910,24 +934,53 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].set_gate(state, bus);
     }
 
+    pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit) -> u32 {
+        let mut do_ticks = 0;
+        match run_unit {
+            DeviceRunTimeUnit::Microseconds(us) => {
+                let pit_cycles = Pit::get_pit_cycles(us);
+                //log::debug!("Got {:?} pit cycles", pit_cycles);
+        
+                // Add up fractional cycles until we can make a whole one. 
+                self.cycle_accumulator += pit_cycles;
+                while self.cycle_accumulator > 1.0 {
+                    // We have one or more full PIT cycles. Drain the cycle accumulator
+                    // by ticking the PIT until the accumulator drops below 1.0.
+                    self.cycle_accumulator -= 1.0;
+                    do_ticks += 1;
+                }
+                do_ticks
+            }
+            DeviceRunTimeUnit::SystemTicks(ticks) => { 
+                // Add up system ticks, then tick the PIT if we have enough ticks for 
+                // a PIT cycle.
+                self.sys_tick_accumulator += ticks;
+                
+                while self.sys_tick_accumulator >= self.clock_divisor {
+                    self.sys_tick_accumulator -= self.clock_divisor;
+                    do_ticks += 1;
+                }
+                do_ticks
+            }
+        }
+    }
+
     pub fn run(
         &mut self, 
         bus: &mut BusInterface, 
         buffer_producer: &mut ringbuf::Producer<u8>,
-        us: f64 ) {
+        run_unit: DeviceRunTimeUnit ) 
+    {
 
-        let mut pit_cycles = Pit::get_pit_cycles(us);
-        //log::debug!("Got {:?} pit cycles", pit_cycles);
+        let mut do_ticks = self.ticks_from_time(run_unit);
 
-        // Add up fractional cycles until we can make a whole one. 
-        self.cycle_accumulator += pit_cycles;
-        while self.cycle_accumulator > 1.0 {
-            // We have one or more full PIT cycles. Drain the cycle accumulator
-            // by ticking the PIT until the accumulator drops below 1.0.
-            pit_cycles += 1.0;
-            self.cycle_accumulator -= 1.0;
-            self.tick(bus, buffer_producer);
-        }        
+        assert!(do_ticks >= self.ticks_advanced);
+        do_ticks -= self.ticks_advanced;
+        self.ticks_advanced = 0;
+
+        for _ in 0..do_ticks {
+            self.tick(bus, Some(buffer_producer));
+        }
     }
 
     pub fn get_cycles(&self) -> u64 {
@@ -938,10 +991,16 @@ impl ProgrammableIntervalTimer {
         *self.channels[channel].output
     }
 
+    /// Returns the specified channels' count register (reload value) and counting element
+    /// in a tuple.
+    pub fn get_channel_count(&self, channel: usize) -> (u16, u16) {
+        (*self.channels[channel].count_register.get(), *self.channels[channel].counting_element.get())
+    }
+
     pub fn tick(
         &mut self,
         bus: &mut BusInterface,
-        buffer_producer: &mut ringbuf::Producer<u8>) 
+        buffer_producer: Option<&mut ringbuf::Producer<u8>>) 
     {
         self.pit_cycles += 1;
 
@@ -955,13 +1014,23 @@ impl ProgrammableIntervalTimer {
 
         }
 
-        for (i, c) in self.channels.iter_mut().enumerate() {
-            c.tick(bus, buffer_producer);
+        self.channels[0].tick(bus, None);
+        self.channels[1].tick(bus, None);
+        self.channels[2].tick(bus, None);
 
-            if i == 2 {
-                _ = buffer_producer.push((*c.output && speaker_data) as u8);
+        let mut speaker_sample = *self.channels[2].output && speaker_data;
+
+        if let ChannelMode::SquareWaveGenerator = *self.channels[2].mode {
+            // Silence speaker if frequency is > 14Khz (approx)
+            if *self.channels[2].count_register <= 170 {
+                speaker_sample = false;
             }
         }
+
+        if let Some(buffer) = buffer_producer {
+            _ = buffer.push((speaker_sample) as u8);
+        }
+
     }
 
     // TODO: Remove this if no longer needed

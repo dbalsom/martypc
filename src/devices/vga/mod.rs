@@ -21,18 +21,10 @@ use std::any::Any;
 use modular_bitfield::prelude::*;
 
 use crate::config::VideoType;
-use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice};
+use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 use crate::tracelogger::TraceLogger;
 
-use crate::videocard::{
-    VideoCard,
-    VideoCardStateEntry,
-    DisplayMode,
-    CursorInfo,
-    FontInfo,
-    CGAColor,
-    CGAPalette
-};
+use crate::videocard::*;
 
 mod vga_attribute_regs;
 mod vga_crtc_regs;
@@ -269,6 +261,7 @@ pub struct VGACard {
 
     timings: [VideoTimings; 2],
     u_timings: VideoMicroTimings,
+    extents: DisplayExtents,
     mode_byte: u8,
     display_mode: DisplayMode,
     mode_enable: bool,
@@ -439,7 +432,7 @@ pub enum RetracePolarity {
 /// 
 /// Unlike the EGA, most of the registers on the VGA are readable.
 impl IoDevice for VGACard {
-    fn read_u8(&mut self, port: u16) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         match port {
             MISC_OUTPUT_REGISTER_READ => {
                 self.misc_output_register.into_bytes()[0]
@@ -506,7 +499,7 @@ impl IoDevice for VGACard {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>) {
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             MISC_OUTPUT_REGISTER_WRITE => {
                 self.write_external_misc_output_register(data);
@@ -619,6 +612,7 @@ impl VGACard {
                 }
             ],
             u_timings: Default::default(),
+            extents: Default::default(),
             mode_byte: 0,
             display_mode: DisplayMode::Mode3TextCo80,
             mode_enable: true,
@@ -1104,9 +1098,7 @@ impl VGACard {
             count -= 1;
         }
         byte
-    }   
-    
-
+    }
 
     /* 
     fn handle_mode_register(&mut self, mode_byte: u8) {
@@ -1275,11 +1267,15 @@ impl VideoCard for VGACard {
         VideoType::VGA
     }
 
+    fn get_render_mode(&self) -> RenderMode {
+        RenderMode::Indirect
+    }
+
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
     }
 
-    fn get_display_extents(&self) -> (u32, u32) {
+    fn get_display_size(&self) -> (u32, u32) {
 
         // VGA supports multiple fonts.
 
@@ -1296,6 +1292,53 @@ impl VideoCard for VGACard {
         let width = (self.crtc_horizontal_display_end as u32 + 1) * font_w as u32;
         let height = self.crtc_vertical_display_end as u32 + 1;
         (width, height)
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_display_extents(&self) -> &DisplayExtents {
+        &self.extents
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_display_aperture(&self) -> (u32, u32) {
+        (0, 0)
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_beam_pos(&self) -> Option<(u32, u32)> {
+        None
+    }
+
+
+    fn get_overscan_color(&self) -> u8 {
+        0
+    }    
+    
+    /// Get the current scanline being rendered.
+    fn get_scanline(&self) -> u32 {
+        0
+    }
+
+    /// Return whether to double scanlines produced by this adapter.
+    /// For VGA, this is false.
+    fn get_scanline_double(&self) -> bool {
+        false
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_display_buf(&self) -> &[u8] {
+        &[0]
+    }
+
+    /// Unimplemented for indirect rendering.
+    fn get_back_buf(&self) -> &[u8] {
+        &[0]
+    }    
+    
+    /// Return the current refresh rate.
+    /// TODO: Handle VGA 70Hz modes.
+    fn get_refresh_rate(&self) -> u32 {
+        60
     }
 
     fn get_clock_divisor(&self) -> u32 {
@@ -1331,7 +1374,7 @@ impl VideoCard for VGACard {
         match self.display_mode {
             DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
                 CursorInfo{
-                    addr,
+                    addr: addr as usize,
                     pos_x: addr % 40,
                     pos_y: addr / 40,
                     line_start: self.crtc_cursor_start.cursor_start(),
@@ -1341,7 +1384,7 @@ impl VideoCard for VGACard {
             }
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
                 CursorInfo{
-                    addr,
+                    addr: addr as usize,
                     pos_x: addr % 80,
                     pos_y: addr / 80,
                     line_start: self.crtc_cursor_start.cursor_start(),
@@ -1638,7 +1681,14 @@ impl VideoCard for VGACard {
         map
     }
 
-    fn run(&mut self, elapsed_us: f64) {
+    fn run(&mut self, time: DeviceRunTimeUnit) {
+
+        let elapsed_us = if let DeviceRunTimeUnit::Microseconds(us) = time {
+            us
+        }
+        else {
+            panic!("VGA requires us time unit");
+        };
 
         //let vga_cycles = match self.misc_output_register.clock_select() {
         //    ClockSelect::Clock25 => elapsed_us / US_PER_CLOCK_1,
@@ -1799,15 +1849,31 @@ impl VideoCard for VGACard {
         0
     }
 
+    fn write_trace_log(&mut self, msg: String) {
+        self.trace_logger.print(msg);
+    }
+
+    fn trace_flush(&mut self) {
+        self.trace_logger.flush();
+    }
+
 }
 
 impl MemoryMappedDevice for VGACard {
 
-    fn read_u8(&mut self, address: usize) -> u8 {
+    fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
+        0
+    }
+
+    fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
+        0
+    }
+
+    fn read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
-            return 0;
+            return (0, 0);
         }
 
         // Validate address is within current memory map and get the offset into VRAM
@@ -1820,7 +1886,7 @@ impl MemoryMappedDevice for VGACard {
                 for i in 0..4 {
                     self.planes[i].latch = 0xFF;
                 }
-                return 0xFF;
+                return (0xFF, 0);
             }
         };
 
@@ -1848,7 +1914,7 @@ impl MemoryMappedDevice for VGACard {
                     self.planes[2].latch,
                     self.planes[3].latch
                 );
-                return byte;
+                return (byte, 0);
             }
             ReadMode::ReadComparedPlanes => {
                 // In Read Mode 1, the processor reads the result of a comparison with the value in the 
@@ -1865,32 +1931,33 @@ impl MemoryMappedDevice for VGACard {
                     self.planes[2].latch,
                     self.planes[3].latch
                 );                
-                return comparison;
+                return (comparison, 0);
             }
         }
+        (0, 0)
     }
 
-    fn read_u16(&mut self, address: usize) -> u16 {
+    fn read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
 
-        let lo_byte = MemoryMappedDevice::read_u8(self, address);
-        let ho_byte = MemoryMappedDevice::read_u8(self, address + 1);
+        let (lo_byte, wait1) = MemoryMappedDevice::read_u8(self, address, 0);
+        let (ho_byte, wait2) = MemoryMappedDevice::read_u8(self, address + 1, 0);
 
         log::warn!("Unsupported 16 bit read from VRAM");
-        return (ho_byte as u16) << 8 | lo_byte as u16
+        ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
-    fn write_u8(&mut self, address: usize, byte: u8) {
+    fn write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
-            return
+            return 0;
         }
 
         // Validate address is within current memory map and get the offset
         let mut offset = match self.plane_bounds_check(address) {
             Some(offset) => offset,
             None => {
-                return
+                return 0;
             }
         };
 
@@ -2098,11 +2165,13 @@ impl MemoryMappedDevice for VGACard {
             }
         }
 
+        0
     }
 
-    fn write_u16(&mut self, address: usize, data: u16) {
+    fn write_u16(&mut self, address: usize, data: u16, _cycles: u32) -> u32 {
         trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
+        0
     }
 }
 

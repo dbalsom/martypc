@@ -80,6 +80,43 @@ impl GuiState {
             }
 
             ui.vertical(|ui| {
+                if videocard_state.contains_key("Internal") {
+                    CollapsingHeader::new("Internal Registers")
+                    .default_open(false)
+                    .show(ui,  |ui| {
+                        ui.vertical(|ui| {
+
+                            ui.horizontal(|ui| {
+                                ui.group(|ui| {
+                                    egui::Grid::new("videocard_view14")
+                                        .num_columns(2)
+                                        .striped(true)
+                                        .min_col_width(60.0)
+                                        .show(ui, |ui| {                                    
+                                        let register_file = videocard_state.get("Internal");
+                                        match register_file {
+                                            Some(file) => {
+                                                for register in file {   
+                                                    ui.label(egui::RichText::new(&register.0).text_style(egui::TextStyle::Monospace));
+                                                    match &register.1 {
+                                                        VideoCardStateEntry::String(str) => {
+                                                            ui.label(egui::RichText::new(str).text_style(egui::TextStyle::Monospace));
+                                                        },
+                                                        _=> {
+                                                            ui.label("unsupported entry type");
+                                                        }
+                                                    }
+                                                    ui.end_row();
+                                                }
+                                            }
+                                            None => {}
+                                        }
+                                    });
+                                });                    
+                            });
+                        });
+                    });
+                }                  
                 if videocard_state.contains_key("External") {
                     CollapsingHeader::new("External Registers")
                     .default_open(false)

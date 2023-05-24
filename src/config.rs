@@ -137,12 +137,28 @@ pub struct Emulator {
     #[serde(default = "_default_false")]
     pub warpspeed: bool,    
 
+    #[serde(default = "_default_false")]
+    pub correct_aspect: bool,    
+
     #[serde(default)]
+    pub debug_mode: bool,
+
+    #[serde(default)]
+    pub no_bios: bool,
+
+    pub run_bin: Option<String>,
+    pub run_bin_seg: Option<u16>,
+    pub run_bin_ofs: Option<u16>,
+
+    #[serde(default)]
+    pub trace_on: bool,
     pub trace_mode: TraceMode,
     pub trace_file: Option<String>,
 
     #[serde(default)]
     pub video_trace_file: Option<String>,
+
+    pub video_frame_debug: bool,
 
     #[serde(default)]
     pub pit_output_file: Option<String>,
@@ -155,16 +171,26 @@ pub struct Emulator {
 pub struct Validator {
     #[serde(rename = "type")]
     pub vtype: Option<ValidatorType>,
-    pub trigger_address: Option<u32>
+    pub trigger_address: Option<u32>,
+    pub trace_file: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Machine {
     pub model: MachineType,
+    pub turbo: bool,
     pub video: VideoType,
     pub hdc: HardDiskControllerType,
     pub drive0: Option<String>,
     pub drive1: Option<String>,
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct Cpu {
+    pub wait_states_enabled: bool,
+    pub off_rails_detection: bool,
+    pub instruction_history: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -177,6 +203,7 @@ pub struct ConfigFileParams {
     pub emulator: Emulator,
     pub input: Input,
     pub machine: Machine,
+    pub cpu: Cpu,
     pub validator: Validator
 }
 
@@ -198,7 +225,13 @@ pub struct CmdLineArgs {
     pub autostart: bool,
 
     #[bpaf(long, switch)]
-    pub warpspeed: bool,       
+    pub warpspeed: bool,
+
+    #[bpaf(long, switch)]
+    pub off_rails_detection: bool,
+
+    #[bpaf(long, switch)]
+    pub correct_aspect: bool,      
 
     #[bpaf(long, switch)]
     pub reverse_mouse_buttons: bool,    
@@ -207,7 +240,26 @@ pub struct CmdLineArgs {
     pub machine_model: Option<MachineType>,
 
     #[bpaf(long)]
+    pub turbo: bool,
+
+    #[bpaf(long)]
     pub validator: Option<ValidatorType>,
+
+    #[bpaf(long, switch)]
+    pub debug_mode: bool,
+
+    #[bpaf(long, switch)]
+    pub no_bios: bool,
+
+    #[bpaf(long, switch)]
+    pub video_frame_debug: bool,
+
+    #[bpaf(long)]
+    pub run_bin: Option<String>,
+    #[bpaf(long)]
+    pub run_bin_seg: Option<u16>,
+    #[bpaf(long)]
+    pub run_bin_ofs: Option<u16>,    
 }
 
 impl ConfigFileParams {
@@ -222,6 +274,27 @@ impl ConfigFileParams {
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.autostart |= shell_args.autostart;
         self.emulator.warpspeed |= shell_args.warpspeed;
+        self.emulator.correct_aspect |= shell_args.correct_aspect;
+        self.emulator.debug_mode |= shell_args.debug_mode;
+        self.emulator.no_bios |= shell_args.no_bios;
+        self.emulator.video_frame_debug |= shell_args.video_frame_debug;
+
+        if let Some(run_bin) = shell_args.run_bin {
+            self.emulator.run_bin = Some(run_bin);
+        }
+
+        if let Some(run_bin_seg) = shell_args.run_bin_seg {
+            self.emulator.run_bin_seg = Some(run_bin_seg);
+        }
+
+        if let Some(run_bin_ofs) = shell_args.run_bin_ofs {
+            self.emulator.run_bin_ofs = Some(run_bin_ofs);
+        }                
+
+        self.machine.turbo |= shell_args.turbo;
+
+        self.cpu.off_rails_detection |= shell_args.off_rails_detection;
+
         self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
     }
 }

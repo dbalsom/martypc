@@ -1,4 +1,4 @@
-use crate::egui::{GuiState, GuiWindow, GuiEvent};
+use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption};
 
 
 impl GuiState {
@@ -17,10 +17,42 @@ impl GuiState {
                     ui.close_menu();
                 }                    
             });
-            ui.menu_button("Media", |ui| {
-                ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
+            ui.menu_button("Machine", |ui| {
+                if ui.button("⚡ Power on").clicked() {
+                    
+                    ui.close_menu();
+                } 
+                if ui.checkbox(&mut self.get_option_mut(GuiOption::TurboButton), "Turbo Button").clicked() {
 
-                ui.menu_button("Load Floppy in Drive A:...", |ui| {
+                    let new_opt = self.get_option(GuiOption::TurboButton).unwrap();
+
+                    self.event_queue.push_back(
+                        GuiEvent::OptionChanged(
+                            GuiOption::TurboButton, 
+                            new_opt 
+                        )
+                    );
+                    ui.close_menu();
+                }
+                if ui.button("⏸ Pause").clicked() {
+                    
+                    ui.close_menu();
+                }
+                if ui.button("⟲ Reboot").clicked() {
+                    
+                    ui.close_menu();
+                }                    
+                if ui.button("🔌 Power off").clicked() {
+                    
+                    ui.close_menu();
+                }                   
+            });
+            ui.menu_button("Media", |ui| {
+
+                ui.set_min_size(egui::vec2(200.0, 0.0));
+                //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
+
+                ui.menu_button("💾 Load Floppy in Drive A:...", |ui| {
                     for name in &self.floppy_names {
                         if ui.button(name.to_str().unwrap()).clicked() {
                             
@@ -33,7 +65,7 @@ impl GuiState {
                     }
                 });
 
-                ui.menu_button("Load Floppy in Drive B:...", |ui| {
+                ui.menu_button("💾 Load Floppy in Drive B:...", |ui| {
                     for name in &self.floppy_names {
                         if ui.button(name.to_str().unwrap()).clicked() {
                             
@@ -46,17 +78,17 @@ impl GuiState {
                     }
                 });      
                 
-                if ui.button("Eject Floppy in Drive A:...").clicked() {
+                if ui.button("⏏ Eject Floppy in Drive A:").clicked() {
                     self.event_queue.push_back(GuiEvent::EjectFloppy(0));
                     ui.close_menu();
                 };       
                 
-                if ui.button("Eject Floppy in Drive B:...").clicked() {
+                if ui.button("⏏ Eject Floppy in Drive B:").clicked() {
                     self.event_queue.push_back(GuiEvent::EjectFloppy(1));
                     ui.close_menu();
                 };                              
 
-                ui.menu_button("Load VHD in Drive 0:...", |ui| {
+                ui.menu_button("🖴 Load VHD in Drive 0:...", |ui| {
                     for name in &self.vhd_names {
 
                         if ui.radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap()).clicked() {
@@ -68,7 +100,7 @@ impl GuiState {
                     }
                 });                               
 
-                if ui.button("Create new VHD...").clicked() {
+                if ui.button("🖹 Create new VHD...").clicked() {
                     *self.window_flag(GuiWindow::VHDCreator) = true;
                     ui.close_menu();
                 };
@@ -83,7 +115,11 @@ impl GuiState {
                     if ui.button("Code Segment").clicked() {
                         self.event_queue.push_back(GuiEvent::DumpCS);
                         ui.close_menu();
-                    }                        
+                    }
+                    if ui.button("All Memory").clicked() {
+                        self.event_queue.push_back(GuiEvent::DumpAllMem);
+                        ui.close_menu();
+                    }                    
                 });
                 if ui.button("CPU Control...").clicked() {
                     *self.window_flag(GuiWindow::CpuControl) = true;
@@ -92,15 +128,62 @@ impl GuiState {
                 if ui.button("CPU State...").clicked() {
                     *self.window_flag(GuiWindow::CpuStateViewer) = true;
                     ui.close_menu();
-                }                
+                }
+                ui.menu_button("CPU Debug Options", |ui| {
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuEnableWaitStates), "Enable Wait States").clicked() {
+
+                        let new_opt = self.get_option(GuiOption::CpuEnableWaitStates).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiOption::CpuEnableWaitStates, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuInstructionHistory), "Instruction History").clicked() {
+
+                        let new_opt = self.get_option(GuiOption::CpuInstructionHistory).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiOption::CpuInstructionHistory, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuTraceLoggingEnabled), "Trace Logging Enabled").clicked() {
+
+                        let new_opt = self.get_option(GuiOption::CpuTraceLoggingEnabled).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiOption::CpuTraceLoggingEnabled, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }   
+                    if ui.button("Delays...").clicked() {
+                        *self.window_flag(GuiWindow::DelayAdjust) = true;
+                        ui.close_menu();
+                    }
+
+                });
                 if ui.button("Memory...").clicked() {
                     *self.window_flag(GuiWindow::MemoryViewer) = true;
                     ui.close_menu();
                 }
-                if ui.button("Instruction Trace...").clicked() {
-                    *self.window_flag(GuiWindow::TraceViewer) = true;
+                if ui.button("Instruction History...").clicked() {
+                    *self.window_flag(GuiWindow::HistoryViewer) = true;
                     ui.close_menu();
                 }
+                if ui.button("Instruction Cycle Trace...").clicked() {
+                    *self.window_flag(GuiWindow::CycleTraceViewer) = true;
+                    ui.close_menu();
+                }                
                 if ui.button("Call Stack...").clicked() {
                     *self.window_flag(GuiWindow::CallStack) = true;
                     ui.close_menu();
@@ -109,6 +192,10 @@ impl GuiState {
                     *self.window_flag(GuiWindow::DiassemblyViewer) = true;
                     ui.close_menu();
                 }
+                if ui.button("IVR...").clicked() {
+                    *self.window_flag(GuiWindow::IvrViewer) = true;
+                    ui.close_menu();
+                }                
                 if ui.button("PIC...").clicked() {
                     *self.window_flag(GuiWindow::PicViewer) = true;
                     ui.close_menu();
@@ -129,15 +216,37 @@ impl GuiState {
                     *self.window_flag(GuiWindow::VideoCardViewer) = true;
                     ui.close_menu();
                 }
-            
+                if ui.button("Flush Trace Logs").clicked() {
+                    self.event_queue.push_back(GuiEvent::FlushLogs);
+                    ui.close_menu();
+                }
             });
             ui.menu_button("Options", |ui| {
-                if ui.checkbox(&mut self.aspect_correct, "Correct Aspect Ratio").clicked() {
-                    ui.close_menu();
-                }
-                if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {
-                    ui.close_menu();
-                }
+
+
+                ui.menu_button("Display", |ui| {
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CorrectAspect), "Correct Aspect Ratio").clicked() {
+
+                        let new_opt = self.get_option(GuiOption::CorrectAspect).unwrap();
+    
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiOption::CorrectAspect, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }
+                    if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {
+                        ui.close_menu();
+                    }
+
+                    if ui.button("Composite Adjustments...").clicked() {
+                        *self.window_flag(GuiWindow::CompositeAdjust) = true;
+                        ui.close_menu();
+                    }             
+                });                
+
                 ui.menu_button("Attach COM2: ...", |ui| {
                     for port in &self.serial_ports {
 
