@@ -15,7 +15,7 @@ use core::fmt::Display;
 use anyhow::{Context, Result, bail};
 use uuid::Uuid;
 
-use crate::hdc::{SECTOR_SIZE};
+use crate::devices::hdc::{SECTOR_SIZE};
 use crate::bytebuf::{ByteBuf, ByteBufWriter};
 
 pub const VHD_FOOTER_LEN: usize = 512;

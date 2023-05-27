@@ -27,7 +27,7 @@
 
 use egui::*;
 
-use crate::dma::DMAControllerStringState;
+use crate::devices::dma::DMAControllerStringState;
 use crate::syntax_token::*;
 
 use crate::egui::*;

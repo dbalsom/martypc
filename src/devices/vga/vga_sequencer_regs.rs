@@ -6,7 +6,7 @@
 */
 
 use modular_bitfield::prelude::*;
-use crate::vga::*;
+use crate::devices::vga::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SequencerRegister {

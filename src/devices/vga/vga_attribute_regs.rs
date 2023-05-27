@@ -5,7 +5,7 @@
 
 */
 use modular_bitfield::prelude::*;
-use crate::vga::VGACard;
+use crate::devices::vga::VGACard;
 
 #[derive(Copy, Clone, Debug)]
 pub enum AttributeRegister {

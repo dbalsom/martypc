@@ -12,7 +12,7 @@ use std::cell::Cell;
 
 use crate::config::{MachineType, VideoType};
 use crate::bus::{BusInterface, IoDevice, NO_IO_BYTE, DeviceRunTimeUnit};
-use crate::pic;
+use crate::devices::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
 pub const PPI_PORT_B: u16 = 0x61;

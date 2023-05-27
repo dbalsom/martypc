@@ -50,7 +50,7 @@ use crate::config::ValidatorType;
 
 use crate::breakpoints::BreakPointType;
 use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
-use crate::pic::Pic;
+use crate::devices::pic::Pic;
 use crate::bytequeue::*;
 //use crate::interrupt::log_post_interrupt;
 

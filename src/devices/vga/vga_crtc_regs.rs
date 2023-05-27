@@ -7,7 +7,7 @@
 
 use modular_bitfield::prelude::*;
 
-use crate::vga::*;
+use crate::devices::vga::*;
 
 const CURSOR_LINE_MASK: u8      = 0b0001_1111;
 

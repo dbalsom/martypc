@@ -6,7 +6,7 @@
 */
 
 use modular_bitfield::prelude::*;
-use crate::ega::EGACard;
+use crate::devices::ega::EGACard;
 
 const CURSOR_LINE_MASK: u8      = 0b0001_1111;
 

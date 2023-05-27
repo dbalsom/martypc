@@ -86,11 +86,15 @@ use crate::{
 
     machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
-    dma::DMAControllerStringState,
-    hdc::HardDiskFormat,
-    pit::PitDisplayState, 
-    pic::PicStringState,
-    ppi::PpiStringState, 
+
+    devices::{
+        dma::DMAControllerStringState,
+        hdc::HardDiskFormat,
+        pit::PitDisplayState, 
+        pic::PicStringState,
+        ppi::PpiStringState, 
+    },
+
     render::CompositeParams,
     videocard::{VideoCardState, VideoCardStateEntry}
     

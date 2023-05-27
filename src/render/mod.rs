@@ -46,7 +46,7 @@ pub use self::composite::*;
 
 use crate::config::VideoType;
 use crate::videocard::*;
-use crate::cga;
+use crate::devices::cga;
 use crate::bus::BusInterface;
 
 extern crate rand; 

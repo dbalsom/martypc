@@ -34,9 +34,9 @@
 */
 
 use crate::bus::DeviceRunTimeUnit;
-use crate::vga::VGACard;
-use crate::ega::EGACard;
-use crate::cga::CGACard;
+use crate::devices::vga::VGACard;
+use crate::devices::ega::EGACard;
+use crate::devices::cga::CGACard;
 
 // This enum holds variants that hold the various implementors of the VideoCard trait.
 // This is used for enum dispatch, to avoid overhead of dynamic dispatch when calling

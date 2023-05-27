@@ -9,23 +9,28 @@ use ringbuf::{Producer};
 
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
-use crate::fdc::FloppyController;
-use crate::pit::Pit;
+
 use crate::syntax_token::SyntaxToken;
 use crate::machine_manager::MachineDescriptor;
 use crate::config::VideoType;
-use crate::pic::*;
-use crate::dma::*;
-use crate::ppi::*;
-use crate::serial::*;
-use crate::hdc::*;
-use crate::mouse::*;
+
+use crate::devices::{
+    pit::Pit,
+    pic::*,
+    dma::*,
+    ppi::*,
+    serial::*,
+    fdc::FloppyController,
+    hdc::*,
+    mouse::*
+};
+
 use crate::tracelogger::TraceLogger;
 use crate::videocard::{VideoCard, VideoCardDispatch};
 
-use crate::cga::{self, CGACard};
-use crate::ega::{self, EGACard};
-use crate::vga::{self, VGACard};
+use crate::devices::cga::{self, CGACard};
+use crate::devices::ega::{self, EGACard};
+use crate::devices::vga::{self, VGACard};
 use crate::memerror::MemError;
 
 pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from a unconnected IO address.

@@ -8,9 +8,11 @@ use std::collections::{VecDeque, HashMap};
 use lazy_static::lazy_static;
 
 use crate::bus::{IoDevice, DeviceRunTimeUnit};
-use crate::dma;
+use crate::devices::{
+    dma,
+    pic,
+};
 use crate::bus::BusInterface;
-use crate::pic;
 
 pub const FDC_IRQ: u8 = 0x06;
 pub const FDC_DMA: usize = 2;

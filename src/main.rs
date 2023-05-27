@@ -36,35 +36,30 @@ use winit::{
 
 use winit_input_helper::WinitInputHelper;
 
+/*
 #[path = "./devices/ega/mod.rs"]
 mod ega;
 #[path = "./devices/vga/mod.rs"]
 mod vga;
+*/
+
+mod devices;
+
 mod breakpoints;
 mod bus;
 mod bytebuf;
 mod bytequeue;
-mod cga;
 mod config;
 mod cpu_common;
 mod cpu_808x;
-mod dma;
-mod fdc;
 mod floppy_manager;
 mod egui;
-mod hdc;
 mod bus_io;
 mod interrupt;
 mod machine;
 mod machine_manager;
-mod mc6845;
 mod memerror;
-mod mouse;
-mod pic;
-mod pit;
-mod ppi;
 mod rom_manager;
-mod serial;
 mod sound;
 mod syntax_token;
 mod tracelogger;
