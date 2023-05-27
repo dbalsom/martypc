@@ -57,6 +57,7 @@ mod menu;
 mod performance_viewer;
 mod pic_viewer;
 mod pit_viewer;
+mod theme;
 mod token_listview;
 mod videocard_viewer;
 
@@ -81,6 +82,7 @@ use crate::{
     egui::pit_viewer::PitViewerControl,
     egui::instruction_history_viewer::InstructionHistoryControl,
     egui::ivr_viewer::IvrViewerControl,
+    egui::theme::GuiTheme,
 
     machine::{ExecutionControl, ExecutionState, ExecutionOperation},
     cpu_808x::CpuStringState, 
@@ -270,7 +272,11 @@ impl Framework {
         height: u32, 
         scale_factor: f32, 
         pixels: &pixels::Pixels,
-        exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
+        exec_control: Rc<RefCell<ExecutionControl>>,
+        theme_color: Option<u32>
+    
+    ) -> Self {
+
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
         let egui_ctx = Context::default();
@@ -282,15 +288,18 @@ impl Framework {
             size_in_pixels: [width, height],
             pixels_per_point: scale_factor,
         };
+
         let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         let textures = TexturesDelta::default();
         let gui = GuiState::new(exec_control);
 
         let visuals = egui::Visuals::dark();
-        let visuals = Framework::create_theme(&visuals, Color32::from_rgb(56,45,89));
 
-        //let mut style: egui::Style = (*egui_ctx.style()).clone();
-        egui_ctx.set_visuals(visuals);
+        if let Some(color) = theme_color {
+            let theme = GuiTheme::new(&visuals, crate::egui::color::hex_to_c32(color));
+            egui_ctx.set_visuals(theme.visuals().clone());
+        }
+
         //egui_ctx.set_debug_on_hover(true);
 
         Self {
@@ -304,29 +313,6 @@ impl Framework {
         }
     }
 
-    fn create_theme(base: &egui::Visuals, color: Color32) -> Visuals {
-        
-        let mut new_visuals = base.clone();
-
-        new_visuals.window_fill = color;
-        new_visuals.extreme_bg_color = darken_c32(color, 0.50);
-        new_visuals.faint_bg_color = darken_c32(color, 0.15);
-
-        new_visuals.widgets.noninteractive.bg_fill = lighten_c32(color, 0.10);
-        new_visuals.widgets.noninteractive.bg_stroke.color = lighten_c32(color, 0.75);
-        new_visuals.widgets.noninteractive.fg_stroke.color = add_c32(color, 128);
-
-        new_visuals.widgets.active.bg_fill = lighten_c32(color, 0.20);
-        new_visuals.widgets.active.bg_stroke.color = lighten_c32(color, 0.35);
-
-        new_visuals.widgets.inactive.bg_fill = lighten_c32(color, 0.35);
-        new_visuals.widgets.inactive.bg_stroke.color = lighten_c32(color, 0.50);
-
-        new_visuals.widgets.hovered.bg_fill = lighten_c32(color, 0.75);
-        new_visuals.widgets.hovered.bg_stroke.color = lighten_c32(color, 0.75);
-
-        new_visuals
-    }
 
     pub(crate) fn has_focus(&self) -> bool {
         match self.egui_ctx.memory().focus() {

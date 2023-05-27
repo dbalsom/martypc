@@ -457,7 +457,8 @@ fn main() {
                 window_size.height, 
                 scale_factor, 
                 &pixels, 
-                exec_control.clone()
+                exec_control.clone(),
+                config.gui.theme_color
             );
 
         (pixels, framework)

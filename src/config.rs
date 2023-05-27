@@ -168,6 +168,13 @@ pub struct Emulator {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Gui {
+    #[serde(default)]
+    pub gui_disabled: bool,
+    pub theme_color: Option<u32>
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Validator {
     #[serde(rename = "type")]
     pub vtype: Option<ValidatorType>,
@@ -201,6 +208,7 @@ pub struct Input {
 #[derive(Debug, Deserialize)]
 pub struct ConfigFileParams {
     pub emulator: Emulator,
+    pub gui: Gui,
     pub input: Input,
     pub machine: Machine,
     pub cpu: Cpu,
