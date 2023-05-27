@@ -79,9 +79,10 @@ pub struct Pic {
     imr: u8,                 // Interrupt Mask Register
     isr: u8,                 // In-Service Register
     irr: u8,                 // Interrupt Request Register
+    ir: u8,                  // IR lines (bitfield)
     read_select: ReadSelect, // Select register to read.  True=ISR, False=IRR
     irq: u8,                 // IRQ Number
-    int_request: bool,       // INT request line of PIC
+    intr: bool,       // INT request line of PIC
     buffered: bool,          // Buffered mode
     nested: bool,            // Nested mode
     special_nested: bool,    // Special fully nested mode
@@ -96,12 +97,13 @@ pub struct Pic {
     interrupt_stats: Vec<InterruptStats>
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct PicStringState {
-
     pub imr: String,
     pub isr: String,
     pub irr: String,
+    pub ir: String,
+    pub intr: String,
     pub autoeoi: String,
     pub trigger_mode: String,
     pub interrupt_stats: Vec<(String, String, String)>
@@ -145,9 +147,10 @@ impl Pic {
             imr: 0xFF,                           // All IRQs initially masked
             isr: 0x00,
             irr: 0,
+            ir: 0,
             read_select: ReadSelect::IRR,
             irq: 0,
-            int_request: false,
+            intr: false,
             buffered: false,
             nested: true,
             special_nested: false,
@@ -167,9 +170,10 @@ impl Pic {
         self.imr = 0xFF;
         self.isr = 0x00;
         self.irr = 0x00;
+        self.ir = 0x00;
         self.read_select = ReadSelect::IRR;
         self.irq = 0;
-        self.int_request = false;
+        self.intr = false;
         self.buffered = false;
         self.nested = true;
         self.special_nested = false;
@@ -221,14 +225,10 @@ impl Pic {
             }
         }
         else if byte & OCW2_NONSPECIFIC_EOI != 0 {
-            //log::trace!("PIC: Received nonspecific EOI, ISR: {:08b}", self.isr);
-            self.isr = Pic::clear_lsb(self.isr);
-            //log::trace!("PIC: New ISR: {:08b}", self.isr);
+            self.eoi(None);
         }
         else if byte & OCW2_SPECIFIC_EOI != 0 {
-            //log::trace!("PIC: Received specific EOI, ISR: {:08b}", self.isr);
-            self.isr = Pic::clear_bit(self.isr, byte & 0x07);
-            //log::trace!("PIC: New ISR: {:08b}", self.isr);
+            self.eoi(Some(byte & 0x07));
         }
         else if byte & OCW_IS_OCW3 != 0  { 
             
@@ -251,20 +251,63 @@ impl Pic {
         }
     }
 
+    /// Perform an EOI (End of interrupt)
+    /// An EOI resets a bit in the ISR.
+    /// If an IR number is provided, it will perform a specific EOI and reset a specific bit.
+    /// If None is provided, it will perform a non-specific EOI and reset the highest priority bit.
+    pub fn eoi(&mut self, line: Option<u8>)  {
 
-    pub fn clear_msb(byte: u8) -> u8 {
+        if let Some(ir) = line {
+            // Specific EOI
 
-        let mut mask: u8 = 0x80;
-        let mut byte = byte;
-        for _ in 0..8 {
-            if byte & mask != 0 {
-                byte &= !mask;
+            self.isr = Pic::clear_bit(self.isr, ir);
+            // Is there a corresponding bit set in the IRR?
+            if Pic::check_bit(self.irr, ir) {
+                // Raise INTR for new interrupt.
+                self.intr = true;
+            }
+        }
+        else {
+
+            let ir = self.get_highest_priority_is();
+
+            self.isr = Pic::clear_bit(self.isr, ir);
+            // Is there a corresponding bit set in the IRR?
+            if Pic::check_bit(self.irr, ir) {
+                // Raise INTR for new interrupt.
+                self.intr = true;
+            }            
+        }
+    }
+
+    pub fn get_highest_priority_ir(&self) -> u8 {
+
+        let mask: u8 = 0x01;
+        let mut ir = 0;
+        
+        for i in 0..8 {
+            ir = i;
+            if self.irr & (mask << ir) != 0 {
                 break;
             }
-            mask >>= 1;
         }
-        byte
+        ir
+    }
+
+    pub fn get_highest_priority_is(&self) -> u8 {
+
+        let mask: u8 = 0x01;
+        let mut ir = 0;
+
+        for i in 0..8 {
+            ir = i;
+            if self.isr & (mask << ir) != 0 {
+                break;
+            }
+        }
+        ir
     }    
+
     pub fn clear_lsb(byte: u8) -> u8 {
 
         let mut mask: u8 = 0x01;
@@ -285,6 +328,14 @@ impl Pic {
         mask <<= bitn;
 
         byte & !mask
+    }
+
+    pub fn check_bit(byte: u8, bitn: u8) -> bool {
+
+        let mut mask: u8 = 0x01;
+        mask <<= bitn;
+
+        byte & mask != 0
     }
 
     pub fn handle_data_register_write(&mut self, byte: u8) {
@@ -342,7 +393,7 @@ impl Pic {
     fn set_imr(&mut self, byte: u8) {
 
         // Changing the IMR will allow devices with current high IR lines to generate interrupts
-        // in Level triggered mode.  In Edge triggered mode they will not
+        // in Level triggered mode.  In Edge triggered mode they will not.
         self.imr = byte;
 
         let mut ir_bit = 0x01;
@@ -354,13 +405,12 @@ impl Pic {
 
             if self.trigger_mode == TriggerMode::Level && have_request && !is_masked && !is_in_service {
                 // (Set INT request line high)
-                self.int_request = true;
+                self.intr = true;
                 self.interrupt_stats[interrupt as usize].serviced_count += 1;
             }
 
             ir_bit <<= 1;
         }
-        
     }
 
     pub fn request_interrupt(&mut self, interrupt: u8) {
@@ -375,7 +425,8 @@ impl Pic {
 
         // Interrupts 0-7 map to bits 0-7 in IMR register
         let intr_bit: u8 = 0x01 << interrupt;
-        // Set the request bit in the IR register
+        // Set IR line high and set the request bit in the IRR register 
+        self.ir |= intr_bit;
         self.irr |= intr_bit; 
 
         if self.imr & intr_bit != 0 {
@@ -389,7 +440,7 @@ impl Pic {
         else {
             // Interrupt is not masked or already in service, process it...
             // (Set INT request line high)
-            self.int_request = true;
+            self.intr = true;
             self.interrupt_stats[interrupt as usize].serviced_count += 1;
         }
     }
@@ -401,16 +452,17 @@ impl Pic {
             panic!("PIC: Received interrupt out of range: {}", interrupt);
         }
 
-        // Clear the corresponding bit in the IRR register
+        // Clear the corresponding bit in the IR lines
         let intr_bit: u8 = 0x01 << interrupt;
-        self.irr &= !intr_bit;
+        self.ir &= !intr_bit;
     }
 
     pub fn query_interrupt_line(&self) -> bool {
-         
-        self.int_request
+        self.intr
     }
 
+    /// Represents the PIC's response to the 2nd INTA 'pulse'. The PIC will put the 
+    /// highest-priority interrupt vector onto the bus.
     pub fn get_interrupt_vector(&mut self) -> Option<u8> {
 
         //log::trace!("Getting interrupt vector, auto-eoi: {:?}.", self.auto_eoi);
@@ -424,21 +476,20 @@ impl Pic {
             let _is_in_service = ir_bit & self.isr != 0;
 
             if have_request && !is_masked {
-                
                 // found highest priority IRR not masked
 
                 // Clear its bit in the IR...
                 self.irr &= !ir_bit;
                 // ...and set it in ISR being serviced
                 self.isr |= ir_bit;
-                // .. unless Auto-EOI is on
+                // ...unless Auto-EOI is on
                 if self.auto_eoi {
                     //log::trace!("Executing Auto-EOI");
                     self.isr &= !ir_bit;
                 }
                 self.irq = irq;
                 // INT line low
-                self.int_request = false;
+                self.intr = false;
 
                 return Some(irq + PIC_INTERRUPT_OFFSET)
             }
@@ -452,8 +503,10 @@ impl Pic {
     
         let mut state = PicStringState {
             imr: format!("{:08b}", self.imr),
-            irr: format!("{:08b}", self.irr),
             isr: format!("{:08b}", self.isr),
+            irr: format!("{:08b}", self.irr),
+            ir: format!("{:08b}", self.ir),
+            intr: format!("{}", self.intr),
             autoeoi: format!("{:?}", self.auto_eoi),
             trigger_mode: format!("{:?}", self.trigger_mode),
             interrupt_stats: Vec::new()

@@ -45,6 +45,7 @@ mod cpu_control;
 mod cpu_state_viewer;
 mod cycle_trace_viewer;
 mod delay_adjust;
+mod device_control;
 mod disassembly_viewer;
 mod dma_viewer;
 mod image;
@@ -53,6 +54,7 @@ mod ivr_viewer;
 mod memory_viewer;
 mod menu;
 mod performance_viewer;
+mod pic_viewer;
 mod pit_viewer;
 mod token_listview;
 mod videocard_viewer;
@@ -69,9 +71,11 @@ use crate::{
     egui::cycle_trace_viewer::CycleTraceViewerControl,
     egui::memory_viewer::MemoryViewerControl,
     egui::delay_adjust::DelayAdjustControl,
+    egui::device_control::DeviceControl,
     egui::disassembly_viewer::DisassemblyControl,
     egui::dma_viewer::DmaViewerControl,
     egui::performance_viewer::PerformanceViewerControl,
+    egui::pic_viewer::PicViewerControl,
     egui::pit_viewer::PitViewerControl,
     egui::instruction_history_viewer::InstructionHistoryControl,
     egui::ivr_viewer::IvrViewerControl,
@@ -101,7 +105,8 @@ pub(crate) enum GuiWindow {
     HistoryViewer,
     IvrViewer,
     DelayAdjust,
-    DiassemblyViewer,
+    DeviceControl,
+    DisassemblyViewer,
     PitViewer,
     PicViewer,
     PpiViewer,
@@ -120,7 +125,8 @@ pub enum GuiOption {
     CpuEnableWaitStates,
     CpuInstructionHistory,
     CpuTraceLoggingEnabled,
-    TurboButton
+    TurboButton,
+    ShowBackBuffer,
 }
 
 pub enum GuiEvent {
@@ -139,7 +145,13 @@ pub enum GuiEvent {
     OptionChanged(GuiOption, bool),
     CompositeAdjust(CompositeParams),
     FlushLogs,
-    DelayAdjust
+    DelayAdjust,
+    TickDevice(DeviceSelection, u32)
+}
+
+pub enum DeviceSelection {
+    Timer(u8),
+    VideoCard
 }
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -222,7 +234,7 @@ pub(crate) struct GuiState {
     pub delay_adjust: DelayAdjustControl,
     
     pub pit_viewer: PitViewerControl,
-    pub pic_state: PicStringState,
+    pub pic_viewer: PicViewerControl,
     pub ppi_state: PpiStringState,
     
     pub videocard_state: VideoCardState,
@@ -238,7 +250,8 @@ pub(crate) struct GuiState {
     pub trace_viewer: InstructionHistoryControl,
     pub composite_adjust: CompositeAdjustControl,
     pub ivr_viewer: IvrViewerControl,
-    
+    pub device_control: DeviceControl,
+
     trace_string: String,
     call_stack_string: String,
 
@@ -422,7 +435,8 @@ impl GuiState {
             (GuiWindow::HistoryViewer, false),
             (GuiWindow::IvrViewer, false),
             (GuiWindow::DelayAdjust, false),
-            (GuiWindow::DiassemblyViewer, false),
+            (GuiWindow::DeviceControl, false),
+            (GuiWindow::DisassemblyViewer, false),
             (GuiWindow::PitViewer, false),
             (GuiWindow::PicViewer, false),
             (GuiWindow::PpiViewer, false),
@@ -441,6 +455,7 @@ impl GuiState {
             (GuiOption::CpuInstructionHistory, false),
             (GuiOption::CpuTraceLoggingEnabled, false),
             (GuiOption::TurboButton, false),
+            (GuiOption::ShowBackBuffer, true)
         ].into();
 
         Self { 
@@ -489,7 +504,7 @@ impl GuiState {
             perf_viewer: PerformanceViewerControl::new(),
             delay_adjust: DelayAdjustControl::new(),
             pit_viewer: PitViewerControl::new(),
-            pic_state: Default::default(),
+            pic_viewer: PicViewerControl::new(),
             ppi_state: Default::default(),
             dma_channel_select: 0,
             dma_channel_select_str: String::new(),
@@ -504,6 +519,7 @@ impl GuiState {
             trace_string: String::new(),
             composite_adjust: CompositeAdjustControl::new(),
             ivr_viewer: IvrViewerControl::new(),
+            device_control: DeviceControl::new(),
             call_stack_string: String::new(),
 
             // Options menu items
@@ -608,10 +624,6 @@ impl GuiState {
 
     pub fn get_composite_enabled(&self) -> bool {
         self.composite
-    }
-
-    pub fn update_pic_state(&mut self, state: PicStringState) {
-        self.pic_state = state;
     }
 
     pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {
@@ -757,7 +769,7 @@ impl GuiState {
             });              
 
         egui::Window::new("Disassembly View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::DiassemblyViewer).unwrap())
+            .open(self.window_open_flags.get_mut(&GuiWindow::DisassemblyViewer).unwrap())
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
@@ -783,11 +795,19 @@ impl GuiState {
 
         egui::Window::new("Delay Adjust")
             .open(self.window_open_flags.get_mut(&GuiWindow::DelayAdjust).unwrap())
-            .resizable(false)
-            .default_width(400.0)
+            .resizable(true)
+            .default_width(800.0)
             .show(ctx, |ui| {
                 self.delay_adjust.draw(ui, &mut self.event_queue);
-            });                 
+            });            
+
+        egui::Window::new("Device Control")
+            .open(self.window_open_flags.get_mut(&GuiWindow::DeviceControl).unwrap())
+            .resizable(true)
+            .default_width(400.0)
+            .show(ctx, |ui| {
+                self.device_control.draw(ui, &mut self.event_queue);
+            });                       
             
         egui::Window::new("PIT View")
             .open(self.window_open_flags.get_mut(&GuiWindow::PitViewer).unwrap())
@@ -805,59 +825,8 @@ impl GuiState {
             .resizable(true)
             .default_width(600.0)
             .show(ctx, |ui| {
-                egui::Grid::new("pic_view")
-                    .striped(true)
-                    .min_col_width(300.0)
-                    .show(ui, |ui| {
 
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("IMR Register: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.imr).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("IRR Register: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.irr).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("ISR Register: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.isr).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Auto-EOI: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.autoeoi).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();
-                    ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Trigger Mode: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(egui::TextEdit::singleline(&mut self.pic_state.trigger_mode).font(egui::TextStyle::Monospace));
-                    });
-                    ui.end_row();                    
-
-                    for i in 0..self.pic_state.interrupt_stats.len() {
-                        ui.horizontal(|ui| {
-                            let label_str = format!("IRQ {} IMR Masked: ", i );
-                            ui.label(egui::RichText::new(label_str).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.pic_state.interrupt_stats[i].0).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            let label_str = format!("IRQ {} ISR Masked: ", i );
-                            ui.label(egui::RichText::new(label_str).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.pic_state.interrupt_stats[i].1).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();
-                        ui.horizontal(|ui| {
-                            let label_str = format!("IRQ {} Serviced:   ", i );
-                            ui.label(egui::RichText::new(label_str).text_style(egui::TextStyle::Monospace));
-                            ui.add(egui::TextEdit::singleline(&mut self.pic_state.interrupt_stats[i].2).font(egui::TextStyle::Monospace));
-                        });
-                        ui.end_row();                                                
-                    }
-                      
-                });
+                self.pic_viewer.draw(ui, &mut self.event_queue);
             });           
             
         egui::Window::new("PPI View")

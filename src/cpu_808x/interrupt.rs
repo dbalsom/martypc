@@ -248,8 +248,6 @@ impl<'a> Cpu<'a> {
     /// Perform a hardware interrupt
     pub fn hw_interrupt(&mut self, vector: u8) {
 
-        trace_print!(self, "Hardware interrupt!");
-
         // Begin IRQ routine
         self.set_mc_pc(0x19a);
         self.biu_inta(vector);

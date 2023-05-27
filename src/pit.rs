@@ -27,7 +27,7 @@
 
 use log;
 
-use std::collections::BTreeMap;
+use std::collections::{VecDeque, BTreeMap};
 
 use modular_bitfield::prelude::*;
 
@@ -174,12 +174,8 @@ pub struct Channel {
     channel_state: ChannelState,
     cycles_in_state: u32,
     count_register: Updatable<u16>,
-    waiting_for_reload: bool,
     load_state: LoadState,
     load_type: LoadType,
-    waiting_for_lobyte: bool,
-    low_byte_latched: u8,
-    waiting_for_hibyte: bool,
     load_mask: u16,
     counting_element: Updatable<u16>,
     ce_undefined: bool,
@@ -191,15 +187,11 @@ pub struct Channel {
     output: Updatable<bool>,
     output_on_reload: bool,
     reload_on_trigger: bool,    
-    latched_lobyte_read: bool,
     latch_register: u16,
-    latch_lobit: bool,
-    latch_lobit_count: u32,
     bcd_mode: bool,
     gate: Updatable<bool>,
     one_shot_triggered: bool,
-    gate_triggered: bool,
-    reload_next_cycle: bool,
+    incomplete_reload: bool,
 }
 pub struct ProgrammableIntervalTimer {
     ptype: PitType,
@@ -207,9 +199,11 @@ pub struct ProgrammableIntervalTimer {
     clock_divisor: u32,
     pit_cycles: u64,
     sys_tick_accumulator: u32,
+    sys_ticks_advance: u32,
     cycle_accumulator: f64,
     channels: Vec<Channel>,
-    ticks_advanced: u32,
+    timewarp: DeviceRunTimeUnit,
+    speaker_buf: VecDeque<u8>
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -248,8 +242,9 @@ impl IoDevice for ProgrammableIntervalTimer {
     fn write_u8(&mut self, port: u16, data: u8, bus_opt: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
 
         // Catch PIT up to CPU.
-        let ticks = self.ticks_from_time(delta);
-        self.ticks_advanced += ticks;
+        let ticks = self.ticks_from_time(delta, self.timewarp);
+        //self.timewarp = self.time_from_ticks(ticks);
+        self.timewarp = delta;  // the above is technically the correct way but it breaks stuff(?)
 
         let bus = bus_opt.unwrap();
 
@@ -289,12 +284,8 @@ impl Channel {
             channel_state: ChannelState::WaitingForReload,
             cycles_in_state: 0,
             count_register: Updatable::Dirty(0, false),
-            waiting_for_reload: true,
             load_state: LoadState::WaitingForLsb,
             load_type: LoadType::InitialLoad,
-            waiting_for_lobyte: false,
-            low_byte_latched: 0,
-            waiting_for_hibyte: false,
             load_mask: 0xFFFF,
             counting_element: Updatable::Dirty(0, false),
             ce_undefined: false,
@@ -307,15 +298,11 @@ impl Channel {
             output: Updatable::Dirty(false, false),
             output_on_reload: false,
             reload_on_trigger: false,
-            latched_lobyte_read: false,
             latch_register: 0,
-            latch_lobit: false,
-            latch_lobit_count: 0,
             bcd_mode: false,
             gate: Updatable::Dirty(false, false),
             one_shot_triggered: false,
-            gate_triggered: false,
-            reload_next_cycle: false,
+            incomplete_reload: false
         }
     }
 
@@ -542,7 +529,7 @@ impl Channel {
                 self.finalize_load();
             }
             RwMode::LsbMsb => {
-                log::debug!("rw mode: {:?} byte: {:02X} load_state: {:?}", *self.rw_mode, byte, self.load_state);
+                //log::debug!("rw mode: {:?} byte: {:02X} load_state: {:?}", *self.rw_mode, byte, self.load_state);
                 match self.load_state {
                     LoadState::WaitingForLsb => {
                         self.count_register.update(byte as u16);
@@ -555,12 +542,20 @@ impl Channel {
                         }
 
                         self.load_state = LoadState::WaitingForMsb;
-                        log::debug!("got lsb in lsbmsb mode: {:02X} new load_state: {:?}", byte, self.load_state);
+                        //log::debug!("got lsb in lsbmsb mode: {:02X} new load_state: {:?}", byte, self.load_state);
                     }
                     LoadState::WaitingForMsb => {
                         let new_count = (*self.count_register & 0x00FF) | ((byte as u16) << 8);
-                        log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
+                        //log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
                         self.count_register.update(new_count);
+
+                        // If the counting element was reloaded between load of LSB and MSB, it is an incomplete load.
+                        // Reload the counting element again when we get the MSB.
+                        // Note: This is completely undocumented behavior
+                        if self.incomplete_reload {
+                            self.counting_element.update(new_count);
+                            self.incomplete_reload = false;
+                        }
                         self.load_state = LoadState::WaitingForLsb;
                         self.finalize_load();
                     }
@@ -673,6 +668,16 @@ impl Channel {
         if self.channel_state == ChannelState::WaitingForLoadCycle {
             // Load the current reload value into the counting element, applying the load mask
             self.counting_element.update(*self.count_register & self.load_mask);
+
+            if self.load_state == LoadState::WaitingForMsb {
+                // We are reloading during an incomplete counter load. Proceed, but set a flag to mark
+                // this load as incomplete.
+                self.incomplete_reload = true;
+            }
+            else {
+                self.incomplete_reload = false;
+            }
+
             //self.load_state = LoadState::Loaded;
 
             // Start counting.
@@ -839,9 +844,11 @@ impl ProgrammableIntervalTimer {
             clock_divisor,
             pit_cycles: 0,
             sys_tick_accumulator: 0,
+            sys_ticks_advance: 0,
             cycle_accumulator: 0.0,
             channels: vec,
-            ticks_advanced: 0,
+            timewarp: DeviceRunTimeUnit::SystemTicks(0),
+            speaker_buf: VecDeque::new()
         }
     }
 
@@ -934,7 +941,50 @@ impl ProgrammableIntervalTimer {
         self.channels[channel].set_gate(state, bus);
     }
 
-    pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit) -> u32 {
+    #[inline]
+    pub fn time_from_ticks(&mut self, ticks: u32 ) -> DeviceRunTimeUnit {
+        DeviceRunTimeUnit::SystemTicks(ticks * self.clock_divisor)
+    }
+
+    pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit, advance: DeviceRunTimeUnit) -> u32 {
+        let mut do_ticks = 0;
+        match (run_unit, advance) {
+            (DeviceRunTimeUnit::Microseconds(us), DeviceRunTimeUnit::Microseconds(warp_us)) => {
+                let pit_cycles = Pit::get_pit_cycles(us);
+                //log::debug!("Got {:?} pit cycles", pit_cycles);
+        
+                // Add up fractional cycles until we can make a whole one. 
+                self.cycle_accumulator += pit_cycles;
+                while self.cycle_accumulator > 1.0 {
+                    // We have one or more full PIT cycles. Drain the cycle accumulator
+                    // by ticking the PIT until the accumulator drops below 1.0.
+                    self.cycle_accumulator -= 1.0;
+                    do_ticks += 1;
+                }
+                do_ticks
+            }
+            (DeviceRunTimeUnit::SystemTicks(ticks), DeviceRunTimeUnit::SystemTicks(warp_ticks)) => { 
+                // Add up system ticks, then tick the PIT if we have enough ticks for 
+                // a PIT cycle.
+
+                // We subtract warp ticks - ticks processed during CPU execution to warp 
+                // device to current CPU cycle. Warp ticks should always be less than or equal to
+                // ticks provided to run.
+                self.sys_tick_accumulator += ticks - warp_ticks;
+
+                while self.sys_tick_accumulator >= self.clock_divisor {
+                    self.sys_tick_accumulator -= self.clock_divisor;
+                    do_ticks += 1;
+                }
+                do_ticks
+            }
+            _ => {
+                panic!("Invalid TimeUnit combination");
+            }
+        }
+    }
+
+    pub fn ticks_from_time_advance(&mut self, run_unit: DeviceRunTimeUnit) -> u32 {
         let mut do_ticks = 0;
         match run_unit {
             DeviceRunTimeUnit::Microseconds(us) => {
@@ -954,16 +1004,22 @@ impl ProgrammableIntervalTimer {
             DeviceRunTimeUnit::SystemTicks(ticks) => { 
                 // Add up system ticks, then tick the PIT if we have enough ticks for 
                 // a PIT cycle.
+
+                // We want to save the number of ticks advanced now so they can be subtracted
+                // from the number of ticks in the post-step() run() call. However, drain
+                // the accumulator now as this represents time between the last run() and now.
+                
                 self.sys_tick_accumulator += ticks;
                 
                 while self.sys_tick_accumulator >= self.clock_divisor {
                     self.sys_tick_accumulator -= self.clock_divisor;
                     do_ticks += 1;
                 }
+
                 do_ticks
             }
         }
-    }
+    }    
 
     pub fn run(
         &mut self, 
@@ -972,11 +1028,11 @@ impl ProgrammableIntervalTimer {
         run_unit: DeviceRunTimeUnit ) 
     {
 
-        let mut do_ticks = self.ticks_from_time(run_unit);
+        let mut do_ticks = self.ticks_from_time(run_unit, self.timewarp);
 
-        assert!(do_ticks >= self.ticks_advanced);
-        do_ticks -= self.ticks_advanced;
-        self.ticks_advanced = 0;
+        //assert!(do_ticks >= self.timewarp);
+
+        self.timewarp = DeviceRunTimeUnit::SystemTicks(0);
 
         for _ in 0..do_ticks {
             self.tick(bus, Some(buffer_producer));
@@ -1027,8 +1083,19 @@ impl ProgrammableIntervalTimer {
             }
         }
 
+        // If we have been passed a buffer, fill it with any queued samples
+        // and the current sample.
         if let Some(buffer) = buffer_producer {
+            // Copy any samples that have accumulated in the buffer.
+
+            for s in self.speaker_buf.drain(0..) {
+                _ = buffer.push(s);
+            }
             _ = buffer.push((speaker_sample) as u8);
+        }
+        else {
+            // Otherwise, put the sample in the buffer.
+            self.speaker_buf.push_back(speaker_sample as u8);
         }
 
     }

@@ -170,6 +170,9 @@ pub struct BusInterface {
     hdc: Option<HardDiskController>,
     mouse: Option<Mouse>,
     video: VideoCardDispatch,
+
+    timer_trigger1_armed: bool,
+    timer_trigger2_armed: bool,
 }
 
 impl ByteQueue for BusInterface {
@@ -292,7 +295,10 @@ impl Default for BusInterface {
             fdc: None,
             hdc: None,
             mouse: None,
-            video: VideoCardDispatch::None
+            video: VideoCardDispatch::None,
+
+            timer_trigger1_armed: false,
+            timer_trigger2_armed: false,     
         }        
     }
 }
@@ -323,6 +329,9 @@ impl BusInterface {
             hdc: None,
             mouse: None,
             video: VideoCardDispatch::None,
+
+            timer_trigger1_armed: false,
+            timer_trigger2_armed: false,          
         }
     }
 
@@ -1189,9 +1198,32 @@ impl BusInterface {
             event = Some(DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter - dma_counter_val));
         }
 
+        // Save current count info.
+        let (pit_reload_value, _) = pit.get_channel_count(0);
+
+        // Do hack for Area5150 :(
+        if pit_reload_value == 5117 {
+            if !self.timer_trigger1_armed {
+                self.timer_trigger1_armed = true;
+                log::warn!("Area5150 hack armed for lake effect.");
+            }
+        } 
+        else if pit_reload_value == 5162 {
+            if !self.timer_trigger2_armed {
+                self.timer_trigger2_armed = true;
+                log::warn!("Area5150 hack armed for wibble effect.");
+            }
+        }
+        
+        /*
+        if pit_reload_value == 19912 && (self.timer_trigger1_armed || self.timer_trigger2_armed) {
+            self.timer_trigger1_armed = false;
+            self.timer_trigger2_armed = false;
+        }
+        */
+
         // Put the PIT back.
         self.pit = Some(pit);
-        
         
         let mut dma1 = self.dma1.take().unwrap();
 
@@ -1225,7 +1257,46 @@ impl BusInterface {
         // Run the video device.
         match &mut self.video {
             VideoCardDispatch::Cga(cga) => {
+
                 cga.run(DeviceRunTimeUnit::SystemTicks(sys_ticks));
+
+                if self.timer_trigger1_armed && pit_reload_value == 19912 {
+                    // Do hack for Area5150. TODO: Figure out why this is necessary.
+                    
+                    // With VerticalTotalAdjust == 0, ticks per frame are 233472.
+                    let screen_tick_pos = cga.get_screen_ticks();
+
+                    //let screen_target = 17256
+                    //let screen_target = 16344;
+                    let screen_target = 15432;
+                    // Only adjust if we are late
+                    if screen_tick_pos > screen_target {
+                        let ticks_adj = screen_tick_pos - screen_target;
+                        log::warn!("Doing Area5150 hack. Rewinding CGA by {} ticks.", ticks_adj);
+                        
+                        cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+                    }
+                    
+                    self.timer_trigger1_armed = false;
+                }
+                else if self.timer_trigger2_armed && pit_reload_value == 19912 {
+                    // Do hack for Area5150. TODO: Figure out why this is necessary.
+                    
+                    // With VerticalTotalAdjust == 0, ticks per frame are 233472.
+                    let screen_tick_pos = cga.get_screen_ticks();
+
+                    //let screen_target = 17256;
+                    let screen_target = 16344;
+                    // Only adjust if we are late
+                    if screen_tick_pos > screen_target {
+                        let ticks_adj = screen_tick_pos - screen_target;
+                        log::warn!("Doing Area5150 hack. Rewinding CGA by {} ticks.", ticks_adj);
+                        
+                        cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+                    }
+                    
+                    self.timer_trigger2_armed = false;
+                }                 
             },
             VideoCardDispatch::Ega(ega) => {
                 ega.run(DeviceRunTimeUnit::Microseconds(us));

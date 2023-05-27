@@ -189,13 +189,17 @@ impl GuiState {
                     ui.close_menu();
                 }                    
                 if ui.button("Disassembly...").clicked() {
-                    *self.window_flag(GuiWindow::DiassemblyViewer) = true;
+                    *self.window_flag(GuiWindow::DisassemblyViewer) = true;
                     ui.close_menu();
                 }
                 if ui.button("IVR...").clicked() {
                     *self.window_flag(GuiWindow::IvrViewer) = true;
                     ui.close_menu();
-                }                
+                }       
+                if ui.button("Device control...").clicked() {
+                    *self.window_flag(GuiWindow::DeviceControl) = true;
+                    ui.close_menu();
+                }                           
                 if ui.button("PIC...").clicked() {
                     *self.window_flag(GuiWindow::PicViewer) = true;
                     ui.close_menu();
@@ -216,13 +220,25 @@ impl GuiState {
                     *self.window_flag(GuiWindow::VideoCardViewer) = true;
                     ui.close_menu();
                 }
+                if ui.checkbox(&mut self.get_option_mut(GuiOption::ShowBackBuffer), "Debug back buffer").clicked() {
+
+                    let new_opt = self.get_option(GuiOption::ShowBackBuffer).unwrap();
+
+                    self.event_queue.push_back(
+                        GuiEvent::OptionChanged(
+                            GuiOption::ShowBackBuffer, 
+                            new_opt 
+                        )
+                    );
+                    ui.close_menu();
+                }
+                
                 if ui.button("Flush Trace Logs").clicked() {
                     self.event_queue.push_back(GuiEvent::FlushLogs);
                     ui.close_menu();
                 }
             });
             ui.menu_button("Options", |ui| {
-
 
                 ui.menu_button("Display", |ui| {
                     if ui.checkbox(&mut self.get_option_mut(GuiOption::CorrectAspect), "Correct Aspect Ratio").clicked() {
@@ -244,7 +260,8 @@ impl GuiState {
                     if ui.button("Composite Adjustments...").clicked() {
                         *self.window_flag(GuiWindow::CompositeAdjust) = true;
                         ui.close_menu();
-                    }             
+                    }
+
                 });                
 
                 ui.menu_button("Attach COM2: ...", |ui| {

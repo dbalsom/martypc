@@ -39,7 +39,7 @@ mod fuzzer;
 use crate::cpu_808x::mnemonic::Mnemonic;
 use crate::cpu_808x::microcode::*;
 use crate::cpu_808x::addressing::AddressingMode;
-use crate::cpu_808x::queue::InstructionQueue;
+use crate::cpu_808x::queue::{InstructionQueue, QueueDelay};
 use crate::cpu_808x::biu::*;
 
 use crate::cpu_common::{CpuType, CpuOption};
@@ -484,7 +484,7 @@ pub enum InterruptType {
 }
 
 pub enum HistoryEntry {
-    Entry(u16, u16, Instruction)
+    Entry { cs: u16, ip: u16, cycles: u16, i: Instruction}
 }
 
 #[derive (Copy, Clone)]
@@ -687,7 +687,7 @@ pub struct Cpu<'a>
     queue_byte: u8,
     last_queue_byte: u8,
     last_queue_len: usize,
-    last_queue_delay: bool,
+    last_queue_delay: QueueDelay,
     t_cycle: TCycle,
     bus_status: BusStatus,
     bus_segment: Segment,
@@ -769,6 +769,7 @@ pub struct Cpu<'a>
     dram_bus_owner_cycles: u32,
     dma_aen: bool,
 
+    halt_resume_delay: u32,
     int_flags: Vec<u8>,
 }
 
@@ -947,9 +948,9 @@ pub enum FetchState {
     Suspended,
     Scheduled(u8),
     Delayed(u8),
+    DelayDone,
     Aborted(u8),
-    BlockedByEU,
-    BusBusy,
+    BlockedByEU
 }
 
 impl Default for FetchState {
@@ -1048,6 +1049,7 @@ impl<'a> Cpu<'a> {
             panic!("Invalid CpuAddress for reset vector.");
         }
 
+        self.address_bus = 0;
         self.bus_status = BusStatus::Passive;
         self.t_cycle = TCycle::T1;
         
@@ -1055,6 +1057,7 @@ impl<'a> Cpu<'a> {
         self.int_count = 0;
         self.iret_count = 0;
         self.instr_cycle = 0;
+        self.cycle_num = 1;
         
         self.in_rep = false;
         self.halted = false;
@@ -1068,11 +1071,9 @@ impl<'a> Cpu<'a> {
 
         self.queue_op = QueueOp::Idle;
         self.last_queue_op = QueueOp::Idle;
-        self.last_queue_delay = false;
+        self.last_queue_delay = QueueDelay::None;
+        self.fetch_state = FetchState::Idle;
 
-        self.step_over_target = None;
-
-        self.cycle_num = 1;
         self.i8288.ale = false;
         self.i8288.mrdc = false;
         self.i8288.amwc = false;
@@ -1081,9 +1082,9 @@ impl<'a> Cpu<'a> {
         self.i8288.aiowc = false;
         self.i8288.iowc = false;
 
-        self.address_bus = 0;
+        self.step_over_target = None;
+        self.end_addr = 0xFFFFF;
 
-        self.fetch_state = FetchState::Idle;
         // Reset takes 6 cycles before first fetch
         self.cycle();
         self.biu_suspend_fetch();
@@ -1168,10 +1169,12 @@ impl<'a> Cpu<'a> {
         if !self.in_rep {
             self.trace_comment("FINALIZE");
             let mut finalize_timeout = 0;
-    
+            
+            /*
             if MICROCODE_FLAGS_8088[self.mc_pc as usize] == RNI {
                 trace_print!(self, "Executed terminating RNI!");
             }
+            */
 
             if self.queue.len() == 0 {
                 while { 
@@ -1846,7 +1849,14 @@ impl<'a> Cpu<'a> {
     /// Resume from halted state
     pub fn resume(&mut self) {
         if self.halted {
-            log::trace!("Resuming from halt");
+            //log::debug!("Resuming from halt");
+            // It takes 7 cycles after INTR to enter INTA. 
+            // 3 of these are resuming from suspend, so not accounted from here.
+            self.trace_comment("INTR");
+            self.cycles(self.halt_resume_delay);
+        }
+        else {
+            log::warn!("resume() called but not halted!");
         }
         self.halted = false;
     }
@@ -1910,6 +1920,7 @@ impl<'a> Cpu<'a> {
 
                             // Do interrupt
                             self.hw_interrupt(irq);
+                            //log::debug!("hardware interrupt took {} cycles", self.instr_cycle);
                             let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
                             return step_result                                                 
                         }
@@ -2149,7 +2160,14 @@ impl<'a> Cpu<'a> {
                     if self.instruction_history.len() == CPU_HISTORY_LEN {
                         self.instruction_history.pop_front();
                     }
-                    self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
+                    self.instruction_history.push_back(
+                        HistoryEntry::Entry {
+                            cs: last_cs, 
+                            ip: last_ip, 
+                            cycles: self.instr_cycle as u16, 
+                            i: self.i
+                        }
+                    );
                     self.instruction_count += 1;
                 }
 
@@ -2168,7 +2186,14 @@ impl<'a> Cpu<'a> {
                     if self.instruction_history.len() == CPU_HISTORY_LEN {
                         self.instruction_history.pop_front();
                     }
-                    self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
+                    self.instruction_history.push_back(
+                        HistoryEntry::Entry {
+                            cs: last_cs, 
+                            ip: last_ip, 
+                            cycles: self.instr_cycle as u16, 
+                            i: self.i
+                        }
+                    );
                     self.instruction_count += 1;
                 }
 
@@ -2198,7 +2223,15 @@ impl<'a> Cpu<'a> {
                     if self.instruction_history.len() == CPU_HISTORY_LEN {
                         self.instruction_history.pop_front();
                     }
-                    self.instruction_history.push_back(HistoryEntry::Entry(last_cs, last_ip, self.i));
+                    
+                    self.instruction_history.push_back(
+                        HistoryEntry::Entry {
+                            cs: last_cs, 
+                            ip: last_ip, 
+                            cycles: self.instr_cycle as u16, 
+                            i: self.i
+                        }
+                    );
                 }
                 self.instruction_count += 1;
                 check_interrupts = true;
@@ -2255,7 +2288,6 @@ impl<'a> Cpu<'a> {
                 self.set_breakpoint_flag();
             }            
             self.hw_interrupt(irq);
-            self.resume();
         }
 
         // Check registers and flags for internal consistency.
@@ -2350,7 +2382,7 @@ impl<'a> Cpu<'a> {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            if let HistoryEntry::Entry(cs, ip, i) = i {            
+            if let HistoryEntry::Entry {cs, ip, cycles, i} = i {      
                 let i_string = format!("{:05X} [{:04X}:{:04X}] {}\n", i.address, *cs, *ip, i);
                 disassembly_string.push_str(&i_string);
             }
@@ -2364,9 +2396,10 @@ impl<'a> Cpu<'a> {
 
         for i in &self.instruction_history {
             let mut i_token_vec = Vec::new();
-            if let HistoryEntry::Entry(cs, ip, i) = i {
+            if let HistoryEntry::Entry {cs, ip, cycles, i} = i {
                 i_token_vec.push(SyntaxToken::MemoryAddressFlat(i.address, format!("{:05X}", i.address)));
                 i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, format!("{:04X}:{:04X}", cs, ip)));
+                i_token_vec.push(SyntaxToken::Text(format!("{}", cycles)));
                 i_token_vec.extend(i.tokenize());
             }
             history_vec.push(i_token_vec);
@@ -2745,6 +2778,12 @@ impl<'a> Cpu<'a> {
 
                 self.dram_refresh_adjust = adj;
             }
+            CpuOption::HaltResumeDelay(delay) => {
+
+                log::debug!("Setting HaltResumeDelay to: {}", delay);
+
+                self.halt_resume_delay = delay;
+            }            
             CpuOption::OffRailsDetection(state) => {
                 log::debug!("Setting OffRailsDetection to: {:?}", state);
                 self.off_rails_detection = state;
@@ -2777,6 +2816,9 @@ impl<'a> Cpu<'a> {
             CpuOption::DramRefreshAdjust(..) => {
                 true
             }
+            CpuOption::HaltResumeDelay(..) => {
+                true
+            }            
             CpuOption::OffRailsDetection(_) => {
                 self.off_rails_detection
             }
