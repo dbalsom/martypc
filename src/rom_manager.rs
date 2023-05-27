@@ -153,7 +153,7 @@ impl RomManager {
                     is_complete: Cell::new(false),
                     reset_vector: (0xFFFF, 0),
                     roms: vec![
-                        "f453eb2df6daf21ec644d33663d85434", // 5150 BIOS v3 10/27/83
+                        "f453eb2df6daf21ec644d33663d85434", // 5150 BIOS v3 10/27/82
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
                         "eb28f0e8d3f641f2b58a3677b3b998cc",  // Basic v1.01
                     ]
