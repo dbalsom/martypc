@@ -37,6 +37,7 @@ use super::VideoData;
 use serialport::SerialPortInfo;
 
 // Bring in submodules
+mod about;
 mod color;
 mod color_swatch;
 mod composite_adjust;
@@ -65,6 +66,7 @@ use crate::{
     egui::color::{darken_c32, lighten_c32, add_c32},
 
     // Use custom windows
+    egui::about::AboutDialog,
     egui::composite_adjust::CompositeAdjustControl,
     egui::cpu_control::CpuControl,
     egui::cpu_state_viewer::CpuViewerControl,
@@ -224,6 +226,7 @@ pub(crate) struct GuiState {
 
     error_string: String,
 
+    pub about_dialog: AboutDialog,
     pub cpu_control: CpuControl,
     pub cpu_viewer: CpuViewerControl,
     pub cycle_trace_viewer: CycleTraceViewerControl,
@@ -494,6 +497,7 @@ impl GuiState {
 
             error_string: String::new(),
 
+            about_dialog: AboutDialog::new(),
             cpu_control: CpuControl::new(exec_control.clone()),
             cpu_viewer: CpuViewerControl::new(),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
@@ -672,26 +676,7 @@ impl GuiState {
             .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())
             .show(ctx, |ui| {
 
-                let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
-                    ctx.load_texture(
-                        "logo",
-                        get_ui_image(UiImage::Logo),
-                        Default::default()
-                    )
-                });
-
-                ui.image(about_texture, about_texture.size_vec2());
-                ui.separator();
-
-                ui.label("Marty is free software.");
-
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x /= 2.0;
-                    ui.label("Github:");
-                    ui.hyperlink("https://github.com/dbalsom/marty");
-                });
-
-                ui.separator();
+                self.about_dialog.draw(ui, ctx, &mut self.event_queue);
 
             });
 
