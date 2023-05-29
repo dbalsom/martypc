@@ -18,17 +18,12 @@ use egui::{
     ColorImage, 
     //ImageData, 
     TexturesDelta,
-};
-
-use egui::{
     Visuals, 
     Color32, 
-    //FontDefinitions,
-    //Style
 };
+
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
-use ::image::Delay;
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
 use winit::{window::Window, event_loop::EventLoopWindowTarget};
@@ -84,7 +79,7 @@ use crate::{
     egui::ivr_viewer::IvrViewerControl,
     egui::theme::GuiTheme,
 
-    machine::{ExecutionControl, ExecutionState, ExecutionOperation},
+    machine::{MachineState, ExecutionControl},
     cpu_808x::CpuStringState, 
 
     devices::{
@@ -154,7 +149,8 @@ pub enum GuiEvent {
     CompositeAdjust(CompositeParams),
     FlushLogs,
     DelayAdjust,
-    TickDevice(DeviceSelection, u32)
+    TickDevice(DeviceSelection, u32),
+    MachineStateChange(MachineState)
 }
 
 pub enum DeviceSelection {
@@ -202,8 +198,9 @@ pub(crate) struct GuiState {
     
     option_flags: HashMap::<GuiOption, bool>,
 
-    video_mem: ColorImage,
+    machine_state: MachineState,
 
+    video_mem: ColorImage,
     video_data: VideoData,
     perf_stats: PerformanceStats,
 
@@ -460,6 +457,7 @@ impl GuiState {
 
             option_flags,
 
+            machine_state: MachineState::Off,
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
             video_data: Default::default(),
@@ -572,6 +570,10 @@ impl GuiState {
     pub fn clear_error(&mut self) {
         self.error_dialog_open = false;
         self.error_string = String::new();
+    }
+
+    pub fn set_machine_state(&mut self, state: MachineState) {
+        self.machine_state = state;
     }
 
     pub fn set_floppy_names(&mut self, names: Vec<OsString>) {

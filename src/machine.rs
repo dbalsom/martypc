@@ -52,8 +52,10 @@ pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
 #[derive(Copy, Clone, Debug)]
 pub enum MachineState {
-    Running,
+    On,
     Paused,
+    Resuming,
+    Rebooting,
     Off
 }
 
@@ -172,6 +174,7 @@ pub struct Machine<'a>
 {
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
+    state: MachineState,
     video_type: VideoType,
     sound_player: SoundPlayer,
     rom_manager: RomManager,
@@ -318,6 +321,7 @@ impl<'a> Machine<'a> {
         Machine {
             machine_type,
             machine_desc,
+            state: MachineState::On,
             video_type,
             sound_player,
             rom_manager,
@@ -334,6 +338,41 @@ impl<'a> Machine<'a> {
             cpu_cycles: 0,
             system_ticks: 0
         }
+    }
+
+    pub fn change_state(&mut self, new_state: MachineState) {
+
+        match (self.state, new_state) {
+
+            (MachineState::Off, MachineState::On) => {
+                log::debug!("Turning machine on...");
+                self.state = new_state;
+            }
+            (MachineState::On, MachineState::Off) => {
+                log::debug!("Turning machine off...");
+                self.reset();
+                self.state = new_state;
+            }
+            (MachineState::On, MachineState::Rebooting) => {
+                log::debug!("Rebooting machine...");
+                self.reset();
+                self.state = MachineState::On;
+            }
+            (MachineState::On, MachineState::Paused) => {
+                log::debug!("Pausing machine...");
+                self.state = new_state;
+            }
+            (MachineState::Paused, MachineState::Resuming) => {
+                log::debug!("Resuming machine...");
+                self.state = MachineState::On;
+            }
+            _ => {}
+        }
+
+    }
+
+    pub fn get_state(&self) -> MachineState {
+        self.state
     }
 
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
@@ -669,6 +708,15 @@ impl<'a> Machine<'a> {
                 }
             }
         };
+
+        let do_run = match self.state {
+            MachineState::On => true,
+            _ => false
+        };
+
+        if !do_run {
+            return 0;
+        }
 
         let mut cycles_elapsed = 0;
 

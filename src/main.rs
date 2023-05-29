@@ -54,7 +54,6 @@ mod cpu_common;
 mod cpu_808x;
 mod floppy_manager;
 mod egui;
-mod bus_io;
 mod interrupt;
 mod machine;
 mod machine_manager;
@@ -84,7 +83,7 @@ mod arduino8088_validator;
 use input::MouseButton;
 use breakpoints::BreakPointType;
 use config::*;
-use machine::{Machine, ExecutionState};
+use machine::{Machine, MachineState, ExecutionState};
 use cpu_808x::{Cpu, CpuAddress};
 use cpu_common::CpuOption;
 use rom_manager::{RomManager, RomError, RomFeature};
@@ -1088,13 +1087,6 @@ fn main() {
 
                         match video_card.get_render_mode() {
                             RenderMode::Direct => {
-                                /*
-                                let extents = video_card.get_display_extents();
-
-                                new_w = extents.visible_w;
-                                new_h = extents.visible_h;
-                                */
-
                                 (new_w, new_h) = video_card.get_display_aperture();
 
                                 // Set a sane maximum
@@ -1117,9 +1109,8 @@ fn main() {
 
                             let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
 
-                            // Hack for 8088mph. If vertical resolution is decreasing by less than N, do not
-                            // make a new buffer. 8088mph alternates between 239 and 240 scanlines when displaying
-                            // its 1024 color mode. 
+                            // TODO: The vertical delta hack was used for area 8088mph for the old style of rendering.
+                            // Now that we render into a fixed frame, we should refactor this
                             if (new_w != video_data.render_w) || ((new_h != video_data.render_h) && (vertical_delta <= 2)) {
                                 // Resize buffers
                                 log::debug!("Setting internal resolution to ({},{})", new_w, new_h);
@@ -1186,7 +1177,7 @@ fn main() {
                         match (video_card.get_video_type(), video_card.get_render_mode()) {
 
                             (VideoType::CGA, RenderMode::Direct) => {
-                                // Draw device's back buffer in direct mode (CGA only for now)
+                                // Draw device's front buffer in direct mode (CGA only for now)
 
                                 match aspect_correct {
                                     true => {
@@ -1429,12 +1420,26 @@ fn main() {
                                 }
 
                             }
+                            Some(GuiEvent::MachineStateChange(state)) => {
+
+                                match state {
+                                    MachineState::Off | MachineState::Rebooting => {
+                                        // Clear the screen if rebooting or turning off
+                                        render_src.fill(0);
+                                    }
+                                    _ => {}
+                                }
+                                machine.change_state(state);
+                            }
                             None => break,
                             _ => {
                                 // Unhandled event?
                             }
                         }
                     }
+
+                    // -- Update machine state
+                    framework.gui.set_machine_state(machine.get_state());
 
                     // -- Update list of floppies
                     let name_vec = machine.floppy_manager().get_floppy_names();
