@@ -9,14 +9,19 @@ impl GuiState {
         egui::menu::bar(ui, |ui| {
 
             ui.menu_button("Emulator", |ui| {
-                if ui.button("Performance...").clicked() {
+                if ui.button("⏱ Performance...").clicked() {
                     *self.window_flag(GuiWindow::PerfViewer) = true;
                     ui.close_menu();
                 }
-                if ui.button("About...").clicked() {
+                if ui.button("❓ About...").clicked() {
                     *self.window_flag(GuiWindow::About) = true;
                     ui.close_menu();
-                }                    
+                }
+                ui.separator();
+                if ui.button("🚫 Quit").clicked() {
+                    self.event_queue.push_back(GuiEvent::Exit);
+                    ui.close_menu();
+                }
             });
             ui.menu_button("Machine", |ui| {
 
