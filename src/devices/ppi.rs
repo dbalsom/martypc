@@ -431,6 +431,11 @@ impl Ppi {
         self.speaker_in = state;
     }
 
+    // Return whether NMI generation is enabled
+    pub fn nmi_enabled(&self) -> bool {
+        self.pb_byte & PORTB_PARITY_MB_EN == 0 || self.pb_byte & PORTB_PARITY_EX_EN == 0
+    }
+
     pub fn run(&mut self, pic: &mut pic::Pic, us: f64 ) {
 
         // Our keyboard byte was read, so clear the interrupt request line and reset the byte

@@ -222,6 +222,16 @@ impl GuiState {
                         ui.close_menu();
                     }
 
+                    if ui.button("Trigger NMI").clicked() {
+                        self.event_queue.push_back(GuiEvent::SetNMI(true));
+                        ui.close_menu();
+                    }
+
+                    if ui.button("Clear NMI").clicked() {
+                        self.event_queue.push_back(GuiEvent::SetNMI(false));
+                        ui.close_menu();
+                    }                    
+
                 });
                 if ui.button("Memory...").clicked() {
                     *self.window_flag(GuiWindow::MemoryViewer) = true;

@@ -155,7 +155,7 @@ impl MmioData {
 // us to call them with bus as an argument.
 pub struct BusInterface {
     cpu_factor: ClockFactor,
-
+    machine_desc: Option<MachineDescriptor>,
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
@@ -281,6 +281,7 @@ impl Default for BusInterface {
 
             cpu_factor: ClockFactor::Divisor(3),
 
+            machine_desc: None,
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
@@ -310,11 +311,12 @@ impl Default for BusInterface {
 }
 
 impl BusInterface {
-    pub fn new(cpu_factor: ClockFactor) -> BusInterface {
+    pub fn new(cpu_factor: ClockFactor, machine_desc: MachineDescriptor) -> BusInterface {
         BusInterface {
 
             cpu_factor,
 
+            machine_desc: Some(machine_desc),
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
@@ -1151,6 +1153,26 @@ impl BusInterface {
             }
         }
     
+        self.machine_desc = Some(machine_desc.clone());
+    }
+
+    /// Return whether NMI is enabled.
+    /// On the 5150 & 5160, NMI generation can be disabled via the PPI.
+    pub fn nmi_enabled(&self) -> bool {
+
+        if self.machine_desc.unwrap().have_ppi {
+
+            if let Some(ppi) = &self.ppi {
+                ppi.nmi_enabled()
+            }
+            else {
+                true
+            }
+        }
+        else {
+            // TODO: Determine what controls NMI masking on AT (i8042?)
+            true
+        }
     }
 
     pub fn run_devices(
@@ -1158,7 +1180,6 @@ impl BusInterface {
         us: f64, 
         sys_ticks: u32, 
         kb_byte_opt: Option<u8>, 
-        machine_desc: &MachineDescriptor,
         speaker_buf_producer: &mut Producer<u8>) -> Option<DeviceEvent>
     {
 
@@ -1190,7 +1211,7 @@ impl BusInterface {
         // The PIT may have a separate clock crystal, such as in the IBM AT. In this case, there may not 
         // be an integer number of PIT ticks per system ticks. Therefore the PIT can take either
         // system ticks (PC/XT) or microseconds as an update parameter.
-        if let Some(_crystal) = machine_desc.timer_crystal {
+        if let Some(_crystal) = self.machine_desc.unwrap().timer_crystal {
             pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::Microseconds(us));
         }
         else {

@@ -210,10 +210,15 @@ impl<'a> Cpu<'a> {
     }
 
     /// Execute the INTR microcode routine.
-    pub fn intr_routine(&mut self, vector: u8, itype: InterruptType) {
+    /// skip_first is used to skip the first microcode instruction, such as when entering from
+    /// INT1 or INT2.
+    pub fn intr_routine(&mut self, vector: u8, itype: InterruptType, skip_first: bool) {
 
         //log::debug!("in INTR routine!");
-        self.cycles_i(3, &[0x19d, 0x19e, 0x19f]);
+        if !skip_first {
+            self.cycle_i(0x019d);
+        }
+        self.cycles_i(2, &[0x19e, 0x19f]);
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (vector as usize * INTERRUPT_VEC_LEN) as u16);
         let new_ip = self.biu_read_u16(Segment::None, ivt_addr, ReadWriteFlag::Normal);
@@ -255,13 +260,54 @@ impl<'a> Cpu<'a> {
         self.cycles_i(2, &[0x19b, 0x19c]);
 
         // Begin INTR routine
-        self.intr_routine(vector, InterruptType::Hardware);
+        self.intr_routine(vector, InterruptType::Hardware, false);
         self.int_count += 1;
     }
 
+    /// Perform INT1 (Trap)
+    pub fn int1(&mut self) {
+        self.cycles_i(2, &[0x198, MC_JUMP]);
+        self.intr_routine(1, InterruptType::Hardware, true);
+        self.int_count += 1;        
+    }
+
+    /// Perform INT2 (NMI)
+    pub fn int2(&mut self) {
+        self.cycles_i(2, &[0x199, MC_JUMP]);
+        self.intr_routine(2, InterruptType::Hardware, true);
+        self.int_count += 1;        
+    }
+
+    /// Perform INT3
+    pub fn int3(&mut self) {
+        self.cycles_i(4, &[0x1b0, MC_JUMP, 0x1b2, MC_JUMP]);
+        self.intr_routine(3, InterruptType::Software, false);
+        self.int_count += 1;        
+    }
+
+    /// Perform INTO
+    pub fn intO(&mut self) {
+        self.cycles_i(4, &[0x1ac, 0x1ad]);
+
+        if self.get_flag(Flag::Overflow) {
+            self.cycles_i(2, &[0x1af, MC_JUMP]);
+            self.intr_routine(4, InterruptType::Hardware, false);
+            self.int_count += 1;     
+        }
+    }        
+
     /// Return true if an interrupt can occur under current execution state
+    #[inline]
     pub fn interrupts_enabled(&self) -> bool {
         self.get_flag(Flag::Interrupt) && !self.interrupt_inhibit
+    }
+
+    /// Returns true if a trap can occur under current execution state.
+    #[inline]
+    pub fn trap_enabled(&self) -> bool {
+        // Trap if trap flag is set, OR trap flag has been cleared but disable delay in effect (to trap POPF that clears trap)
+        // but only if trap is not suppressed and enable delay is 0.
+        (self.get_flag(Flag::Trap) || self.trap_disable_delay != 0) && !self.trap_suppressed && self.trap_enable_delay == 0
     }
 
 }

@@ -517,6 +517,10 @@ impl<'a> Machine<'a> {
             None
         }
     }
+    
+    pub fn set_nmi(&mut self, state: bool) {
+        self.cpu.set_nmi(state);
+    }
 
     pub fn dma_state(&mut self) -> DMAControllerStringState {
         // There will always be a primary DMA, so safe to unwrap.
@@ -922,7 +926,6 @@ impl<'a> Machine<'a> {
             us, 
             sys_ticks,
             kb_byte_opt, 
-            &self.machine_desc, 
             &mut self.speaker_buf_producer
         );
 

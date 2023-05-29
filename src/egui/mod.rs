@@ -152,7 +152,8 @@ pub enum GuiEvent {
     TickDevice(DeviceSelection, u32),
     MachineStateChange(MachineState),
     TakeScreenshot,
-    Exit
+    Exit,
+    SetNMI(bool)
 }
 
 pub enum DeviceSelection {

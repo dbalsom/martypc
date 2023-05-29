@@ -1266,9 +1266,12 @@ fn main() {
                                 GuiEvent::Exit => {
                                     // User chose exit option from menu. Shut down.
                                     // TODO: Add a timeout from last VHD write for safety?
-
                                     println!("Thank you for using MartyPC!");
                                     *control_flow = ControlFlow::Exit;
+                                }
+                                GuiEvent::SetNMI(state) => {
+                                    // User wants to crash the computer. Sure, why not.
+                                    machine.set_nmi(state);
                                 }
                                 GuiEvent::OptionChanged(opt, val) => {
                                     match (opt, val) {

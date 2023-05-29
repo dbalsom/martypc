@@ -89,6 +89,13 @@ impl<'a> Cpu<'a> {
 
         self.trace_comment("EXECUTE");
 
+        // Reset trap suppression flag
+        self.trap_suppressed = false;
+
+        // Decrement trap counters.
+        self.trap_enable_delay = self.trap_enable_delay.saturating_sub(1);
+        self.trap_disable_delay = self.trap_disable_delay.saturating_sub(1);
+
         // If we have an NX loaded RNI cycle from the previous instruction, execute it.
         // Otherwise wait one cycle before beginning instruction if there was no modrm.
         if self.nx {
@@ -1035,7 +1042,7 @@ impl<'a> Cpu<'a> {
                 self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip));
 
                 self.cycles_i(4, &[0x1b0, MC_JUMP, 0x1b2, MC_JUMP]); // Jump to INTR
-                self.sw_interrupt(3);
+                self.int3();
                 jump = true;    
             }
             0xCD => {
