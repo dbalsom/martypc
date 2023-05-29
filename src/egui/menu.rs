@@ -142,6 +142,13 @@ impl GuiState {
                     *self.window_flag(GuiWindow::VHDCreator) = true;
                     ui.close_menu();
                 };
+
+                ui.separator();
+
+                if ui.button("🖼 Take Screenshot...").clicked() {
+                    self.event_queue.push_back(GuiEvent::TakeScreenshot);
+                    ui.close_menu();
+                }; 
                 
             });
             ui.menu_button("Debug", |ui| {

@@ -17,6 +17,7 @@ Thumbs.db
 /hdd
 /dumps
 /builds
+/screenshots
 /traces
 /program
 *.toml

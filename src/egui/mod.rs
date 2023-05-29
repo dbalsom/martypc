@@ -150,7 +150,8 @@ pub enum GuiEvent {
     FlushLogs,
     DelayAdjust,
     TickDevice(DeviceSelection, u32),
-    MachineStateChange(MachineState)
+    MachineStateChange(MachineState),
+    TakeScreenshot
 }
 
 pub enum DeviceSelection {

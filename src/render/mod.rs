@@ -34,8 +34,7 @@
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
-use std::rc::Rc;
-use std::cell::RefCell;
+use std::path::Path;
 
 pub mod resize;
 pub mod composite;
@@ -48,6 +47,7 @@ use crate::config::VideoType;
 use crate::videocard::*;
 use crate::devices::cga;
 use crate::bus::BusInterface;
+use crate::file_util;
 
 extern crate rand; 
 use rand::{
@@ -398,7 +398,6 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
     }
 }
 
-
 pub struct VideoRenderer {
     mode: DisplayMode,
     cols: u32,
@@ -549,6 +548,31 @@ impl VideoRenderer {
         }
     }
 
+    pub fn screenshot(
+        &self,
+        frame: &mut [u8],
+        frame_w: u32, 
+        frame_h: u32,
+        path: &Path) 
+    {
+
+        // Find first unique filename in screenshot dir
+        let filename = file_util::find_unique_filename(path, "screenshot", ".png");
+
+        match image::save_buffer(
+            filename.clone(),
+            frame,
+            frame_w,
+            frame_h, 
+            image::ColorType::Rgba8) 
+        {
+            Ok(_) => println!("Saved screenshot: {}", filename.display()),
+            Err(e) => {
+                println!("Error writing screenshot: {}: {}", filename.display(), e)
+            }
+        }
+    }
+
     pub fn draw_text_mode(
         &self, 
         video_type: VideoType,
@@ -559,7 +583,8 @@ impl VideoRenderer {
         mem: &[u8], 
         char_height: u8, 
         lowres: bool,
-        font: &FontInfo ) {
+        font: &FontInfo ) 
+    {
 
         let mem_span = match lowres {
             true => 40,

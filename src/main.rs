@@ -55,6 +55,7 @@ mod cpu_common;
 mod cpu_808x;
 mod floppy_manager;
 mod egui;
+mod file_util;
 mod interrupt;
 mod machine;
 mod machine_manager;
@@ -1448,6 +1449,19 @@ fn main() {
                                         _ => {}
                                     }
                                     machine.change_state(state);
+                                }
+                                GuiEvent::TakeScreenshot => {
+                                    let mut screenshot_path = PathBuf::new();
+                                    screenshot_path.push(config.emulator.basedir.clone());
+                                    screenshot_path.push("screenshots");
+
+                                    video.screenshot(
+                                        &mut render_src,
+                                        video_data.render_w, 
+                                        video_data.render_h, 
+                                        &screenshot_path
+                                    );
+
                                 }
                                 _ => {}
                             }
