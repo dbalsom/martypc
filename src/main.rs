@@ -1384,27 +1384,29 @@ fn main() {
     
                                     let mut breakpoints = Vec::new();
     
-                                    // Push exec breakpoint to list if valid hex
-                                    if let Ok(addr) = u32::from_str_radix(bp_str, 16) {
-                                        if addr > 0 && addr < 0x100000 {
-                                            breakpoints.push(BreakPointType::ExecuteFlat(addr));
+                                    // Push exec breakpoint to list if valid expression
+                                    if let Some(addr) = machine.cpu().eval_address(&bp_str) {
+                                        let flat_addr = u32::from(addr);
+                                        if flat_addr > 0 && flat_addr < 0x100000 {
+                                            breakpoints.push(BreakPointType::ExecuteFlat(flat_addr));
                                         }
-                                    }
+                                    };
                                 
-                                    // Push mem breakpoint to list if valid hex
-                                    if let Ok(addr) = u32::from_str_radix(bp_mem_str, 16) {
-                                        if addr > 0 && addr < 0x100000 {
-                                            breakpoints.push(BreakPointType::MemAccessFlat(addr));
+                                    // Push mem breakpoint to list if valid expression
+                                    if let Some(addr) = machine.cpu().eval_address(&bp_mem_str) {
+                                        let flat_addr = u32::from(addr);
+                                        if flat_addr > 0 && flat_addr < 0x100000 {
+                                            breakpoints.push(BreakPointType::MemAccessFlat(flat_addr));
                                         }
                                     }
                                 
                                     // Push int breakpoint to list 
-                                    if let Ok(addr) = u32::from_str_radix(bp_int_str, 10) {
-                                        if addr > 0 && addr < 256 {
-                                            breakpoints.push(BreakPointType::Interrupt(addr as u8));
+                                    if let Ok(iv) = u32::from_str_radix(bp_int_str, 10) {
+                                        if iv < 256 {
+                                            breakpoints.push(BreakPointType::Interrupt(iv as u8));
                                         }
                                     }
-    
+
                                     machine.set_breakpoints(breakpoints);
                                 }
                                 GuiEvent::MemoryUpdate => {
