@@ -214,6 +214,11 @@ impl<'a> Cpu<'a> {
     /// INT1 or INT2.
     pub fn intr_routine(&mut self, vector: u8, itype: InterruptType, skip_first: bool) {
 
+        // Check for interrupt breakpoint.
+        if self.int_flags[vector as usize] & INTERRUPT_BREAKPOINT != 0 {
+            self.set_breakpoint_flag();
+        }
+
         //log::debug!("in INTR routine!");
         if !skip_first {
             self.cycle_i(0x019d);
