@@ -188,6 +188,7 @@ pub struct Machine<'a>
     error: bool,
     error_str: Option<String>,
     cpu_factor: ClockFactor,
+    next_cpu_factor: ClockFactor,
     cpu_cycles: u64,
     system_ticks: u64,
 }
@@ -335,6 +336,7 @@ impl<'a> Machine<'a> {
             error: false,
             error_str: None,
             cpu_factor,
+            next_cpu_factor: cpu_factor,
             cpu_cycles: 0,
             system_ticks: 0
         }
@@ -444,15 +446,18 @@ impl<'a> Machine<'a> {
 
     /// Set the specified state of the turbo button. True will enable turbo mode
     /// and switch to the turbo mode CPU clock factor.
+    /// 
+    /// We must be careful not to update this between step() and run_devices() or devices' 
+    /// advance_ticks may overflow device update ticks.
     pub fn set_turbo_mode(&mut self, state: bool) {
         
         if state {
-            self.cpu_factor = self.machine_desc.cpu_turbo_factor;
+            self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
         }
         else {
-            self.cpu_factor = self.machine_desc.cpu_factor;
+            self.next_cpu_factor = self.machine_desc.cpu_factor;
         }
-        log::debug!("Set turbo mode to: {} New cpu factor is {:?}", state, self.cpu_factor);
+        log::debug!("Set turbo mode to: {} New cpu factor is {:?}", state, self.next_cpu_factor);
     }
 
     pub fn fdc(&mut self) -> &mut Option<FloppyController> {
@@ -616,6 +621,11 @@ impl<'a> Machine<'a> {
         let mut kb_event_processed = false;
         let mut skip_breakpoint = false;
         let mut instr_count = 0;
+
+        // Update cpu factor.
+        let new_factor = self.next_cpu_factor;
+        self.cpu_factor = new_factor;
+        self.bus_mut().set_cpu_factor(new_factor);
 
         // Was reset requested?
         if let ExecutionOperation::Reset = exec_control.peek_op() {
@@ -878,7 +888,7 @@ impl<'a> Machine<'a> {
         }
 
         //log::debug!("cycles_elapsed: {}", cycles_elapsed);
-
+        
         instr_count
     }
 

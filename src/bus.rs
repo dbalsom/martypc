@@ -448,6 +448,10 @@ impl BusInterface {
         self.clear();
     }
 
+    pub fn set_cpu_factor(&mut self, cpu_factor: ClockFactor) {
+        self.cpu_factor = cpu_factor;
+    }
+
     #[inline]
     /// Convert a count of CPU cycles to system clock ticks based on the current CPU
     /// clock divisor.
