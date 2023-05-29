@@ -27,7 +27,10 @@
 
 
 #![allow(dead_code)]
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    path::Path
+};
 
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 use crate::config::VideoType;
@@ -1940,15 +1943,17 @@ impl VideoCard for CGACard {
         self.frame_count
     }
 
-    fn dump_mem(&self) {
-        let filename = format!("./dumps/cga.bin");
+    fn dump_mem(&self, path: &Path) {
+
+        let mut filename = path.to_path_buf();
+        filename.push("cga_mem.bin");
         
         match std::fs::write(filename.clone(), &*self.mem) {
             Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename)
+                log::debug!("Wrote memory dump: {}", filename.display())
             }
             Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename, e)
+                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
             }
         }
     }

@@ -15,8 +15,10 @@
 */
 
 #![allow(dead_code)]
-use std::any::Any;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    path::Path
+};
 use modular_bitfield::prelude::*;
 
 //#![allow(dead_code)]
@@ -1437,18 +1439,19 @@ impl VideoCard for EGACard {
         &self.planes[plane].buf
     }
 
-    fn dump_mem(&self) {
+    fn dump_mem(&self, path: &Path) {
         
         for i in 0..4 {
 
-            let filename = format!("./dumps/ega_plane{}.bin", i);
+            let mut filename = path.to_path_buf();
+            filename.push(format!("ega_plane{}.bin", i));
             
             match std::fs::write(filename.clone(), &self.planes[i].buf) {
                 Ok(_) => {
-                    log::debug!("Wrote memory dump: {}", filename)
+                    log::debug!("Wrote memory dump: {}", &filename.display())
                 }
                 Err(e) => {
-                    log::error!("Failed to write memory dump '{}': {}", filename, e)
+                    log::error!("Failed to write memory dump '{}': {}", &filename.display(), e)
                 }
             }
         }

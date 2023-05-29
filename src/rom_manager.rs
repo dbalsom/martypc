@@ -24,7 +24,7 @@ use std::collections::HashMap;
 //use std::ffi::OsString;
 use std::mem::discriminant;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::cell::Cell;
 
 use crate::config::MachineType;
@@ -1248,7 +1248,7 @@ impl RomManager {
         }
     }
 
-    pub fn try_load_from_dir(&mut self, path: &str) -> Result<bool, RomError> {
+    pub fn try_load_from_dir(&mut self, path: &Path) -> Result<bool, RomError> {
 
         // Red in directory entries within the provided path
         let dir = match fs::read_dir(path) {

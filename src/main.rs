@@ -7,7 +7,8 @@ use std::{
     cell::RefCell,
     rc::Rc,
     path::Path,
-    ffi::OsString
+    ffi::OsString,
+    path::PathBuf
 };
 
 use crate::egui::{Framework, DeviceSelection};
@@ -318,13 +319,17 @@ fn main() {
     // Instantiate the rom manager to load roms for the requested machine type    
     let mut rom_manager = RomManager::new(config.machine.model, features);
 
-    if let Err(e) = rom_manager.try_load_from_dir("./roms") {
+    let mut rom_path = PathBuf::new();
+    rom_path.push(config.emulator.basedir.clone());
+    rom_path.push("roms");
+
+    if let Err(e) = rom_manager.try_load_from_dir(&rom_path) {
         match e {
             RomError::DirNotFound => {
-                eprintln!("ROM directory not found")
+                eprintln!("ROM directory not found: {}", rom_path.display())
             }
             RomError::RomNotFoundForMachine => {
-                eprintln!("No valid ROM found for specified machine type")
+                eprintln!("No valid ROM found for specified machine type.")
             }
             RomError::RomNotFoundForFeature(feature) => {
                 eprintln!("No valid ROM found for requested feature: {:?}", feature)
@@ -350,13 +355,17 @@ fn main() {
     let mut floppy_manager = FloppyManager::new();
 
     // Scan the floppy directory
-    if let Err(e) = floppy_manager.scan_dir("./floppy") {
+    let mut floppy_path = PathBuf::new();
+    floppy_path.push(config.emulator.basedir.clone());
+    floppy_path.push("floppy");
+
+    if let Err(e) = floppy_manager.scan_dir(&floppy_path) {
         match e {
             FloppyError::DirNotFound => {
-                eprintln!("Floppy directory not found")
+                eprintln!("Floppy directory not found: {}", floppy_path.display())
             }
             _ => {
-                eprintln!("Error reading floppy directory")
+                eprintln!("Error reading floppy directory: {}", floppy_path.display())
             }
         }
         std::process::exit(1);
@@ -1338,14 +1347,25 @@ fn main() {
                             }
                             Some(GuiEvent::DumpVRAM) => {
                                 if let Some(video_card) = machine.videocard() {
-                                    video_card.dump_mem();
+                                    let mut dump_path = PathBuf::new();
+                                    dump_path.push(config.emulator.basedir.clone());
+                                    dump_path.push("dumps");
+                                    video_card.dump_mem(&dump_path);
                                 }
                             }
                             Some(GuiEvent::DumpCS) => {
-                                machine.cpu().dump_cs();
+                                let mut dump_path = PathBuf::new();
+                                dump_path.push(config.emulator.basedir.clone());
+                                dump_path.push("dumps");
+                                                                
+                                machine.cpu().dump_cs(&dump_path);
                             }
                             Some(GuiEvent::DumpAllMem) => {
-                                machine.bus().dump_mem();
+                                let mut dump_path = PathBuf::new();
+                                dump_path.push(config.emulator.basedir.clone());
+                                dump_path.push("dumps");
+                                                                                                
+                                machine.bus().dump_mem(&dump_path);
                             }
                             Some(GuiEvent::EditBreakpoint) => {
                                 // Get breakpoints from GUI

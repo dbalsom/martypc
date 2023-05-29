@@ -1,9 +1,10 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::fmt;
-use std::io::{BufWriter, Write};
+use std::{
+    collections::HashMap,
+    io::{BufWriter, Write},
+    fmt,
+    path::Path
+};
 
 use ringbuf::{Producer};
 
@@ -950,20 +951,21 @@ impl BusInterface {
         vec
     }
 
-    pub fn dump_mem(&self) {
+    pub fn dump_mem(&self, path: &Path) {
         
-        let filename = format!("./dumps/mem.bin");
-        
+        let mut filename = path.to_path_buf();
+        filename.push("mem.bin");
+
         let len = 0x100000;
         let address = 0;
         log::debug!("Dumping {} bytes at address {:05X}", len, address);
 
         match std::fs::write(filename.clone(), &self.memory) {
             Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename)
+                log::debug!("Wrote memory dump: {}", filename.display())
             }
             Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename, e)
+                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
             }
         }
     }

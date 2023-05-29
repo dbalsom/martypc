@@ -2,12 +2,11 @@
 #![allow(clippy::unusual_byte_groupings)]
 
 use std::{
-    rc::Rc,
-    cell::RefCell,
     collections::VecDeque,
     error::Error,
     fmt,
-    io::Write
+    io::Write,
+    path::Path
 };
 
 use core::fmt::Display;
@@ -2735,9 +2734,10 @@ impl<'a> Cpu<'a> {
 
     }
 
-    pub fn dump_cs(&self) {
+    pub fn dump_cs(&self, path: &Path) {
         
-        let filename = format!("./dumps/cs.bin");
+        let mut filename = path.to_path_buf();
+        filename.push("cs.bin");
         
         let len = 0x10000;
         let address = (self.cs as usize) << 4;
@@ -2746,10 +2746,10 @@ impl<'a> Cpu<'a> {
 
         match std::fs::write(filename.clone(), &cs_slice) {
             Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename)
+                log::debug!("Wrote memory dump: {}", filename.display())
             }
             Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename, e)
+                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
             }
         }
     }

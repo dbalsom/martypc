@@ -125,6 +125,9 @@ impl FromStr for TraceMode {
 
 #[derive(Debug, Deserialize)]
 pub struct Emulator {
+
+    pub basedir: PathBuf,
+
     #[serde(default = "_default_true")]
     pub autostart: bool,
 
@@ -222,6 +225,9 @@ pub struct CmdLineArgs {
     #[bpaf(long)]
     pub configfile: Option<PathBuf>,
 
+    #[bpaf(long)]
+    pub basedir: Option<PathBuf>,
+
     // Emulator options
     #[bpaf(long, switch)]
     pub headless: bool,
@@ -272,12 +278,17 @@ pub struct CmdLineArgs {
 
 impl ConfigFileParams {
     pub fn overlay(&mut self, shell_args: CmdLineArgs) {
+
         if let Some(machine_model) = shell_args.machine_model { 
             self.machine.model = machine_model;
         }
         if let Some(validator) = shell_args.validator { 
             self.validator.vtype = Some(validator);
-        }        
+        }       
+
+        if let Some(basedir) = shell_args.basedir {
+            self.emulator.basedir = basedir;
+        }
         self.emulator.headless |= shell_args.headless;
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.autostart |= shell_args.autostart;
