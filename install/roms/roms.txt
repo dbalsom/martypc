@@ -1,0 +1,92 @@
+
+Marty requires the following ROMs be placed in this directory.
+
+IBM 5150 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+One of the following main system BIOS files:
+
+    BIOS_IBM5150_27OCT82_1501476_U33.BIN **** preferred ****
+    8,192 bytes
+    md5sum: f453eb2df6daf21ec644d33663d85434
+
+-- or --
+
+    BIOS_IBM5150_19OCT81_5700671_U33.BIN
+    8,192 bytes
+    md5sum: 6a1ed4e3f500d785a01ff4d3e000d79c
+
+-- or --
+
+    BIOS_IBM5150_24APR81_5700051_U33.BIN
+    8,192 bytes
+    md5sum: 6338a9808445de12109a2389b71ee2eb
+
+Optionally, also include one of the BASIC ROMS:
+
+    basic_v1.rom
+    32,768 bytes
+    md5sum: 2ad31da203a49b504fad3a34af0c719f
+
+-- or --
+
+    basic_v101.rom
+    32,768 bytes
+    md5sum: eb28f0e8d3f641f2b58a3677b3b998cc
+
+IBM 5160
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+One of the following main system BIOS file sets:
+
+    BIOS_5160_09MAY86_U19_62X0819_68X4370_27256_F000.BIN  **** preferred ****
+    32,768 bytes
+    md5sum: f051b4bbc3b60c3a14df94a0e4ee720f
+
+    - and - 
+
+    BIOS_5160_09MAY86_U18_59X7268_62X0890_27256_F800.BIN  **** preferred ****
+    32,768 bytes
+    md5sum: 9696472098999c02217bf922786c1f4a
+
+-- or --
+
+    BIOS_5160_08NOV82_U18_1501512.BIN
+    32,768 bytes
+    md5sum: 1a2ac1ae0fe0f7783197e78da8b3126c
+
+    - and -
+
+    BIOS_5160_08NOV82_U19_5000027_27256.BIN
+    32,768 bytes 
+    md5sum: e816a89768a1bf4b8d52b454d5c9d1e1
+
+Optionally, also include one of the BASIC ROMS:
+
+    basic_v1.rom
+    32,768 bytes
+    md5sum: 2ad31da203a49b504fad3a34af0c719f
+
+-- or --
+
+    basic_v101.rom
+    32,768 bytes
+    md5sum: eb28f0e8d3f641f2b58a3677b3b998cc
+
+Optionally, an open source BIOS can be used.
+
+    GLaBIOS 0.2.4
+    
+    8,192 bytes
+    md5sum: c9090b75c0332fc3509642ea193de7a2
+    
+IBM/Xebec 20MB Fixed Disk Adapter
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you wish to add a hard disk to the IBM XT 5160 machine, you MUST supply
+a hard disk controller BIOS:
+
+    IBM_XEBEC_62X0822_1985.BIN
+    4,096 bytes
+    md5sum: 66631d1a095d8d0d54cc917fbdece684
+    
