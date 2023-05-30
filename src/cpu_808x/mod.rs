@@ -1912,6 +1912,10 @@ impl<'a> Cpu<'a> {
 
         if self.nmi && self.bus.nmi_enabled() && !self.nmi_triggered {
             // NMI takes priority over trap and INTR.
+            if self.halted {
+                // Resume from halt on interrupt
+                self.resume();
+            }            
             log::debug!("Triggered NMI!");
             self.nmi_triggered = true;
             self.int2();
