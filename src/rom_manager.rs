@@ -391,7 +391,20 @@ impl RomManager {
                         "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed            
                         "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS        
                     ]
-                }
+                },
+                RomSet {
+                    machine_type: MachineType::IBM_XT_5160,
+                    priority: 5,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
+                    roms: vec![
+                        "c9090b75c0332fc3509642ea193de7a2", // GLABIOS_0.2.4
+                        "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                        "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
+                        "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
+                        "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed    
+                    ]
+                }            
 
             ]),
             rom_sets_complete: Vec::new(),
@@ -710,6 +723,25 @@ impl RomManager {
                     ]) 
                 }
             ),(
+                "c9090b75c0332fc3509642ea193de7a2", // GLABIOS_0.2.4_8X.ROM
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,       
+                    interleave: RomInterleave::None,
+                    optional: false,
+                    priority: 1,
+                    address: 0xFE000,
+                    offset: 0,
+                    size: 8192,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()
+                }
+            ),(
                 "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                 RomDescriptor {
                     rom_type: RomType::BIOS,
@@ -719,7 +751,7 @@ impl RomManager {
                     feature: Some(RomFeature::XebecHDC),
                     order: RomOrder::Normal,      
                     interleave: RomInterleave::None,              
-                    optional: false,
+                    optional: true,
                     priority: 1,
                     address: 0xC8000,
                     offset: 0,
