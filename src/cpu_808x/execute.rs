@@ -1487,6 +1487,7 @@ impl<'a> Cpu<'a> {
                         let product = self.mul8(self.al, op1_value, false, negate);
                         self.set_register16(Register16::AX, product);
 
+                        self.set_szp_flags_from_result_u8(self.ah);
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1494,6 +1495,8 @@ impl<'a> Cpu<'a> {
                         //self.multiply_i8(op1_value as i8);
                         let product = self.mul8(self.al, op1_value, true, negate);
                         self.set_register16(Register16::AX, product);
+
+                        self.set_szp_flags_from_result_u8(self.ah);
                     }                    
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1581,6 +1584,8 @@ impl<'a> Cpu<'a> {
                         let (dx, ax) = self.mul16(self.ax, op1_value, false, negate);
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);
+
+                        self.set_szp_flags_from_result_u16(self.dx);
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1589,7 +1594,9 @@ impl<'a> Cpu<'a> {
 
                         let (dx, ax) = self.mul16(self.ax, op1_value, true, negate);
                         self.set_register16(Register16::DX, dx);
-                        self.set_register16(Register16::AX, ax);                        
+                        self.set_register16(Register16::AX, ax);    
+
+                        self.set_szp_flags_from_result_u16(self.dx);                    
                     }
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
