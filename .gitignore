@@ -20,6 +20,7 @@ Thumbs.db
 /screenshots
 /traces
 /program
+/releases
 *.toml
 !/install/marty.toml
 *.pcm
