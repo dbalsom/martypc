@@ -55,22 +55,27 @@ impl VHDManager {
             Err(_) => return Err(VHDManagerError::DirNotFound)
         };
 
+        let extensions = ["vhd"];
+
         // Scan through all entries in the directory
         for entry in dir {
             if let Ok(entry) = entry {
                 if entry.path().is_file() {
-
-                    println!("Found VHD image: {:?} size: {}", entry.path(), entry.metadata().unwrap().len());
-                    self.file_vec.push( VHDFile {
-                        path: entry.path(),
-                        size: entry.metadata().unwrap().len()
-                    });
-
-                    self.file_map.insert(entry.file_name(), 
-                        VHDFile { 
-                            path: entry.path(),
-                            size: entry.metadata().unwrap().len()
-                         });
+                    if let Some(extension) = entry.path().extension() {
+                        if extensions.contains(&extension.to_string_lossy().to_lowercase().as_ref()) {
+                            println!("Found VHD image: {:?} size: {}", entry.path(), entry.metadata().unwrap().len());
+                            self.file_vec.push( VHDFile {
+                                path: entry.path(),
+                                size: entry.metadata().unwrap().len()
+                            });
+        
+                            self.file_map.insert(entry.file_name(), 
+                                VHDFile { 
+                                    path: entry.path(),
+                                    size: entry.metadata().unwrap().len()
+                                 });
+                        }
+                    }
                 }
             }
         }
