@@ -52,10 +52,13 @@ impl AboutDialog {
         });
 
         ui.image(about_texture, about_texture.size_vec2());
+
         ui.separator();
         ui.vertical(|ui| {
-            ui.label("Marty is free software licensed under the GPLv3.");
+            ui.label("MartyPC Version 0.1.1");
+            ui.label("MartyPC is free software licensed under the GPLv3.");
             ui.label("©2023 Daniel Balsom (GloriousCow)");
+
             ui.label("Github:");
             ui.hyperlink("https://github.com/dbalsom/marty");
         });
