@@ -31,6 +31,30 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Release executable 'marty' release candidate",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=marty",
+                    "--package=marty"
+                ],
+                "filter": {
+                    "name": "marty",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/releases/1_0_1/",
+            "env": {
+                "RUST_LOG": "debug,naga=error,wgpu_core=error",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },        
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'marty'",
             "cargo": {
                 "args": [
@@ -101,7 +125,7 @@
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
-        },        
+        },         
         {
             "type": "lldb",
             "request": "launch",
