@@ -55,22 +55,27 @@ impl FloppyManager {
             Err(_) => return Err(FloppyError::DirNotFound)
         };
 
-        // Scan through all entries in the directory
+        let extensions = ["img", "ima"];
+
+        // Scan through all entries in the directory and find all files with matching extension
         for entry in dir {
             if let Ok(entry) = entry {
                 if entry.path().is_file() {
-
-                    println!("Found floppy image: {:?} size: {}", entry.path(), entry.metadata().unwrap().len());
-                    self.image_vec.push( FloppyImage {
-                        path: entry.path(),
-                        size: entry.metadata().unwrap().len()
-                    });
-
-                    self.image_map.insert(entry.file_name(), 
-                        FloppyImage { 
-                            path: entry.path(),
-                            size: entry.metadata().unwrap().len()
-                         });
+                    if let Some(extension) = entry.path().extension() {
+                        if extensions.contains(&extension.to_string_lossy().to_lowercase().as_ref()) {
+                            println!("Found floppy image: {:?} size: {}", entry.path(), entry.metadata().unwrap().len());
+                            self.image_vec.push( FloppyImage {
+                                path: entry.path(),
+                                size: entry.metadata().unwrap().len()
+                            });
+                        
+                            self.image_map.insert(entry.file_name(), 
+                                FloppyImage { 
+                                    path: entry.path(),
+                                    size: entry.metadata().unwrap().len()
+                                 });
+                        }
+                    }
                 }
             }
         }
