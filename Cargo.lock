@@ -1332,7 +1332,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "marty"
+name = "martypc"
 version = "0.1.0"
 dependencies = [
  "anyhow",

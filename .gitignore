@@ -22,7 +22,7 @@ Thumbs.db
 /program
 /releases
 *.toml
-!/install/marty.toml
+!/install/martypc.toml
 *.pcm
 *.cfg
 *.log

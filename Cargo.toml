@@ -1,5 +1,5 @@
 [package]
-name = "marty"
+name = "martypc"
 version = "0.1.0"
 edition = "2021"
 
@@ -47,3 +47,5 @@ opt-level = 3
 [features]
 arduino_validator = []
 cpu_validator = []
+ega = []
+vga = []

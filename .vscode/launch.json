@@ -7,16 +7,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Release executable 'marty'",
+            "name": "Release executable 'martypc'",
             "cargo": {
                 "args": [
                     "build",
                     "-r",
-                    "--bin=marty",
-                    "--package=marty"
+                    "--bin=martypc",
+                    "--package=martypc"
                 ],
                 "filter": {
-                    "name": "marty",
+                    "name": "martypc",
                     "kind": "bin"
                 }
             },
@@ -31,21 +31,21 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Release executable 'marty' release candidate",
+            "name": "Release executable 'martypc' release candidate",
             "cargo": {
                 "args": [
                     "build",
                     "-r",
-                    "--bin=marty",
-                    "--package=marty"
+                    "--bin=martypc",
+                    "--package=martypc"
                 ],
                 "filter": {
-                    "name": "marty",
+                    "name": "martypc",
                     "kind": "bin"
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/1_0_1/",
+            "cwd": "${workspaceFolder}/releases/0_1_0/",
             "env": {
                 "RUST_LOG": "debug,naga=error,wgpu_core=error",
                 "RUST_LOG_STYLE": "always",
@@ -55,15 +55,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'marty'",
+            "name": "Debug executable 'martypc'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=marty",
-                    "--package=marty"
+                    "--bin=martypc",
+                    "--package=martypc"
                 ],
                 "filter": {
-                    "name": "marty",
+                    "name": "martypc",
                     "kind": "bin"
                 }
             },
@@ -78,23 +78,23 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'marty' with validator on",
+            "name": "Debug executable 'martypc' with validator on",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=marty",
-                    "--package=marty",
+                    "--bin=martypc",
+                    "--package=martypc",
                     "--features=cpu_validator arduino_validator"
                 ],
                 "filter": {
-                    "name": "marty",
+                    "name": "martypc",
                     "kind": "bin"
                 }
             },
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "marty=trace",
+                "RUST_LOG": "martypc=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
@@ -102,16 +102,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'marty' with validator on, run specified program",
+            "name": "Debug executable 'martypc' with validator on, run specified program",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=marty",
-                    "--package=marty",
+                    "--bin=martypc",
+                    "--package=martypc",
                     "--features=cpu_validator arduino_validator"
                 ],
                 "filter": {
-                    "name": "marty",
+                    "name": "martypc",
                     "kind": "bin"
                 }
             },
@@ -129,16 +129,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 'marty' in fuzzer mode",
+            "name": "Debug executable 'martypc' in fuzzer mode",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=marty",
-                    "--package=marty",
+                    "--bin=martypc",
+                    "--package=martypc",
                     "--features=cpu_validator arduino_validator"
                 ],
                 "filter": {
-                    "name": "marty",
+                    "name": "martypc",
                     "kind": "bin"
                 }
             },
@@ -148,7 +148,7 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "marty=trace",
+                "RUST_LOG": "martypc=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
@@ -156,13 +156,13 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 'marty'",
+            "name": "Debug unit tests in executable 'martypc'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
                     "--bin=marty",
-                    "--package=marty"
+                    "--package=martypc"
                 ],
                 "filter": {
                     "name": "marty",
