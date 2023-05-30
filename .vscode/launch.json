@@ -78,6 +78,29 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'martypc' release candidate",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/releases/0_1_0/",
+            "env": {
+                "RUST_LOG": "marty=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },        
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'martypc' with validator on",
             "cargo": {
                 "args": [
