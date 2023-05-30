@@ -30,7 +30,9 @@ use crate::tracelogger::TraceLogger;
 use crate::videocard::{VideoCard, VideoCardDispatch};
 
 use crate::devices::cga::{self, CGACard};
+#[cfg(feature = "ega")]
 use crate::devices::ega::{self, EGACard};
+#[cfg(feature = "vga")]
 use crate::devices::vga::{self, VGACard};
 use crate::memerror::MemError;
 
@@ -495,10 +497,12 @@ impl BusInterface {
                                         let syswait = cga.get_read_wait(address, system_ticks);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait));
                                     }
+                                    #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
                                         let syswait = ega.get_read_wait(address, system_ticks);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait));
                                     }
+                                    #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
                                         let syswait = vga.get_read_wait(address, system_ticks);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait));
@@ -539,10 +543,12 @@ impl BusInterface {
                                         let syswait = cga.get_write_wait(address, system_ticks);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait));
                                     }
+                                    #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
                                         let syswait = ega.get_write_wait(address, system_ticks);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait));
                                     }
+                                    #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
                                         let syswait = vga.get_write_wait(address, system_ticks);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait));
@@ -584,10 +590,12 @@ impl BusInterface {
                                         let (data, syswait) = MemoryMappedDevice::read_u8(cga, address, system_ticks);
                                         return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
                                     }
+                                    #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
                                         let (data, syswait) = MemoryMappedDevice::read_u8(ega, address, system_ticks);
                                         return Ok((data, 0));
                                     }
+                                    #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
                                         let (data, syswait) = MemoryMappedDevice::read_u8(vga, address, system_ticks);
                                         return Ok((data, 0));
@@ -630,10 +638,12 @@ impl BusInterface {
                                         let (data, syswait) = MemoryMappedDevice::read_u16(cga, address, system_ticks);
                                         return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
                                     }
+                                    #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
                                         let (data, syswait) = MemoryMappedDevice::read_u16(ega, address, system_ticks);
                                         return Ok((data, 0));
                                     }
+                                    #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
                                         let (data, syswait) = MemoryMappedDevice::read_u16(vga, address, system_ticks);
                                         return Ok((data, 0));
@@ -680,9 +690,11 @@ impl BusInterface {
                                         let syswait = MemoryMappedDevice::write_u8( cga, address, data, system_ticks);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value. 
                                     }
+                                    #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
                                         MemoryMappedDevice::write_u8( ega, address, data, system_ticks);
                                     }
+                                    #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
                                         MemoryMappedDevice::write_u8(vga, address, data, system_ticks);
                                     }
@@ -735,10 +747,12 @@ impl BusInterface {
                                         syswait += MemoryMappedDevice::write_u8(cga, address + 1, (data >> 8) as u8, 0);
                                         return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value. 
                                     }
+                                    #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
                                         MemoryMappedDevice::write_u8(ega, address, (data & 0xFF) as u8, system_ticks);
                                         MemoryMappedDevice::write_u8(ega, address + 1, (data >> 8) as u8, 0);
                                     }
+                                    #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
                                         MemoryMappedDevice::write_u8(vga, address, (data & 0xFF) as u8, system_ticks);
                                         MemoryMappedDevice::write_u8(vga, address + 1, (data >> 8) as u8, 0);
@@ -1124,6 +1138,7 @@ impl BusInterface {
 
                 self.video = VideoCardDispatch::Cga(cga)
             }
+            #[cfg(feature = "ega")]
             VideoType::EGA => {
                 let ega = EGACard::new();
                 let port_list = ega.port_list();
@@ -1134,6 +1149,7 @@ impl BusInterface {
 
                 self.video = VideoCardDispatch::Ega(ega)
             }
+            #[cfg(feature = "vga")]
             VideoType::VGA => {
                 let vga = VGACard::new(video_trace);
                 let port_list = vga.port_list();
@@ -1330,9 +1346,11 @@ impl BusInterface {
                     self.timer_trigger2_armed = false;
                 }                 
             },
+            #[cfg(feature = "ega")]
             VideoCardDispatch::Ega(ega) => {
                 ega.run(DeviceRunTimeUnit::Microseconds(us));
             }
+            #[cfg(feature = "vga")]
             VideoCardDispatch::Vga(vga) => {
                 vga.run(DeviceRunTimeUnit::Microseconds(us));
             }
@@ -1450,9 +1468,11 @@ impl BusInterface {
                         VideoCardDispatch::Cga(cga) => {
                             IoDevice::read_u8(cga, port, DeviceRunTimeUnit::SystemTicks(sys_ticks))
                         },
+                        #[cfg(feature = "ega")]
                         VideoCardDispatch::Ega(ega) => {
                             IoDevice::read_u8(ega, port, nul_delta)
                         }
+                        #[cfg(feature = "vga")]
                         VideoCardDispatch::Vga(vga) => {
                             IoDevice::read_u8(vga, port, nul_delta)
                         }
@@ -1558,9 +1578,11 @@ impl BusInterface {
                         VideoCardDispatch::Cga(cga) => {
                             IoDevice::write_u8(cga, port, data, None, DeviceRunTimeUnit::SystemTicks(sys_ticks))
                         },
+                        #[cfg(feature = "ega")]
                         VideoCardDispatch::Ega(ega) => {
                             IoDevice::write_u8(ega, port, data, None, nul_delta)
                         }
+                        #[cfg(feature = "vga")]
                         VideoCardDispatch::Vga(vga) => {
                             IoDevice::write_u8(vga, port, data, None, nul_delta)
                         }
@@ -1616,9 +1638,11 @@ impl BusInterface {
             VideoCardDispatch::Cga(cga) => {
                 Some(Box::new(cga as &dyn VideoCard))
             }
+            #[cfg(feature = "ega")]
             VideoCardDispatch::Ega(ega) => {
                 Some(Box::new(ega as &dyn VideoCard))
             }
+            #[cfg(feature = "vga")]
             VideoCardDispatch::Vga(vga) => {
                 Some(Box::new(vga as &dyn VideoCard))
             }
@@ -1634,9 +1658,11 @@ impl BusInterface {
             VideoCardDispatch::Cga(cga) => {
                 Some(Box::new(cga as &mut dyn VideoCard))
             }
+            #[cfg(feature = "ega")]
             VideoCardDispatch::Ega(ega) => {
                 Some(Box::new(ega as &mut dyn VideoCard))
             }
+            #[cfg(feature = "vga")]
             VideoCardDispatch::Vga(vga) => {
                 Some(Box::new(vga as &mut dyn VideoCard))
             }

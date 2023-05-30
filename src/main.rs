@@ -265,12 +265,12 @@ fn main() {
     let mut features = Vec::new();
 
     // Read config file
-    let mut config = match config::get_config("./marty.toml"){
+    let mut config = match config::get_config("./martypc.toml"){
         Ok(config) => config,
         Err(e) => {
             match e.downcast_ref::<std::io::Error>() {
                 Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    eprintln!("Configuration file not found! Please create marty.toml in the emulator directory \
+                    eprintln!("Configuration file not found! Please create martypc.toml in the emulator directory \
                                or provide the path to configuration file with --configfile.");
 
                     std::process::exit(1);

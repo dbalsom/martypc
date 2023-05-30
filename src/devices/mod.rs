@@ -25,7 +25,9 @@
 */
 
 pub mod cga;
+#[cfg(feature = "ega")]
 pub mod ega;
+#[cfg(feature = "vga")]
 pub mod vga;
 
 pub mod pit;
