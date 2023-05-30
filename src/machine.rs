@@ -20,23 +20,23 @@ use crate::{
     config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
     breakpoints::BreakPointType,
     bus::{BusInterface, ClockFactor, MemRangeDescriptor, DeviceEvent, MEM_CP_BIT},
-    cga,
-    ega::{self, EGACard},
-    vga::{self, VGACard},
+    devices::{
+        pit::{self, PitDisplayState},
+        pic::{self, PicStringState},
+        ppi::{self, PpiStringState},
+        dma::{self, DMAControllerStringState},
+        fdc::{self, FloppyController},
+        hdc::{self, HardDiskController},
+        mouse::Mouse,
+        serial::{self, SerialPortController},
+    
+    },
     cpu_808x::{self, Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
     cpu_common::{CpuType, CpuOption},
-    dma::{self, DMAControllerStringState},
-    fdc::{self, FloppyController},
-    hdc::{self, HardDiskController},
     floppy_manager::{FloppyManager},
     vhd_manager,
     machine_manager::{MACHINE_DESCS, MachineDescriptor},
-    mouse::Mouse,
-    pit::{self, PitDisplayState},
-    pic::{self, PicStringState},
-    ppi::{self, PpiStringState},
     rom_manager::RomManager,
-    serial::{self, SerialPortController},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
     videocard::{VideoCard, VideoCardState},
@@ -52,8 +52,10 @@ pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
 #[derive(Copy, Clone, Debug)]
 pub enum MachineState {
-    Running,
+    On,
     Paused,
+    Resuming,
+    Rebooting,
     Off
 }
 
@@ -172,6 +174,7 @@ pub struct Machine<'a>
 {
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
+    state: MachineState,
     video_type: VideoType,
     sound_player: SoundPlayer,
     rom_manager: RomManager,
@@ -185,6 +188,7 @@ pub struct Machine<'a>
     error: bool,
     error_str: Option<String>,
     cpu_factor: ClockFactor,
+    next_cpu_factor: ClockFactor,
     cpu_cycles: u64,
     system_ticks: u64,
 }
@@ -318,6 +322,7 @@ impl<'a> Machine<'a> {
         Machine {
             machine_type,
             machine_desc,
+            state: MachineState::On,
             video_type,
             sound_player,
             rom_manager,
@@ -331,9 +336,45 @@ impl<'a> Machine<'a> {
             error: false,
             error_str: None,
             cpu_factor,
+            next_cpu_factor: cpu_factor,
             cpu_cycles: 0,
             system_ticks: 0
         }
+    }
+
+    pub fn change_state(&mut self, new_state: MachineState) {
+
+        match (self.state, new_state) {
+
+            (MachineState::Off, MachineState::On) => {
+                log::debug!("Turning machine on...");
+                self.state = new_state;
+            }
+            (MachineState::On, MachineState::Off) => {
+                log::debug!("Turning machine off...");
+                self.reset();
+                self.state = new_state;
+            }
+            (MachineState::On, MachineState::Rebooting) => {
+                log::debug!("Rebooting machine...");
+                self.reset();
+                self.state = MachineState::On;
+            }
+            (MachineState::On, MachineState::Paused) => {
+                log::debug!("Pausing machine...");
+                self.state = new_state;
+            }
+            (MachineState::Paused, MachineState::Resuming) => {
+                log::debug!("Resuming machine...");
+                self.state = MachineState::On;
+            }
+            _ => {}
+        }
+
+    }
+
+    pub fn get_state(&self) -> MachineState {
+        self.state
     }
 
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
@@ -405,15 +446,18 @@ impl<'a> Machine<'a> {
 
     /// Set the specified state of the turbo button. True will enable turbo mode
     /// and switch to the turbo mode CPU clock factor.
+    /// 
+    /// We must be careful not to update this between step() and run_devices() or devices' 
+    /// advance_ticks may overflow device update ticks.
     pub fn set_turbo_mode(&mut self, state: bool) {
         
         if state {
-            self.cpu_factor = self.machine_desc.cpu_turbo_factor;
+            self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
         }
         else {
-            self.cpu_factor = self.machine_desc.cpu_factor;
+            self.next_cpu_factor = self.machine_desc.cpu_factor;
         }
-        log::debug!("Set turbo mode to: {} New cpu factor is {:?}", state, self.cpu_factor);
+        log::debug!("Set turbo mode to: {} New cpu factor is {:?}", state, self.next_cpu_factor);
     }
 
     pub fn fdc(&mut self) -> &mut Option<FloppyController> {
@@ -472,6 +516,10 @@ impl<'a> Machine<'a> {
         else {
             None
         }
+    }
+    
+    pub fn set_nmi(&mut self, state: bool) {
+        self.cpu.set_nmi(state);
     }
 
     pub fn dma_state(&mut self) -> DMAControllerStringState {
@@ -578,6 +626,11 @@ impl<'a> Machine<'a> {
         let mut skip_breakpoint = false;
         let mut instr_count = 0;
 
+        // Update cpu factor.
+        let new_factor = self.next_cpu_factor;
+        self.cpu_factor = new_factor;
+        self.bus_mut().set_cpu_factor(new_factor);
+
         // Was reset requested?
         if let ExecutionOperation::Reset = exec_control.peek_op() {
             _ = exec_control.get_op(); // Clear the reset operation
@@ -669,6 +722,15 @@ impl<'a> Machine<'a> {
                 }
             }
         };
+
+        let do_run = match self.state {
+            MachineState::On => true,
+            _ => false
+        };
+
+        if !do_run {
+            return 0;
+        }
 
         let mut cycles_elapsed = 0;
 
@@ -830,7 +892,7 @@ impl<'a> Machine<'a> {
         }
 
         //log::debug!("cycles_elapsed: {}", cycles_elapsed);
-
+        
         instr_count
     }
 
@@ -864,7 +926,6 @@ impl<'a> Machine<'a> {
             us, 
             sys_ticks,
             kb_byte_opt, 
-            &self.machine_desc, 
             &mut self.speaker_buf_producer
         );
 

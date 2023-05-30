@@ -12,7 +12,7 @@ use std::cell::Cell;
 
 use crate::config::{MachineType, VideoType};
 use crate::bus::{BusInterface, IoDevice, NO_IO_BYTE, DeviceRunTimeUnit};
-use crate::pic;
+use crate::devices::pic;
 
 pub const PPI_PORT_A: u16 = 0x60;
 pub const PPI_PORT_B: u16 = 0x61;
@@ -429,6 +429,11 @@ impl Ppi {
 
     pub fn set_speaker_bit(&mut self, state: bool) {
         self.speaker_in = state;
+    }
+
+    // Return whether NMI generation is enabled
+    pub fn nmi_enabled(&self) -> bool {
+        self.pb_byte & PORTB_PARITY_MB_EN == 0 || self.pb_byte & PORTB_PARITY_EX_EN == 0
     }
 
     pub fn run(&mut self, pic: &mut pic::Pic, us: f64 ) {

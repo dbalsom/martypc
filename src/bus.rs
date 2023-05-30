@@ -1,31 +1,37 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::fmt;
-use std::io::{BufWriter, Write};
+use std::{
+    collections::HashMap,
+    io::{BufWriter, Write},
+    fmt,
+    path::Path
+};
 
 use ringbuf::{Producer};
 
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
-use crate::fdc::FloppyController;
-use crate::pit::Pit;
+
 use crate::syntax_token::SyntaxToken;
 use crate::machine_manager::MachineDescriptor;
 use crate::config::VideoType;
-use crate::pic::*;
-use crate::dma::*;
-use crate::ppi::*;
-use crate::serial::*;
-use crate::hdc::*;
-use crate::mouse::*;
+
+use crate::devices::{
+    pit::Pit,
+    pic::*,
+    dma::*,
+    ppi::*,
+    serial::*,
+    fdc::FloppyController,
+    hdc::*,
+    mouse::*
+};
+
 use crate::tracelogger::TraceLogger;
 use crate::videocard::{VideoCard, VideoCardDispatch};
 
-use crate::cga::{self, CGACard};
-use crate::ega::{self, EGACard};
-use crate::vga::{self, VGACard};
+use crate::devices::cga::{self, CGACard};
+use crate::devices::ega::{self, EGACard};
+use crate::devices::vga::{self, VGACard};
 use crate::memerror::MemError;
 
 pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from a unconnected IO address.
@@ -149,7 +155,7 @@ impl MmioData {
 // us to call them with bus as an argument.
 pub struct BusInterface {
     cpu_factor: ClockFactor,
-
+    machine_desc: Option<MachineDescriptor>,
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
@@ -275,6 +281,7 @@ impl Default for BusInterface {
 
             cpu_factor: ClockFactor::Divisor(3),
 
+            machine_desc: None,
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
@@ -304,11 +311,12 @@ impl Default for BusInterface {
 }
 
 impl BusInterface {
-    pub fn new(cpu_factor: ClockFactor) -> BusInterface {
+    pub fn new(cpu_factor: ClockFactor, machine_desc: MachineDescriptor) -> BusInterface {
         BusInterface {
 
             cpu_factor,
 
+            machine_desc: Some(machine_desc),
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
@@ -440,6 +448,10 @@ impl BusInterface {
         self.desc_vec.clear();
 
         self.clear();
+    }
+
+    pub fn set_cpu_factor(&mut self, cpu_factor: ClockFactor) {
+        self.cpu_factor = cpu_factor;
     }
 
     #[inline]
@@ -945,20 +957,21 @@ impl BusInterface {
         vec
     }
 
-    pub fn dump_mem(&self) {
+    pub fn dump_mem(&self, path: &Path) {
         
-        let filename = format!("./dumps/mem.bin");
-        
+        let mut filename = path.to_path_buf();
+        filename.push("mem.bin");
+
         let len = 0x100000;
         let address = 0;
         log::debug!("Dumping {} bytes at address {:05X}", len, address);
 
         match std::fs::write(filename.clone(), &self.memory) {
             Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename)
+                log::debug!("Wrote memory dump: {}", filename.display())
             }
             Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename, e)
+                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
             }
         }
     }
@@ -1140,6 +1153,26 @@ impl BusInterface {
             }
         }
     
+        self.machine_desc = Some(machine_desc.clone());
+    }
+
+    /// Return whether NMI is enabled.
+    /// On the 5150 & 5160, NMI generation can be disabled via the PPI.
+    pub fn nmi_enabled(&self) -> bool {
+
+        if self.machine_desc.unwrap().have_ppi {
+
+            if let Some(ppi) = &self.ppi {
+                ppi.nmi_enabled()
+            }
+            else {
+                true
+            }
+        }
+        else {
+            // TODO: Determine what controls NMI masking on AT (i8042?)
+            true
+        }
     }
 
     pub fn run_devices(
@@ -1147,7 +1180,6 @@ impl BusInterface {
         us: f64, 
         sys_ticks: u32, 
         kb_byte_opt: Option<u8>, 
-        machine_desc: &MachineDescriptor,
         speaker_buf_producer: &mut Producer<u8>) -> Option<DeviceEvent>
     {
 
@@ -1179,7 +1211,7 @@ impl BusInterface {
         // The PIT may have a separate clock crystal, such as in the IBM AT. In this case, there may not 
         // be an integer number of PIT ticks per system ticks. Therefore the PIT can take either
         // system ticks (PC/XT) or microseconds as an update parameter.
-        if let Some(_crystal) = machine_desc.timer_crystal {
+        if let Some(_crystal) = self.machine_desc.unwrap().timer_crystal {
             pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::Microseconds(us));
         }
         else {

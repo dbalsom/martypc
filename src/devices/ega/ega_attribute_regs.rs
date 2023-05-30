@@ -6,7 +6,7 @@
 */
 
 use modular_bitfield::prelude::*;
-use crate::ega::EGACard;
+use crate::devices::ega::EGACard;
 
 #[derive(Copy, Clone, Debug)]
 pub enum AttributeRegister {

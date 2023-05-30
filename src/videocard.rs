@@ -34,9 +34,9 @@
 */
 
 use crate::bus::DeviceRunTimeUnit;
-use crate::vga::VGACard;
-use crate::ega::EGACard;
-use crate::cga::CGACard;
+use crate::devices::vga::VGACard;
+use crate::devices::ega::EGACard;
+use crate::devices::cga::CGACard;
 
 // This enum holds variants that hold the various implementors of the VideoCard trait.
 // This is used for enum dispatch, to avoid overhead of dynamic dispatch when calling
@@ -61,6 +61,7 @@ pub enum RenderMode {
 pub const VIDEO_OPTION_DEBUGFRAME: u8 = 0b0000_0001; 
 
 use std::collections::HashMap;
+use std::path::Path;
 
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
 
@@ -268,7 +269,7 @@ pub trait VideoCard {
     fn get_frame_count(&self) -> u64;
 
     /// Dump graphics memory to disk
-    fn dump_mem(&self);
+    fn dump_mem(&self, path: &Path);
 
     /// Write a string to the video device's trace log (if one is configured)
     fn write_trace_log(&mut self, msg: String);

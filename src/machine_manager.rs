@@ -25,7 +25,7 @@
 use std::collections::HashMap;
 use lazy_static::lazy_static;
 
-use crate::pit::PitType;
+use crate::devices::pit::PitType;
 use crate::config::MachineType;
 use crate::cpu_common::CpuType;
 use crate::bus::ClockFactor;

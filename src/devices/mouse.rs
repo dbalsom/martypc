@@ -8,7 +8,7 @@ use std::{
     collections::VecDeque
 };
 
-use crate::serial::SerialPortController;
+use crate::devices::serial::SerialPortController;
 
 // Scale factor for real vs emulated mouse deltas. Need to play with
 // this value until it feels right.

@@ -18,10 +18,12 @@ use std::{
 use core::fmt::Display;
 
 use crate::bus::{BusInterface, DeviceRunTimeUnit};
-use crate::dma;
+use crate::devices::{
+    dma,
+    pic,
+};
 //use crate::fdc::Operation;
 use crate::bus::IoDevice;
-use crate::pic;
 use crate::VirtualHardDisk;
 
 // Public consts

@@ -1,5 +1,6 @@
 use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption};
 
+use crate::machine::MachineState;
 
 impl GuiState {
 
@@ -8,20 +9,36 @@ impl GuiState {
         egui::menu::bar(ui, |ui| {
 
             ui.menu_button("Emulator", |ui| {
-                if ui.button("Performance...").clicked() {
+                if ui.button("⏱ Performance...").clicked() {
                     *self.window_flag(GuiWindow::PerfViewer) = true;
                     ui.close_menu();
                 }
-                if ui.button("About...").clicked() {
+                if ui.button("❓ About...").clicked() {
                     *self.window_flag(GuiWindow::About) = true;
                     ui.close_menu();
-                }                    
+                }
+                ui.separator();
+                if ui.button("🚫 Quit").clicked() {
+                    self.event_queue.push_back(GuiEvent::Exit);
+                    ui.close_menu();
+                }
             });
             ui.menu_button("Machine", |ui| {
-                if ui.button("⚡ Power on").clicked() {
-                    
-                    ui.close_menu();
-                } 
+
+                let (is_on, is_paused) = match self.machine_state {
+                    MachineState::On => (true, false),
+                    MachineState::Paused => (true, true),
+                    MachineState::Off => (false, false),
+                    _ => (false, false)
+                };
+                
+                ui.add_enabled_ui(!is_on, |ui| {
+                    if ui.button("⚡ Power on").clicked() {
+                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::On));
+                        ui.close_menu();
+                    } 
+                });
+
                 if ui.checkbox(&mut self.get_option_mut(GuiOption::TurboButton), "Turbo Button").clicked() {
 
                     let new_opt = self.get_option(GuiOption::TurboButton).unwrap();
@@ -34,20 +51,43 @@ impl GuiState {
                     );
                     ui.close_menu();
                 }
-                if ui.button("⏸ Pause").clicked() {
-                    
-                    ui.close_menu();
-                }
-                if ui.button("⟲ Reboot").clicked() {
-                    
-                    ui.close_menu();
-                }                    
-                if ui.button("🔌 Power off").clicked() {
-                    
-                    ui.close_menu();
-                }                   
+
+                ui.add_enabled_ui(is_on && !is_paused, |ui| {
+                    if ui.button("⏸ Pause").clicked() {
+                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Paused));
+                        ui.close_menu();
+                    }
+                });
+
+                ui.add_enabled_ui(is_on && is_paused, |ui| {
+                    if ui.button("▶ Resume").clicked() {
+                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Resuming));
+                        ui.close_menu();
+                    }   
+                });
+
+                ui.add_enabled_ui(is_on, |ui| {             
+                    if ui.button("⟲ Reboot").clicked() {
+                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Rebooting));
+                        ui.close_menu();
+                    }  
+                });
+
+                ui.add_enabled_ui(is_on, |ui| {
+                    if ui.button("🔌 Power off").clicked() {
+                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Off));
+                        ui.close_menu();
+                    }  
+                });                                  
             });
             ui.menu_button("Media", |ui| {
+
+                let (is_on, is_paused) = match self.machine_state {
+                    MachineState::On => (true, false),
+                    MachineState::Paused => (true, true),
+                    MachineState::Off => (false, false),
+                    _ => (false, false)
+                };
 
                 ui.set_min_size(egui::vec2(200.0, 0.0));
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
@@ -88,22 +128,32 @@ impl GuiState {
                     ui.close_menu();
                 };                              
 
-                ui.menu_button("🖴 Load VHD in Drive 0:...", |ui| {
-                    for name in &self.vhd_names {
+                // Only enable VHD loading if machine is off to prevent corruption to VHD.
+                ui.add_enabled_ui(!is_on, |ui| {
+                    ui.menu_button("🖴 Load VHD in Drive 0:...", |ui| {
+                        for name in &self.vhd_names {
 
-                        if ui.radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap()).clicked() {
+                            if ui.radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap()).clicked() {
 
-                            log::debug!("Selected VHD filename: {:?}", name);
-                            self.new_vhd_name0 = Some(name.clone());
-                            ui.close_menu();
+                                log::debug!("Selected VHD filename: {:?}", name);
+                                self.new_vhd_name0 = Some(name.clone());
+                                ui.close_menu();
+                            }
                         }
-                    }
-                });                               
+                    });  
+                });
 
                 if ui.button("🖹 Create new VHD...").clicked() {
                     *self.window_flag(GuiWindow::VHDCreator) = true;
                     ui.close_menu();
                 };
+
+                ui.separator();
+
+                if ui.button("🖼 Take Screenshot...").clicked() {
+                    self.event_queue.push_back(GuiEvent::TakeScreenshot);
+                    ui.close_menu();
+                }; 
                 
             });
             ui.menu_button("Debug", |ui| {
@@ -130,6 +180,7 @@ impl GuiState {
                     ui.close_menu();
                 }
                 ui.menu_button("CPU Debug Options", |ui| {
+
                     if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuEnableWaitStates), "Enable Wait States").clicked() {
 
                         let new_opt = self.get_option(GuiOption::CpuEnableWaitStates).unwrap();
@@ -170,6 +221,16 @@ impl GuiState {
                         *self.window_flag(GuiWindow::DelayAdjust) = true;
                         ui.close_menu();
                     }
+
+                    if ui.button("Trigger NMI").clicked() {
+                        self.event_queue.push_back(GuiEvent::SetNMI(true));
+                        ui.close_menu();
+                    }
+
+                    if ui.button("Clear NMI").clicked() {
+                        self.event_queue.push_back(GuiEvent::SetNMI(false));
+                        ui.close_menu();
+                    }                    
 
                 });
                 if ui.button("Memory...").clicked() {

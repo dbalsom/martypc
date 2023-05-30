@@ -38,7 +38,7 @@ use crate::egui::*;
 use crate::egui::color::*;
 use crate::egui::constants::*;
 
-use crate::pit::PitDisplayState;
+use crate::devices::pit::PitDisplayState;
 use crate::syntax_token::*;
 
 #[allow (dead_code)]

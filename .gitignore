@@ -17,8 +17,10 @@ Thumbs.db
 /hdd
 /dumps
 /builds
+/screenshots
 /traces
 /program
+/releases
 *.toml
 !/install/marty.toml
 *.pcm

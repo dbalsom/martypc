@@ -6,7 +6,7 @@
 
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     ffi::OsString,
     fs,
     error::Error,
@@ -47,7 +47,7 @@ impl FloppyManager {
         }
     }
 
-    pub fn scan_dir(&mut self, path: &str) -> Result<bool, FloppyError> {
+    pub fn scan_dir(&mut self, path: &Path) -> Result<bool, FloppyError> {
 
         // Read in directory entries within the provided path
         let dir = match fs::read_dir(path) {

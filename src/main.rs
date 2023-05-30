@@ -7,7 +7,8 @@ use std::{
     cell::RefCell,
     rc::Rc,
     path::Path,
-    ffi::OsString
+    ffi::OsString,
+    path::PathBuf
 };
 
 use crate::egui::{Framework, DeviceSelection};
@@ -36,35 +37,30 @@ use winit::{
 
 use winit_input_helper::WinitInputHelper;
 
+/*
 #[path = "./devices/ega/mod.rs"]
 mod ega;
 #[path = "./devices/vga/mod.rs"]
 mod vga;
+*/
+
+mod devices;
+
 mod breakpoints;
 mod bus;
 mod bytebuf;
 mod bytequeue;
-mod cga;
 mod config;
 mod cpu_common;
 mod cpu_808x;
-mod dma;
-mod fdc;
 mod floppy_manager;
 mod egui;
-mod hdc;
-mod bus_io;
+mod file_util;
 mod interrupt;
 mod machine;
 mod machine_manager;
-mod mc6845;
 mod memerror;
-mod mouse;
-mod pic;
-mod pit;
-mod ppi;
 mod rom_manager;
-mod serial;
 mod sound;
 mod syntax_token;
 mod tracelogger;
@@ -89,7 +85,7 @@ mod arduino8088_validator;
 use input::MouseButton;
 use breakpoints::BreakPointType;
 use config::*;
-use machine::{Machine, ExecutionState};
+use machine::{Machine, MachineState, ExecutionState};
 use cpu_808x::{Cpu, CpuAddress};
 use cpu_common::CpuOption;
 use rom_manager::{RomManager, RomError, RomFeature};
@@ -324,13 +320,17 @@ fn main() {
     // Instantiate the rom manager to load roms for the requested machine type    
     let mut rom_manager = RomManager::new(config.machine.model, features);
 
-    if let Err(e) = rom_manager.try_load_from_dir("./roms") {
+    let mut rom_path = PathBuf::new();
+    rom_path.push(config.emulator.basedir.clone());
+    rom_path.push("roms");
+
+    if let Err(e) = rom_manager.try_load_from_dir(&rom_path) {
         match e {
             RomError::DirNotFound => {
-                eprintln!("ROM directory not found")
+                eprintln!("ROM directory not found: {}", rom_path.display())
             }
             RomError::RomNotFoundForMachine => {
-                eprintln!("No valid ROM found for specified machine type")
+                eprintln!("No valid ROM found for specified machine type.")
             }
             RomError::RomNotFoundForFeature(feature) => {
                 eprintln!("No valid ROM found for requested feature: {:?}", feature)
@@ -356,13 +356,17 @@ fn main() {
     let mut floppy_manager = FloppyManager::new();
 
     // Scan the floppy directory
-    if let Err(e) = floppy_manager.scan_dir("./floppy") {
+    let mut floppy_path = PathBuf::new();
+    floppy_path.push(config.emulator.basedir.clone());
+    floppy_path.push("floppy");
+
+    if let Err(e) = floppy_manager.scan_dir(&floppy_path) {
         match e {
             FloppyError::DirNotFound => {
-                eprintln!("Floppy directory not found")
+                eprintln!("Floppy directory not found: {}", floppy_path.display())
             }
             _ => {
-                eprintln!("Error reading floppy directory")
+                eprintln!("Error reading floppy directory: {}", floppy_path.display())
             }
         }
         std::process::exit(1);
@@ -457,7 +461,8 @@ fn main() {
                 window_size.height, 
                 scale_factor, 
                 &pixels, 
-                exec_control.clone()
+                exec_control.clone(),
+                config.gui.theme_color
             );
 
         (pixels, framework)
@@ -1092,13 +1097,6 @@ fn main() {
 
                         match video_card.get_render_mode() {
                             RenderMode::Direct => {
-                                /*
-                                let extents = video_card.get_display_extents();
-
-                                new_w = extents.visible_w;
-                                new_h = extents.visible_h;
-                                */
-
                                 (new_w, new_h) = video_card.get_display_aperture();
 
                                 // Set a sane maximum
@@ -1121,9 +1119,8 @@ fn main() {
 
                             let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
 
-                            // Hack for 8088mph. If vertical resolution is decreasing by less than N, do not
-                            // make a new buffer. 8088mph alternates between 239 and 240 scanlines when displaying
-                            // its 1024 color mode. 
+                            // TODO: The vertical delta hack was used for area 8088mph for the old style of rendering.
+                            // Now that we render into a fixed frame, we should refactor this
                             if (new_w != video_data.render_w) || ((new_h != video_data.render_h) && (vertical_delta <= 2)) {
                                 // Resize buffers
                                 log::debug!("Setting internal resolution to ({},{})", new_w, new_h);
@@ -1190,7 +1187,7 @@ fn main() {
                         match (video_card.get_video_type(), video_card.get_render_mode()) {
 
                             (VideoType::CGA, RenderMode::Direct) => {
-                                // Draw device's back buffer in direct mode (CGA only for now)
+                                // Draw device's front buffer in direct mode (CGA only for now)
 
                                 match aspect_correct {
                                     true => {
@@ -1262,183 +1259,232 @@ fn main() {
                         framework.gui.clear_error();
                     }
 
-                    // Handle custom user events received from our gui windows
+                    // Handle custom events received from our GUI
                     loop {
-                        match framework.gui.get_event() {
-
-                            Some(GuiEvent::OptionChanged(opt, val)) => {
-                                match (opt, val) {
-                                    (GuiOption::CorrectAspect, false) => {
-                                        // Aspect correction was turned off. We want to clear the render buffer as the 
-                                        // display buffer is shrinking vertically.
-                                        let surface = pixels.get_frame_mut();
-                                        surface.fill(0);
-                                    }
-                                    (GuiOption::CpuEnableWaitStates, state) => {
-                                        machine.set_cpu_option(CpuOption::EnableWaitStates(state));
-                                    }
-                                    (GuiOption::CpuInstructionHistory, state) => {
-                                        machine.set_cpu_option(CpuOption::InstructionHistory(state));
-                                    }
-                                    (GuiOption::CpuTraceLoggingEnabled, state) => {
-                                        machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
-                                    }
-                                    (GuiOption::TurboButton, state) => {
-                                        machine.set_turbo_mode(state);
-                                    }
-                                    _ => {}
+                        if let Some(gui_event) = framework.gui.get_event() {
+                            match gui_event {
+                                GuiEvent::Exit => {
+                                    // User chose exit option from menu. Shut down.
+                                    // TODO: Add a timeout from last VHD write for safety?
+                                    println!("Thank you for using MartyPC!");
+                                    *control_flow = ControlFlow::Exit;
                                 }
-                            }
-
-                            Some(GuiEvent::CreateVHD(filename, fmt)) => {
-                                log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
-
-                                let vhd_path = Path::new("./hdd").join(filename);
-
-                                match vhd::create_vhd(
-                                    vhd_path.into_os_string(), 
-                                    fmt.max_cylinders, 
-                                    fmt.max_heads, 
-                                    fmt.max_sectors) {
-
-                                    Ok(_) => {
-                                        // We don't actually do anything with the newly created file
-
-                                        // Rescan dir to show new file in list
-                                        if let Err(e) = vhd_manager.scan_dir("./hdd") {
-                                            log::error!("Error scanning hdd directory: {}", e);
-                                        };
-                                    }
-                                    Err(err) => {
-                                        log::error!("Error creating VHD: {}", err);
+                                GuiEvent::SetNMI(state) => {
+                                    // User wants to crash the computer. Sure, why not.
+                                    machine.set_nmi(state);
+                                }
+                                GuiEvent::OptionChanged(opt, val) => {
+                                    match (opt, val) {
+                                        (GuiOption::CorrectAspect, false) => {
+                                            // Aspect correction was turned off. We want to clear the render buffer as the 
+                                            // display buffer is shrinking vertically.
+                                            let surface = pixels.get_frame_mut();
+                                            surface.fill(0);
+                                        }
+                                        (GuiOption::CpuEnableWaitStates, state) => {
+                                            machine.set_cpu_option(CpuOption::EnableWaitStates(state));
+                                        }
+                                        (GuiOption::CpuInstructionHistory, state) => {
+                                            machine.set_cpu_option(CpuOption::InstructionHistory(state));
+                                        }
+                                        (GuiOption::CpuTraceLoggingEnabled, state) => {
+                                            machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
+                                        }
+                                        (GuiOption::TurboButton, state) => {
+                                            machine.set_turbo_mode(state);
+                                        }
+                                        _ => {}
                                     }
                                 }
-                            }
-                            Some(GuiEvent::LoadFloppy(drive_select, filename)) => {
-                                log::debug!("Load floppy image: {:?} into drive: {}", filename, drive_select);
-
-                                match machine.floppy_manager().load_floppy_data(&filename) {
-                                    Ok(vec) => {
-                                        
-                                        if let Some(fdc) = machine.fdc() {
-                                            match fdc.load_image_from(drive_select, vec) {
-                                                Ok(()) => {
-                                                    log::info!("Floppy image successfully loaded into virtual drive.");
-                                                }
-                                                Err(err) => {
-                                                    log::warn!("Floppy image failed to load: {}", err);
+    
+                                GuiEvent::CreateVHD(filename, fmt) => {
+                                    log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
+    
+                                    let vhd_path = Path::new("./hdd").join(filename);
+    
+                                    match vhd::create_vhd(
+                                        vhd_path.into_os_string(), 
+                                        fmt.max_cylinders, 
+                                        fmt.max_heads, 
+                                        fmt.max_sectors) {
+    
+                                        Ok(_) => {
+                                            // We don't actually do anything with the newly created file
+    
+                                            // Rescan dir to show new file in list
+                                            if let Err(e) = vhd_manager.scan_dir("./hdd") {
+                                                log::error!("Error scanning hdd directory: {}", e);
+                                            };
+                                        }
+                                        Err(err) => {
+                                            log::error!("Error creating VHD: {}", err);
+                                        }
+                                    }
+                                }
+                                GuiEvent::LoadFloppy(drive_select, filename) => {
+                                    log::debug!("Load floppy image: {:?} into drive: {}", filename, drive_select);
+    
+                                    match machine.floppy_manager().load_floppy_data(&filename) {
+                                        Ok(vec) => {
+                                            
+                                            if let Some(fdc) = machine.fdc() {
+                                                match fdc.load_image_from(drive_select, vec) {
+                                                    Ok(()) => {
+                                                        log::info!("Floppy image successfully loaded into virtual drive.");
+                                                    }
+                                                    Err(err) => {
+                                                        log::warn!("Floppy image failed to load: {}", err);
+                                                    }
                                                 }
                                             }
+                                        } 
+                                        Err(e) => {
+                                            log::error!("Failed to load floppy image: {:?} Error: {}", filename, e);
+                                            // TODO: Some sort of GUI indication of failure
+                                            eprintln!("Failed to read floppy image file: {:?} Error: {}", filename, e);
                                         }
-                                    } 
-                                    Err(e) => {
-                                        log::error!("Failed to load floppy image: {:?} Error: {}", filename, e);
-                                        // TODO: Some sort of GUI indication of failure
-                                        eprintln!("Failed to read floppy image file: {:?} Error: {}", filename, e);
-                                    }
-                                }                                
-                            }
-                            Some(GuiEvent::EjectFloppy(drive_select)) => {
-                                log::info!("Ejecting floppy in drive: {}", drive_select);
-                                if let Some(fdc) = machine.fdc() {
-                                    fdc.unload_image(drive_select);
+                                    }                                
                                 }
-                            }
-                            Some(GuiEvent::BridgeSerialPort(port_name)) => {
-
-                                log::info!("Bridging serial port: {}", port_name);
-                                machine.bridge_serial_port(1, port_name);
-                            }
-                            Some(GuiEvent::DumpVRAM) => {
-                                if let Some(video_card) = machine.videocard() {
-                                    video_card.dump_mem();
-                                }
-                            }
-                            Some(GuiEvent::DumpCS) => {
-                                machine.cpu().dump_cs();
-                            }
-                            Some(GuiEvent::DumpAllMem) => {
-                                machine.bus().dump_mem();
-                            }
-                            Some(GuiEvent::EditBreakpoint) => {
-                                // Get breakpoints from GUI
-                                let (bp_str, bp_mem_str, bp_int_str) = framework.gui.get_breakpoints();
-
-                                let mut breakpoints = Vec::new();
-
-                                // Push exec breakpoint to list if valid hex
-                                if let Ok(addr) = u32::from_str_radix(bp_str, 16) {
-                                    if addr > 0 && addr < 0x100000 {
-                                        breakpoints.push(BreakPointType::ExecuteFlat(addr));
+                                GuiEvent::EjectFloppy(drive_select) => {
+                                    log::info!("Ejecting floppy in drive: {}", drive_select);
+                                    if let Some(fdc) = machine.fdc() {
+                                        fdc.unload_image(drive_select);
                                     }
                                 }
-                            
-                                // Push mem breakpoint to list if valid hex
-                                if let Ok(addr) = u32::from_str_radix(bp_mem_str, 16) {
-                                    if addr > 0 && addr < 0x100000 {
-                                        breakpoints.push(BreakPointType::MemAccessFlat(addr));
+                                GuiEvent::BridgeSerialPort(port_name) => {
+    
+                                    log::info!("Bridging serial port: {}", port_name);
+                                    machine.bridge_serial_port(1, port_name);
+                                }
+                               GuiEvent::DumpVRAM => {
+                                    if let Some(video_card) = machine.videocard() {
+                                        let mut dump_path = PathBuf::new();
+                                        dump_path.push(config.emulator.basedir.clone());
+                                        dump_path.push("dumps");
+                                        video_card.dump_mem(&dump_path);
                                     }
                                 }
-                            
-                                // Push int breakpoint to list 
-                                if let Ok(addr) = u32::from_str_radix(bp_int_str, 10) {
-                                    if addr > 0 && addr < 256 {
-                                        breakpoints.push(BreakPointType::Interrupt(addr as u8));
+                                GuiEvent::DumpCS => {
+                                    let mut dump_path = PathBuf::new();
+                                    dump_path.push(config.emulator.basedir.clone());
+                                    dump_path.push("dumps");
+                                                                    
+                                    machine.cpu().dump_cs(&dump_path);
+                                }
+                                GuiEvent::DumpAllMem => {
+                                    let mut dump_path = PathBuf::new();
+                                    dump_path.push(config.emulator.basedir.clone());
+                                    dump_path.push("dumps");
+                                                                                                    
+                                    machine.bus().dump_mem(&dump_path);
+                                }
+                                GuiEvent::EditBreakpoint => {
+                                    // Get breakpoints from GUI
+                                    let (bp_str, bp_mem_str, bp_int_str) = framework.gui.get_breakpoints();
+    
+                                    let mut breakpoints = Vec::new();
+    
+                                    // Push exec breakpoint to list if valid expression
+                                    if let Some(addr) = machine.cpu().eval_address(&bp_str) {
+                                        let flat_addr = u32::from(addr);
+                                        if flat_addr > 0 && flat_addr < 0x100000 {
+                                            breakpoints.push(BreakPointType::ExecuteFlat(flat_addr));
+                                        }
+                                    };
+                                
+                                    // Push mem breakpoint to list if valid expression
+                                    if let Some(addr) = machine.cpu().eval_address(&bp_mem_str) {
+                                        let flat_addr = u32::from(addr);
+                                        if flat_addr > 0 && flat_addr < 0x100000 {
+                                            breakpoints.push(BreakPointType::MemAccessFlat(flat_addr));
+                                        }
+                                    }
+                                
+                                    // Push int breakpoint to list 
+                                    if let Ok(iv) = u32::from_str_radix(bp_int_str, 10) {
+                                        if iv < 256 {
+                                            breakpoints.push(BreakPointType::Interrupt(iv as u8));
+                                        }
+                                    }
+
+                                    machine.set_breakpoints(breakpoints);
+                                }
+                                GuiEvent::MemoryUpdate => {
+                                    // The address bar for the memory viewer was updated. We need to 
+                                    // evaluate the expression and set a new row value for the control.
+                                    // The memory contents will be updated in the normal frame update.
+                                    let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
+                                    // Show address 0 if expression evail fails
+                                    let mem_dump_addr: u32 = match machine.cpu().eval_address(&mem_dump_addr_str) {
+                                        Some(i) => {
+                                            let addr: u32 = i.into();
+                                            addr & !0x0F
+                                        }
+                                        None => 0
+                                    };
+                                    framework.gui.memory_viewer.set_row(mem_dump_addr as usize);                                    
+                                }
+                                GuiEvent::TokenHover(addr) => {
+                                    // Hovered over a token in a TokenListView.
+                                    let debug = machine.bus_mut().get_memory_debug(addr);
+                                    framework.gui.memory_viewer.set_hover_text(format!("{}", debug));
+                                }
+                                GuiEvent::FlushLogs => {
+                                    // Request to flush trace logs.
+                                    machine.flush_trace_logs();
+                                }
+                                GuiEvent::DelayAdjust => {
+                                    let delay_params = framework.gui.delay_adjust.get_params();
+    
+                                    machine.set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
+                                    machine.set_cpu_option(CpuOption::HaltResumeDelay(delay_params.halt_resume_delay));
+                                }
+                                GuiEvent::TickDevice(dev, ticks) => {
+                                    match dev {
+                                        DeviceSelection::Timer(t) => {
+    
+                                        }
+                                        DeviceSelection::VideoCard => {
+                                            if let Some(video_card) = machine.videocard() {
+                                                video_card.debug_tick(ticks);
+                                            }                                        
+                                        }
                                     }
                                 }
-
-                                machine.set_breakpoints(breakpoints);
-                            }
-                            Some(GuiEvent::MemoryUpdate) => {
-                                // The address bar for the memory viewer was updated. We need to 
-                                // evaluate the expression and set a new row value for the control.
-                                // The memory contents will be updated in the normal frame update.
-                                let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
-                                // Show address 0 if expression evail fails
-                                let mem_dump_addr: u32 = match machine.cpu().eval_address(&mem_dump_addr_str) {
-                                    Some(i) => {
-                                        let addr: u32 = i.into();
-                                        addr & !0x0F
+                                GuiEvent::MachineStateChange(state) => {
+    
+                                    match state {
+                                        MachineState::Off | MachineState::Rebooting => {
+                                            // Clear the screen if rebooting or turning off
+                                            render_src.fill(0);
+                                        }
+                                        _ => {}
                                     }
-                                    None => 0
-                                };
-                                framework.gui.memory_viewer.set_row(mem_dump_addr as usize);                                    
-                            }
-                            Some(GuiEvent::TokenHover(addr)) => {
-                                // Hovered over a token in a TokenListView.
-                                let debug = machine.bus_mut().get_memory_debug(addr);
-                                framework.gui.memory_viewer.set_hover_text(format!("{}", debug));
-                            }
-                            Some(GuiEvent::FlushLogs) => {
-                                // Request to flush trace logs.
-                                machine.flush_trace_logs();
-                            }
-                            Some(GuiEvent::DelayAdjust) => {
-                                let delay_params = framework.gui.delay_adjust.get_params();
-
-                                machine.set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
-                                machine.set_cpu_option(CpuOption::HaltResumeDelay(delay_params.halt_resume_delay));
-                            }
-                            Some(GuiEvent::TickDevice(dev, ticks)) => {
-
-                                match dev {
-                                    DeviceSelection::Timer(t) => {
-
-                                    }
-                                    DeviceSelection::VideoCard => {
-                                        if let Some(video_card) = machine.videocard() {
-                                            video_card.debug_tick(ticks);
-                                        }                                        
-                                    }
+                                    machine.change_state(state);
                                 }
+                                GuiEvent::TakeScreenshot => {
+                                    let mut screenshot_path = PathBuf::new();
+                                    screenshot_path.push(config.emulator.basedir.clone());
+                                    screenshot_path.push("screenshots");
 
-                            }
-                            None => break,
-                            _ => {
-                                // Unhandled event?
+                                    video.screenshot(
+                                        &mut render_src,
+                                        video_data.render_w, 
+                                        video_data.render_h, 
+                                        &screenshot_path
+                                    );
+
+                                }
+                                _ => {}
                             }
                         }
+                        else {
+                            break;
+                        }
                     }
+
+                    // -- Update machine state
+                    framework.gui.set_machine_state(machine.get_state());
 
                     // -- Update list of floppies
                     let name_vec = machine.floppy_manager().get_floppy_names();

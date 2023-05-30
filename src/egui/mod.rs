@@ -18,17 +18,12 @@ use egui::{
     ColorImage, 
     //ImageData, 
     TexturesDelta,
-};
-
-use egui::{
     Visuals, 
     Color32, 
-    //FontDefinitions,
-    //Style
 };
+
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
-use ::image::Delay;
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
 use winit::{window::Window, event_loop::EventLoopWindowTarget};
@@ -37,6 +32,7 @@ use super::VideoData;
 use serialport::SerialPortInfo;
 
 // Bring in submodules
+mod about;
 mod color;
 mod color_swatch;
 mod composite_adjust;
@@ -56,6 +52,7 @@ mod menu;
 mod performance_viewer;
 mod pic_viewer;
 mod pit_viewer;
+mod theme;
 mod token_listview;
 mod videocard_viewer;
 
@@ -65,6 +62,7 @@ use crate::{
     egui::color::{darken_c32, lighten_c32, add_c32},
 
     // Use custom windows
+    egui::about::AboutDialog,
     egui::composite_adjust::CompositeAdjustControl,
     egui::cpu_control::CpuControl,
     egui::cpu_state_viewer::CpuViewerControl,
@@ -79,14 +77,19 @@ use crate::{
     egui::pit_viewer::PitViewerControl,
     egui::instruction_history_viewer::InstructionHistoryControl,
     egui::ivr_viewer::IvrViewerControl,
+    egui::theme::GuiTheme,
 
-    machine::{ExecutionControl, ExecutionState, ExecutionOperation},
+    machine::{MachineState, ExecutionControl},
     cpu_808x::CpuStringState, 
-    dma::DMAControllerStringState,
-    hdc::HardDiskFormat,
-    pit::PitDisplayState, 
-    pic::PicStringState,
-    ppi::PpiStringState, 
+
+    devices::{
+        dma::DMAControllerStringState,
+        hdc::HardDiskFormat,
+        pit::PitDisplayState, 
+        pic::PicStringState,
+        ppi::PpiStringState, 
+    },
+
     render::CompositeParams,
     videocard::{VideoCardState, VideoCardStateEntry}
     
@@ -146,7 +149,11 @@ pub enum GuiEvent {
     CompositeAdjust(CompositeParams),
     FlushLogs,
     DelayAdjust,
-    TickDevice(DeviceSelection, u32)
+    TickDevice(DeviceSelection, u32),
+    MachineStateChange(MachineState),
+    TakeScreenshot,
+    Exit,
+    SetNMI(bool)
 }
 
 pub enum DeviceSelection {
@@ -194,8 +201,9 @@ pub(crate) struct GuiState {
     
     option_flags: HashMap::<GuiOption, bool>,
 
-    video_mem: ColorImage,
+    machine_state: MachineState,
 
+    video_mem: ColorImage,
     video_data: VideoData,
     perf_stats: PerformanceStats,
 
@@ -224,6 +232,7 @@ pub(crate) struct GuiState {
 
     error_string: String,
 
+    pub about_dialog: AboutDialog,
     pub cpu_control: CpuControl,
     pub cpu_viewer: CpuViewerControl,
     pub cycle_trace_viewer: CycleTraceViewerControl,
@@ -267,7 +276,11 @@ impl Framework {
         height: u32, 
         scale_factor: f32, 
         pixels: &pixels::Pixels,
-        exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
+        exec_control: Rc<RefCell<ExecutionControl>>,
+        theme_color: Option<u32>
+    
+    ) -> Self {
+
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
         let egui_ctx = Context::default();
@@ -279,15 +292,18 @@ impl Framework {
             size_in_pixels: [width, height],
             pixels_per_point: scale_factor,
         };
+
         let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         let textures = TexturesDelta::default();
         let gui = GuiState::new(exec_control);
 
         let visuals = egui::Visuals::dark();
-        let visuals = Framework::create_theme(&visuals, Color32::from_rgb(56,45,89));
 
-        //let mut style: egui::Style = (*egui_ctx.style()).clone();
-        egui_ctx.set_visuals(visuals);
+        if let Some(color) = theme_color {
+            let theme = GuiTheme::new(&visuals, crate::egui::color::hex_to_c32(color));
+            egui_ctx.set_visuals(theme.visuals().clone());
+        }
+
         //egui_ctx.set_debug_on_hover(true);
 
         Self {
@@ -301,29 +317,6 @@ impl Framework {
         }
     }
 
-    fn create_theme(base: &egui::Visuals, color: Color32) -> Visuals {
-        
-        let mut new_visuals = base.clone();
-
-        new_visuals.window_fill = color;
-        new_visuals.extreme_bg_color = darken_c32(color, 0.50);
-        new_visuals.faint_bg_color = darken_c32(color, 0.15);
-
-        new_visuals.widgets.noninteractive.bg_fill = lighten_c32(color, 0.10);
-        new_visuals.widgets.noninteractive.bg_stroke.color = lighten_c32(color, 0.75);
-        new_visuals.widgets.noninteractive.fg_stroke.color = add_c32(color, 128);
-
-        new_visuals.widgets.active.bg_fill = lighten_c32(color, 0.20);
-        new_visuals.widgets.active.bg_stroke.color = lighten_c32(color, 0.35);
-
-        new_visuals.widgets.inactive.bg_fill = lighten_c32(color, 0.35);
-        new_visuals.widgets.inactive.bg_stroke.color = lighten_c32(color, 0.50);
-
-        new_visuals.widgets.hovered.bg_fill = lighten_c32(color, 0.75);
-        new_visuals.widgets.hovered.bg_stroke.color = lighten_c32(color, 0.75);
-
-        new_visuals
-    }
 
     pub(crate) fn has_focus(&self) -> bool {
         match self.egui_ctx.memory().focus() {
@@ -467,6 +460,7 @@ impl GuiState {
 
             option_flags,
 
+            machine_state: MachineState::Off,
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
             video_data: Default::default(),
@@ -494,6 +488,7 @@ impl GuiState {
 
             error_string: String::new(),
 
+            about_dialog: AboutDialog::new(),
             cpu_control: CpuControl::new(exec_control.clone()),
             cpu_viewer: CpuViewerControl::new(),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
@@ -578,6 +573,10 @@ impl GuiState {
     pub fn clear_error(&mut self) {
         self.error_dialog_open = false;
         self.error_string = String::new();
+    }
+
+    pub fn set_machine_state(&mut self, state: MachineState) {
+        self.machine_state = state;
     }
 
     pub fn set_floppy_names(&mut self, names: Vec<OsString>) {
@@ -672,26 +671,7 @@ impl GuiState {
             .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())
             .show(ctx, |ui| {
 
-                let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
-                    ctx.load_texture(
-                        "logo",
-                        get_ui_image(UiImage::Logo),
-                        Default::default()
-                    )
-                });
-
-                ui.image(about_texture, about_texture.size_vec2());
-                ui.separator();
-
-                ui.label("Marty is free software.");
-
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x /= 2.0;
-                    ui.label("Github:");
-                    ui.hyperlink("https://github.com/dbalsom/marty");
-                });
-
-                ui.separator();
+                self.about_dialog.draw(ui, ctx, &mut self.event_queue);
 
             });
 

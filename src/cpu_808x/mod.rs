@@ -2,12 +2,11 @@
 #![allow(clippy::unusual_byte_groupings)]
 
 use std::{
-    rc::Rc,
-    cell::RefCell,
     collections::VecDeque,
     error::Error,
     fmt,
-    io::Write
+    io::Write,
+    path::Path
 };
 
 use core::fmt::Display;
@@ -50,7 +49,7 @@ use crate::config::ValidatorType;
 
 use crate::breakpoints::BreakPointType;
 use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
-use crate::pic::Pic;
+use crate::devices::pic::Pic;
 use crate::bytequeue::*;
 //use crate::interrupt::log_post_interrupt;
 
@@ -769,6 +768,14 @@ pub struct Cpu<'a>
     dram_bus_owner_cycles: u32,
     dma_aen: bool,
 
+    // Trap stuff
+    trap_enable_delay: u32,             // Number of cycles to delay trap flag enablement. 
+    trap_disable_delay: u32,            // Number of cycles to delay trap flag disablement.
+    trap_suppressed: bool,              // Suppress trap handling for the last executed instruction.
+
+    nmi: bool,                          // Status of NMI line.
+    nmi_triggered: bool,                // Has NMI been edge-triggered?
+
     halt_resume_delay: u32,
     int_flags: Vec<u8>,
 }
@@ -1279,6 +1286,14 @@ impl<'a> Cpu<'a> {
 
     pub fn is_error(&self) -> bool {
         self.is_error
+    }
+
+    pub fn set_nmi(&mut self, nmi_state: bool) {
+
+        if nmi_state == false {
+            self.nmi_triggered = false;
+        }
+        self.nmi = nmi_state;
     }
 
     #[inline(always)]
@@ -1895,7 +1910,21 @@ impl<'a> Cpu<'a> {
         self.pending_interrupt = false;
         let mut irq = 7;
 
-        if self.interrupts_enabled() {
+        if self.nmi && self.bus.nmi_enabled() && !self.nmi_triggered {
+            // NMI takes priority over trap and INTR.
+            log::debug!("Triggered NMI!");
+            self.nmi_triggered = true;
+            self.int2();
+            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
+            return step_result              
+        }
+        else if self.trap_enabled() {
+            // Trap takes priority over INTR.
+            self.int1();
+            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
+            return step_result              
+        }
+        else if self.interrupts_enabled() {
             if let Some(pic) = self.bus.pic_mut().as_mut() {
                 // Is INTR active? TODO: Could combine these calls (return Option<iv>) on query?
                 if pic.query_interrupt_line() {
@@ -2735,9 +2764,10 @@ impl<'a> Cpu<'a> {
 
     }
 
-    pub fn dump_cs(&self) {
+    pub fn dump_cs(&self, path: &Path) {
         
-        let filename = format!("./dumps/cs.bin");
+        let mut filename = path.to_path_buf();
+        filename.push("cs.bin");
         
         let len = 0x10000;
         let address = (self.cs as usize) << 4;
@@ -2746,10 +2776,10 @@ impl<'a> Cpu<'a> {
 
         match std::fs::write(filename.clone(), &cs_slice) {
             Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename)
+                log::debug!("Wrote memory dump: {}", filename.display())
             }
             Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename, e)
+                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
             }
         }
     }

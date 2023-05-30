@@ -119,9 +119,22 @@ impl<'a> Cpu<'a> {
         //let (result, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
         let result = self.biu_read_u16(Segment::SS, stack_addr, ReadWriteFlag::Normal);
 
+        let trap_was_set = self.get_flag(Flag::Trap);
+
         // Ensure state of reserved flag bits
         self.flags = result & FLAGS_POP_MASK;
         self.flags |= CPU_FLAGS_RESERVED_ON;
+
+        // Was trap flag just set? Set trap enable delay.
+        let trap_is_set = self.get_flag(Flag::Trap);
+        if !trap_was_set && trap_is_set {
+            self.trap_enable_delay = 2;
+        }
+
+        // Was trap flag just disabled? Set trap disable delay.
+        if trap_was_set && !trap_is_set {
+            self.trap_disable_delay = 1;
+        }
 
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_add(2);
