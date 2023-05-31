@@ -49,3 +49,6 @@ arduino_validator = []
 cpu_validator = []
 ega = []
 vga = []
+
+[build-dependencies]
+winres = "0.1"

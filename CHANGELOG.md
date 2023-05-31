@@ -5,9 +5,10 @@
 * Fixed CGA cursor handling
 * Rescan media folders when opening Media menu.
 * Added barebones documentation
+* Added icon resource for Windows build
 * Known issues
     ** Floppy images are read-only.
 
 ## [0.1.0](https://github.com/dbalsom/martypc/releases/tag/0.1.0) (2023-05-29)
 
-* Initial release
+* Limited testing preview

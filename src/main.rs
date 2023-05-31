@@ -431,6 +431,24 @@ fn main() {
             .build(&event_loop)
             .unwrap()
     };
+    
+    // Load icon file.
+    let mut icon_path = PathBuf::new();
+    icon_path.push(config.emulator.basedir.clone());
+    icon_path.push("icon.png");
+
+    if let Ok(image) = image::open(icon_path.clone()) {
+
+        let rgba8 = image.into_rgba8();
+        let (width, height) = rgba8.dimensions();
+        let icon_raw = rgba8.into_raw();
+        
+        let icon = winit::window::Icon::from_rgba(icon_raw, width, height).unwrap();
+        window.set_window_icon(Some(icon));
+    }
+    else {
+        log::error!("Couldn't load icon: {}", icon_path.display());
+    }
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
