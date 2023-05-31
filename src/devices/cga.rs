@@ -149,8 +149,9 @@ const MODE_ENABLE: u8           = 0b0000_1000;
 const MODE_HIRES_GRAPHICS: u8   = 0b0001_0000;
 const MODE_BLINKING: u8         = 0b0010_0000;
 
-const CURSOR_LINE_MASK: u8      = 0b0000_1111;
-const CURSOR_ATTR_MASK: u8      = 0b0011_0000;
+const CURSOR_LINE_MASK: u8      = 0b0001_1111;
+const CURSOR_ATTR_MASK: u8      = 0b0110_0000;
+const CURSOR_ENABLE_MASK: u8    = 0b0010_0000;
 
 // Color control register bits.
 // Alt color = Overscan in Text mode, BG color in 320x200 graphics, FG color in 640x200 graphics
@@ -225,6 +226,8 @@ const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
 */
 
+const CGA_CURSOR_MAX: usize = 32;
+
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
         $self.trace_logger.print(&format!($($t)*));
@@ -279,6 +282,8 @@ pub struct CGACard {
     cursor_status: bool,
     cursor_slowblink: bool,
     cursor_blink_rate: f64,
+    cursor_data: [bool; CGA_CURSOR_MAX],
+    cursor_attr: u8,
 
     crtc_register_select_byte: u8,
     crtc_register_selected: CRTCRegister,
@@ -516,6 +521,8 @@ impl CGACard {
             cursor_status: false,
             cursor_slowblink: false,
             cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
+            cursor_data: [false; CGA_CURSOR_MAX],
+            cursor_attr: 0,
 
             crtc_register_selected: CRTCRegister::HorizontalTotal,
             crtc_register_select_byte: 0,
@@ -625,6 +632,32 @@ impl CGACard {
 
     fn get_cursor_span(&self) -> (u8, u8) {
         (self.crtc_cursor_start_line, self.crtc_cursor_end_line)
+    }
+
+    /// Update the cursor data array based on the values of cursor_start_line and cursor_end_line.
+    fn update_cursor_data(&mut self) {
+
+        // Reset cursor data to 0.
+        self.cursor_data.fill(false);
+
+        if self.crtc_cursor_start_line <= self.crtc_cursor_end_line {
+            // Normal cursor definition. Cursor runs from start_line to end_line.
+            for i in self.crtc_cursor_start_line..=self.crtc_cursor_end_line {
+                self.cursor_data[i as usize] = true;
+            }
+        }
+        else {
+            // "Split" cursor. 
+            for i in 0..=self.crtc_cursor_end_line {
+                // First part of cursor is 0->end_line
+                self.cursor_data[i as usize] = true;
+            }
+
+            for i in (self.crtc_cursor_start_line as usize)..CGA_CURSOR_MAX {
+                // Second part of cursor is start_line->max
+                self.cursor_data[i] = true;
+            }
+        }
     }
 
     fn get_cursor_address(&self) -> usize {
@@ -746,8 +779,10 @@ impl CGACard {
             }            
             CRTCRegister::CursorStartLine => {
                 self.crtc_cursor_start_line = byte & CURSOR_LINE_MASK;
-                match byte & CURSOR_ATTR_MASK >> 4 {
-                    0b00 | 0b10 => {
+                self.cursor_attr = (byte & CURSOR_ATTR_MASK) >> 5;
+
+                match (byte & CURSOR_ATTR_MASK) >> 5 {
+                    0b00 => {
                         self.cursor_status = true;
                         self.cursor_slowblink = false;
                     }
@@ -755,14 +790,21 @@ impl CGACard {
                         self.cursor_status = false;
                         self.cursor_slowblink = false;
                     }
+                    0b10 => {
+                        self.cursor_status = true;
+                        self.cursor_slowblink = false;
+                    }
                     _ => {
                         self.cursor_status = true;
                         self.cursor_slowblink = true;
                     }
                 }
+
+                self.update_cursor_data();
             }
             CRTCRegister::CursorEndLine => {
                 self.crtc_cursor_end_line = byte & CURSOR_LINE_MASK;
+                self.update_cursor_data();
             }
             CRTCRegister::CursorAddressH => {
                 self.crtc_cursor_address_ho = byte;
@@ -1054,14 +1096,10 @@ impl CGACard {
         };
 
         // Do cursor
-        if self.vma == self.crtc_cursor_address {
-            // This cell has the cursor address
-            if self.vlc_c9 >= self.crtc_cursor_start_line && self.vlc_c9 <= self.crtc_cursor_end_line {
-                // We are in defined cursor boundaries
-                if self.blink_state {
-                    // Cursor is not blinked
-                    new_pixel = self.cur_fg;
-                }
+        if self.cursor_status && self.blink_state && (self.vma == self.crtc_cursor_address) {
+            // This cell has the cursor address, cursor is enabled and not blinking
+            if self.cursor_data[(self.vlc_c9 & 0x1F) as usize] {
+                new_pixel = self.cur_fg;
             }
         }
 
@@ -1864,7 +1902,7 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
         internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-
+        internal_vec.push((format!("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
         map.insert("Internal".to_string(), internal_vec);
 
         map       
