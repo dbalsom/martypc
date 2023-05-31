@@ -179,7 +179,6 @@ pub struct Machine<'a>
     sound_player: SoundPlayer,
     rom_manager: RomManager,
     load_bios: bool,
-    floppy_manager: FloppyManager,
     cpu: Cpu<'a>, 
     speaker_buf_producer: Producer<u8>,
     pit_data: PitData,
@@ -202,7 +201,6 @@ impl<'a> Machine<'a> {
         video_type: VideoType,
         sound_player: SoundPlayer,
         rom_manager: RomManager,
-        floppy_manager: FloppyManager,
         ) -> Machine<'a> 
     {
 
@@ -327,7 +325,6 @@ impl<'a> Machine<'a> {
             sound_player,
             rom_manager,
             load_bios: !config.emulator.no_bios,
-            floppy_manager,
             cpu,
             speaker_buf_producer,
             pit_data,
@@ -467,11 +464,7 @@ impl<'a> Machine<'a> {
     pub fn hdc(&mut self) -> &mut Option<HardDiskController> {
         self.cpu.bus_mut().hdc_mut()
     }
-
-    pub fn floppy_manager(&self) -> &FloppyManager {
-        &self.floppy_manager
-    }
-
+    
     pub fn cpu_cycles(&self) -> u64 {
         self.cpu_cycles
     }

@@ -80,9 +80,10 @@ impl GuiState {
                     }  
                 });                                  
             });
-            ui.menu_button("Media", |ui| {
 
-                let (is_on, is_paused) = match self.machine_state {
+            let media_response = ui.menu_button("Media", |ui| {
+
+                let (is_on, _is_paused) = match self.machine_state {
                     MachineState::On => (true, false),
                     MachineState::Paused => (true, true),
                     MachineState::Off => (false, false),
@@ -94,6 +95,9 @@ impl GuiState {
 
                 ui.menu_button("💾 Load Floppy in Drive A:...", |ui| {
                     for name in &self.floppy_names {
+
+                        ui.set_min_size(egui::vec2(200.0, 0.0));
+
                         if ui.button(name.to_str().unwrap()).clicked() {
                             
                             log::debug!("Selected floppy filename: {:?}", name);
@@ -107,6 +111,9 @@ impl GuiState {
 
                 ui.menu_button("💾 Load Floppy in Drive B:...", |ui| {
                     for name in &self.floppy_names {
+
+                        ui.set_min_size(egui::vec2(200.0, 0.0));
+
                         if ui.button(name.to_str().unwrap()).clicked() {
                             
                             log::debug!("Selected floppy filename: {:?}", name);
@@ -156,6 +163,11 @@ impl GuiState {
                 }; 
                 
             });
+
+            if media_response.response.clicked() {
+                self.event_queue.push_back(GuiEvent::RescanMediaFolders);
+            }
+
             ui.menu_button("Debug", |ui| {
                 ui.menu_button("Dump Memory", |ui| {
                     if ui.button("Video Memory").clicked() {

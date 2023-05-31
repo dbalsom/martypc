@@ -57,23 +57,32 @@ impl FloppyManager {
 
         let extensions = ["img", "ima"];
 
+        // Clear and rebuild image lists.
+        self.image_vec.clear();
+        self.image_map.clear();
+
         // Scan through all entries in the directory and find all files with matching extension
         for entry in dir {
             if let Ok(entry) = entry {
                 if entry.path().is_file() {
                     if let Some(extension) = entry.path().extension() {
                         if extensions.contains(&extension.to_string_lossy().to_lowercase().as_ref()) {
+
                             println!("Found floppy image: {:?} size: {}", entry.path(), entry.metadata().unwrap().len());
-                            self.image_vec.push( FloppyImage {
-                                path: entry.path(),
-                                size: entry.metadata().unwrap().len()
-                            });
+                            
+                            self.image_vec.push( 
+                                FloppyImage {
+                                    path: entry.path(),
+                                    size: entry.metadata().unwrap().len()
+                                }
+                            );
                         
                             self.image_map.insert(entry.file_name(), 
                                 FloppyImage { 
                                     path: entry.path(),
                                     size: entry.metadata().unwrap().len()
-                                 });
+                                 }
+                            );
                         }
                     }
                 }
@@ -88,7 +97,7 @@ impl FloppyManager {
         for (key, _val) in &self.image_map {
             vec.push(key.clone());
         }
-        vec.sort_by(|a, b| a.cmp(b));
+        vec.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
         vec
     }
 

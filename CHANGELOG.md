@@ -3,6 +3,7 @@
 
 * Compiled for CGA only
 * Fixed CGA cursor handling
+* Rescan media folders when opening Media menu.
 * Added barebones documentation
 * Known issues
     ** Floppy images are read-only.

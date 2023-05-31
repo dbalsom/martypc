@@ -153,7 +153,9 @@ pub enum GuiEvent {
     MachineStateChange(MachineState),
     TakeScreenshot,
     Exit,
-    SetNMI(bool)
+    SetNMI(bool),
+    TriggerParity,
+    RescanMediaFolders,
 }
 
 pub enum DeviceSelection {

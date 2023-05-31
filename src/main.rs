@@ -376,7 +376,10 @@ fn main() {
     let mut vhd_manager = VHDManager::new();
 
     // Scan the HDD directory
-    if let Err(e) = vhd_manager.scan_dir("./hdd") {
+    let mut hdd_path = PathBuf::new();
+    hdd_path.push(config.emulator.basedir.clone());
+    hdd_path.push("hdd");    
+    if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
         match e {
             VHDManagerError::DirNotFound => {
                 eprintln!("HDD directory not found")
@@ -514,8 +517,7 @@ fn main() {
         config.emulator.trace_mode,
         config.machine.video, 
         sp, 
-        rom_manager, 
-        floppy_manager,
+        rom_manager
     );
 
     // Set options from config. We do this now so that we can set the same state for both GUI and machine
@@ -1300,7 +1302,7 @@ fn main() {
                                 GuiEvent::CreateVHD(filename, fmt) => {
                                     log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
     
-                                    let vhd_path = Path::new("./hdd").join(filename);
+                                    let vhd_path = hdd_path.join(filename);
     
                                     match vhd::create_vhd(
                                         vhd_path.into_os_string(), 
@@ -1312,7 +1314,7 @@ fn main() {
                                             // We don't actually do anything with the newly created file
     
                                             // Rescan dir to show new file in list
-                                            if let Err(e) = vhd_manager.scan_dir("./hdd") {
+                                            if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
                                                 log::error!("Error scanning hdd directory: {}", e);
                                             };
                                         }
@@ -1321,10 +1323,18 @@ fn main() {
                                         }
                                     }
                                 }
+                                GuiEvent::RescanMediaFolders => {
+                                    if let Err(e) = floppy_manager.scan_dir(&floppy_path) {
+                                        log::error!("Error scanning floppy directory: {}", e);
+                                    }
+                                    if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
+                                        log::error!("Error scanning hdd directory: {}", e);
+                                    };
+                                }
                                 GuiEvent::LoadFloppy(drive_select, filename) => {
                                     log::debug!("Load floppy image: {:?} into drive: {}", filename, drive_select);
     
-                                    match machine.floppy_manager().load_floppy_data(&filename) {
+                                    match floppy_manager.load_floppy_data(&filename) {
                                         Ok(vec) => {
                                             
                                             if let Some(fdc) = machine.fdc() {
@@ -1487,7 +1497,7 @@ fn main() {
                     framework.gui.set_machine_state(machine.get_state());
 
                     // -- Update list of floppies
-                    let name_vec = machine.floppy_manager().get_floppy_names();
+                    let name_vec = floppy_manager.get_floppy_names();
                     framework.gui.set_floppy_names(name_vec);
 
                     // -- Update VHD Creator window
@@ -1803,7 +1813,6 @@ pub fn main_headless(
         config.machine.video, 
         sp, 
         rom_manager, 
-        floppy_manager,
     );
 
     // Load program binary if one was specified in config options

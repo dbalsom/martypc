@@ -4,11 +4,13 @@
 
 */
 
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::ffi::OsString;
-use std::fs;
-use std::fs::File;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    ffi::OsString,
+    fs,
+    fs::File
+};
 use core::fmt::Display;
 
 #[derive (Debug)]
@@ -47,7 +49,7 @@ impl VHDManager {
         }
     }
 
-    pub fn scan_dir(&mut self, path: &str) -> Result<bool, VHDManagerError> {
+    pub fn scan_dir(&mut self, path: &Path) -> Result<bool, VHDManagerError> {
 
         // Read in directory entries within the provided path
         let dir = match fs::read_dir(path) {
