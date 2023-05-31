@@ -20,14 +20,15 @@
 
 #![allow(dead_code)] 
 
-use std::collections::HashMap;
-//use std::ffi::OsString;
-use std::mem::discriminant;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::cell::Cell;
+use std::{
+    collections::HashMap,
+    mem::discriminant,
+    fs,
+    path::{Path, PathBuf},
+    cell::Cell,
+};
 
-use crate::config::MachineType;
+use crate::config::{MachineType, RomOverride, RomFileOrganization};
 use crate::bus::{BusInterface, MEM_CP_BIT};
 
 pub const BIOS_READ_CYCLE_COST: u32 = 4;
@@ -37,7 +38,8 @@ pub enum RomError {
     RomNotFoundForMachine,
     RomNotFoundForFeature(RomFeature),
     FileNotFound,
-    FileError
+    FileError,
+    Unimplemented
 }
 
 pub enum RomInterleave {
@@ -85,6 +87,10 @@ pub struct RomSet {
     is_complete: Cell<bool>,
 }
 
+pub struct RomSetOverride {
+    roms: Vec<PathBuf>,
+}
+
 pub struct RomDescriptor {
     rom_type: RomType,
     present: bool,
@@ -115,12 +121,18 @@ pub struct RomManager {
     rom_defs: HashMap<&'static str, RomDescriptor>,
     rom_images: HashMap<&'static str, Vec<u8>>,
     features_available: Vec<RomFeature>,
-    features_requested: Vec<RomFeature>
+    features_requested: Vec<RomFeature>,
+    rom_override: Option<Vec<RomOverride>>
 }
 
 impl RomManager {
 
-    pub fn new(machine_type: MachineType, features_requested: Vec<RomFeature>) -> Self {
+    pub fn new(
+        machine_type: MachineType, 
+        features_requested: Vec<RomFeature>,
+        rom_override: Option<Vec<RomOverride>>
+    ) -> Self 
+    {
         Self {
             machine_type,
 
@@ -1276,13 +1288,26 @@ impl RomManager {
             ]),
             rom_images: HashMap::new(),
             features_available: Vec::new(),
-            features_requested
+            features_requested,
+            rom_override
         }
+    }
+
+    pub fn try_load_override(&mut self) -> Result<bool, RomError> {
+
+
+        Ok(true)
     }
 
     pub fn try_load_from_dir(&mut self, path: &Path) -> Result<bool, RomError> {
 
-        // Red in directory entries within the provided path
+        if let Some(_) = &self.rom_override {
+            // We have a rom override statement. Load the explicitly specified roms.
+
+            return self.try_load_override()
+        }
+
+        // Read in directory entries within the provided path
         let dir = match fs::read_dir(path) {
             Ok(dir) => dir,
             Err(_) => return Err(RomError::DirNotFound)
@@ -1509,6 +1534,13 @@ impl RomManager {
     /// Only copy Feature ROMs if they match the list of requested features.
     pub fn copy_into_memory(&self, bus: &mut BusInterface) -> bool {
 
+        if let Some(_) = &self.rom_override {
+            if let Err(e) = self.copy_into_memory_override(bus) {
+                log::error!("Failed to load override rom set!");
+                return false;
+            }
+        }
+
         if self.rom_sets_complete.is_empty() {
             return false;
         }
@@ -1552,9 +1584,77 @@ impl RomManager {
         true
     }
 
+    /// Copy roms specified by the rom override configuration option into memory.
+    /// Since this feature is for ROM developers, we reload the files from disk when copying.
+    pub fn copy_into_memory_override(&self, bus: &mut BusInterface) -> Result<(), RomError> {
+
+        if let Some(rom_override) = &self.rom_override {
+
+            for rom_entry in rom_override {
+
+                let mut rom_image_vec = match std::fs::read(rom_entry.path.clone()) {
+                    Ok(vec) => {
+                        log::debug!("[ROM OVERRIDE] Reloading rom file: {}", rom_entry.path.display());
+                        vec
+                    },
+                    Err(e) => {
+                        eprintln!("Error opening filename {:?}: {}", rom_entry.path.display(), e);
+                        return Err(RomError::FileNotFound);
+                    }               
+                };
+            
+                match rom_entry.org {
+                    RomFileOrganization::Normal => {},
+                    RomFileOrganization::Reversed => {
+                        // Reverse the rom if required
+                        rom_image_vec = rom_image_vec.into_iter().rev().collect();
+                    }
+                    _ => {
+                        log::error!("Unimplemented ROM override organization: {:?}", rom_entry.org );
+                        return Err(RomError::Unimplemented);
+                    }
+                }
+
+                match bus.copy_from(
+                    // TODO: Override offset?
+                    &rom_image_vec[(rom_entry.offset as usize)..], 
+                    rom_entry.address as usize, 
+                    0, 
+                    true) {
+
+                    Ok(_) => {
+                        log::debug!("[ROM OVERRIDE] Mounted rom {:?} at location {:06X}", 
+                            rom_entry.path.display(),
+                            rom_entry.address
+                        );
+                    }
+                    Err(e) => {
+                        log::debug!("Failed to mount rom {:?} at location {:06X}: {}", 
+                            rom_entry.path.display(),
+                            rom_entry.address,
+                            e
+                        );
+
+                        return Err(RomError::FileError);
+                    }
+                }                    
+            }
+        }
+        else {
+            panic!("copy_into_memory_override() called with no override!");
+        }
+
+        Ok(())
+    }
+
     /// Sets the checkpoint bus flag for loaded checkpoints. We only try to look up the checkpoint
     /// for an address if this flag is set, for speed.
     pub fn install_checkpoints(&self,  bus: &mut BusInterface) {
+        
+        if let Some(_) = self.rom_override {
+            // Rom override in effect, no checkpoints to load.
+            return;
+        }
 
         self.checkpoints_active.keys().for_each(|addr| {
             bus.set_flags(*addr as usize, MEM_CP_BIT);
@@ -1567,6 +1667,11 @@ impl RomManager {
 
     /// Install the patch at the specified patching checkpoint. Mark the patch as installed.
     pub fn install_patch(&mut self, bus: &mut BusInterface, cp_address: u32) {
+
+        if let Some(_) = &self.rom_override {
+            // Rom override in effect, no patches to load.
+            return;
+        }
 
         let mut rom_str_vec = Vec::new();
         if let Some(rom_set) = &self.rom_set_active {

@@ -6,6 +6,7 @@
 * Rescan media folders when opening Media menu.
 * Added barebones documentation
 * Added icon resource for Windows build
+* Added ROM override feature
 * Known issues
     ** Floppy images are read-only.
 

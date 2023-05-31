@@ -123,6 +123,28 @@ impl FromStr for TraceMode {
     }
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct RomOverride {
+    pub path: PathBuf,
+    pub address: u32,
+    pub offset: u32,
+    pub org: RomFileOrganization
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)] 
+pub enum RomFileOrganization {
+    Normal,
+    Reversed,
+    InterleavedEven,
+    InterleavedOdd
+}
+
+impl Default for RomFileOrganization {
+    fn default() -> Self { 
+        RomFileOrganization::Normal
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Emulator {
 
@@ -188,6 +210,7 @@ pub struct Validator {
 #[derive(Debug, Deserialize)]
 pub struct Machine {
     pub model: MachineType,
+    pub rom_override: Option<Vec<RomOverride>>,
     pub turbo: bool,
     pub video: VideoType,
     pub hdc: HardDiskControllerType,

@@ -318,7 +318,12 @@ fn main() {
     }
 
     // Instantiate the rom manager to load roms for the requested machine type    
-    let mut rom_manager = RomManager::new(config.machine.model, features);
+    let mut rom_manager = 
+        RomManager::new(
+            config.machine.model, 
+            features,
+            config.machine.rom_override.clone(),
+        );
 
     let mut rom_path = PathBuf::new();
     rom_path.push(config.emulator.basedir.clone());
@@ -425,7 +430,7 @@ fn main() {
     let window = {
         let size = LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
         WindowBuilder::new()
-            .with_title("MartyPC")
+            .with_title(format!("MartyPC {}", env!("CARGO_PKG_VERSION")))
             .with_inner_size(size)
             .with_min_inner_size(size)
             .build(&event_loop)
