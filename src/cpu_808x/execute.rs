@@ -1389,11 +1389,7 @@ impl<'a> Cpu<'a> {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
                 self.cycle_i(0x0b8);
-                
-                if op1_value == 0x06 {
-                    log::debug!("OUT of {:02X}", op2_value);
-                }
-                
+
                 self.biu_io_write_u8(op1_value as u16, op2_value, ReadWriteFlag::RNI);  
             }
             0xEF => {
