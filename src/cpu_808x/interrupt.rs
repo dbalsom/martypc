@@ -291,7 +291,7 @@ impl<'a> Cpu<'a> {
     }
 
     /// Perform INTO
-    pub fn intO(&mut self) {
+    pub fn int_o(&mut self) {
         self.cycles_i(4, &[0x1ac, 0x1ad]);
 
         if self.get_flag(Flag::Overflow) {
