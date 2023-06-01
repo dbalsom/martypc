@@ -159,10 +159,8 @@ enum LoadType {
 
 #[derive(Debug, PartialEq)]
 pub enum ReadState {
-    Unlatched,
-    Latched,
+    NoRead,
     ReadLsb,
-    ReadLsbLatched,
 }
 
 pub struct Channel {
@@ -186,7 +184,7 @@ pub struct Channel {
     output: Updatable<bool>,
     output_on_reload: bool,
     reload_on_trigger: bool,    
-    latch_register: u16,
+    output_latch: Updatable<u16>,
     bcd_mode: bool,
     gate: Updatable<bool>,
     one_shot_triggered: bool,
@@ -290,14 +288,14 @@ impl Channel {
             ce_undefined: false,
             armed: false,
 
-            read_state: ReadState::Unlatched,
+            read_state: ReadState::NoRead,
             read_in_progress: false,
             normal_lobyte_read: false,
             count_is_latched: false,
             output: Updatable::Dirty(false, false),
             output_on_reload: false,
             reload_on_trigger: false,
-            latch_register: 0,
+            output_latch: Updatable::Dirty(0, false),
             bcd_mode: false,
             gate: Updatable::Dirty(false, false),
             one_shot_triggered: false,
@@ -307,7 +305,7 @@ impl Channel {
 
     pub fn set_mode(&mut self, mode: ChannelMode, rw_mode: RwMode, bcd: bool, bus: &mut BusInterface) {
         // Not latch command, carry on
-        self.latch_register = 0;
+        self.output_latch.update(0);
         self.count_is_latched = false;
         self.armed = false;
         //self.ce_undefined = false;
@@ -361,7 +359,7 @@ impl Channel {
 
         // Setting any mode stops counter.
         self.change_channel_state(ChannelState::WaitingForReload);
-        self.read_state = ReadState::Unlatched;
+        self.read_state = ReadState::NoRead;
         self.load_state = LoadState::WaitingForLsb;
         self.load_type = LoadType::InitialLoad;
 
@@ -393,16 +391,13 @@ impl Channel {
         }
     }
 
+    /// Latch the timer.
+    /// Reading from the timer always occurs directly from the output latch.
+    /// In normal operation, the output latch updates synchronously with the count element.
+    /// When latched, the output latch simply stops updating.
     pub fn latch_count(&mut self) {
-        self.latch_register = *self.counting_element;
+        self.output_latch.update(*self.counting_element);
         self.count_is_latched = true;
-
-        self.read_state = match self.read_state  {
-            ReadState::Unlatched => ReadState::Latched,
-            ReadState::Latched => ReadState::Latched,
-            ReadState::ReadLsb => ReadState::ReadLsbLatched,
-            ReadState::ReadLsbLatched => ReadState::ReadLsbLatched
-        };
     }
 
     pub fn set_gate(
@@ -473,48 +468,32 @@ impl Channel {
         self.gate.update(new_state);
     }
 
+    /// Read a byte from the PIT channel.
+    /// Reading always occurs from the value in the output latch.
+    /// When the timer is not latched, the output latch updates synchronously with the
+    /// counting element per tick. When latched, the output latch stops updating.
     pub fn read_byte(&mut self) -> u8 {
         
         match self.read_state {
-            ReadState::Unlatched => {
-                // Unlatched and no read in progress
+            ReadState::NoRead => {
+                // No read in progress
                 match *self.rw_mode {
                     RwMode::Lsb => {
-                        (*self.counting_element & 0xFF) as u8
+                        (*self.output_latch & 0xFF) as u8
                     },
                     RwMode::Msb => {
-                        ((*self.counting_element >> 8) & 0xFF) as u8
+                        ((*self.output_latch >> 8) & 0xFF) as u8
                     },
                     RwMode::LsbMsb => {
                         self.change_read_state(ReadState::ReadLsb);
-                        (*self.counting_element & 0xFF) as u8
+                        (*self.output_latch & 0xFF) as u8
                     }
                 }
             }
             ReadState::ReadLsb => {
-                // Unlatched and word read in progress
-                self.change_read_state(ReadState::Unlatched);
-                ((*self.counting_element >> 8) & 0xFF) as u8
-            }
-            ReadState::Latched => {
-                // Latched and no read in progress
-                match *self.rw_mode {
-                    RwMode::Lsb => {
-                        (self.latch_register & 0xFF) as u8
-                    },
-                    RwMode::Msb => {
-                        ((self.latch_register >> 8) & 0xFF) as u8
-                    },
-                    RwMode::LsbMsb => {
-                        self.change_read_state(ReadState::ReadLsbLatched);
-                        (self.latch_register & 0xFF) as u8
-                    }
-                }
-            }
-            ReadState::ReadLsbLatched => {
-                // Unlatched and read in progress
-                self.change_read_state(ReadState::Unlatched);
-                ((self.latch_register >> 8) & 0xFF) as u8
+                // Word read in progress
+                self.change_read_state(ReadState::NoRead);
+                ((*self.output_latch >> 8) & 0xFF) as u8
             }
         }
     }
@@ -608,12 +587,9 @@ impl Channel {
 
     pub fn change_read_state(&mut self, new_state: ReadState) {
 
-        self.count_is_latched = match new_state {
-            ReadState::Unlatched => false,
-            ReadState::Latched => true,
-            ReadState::ReadLsb => false,
-            ReadState::ReadLsbLatched => true,
-        };
+        if let ReadState::NoRead = new_state {
+            self.count_is_latched = false;
+        }
 
         self.read_state = new_state;
     }
@@ -655,6 +631,12 @@ impl Channel {
         else {
             self.counting_element.set((*self.counting_element).wrapping_sub(1)); // Counter wraps in binary mode.
         }
+
+        // Update output latch with value of counting_element, if we are not latched
+        if !self.count_is_latched {
+            self.output_latch.set(*self.counting_element);
+        }
+
         return;
     }
   
@@ -868,15 +850,12 @@ impl ProgrammableIntervalTimer {
             self.channels[i].mode.update(ChannelMode::InterruptOnTerminalCount);
             self.channels[i].channel_state = ChannelState::WaitingForReload;
             self.channels[i].counting_element.update(0);
-            self.channels[i].read_state = ReadState::Unlatched;
+            self.channels[i].read_state = ReadState::NoRead;
+            self.channels[i].count_is_latched = false;
             self.channels[i].ce_undefined = false;
             self.channels[i].output.update(false);
             self.channels[i].bcd_mode = false;
         }
-    }
-
-    fn is_latch_command(command_byte: u8) -> bool {
-        command_byte & PIT_ACCESS_MODE_MASK == 0
     }
 
     /// Return the number of PIT cycles that elapsed for the provided microsecond period.
@@ -1168,7 +1147,13 @@ impl ProgrammableIntervalTimer {
             channel_map.insert(
                 "Counting Element:", 
                 SyntaxToken::StateString(
-                    format!("{:?}", *self.channels[i].counting_element), self.channels[i].counting_element.is_dirty(), 0
+                    format!(
+                        "{:?} [{:04X}]",
+                        *self.channels[i].counting_element,
+                        *self.channels[i].counting_element,
+                    ), 
+                    self.channels[i].counting_element.is_dirty(), 
+                    0
                 )
             );
             channel_map.insert(
@@ -1183,6 +1168,18 @@ impl ProgrammableIntervalTimer {
                     0
                 )
             );
+            channel_map.insert(
+                "Output latch:", 
+                SyntaxToken::StateString(
+                    format!(
+                        "{:?} [{:04X}]",
+                        *self.channels[i].output_latch,
+                        *self.channels[i].output_latch,
+                    ), 
+                    self.channels[i].output_latch.is_dirty(), 
+                    0
+                )
+            );            
             channel_map.insert(
                 "Output Signal:", 
                 SyntaxToken::StateString(
@@ -1206,6 +1203,7 @@ impl ProgrammableIntervalTimer {
 
                 self.channels[i].counting_element.clean();
                 self.channels[i].count_register.clean();
+                self.channels[i].output_latch.clean();
                 self.channels[i].rw_mode.clean();
                 self.channels[i].gate.clean();
                 self.channels[i].output.clean();
