@@ -356,6 +356,11 @@ impl HardDiskController {
         self.send_interrupt = false;
         self.send_dreq = false;
         self.state = State::Reset;
+
+        self.receiving_dcb = false;
+        self.command = Command::None;
+        self.command_fn = None;
+        self.command_byte_n = 0;        
     }
 
     pub fn get_supported_formats(&self) -> Vec<HardDiskFormat> {

@@ -412,6 +412,11 @@ impl FloppyController {
         }
 
         self.last_error = DriveError::NoError;
+        self.receiving_command = false;
+        self.command = Command::NoCommand;
+        self.command_fn = None;
+        self.command_byte_n = 0;
+
         self.send_interrupt = false;
         self.pending_interrupt = false;
         self.end_interrupt = false;
