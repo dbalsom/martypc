@@ -1541,6 +1541,9 @@ fn main() {
                                     );
 
                                 }
+                                GuiEvent::CtrlAltDel => {
+                                    machine.ctrl_alt_del();
+                                }
                                 _ => {}
                             }
                         }

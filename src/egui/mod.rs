@@ -155,6 +155,7 @@ pub enum GuiEvent {
     SetNMI(bool),
     TriggerParity,
     RescanMediaFolders,
+    CtrlAltDel
 }
 
 pub enum DeviceSelection {

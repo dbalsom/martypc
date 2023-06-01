@@ -464,7 +464,7 @@ impl<'a> Machine<'a> {
     pub fn hdc(&mut self) -> &mut Option<HardDiskController> {
         self.cpu.bus_mut().hdc_mut()
     }
-    
+
     pub fn cpu_cycles(&self) -> u64 {
         self.cpu_cycles
     }
@@ -536,13 +536,26 @@ impl<'a> Machine<'a> {
         &self.error_str
     }
 
+    /// Enter a keypress scancode into the keyboard buffer.
     pub fn key_press(&mut self, code: u8) {
         self.kb_buf.push_back(code);
     }
 
+    /// Enter a key release scancode into the keyboard buffer.
     pub fn key_release(&mut self, code: u8 ) {
         // HO Bit set converts a scancode into its 'release' code
         self.kb_buf.push_back(code | 0x80);
+    }
+
+    /// Simulate the user pressing control-alt-delete.
+    pub fn ctrl_alt_del(&mut self) {
+        self.kb_buf.push_back(0x1D); // Left-control
+        self.kb_buf.push_back(0x38); // Left-alt
+        self.kb_buf.push_back(0x53); // Delete
+
+        self.kb_buf.push_back(0x1D | 0x80);
+        self.kb_buf.push_back(0x38 | 0x80);
+        self.kb_buf.push_back(0x53 | 0x80);
     }
 
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {

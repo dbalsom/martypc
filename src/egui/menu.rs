@@ -73,6 +73,13 @@ impl GuiState {
                     }  
                 });
 
+                ui.add_enabled_ui(is_on, |ui| {             
+                    if ui.button("⟲ CTRL-ALT-DEL").clicked() {
+                        self.event_queue.push_back(GuiEvent::CtrlAltDel);
+                        ui.close_menu();
+                    }  
+                });
+
                 ui.add_enabled_ui(is_on, |ui| {
                     if ui.button("🔌 Power off").clicked() {
                         self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Off));
