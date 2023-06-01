@@ -393,7 +393,6 @@ impl Pic {
     fn set_imr(&mut self, byte: u8) {
 
         // Changing the IMR will allow devices with current high IR lines to generate interrupts
-        // in Level triggered mode.  In Edge triggered mode they will not.
         self.imr = byte;
 
         let mut ir_bit = 0x01;
@@ -403,7 +402,7 @@ impl Pic {
             let is_masked = ir_bit & self.imr != 0;
             let is_in_service = ir_bit & self.isr != 0;
 
-            if self.trigger_mode == TriggerMode::Level && have_request && !is_masked && !is_in_service {
+            if have_request && !is_masked && !is_in_service {
                 // (Set INT request line high)
                 self.intr = true;
                 self.interrupt_stats[interrupt as usize].serviced_count += 1;
