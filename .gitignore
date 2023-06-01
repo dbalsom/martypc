@@ -27,6 +27,7 @@ Thumbs.db
 *.cfg
 *.log
 
+icon.png
 
 # Assembly stuff
 /asm

@@ -4,6 +4,8 @@
 
 */
 
+const DRIVE_MAX: usize = 4;
+
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -18,6 +20,8 @@ pub enum VHDManagerError {
     DirNotFound,
     FileNotFound,
     FileReadError,
+    InvalidDrive,
+    DriveAlreadyLoaded,
 }
 impl std::error::Error for VHDManagerError{}
 impl Display for VHDManagerError {
@@ -26,11 +30,14 @@ impl Display for VHDManagerError {
             VHDManagerError::DirNotFound => write!(f, "The VHD directory was not found."),
             VHDManagerError::FileNotFound => write!(f, "File not found error scanning VHD directory."),
             VHDManagerError::FileReadError => write!(f, "File read error scanning VHD directory."),
+            VHDManagerError::InvalidDrive => write!(f, "Specified drive out of range."),
+            VHDManagerError::DriveAlreadyLoaded => write!(f, "Specified drive already loaded!"),
         }
     }
 }
 
 #[allow(dead_code)]
+#[derive (Clone, Debug)]
 pub struct VHDFile {
     path: PathBuf,
     size: u64
@@ -38,14 +45,16 @@ pub struct VHDFile {
 
 pub struct VHDManager {
     file_vec: Vec<VHDFile>,
-    file_map: HashMap<OsString, VHDFile>
+    file_map: HashMap<OsString, VHDFile>,
+    files_loaded: [Option<OsString>; DRIVE_MAX]
 }
 
 impl VHDManager {
     pub fn new() -> Self {
         Self {
             file_vec: Vec::new(),
-            file_map: HashMap::new()
+            file_map: HashMap::new(),
+            files_loaded: [ None, None, None, None ]
         }
     }
 
@@ -93,16 +102,51 @@ impl VHDManager {
         vec
     }
 
-    pub fn get_vhd_file(&self, name: &OsString ) -> Result<File, VHDManagerError> {
+    pub fn is_vhd_loaded(&self, name: &OsString) -> Option<usize> {
+
+        for i in 0..DRIVE_MAX {
+
+            if let Some(drive) = &self.files_loaded[i] {
+                if name.as_os_str() == drive.as_os_str() {
+
+                    return Some(i)
+                }
+            }
+        }
+        None
+    }
+
+    pub fn load_vhd_file(&mut self, drive: usize, name: &OsString ) -> Result<File, VHDManagerError> {
+
+        if drive > 3 {
+            return Err(VHDManagerError::InvalidDrive);
+        }
 
         if let Some(vhd) = self.file_map.get(name) {
 
-            let vhd_file_result = File::options()
-                .read(true)
-                .write(true)
-                .open(&vhd.path);
+            let vhd_file_result = 
+                File::options()
+                    .read(true)
+                    .write(true)
+                    .open(&vhd.path);
+
             match vhd_file_result {
                 Ok(file) => {
+
+                    log::debug!("Associating vhd: {} to drive: {}", name.to_string_lossy(), drive);
+
+                    if let Some(_) = &self.files_loaded[drive] {
+                        log::error!("VHD drive slot {} not empty!", drive);
+                        return Err(VHDManagerError::DriveAlreadyLoaded);
+                    }
+                    
+                    if let Some(d) = self.is_vhd_loaded(name) {
+                        log::error!("VHD already associated with drive {}! Release drive first.", d);
+                        return Err(VHDManagerError::DriveAlreadyLoaded);
+                    }
+
+                    self.files_loaded[drive] = Some(name.clone());
+
                     return Ok(file);
                 }
                 Err(_e) => {
@@ -111,6 +155,10 @@ impl VHDManager {
             }
         }
         Err(VHDManagerError::FileNotFound)
+    }
+
+    pub fn release_vhd(&mut self, drive: usize) {
+        self.files_loaded[drive] = None;
     }
 
 }

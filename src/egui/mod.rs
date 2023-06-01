@@ -133,8 +133,7 @@ pub enum GuiOption {
 }
 
 pub enum GuiEvent {
-    #[allow (dead_code)]
-    LoadVHD(u32,OsString),
+    LoadVHD(usize, OsString),
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, OsString),
     EjectFloppy(usize),
@@ -602,7 +601,7 @@ impl GuiState {
             }
             1 => {                
                 let got_str = self.new_vhd_name1.clone();
-                self.new_vhd_name0 = None;
+                self.new_vhd_name1 = None;
                 got_str
             }
             _ => {

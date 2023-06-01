@@ -143,11 +143,27 @@ impl GuiState {
                             if ui.radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap()).clicked() {
 
                                 log::debug!("Selected VHD filename: {:?}", name);
+
+                                self.event_queue.push_back(GuiEvent::LoadVHD(0, name.clone()));
                                 self.new_vhd_name0 = Some(name.clone());
                                 ui.close_menu();
                             }
                         }
                     });  
+
+                    ui.menu_button("🖴 Load VHD in Drive 1:...", |ui| {
+                        for name in &self.vhd_names {
+
+                            if ui.radio_value(&mut self.vhd_name1, name.clone(), name.to_str().unwrap()).clicked() {
+
+                                log::debug!("Selected VHD filename: {:?}", name);
+
+                                self.event_queue.push_back(GuiEvent::LoadVHD(0, name.clone()));
+                                self.new_vhd_name1 = Some(name.clone());
+                                ui.close_menu();
+                            }
+                        }
+                    });                      
                 });
 
                 if ui.button("🖹 Create new VHD...").clicked() {

@@ -3,10 +3,11 @@
 
 * Compiled for CGA only
 * Fixed CGA cursor handling
-* Rescan media folders when opening Media menu.
+* Rescan media folders when opening Media menu
 * Added barebones documentation
 * Added icon resource for Windows build
 * Added ROM override feature
+* Added HDD drive1 functionality
 * Known issues
     ** Floppy images are read-only.
 

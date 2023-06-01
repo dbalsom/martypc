@@ -675,10 +675,10 @@ fn main() {
         }
     }
         
-    // Try to load default vhd
+    // Try to load default vhd for drive0: 
     if let Some(vhd_name) = config.machine.drive0 {
         let vhd_os_name: OsString = vhd_name.into();
-        match vhd_manager.get_vhd_file(&vhd_os_name) {
+        match vhd_manager.load_vhd_file(0, &vhd_os_name) {
             Ok(vhd_file) => {
                 match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
@@ -705,7 +705,40 @@ fn main() {
                 log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
             }                                
         }    
-    }   
+    }
+
+    // Try to load default vhd for drive1: 
+    // TODO: refactor this to func or put in vhd_manager
+    if let Some(vhd_name) = config.machine.drive1 {
+        let vhd_os_name: OsString = vhd_name.into();
+        match vhd_manager.load_vhd_file(1, &vhd_os_name) {
+            Ok(vhd_file) => {
+                match VirtualHardDisk::from_file(vhd_file) {
+                    Ok(vhd) => {
+                        if let Some(hdc) = machine.hdc() {
+                            match hdc.set_vhd(1_usize, vhd) {
+                                Ok(_) => {
+                                    log::info!("VHD image {:?} successfully loaded into virtual drive: {}", vhd_os_name, 1);
+                                }
+                                Err(err) => {
+                                    log::error!("Error mounting VHD: {}", err);
+                                }
+                            }
+                        }
+                        else {
+                            log::error!("Couldn't load VHD: No Hard Disk Controller present!");
+                        }
+                    },
+                    Err(err) => {
+                        log::error!("Error loading VHD: {}", err);
+                    }
+                }
+            }
+            Err(err) => {
+                log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
+            }                                
+        }    
+    }       
 
     // Start buffer playback
     machine.play_sound_buffer();
@@ -1540,9 +1573,13 @@ fn main() {
                     // -- Do we have a new VHD image to load?
                     for i in 0..machine::NUM_HDDS {
                         if let Some(new_vhd_name) = framework.gui.get_new_vhd_name(i) {
+
+                            log::debug!("Releasing VHD slot: {}", i);
+                            vhd_manager.release_vhd(i as usize);
+
                             log::debug!("Load new VHD image: {:?} in device: {}", new_vhd_name, i);
 
-                            match vhd_manager.get_vhd_file(&new_vhd_name) {
+                            match vhd_manager.load_vhd_file(i as usize, &new_vhd_name) {
                                 Ok(vhd_file) => {
 
                                     match VirtualHardDisk::from_file(vhd_file) {

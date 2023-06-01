@@ -75,7 +75,7 @@ video_frame_debug = false
 
 [gui]
 # ----------------------------------------------------------------------------
-# GUI options options
+# GUI options
 # ----------------------------------------------------------------------------
 
 # Disable the GUI entirely. Use autostart=true or you'll have no way to start
@@ -90,7 +90,7 @@ theme_color = 0x382D59  # Marty purple
 
 [cpu]
 # ----------------------------------------------------------------------------
-# Various CPU related options.
+# Various CPU related options
 # ----------------------------------------------------------------------------
 
 # Enable CPU wait states. This includes wait states from DMA, memory access
@@ -155,8 +155,11 @@ video = "CGA"
 hdc = "None"
 #hdc = "Xebec"
 
-# VHD to mount into drive 0 (Typically C:)
+# VHD to mount into drive0 (Typically C:)
 #drive0 = "dos330.vhd"
+
+# VHD to mount into drive1 (Typically D:)
+#drive1 = "games.vhd"
 
 # Options for the CPU Validator module.
 # ----------------------------------------------------------------------------
