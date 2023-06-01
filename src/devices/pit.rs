@@ -24,7 +24,6 @@
 
 */
 
-
 use log;
 
 use std::collections::{VecDeque, BTreeMap};
@@ -397,6 +396,13 @@ impl Channel {
     pub fn latch_count(&mut self) {
         self.latch_register = *self.counting_element;
         self.count_is_latched = true;
+
+        self.read_state = match self.read_state  {
+            ReadState::Unlatched => ReadState::Latched,
+            ReadState::Latched => ReadState::Latched,
+            ReadState::ReadLsb => ReadState::ReadLsbLatched,
+            ReadState::ReadLsbLatched => ReadState::ReadLsbLatched
+        };
     }
 
     pub fn set_gate(
