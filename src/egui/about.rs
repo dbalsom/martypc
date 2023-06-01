@@ -69,7 +69,7 @@ impl AboutDialog {
             ui.label(egui::RichText::new(
                 "reenigne, modem7, phix, Bigbass, iqon, xkevio, google0101, raphnet, Artlav, cngsoft, 640KB, \
                     i509VCB, qeeg, Kelpsy, phire, VileR, Scali, UtterChaos, Alkaid, kado, peach.bot, Dillon, velocity, \
-                    ThomW, Ratalon, Blackcat9, DianeOfTheMoon, Halen, TFO, DigitalSkunk, Heck"
+                    EMMIR, ThomW, Ratalon, Blackcat9, DianeOfTheMoon, Halen, TFO, DigitalSkunk, Heck"
             )
             .color(egui::Color32::WHITE)
             .font(egui::FontId::proportional(20.0)));
