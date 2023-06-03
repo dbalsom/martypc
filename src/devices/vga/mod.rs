@@ -1,5 +1,24 @@
 /*
-    vga.rs
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    ---------------------------------------------------------------------------
+
+    vga::mod.rs
 
     Implement the IBM PS/2 (VGA) Graphics Adapter
 
@@ -27,18 +46,18 @@ use crate::tracelogger::TraceLogger;
 
 use crate::videocard::*;
 
-mod vga_attribute_regs;
-mod vga_crtc_regs;
-mod vga_graphics_regs;
-mod vga_sequencer_regs;
-mod vga_color_regs;
+mod attribute_regs;
+mod crtc_regs;
+mod graphics_regs;
+mod sequencer_regs;
+mod color_regs;
 
-use vga_attribute_regs::*;
-use vga_crtc_regs::*;
-use vga_graphics_regs::*;
-use vga_sequencer_regs::*;
+use attribute_regs::*;
+use crtc_regs::*;
+use graphics_regs::*;
+use sequencer_regs::*;
 #[allow(unused_imports)]
-use vga_color_regs::*;
+use color_regs::*;
 
 pub const VGA_CLOCK_1: f64 = 25.175;
 pub const VGA_CLOCK_2: f64 = 28.322;

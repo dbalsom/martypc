@@ -1,3 +1,30 @@
+/*
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    ---------------------------------------------------------------------------
+
+    cpu_808x::bcd.rs
+
+    Implements BCD (Binary Coded Decimal) routines.
+
+*/
+
+
 use crate::cpu_808x::*;
 use crate::cpu_808x::muldiv::*;
 
@@ -244,20 +271,6 @@ impl<'a> Cpu<'a> {
                 return false
             }
         }
-
-        
-
-
-        /*
-        let temp_al = self.al;
-        self.set_register8(Register8::AH, temp_al / imm8);
-        self.set_register8(Register8::AL, temp_al % imm8);
-        */
-
-
-
-        // Other sources set flags from AX register. Intel's documentation specifies AL
-        // self.set_szp_flags_from_result_u8(self.al);
     }
     
 }

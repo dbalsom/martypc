@@ -18,7 +18,7 @@
 
     --------------------------------------------------------------------------
 
-    devices.rs
+    devices::mod.rs
 
     Module to organize all device definitions
 

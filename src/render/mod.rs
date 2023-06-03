@@ -18,7 +18,7 @@
 
     ---------------------------------------------------------------------------
 
-    render/mod.rs
+    render::mod.rs
 
     This module implements various Video rendering functions. Video card devices
     render in either Direct or Indirect mode.

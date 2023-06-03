@@ -1,10 +1,31 @@
 /*
+    MartyPC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
-    Machine.rs
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    --------------------------------------------------------------------------
+
+    machine.rs
+
     This module defines all the parts that make up the virtual computer.
-    This module also contains the main run() method that makes the CPU execute instructions and
-    run devices for a given time slice.
 
+    This module owns Cpu and thus Bus, and is reponsible for maintaining both
+    machine and CPU execution state and running the emulated machine by calling
+    the appropriate methods on Bus.
+    
 */
 use log;
 

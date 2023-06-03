@@ -1,7 +1,7 @@
 /*
-  Marty PC Emulator 
-  (C)2023 Daniel Balsom
-  https://github.com/dbalsom/marty
+     Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -16,12 +16,11 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+    ---------------------------------------------------------------------------
 
-    egui::instruction_history_viewer.rs
+    egui::ivt_viewer.rs
 
-    Implements the instruction history viewer control.
-    The control is a virtual window that will display the disassembly of 
-    the last X executed instructions. 
+    Implements the a viewer for the IVT (Interrupt Vector Table)
 
 */
 

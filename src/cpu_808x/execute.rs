@@ -1,3 +1,29 @@
+/*
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    ---------------------------------------------------------------------------
+
+    cpu_808x::execute.rs
+
+    Executes an instruction after it has been fetched. 
+    Includes all main opcode implementations.
+*/
+
 
 use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
@@ -65,12 +91,10 @@ impl<'a> Cpu<'a> {
     /// fetched and decoded any prefixes, the opcode byte, modrm and any displacement
     /// and populated an Instruction struct.
     ///
-    /// If an EA is to be loaded this is also done on the first operand read as the 
-    /// decode function has no random access to memory.
+    /// Additionallly, if an EA was to be loaded, the load has already been performed.
     /// 
-    /// Effectively, for each opcode, we execute cycles equivalent to the microcode 
-    /// routine for that function. Microcode line numbers are usually provided for
-    /// cycle tracing. 
+    /// For each opcode, we execute cycles equivalent to the microcode routine for 
+    /// that function. Microcode line numbers are usually provided for cycle tracing. 
     /// 
     /// The microcode instruction with a terminating RNI should not be executed, as this
     /// requires the next instruction byte to be fetched and is handled by finalize().

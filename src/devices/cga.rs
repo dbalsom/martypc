@@ -18,7 +18,7 @@
 
     --------------------------------------------------------------------------
 
-    cga.rs
+    devices::cga.rs
 
     Implementation of the IBM CGA card, built around the Motorola MC6845 
     display controller.

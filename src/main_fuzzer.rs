@@ -33,6 +33,7 @@ use crate::{
     
     cpu_808x::{
         *,
+        CpuOption,
         mnemonic::Mnemonic,
     },
     cpu_common::CpuType,

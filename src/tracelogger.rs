@@ -18,10 +18,12 @@
 
     ---------------------------------------------------------------------------
 
+    tracelogger.rs
+
     This module implements a logging enum, designed to be passed to devices
     that may wish to implement logging. 
 
-    Thanks to BigBass for the suggestion that avoids references.
+    Thanks to Bigbass for the suggestion that avoids references.
 */
 
 use std::fs::File;

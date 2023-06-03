@@ -18,7 +18,7 @@
 
     ---------------------------------------------------------------------------
 
-    render/composite.rs
+    render::composite.rs
 
     This module contains the composite conversion routine. It takes a vector
     of CGA color index values (0-15) and converts to a pseudo-composite signal

@@ -20,7 +20,7 @@
 
     egui::delay_adjust.rs
 
-    Implement various debugging delays.
+    Implement controls for various debugging delays.
 
 */
 

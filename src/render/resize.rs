@@ -18,9 +18,9 @@
 
     ---------------------------------------------------------------------------
 
-    render/resize.rs
+    render::resize.rs
 
-    Framebuffer resizing routines.
+    Framebuffer resizing/resampling routines.
 
 */
 

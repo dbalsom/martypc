@@ -18,7 +18,7 @@
 
     ---------------------------------------------------------------------------
 
-    cpu_microcode.rs
+    cpu_808x::microcode.rs
 
     Provides disassembly of each line of the 8088 microcode. 
     Used for debug printing when cycle tracing is enabled. 

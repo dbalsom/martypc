@@ -18,7 +18,7 @@
 
     ---------------------------------------------------------------------------
 
-    cpu_muldiv.rs
+    cpu_808x::muldiv.rs
 
     This module implements the microcode algorithm for multiplication and 
     division on the 8088 for accurate cycle timings.

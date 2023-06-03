@@ -17,7 +17,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-
+    ---------------------------------------------------------------------------
+    
     egui::pic_viewer.rs
 
     Implements a viewer control for the Programmable Interrupt Controller.

@@ -18,7 +18,7 @@
 
     --------------------------------------------------------------------------
 
-    mc6845.rs
+    devices::mc6845.rs
 
     Implementation of the Motorola MC6845 CRT controller.
     Used internally by the MDA and CGA video cards.

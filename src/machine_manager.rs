@@ -1,5 +1,5 @@
 /*
-    Marty PC Emulator 
+    MartyPC Emulator 
     (C)2023 Daniel Balsom
     https://github.com/dbalsom/marty
 
@@ -15,6 +15,8 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    --------------------------------------------------------------------------
 
     machine_manager.rs
 

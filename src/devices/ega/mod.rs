@@ -1,6 +1,25 @@
 /*
-    ega.rs
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    ---------------------------------------------------------------------------
+
+    ega::mod.rs
+    
     Implement the IBM Enhanced Graphics Adapter
 
     Resources:
@@ -29,15 +48,15 @@ use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 
 use crate::videocard::*;
 
-mod ega_attribute_regs;
-mod ega_crtc_regs;
-mod ega_graphics_regs;
-mod ega_sequencer_regs;
+mod attribute_regs;
+mod crtc_regs;
+mod graphics_regs;
+mod sequencer_regs;
 
-use ega_attribute_regs::*;
-use ega_crtc_regs::*;
-use ega_graphics_regs::*;
-use ega_sequencer_regs::*;
+use attribute_regs::*;
+use crtc_regs::*;
+use graphics_regs::*;
+use sequencer_regs::*;
 
 static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
 

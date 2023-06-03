@@ -18,7 +18,7 @@
 
     ---------------------------------------------------------------------------
 
-    alu.rs
+    cpu_common::alu.rs
 
     This module implements traits for alu operations of different widths
     common accross CPU types.

@@ -1,7 +1,7 @@
 /*
-  Marty PC Emulator 
-  (C)2023 Daniel Balsom
-  https://github.com/dbalsom/marty
+    Marty PC Emulator 
+    (C)2023 Daniel Balsom
+    https://github.com/dbalsom/marty
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -15,6 +15,13 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+    ---------------------------------------------------------------------------
+
+    breakpoints.rs
+
+    Implement enum for breakpoint definitions.
+
 */
 
 #[allow(dead_code)]

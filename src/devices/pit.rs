@@ -1,5 +1,5 @@
 /*
-    Marty PC Emulator 
+    MartyPC Emulator 
     (C)2023 Daniel Balsom
     https://github.com/dbalsom/marty
 
@@ -16,11 +16,11 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+    --------------------------------------------------------------------------
 
-    pit.rs
+    devices::pit.rs
 
-    This module implements functionality for the Intel 8253 Programmable
-    Interval Timer.
+    Implements functionality for the Intel 8253 Programmable Interval Timer.
 
 */
 
