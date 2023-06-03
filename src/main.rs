@@ -519,7 +519,10 @@ fn main() {
     };
 
     let adapter_info = pixels.adapter().get_info();
-
+    let backend_str = format!("{:?}", adapter_info.backend);
+    let adapter_name_str =  format!("{}", adapter_info.name);
+    log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
+    
     // Set list of serial ports
     framework.gui.update_serial_ports(serial_ports);
 
@@ -1665,6 +1668,8 @@ fn main() {
                         framework.gui.perf_viewer.update_video_data(video_data);
                         framework.gui.perf_viewer.update_stats(
                             &PerformanceStats {
+                                adapter: adapter_name_str.clone(),
+                                backend: backend_str.clone(),
                                 current_ups: stat_counter.ups,
                                 current_fps: stat_counter.fps,
                                 emulated_fps: stat_counter.emulated_fps,

@@ -53,48 +53,57 @@ impl PerformanceViewerControl {
         .striped(true)
         .min_col_width(100.0)
         .show(ui, |ui| {
+
+            ui.label("Adapter: ");
+            ui.label(egui::RichText::new(format!("{}", self.stats.adapter)));
+            ui.end_row();
+
+            ui.label("Backend: ");
+            ui.label(egui::RichText::new(format!("{}", self.stats.backend)));
+            ui.end_row();
+
             ui.label("Internal resolution: ");
             ui.label(egui::RichText::new(format!("{}, {}", 
                 self.video_data.render_w, 
                 self.video_data.render_h))
-                .background_color(egui::Color32::BLACK));
+                );
             ui.end_row();
             ui.label("Display buffer resolution: ");
             ui.label(egui::RichText::new(format!("{}, {}", 
                 self.video_data.aspect_w, 
                 self.video_data.aspect_h))
-                .background_color(egui::Color32::BLACK));
+                );
             ui.end_row();
 
             ui.label("UPS: ");
-            ui.label(egui::RichText::new(format!("{}", self.stats.current_ups)).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", self.stats.current_ups)));
             ui.end_row();
             ui.label("FPS: ");
-            ui.label(egui::RichText::new(format!("{}", self.stats.current_fps)).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", self.stats.current_fps)));
             ui.end_row();
             ui.label("Emulated FPS: ");
-            ui.label(egui::RichText::new(format!("{}", self.stats.emulated_fps)).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", self.stats.emulated_fps)));
             ui.end_row();                        
             ui.label("IPS: ");
-            ui.label(egui::RichText::new(format!("{}", self.stats.current_ips)).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", self.stats.current_ips)));
             ui.end_row();
             ui.label("Cycle Target: ");
-            ui.label(egui::RichText::new(format!("{}", self.stats.cycle_target)).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", self.stats.cycle_target)));
             ui.end_row();  
             ui.label("CPS: ");
-            ui.label(egui::RichText::new(format!("{}", self.stats.current_cps)).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", self.stats.current_cps)));
             ui.end_row();        
             ui.label("TPS: ");
-            ui.label(egui::RichText::new(format!("{}", self.stats.current_tps)).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", self.stats.current_tps)));
             ui.end_row();                                
             ui.label("Emulation time: ");
-            ui.label(egui::RichText::new(format!("{}", ((self.stats.emulation_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", ((self.stats.emulation_time.as_micros() as f64) / 1000.0))));
             ui.end_row();
             ui.label("Render time: ");
-            ui.label(egui::RichText::new(format!("{}", ((self.stats.render_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", ((self.stats.render_time.as_micros() as f64) / 1000.0))));
             ui.end_row();
             ui.label("Gui Render time: ");
-            ui.label(egui::RichText::new(format!("{}", ((self.stats.gui_time.as_micros() as f64) / 1000.0))).background_color(egui::Color32::BLACK));
+            ui.label(egui::RichText::new(format!("{}", ((self.stats.gui_time.as_micros() as f64) / 1000.0))));
             ui.end_row();                        
         });          
     }
@@ -105,9 +114,7 @@ impl PerformanceViewerControl {
 
     pub fn update_stats(&mut self, stats: &PerformanceStats) {
         let save_gui_time = self.stats.gui_time;
-
-        self.stats = *stats;
-
+        self.stats = stats.clone();
         self.stats.gui_time = save_gui_time;
     }
 }

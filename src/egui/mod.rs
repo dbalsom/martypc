@@ -194,8 +194,11 @@ pub(crate) struct Framework {
     pub gui: GuiState,
 }
 
-#[derive (Copy, Clone, Default)]
+#[derive (Clone, Default)]
 pub struct PerformanceStats {
+    pub adapter: String,
+    pub backend: String,
+    
     pub current_ups: u32,
     pub current_fps: u32,
     pub emulated_fps: u32,
