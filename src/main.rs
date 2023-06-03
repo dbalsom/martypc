@@ -96,7 +96,7 @@ use vhd::{VirtualHardDisk};
 use videocard::{RenderMode};
 use bytequeue::ByteQueue;
 use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
-use render::{VideoRenderer, CompositeParams};
+use render::{VideoRenderer, CompositeParams, ResampleContext};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
 use tracelogger::TraceLogger;
@@ -474,6 +474,9 @@ fn main() {
         composite_params: Default::default(),
     };
 
+    // Create resampling context
+    let mut resample_context = ResampleContext::new();
+
     let (mut pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
@@ -653,6 +656,7 @@ fn main() {
                 log::debug!("Resizing pixel buffer to {}x{}", pixel_buf_w, pixel_buf_h);
                 pixels.resize_buffer(pixel_buf_w, pixel_buf_h).expect("Failed to resize Pixels buffer.");
 
+                VideoRenderer::set_alpha(pixels.get_frame_mut(), pixel_buf_w, pixel_buf_h, 255);
                 // Pixels will resize itself from window size event
                 /*
                 if pixels.resize_surface(aper_correct_x, aper_correct_y).is_err() {
@@ -668,6 +672,9 @@ fn main() {
                 video_data.render_h = aper_y;
                 video_data.aspect_w = aper_correct_x;
                 video_data.aspect_h = aper_correct_y;
+
+                // Recalculate sampling parameters.
+                resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
 
                 // Update internal state and request a redraw
                 window.request_redraw();
@@ -1195,11 +1202,22 @@ fn main() {
                                 // Don't make height smaller
                                 let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
                                 video_data.aspect_h = new_height;
-    
+                                
+                                // Recalculate sampling factors
+                                resample_context.precalc(
+                                    video_data.render_w, 
+                                    video_data.render_h, 
+                                    video_data.aspect_w,
+                                    video_data.aspect_h
+                                );
+
                                 pixels.get_frame_mut().fill(0);
+
                                 if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
                                     log::error!("Failed to resize pixel pixel buffer: {}", e);
                                 }
+
+                                VideoRenderer::set_alpha(pixels.get_frame_mut(), video_data.aspect_w, video_data.aspect_h, 255);
                             }
                         }
                     }
@@ -1266,7 +1284,9 @@ fn main() {
                                             video_data.render_h, 
                                             pixels.get_frame_mut(), 
                                             video_data.aspect_w, 
-                                            video_data.aspect_h);                            
+                                            video_data.aspect_h,
+                                            &resample_context
+                                        );                            
                                     }
                                     false => {
                                         video.draw_cga_direct(
@@ -1293,7 +1313,9 @@ fn main() {
                                             video_data.render_h, 
                                             pixels.get_frame_mut(), 
                                             video_data.aspect_w, 
-                                            video_data.aspect_h);                            
+                                            video_data.aspect_h,
+                                            &resample_context
+                                        );                            
                                     }
                                     false => {
                                         video.draw(pixels.get_frame_mut(), video_card, bus, composite_enabled);
@@ -1338,6 +1360,7 @@ fn main() {
                                             // display buffer is shrinking vertically.
                                             let surface = pixels.get_frame_mut();
                                             surface.fill(0);
+                                            VideoRenderer::set_alpha(surface, video_data.aspect_w, video_data.aspect_h, 255);
                                         }
                                         (GuiOption::CpuEnableWaitStates, state) => {
                                             machine.set_cpu_option(CpuOption::EnableWaitStates(state));
@@ -1956,7 +1979,7 @@ pub fn main_fuzzer <'a>(
     }
 
     //let mut io_bus = IoBusInterface::new();
-    let pic = Rc::new(RefCell::new(pic::Pic::new()));    
+    let pic = Rc::new(RefCell::new(devices::pic::Pic::new()));    
 
     // Create the validator trace file, if specified
     let mut validator_trace = TraceLogger::None;

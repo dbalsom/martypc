@@ -746,6 +746,20 @@ impl VideoRenderer {
 
     }    
 
+    /// Set the alpha component of each pixel in a the specified buffer.
+    pub fn set_alpha(
+        frame: &mut [u8],
+        w: u32,
+        h: u32,
+        a: u8
+    ) {
+        //log::warn!("set_alpha: h: {}", h);
+
+        for o in (0..((w*h*4) as usize)).step_by(4) {
+            frame[o + 3] = a;
+        }
+    }
+
     /// Draw the CGA card in Direct Mode. 
     /// Cards in Direct Mode generate their own framebuffers, we simply display the current back buffer
     /// Optionally composite processing is performed.
