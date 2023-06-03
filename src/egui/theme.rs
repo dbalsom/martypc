@@ -45,12 +45,15 @@ impl GuiTheme {
         new_visuals.widgets.noninteractive.fg_stroke.color = add_c32(color, 128);
 
         new_visuals.widgets.active.bg_fill = lighten_c32(color, 0.20);
+        new_visuals.widgets.active.weak_bg_fill = lighten_c32(color, 0.20);
         new_visuals.widgets.active.bg_stroke.color = lighten_c32(color, 0.35);
 
         new_visuals.widgets.inactive.bg_fill = lighten_c32(color, 0.35);
+        new_visuals.widgets.inactive.weak_bg_fill = lighten_c32(color, 0.35);
         new_visuals.widgets.inactive.bg_stroke.color = lighten_c32(color, 0.50);
 
         new_visuals.widgets.hovered.bg_fill = lighten_c32(color, 0.75);
+        new_visuals.widgets.hovered.weak_bg_fill = lighten_c32(color, 0.75);
         new_visuals.widgets.hovered.bg_stroke.color = lighten_c32(color, 0.75);
 
         Self {
