@@ -103,6 +103,9 @@ mod arduino8088_client;
 #[macro_use]
 mod arduino8088_validator;
 
+#[cfg(feature = "arduino_validator")]
+use crate::main_fuzzer::main_fuzzer;
+
 use input::MouseButton;
 use breakpoints::BreakPointType;
 use config::*;

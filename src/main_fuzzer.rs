@@ -31,12 +31,12 @@ use std::{
 
 use crate::{
     
+    bytequeue::ByteQueue,
     cpu_808x::{
         *,
-        CpuOption,
         mnemonic::Mnemonic,
     },
-    cpu_common::CpuType,
+    cpu_common::{CpuType, CpuOption},
     config::{ConfigFileParams, TraceMode},
     rom_manager::{RomManager},
     floppy_manager::{FloppyManager},
