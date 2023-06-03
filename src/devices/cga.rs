@@ -1208,7 +1208,7 @@ impl CGACard {
             // Draw current pixel
             if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
 
-                if !self.is_graphics_mode() {
+                if !self.mode_graphics {
                     self.draw_text_mode_pixel();
                 }
                 else if self.mode_hires_gfx {
@@ -1359,18 +1359,9 @@ impl CGACard {
                     }
                     self.beam_x = 0;
                     self.char_col = 0;
-    
-                    //log::trace!("hsync!");
-                    
+
                     let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
-                    
-                    if new_rba < self.rba {
-                        //log::warn!("Warning: Render buffer index would go backwards: old:{:04X} new:{:04X}", self.rba, new_rba );
-                        self.rba = new_rba;
-                    }
-                    else {
-                        self.rba = new_rba;
-                    }
+                    self.rba = new_rba;
                 }
             }
 
@@ -1417,29 +1408,15 @@ impl CGACard {
                 // Reset Horizontal Character Counter and increment character row counter
                 self.hcc_c0 = 0;
                 self.hborder = false;
-                /*
-                if self.vlc_c9 < self.crtc_maximum_scanline_address {
-                    // Character row in progress. Load VMA from VMA'
-                    self.vma = self.vma_t;
-                }
-                */
-
                 self.vlc_c9 += 1;
-
                 self.extents[self.front_buf].overscan_l = self.beam_x;
-
                 // Return video memory address to starting position for next character row
-
-                //self.vma = self.crtc_frame_address + (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize);
                 self.vma = self.vma_t;
                 
                 // Reset the current character glyph to start of row
                 self.set_char_addr();
 
-                if self.in_crtc_vblank {
-
-                }
-                else {
+                if !self.in_crtc_vblank {
                     // Start the new row
                     if self.vcc_c4 < self.crtc_vertical_displayed {
                         self.in_display_area = true;
@@ -1458,7 +1435,6 @@ impl CGACard {
                     self.vma = self.vma_t;
                     
                     // Load next char + attr
-                    
                     self.set_char_addr();
 
                     if self.vcc_c4 == self.crtc_vertical_sync_pos {
@@ -1485,50 +1461,20 @@ impl CGACard {
 
                     if self.vtac_c5 > self.crtc_vertical_total_adjust {
                         // We have reached vertical total adjust. We are at the end of the top overscan.
+                        self.hcc_c0 = 0;
+                        self.vcc_c4 = 0;
+                        self.vtac_c5 = 0;
+                        self.vlc_c9 = 0;
+                        self.char_col = 0;                            
+                        self.crtc_frame_address = self.crtc_start_address;
+                        self.vma = self.crtc_start_address;
+                        self.vma_t = self.vma;
+                        self.in_display_area = true;
+                        self.vborder = false;
+                        self.in_crtc_vblank = false;
                         
-                        if self.in_crtc_vblank {
-                            // If a vblank is in process, end it
-                            //self.vsc_c3h = CRTC_VBLANK_HEIGHT - 1;
-                        }
-
-                        if self.crtc_vertical_total > self.crtc_vertical_sync_pos {
-                            // Completed a frame.
-                            self.hcc_c0 = 0;
-                            self.vcc_c4 = 0;
-                            self.vtac_c5 = 0;
-                            //self.beam_x = 0;
-                            self.vlc_c9 = 0;
-                            self.char_col = 0;
-                            self.crtc_frame_address = self.crtc_start_address;
-                            self.vma = self.crtc_start_address;
-                            self.vma_t = self.vma;
-                            self.in_display_area = true;
-                            self.vborder = false;
-
-                            // Load first char + attr
-                            self.set_char_addr();
-                        }
-                        else {
-                            // VBlank suppressed by CRTC register shenanigans. 
-                            trace_regs!(self);
-                            trace!(self, "Vertical total reached: Vblank suppressed");
-
-                            self.hcc_c0 = 0;
-                            self.vcc_c4 = 0;
-                            self.vtac_c5 = 0;
-                            //self.beam_x = 0;
-                            self.vlc_c9 = 0;
-                            self.char_col = 0;                            
-                            self.crtc_frame_address = self.crtc_start_address;
-                            self.vma = self.crtc_start_address;
-                            self.vma_t = self.vma;
-                            self.in_display_area = true;
-                            self.vborder = false;
-                            self.in_crtc_vblank = false;
-                            
-                            // Load first char + attr
-                            self.set_char_addr();                    
-                        }
+                        // Load first char + attr
+                        self.set_char_addr();     
                     }
                 }
 
@@ -1738,6 +1684,7 @@ impl VideoCard for CGACard {
         }
     }
 
+    #[inline]
     fn is_graphics_mode(&self) -> bool {
         self.mode_graphics
     }
