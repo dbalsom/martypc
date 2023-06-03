@@ -176,7 +176,8 @@ impl TokenListView {
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent>, new_row: &mut usize) {
 
         let font_id = egui::TextStyle::Monospace.resolve(ui.style());
-        let row_height = ui.fonts().row_height(&font_id) + ui.spacing().item_spacing.y;
+        let mut row_height = 0.0;
+        ui.fonts(|f| { row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y});
         let num_rows = self.max_rows;
         let show_rows = self.visible_rows;
 

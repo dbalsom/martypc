@@ -518,6 +518,8 @@ fn main() {
         (pixels, framework)
     };
 
+    let adapter_info = pixels.adapter().get_info();
+
     // Set list of serial ports
     framework.gui.update_serial_ports(serial_ports);
 
@@ -677,7 +679,7 @@ fn main() {
                 log::debug!("Resizing pixel buffer to {}x{}", pixel_buf_w, pixel_buf_h);
                 pixels.resize_buffer(pixel_buf_w, pixel_buf_h).expect("Failed to resize Pixels buffer.");
 
-                VideoRenderer::set_alpha(pixels.get_frame_mut(), pixel_buf_w, pixel_buf_h, 255);
+                VideoRenderer::set_alpha(pixels.frame_mut(), pixel_buf_w, pixel_buf_h, 255);
                 // Pixels will resize itself from window size event
                 /*
                 if pixels.resize_surface(aper_correct_x, aper_correct_y).is_err() {
@@ -1232,13 +1234,13 @@ fn main() {
                                     video_data.aspect_h
                                 );
 
-                                pixels.get_frame_mut().fill(0);
+                                pixels.frame_mut().fill(0);
 
                                 if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
                                     log::error!("Failed to resize pixel pixel buffer: {}", e);
                                 }
 
-                                VideoRenderer::set_alpha(pixels.get_frame_mut(), video_data.aspect_w, video_data.aspect_h, 255);
+                                VideoRenderer::set_alpha(pixels.frame_mut(), video_data.aspect_w, video_data.aspect_h, 255);
                             }
                         }
                     }
@@ -1303,7 +1305,7 @@ fn main() {
                                             &render_src, 
                                             video_data.render_w, 
                                             video_data.render_h, 
-                                            pixels.get_frame_mut(), 
+                                            pixels.frame_mut(), 
                                             video_data.aspect_w, 
                                             video_data.aspect_h,
                                             &resample_context
@@ -1311,7 +1313,7 @@ fn main() {
                                     }
                                     false => {
                                         video.draw_cga_direct(
-                                            pixels.get_frame_mut(),
+                                            pixels.frame_mut(),
                                             video_data.render_w, 
                                             video_data.render_h,                                                                                         
                                             video_buffer,
@@ -1332,14 +1334,14 @@ fn main() {
                                             &render_src, 
                                             video_data.render_w, 
                                             video_data.render_h, 
-                                            pixels.get_frame_mut(), 
+                                            pixels.frame_mut(), 
                                             video_data.aspect_w, 
                                             video_data.aspect_h,
                                             &resample_context
                                         );                            
                                     }
                                     false => {
-                                        video.draw(pixels.get_frame_mut(), video_card, bus, composite_enabled);
+                                        video.draw(pixels.frame_mut(), video_card, bus, composite_enabled);
                                     }
                                 }                                
                             }
@@ -1379,7 +1381,7 @@ fn main() {
                                         (GuiOption::CorrectAspect, false) => {
                                             // Aspect correction was turned off. We want to clear the render buffer as the 
                                             // display buffer is shrinking vertically.
-                                            let surface = pixels.get_frame_mut();
+                                            let surface = pixels.frame_mut();
                                             surface.fill(0);
                                             VideoRenderer::set_alpha(surface, video_data.aspect_w, video_data.aspect_h, 255);
                                         }

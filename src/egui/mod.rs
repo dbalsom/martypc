@@ -328,7 +328,7 @@ impl Framework {
 
 
     pub(crate) fn has_focus(&self) -> bool {
-        match self.egui_ctx.memory().focus() {
+        match self.egui_ctx.memory(|m| { m.focus() }) {
             Some(_) => true,
             None => false
         }

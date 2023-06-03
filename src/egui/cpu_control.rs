@@ -74,9 +74,9 @@ impl CpuControl {
                    exec_control.set_op(ExecutionOperation::StepOver);
                 };
 
-                if ui.input().key_pressed(egui::Key::F10) {
+                if ui.input(|i| i.key_pressed(egui::Key::F10)) {
                     exec_control.set_op(ExecutionOperation::StepOver);
-                }                             
+                };
             });   
 
             ui.add_enabled_ui(step_enabled, |ui| {
@@ -84,7 +84,7 @@ impl CpuControl {
                    exec_control.set_op(ExecutionOperation::Step);
                 };
 
-                if ui.input().key_pressed(egui::Key::F11) {
+                if ui.input(|i| i.key_pressed(egui::Key::F11)) {
                     exec_control.set_op(ExecutionOperation::Step);
                 }                             
             });                 
@@ -94,7 +94,7 @@ impl CpuControl {
                     exec_control.set_op(ExecutionOperation::Run);
                 };
 
-                if ui.input().key_pressed(egui::Key::F5) {
+                if ui.input(|i| i.key_pressed(egui::Key::F5)) {
                     exec_control.set_op(ExecutionOperation::Run);
                 }                        
             });
