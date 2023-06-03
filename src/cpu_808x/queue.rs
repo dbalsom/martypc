@@ -46,7 +46,7 @@ pub struct InstructionQueue {
     back: usize,
     front: usize,
     q: [u8; QUEUE_MAX],
-    dt: [QueueType; QUEUE_MAX],
+    _dt: [QueueType; QUEUE_MAX],
     preload: Option<u8>,
     delay: QueueDelay
 }
@@ -65,7 +65,7 @@ impl InstructionQueue {
             back: 0,
             front: 0,
             q: [0; QUEUE_MAX],
-            dt: [QueueType::First; QUEUE_MAX],
+            _dt: [QueueType::First; QUEUE_MAX],
             preload: None,
             delay: QueueDelay::None,
         }
@@ -81,6 +81,7 @@ impl InstructionQueue {
         self.len
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub fn is_full(&self) -> bool {
         self.len == self.size
@@ -199,6 +200,7 @@ impl InstructionQueue {
     /// Write the contents of the processor instruction queue in order to the
     /// provided slice of u8. The slice must be the same size as the current piq 
     /// length for the given cpu type.
+    #[allow(dead_code)]
     pub fn to_slice(&self, slice: &mut [u8]) {
 
         assert_eq!(self.size, slice.len());

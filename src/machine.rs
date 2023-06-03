@@ -30,33 +30,28 @@
 use log;
 
 use std::{
-    rc::Rc,
-    cell::{Cell, RefCell}, 
+    cell::Cell, 
     collections::VecDeque,
     fs::File,
     io::{BufWriter, Write}
 };
 
 use crate::{
-    config::{ConfigFileParams, MachineType, VideoType, ValidatorType, TraceMode},
+    config::{ConfigFileParams, MachineType, VideoType, TraceMode},
     breakpoints::BreakPointType,
-    bus::{BusInterface, ClockFactor, MemRangeDescriptor, DeviceEvent, MEM_CP_BIT},
+    bus::{BusInterface, ClockFactor, DeviceEvent, MEM_CP_BIT},
     devices::{
         pit::{self, PitDisplayState},
-        pic::{self, PicStringState},
-        ppi::{self, PpiStringState},
-        dma::{self, DMAControllerStringState},
-        fdc::{self, FloppyController},
-        hdc::{self, HardDiskController},
+        pic::{PicStringState},
+        ppi::{PpiStringState},
+        dma::{DMAControllerStringState},
+        fdc::{FloppyController},
+        hdc::{HardDiskController},
         mouse::Mouse,
-        serial::{self, SerialPortController},
-    
     },
-    cpu_808x::{self, Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
+    cpu_808x::{Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
     cpu_common::{CpuType, CpuOption},
-    floppy_manager::{FloppyManager},
-    vhd_manager,
-    machine_manager::{MACHINE_DESCS, MachineDescriptor},
+    machine_manager::{MachineDescriptor},
     rom_manager::RomManager,
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
@@ -66,7 +61,7 @@ use crate::{
 use ringbuf::{RingBuffer, Producer, Consumer};
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
-pub const NUM_FLOPPIES: u32 = 2;
+
 pub const NUM_HDDS: u32 = 2;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
@@ -183,7 +178,6 @@ pub struct PitData {
     buffer_consumer: Consumer<u8>,
     samples_produced: u64,
     ticks_per_sample: f64,
-    ticks: f64,
     log_file: Option<Box<BufWriter<File>>>,
     logging_triggered: bool,
     fractional_part: f64,
@@ -258,10 +252,14 @@ impl<'a> Machine<'a> {
         }
 
         // Create the validator trace file, if specified
+        #[cfg(feature = "cpu_validator")]
         let mut validator_trace = TraceLogger::None;
-        if let Some(trace_filename) = &config.validator.trace_file {
-            validator_trace = TraceLogger::from_filename(&trace_filename);
-        }
+        #[cfg(feature = "cpu_validator")]
+        {
+            if let Some(trace_filename) = &config.validator.trace_file {
+                validator_trace = TraceLogger::from_filename(&trace_filename);
+            }
+        }            
 
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
@@ -286,7 +284,6 @@ impl<'a> Machine<'a> {
         let pit_data = PitData {
             buffer_consumer: speaker_buf_consumer,
             ticks_per_sample: pit_ticks_per_sample,
-            ticks: 0.0,
             samples_produced: 0,
             log_file: pit_output_file_option,
             logging_triggered: false,
@@ -980,19 +977,19 @@ impl<'a> Machine<'a> {
     fn timer_ticks_to_cpu_cycles(&self, timer_ticks: u16) -> u32 {
 
         let timer_multiplier = 
-            if let Some(timer_crystal) = self.machine_desc.timer_crystal {
+            if let Some(_timer_crystal) = self.machine_desc.timer_crystal {
                 // We have an alternate 
                 todo!("Unimplemented conversion for AT timer");
-                1
+                //1
             }
             else {
                 match self.machine_desc.cpu_factor {
                     ClockFactor::Divisor(n) => {
                         self.machine_desc.timer_divisor / (n as u32)
                     }
-                    ClockFactor::Multiplier(n) => {
+                    ClockFactor::Multiplier(_n) => {
                         todo!("unimplemented conversion for CPU multiplier");
-                        1
+                        //1
                     }
                 }
             };
@@ -1078,7 +1075,5 @@ impl<'a> Machine<'a> {
         self.pit_data.next_sample_size = next_sample_f as usize;
         self.pit_data.fractional_part = next_sample_f.fract();
     }
-
-
 
 }

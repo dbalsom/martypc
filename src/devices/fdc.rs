@@ -29,7 +29,6 @@ use lazy_static::lazy_static;
 use crate::bus::{IoDevice, DeviceRunTimeUnit};
 use crate::devices::{
     dma,
-    pic,
 };
 use crate::bus::BusInterface;
 
@@ -334,7 +333,7 @@ impl IoDevice for FloppyController {
         }        
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             FDC_DIGITAL_OUTPUT_REGISTER => {
                 self.handle_dor_write(data);

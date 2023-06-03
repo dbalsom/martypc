@@ -29,7 +29,6 @@ use std::{
     collections::{HashMap, VecDeque},
     rc::Rc,
 };
-use egui::*;
 use crate::egui::*;
 
 use crate::machine::{ExecutionControl, ExecutionState, ExecutionOperation};

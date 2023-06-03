@@ -25,7 +25,6 @@
 
 use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
-use crate::cpu_808x::addressing::*;
 
 impl<'a> Cpu<'a> {
 

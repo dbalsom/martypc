@@ -24,9 +24,7 @@
 
 */
 
-use egui::*;
 use crate::egui::*;
-
 use crate::machine::DelayParams;
 
 pub struct DelayAdjustControl {
@@ -65,6 +63,7 @@ impl DelayAdjustControl {
         );
     }
 
+    #[allow(dead_code)]
     pub fn update_params(&mut self, params: DelayParams ) {
         self.params = params;
     }

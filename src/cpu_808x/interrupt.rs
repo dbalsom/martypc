@@ -24,9 +24,7 @@
 
 */
 
-
 use crate::cpu_808x::*;
-use crate::cpu_808x::jump::*;
 
 impl<'a> Cpu<'a> {
 
@@ -203,6 +201,7 @@ impl<'a> Cpu<'a> {
         self.biu_update_pc();        
     }    
 
+    #[allow(dead_code)]
     pub fn log_interrupt(&self, interrupt: u8) {
 
         match interrupt {

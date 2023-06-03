@@ -32,7 +32,6 @@ use std::{
     time::{Duration, Instant},
     cell::RefCell,
     rc::Rc,
-    path::Path,
     ffi::OsString,
     path::PathBuf
 };
@@ -45,7 +44,6 @@ use pixels::{Pixels, SurfaceTexture};
 
 use winit::{
     dpi::LogicalSize,
-    error::ExternalError,
     event::{
         Event, 
         WindowEvent, 
@@ -123,7 +121,6 @@ use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
 use render::{VideoRenderer, CompositeParams, ResampleContext};
 use sound::SoundPlayer;
 use syntax_token::SyntaxToken;
-use tracelogger::TraceLogger;
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -1554,7 +1551,7 @@ fn main() {
                                 }
                                 GuiEvent::TickDevice(dev, ticks) => {
                                     match dev {
-                                        DeviceSelection::Timer(t) => {
+                                        DeviceSelection::Timer(_t) => {
     
                                         }
                                         DeviceSelection::VideoCard => {
@@ -1884,7 +1881,7 @@ fn main() {
 pub fn main_headless(
     config: &ConfigFileParams,
     rom_manager: RomManager,
-    floppy_manager: FloppyManager
+    _floppy_manager: FloppyManager
 ) {
 
     // Init sound 

@@ -223,7 +223,7 @@ impl IoDevice for DMAController {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
 
         match port {
             DMA_CHANNEL_0_ADDR_PORT => {

@@ -78,7 +78,6 @@ mod videocard_viewer;
 use crate::{
 
     egui::image::{UiImage, get_ui_image},
-    egui::color::{darken_c32, lighten_c32, add_c32},
 
     // Use custom windows
     egui::about::AboutDialog,
@@ -99,10 +98,8 @@ use crate::{
     egui::theme::GuiTheme,
 
     machine::{MachineState, ExecutionControl},
-    cpu_808x::CpuStringState, 
 
     devices::{
-        dma::DMAControllerStringState,
         hdc::HardDiskFormat,
         pit::PitDisplayState, 
         pic::PicStringState,
@@ -151,6 +148,7 @@ pub enum GuiOption {
     ShowBackBuffer,
 }
 
+#[allow(dead_code)]
 pub enum GuiEvent {
     LoadVHD(usize, OsString),
     CreateVHD(OsString, HardDiskFormat),
@@ -213,7 +211,6 @@ pub struct PerformanceStats {
 /// Example application state. A real application will need a lot more state than this.
 pub(crate) struct GuiState {
 
-    texture: Option<egui::TextureHandle>,
     event_queue: VecDeque<GuiEvent>,
 
     /// Only show the associated window when true.
@@ -258,7 +255,6 @@ pub(crate) struct GuiState {
     pub cpu_viewer: CpuViewerControl,
     pub cycle_trace_viewer: CycleTraceViewerControl,
     pub memory_viewer: MemoryViewerControl,
-    pub cpu_state: CpuStringState,
 
     pub perf_viewer: PerformanceViewerControl,
     pub delay_adjust: DelayAdjustControl,
@@ -268,13 +264,7 @@ pub(crate) struct GuiState {
     pub ppi_state: PpiStringState,
     
     pub videocard_state: VideoCardState,
-    videocard_set_select: String,
-    dma_channel_select: u32,
-    dma_channel_select_str: String,
-    memory_viewer_dump: String,
 
-    disassembly_viewer_string: String,
-    disassembly_viewer_address: String,
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
     pub trace_viewer: InstructionHistoryControl,
@@ -282,10 +272,8 @@ pub(crate) struct GuiState {
     pub ivr_viewer: IvrViewerControl,
     pub device_control: DeviceControl,
 
-    trace_string: String,
     call_stack_string: String,
 
-    aspect_correct: bool,
     composite: bool
 }
 
@@ -473,8 +461,6 @@ impl GuiState {
         ].into();
 
         Self { 
-
-            texture: None,
             event_queue: VecDeque::new(),
             window_open_flags,
             error_dialog_open: false,
@@ -513,33 +499,24 @@ impl GuiState {
             cpu_control: CpuControl::new(exec_control.clone()),
             cpu_viewer: CpuViewerControl::new(),
             cycle_trace_viewer: CycleTraceViewerControl::new(),
-            memory_viewer_dump: String::new(),
             memory_viewer: MemoryViewerControl::new(),
-            cpu_state: Default::default(),
 
             perf_viewer: PerformanceViewerControl::new(),
             delay_adjust: DelayAdjustControl::new(),
             pit_viewer: PitViewerControl::new(),
             pic_viewer: PicViewerControl::new(),
             ppi_state: Default::default(),
-            dma_channel_select: 0,
-            dma_channel_select_str: String::new(),
 
             videocard_state: Default::default(),
-            videocard_set_select: String::new(),
-            disassembly_viewer_string: String::new(),
-            disassembly_viewer_address: "cs:ip".to_string(),
             disassembly_viewer: DisassemblyControl::new(),
             dma_viewer: DmaViewerControl::new(),
             trace_viewer: InstructionHistoryControl::new(),
-            trace_string: String::new(),
             composite_adjust: CompositeAdjustControl::new(),
             ivr_viewer: IvrViewerControl::new(),
             device_control: DeviceControl::new(),
             call_stack_string: String::new(),
 
             // Options menu items
-            aspect_correct: false,
             composite: false
         }
     }
@@ -633,14 +610,6 @@ impl GuiState {
     pub fn show_window(&mut self, window: GuiWindow) {
         *self.window_open_flags.get_mut(&window).unwrap() = true;
     }
-
-    pub fn get_disassembly_view_address(&mut self) -> &str {
-        &self.disassembly_viewer_address
-    }
-
-    pub fn get_aspect_correct_enabled(&self) -> bool {
-        self.aspect_correct
-    }   
 
     pub fn get_composite_enabled(&self) -> bool {
         self.composite

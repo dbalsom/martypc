@@ -24,7 +24,7 @@
 
 */
 
-//#![allow(dead_code)]
+#![allow(dead_code)]
 #![allow(clippy::unusual_byte_groupings)]
 
 use std::{
@@ -75,12 +75,10 @@ use crate::config::ValidatorType;
 
 use crate::breakpoints::BreakPointType;
 use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
-use crate::devices::pic::Pic;
 use crate::bytequeue::*;
 //use crate::interrupt::log_post_interrupt;
 
 use crate::syntax_token::*;
-use crate::tracelogger::TraceLogger;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{
@@ -89,6 +87,8 @@ use crate::cpu_validator::{
 };
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::{ArduinoValidator};
+#[cfg(feature = "arduino_validator")]
+use crate::tracelogger::TraceLogger;
 
 macro_rules! trace_print {
     ($self:ident, $($t:tt)*) => {{
@@ -123,10 +123,12 @@ pub const CPU_FLAG_INT_ENABLE: u16 = 0b0000_0010_0000_0000;
 pub const CPU_FLAG_DIRECTION: u16  = 0b0000_0100_0000_0000;
 pub const CPU_FLAG_OVERFLOW: u16   = 0b0000_1000_0000_0000;
 
+/*
 const CPU_FLAG_RESERVED12: u16 = 0b0001_0000_0000_0000;
 const CPU_FLAG_RESERVED13: u16 = 0b0010_0000_0000_0000;
 const CPU_FLAG_RESERVED14: u16 = 0b0100_0000_0000_0000;
 const CPU_FLAG_RESERVED15: u16 = 0b1000_0000_0000_0000;
+*/
 
 const CPU_FLAGS_RESERVED_ON: u16 = 0b1111_0000_0000_0010;
 const CPU_FLAGS_RESERVED_OFF: u16 = !(CPU_FLAG_RESERVED3 | CPU_FLAG_RESERVED5);
@@ -139,46 +141,6 @@ const REGISTER_LO_MASK: u16    = 0b1111_1111_0000_0000;
 pub const MAX_INSTRUCTION_SIZE: usize = 15;
 
 const OPCODE_REGISTER_SELECT_MASK: u8 = 0b0000_0111;
-
-const MODRM_REG_MASK:          u8 = 0b00_111_000;
-const MODRM_ADDR_MASK:         u8 = 0b11_000_111;
-const MODRM_MOD_MASK:          u8 = 0b11_000_000;
-
-const MODRM_ADDR_BX_SI:        u8 = 0b00_000_000;
-const MODRM_ADDR_BX_DI:        u8 = 0b00_000_001;
-const MODRM_ADDR_BP_SI:        u8 = 0b00_000_010;
-const MODRM_ADDR_BP_DI:        u8 = 0b00_000_011;
-const MODRM_ADDR_SI:           u8 = 0b00_000_100;
-const MODRM_ADDR_DI:           u8 = 0b00_000_101;
-const MODRM_ADDR_DISP16:       u8 = 0b00_000_110;
-const MODRM_ADDR_BX:           u8 = 0b00_000_111;
-
-const MODRM_ADDR_BX_SI_DISP8:  u8 = 0b01_000_000;
-const MODRM_ADDR_BX_DI_DISP8:  u8 = 0b01_000_001;
-const MODRM_ADDR_BP_SI_DISP8:  u8 = 0b01_000_010;
-const MODRM_ADDR_BP_DI_DISP8:  u8 = 0b01_000_011;
-const MODRM_ADDR_SI_DISP8:     u8 = 0b01_000_100;
-const MODRM_ADDR_DI_DISP8:     u8 = 0b01_000_101;
-const MODRM_ADDR_BP_DISP8:     u8 = 0b01_000_110;
-const MODRM_ADDR_BX_DISP8:     u8 = 0b01_000_111;
-
-const MODRM_ADDR_BX_SI_DISP16: u8 = 0b10_000_000;
-const MODRM_ADDR_BX_DI_DISP16: u8 = 0b10_000_001;
-const MODRM_ADDR_BP_SI_DISP16: u8 = 0b10_000_010;
-const MODRM_ADDR_BP_DI_DISP16: u8 = 0b10_000_011;
-const MODRM_ADDR_SI_DISP16:    u8 = 0b10_000_100;
-const MODRM_ADDR_DI_DISP16:    u8 = 0b10_000_101;
-const MODRM_ADDR_BP_DISP16:    u8 = 0b10_000_110;
-const MODRM_ADDR_BX_DISP16:    u8 = 0b10_000_111;
-
-const MODRM_EG_AX_OR_AL:       u8 = 0b00_000_000;
-const MODRM_REG_CX_OR_CL:      u8 = 0b00_000_001;
-const MODRM_REG_DX_OR_DL:      u8 = 0b00_000_010;
-const MODRM_REG_BX_OR_BL:      u8 = 0b00_000_011;
-const MODRM_REG_SP_OR_AH:      u8 = 0b00_000_100;
-const MODRM_REG_BP_OR_CH:      u8 = 0b00_000_101;
-const MODRM_REG_SI_OR_DH:      u8 = 0b00_000_110;
-const MODRM_RED_DI_OR_BH:      u8 = 0b00_000_111;
 
 // Instruction flags
 const I_USES_MEM:    u32 = 0b0000_0001; // Instruction has a memory operand
@@ -317,6 +279,8 @@ pub enum Flag {
     Direction,
     Overflow
 }
+
+/*
 pub enum Register {
     AH,
     AL,
@@ -339,7 +303,8 @@ pub enum Register {
     SS,
     ES,
     IP,
-}
+}*/
+
 
 #[derive(Copy, Clone)]
 #[derive(PartialEq)]
@@ -385,17 +350,9 @@ pub enum OperandType {
     Register8(Register8),
     Register16(Register16),
     AddressingMode(AddressingMode),
-    NearAddress(u16),
     FarAddress(u16,u16),
     NoOperand,
     InvalidOperand
-}
-
-#[derive(Copy, Clone)]
-pub enum DispType {
-    NoDisp,
-    Disp8,
-    Disp16,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -424,6 +381,7 @@ impl Default for DmaState {
 }
 
 impl Displacement {
+    
     pub fn get_i16(&self) -> i16 {
         match self {
             Displacement::Disp8(disp) => *disp as i16,
@@ -500,6 +458,7 @@ impl Default for OperandSize {
     }
 }
 
+#[allow(dead_code)]
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum InterruptType {
     NMI,
@@ -639,10 +598,10 @@ pub struct I8288 {
     iowc: bool,
     inta: bool,
     // Control output
-    dtr: bool,
+    _dtr: bool,
     ale: bool,
-    pden: bool,
-    den: bool
+    _pden: bool,
+    _den: bool
 }
 
 #[derive(Default)]
@@ -726,13 +685,11 @@ pub struct Cpu<'a>
     // Bookkeeping
     halted: bool,
     is_running: bool,
-    is_single_step: bool,
     is_error: bool,
     
     // Rep prefix handling
     in_rep: bool,
     rep_init: bool,
-    rep_saved: bool,
     rep_mnemonic: Mnemonic,
     rep_type: RepType,
     
@@ -751,7 +708,7 @@ pub struct Cpu<'a>
     step_over_target: Option<CpuAddress>,
 
     // Interrupts
-    int_stack: Vec<InterruptDescriptor>,
+    //int_stack: Vec<InterruptDescriptor>,
     int_count: u64,
     iret_count: u64,
     interrupt_inhibit: bool,
@@ -791,7 +748,6 @@ pub struct Cpu<'a>
     dram_refresh_cycle_target: u32,
     dram_refresh_cycles: u32,
     dram_refresh_adjust: u32,
-    dram_bus_owner_cycles: u32,
     dma_aen: bool,
 
     // Trap stuff
@@ -886,10 +842,12 @@ pub struct CpuStringState {
     pub cycle_count: String
 }
     
+/*
 pub enum RegisterType {
     Register8(u8),
     Register16(u16)
 }
+*/
 
 #[derive (Debug)]
 pub enum StepResult {
@@ -906,7 +864,7 @@ pub enum ExecutionResult {
     Okay,
     OkayJump,
     OkayRep,
-    UnsupportedOpcode(u8),
+    //UnsupportedOpcode(u8),        // All opcodes implemented.
     ExecutionError(String),
     ExceptionError(CpuException),
     Halt
@@ -978,7 +936,6 @@ impl Default for QueueOp {
 pub enum FetchState {
     Idle,
     InProgress,
-    Suspended,
     Scheduled(u8),
     Delayed(u8),
     DelayDone,
@@ -1135,6 +1092,7 @@ impl<'a> Cpu<'a> {
 
     }
 
+    #[allow(dead_code)]
     pub fn in_rep(&self) -> bool {
         self.in_rep
     }
@@ -1440,6 +1398,7 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    /*
     pub fn get_register(&self, reg: Register) -> RegisterType {
         match reg {
             Register::AH => RegisterType::Register8(self.ah),
@@ -1465,6 +1424,7 @@ impl<'a> Cpu<'a> {
             _ => panic!("Invalid register")
         }
     }
+    */
 
     #[inline]
     pub fn get_register8(&self, reg:Register8) -> u8 {
@@ -2297,6 +2257,7 @@ impl<'a> Cpu<'a> {
 
                 Ok((StepResult::Normal, self.instr_cycle))
             }                    
+            /*
             ExecutionResult::UnsupportedOpcode(o) => {
                 // This shouldn't really happen on the 8088 as every opcode does something, 
                 // but allowed us to be missing opcode implementations during development.
@@ -2304,6 +2265,7 @@ impl<'a> Cpu<'a> {
                 self.is_error = true;
                 Err(CpuError::UnhandledInstructionError(o, instruction_address))
             }
+            */
             ExecutionResult::ExecutionError(e) => {
                 // Something unexpected happened!
                 self.is_running = false;
@@ -2441,7 +2403,7 @@ impl<'a> Cpu<'a> {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            if let HistoryEntry::Entry {cs, ip, cycles, i} = i {      
+            if let HistoryEntry::Entry {cs, ip, cycles: _, i} = i {      
                 let i_string = format!("{:05X} [{:04X}:{:04X}] {}\n", i.address, *cs, *ip, i);
                 disassembly_string.push_str(&i_string);
             }
@@ -2523,7 +2485,7 @@ impl<'a> Cpu<'a> {
             false => ' '
         };
 
-        let mut biu_chr = match self.biu_state {
+        let mut _biu_chr = match self.biu_state {
             BiuState::Operating => '.',
             BiuState::Suspended => 'S',
             BiuState::Resuming(_) => 'R',

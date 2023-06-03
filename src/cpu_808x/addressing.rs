@@ -64,6 +64,7 @@ pub enum FarPtr {
 
 impl<'a> Cpu<'a> {
 
+    #[allow(dead_code)]
     fn is_register_mode(mode: AddressingMode) {
         match mode {
             AddressingMode::RegisterMode => true,

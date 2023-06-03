@@ -622,7 +622,7 @@ impl<'a> Cpu<'a> {
         //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
     }
 
-    pub fn biu_io_read_u16(&mut self, addr: u16, word: u16, flag: ReadWriteFlag) {
+    pub fn biu_io_read_u16(&mut self, addr: u16, flag: ReadWriteFlag) {
         
         self.biu_bus_begin(
             BusStatus::IoRead, 

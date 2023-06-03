@@ -74,6 +74,7 @@ impl DisassemblyControl {
         self.tlv.set_contents(mem);
     }
 
+    #[allow(dead_code)]
     pub fn set_address(&mut self, address: String) {
         self.address = address;
     }

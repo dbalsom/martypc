@@ -31,7 +31,6 @@
 #![allow(dead_code)]
 use std::{
     collections::HashMap,
-    io::{BufWriter, Write},
     fmt,
     path::Path
 };
@@ -225,7 +224,7 @@ impl ByteQueue for BusInterface {
     fn delay(&mut self, _delay: u32) {}
     fn wait(&mut self, _cycles: u32) {}
     fn wait_i(&mut self, _cycles: u32, _instr: &[u16]) {}
-    fn wait_comment(&mut self, comment: &str) {}
+    fn wait_comment(&mut self, _comment: &str) {}
     fn set_pc(&mut self, _pc: u16) {}
     fn clear_delay(&mut self) {}
 
@@ -705,7 +704,6 @@ impl BusInterface {
             }
             else {
 
-                let mut handled = false;
                 // Handle memory-mapped devices
                 for map_entry in &self.mmio_map {
                     if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
@@ -760,7 +758,6 @@ impl BusInterface {
                 return Ok(DEFAULT_WAIT_STATES);
             }
             else {
-                let mut handled = false;
                 // Handle memory-mapped devices
                 for map_entry in &self.mmio_map {
                     if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size - 1 {

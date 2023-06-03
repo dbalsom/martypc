@@ -81,9 +81,6 @@ pub enum RenderMode {
     Indirect
 }
 
-// Display the whole display frame visually for debugging, including blanking periods
-pub const VIDEO_OPTION_DEBUGFRAME: u8 = 0b0000_0001; 
-
 use std::collections::HashMap;
 use std::path::Path;
 

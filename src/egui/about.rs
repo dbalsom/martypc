@@ -28,7 +28,7 @@ use crate::egui::*;
 
 pub struct AboutDialog {
     texture: Option<egui::TextureHandle>,
-    params: bool
+    _params: bool
 }
 
 
@@ -37,7 +37,7 @@ impl AboutDialog {
     pub fn new() -> Self {
         Self {
             texture: None,
-            params: Default::default(),
+            _params: Default::default(),
         }
     }
 

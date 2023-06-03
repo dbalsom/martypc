@@ -23,7 +23,7 @@
     Implements common ALU operations.
 
 */
-
+#![allow(dead_code)]
 
 use crate::cpu_808x::*;
 use crate::cpu_808x::mnemonic::Mnemonic;

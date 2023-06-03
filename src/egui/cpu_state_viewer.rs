@@ -26,21 +26,12 @@
 */
 #[allow (dead_code)]
 
-use egui::*;
-
 use crate::cpu_808x::CpuStringState;
-use crate::syntax_token::*;
-
 use crate::egui::*;
-use crate::egui::color::*;
-use crate::egui::constants::*;
 
 pub struct CpuViewerControl {
-
   cpu_state: CpuStringState
-
 }
-
 
 impl CpuViewerControl {
     

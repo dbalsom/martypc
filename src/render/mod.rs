@@ -781,8 +781,8 @@ impl VideoRenderer {
         }
 
         // Attempt to center the image by reducing right overscan 
-        let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
-        let overscan_half = overscan_total / 2;
+        //let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
+        //let overscan_half = overscan_total / 2;
 
         let mut horiz_adjust = extents.aperture_x;
         if extents.aperture_x + extents.aperture_w >= extents.field_w {

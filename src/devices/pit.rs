@@ -42,37 +42,17 @@ pub const PIT_CHANNEL_1_DATA_PORT: u16 = 0x41;
 pub const PIT_CHANNEL_2_DATA_PORT: u16 = 0x42;
 pub const PIT_COMMAND_REGISTER: u16 = 0x43;
 
+/*
 const PIT_CHANNEL_SELECT_MASK: u8 = 0b1100_0000;
 const PIT_ACCESS_MODE_MASK: u8    = 0b0011_0000;
 const PIT_OPERATING_MODE_MASK: u8 = 0b0000_1110;
 const PIT_BCD_MODE_MASK: u8       = 0b0000_0001;
+*/
 
-pub const PIT_FREQ: f64 = 1_193_182.0;
+//pub const PIT_FREQ: f64 = 1_193_182.0;
 pub const PIT_MHZ: f64 = 1.193182;
 pub const PIT_TICK_US: f64 = 1.0 / PIT_MHZ;
-pub const PIT_DIVISOR: f64 = 0.25;
-
-/*
-macro_rules! dirty_update_checked {
-    ($old: expr, $new: expr, $flag: expr) => {
-        {
-            if $old != $new {
-                $flag = true;
-            }
-            $old = $new
-        }
-    };
-}
-
-macro_rules! dirty_update {
-    ($old: expr, $new: expr, $flag: expr) => {
-        {
-            $flag = true;
-            $old = $new
-        }
-    };
-}
-*/
+//pub const PIT_DIVISOR: f64 = 0.25;
 
 #[derive(Debug, PartialEq)]
 pub enum ChannelMode {
@@ -124,6 +104,7 @@ pub enum RwMode {
 }
 
 #[bitfield]
+#[allow(dead_code)]
 pub struct ControlByte {
     bcd: bool,
     channel_mode: B3,
@@ -137,10 +118,7 @@ pub enum ChannelState {
     WaitingForGate,
     WaitingForLoadCycle,
     WaitingForLoadTrigger,
-    ReloadNextCycle,
-    GateTriggeredReload,
-    Counting,
-    CountingTriggered
+    Counting
 }
 
 #[derive(Debug, PartialEq)] 
@@ -177,9 +155,7 @@ pub struct Channel {
     counting_element: Updatable<u16>,
     ce_undefined: bool,
     armed: bool,
-    read_state: ReadState,
-    read_in_progress: bool,
-    normal_lobyte_read: bool,    
+    read_state: ReadState,  
     count_is_latched: bool,
     output: Updatable<bool>,
     output_on_reload: bool,
@@ -187,7 +163,6 @@ pub struct Channel {
     output_latch: Updatable<u16>,
     bcd_mode: bool,
     gate: Updatable<bool>,
-    one_shot_triggered: bool,
     incomplete_reload: bool,
 }
 pub struct ProgrammableIntervalTimer {
@@ -289,8 +264,6 @@ impl Channel {
             armed: false,
 
             read_state: ReadState::NoRead,
-            read_in_progress: false,
-            normal_lobyte_read: false,
             count_is_latched: false,
             output: Updatable::Dirty(false, false),
             output_on_reload: false,
@@ -298,7 +271,6 @@ impl Channel {
             output_latch: Updatable::Dirty(0, false),
             bcd_mode: false,
             gate: Updatable::Dirty(false, false),
-            one_shot_triggered: false,
             incomplete_reload: false
         }
     }
@@ -651,7 +623,7 @@ impl Channel {
         self.count();
     }
 
-    pub fn tick(&mut self, bus: &mut BusInterface, buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+    pub fn tick(&mut self, bus: &mut BusInterface, _buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
 
         if self.channel_state == ChannelState::WaitingForLoadCycle {
             // Load the current reload value into the counting element, applying the load mask
@@ -692,7 +664,7 @@ impl Channel {
             return            
         }
 
-        if let ChannelState::Counting | ChannelState::CountingTriggered | ChannelState::WaitingForLoadTrigger = self.channel_state {
+        if let ChannelState::Counting | ChannelState::WaitingForLoadTrigger = self.channel_state {
 
             match *self.mode {
                 ChannelMode::InterruptOnTerminalCount => {
@@ -1013,7 +985,7 @@ impl ProgrammableIntervalTimer {
         run_unit: DeviceRunTimeUnit ) 
     {
 
-        let mut do_ticks = self.ticks_from_time(run_unit, self.timewarp);
+        let do_ticks = self.ticks_from_time(run_unit, self.timewarp);
 
         //assert!(do_ticks >= self.timewarp);
 

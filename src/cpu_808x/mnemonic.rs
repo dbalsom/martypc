@@ -24,6 +24,7 @@
 
 */
 
+#[allow(dead_code)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Mnemonic {
     InvalidOpcode,

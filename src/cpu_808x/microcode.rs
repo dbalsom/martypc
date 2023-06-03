@@ -553,6 +553,7 @@ pub const MICROCODE_SRC_8088: &[&str] = &[
     "[  5]-> [ a]    | UNC   INTR     F",
 ];
 
+#[allow(dead_code)]
 pub const MICROCODE_FLAGS_8088: &[u8] = &[
     NX,
     RNI,

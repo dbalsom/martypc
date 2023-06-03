@@ -62,6 +62,7 @@ impl CompositeAdjustControl {
         );
     }
 
+    #[allow(dead_code)]
     pub fn update_params(&mut self, params: CompositeParams ) {
         self.params = params;
     }

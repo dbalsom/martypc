@@ -27,10 +27,8 @@
 #![allow (dead_code)]
 
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     error::Error,
-    rc::Rc,
 };
 
 use core::fmt::Display;
@@ -38,7 +36,6 @@ use core::fmt::Display;
 use crate::bus::{BusInterface, DeviceRunTimeUnit};
 use crate::devices::{
     dma,
-    pic,
 };
 //use crate::fdc::Operation;
 use crate::bus::IoDevice;
@@ -770,7 +767,7 @@ impl HardDiskController {
     }
 
     /// Perform the Sensee Status command
-    fn command_sense_status(&mut self, bus: &mut BusInterface) -> Continuation {
+    fn command_sense_status(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         let dcb = self.read_dcb();
         self.data_register_in.clear();
@@ -939,7 +936,7 @@ impl HardDiskController {
     }
 
     /// Perform the Seek command.
-    fn command_seek(&mut self, bus: &mut BusInterface) -> Continuation {
+    fn command_seek(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         let dcb = self.read_dcb();
         self.data_register_in.clear();
@@ -971,7 +968,7 @@ impl HardDiskController {
     }
 
     /// Perform the Ready Verify command.
-    fn command_ready_verify(&mut self, bus: &mut BusInterface) -> Continuation {
+    fn command_ready_verify(&mut self, _bus: &mut BusInterface) -> Continuation {
 
         let _cmd_bytes = &self.data_register_in;
         let dcb = self.read_dcb();

@@ -46,13 +46,17 @@ use std::{
     fs,
     path::{Path, PathBuf},
     cell::Cell,
+    error::Error,
 };
+
+use core::fmt::Display;
 
 use crate::config::{MachineType, RomOverride, RomFileOrganization};
 use crate::bus::{BusInterface, MEM_CP_BIT};
 
 pub const BIOS_READ_CYCLE_COST: u32 = 4;
 
+#[derive (Debug)]
 pub enum RomError {
     DirNotFound,
     RomNotFoundForMachine,
@@ -60,6 +64,19 @@ pub enum RomError {
     FileNotFound,
     FileError,
     Unimplemented
+}
+impl Error for RomError {}
+impl Display for RomError{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            RomError::DirNotFound => write!(f, "ROM Directory was not found."),
+            RomError::RomNotFoundForMachine => write!(f, "A ROM was not found for the specified machine."),
+            RomError::RomNotFoundForFeature(feat) => write!(f, "A ROM was not found for a specified feature: {:?}.", feat),
+            RomError::FileNotFound => write!(f, "File not found attempting to read ROM."),
+            RomError::FileError => write!(f, "A File error occurred reading ROM."),
+            RomError::Unimplemented => write!(f, "Functionality unimplemented."),
+        }
+    }
 }
 
 pub enum RomInterleave {
@@ -1556,7 +1573,7 @@ impl RomManager {
 
         if let Some(_) = &self.rom_override {
             if let Err(e) = self.copy_into_memory_override(bus) {
-                log::error!("Failed to load override rom set!");
+                log::error!("Failed to load override rom set: {}", e);
                 return false;
             }
         }

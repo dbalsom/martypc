@@ -34,7 +34,7 @@
 
 */
 
-use cgmath::{Matrix3, Vector2, Vector3};
+use cgmath::{Matrix3, Vector3};
 
 // Composite stufff
 pub const EDGE_RESPONSE: f32 = 0.80;
@@ -94,8 +94,8 @@ pub fn process_cga_composite_int(
     cga_buf: &[u8], 
     img_w: u32, 
     img_h: u32, 
-    x_offset: u32,
-    y_offset: u32,
+    _x_offset: u32,
+    _y_offset: u32,
     stride: u32, 
     img_out: &mut [u8]
 ) {
@@ -190,7 +190,7 @@ pub fn artifact_colors_fast(
     sync_table: &[(f32, f32, f32)],
     img_out: &mut [u8],
     img_out_w: u32,
-    img_out_h: u32,
+    _img_out_h: u32,
     hue: f32,
     sat: f32,
     luma: f32,

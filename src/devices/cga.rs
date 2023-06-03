@@ -1625,13 +1625,13 @@ macro_rules! push_reg_str_bin8 {
         $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
     };
 }
-*/
 
 macro_rules! push_reg_str_enum {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
         $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
     };
 }   
+*/
 
 impl VideoCard for CGACard {
 

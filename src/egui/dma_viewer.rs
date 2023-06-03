@@ -25,21 +25,14 @@
 */
 #[allow (dead_code)]
 
-use egui::*;
-
 use crate::devices::dma::DMAControllerStringState;
-use crate::syntax_token::*;
-
 use crate::egui::*;
-use crate::egui::color::*;
 use crate::egui::constants::*;
-
 
 pub struct DmaViewerControl {
 
     dma_state: DMAControllerStringState,
-    dma_channel_select: u32,
-    dma_channel_select_str: String,    
+    dma_channel_select: u32, 
 }
 
 impl DmaViewerControl {
@@ -48,7 +41,6 @@ impl DmaViewerControl {
         Self {
             dma_state: Default::default(),
             dma_channel_select: 0,
-            dma_channel_select_str: String::new(),
         }
     }
     
@@ -70,10 +62,6 @@ impl DmaViewerControl {
                 ui.add(egui::TextEdit::singleline(&mut self.dma_state.dreq).font(egui::TextStyle::Monospace));
                 ui.end_row();  
 
-                //ui.horizontal(|ui| {
-                //    ui.separator();
-                //});
-                ui.separator();
                 ui.separator();
                 ui.end_row();    
 

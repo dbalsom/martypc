@@ -28,6 +28,7 @@ use rand::{Rng, SeedableRng};
 //use rand::rngs::StdRng;
 
 use crate::cpu_808x::*;
+use crate::cpu_808x::modrm::MODRM_REG_MASK;
 
 const RNG_SEED: u64 = 0x58158258u64;
 
@@ -45,6 +46,7 @@ macro_rules! get_rand_range {
 
 impl<'a> Cpu<'a> {
 
+    #[allow(dead_code)]
     pub fn randomize_seed(&mut self, mut seed: u64) {
         if seed == 0 {
             seed = RNG_SEED;
@@ -52,6 +54,7 @@ impl<'a> Cpu<'a> {
         self.rng = Some(rand::rngs::StdRng::seed_from_u64(seed));
     }
 
+    #[allow(dead_code)]
     pub fn randomize_regs(&mut self) {
 
         self.cs = get_rand!(self);
@@ -83,6 +86,7 @@ impl<'a> Cpu<'a> {
         //self.set_flags(0);
     }
 
+    #[allow(dead_code)]
     pub fn randomize_mem(&mut self) {
 
         for i in 0..self.bus.size() {
@@ -92,6 +96,7 @@ impl<'a> Cpu<'a> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]) {
 
         let mut instr: VecDeque<u8> = VecDeque::new();
@@ -146,6 +151,7 @@ impl<'a> Cpu<'a> {
 
     }
 
+    #[allow(dead_code)]
     pub fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]) {
 
         let mut instr: VecDeque<u8> = VecDeque::new();

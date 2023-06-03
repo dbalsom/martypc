@@ -81,6 +81,7 @@ pub fn fade_c32(color1: Color32, color2: Color32, amount: u8) -> Color32 {
     Color32::from_rgb((result_r * 255.0) as u8, (result_g * 255.0) as u8, (result_b * 255.0) as u8)
 }
 
+#[allow(dead_code)]
 pub fn hex_to_rgb(hex: u32) -> (u8, u8, u8) {
     (((hex >> 16) & 0xFF) as u8, ((hex >> 8) & 0xFF) as u8, (hex & 0xFF) as u8)
 }

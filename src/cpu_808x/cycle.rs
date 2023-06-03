@@ -28,7 +28,6 @@
 
 use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
-use crate::cpu_808x::addressing::*;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{BusType, ReadType};

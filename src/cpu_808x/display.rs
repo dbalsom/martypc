@@ -389,9 +389,11 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
                 AddressingMode::RegisterMode => format!("")
             }
         }
+        /*
         OperandType::NearAddress(offset) => {
             format!("[{:#06X}]", offset)
         }
+        */
         OperandType::FarAddress(segment, offset) => {
             format!("far {:#06X}:{:#06X}", segment, offset)
         }
@@ -634,12 +636,14 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect) -> Vec<SyntaxToken> {
                 op_vec.push(SyntaxToken::CloseBracket);
             }
         }
+        /*
         OperandType::NearAddress(offset) => {
 
             op_vec.push(SyntaxToken::OpenBracket);
             op_vec.push(SyntaxToken::HexValue(format!("{:04X}h", offset)));
             op_vec.push(SyntaxToken::CloseBracket);
         }
+        */
         OperandType::FarAddress(segment, offset) => {
             op_vec.push(SyntaxToken::Text("far".to_string()));
             op_vec.push(SyntaxToken::HexValue(format!("{:04X}h", segment)));

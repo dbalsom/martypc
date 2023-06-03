@@ -23,14 +23,55 @@
     Routines to handle loading and parsing of modrm bytes.
 
 */
-
 use crate::cpu_808x::*;
 use crate::cpu_808x::addressing::AddressingMode;
 use crate::bytequeue::*;
 
+pub const MODRM_REG_MASK:          u8 = 0b00_111_000;
+pub const MODRM_ADDR_MASK:         u8 = 0b11_000_111;
+//pub const MODRM_MOD_MASK:          u8 = 0b11_000_000;
+
+const MODRM_ADDR_BX_SI:        u8 = 0b00_000_000;
+const MODRM_ADDR_BX_DI:        u8 = 0b00_000_001;
+const MODRM_ADDR_BP_SI:        u8 = 0b00_000_010;
+const MODRM_ADDR_BP_DI:        u8 = 0b00_000_011;
+const MODRM_ADDR_SI:           u8 = 0b00_000_100;
+const MODRM_ADDR_DI:           u8 = 0b00_000_101;
+const MODRM_ADDR_DISP16:       u8 = 0b00_000_110;
+const MODRM_ADDR_BX:           u8 = 0b00_000_111;
+
+const MODRM_ADDR_BX_SI_DISP8:  u8 = 0b01_000_000;
+const MODRM_ADDR_BX_DI_DISP8:  u8 = 0b01_000_001;
+const MODRM_ADDR_BP_SI_DISP8:  u8 = 0b01_000_010;
+const MODRM_ADDR_BP_DI_DISP8:  u8 = 0b01_000_011;
+const MODRM_ADDR_SI_DISP8:     u8 = 0b01_000_100;
+const MODRM_ADDR_DI_DISP8:     u8 = 0b01_000_101;
+const MODRM_ADDR_BP_DISP8:     u8 = 0b01_000_110;
+const MODRM_ADDR_BX_DISP8:     u8 = 0b01_000_111;
+
+const MODRM_ADDR_BX_SI_DISP16: u8 = 0b10_000_000;
+const MODRM_ADDR_BX_DI_DISP16: u8 = 0b10_000_001;
+const MODRM_ADDR_BP_SI_DISP16: u8 = 0b10_000_010;
+const MODRM_ADDR_BP_DI_DISP16: u8 = 0b10_000_011;
+const MODRM_ADDR_SI_DISP16:    u8 = 0b10_000_100;
+const MODRM_ADDR_DI_DISP16:    u8 = 0b10_000_101;
+const MODRM_ADDR_BP_DISP16:    u8 = 0b10_000_110;
+const MODRM_ADDR_BX_DISP16:    u8 = 0b10_000_111;
+
+/*
+const MODRM_REG_AX_OR_AL:      u8 = 0b00_000_000;
+const MODRM_REG_CX_OR_CL:      u8 = 0b00_000_001;
+const MODRM_REG_DX_OR_DL:      u8 = 0b00_000_010;
+const MODRM_REG_BX_OR_BL:      u8 = 0b00_000_011;
+const MODRM_REG_SP_OR_AH:      u8 = 0b00_000_100;
+const MODRM_REG_BP_OR_CH:      u8 = 0b00_000_101;
+const MODRM_REG_SI_OR_DH:      u8 = 0b00_000_110;
+const MODRM_RED_DI_OR_BH:      u8 = 0b00_000_111;
+*/
+
 #[derive (Copy, Clone)]
 pub struct ModRmByte {
-    byte: u8,
+    _byte: u8,
     b_mod: u8,
     b_reg: u8,
     b_rm:  u8,
@@ -43,7 +84,7 @@ pub struct ModRmByte {
 impl Default for ModRmByte {
     fn default() -> Self {
         Self {
-            byte: 0,
+            _byte: 0,
             b_mod: 0,
             b_reg: 0,
             b_rm: 0,
@@ -114,7 +155,7 @@ const EA_INSTR_TABLE_POST: [[u16; 3]; 24] = [
 const MODRM_TABLE: [ModRmByte; 256] = {
     let mut table: [ModRmByte; 256] = [ 
         ModRmByte {
-            byte: 0,
+            _byte: 0,
             b_mod: 0,
             b_reg: 0,
             b_rm: 0,
@@ -222,7 +263,7 @@ const MODRM_TABLE: [ModRmByte; 256] = {
         let b_rm: u8 = byte & 0x07;
 
         table[byte as usize] = ModRmByte {
-            byte,
+            _byte: byte,
             b_mod,
             b_reg,
             b_rm,

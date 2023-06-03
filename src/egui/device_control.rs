@@ -28,14 +28,14 @@
 use crate::egui::*;
 
 pub struct DeviceControl {
-    params: bool
+    _params: bool
 }
 
 impl DeviceControl {
     
     pub fn new() -> Self {
         Self {
-            params: false
+            _params: false
         }
     }
 

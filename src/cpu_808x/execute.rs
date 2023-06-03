@@ -27,25 +27,8 @@
 
 use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
-use crate::cpu_808x::addressing::*;
-use crate::cpu_808x::jump::*;
-
-use super::CPU_CALL_STACK_LEN;
-
 use crate::util;
 
-// This macro can only be used if operand has already been fetched by decode()
-macro_rules! get_operand {
-    ($target: expr, $pat: path) => {
-        {
-            if let $pat(a) = $target {
-                a
-            } else {
-                panic!("Unexpected operand type.");
-            }
-        }
-    };
-}
 
 /*
 macro_rules! read_operand {
@@ -105,11 +88,6 @@ impl<'a> Cpu<'a> {
         let mut exception: CpuException = CpuException::NoException;
 
         self.step_over_target = None;
-
-        let mut handled_override = match self.i.segment_override {
-            SegmentOverride::None => true,
-            _ => false,
-        };
 
         self.trace_comment("EXECUTE");
 
@@ -233,7 +211,6 @@ impl<'a> Cpu<'a> {
 
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);       
-                handled_override = true; 
             }
             0x01 | 0x03 | 0x05 |  // ADD r/m16, r16 | r16, r/m16 | ax, imm16
             0x09 | 0x0B | 0x0D |  // OR  r/m16, r16 | r16, r/m16 | ax, imm16
@@ -254,8 +231,7 @@ impl<'a> Cpu<'a> {
                 }
 
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);       
-                handled_override = true;         
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);           
             }
             0x06 => {
                 // PUSH es
@@ -345,7 +321,6 @@ impl<'a> Cpu<'a> {
                 
                 let _result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
                 //self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
-                handled_override = true;
             }
             0x39 | 0x3B | 0x3D => {
                 // CMP r/m16,r16 | r16, r/m16 | ax,imm16 
@@ -364,7 +339,6 @@ impl<'a> Cpu<'a> {
 
                 let _result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
                 //self.write_operand16(self.i.operand1_type, self.i.segment_override, result);
-                handled_override = true;
             }
             0x3E => {
                 // DS Segment Override Prefix
@@ -381,7 +355,6 @@ impl<'a> Cpu<'a> {
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
 
                 self.cycles_nx(1);
-                handled_override = true;
             }
             0x48..=0x4F => {
                 // DEC r16 register-encoded operands
@@ -390,8 +363,7 @@ impl<'a> Cpu<'a> {
                 let result = self.math_op16(Mnemonic::DEC, op1_value, 0);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
 
-                self.cycles_nx(1);
-                handled_override = true;           
+                self.cycles_nx(1);         
             }
             0x50..=0x57 => {
                 // PUSH reg16
@@ -461,7 +433,6 @@ impl<'a> Cpu<'a> {
                 if self.i.mnemonic != Mnemonic::CMP {
                     self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 }
-                handled_override = true;
             }
             0x81 => {
                 // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m16, imm16
@@ -483,7 +454,6 @@ impl<'a> Cpu<'a> {
                 if self.i.mnemonic != Mnemonic::CMP {
                     self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 }
-                handled_override = true;
             }
             0x83 => {
                 // ADD/ADC/SBB/SUB/CMP r/m16, imm8 (sign-extended)
@@ -502,7 +472,6 @@ impl<'a> Cpu<'a> {
                 if self.i.mnemonic != Mnemonic::CMP {
                     self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 }
-                handled_override = true;
             }            
             0x84 => {
                 // TEST r/m8, r8
@@ -518,7 +487,6 @@ impl<'a> Cpu<'a> {
                     self.cycles_i(2, &[0x95, 0x96]);
                 }
                 */
-                handled_override = true;
             }
             0x85 => {
                 // TEST r/m16, r16
@@ -533,7 +501,6 @@ impl<'a> Cpu<'a> {
                     self.cycle();
                 } 
                 */               
-                handled_override = true;
             }
             0x86 => {
                 // XCHG r8, r/m8
@@ -550,7 +517,6 @@ impl<'a> Cpu<'a> {
                 // Exchange values. Write operand2 first so we don't affect EA calculation if EA includes register being swapped.
                 self.write_operand8(self.i.operand2_type, self.i.segment_override, op1_value, ReadWriteFlag::RNI);
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::Normal);
-                handled_override = true;
             }
             0x87 => {
                 // XCHG r16, r/m16
@@ -567,7 +533,6 @@ impl<'a> Cpu<'a> {
                 // Exchange values. Write operand2 first so we don't affect EA calculation if EA includes register being swapped.
                 self.write_operand16(self.i.operand2_type, self.i.segment_override, op1_value, ReadWriteFlag::RNI);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::Normal);
-                handled_override = true;
             }
             0x88 | 0x8A => {
                 // MOV r/m8, r8  |  MOV r8, r/m8
@@ -578,7 +543,6 @@ impl<'a> Cpu<'a> {
                     self.cycles_i(2, &[0x000, 0x001]);
                 }
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
-                handled_override = true;
             }
             0x89 | 0x8B => {
                 // MOV r/m16, r16  |  MOV r16, r/m16
@@ -589,7 +553,6 @@ impl<'a> Cpu<'a> {
                     self.cycles_i(2, &[0x000, 0x001]);
                 }
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
-                handled_override = true;
             }
             0x8C | 0x8E => {
                 // MOV r/m16, SReg | MOV SReg, r/m16
@@ -599,7 +562,6 @@ impl<'a> Cpu<'a> {
                 }           
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
-                handled_override = true;
             }
             0x8D => {
                 // LEA - Load Effective Address
@@ -624,7 +586,6 @@ impl<'a> Cpu<'a> {
                     self.cycles_i(2, &[0x043, 0x044]);
                 }                   
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, value, ReadWriteFlag::RNI);
-                handled_override = true;
             }
             0x90..=0x97 => {
                 // XCHG AX, r
@@ -716,7 +677,6 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 //self.cycle_i(0x063);
                 self.set_register8(Register8::AL, op2_value);
-                handled_override = true;
             }
             0xA1 => {
                 // MOV AX, offset16
@@ -724,21 +684,18 @@ impl<'a> Cpu<'a> {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 //self.cycle_i(0x063);
                 self.set_register16(Register16::AX, op2_value);                
-                handled_override = true;
             }
             0xA2 => {
                 // MOV offset8, Al
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
                 let op2_value = self.al;
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
-                handled_override = true;
             }
             0xA3 => {
                 // MOV offset16, AX
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
                 let op2_value = self.ax;
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
-                handled_override = true;        
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);   
             }
             0xA4 | 0xA5 => {
                 // MOVSB & MOVSW
@@ -776,7 +733,6 @@ impl<'a> Cpu<'a> {
                         // End non-rep prefixed MOVSB
                         self.cycle_i(MC_JUMP); // jump to 133, RNI
                     }                
-                    handled_override = true;
                 }
             }
             0xA6 | 0xA7 | 0xAE | 0xAF => {
@@ -839,7 +795,6 @@ impl<'a> Cpu<'a> {
                         self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
                     }
                 }
-                handled_override = true;
             }
             0xA8 => {
                 // TEST al, imm8
@@ -927,7 +882,6 @@ impl<'a> Cpu<'a> {
                         }
                     }
                 }
-                handled_override = true;
             }
             0xB0..=0xB7 => {
                 // MOV r8, imm8
@@ -1002,7 +956,6 @@ impl<'a> Cpu<'a> {
                     les_offset, 
                     ReadWriteFlag::Normal);
                 self.es = les_segment;
-                handled_override = true;
             }
             0xC5 => {
                 // LDS - Load DS from Pointer
@@ -1022,24 +975,18 @@ impl<'a> Cpu<'a> {
                     ReadWriteFlag::Normal);
                 self.ds = lds_segment;
                 //self.cycle_i(0x0f7);
-                
-                handled_override = true;
             }
             0xC6 => {
                 // MOV r/m8, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.cycles(2);
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
-                
-                handled_override = true;
             }
             0xC7 => {
                 // MOV r/m16, imm16
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.cycle_i(0x01e);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
-                
-                handled_override = true;
             }
             0xC8 | 0xCA => {
                 // RETF imm16 - Far Return w/ release 
@@ -1112,7 +1059,6 @@ impl<'a> Cpu<'a> {
                     self.cycle_i(0x088);
                 }
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-                handled_override = true;
             }
             0xD1 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, 0x01
@@ -1123,7 +1069,6 @@ impl<'a> Cpu<'a> {
                     self.cycle_i(0x088); 
                 }                
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-                handled_override = true;
             }
             0xD2 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m8, cl
@@ -1147,8 +1092,6 @@ impl<'a> Cpu<'a> {
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
  
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-                
-                handled_override = true;
             }
             0xD3 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, cl
@@ -1172,8 +1115,6 @@ impl<'a> Cpu<'a> {
                 let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);         
 
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-                
-                handled_override = true;
             }
             0xD4 => {
                 // AAM - Ascii adjust AX after Multiply
@@ -1214,7 +1155,6 @@ impl<'a> Cpu<'a> {
                 let value = self.biu_read_u8(segment, addr);
                 
                 self.set_register8(Register8::AL, value as u8);
-                handled_override = true;
             }
             0xD8..=0xDF => {
                 // ESC - FPU instructions. 
@@ -1561,7 +1501,6 @@ impl<'a> Cpu<'a> {
                     }                                 
                     _=> unhandled = true
                 }
-                handled_override = true;
             }
             0xF7 => {
                 // Miscellaneous Opcode Extensions, r/m16, imm16
@@ -1660,7 +1599,6 @@ impl<'a> Cpu<'a> {
                     }
                     _=> unhandled = true
                 }
-                handled_override = true;
             }
             0xF8 => {
                 // CLC - Clear Carry Flag
@@ -1860,9 +1798,6 @@ impl<'a> Cpu<'a> {
                         unhandled = true;
                     }
                 }
-
-                // cycles ?
-                handled_override = true;
             }
             0xFF => {
                 // Several opcode extensions here
@@ -2072,26 +2007,8 @@ impl<'a> Cpu<'a> {
                         unhandled = true;
                     }
                 }
-                handled_override = true;
-                // cycles ?
             }
         }
-
-        // A lot of software out there has invalid or at least useless segment override bytes. Not sure why! But it makes 
-        // this very noisy. We have a good confidence that we have handled all of them correctly at this point. The CPU
-        // validator is more useful for verifying correctness than trying to warn on an unhandled segment overrides.
-        
-        /*
-        match self.i.segment_override {
-            SegmentOverride::None => {},
-            _ => {
-                //Check that we properly handled override. No longer panics as IBM DOS 1.0 has a stray 'cs' override
-                if !handled_override {
-                    log::warn!("Unhandled segment override at [{:04X}:{:04X}]: {:02X}", self.cs, self.ip, self.i.opcode);
-                }
-            }
-        }
-        */
 
         // Reset REP init flag. This flag is set after a rep-prefixed instruction is executed for the first time. It
         // should be preserved between executions of a rep-prefixed instruction unless an interrupt occurs, in which
