@@ -23,7 +23,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "debug,naga=error,wgpu_core=error,martypc::cpu=debug,martypc::machine=trace,martypc::dma=debug,martypc::pit=trace,martypc::cga=trace,martypc::hdc=trace",
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,martypc::cpu=debug,martypc::machine=trace,martypc::devices::cga=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
@@ -70,7 +70,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "martypc=trace",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,martypc=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
