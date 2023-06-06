@@ -3,7 +3,13 @@ name = "martypc"
 version = "0.1.2"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "martypc"
+path = "frontend/main.rs"
+
+[lib]
+name = "marty_core"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0.58"
@@ -48,6 +54,8 @@ rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 git = "https://github.com/emilk/egui.git"
 rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 
+[dev-dependencies]
+criterion = "0.5.1"
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -64,3 +72,7 @@ vga = []
 
 [build-dependencies]
 winres = "0.1"
+
+[[bench]]
+name = "cga_bench"
+harness = false

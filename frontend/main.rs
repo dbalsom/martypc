@@ -36,8 +36,12 @@ use std::{
     path::PathBuf
 };
 
-use crate::egui::{Framework, DeviceSelection};
+mod egui;
+mod render;
+#[cfg(feature = "arduino_validator")]
+mod main_fuzzer;
 
+use crate::egui::{Framework, DeviceSelection};
 
 use log::error;
 use pixels::{Pixels, SurfaceTexture};
@@ -61,66 +65,34 @@ use winit::{
 
 use winit_input_helper::WinitInputHelper;
 
-mod devices;
-
-mod breakpoints;
-mod bus;
-mod bytebuf;
-mod bytequeue;
-mod config;
-mod cpu_common;
-mod cpu_808x;
-mod floppy_manager;
-mod egui;
-mod file_util;
-mod interrupt;
-mod machine;
-mod machine_manager;
-#[cfg(feature = "arduino_validator")]
-mod main_fuzzer;
-mod memerror;
-mod rom_manager;
-mod sound;
-mod syntax_token;
-mod tracelogger;
-mod updatable;
-mod util;
-
-mod vhd;
-mod vhd_manager;
-mod render;
-mod videocard; // VideoCard trait
-mod input;
-
-mod cpu_validator; // CpuValidator trait
-
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-mod arduino8088_client;
-#[cfg(feature = "arduino_validator")]
-#[macro_use]
-mod arduino8088_validator;
-
 #[cfg(feature = "arduino_validator")]
 use crate::main_fuzzer::main_fuzzer;
 
-use input::MouseButton;
-use breakpoints::BreakPointType;
-use config::*;
-use machine::{Machine, MachineState, ExecutionState};
-use cpu_808x::{Cpu, CpuAddress};
-use cpu_common::CpuOption;
-use rom_manager::{RomManager, RomError, RomFeature};
-use floppy_manager::{FloppyManager, FloppyError};
-use machine_manager::MACHINE_DESCS;
-use vhd_manager::{VHDManager, VHDManagerError};
-use vhd::{VirtualHardDisk};
-use videocard::{RenderMode};
-use bytequeue::ByteQueue;
+use marty_core::{
+    breakpoints::BreakPointType,
+    config::{self, *},
+    machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
+    cpu_808x::{Cpu, CpuAddress},
+    cpu_common::CpuOption,
+    rom_manager::{RomManager, RomError, RomFeature},
+    floppy_manager::{FloppyManager, FloppyError},
+    machine_manager::MACHINE_DESCS,
+    vhd_manager::{VHDManager, VHDManagerError},
+    vhd::{self, VirtualHardDisk},
+    videocard::{RenderMode},
+    bytequeue::ByteQueue,
+    sound::SoundPlayer,
+    syntax_token::SyntaxToken,
+    input::{
+        self,
+        MouseButton
+    },
+    util
+};
+
+
 use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
-use render::{VideoRenderer, CompositeParams, ResampleContext};
-use sound::SoundPlayer;
-use syntax_token::SyntaxToken;
+use render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -267,16 +239,6 @@ impl KeyboardData {
     fn new() -> Self {
         Self { ctrl_pressed: false }
     }
-}
-
-#[derive (Copy, Clone, Default)]
-pub struct VideoData {
-    render_w: u32,
-    render_h: u32,
-    aspect_w: u32,
-    aspect_h: u32,
-    aspect_correction_enabled: bool,
-    composite_params: CompositeParams
 }
 
 fn main() {
@@ -477,7 +439,7 @@ fn main() {
     }
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
-    let exec_control = Rc::new(RefCell::new(machine::ExecutionControl::new()));
+    let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
 
     // Set machine state to Running if autostart option was set in config
     if config.emulator.autostart {
@@ -1958,7 +1920,7 @@ pub fn main_headless(
         }
     }
 
-    let mut exec_control = machine::ExecutionControl::new();
+    let mut exec_control = ExecutionControl::new();
     exec_control.set_state(ExecutionState::Running);
 
     loop {

@@ -26,8 +26,8 @@
 */
 #[allow (dead_code)]
 
-use crate::cpu_808x::CpuStringState;
 use crate::egui::*;
+use marty_core::cpu_808x::CpuStringState;
 
 pub struct CpuViewerControl {
   cpu_state: CpuStringState

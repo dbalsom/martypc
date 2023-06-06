@@ -26,7 +26,7 @@
 
 use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption};
 
-use crate::machine::MachineState;
+use marty_core::machine::MachineState;
 
 impl GuiState {
 

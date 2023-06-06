@@ -25,7 +25,7 @@
 */
 
 use crate::egui::*;
-use crate::machine::DelayParams;
+use marty_core::machine::DelayParams;
 
 pub struct DelayAdjustControl {
     params: DelayParams

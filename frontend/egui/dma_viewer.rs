@@ -25,7 +25,7 @@
 */
 #[allow (dead_code)]
 
-use crate::devices::dma::DMAControllerStringState;
+use marty_core::devices::dma::DMAControllerStringState;
 use crate::egui::*;
 use crate::egui::constants::*;
 

@@ -490,17 +490,17 @@ impl Default for InterruptDescriptor {
 
 #[derive (Copy, Clone)]
 pub struct Instruction {
-    pub(crate) opcode: u8,
-    pub(crate) flags: u32,
-    pub(crate) prefixes: u32,
-    pub(crate) address: u32,
-    pub(crate) size: u32,
-    pub(crate) mnemonic: Mnemonic,
-    pub(crate) segment_override: SegmentOverride,
-    pub(crate) operand1_type: OperandType,
-    pub(crate) operand1_size: OperandSize,
-    pub(crate) operand2_type: OperandType,
-    pub(crate) operand2_size: OperandSize,
+    pub opcode: u8,
+    pub flags: u32,
+    pub prefixes: u32,
+    pub address: u32,
+    pub size: u32,
+    pub mnemonic: Mnemonic,
+    pub segment_override: SegmentOverride,
+    pub operand1_type: OperandType,
+    pub operand1_size: OperandSize,
+    pub operand2_type: OperandType,
+    pub operand2_size: OperandSize,
 }
 
 impl Default for Instruction {

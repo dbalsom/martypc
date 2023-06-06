@@ -27,7 +27,7 @@
 use egui::CollapsingHeader;
 
 use crate::egui::{GuiState};
-use crate::videocard::{VideoCardState, VideoCardStateEntry};
+use marty_core::videocard::{VideoCardState, VideoCardStateEntry};
 
 impl GuiState {
 

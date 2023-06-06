@@ -31,7 +31,7 @@ use std::{
 };
 use crate::egui::*;
 
-use crate::machine::{ExecutionControl, ExecutionState, ExecutionOperation};
+use marty_core::machine::{ExecutionControl, ExecutionState, ExecutionOperation};
 pub struct CpuControl {
 
     exec_control: Rc<RefCell<ExecutionControl>>,

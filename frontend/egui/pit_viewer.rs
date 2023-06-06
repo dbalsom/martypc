@@ -39,8 +39,8 @@ use crate::egui::*;
 use crate::egui::color::*;
 use crate::egui::constants::*;
 
-use crate::devices::pit::PitDisplayState;
-use crate::syntax_token::*;
+use marty_core::devices::pit::PitDisplayState;
+use marty_core::syntax_token::*;
 
 #[allow (dead_code)]
 pub struct PitViewerControl {

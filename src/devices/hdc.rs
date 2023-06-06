@@ -39,7 +39,7 @@ use crate::devices::{
 };
 //use crate::fdc::Operation;
 use crate::bus::IoDevice;
-use crate::VirtualHardDisk;
+use crate::vhd::VirtualHardDisk;
 
 // Public consts
 pub const HDC_IRQ: u8 = 0x05;

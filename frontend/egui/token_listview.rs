@@ -35,7 +35,7 @@ use egui::*;
 use crate::egui::*;
 use crate::egui::color::*;
 use crate::egui::constants::*;
-use crate::syntax_token::*;
+use marty_core::syntax_token::*;
 
 
 pub struct TokenListView {

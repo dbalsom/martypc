@@ -43,13 +43,14 @@ pub mod composite;
 pub use self::resize::*;
 pub use self::composite::*;
 
-use crate::config::VideoType;
-use crate::videocard::*;
-use crate::devices::cga;
-use crate::bus::BusInterface;
-use crate::file_util;
+use marty_core::{
+    config::VideoType,
+    videocard::{VideoCard, CGAColor, CGAPalette, CursorInfo, DisplayExtents, DisplayMode, FontInfo},
+    devices::cga,
+    bus::BusInterface,
+    file_util
+};
 
-extern crate rand; 
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -89,6 +90,17 @@ const VGA_HIRES_GFX_W: u32 = 640;
 const VGA_HIRES_GFX_H: u32 = 480;
 
 const XOR_COLOR: u8 = 0x80;
+
+#[derive (Copy, Clone, Default)]
+pub struct VideoData {
+    pub render_w: u32,
+    pub render_h: u32,
+    pub aspect_w: u32,
+    pub aspect_h: u32,
+    pub aspect_correction_enabled: bool,
+    pub composite_params: CompositeParams
+}
+
 
 #[derive (Copy, Clone)]
 pub struct AspectRatio {
@@ -172,32 +184,6 @@ const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
         [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
     ],
 ];
-
-// Random CGA color generator. This was used very early in emulator development
-// to display random-color glyphs in the background while we debugged the 
-// very first CPU instructions.
-impl Distribution<CGAColor> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CGAColor {
-        match rng.gen_range(0..=15) {
-            0 => CGAColor::Black,
-            1 => CGAColor::Blue,       
-            2 => CGAColor::Green,        
-            3 => CGAColor::Cyan,       
-            4 => CGAColor::Red,        
-            5 => CGAColor::Magenta,      
-            6 => CGAColor::Brown,      
-            7 => CGAColor::White,       
-            8 => CGAColor::BlackBright,  
-            9 => CGAColor::BlueBright, 
-            10 => CGAColor::GreenBright,  
-            11 => CGAColor::CyanBright, 
-            12 => CGAColor::RedBright,  
-            13 => CGAColor::MagentaBright,
-            14 => CGAColor::Yellow,
-            _ => CGAColor::WhiteBright  
-        }
-    }
-}
 
 // Return a RGBA slice given a CGA color Enum
 pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {

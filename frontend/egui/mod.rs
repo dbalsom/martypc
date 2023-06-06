@@ -46,7 +46,8 @@ use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use regex::Regex;
 use winit::{window::Window, event_loop::EventLoopWindowTarget};
-use super::VideoData;
+
+use super::render::VideoData;
 
 use serialport::SerialPortInfo;
 
@@ -96,19 +97,19 @@ use crate::{
     egui::instruction_history_viewer::InstructionHistoryControl,
     egui::ivr_viewer::IvrViewerControl,
     egui::theme::GuiTheme,
+    render::CompositeParams,
+    
+};
 
+use marty_core::{
     machine::{MachineState, ExecutionControl},
-
     devices::{
         hdc::HardDiskFormat,
         pit::PitDisplayState, 
         pic::PicStringState,
         ppi::PpiStringState, 
-    },
-
-    render::CompositeParams,
+    },    
     videocard::{VideoCardState, VideoCardStateEntry}
-    
 };
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";

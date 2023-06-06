@@ -1,5 +1,5 @@
 /*
-     Marty PC Emulator 
+    MartyPC Emulator 
     (C)2023 Daniel Balsom
     https://github.com/dbalsom/marty
 
@@ -17,51 +17,69 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     ---------------------------------------------------------------------------
+    
+    egui::disassembly.rs
 
-    egui::ivt_viewer.rs
-
-    Implements the a viewer for the IVT (Interrupt Vector Table)
+    Implements a disassembly viewer control.
+    The control is a virtual window that will display the disassembly of 
+    the next X instructions from the specified address. This address can
+    be an expression, such as 'cs:ip'
 
 */
+use std::collections::VecDeque;
 
 use crate::egui::*;
 use crate::egui::token_listview::*;
-use crate::syntax_token::*;
+use marty_core::syntax_token::*;
 
-pub struct IvrViewerControl {
+pub struct DisassemblyControl {
 
+    pub address: String,
+    pub row: usize,
+    pub lastrow: usize,
     tlv: TokenListView,
-    row: usize,
 }
 
-impl IvrViewerControl {
+impl DisassemblyControl {
 
     pub fn new() -> Self {
-        let mut tlv = TokenListView::new();
-        tlv.set_capacity(256);
-        tlv.set_visible(32);
-
         Self {
-            tlv,
-            row: 0
+            address: "cs:ip".to_string(),
+            row: 0,
+            lastrow: 0,
+            tlv: TokenListView::new()
         }
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
 
+        ui.horizontal(|ui| {
+            ui.label("Address: ");
+            if ui.text_edit_singleline(&mut self.address).changed() {
+                events.push_back(GuiEvent::MemoryUpdate);
+            }
+        });
+        ui.separator();
+
+        self.tlv.set_capacity(24);
+        self.tlv.set_visible(24);
+
         let mut new_row = self.row;
         ui.horizontal(|ui| {
             self.tlv.draw(ui, events, &mut new_row);
         });
-
-        // TLV viewport was scrolled, update address
-        if self.row != new_row {
-            log::debug!("update address to: {:05X}", new_row);
-            self.row = new_row;
-        }        
-    }        
+    }
 
     pub fn set_content(&mut self, mem: Vec<Vec<SyntaxToken>>) {
         self.tlv.set_contents(mem);
     }
-}    
+
+    #[allow(dead_code)]
+    pub fn set_address(&mut self, address: String) {
+        self.address = address;
+    }
+
+    pub fn get_address(&mut self) -> String {
+        self.address.clone()
+    }
+}

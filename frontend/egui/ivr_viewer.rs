@@ -1,5 +1,5 @@
 /*
-    Marty PC Emulator 
+     Marty PC Emulator 
     (C)2023 Daniel Balsom
     https://github.com/dbalsom/marty
 
@@ -17,61 +17,51 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
     ---------------------------------------------------------------------------
-    
-    egui::instruction_history_viewer.rs
 
-    Implements the instruction history viewer control.
-    The control is a virtual window that will display the disassembly of 
-    the last X executed instructions. 
+    egui::ivt_viewer.rs
+
+    Implements the a viewer for the IVT (Interrupt Vector Table)
 
 */
-use std::collections::VecDeque;
 
 use crate::egui::*;
 use crate::egui::token_listview::*;
-use crate::syntax_token::*;
+use marty_core::syntax_token::*;
 
-pub struct InstructionHistoryControl {
+pub struct IvrViewerControl {
 
-    pub address: String,
-    pub row: usize,
-    pub lastrow: usize,
     tlv: TokenListView,
+    row: usize,
 }
 
-impl InstructionHistoryControl {
+impl IvrViewerControl {
 
     pub fn new() -> Self {
+        let mut tlv = TokenListView::new();
+        tlv.set_capacity(256);
+        tlv.set_visible(32);
+
         Self {
-            address: "cs:ip".to_string(),
-            row: 0,
-            lastrow: 0,
-            tlv: TokenListView::new()
+            tlv,
+            row: 0
         }
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
 
-        self.tlv.set_capacity(32);
-        self.tlv.set_visible(32);
-
         let mut new_row = self.row;
         ui.horizontal(|ui| {
             self.tlv.draw(ui, events, &mut new_row);
         });
-    }
+
+        // TLV viewport was scrolled, update address
+        if self.row != new_row {
+            log::debug!("update address to: {:05X}", new_row);
+            self.row = new_row;
+        }        
+    }        
 
     pub fn set_content(&mut self, mem: Vec<Vec<SyntaxToken>>) {
         self.tlv.set_contents(mem);
     }
-
-    #[allow (dead_code)]
-    pub fn set_address(&mut self, address: String) {
-        self.address = address;
-    }
-    
-    #[allow (dead_code)]
-    pub fn get_address(&mut self) -> String {
-        self.address.clone()
-    }
-}
+}    
