@@ -210,6 +210,8 @@ pub struct BusInterface {
 
     timer_trigger1_armed: bool,
     timer_trigger2_armed: bool,
+
+    cga_tick_accum: u32
 }
 
 impl ByteQueue for BusInterface {
@@ -337,6 +339,8 @@ impl Default for BusInterface {
 
             timer_trigger1_armed: false,
             timer_trigger2_armed: false,     
+
+            cga_tick_accum: 0,
         }        
     }
 }
@@ -370,7 +374,9 @@ impl BusInterface {
             video: VideoCardDispatch::None,
 
             timer_trigger1_armed: false,
-            timer_trigger2_armed: false,          
+            timer_trigger2_armed: false,  
+
+            cga_tick_accum: 0,        
         }
     }
 
@@ -1333,45 +1339,62 @@ impl BusInterface {
         match &mut self.video {
             VideoCardDispatch::Cga(cga) => {
 
-                cga.run(DeviceRunTimeUnit::SystemTicks(sys_ticks));
+                self.cga_tick_accum += sys_ticks;
+                
+                if self.cga_tick_accum > 16 {
+                    cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum));
+                    self.cga_tick_accum = 0;
 
-                if self.timer_trigger1_armed && pit_reload_value == 19912 {
-                    // Do hack for Area5150. TODO: Figure out why this is necessary.
-                    
-                    // With VerticalTotalAdjust == 0, ticks per frame are 233472.
-                    let screen_tick_pos = cga.get_screen_ticks();
-
-                    //let screen_target = 17256
-                    //let screen_target = 16344;
-                    let screen_target = 15432;
-                    // Only adjust if we are late
-                    if screen_tick_pos > screen_target {
-                        let ticks_adj = screen_tick_pos - screen_target;
-                        log::warn!("Doing Area5150 hack. Rewinding CGA by {} ticks.", ticks_adj);
+                    if self.timer_trigger1_armed && pit_reload_value == 19912 {
+                        // Do hack for Area5150. TODO: Figure out why this is necessary.
                         
-                        cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+                        // With VerticalTotalAdjust == 0, ticks per frame are 233472.
+                        let screen_tick_pos = cga.get_screen_ticks();
+    
+                        //let screen_target = 17256
+                        //let screen_target = 16344;
+                        let screen_target = 15432;
+                        // Only adjust if we are late
+                        if screen_tick_pos > screen_target {
+                            let ticks_adj = screen_tick_pos - screen_target;
+                            log::warn!(
+                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks.", 
+                                screen_target, 
+                                screen_tick_pos, 
+                                ticks_adj
+                            );
+                            
+                            cga.debug_tick(233472 - ticks_adj as u32);
+                            //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+                        }
+                        
+                        self.timer_trigger1_armed = false;
                     }
-                    
-                    self.timer_trigger1_armed = false;
+                    else if self.timer_trigger2_armed && pit_reload_value == 19912 {
+                        // Do hack for Area5150. TODO: Figure out why this is necessary.
+                        
+                        // With VerticalTotalAdjust == 0, ticks per frame are 233472.
+                        let screen_tick_pos = cga.get_screen_ticks();
+    
+                        //let screen_target = 17256;
+                        let screen_target = 16344;
+                        // Only adjust if we are late
+                        if screen_tick_pos > screen_target {
+                            let ticks_adj = screen_tick_pos - screen_target;
+                            log::warn!(
+                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks.", 
+                                screen_target, 
+                                screen_tick_pos, 
+                                ticks_adj
+                            );
+                            
+                            cga.debug_tick(233472 - ticks_adj as u32);
+                            //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+                        }
+                        
+                        self.timer_trigger2_armed = false;
+                    }         
                 }
-                else if self.timer_trigger2_armed && pit_reload_value == 19912 {
-                    // Do hack for Area5150. TODO: Figure out why this is necessary.
-                    
-                    // With VerticalTotalAdjust == 0, ticks per frame are 233472.
-                    let screen_tick_pos = cga.get_screen_ticks();
-
-                    //let screen_target = 17256;
-                    let screen_target = 16344;
-                    // Only adjust if we are late
-                    if screen_tick_pos > screen_target {
-                        let ticks_adj = screen_tick_pos - screen_target;
-                        log::warn!("Doing Area5150 hack. Rewinding CGA by {} ticks.", ticks_adj);
-                        
-                        cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
-                    }
-                    
-                    self.timer_trigger2_armed = false;
-                }                 
             },
             #[cfg(feature = "ega")]
             VideoCardDispatch::Ega(ega) => {

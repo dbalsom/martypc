@@ -65,6 +65,11 @@ const DEFAULT_MAXIMUM_SCANLINE: u8 = 7;
 const DEFAULT_CURSOR_START_LINE: u8 = 6;
 const DEFAULT_CURSOR_END_LINE: u8 = 7;
 
+const DEFAULT_CLOCK_DIVISOR: u8 = 2;
+const DEFAULT_CHAR_CLOCK: u32 = 16;
+const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x0F;
+const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x1F;
+
 // CGA is clocked at 14.318180Mhz, which is the main clock of the entire PC system.
 // The original CGA card did not have its own crystal.
 const CGA_CLOCK: f64 = 14.318180;
@@ -91,7 +96,7 @@ const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
 */
 
 // Calculate the maximum possible area of buf field (including refresh period)
-const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CRTC_CHAR_CLOCK as u32;
+const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CGA_HCHAR_CLOCK as u32;
 const CGA_YRES_MAX: u32 = CRTC_SCANLINE_MAX;
 pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Should be 238944
 
@@ -171,7 +176,8 @@ const STATUS_VERTICAL_RETRACE: u8       = 0b0000_1000;
 static CGA_FONT: &'static [u8] = include_bytes!("../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
-const CRTC_CHAR_CLOCK: u8 = 8;
+const CGA_HCHAR_CLOCK: u8 = 8;
+const CGA_LCHAR_CLOCK: u8 = 16;
 const CRTC_FONT_HEIGHT: u8 = 8;
 const CRTC_VBLANK_HEIGHT: u8 = 16;
 
@@ -219,14 +225,19 @@ const CGA_VBLANK_COLOR: u8 = 0;
 const CGA_VBLANK_DEBUG_COLOR: u8 = 14;
 const CGA_DISABLE_COLOR: u8 = 0;
 const CGA_DISABLE_DEBUG_COLOR: u8 = 2;
-
-/*
 const CGA_OVERSCAN_COLOR: u8 = 1;
+/*
 const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
 */
 
 const CGA_CURSOR_MAX: usize = 32;
+
+#[derive (Copy, Clone, Debug, PartialEq)]
+pub enum ClockMode {
+    Pixel,
+    Character
+}
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -315,6 +326,10 @@ pub struct CGACard {
 
     cc_register: u8,
     clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
+    clock_mode: ClockMode,
+    char_clock: u32,
+    char_clock_mask: u64,
+    char_clock_odd_mask: u64,
 
     // Monitor stuff
     beam_x: u32,
@@ -357,6 +372,9 @@ pub struct CGACard {
     blink_accum_clocks: u32,        // CGA Clock accumulator for blink state flipflop
     accumulated_us: f64,
     ticks_advanced: u32,            // Number of ticks we have advanced mid-instruction via port or mmio access.
+    pixel_clocks_owed: u32,
+    ticks_accum: u32,
+    clocks_accum: u32,
 
     mem: Box<[u8; CGA_MEM_SIZE]>,
 
@@ -403,6 +421,7 @@ impl IoDevice for CGACard {
                 self.tick();
             }
             self.ticks_advanced += ticks;
+            self.calc_cycle_debt();
         }
 
         match port {
@@ -430,6 +449,7 @@ impl IoDevice for CGACard {
                 self.tick();
             }
             self.ticks_advanced += ticks;
+            self.calc_cycle_debt();
         }
 
         match port {
@@ -555,8 +575,11 @@ impl CGACard {
 
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
-            clock_divisor: 1,
-
+            clock_divisor: DEFAULT_CLOCK_DIVISOR,
+            clock_mode: ClockMode::Pixel,
+            char_clock: DEFAULT_CHAR_CLOCK,
+            char_clock_mask: DEFAULT_CHAR_CLOCK_MASK,
+            char_clock_odd_mask: DEFAULT_CHAR_CLOCK_ODD_MASK,
             beam_x: 0,
             beam_y: 0,
             in_monitor_hsync: false,
@@ -597,6 +620,9 @@ impl CGACard {
 
             accumulated_us: 0.0,
             ticks_advanced: 0,
+            ticks_accum: 0,
+            clocks_accum: 0,
+            pixel_clocks_owed: 0,
 
             mem: vec![0; CGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
 
@@ -628,6 +654,31 @@ impl CGACard {
             cga.disable_color = CGA_DISABLE_DEBUG_COLOR;
         }
         cga
+    }
+
+    /// Update the number of pixel clocks we must execute before we can return to clocking the 
+    /// CGA card by character clock.  When an IO read/write occurs, the CGA card is updated to
+    /// the current clock cycle by ticking pixels. During run() we then have to tick by pixels
+    /// until we are back in phase with the character clock.
+    #[inline]
+    fn calc_cycle_debt(&mut self) {
+
+        if self.ticks_advanced % CGA_LCHAR_CLOCK as u32 > 0 {
+            // We have advanced the CGA card out of phase with the character clock. Count 
+            // how many pixel clocks we need to tick by to be back in phase.
+            
+            /*
+            log::trace!(
+                "calc_cycle_debt(): ticks_advanced: {} catch_up: {}", 
+                self.ticks_advanced, 
+                (CGA_CHAR_CLOCK as u32 * 2) - (self.ticks_advanced % (CGA_CHAR_CLOCK as u32 * 2))
+            );
+            */
+            
+            //self.pixel_clocks_owed = CGA_LCHAR_CLOCK as u32 - (self.ticks_advanced % CGA_LCHAR_CLOCK as u32);
+            self.pixel_clocks_owed = ((!self.cycles + 1) & 0x0F) as u32;
+
+        }
     }
 
     fn get_cursor_span(&self) -> (u8, u8) {
@@ -879,7 +930,17 @@ impl CGACard {
 
         // Clock divisor is 1 in high res text mode, 2 in all other modes
         // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
-        self.clock_divisor = if self.mode_hires_txt { 1 } else { 2 };
+        (
+            self.clock_divisor, 
+            self.char_clock, 
+            self.char_clock_mask, 
+            self.char_clock_odd_mask
+        ) = if self.mode_hires_txt {
+            (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
+        }
+        else {
+            (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
+        };
 
         // Updated mask to exclude enable bit in mode calculation.
         // "Disabled" isn't really a video mode, it just controls whether
@@ -926,7 +987,10 @@ impl CGACard {
         self.mode_pending = true;
     }
 
+    /// Handle a read from the CGA status register. This register has bits to indicate whether
+    /// we are in vblank or if the display is in the active display area (enabled)
     fn handle_status_register_read(&mut self) -> u8 {
+
         // Bit 1 of the status register is set when the CGA can be safely written to without snow.
         // It is tied to the 'Display Enable' line from the CGA card, inverted.
         // Thus it will be 1 when the CGA card is not currently scanning, IE during both horizontal
@@ -968,7 +1032,10 @@ impl CGACard {
         byte
     }
 
+    /// Handle write to the Color Control register. This register controls the palette selection
+    /// and background/overscan color (foreground color in high res graphics mode)
     fn handle_cc_register_write(&mut self, data: u8) {
+
         //log::trace!("Write to color control register: {:02X}", data);
 
         if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
@@ -1016,7 +1083,7 @@ impl CGACard {
     /// Return the bit value at (col,row) of the given font glyph
     fn get_glyph_bit(glyph: u8, col: u8, row: u8) -> bool {
 
-        debug_assert!(col < CRTC_CHAR_CLOCK);
+        debug_assert!(col < CGA_HCHAR_CLOCK);
         //debug_assert!(row < CRTC_CHAR_CLOCK);
         let row_masked = row & 0x7;
 
@@ -1037,10 +1104,10 @@ impl CGACard {
             self.cur_attr = self.mem[addr + 1];
     
             self.cur_fg = self.cur_attr & 0x0F;
-            // If blinking is enabled, the bg attribute is only 3 bytes and only low-intensity colors 
+            
+            // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors 
             // are available. 
             // If blinking is disabled, all 16 colors are available as background attributes.
-    
             if self.mode_blinking {
                 self.cur_bg = (self.cur_attr >> 4) & 0x07;
                 self.cur_blink = self.cur_attr & 0x80 != 0;
@@ -1082,6 +1149,16 @@ impl CGACard {
         }
     }    
 
+    #[inline]
+    pub fn draw_solid_char(&mut self, color: u8) {
+
+        let draw_span = (8 * self.clock_divisor) as usize;
+
+        for i in 0..draw_span {
+            self.buf[self.back_buf][self.rba + i] = color;
+        }
+    }
+
     pub fn draw_text_mode_pixel(&mut self) {
         let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
             true => {
@@ -1115,8 +1192,47 @@ impl CGACard {
         }
     }
 
-    /// Draw a character column in low resolution graphics mode (320x200)
-    /// In this mode, one pixel is drawn twice for each character column.
+    pub fn draw_text_mode_char(&mut self) {
+
+        let draw_span = (8 * self.clock_divisor) as usize;
+
+        // Do cursor if visible, enabled and defined
+        if     self.vma == self.crtc_cursor_address
+            && self.cursor_status 
+            && self.blink_state
+            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize] 
+        {
+            self.draw_solid_char(self.cur_fg);
+        }
+        else if self.mode_enable {
+            for i in (0..draw_span).step_by(self.clock_divisor as usize) {
+                let new_pixel = match CGACard::get_glyph_bit(self.cur_char, (i as u8 / self.clock_divisor), self.vlc_c9) {
+                    true => {
+                        if self.cur_blink {
+                            if self.blink_state { self.cur_fg } else { self.cur_bg }
+                        } 
+                        else {
+                            self.cur_fg
+                        }
+                    },
+                    false => self.cur_bg
+                };
+
+                self.buf[self.back_buf][self.rba + i] = new_pixel;
+                if self.clock_divisor == 2 {
+                    // Double pixels in 40 column mode.
+                    self.buf[self.back_buf][self.rba + i + 1] = new_pixel;
+                }
+            }
+        }
+        else {
+            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
+            self.draw_solid_char(0);
+        }
+    }
+
+    /// Draw a pixel in low resolution graphics mode (320x200)
+    /// In this mode, pixels are doubled
     pub fn draw_lowres_gfx_mode_pixel(&mut self) {
         let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, self.char_col);
 
@@ -1132,8 +1248,26 @@ impl CGACard {
         self.buf[self.back_buf][self.rba + 1] = new_pixel;
     }
 
-    /// Draw a character column in high resolution graphics mode. (640x200)
-    /// In this mode, two pixels are drawn for each character column.
+    /// Draw a character column in low resolution graphics mode (320x200)
+    /// In this mode, pixels are doubled
+    pub fn draw_lowres_gfx_mode_char(&mut self) {
+
+        if self.mode_enable {
+            let draw_span = 8 as usize;
+
+            for i in 0..draw_span {
+                let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, i as u8);
+                self.buf[self.back_buf][self.rba + (i << 1)] = new_pixel;
+                self.buf[self.back_buf][self.rba + (i << 1) + 1] = new_pixel;
+            }
+        }
+        else {
+            self.draw_solid_char(self.cc_altcolor);
+        }
+    }
+
+    /// Draw pixels in high resolution graphics mode. (640x200)
+    /// In this mode, two pixels are drawn at the same time.
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
         let offset = if self.vlc_c9 > 0 { 0x2000 } else { 0 };
         let base_addr = (((self.vma & 0x3FFF) << 1) + offset) & 0x3FFF;
@@ -1144,8 +1278,8 @@ impl CGACard {
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
         
-        let bit1 = ((word >> ((CRTC_CHAR_CLOCK * 2) - (self.char_col * 2 + 1))) & 0x01) as usize;
-        let bit2 = ((word >> ((CRTC_CHAR_CLOCK * 2) - (self.char_col * 2 + 2))) & 0x01) as usize;
+        let bit1 = ((word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 1))) & 0x01;
+        let bit2 = ((word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 2))) & 0x01;
 
         if self.mode_enable {
             if bit1 == 0 {
@@ -1168,6 +1302,45 @@ impl CGACard {
         }
     }    
 
+    /// Draw a single character column in high resolution graphics mode (640x200)
+    pub fn draw_hires_gfx_mode_char(&mut self) {
+
+        let offset = if self.vlc_c9 > 0 { 0x2000 } else { 0 };
+        let base_addr = (((self.vma & 0x3FFF) << 1) + offset) & 0x3FFF;
+
+        if self.rba >= CGA_MAX_CLOCK - 2 {
+            return;
+        }
+
+        let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
+
+        if self.mode_enable {
+            for i in 0..CGA_LCHAR_CLOCK {
+                let bit1 = ((word >> (CGA_LCHAR_CLOCK - (i + 1))) & 0x01) as usize;
+                let bit2 = ((word >> (CGA_LCHAR_CLOCK - (i + 2))) & 0x01) as usize;
+
+                if bit1 == 0 {
+                    self.buf[self.back_buf][self.rba + i as usize] = 0;
+                }
+                else {
+                    self.buf[self.back_buf][self.rba + i as usize] = self.cc_altcolor;
+                }
+    
+                if bit2 == 0 {
+                    self.buf[self.back_buf][self.rba + i as usize + 1] = 0;
+                }
+                else {
+                    self.buf[self.back_buf][self.rba + i as usize + 1] = self.cc_altcolor;
+                }                
+            }
+        }
+        else {
+            for i in 0..(CGA_LCHAR_CLOCK as usize) {
+                self.buf[self.back_buf][self.rba + i] = self.disable_color;
+            }
+        }
+    }
+
     pub fn get_lowres_pixel_color(&self, row: u8, col: u8) -> u8 {
 
         let offset = if row > 0 { 0x2000 } else { 0 };
@@ -1175,7 +1348,7 @@ impl CGACard {
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
-        let idx = ((word >> ((CRTC_CHAR_CLOCK * 2) - (col + 1) * 2)) & 0x03) as usize;
+        let idx = ((word >> (CGA_LCHAR_CLOCK - (col + 1) * 2)) & 0x03) as usize;
 
         if idx == 0 {
             self.cc_altcolor
@@ -1189,6 +1362,77 @@ impl CGACard {
         self.cur_screen_cycles
     }
 
+    /// Execute one CGA character.
+    pub fn tick_char(&mut self) {
+        
+        // sink_cycles must be factor of 8
+        //assert!((self.sink_cycles & 0x07) == 0);
+
+        if self.sink_cycles & 0x07 != 0 {
+            log::error!("sink_cycles: {} not divisible by 8", self.sink_cycles);
+        }
+
+        if self.sink_cycles > 0 {
+            self.sink_cycles = self.sink_cycles.saturating_sub(8);
+            return
+        }
+
+        self.cycles += 8;
+        self.cur_screen_cycles += 8;
+        
+        // Don't execute even character clocks in low-res mode
+        if self.clock_divisor == 2 && (self.cycles & 0x0F == 0) {
+            //log::trace!("skipping odd hchar: {:X}", self.cycles);
+           return 
+        }
+
+        // Only draw if render buffer address is in bounds.
+        if self.rba < (CGA_MAX_CLOCK - (8 * self.clock_divisor) as usize) {
+            if self.in_display_area {
+                // Draw current character row
+                if !self.mode_graphics {
+                    self.draw_text_mode_char();
+                }
+                else if self.mode_hires_gfx {
+                    self.draw_hires_gfx_mode_char();
+                }   
+                else {
+                    self.draw_lowres_gfx_mode_char();
+                }
+            }
+            else if self.in_crtc_hblank {
+                // Draw hblank in debug color
+                self.draw_solid_char(self.hblank_color);
+            }
+            else if self.in_crtc_vblank {
+                // Draw vblank in debug color
+                self.draw_solid_char(self.vblank_color);
+            }
+            else if self.vborder | self.hborder {
+                // Draw overscan
+                self.draw_solid_char(self.cc_overscan_color);
+            }
+            else {
+                //log::warn!("invalid display state...");
+            }
+        }
+
+        // Update position to next pixel and character column.
+        self.beam_x += 8 * self.clock_divisor as u32;
+        self.rba += 8 * self.clock_divisor as usize;
+
+        // If we have reached the right edge of the 'monitor', return the raster position
+        // to the left side of the screen.
+        if self.beam_x == CGA_XRES_MAX {
+            self.beam_x = 0;
+            self.beam_y += 1;
+            self.in_monitor_hsync = false;
+            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
+        }
+
+        self.tick_crtc_char();
+    }
+
     /// Execute one CGA clock cycle.
     pub fn tick(&mut self) {
 
@@ -1199,8 +1443,8 @@ impl CGACard {
         self.cycles += 1;
         self.cur_screen_cycles += 1;
 
-        // Don't execute odd cycles if we are in half-clock mode
-        if self.clock_divisor == 2 && self.cycles & 0x01 == 0 {
+        // Don't execute even cycles if we are in half-clock mode
+        if self.clock_divisor == 2 && (self.cycles & 0x01 == 0) {
             return;
         }
 
@@ -1289,228 +1533,205 @@ impl CGACard {
             self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
         }
 
+        // Done with the current character      
+        if self.char_col == CGA_HCHAR_CLOCK {
+            self.tick_crtc_char();
+        }        
+    }
+
+    /// Update the CRTC logic for next character.
+    pub fn tick_crtc_char(&mut self) {
+
+        // Update horizontal character counter
+        self.hcc_c0 = self.hcc_c0.wrapping_add(1);
+        if self.hcc_c0 == 0 {
+            self.hborder = false;
+            if self.vcc_c4 == 0 {
+                // We are at the first character of a CRTC frame. Update start address.
+                self.vma = self.crtc_frame_address;
+            }
+        }     
+
         if self.hcc_c0 == 0 && self.vcc_c4 == 0 {
             // We are at the first character of a CRTC frame. Update start address.
             self.vma = self.crtc_frame_address;
         }
 
-        // Done with the current character      
-        if self.char_col == CRTC_CHAR_CLOCK {
-            
-            // Update horizontal character counter
-            self.hcc_c0 = self.hcc_c0.wrapping_add(1);
-            if self.hcc_c0 == 0 {
-                self.hborder = false;
+        // Advance video memory address offset and grab the next character + attr
+        self.vma += 1;
+        self.set_char_addr();
+
+        // Glyph colun reset to 0 for next char
+        self.char_col = 0;
+
+        if self.in_crtc_hblank {
+            // Increment horizontal sync counter.
+            self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
+
+            // End horizontal sync when we reach R3
+            if self.hsc_c3l == self.crtc_sync_width {
+                // We've left horizontal blank, enter left overscan.
+
+                // Update the video mode, if an update is pending.
+                if self.mode_pending {
+                    self.update_mode();
+                    self.mode_pending = false;
+                }
+
+                self.hsc_c3l = 0;
+                self.in_crtc_hblank = false;
+
+                if self.in_crtc_vblank {
+
+                    // If we are in vblank, advance Vertical Sync Counter
+                    self.vsc_c3h += 1;
+                
+                    //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
+                    if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
+
+                        self.in_last_vblank_line = true;
+                        // We are leaving vblank period. Generate a frame.
+
+                        // Previously, we generated frames upon reaching vertical total. This was convenient as 
+                        // the display area would be at the top of the render buffer and both overscan periods
+                        // beneath it.
+                        // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple 
+                        // 'screens' per frame in between vsyncs. To enable these tricks to work, we must render 
+                        // like a monitor would.                        
+
+                        self.vsc_c3h = 0;
+                        self.do_vsync();
+                        return
+                    }                        
+                }                    
+                
+                self.scanline += 1;
+                
+                // Reset beam to left of screen if we haven't already
+                if self.beam_x > 0 {
+                    self.beam_y += 1;
+                }
+                self.beam_x = 0;
+                self.char_col = 0;
+
+                let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
+                self.rba = new_rba;
+            }
+        }
+
+        if self.hcc_c0 == self.crtc_horizontal_displayed {
+            // C0 == R1. Entering right overscan.
+
+            if self.vlc_c9 == self.crtc_maximum_scanline_address {
+                // Save VMA in VMA'
+                //log::debug!("Updating vma_t: {:04X}", self.vma_t);
+                self.vma_t = self.vma;
             }
 
-            // Advance video memory address offset and grab the next character + attr
-            self.vma += 1;
+            // Save right overscan start position to calculate width of right overscan later
+            self.overscan_right_start = self.beam_x;
+            self.in_display_area = false;
+            self.hborder = true;
+        }
+
+        if self.hcc_c0 == self.crtc_horizontal_sync_pos {
+            // We entered horizontal blank
+
+            // Save width of right overscan
+            if self.beam_x > self.overscan_right_start {
+                self.extents[self.front_buf].overscan_r = self.beam_x - self.overscan_right_start;
+            }
+            self.in_crtc_hblank = true;
+            self.hsc_c3l = 0;
+        }
+
+        if self.hcc_c0 == self.crtc_horizontal_total && self.in_last_vblank_line {
+            // We are one char away from the beginning of the new frame.
+            // Draw one char of border
+            self.hborder = true;
+        }
+
+        if self.hcc_c0 == self.crtc_horizontal_total + 1 {
+            // Leaving left overscan, finished scanning row
+
+            if self.in_last_vblank_line {
+                self.in_last_vblank_line = false;
+                self.in_crtc_vblank = false;
+            }
+
+            // Reset Horizontal Character Counter and increment character row counter
+            self.hcc_c0 = 0;
+            self.hborder = false;
+            self.vlc_c9 += 1;
+            self.extents[self.front_buf].overscan_l = self.beam_x;
+            // Return video memory address to starting position for next character row
+            self.vma = self.vma_t;
+            
+            // Reset the current character glyph to start of row
             self.set_char_addr();
 
-            // Glyph colun reset to 0 for next char
-            self.char_col = 0;
-
-            if self.in_crtc_hblank {
-                // Increment horizontal sync counter.
-                self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
-
-                // End horizontal sync when we reach R3
-                if self.hsc_c3l == self.crtc_sync_width {
-                    // We've left horizontal blank, enter left overscan.
-
-                    // Update the video mode, if an update is pending.
-                    if self.mode_pending {
-                        self.update_mode();
-                        self.mode_pending = false;
-                    }
-
-                    self.hsc_c3l = 0;
-                    self.in_crtc_hblank = false;
-
-                    if self.in_crtc_vblank {
-
-                        // If we are in vblank, advance Vertical Sync Counter
-                        self.vsc_c3h += 1;
-                    
-                        //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-                        if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
-
-                            self.in_last_vblank_line = true;
-                            // We are leaving vblank period. Generate a frame.
-
-                            // Previously, we generated frames upon reaching vertical total. This was convenient as 
-                            // the display area would be at the top of the render buffer and both overscan periods
-                            // beneath it.
-                            // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple 
-                            // 'screens' per frame in between vsyncs. To enable these tricks to work, we must render 
-                            // like a monitor would.                        
-
-                            self.vsc_c3h = 0;
-                            self.do_vsync();
-                            return
-                        }                        
-                    }                    
-                    
-                    self.scanline += 1;
-                    
-                    // Reset beam to left of screen if we haven't already
-                    if self.beam_x > 0 {
-                        self.beam_y += 1;
-                    }
-                    self.beam_x = 0;
-                    self.char_col = 0;
-
-                    let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
-                    self.rba = new_rba;
+            if !self.in_crtc_vblank {
+                // Start the new row
+                if self.vcc_c4 < self.crtc_vertical_displayed {
+                    self.in_display_area = true;
                 }
             }
+            
+            if self.vlc_c9 > self.crtc_maximum_scanline_address  {
+                // C9 == R9 We finished drawing this row of characters 
 
-            if self.hcc_c0 == self.crtc_horizontal_displayed {
-                // C0 == R1. Entering right overscan.
+                self.vlc_c9 = 0;
+                // Advance Vertical Character Counter
+                self.vcc_c4 = self.vcc_c4.wrapping_add(1);
 
-                if self.vlc_c9 == self.crtc_maximum_scanline_address {
-                    // Save VMA in VMA'
-                    //log::debug!("Updating vma_t: {:04X}", self.vma_t);
-                    self.vma_t = self.vma;
-                }
-
-                // Save right overscan start position to calculate width of right overscan later
-                self.overscan_right_start = self.beam_x;
-                self.in_display_area = false;
-                self.hborder = true;
-            }
-
-            if self.hcc_c0 == self.crtc_horizontal_sync_pos {
-                // We entered horizontal blank
-
-                // Save width of right overscan
-                if self.beam_x > self.overscan_right_start {
-                    self.extents[self.front_buf].overscan_r = self.beam_x - self.overscan_right_start;
-                }
-                self.in_crtc_hblank = true;
-                self.hsc_c3l = 0;
-            }
-
-            if self.hcc_c0 == self.crtc_horizontal_total && self.in_last_vblank_line {
-                // We are one char away from the beginning of the new frame.
-                // Draw one char of border
-                self.hborder = true;
-            }
-
-            if self.hcc_c0 == self.crtc_horizontal_total + 1 {
-                // Leaving left overscan, finished scanning row
-
-                if self.in_last_vblank_line {
-                    self.in_last_vblank_line = false;
-                    self.in_crtc_vblank = false;
-                }
-
-                // Reset Horizontal Character Counter and increment character row counter
-                self.hcc_c0 = 0;
-                self.hborder = false;
-                self.vlc_c9 += 1;
-                self.extents[self.front_buf].overscan_l = self.beam_x;
-                // Return video memory address to starting position for next character row
+                // Set vma to starting position for next character row
+                //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
                 self.vma = self.vma_t;
                 
-                // Reset the current character glyph to start of row
+                // Load next char + attr
                 self.set_char_addr();
 
-                if !self.in_crtc_vblank {
-                    // Start the new row
-                    if self.vcc_c4 < self.crtc_vertical_displayed {
-                        self.in_display_area = true;
-                    }
-                }
-                
-                if self.vlc_c9 > self.crtc_maximum_scanline_address  {
-                    // C9 == R9 We finished drawing this row of characters 
-
-                    self.vlc_c9 = 0;
-                    // Advance Vertical Character Counter
-                    self.vcc_c4 = self.vcc_c4.wrapping_add(1);
-
-                    // Set vma to starting position for next character row
-                    //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
-                    self.vma = self.vma_t;
-                    
-                    // Load next char + attr
-                    self.set_char_addr();
-
-                    if self.vcc_c4 == self.crtc_vertical_sync_pos {
-                        // We've reached vertical sync
-                        trace_regs!(self);
-                        trace!(self, "Entering vsync");
-                        self.in_crtc_vblank = true;
-                        self.in_display_area = false;
-                    }
-                }
-
-                if self.vcc_c4 == self.crtc_vertical_displayed {
-                    // Enter lower overscan area.
-                    // This represents reaching the lowest visible scanline, so save the scanline in extents.
-                    self.extents[self.front_buf].visible_h = self.scanline;
-                    self.in_display_area = false;
-                    self.vborder = true;
-                }
-                
-                if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
-
-                    // We are at vertical total, start incrementing vertical total adjust counter.
-                    self.vtac_c5 += 1;
-
-                    if self.vtac_c5 > self.crtc_vertical_total_adjust {
-                        // We have reached vertical total adjust. We are at the end of the top overscan.
-                        self.hcc_c0 = 0;
-                        self.vcc_c4 = 0;
-                        self.vtac_c5 = 0;
-                        self.vlc_c9 = 0;
-                        self.char_col = 0;                            
-                        self.crtc_frame_address = self.crtc_start_address;
-                        self.vma = self.crtc_start_address;
-                        self.vma_t = self.vma;
-                        self.in_display_area = true;
-                        self.vborder = false;
-                        self.in_crtc_vblank = false;
-                        
-                        // Load first char + attr
-                        self.set_char_addr();     
-                    }
-                }
-
-                /*
-                if self.scanline == CRTC_SCANLINE_MAX {
-                    // We have somehow reached the maximum number of possible scanlines in a NTSC field.
-                    // I am not sure what happens on real hardware, but in our case, we have to force a frame generation
-                    // or we would run off the end of the render buffer.
-
+                if self.vcc_c4 == self.crtc_vertical_sync_pos {
+                    // We've reached vertical sync
                     trace_regs!(self);
-                    trace!(self, "Maximum scanline reached, frame generation forced.");
-                    self.frame_count += 1;
+                    trace!(self, "Entering vsync");
+                    self.in_crtc_vblank = true;
+                    self.in_display_area = false;
+                }
+            }
 
-                    // Width is total characters * character width * clock_divisor.
-                    // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
-                    self.extents[self.front_buf].visible_w = 
-                        self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32 * self.clock_divisor as u32;
+            if self.vcc_c4 == self.crtc_vertical_displayed {
+                // Enter lower overscan area.
+                // This represents reaching the lowest visible scanline, so save the scanline in extents.
+                self.extents[self.front_buf].visible_h = self.scanline;
+                self.in_display_area = false;
+                self.vborder = true;
+            }
+            
+            if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
 
-                    // Save last scanline into extents
-                    self.extents[self.front_buf].visible_h = self.scanline;          
+                // We are at vertical total, start incrementing vertical total adjust counter.
+                self.vtac_c5 += 1;
 
-                    self.scanline = 0;
-
+                if self.vtac_c5 > self.crtc_vertical_total_adjust {
+                    // We have reached vertical total adjust. We are at the end of the top overscan.
                     self.hcc_c0 = 0;
                     self.vcc_c4 = 0;
-                    self.beam_x = 0;
-                    self.vma = 0;
-                    self.rba = 0;
+                    self.vtac_c5 = 0;
+                    self.vlc_c9 = 0;
+                    self.char_col = 0;                            
+                    self.crtc_frame_address = self.crtc_start_address;
+                    self.vma = self.crtc_start_address;
+                    self.vma_t = self.vma;
                     self.in_display_area = true;
-
-                    // Swap the display buffers
-                    self.swap();            
+                    self.vborder = false;
+                    self.in_crtc_vblank = false;
+                    
+                    // Load first char + attr
+                    self.set_char_addr();     
                 }
-                */
             }
-        }        
+        }   
     }
 
     pub fn do_vsync(&mut self) {
@@ -1527,11 +1748,12 @@ impl CGACard {
             // So we need to delay resetting vblank flag until then.
             //self.in_crtc_vblank = false;
             
-
             if self.beam_y > 258 && self.beam_y < 262 {
                 // This is a "short" frame. Calculate delta.
                 let delta_y = 262 - self.beam_y;
                 self.sink_cycles = (delta_y * 912) as u64;
+
+                //log::trace!("sink_cycles: {}", self.sink_cycles);
             }
 
             self.beam_x = 0;
@@ -1542,7 +1764,7 @@ impl CGACard {
             // Width is total characters * character width * clock_divisor.
             // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
             self.extents[self.front_buf].visible_w = 
-                self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32 * self.clock_divisor as u32;
+                self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32 * self.clock_divisor as u32;
 
             trace_regs!(self);
             trace!(self, "Leaving vsync and flipping buffers");
@@ -1598,7 +1820,7 @@ impl VideoCard for CGACard {
         // CGA supports a single fixed 8x8 font. The size of the displayed window 
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let mut width = self.crtc_horizontal_displayed as u32 * CRTC_CHAR_CLOCK as u32;
+        let mut width = self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32;
         let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
 
         if self.mode_hires_gfx {
@@ -1623,9 +1845,17 @@ impl VideoCard for CGACard {
     /// Tick the CGA the specified number of video clock cycles.
     fn debug_tick(&mut self, ticks: u32) {
 
-        for _ in 0..ticks {
+        let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
+        let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
+
+        for _ in 0..pixel_ticks {
             self.tick();
         }
+        for _ in 0..lchar_ticks {
+            self.tick_char();
+            self.tick_char();
+        }
+        log::trace!("debug_tick(): new cur_screen_cycles: {}", self.cur_screen_cycles);
     }
 
     #[inline]
@@ -1738,7 +1968,7 @@ impl VideoCard for CGACard {
 
     fn get_current_font(&self) -> FontInfo {
         FontInfo {
-            w: CRTC_CHAR_CLOCK as u32,
+            w: CGA_HCHAR_CLOCK as u32,
             h: CRTC_FONT_HEIGHT as u32,
             font_data: CGA_FONT
         }
@@ -1857,55 +2087,62 @@ impl VideoCard for CGACard {
 
     fn run(&mut self, time: DeviceRunTimeUnit) {
 
-        let mut clocks = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
+        let mut pixel_clocks = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
             ticks
         }
         else {
             panic!("CGA requires SystemTicks time unit.")
         };
 
-        if clocks == 0 {
+        if pixel_clocks == 0 {
             panic!("CGA run() with 0 ticks");
         }
 
-        if self.ticks_advanced > clocks {
-            panic!("Impossible condition: ticks_advanced > clocks");
+        if self.ticks_advanced > pixel_clocks {
+            panic!("Impossible condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, pixel_clocks);
         }
 
-        clocks -= self.ticks_advanced;
+        pixel_clocks -= self.ticks_advanced;
+        self.clocks_accum += pixel_clocks;
         self.ticks_advanced = 0;
 
-        /*
-        self.accumulated_us += us;
+        // Clock by pixel clock to catch up with character clock.
+        for _ in 0..self.pixel_clocks_owed {
+            self.tick();
+            self.pixel_clocks_owed -= 1;
+            self.clocks_accum = self.clocks_accum.saturating_sub(1);
 
-        // Handle blinking. 
-        self.blink_accum_us += us;
-        if self.blink_accum_us > CGA_CURSOR_BLINK_RATE_US {
-            self.blink_state = !self.blink_state;
-            self.blink_accum_us -= CGA_CURSOR_BLINK_RATE_US;
+            if self.clocks_accum == 0 {
+                return
+            }
         }
 
-        // Tick the CRTC. Since the CGA is much faster clocked than the CPU this will 
-        // probably happen several times per CPU instruction.
-        while self.accumulated_us > (US_PER_CLOCK * self.clock_divisor as f64) {
-
-            self.tick();
-            self.accumulated_us -= (US_PER_CLOCK * self.clock_divisor as f64);
-        }        
+        /*
+        //assert!(self.cycles & self.char_clock_mask as u64 == 0);
+        if self.cycles & self.char_clock_mask as u64 != 0 {
+            log::warn!(
+                "Ticked all owed cycles but out of phase with char clock: {} cycles: {} out of phase: {}", 
+                self.char_clock, 
+                self.cycles, 
+                self.cycles % self.char_clock as u64
+            );
+        }
         */
 
-        // Handle blinking. TODO: Move blink handling into tick().
-        self.blink_accum_clocks += clocks;
-        if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-            self.blink_state = !self.blink_state;
-            self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
+        // Drain accumulator and tick by character clock.
+        while self.clocks_accum > self.char_clock {
+            // Handle blinking. TODO: Move blink handling into tick().
+            self.blink_accum_clocks += self.char_clock;
+            if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
+                self.blink_state = !self.blink_state;
+                self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
+            }
+            self.tick_char();
+            if self.clock_divisor == 2 {
+                self.tick_char();
+            }
+            self.clocks_accum -= self.char_clock;
         }
-
-        // Tick the card.
-        for _ in 0..clocks {
-            self.tick();
-        }
-
     }
 
     fn reset(&mut self) {
