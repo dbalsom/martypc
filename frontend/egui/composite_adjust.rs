@@ -26,7 +26,7 @@
 */
 
 use crate::egui::*;
-use crate::render::CompositeParams;
+use marty_render::CompositeParams;
 
 pub struct CompositeAdjustControl {
     params: CompositeParams

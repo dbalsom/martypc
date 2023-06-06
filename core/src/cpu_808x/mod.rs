@@ -1840,7 +1840,6 @@ impl<'a> Cpu<'a> {
                 // Clear flags for returns we popped
                 self.bus.clear_flags(return_addr as usize, MEM_RET_BIT)
             })
-
         }
         else {
             log::warn!("rewind_call_stack(): no matching return for [{:05X}]", addr);

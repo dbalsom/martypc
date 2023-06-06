@@ -1,3 +1,9 @@
+[workspace]
+members = [
+    "core",
+    "frontend/render"
+]
+
 [package]
 name = "martypc"
 version = "0.1.2"
@@ -7,15 +13,9 @@ edition = "2021"
 name = "martypc"
 path = "frontend/main.rs"
 
-[lib]
-name = "marty_core"
-path = "src/lib.rs"
-
 [dependencies]
-anyhow = "1.0.58"
-arraydeque = "0.4.5"
-bpaf = { version = "0.7.7", features = ["derive"] }
-cgmath = "0.18.0"
+marty_core = { path = "./core/"}
+marty_render = { path = "./frontend/render"}
 cpal = "0.13.5"
 #egui = "0.20"
 emath = "0.20"
@@ -23,22 +23,13 @@ emath = "0.20"
 #egui-winit = { version = "0.20", default-features = false, features = ["links"] }
 env_logger = "0.9"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
-lazy_static = "1.4.0"
 log = "0.4"
-md5 = "0.7.0"
-modular-bitfield = "0.11.2"
 pixels = "0.12.1"
 rand = "0.8.5"
 regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
-ringbuf = "0.2.8"
-serde = { version = "1.0.107", features = ["derive"] }
-serde_derive = "1.0.107"
-serde_with = "2.1.0"
 serialport = "4.2.0"
-toml = "0.5.10"
-uuid = { version = "1.1.2", features = ["v4"]}
 winit = "0.27"
 winit_input_helper = "0.13"
 
@@ -65,10 +56,10 @@ opt-level = 3
 #strip = true 
 
 [features]
-arduino_validator = []
-cpu_validator = []
-ega = []
-vga = []
+arduino_validator = ["marty_core/arduino_validator"]
+cpu_validator = ["marty_core/cpu_validator"]
+ega = ["marty_core/ega"]
+vga = ["marty_core/vga"]
 
 [build-dependencies]
 winres = "0.1"
@@ -76,3 +67,7 @@ winres = "0.1"
 [[bench]]
 name = "cga_bench"
 harness = false
+
+[[bench]]
+name = "render_bench"
+harness= false

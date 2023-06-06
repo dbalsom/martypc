@@ -44,12 +44,12 @@ use egui::{
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
-use regex::Regex;
 use winit::{window::Window, event_loop::EventLoopWindowTarget};
 
-use super::render::VideoData;
+use marty_render::VideoData;
 
 use serialport::SerialPortInfo;
+use regex::Regex;
 
 // Bring in submodules
 mod about;
@@ -97,8 +97,6 @@ use crate::{
     egui::instruction_history_viewer::InstructionHistoryControl,
     egui::ivr_viewer::IvrViewerControl,
     egui::theme::GuiTheme,
-    render::CompositeParams,
-    
 };
 
 use marty_core::{
@@ -111,6 +109,8 @@ use marty_core::{
     },    
     videocard::{VideoCardState, VideoCardStateEntry}
 };
+
+use marty_render::CompositeParams;
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";
 

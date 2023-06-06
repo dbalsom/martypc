@@ -51,10 +51,7 @@ use marty_core::{
     file_util
 };
 
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-}; 
+use image;
 
 pub const ATTR_BLUE_FG: u8      = 0b0000_0001;
 pub const ATTR_GREEN_FG: u8     = 0b0000_0010;
@@ -118,9 +115,9 @@ pub struct CompositeParams {
 impl Default for CompositeParams {
     fn default() -> Self {
         Self {
-            hue: 1.5,
-            sat: 1.0,
-            luma: 1.0
+            hue: 1.0,
+            sat: 1.15,
+            luma: 1.15
         }
     }
 }

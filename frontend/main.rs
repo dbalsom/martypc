@@ -37,7 +37,7 @@ use std::{
 };
 
 mod egui;
-mod render;
+
 #[cfg(feature = "arduino_validator")]
 mod main_fuzzer;
 
@@ -92,7 +92,7 @@ use marty_core::{
 
 
 use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
-use render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
+use marty_render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
 
 const EGUI_MENU_BAR: u32 = 25;
 const WINDOW_WIDTH: u32 = 1280;
@@ -405,7 +405,7 @@ fn main() {
     }
 
     // Create the video renderer
-    let mut video = render::VideoRenderer::new(config.machine.video);
+    let mut video = VideoRenderer::new(config.machine.video);
 
     // Init graphics & GUI 
     let event_loop = EventLoop::new();
@@ -604,7 +604,7 @@ fn main() {
                 let (aper_correct_x, aper_correct_y) = 
                     VideoRenderer::get_aspect_corrected_res(
                         (aper_x, aper_y),
-                        render::AspectRatio{ h: 4, v: 3 }
+                        marty_render::AspectRatio{ h: 4, v: 3 }
                     );
 
                 let mut double_res = false;
@@ -1266,7 +1266,7 @@ fn main() {
                                             beam_pos
                                         );
 
-                                        render::resize_linear(
+                                        marty_render::resize_linear(
                                             &render_src, 
                                             video_data.render_w, 
                                             video_data.render_h, 
@@ -1295,7 +1295,7 @@ fn main() {
                                 match aspect_correct {
                                     true => {
                                         video.draw(&mut render_src, video_card, bus, composite_enabled);
-                                        render::resize_linear(
+                                        marty_render::resize_linear(
                                             &render_src, 
                                             video_data.render_w, 
                                             video_data.render_h, 

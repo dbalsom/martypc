@@ -24,17 +24,19 @@
 
 */
 
-use martypc::device::cga::CGACard;
+use marty_core::{
+    devices::cga::CGACard,
+    tracelogger::TraceLogger,
+};
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-
 
 pub fn cga_tick_bench(c: &mut Criterion) {
     // One-time setup code goes here
 
-    let cga = CGACard::new();
+    let mut cga = CGACard::new(TraceLogger::None, false);
 
-    c.bench_function("my_bench", |b| {
+    c.bench_function("cga_bench_tick", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
         b.iter(|| {
@@ -42,6 +44,47 @@ pub fn cga_tick_bench(c: &mut Criterion) {
             cga.tick();
         });
     });
+
+    c.bench_function("cga_bench_tick_char", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            cga.tick_char();
+        });
+    });    
+
+    c.bench_function("cga_bench_frame_by_pixel_ticks", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            for _ in 0..238944 {
+                cga.tick();
+            }
+        });
+    });      
+
+    c.bench_function("cga_bench_frame_by_char_ticks", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            for _ in 0..29868 {
+                cga.tick_char();
+            }
+        });
+    });
+    
+    c.bench_function("cga_bench_draw_textmode_char", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            cga.draw_text_mode_char();
+        });
+    });
+
 }
 
 criterion_group!(benches, cga_tick_bench);

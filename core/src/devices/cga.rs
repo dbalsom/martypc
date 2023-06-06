@@ -29,7 +29,8 @@
 #![allow(dead_code)]
 use std::{
     collections::HashMap,
-    path::Path
+    path::Path,
+    convert::TryInto
 };
 
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
@@ -173,7 +174,7 @@ const STATUS_VERTICAL_RETRACE: u8       = 0b0000_1000;
 // Include the standard 8x8 CGA font.
 // TODO: Support alternate font with thinner glyphs? It was normally not accessable except 
 // by soldering a jumper
-static CGA_FONT: &'static [u8] = include_bytes!("../../assets/cga_8by8.bin");
+static CGA_FONT: &'static [u8] = include_bytes!("../../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const CGA_HCHAR_CLOCK: u8 = 8;

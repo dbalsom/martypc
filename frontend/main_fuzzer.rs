@@ -29,11 +29,12 @@ use std::{
     rc::Rc,
 };
 
-use crate::{
+use marty_core::{
     
     bytequeue::ByteQueue,
     cpu_808x::{
         *,
+        Cpu,
         mnemonic::Mnemonic,
     },
     cpu_common::{CpuType, CpuOption},
