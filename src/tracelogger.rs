@@ -66,4 +66,9 @@ impl TraceLogger {
             _ = file.flush()
         }
     }
+
+    #[inline(always)]
+    pub fn is_some(&mut self) -> bool {
+        matches!(*self, TraceLogger::FileWriter(_) | TraceLogger::Console)
+    }
 }
