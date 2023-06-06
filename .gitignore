@@ -21,7 +21,7 @@ Thumbs.db
 /traces
 /program
 /releases
-*.toml
+marty*.toml
 !/install/martypc.toml
 *.pcm
 *.cfg
