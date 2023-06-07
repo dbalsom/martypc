@@ -198,14 +198,14 @@ static EGA_FONTS: [EGAFont; 2] = [
         w: 8,
         h: 8,
         span: 256,
-        data: include_bytes!("../../../assets/ega_8by8.bin"),
+        data: include_bytes!("../../../../assets/ega_8by8.bin"),
         
     },
     EGAFont {
         w: 8,
         h: 14,
         span: 256,
-        data: include_bytes!("../../../assets/ega_8by14.bin"),
+        data: include_bytes!("../../../../assets/ega_8by14.bin"),
     }
 ];
 
