@@ -34,7 +34,8 @@
 
 */
 
-use cgmath::{Matrix3, Vector3};
+//use cgmath::{Matrix3, Vector3};
+use glam::{Mat3, Mat3A, Vec3, Vec3A};
 
 // Composite stufff
 pub const EDGE_RESPONSE: f32 = 0.80;
@@ -72,11 +73,22 @@ const CCYCLE_HALF: i32 = CCYCLE / 2;
 const PI: f32 = 3.1415926;
 const TAU: f32 = 6.2831853;
 
+/*
 #[rustfmt::skip]
 static YIQ2RGB: Matrix3<f32> = Matrix3::new(
     1.000, 1.000, 1.000, 
     0.956, -0.272, -1.106, 
     0.621, -0.647, 1.703,
+);
+*/
+#[rustfmt::skip]
+static YIQ2RGB: Mat3 = Mat3::from_cols_array(
+    
+    &[
+        1.000, 1.000, 1.000, 
+        0.956, -0.272, -1.106, 
+        0.621, -0.647, 1.703,
+    ]
 );
 
 /// Return the hdot number (0-3) for the given x position.
@@ -196,15 +208,16 @@ pub fn artifact_colors_fast(
     luma: f32,
 ) {
 
+    let adjust_mat = make_adjust_mat(hue, sat, luma);
 
     for y in 0..img_in_h {
-
         
         let mut dst_o0 = ((y * 2) * (img_out_w * 4)) as usize;
         let mut dst_o1 = dst_o0 + (img_out_w * 4) as usize;
 
         for x in 0..img_out_w {
-            let mut yiq: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0);
+            //let mut yiq: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0);  // cgmath
+            let mut yiq = Vec3A::new(0.0, 0.0, 0.0);
 
             for n in -CCYCLE_HALF..CCYCLE_HALF {
                 let signal = sample_gy_xy(img_in, img_in_w, img_in_h, (x * 2) as i32 + n, y as i32);
@@ -220,7 +233,7 @@ pub fn artifact_colors_fast(
             }
             yiq = yiq / CCYCLE as f32;
 
-            let adjust_yiq = adjust(yiq, hue, sat, luma);
+            let adjust_yiq = adjust(yiq, adjust_mat);
             let rgb = YIQ2RGB * adjust_yiq;
 
             img_out[dst_o0 + 0] = to_u8_clamped(rgb.x * 255.0);
@@ -235,6 +248,60 @@ pub fn artifact_colors_fast(
 
             dst_o0 += 4;
             dst_o1 += 4;
+        }
+    }
+}
+
+pub fn artifact_colors_fast_u32(
+    img_in: &[u8],
+    img_in_w: u32,
+    img_in_h: u32,    
+    sync_table: &[(f32, f32, f32)],
+    img_out: &mut [u8],
+    img_out_w: u32,
+    _img_out_h: u32,
+    hue: f32,
+    sat: f32,
+    luma: f32,
+) {
+
+    let img_out_u32: &mut [u32] = bytemuck::cast_slice_mut(img_out);
+
+    let adjust_mat = make_adjust_mat(hue, sat, luma);
+
+    for y in 0..img_in_h {
+        
+        let mut dst_o0 = ((y * 2) * img_out_w) as usize;
+        let mut dst_o1 = dst_o0 + img_out_w as usize;
+
+        for x in 0..img_out_w {
+            //let mut yiq: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0);  // cgmath
+            let mut yiq = Vec3A::new(0.0, 0.0,0.0);
+
+            for n in -CCYCLE_HALF..CCYCLE_HALF {
+                let signal = sample_gy_xy(img_in, img_in_w, img_in_h, (x * 2) as i32 + n, y as i32);
+
+                let sti = ((x * 2) as i32 + n as i32 + CCYCLE_HALF) as usize;
+                let signal_i = signal * sync_table[sti].1;
+                let signal_q = signal * sync_table[sti].2;
+
+                //log::trace!("Sync: Calc: {},{} Table: {},{}", sync.y, sync.z, sync_table[sti].1, sync_table[sti].2);
+                yiq.x += signal;
+                yiq.y += signal_i;
+                yiq.z += signal_q;
+            }
+            yiq = yiq / CCYCLE as f32;
+
+            let adjust_yiq = adjust(yiq, adjust_mat);
+            let rgb = YIQ2RGB * adjust_yiq;
+
+            let pixel = to_u32_clamped(rgb.x * 255.0) << 24 | to_u32_clamped(rgb.y * 255.0) << 16 | to_u32_clamped(rgb.x * 255.0) << 8 | 0xFF;
+
+            img_out_u32[dst_o0] = pixel;
+            img_out_u32[dst_o1] = pixel;
+
+            dst_o0 += 1;
+            dst_o1 += 1;
         }
     }
 }
@@ -260,6 +327,7 @@ pub fn sample_gy_xy(img_in: &[u8], img_w: u32, img_h: u32, mut x: i32, mut y: i3
     img_in[io] as f32 / 255.0
 }
 
+/*
 // Adjusts a YIQ color by hue, saturation and brightness factors
 pub fn adjust(yiq: Vector3<f32>, h: f32, s: f32, b: f32) -> Vector3<f32> {
     #[rustfmt::skip]
@@ -271,6 +339,23 @@ pub fn adjust(yiq: Vector3<f32>, h: f32, s: f32, b: f32) -> Vector3<f32> {
 
     m * yiq
 }
+*/
+
+// Adjusts a YIQ color by hue, saturation and brightness factors
+#[inline]
+pub fn adjust(yiq: Vec3A, m: Mat3A) -> Vec3A {
+    m * yiq
+}
+
+pub fn make_adjust_mat(h: f32, s: f32, b: f32) -> Mat3A {
+    Mat3A::from_cols_array(
+        &[ 
+            b,0.0,0.0,
+            0.0,s * h.cos(), -h.sin(),
+            0.0,h.sin(), s * h.cos(),
+        ]
+    )
+}
 
 #[inline]
 pub fn to_u8_clamped(f: f32) -> u8 {
@@ -280,6 +365,17 @@ pub fn to_u8_clamped(f: f32) -> u8 {
         0
     } else {
         f as u8
+    }
+}
+
+#[inline]
+pub fn to_u32_clamped(f: f32) -> u32 {
+    if f >= 255.0 {
+        255
+    } else if f <= 0.0 {
+        0
+    } else {
+        f as u32
     }
 }
 

@@ -1,6 +1,7 @@
 
 ## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-XX)
 
+* Switched from cgmath to glam vector library. Approx 30% speedup in CGA composite simulation.
 * Utilize bytemuck crate in CGA index->RGBA conversion, about 3x performance improvement
 * Reorganized project structure. Using Criterion for benchmarking components.
 * Update Pixels library to 0.12.1

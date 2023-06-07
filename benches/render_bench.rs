@@ -109,6 +109,42 @@ pub fn render_cga_direct_bench(c: &mut Criterion) {
         });
     });    
 
+    c.bench_function("render_cga_direct_composite_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            renderer.draw_cga_direct(
+                &mut frame_rgb, 
+                768, 
+                236, 
+                &frame_i,
+                &extents,
+                true,
+                &composite_params,
+                None
+            );
+        });
+    });    
+
+    c.bench_function("render_cga_direct_composite_u32_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            renderer.draw_cga_direct_u32(
+                &mut frame_rgb, 
+                768, 
+                236, 
+                &frame_i,
+                &extents,
+                true,
+                &composite_params,
+                None
+            );
+        });
+    });       
+
     c.bench_function("render_resize_linear_bench", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 

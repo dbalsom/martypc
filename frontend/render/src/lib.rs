@@ -875,7 +875,7 @@ impl VideoRenderer {
     ) {
 
         if composite_enabled {
-            self.draw_cga_direct_composite(frame, w, h, dbuf, extents, composite_params);
+            self.draw_cga_direct_composite_u32(frame, w, h, dbuf, extents, composite_params);
             return
         }
 
@@ -977,6 +977,53 @@ impl VideoRenderer {
         }
     }
 
+    pub fn draw_cga_direct_composite_u32(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,        
+        dbuf: &[u8],
+        extents: &DisplayExtents,
+        composite_params: &CompositeParams
+    ) {
+
+        if let Some(composite_buf) = &mut self.composite_buf {
+            let max_w = std::cmp::min(w, extents.aperture_w);
+            let max_h = std::cmp::min(h / 2, extents.aperture_h);
+            
+            //log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
+
+            process_cga_composite_int(
+                dbuf, 
+                extents.aperture_w, 
+                extents.aperture_h, 
+                extents.overscan_l,
+                extents.overscan_t,
+                extents.row_stride as u32, 
+                composite_buf);
+
+            // Regen sync table if width changed
+            if self.sync_table_w != (max_w * 2) {
+                self.sync_table.resize(((max_w * 2) + CCYCLE as u32) as usize, (0.0, 0.0, 0.0));
+                regen_sync_table(&mut self.sync_table,(max_w * 2) as usize);
+                // Update to new width
+                self.sync_table_w = max_w * 2;
+            }
+
+            artifact_colors_fast_u32(
+                composite_buf, 
+                max_w * 2, 
+                max_h, 
+                &self.sync_table, 
+                frame, 
+                max_w, 
+                max_h, 
+                composite_params.hue, 
+                composite_params.sat,
+                composite_params.luma
+            );
+        }
+    }
 
 }
 
