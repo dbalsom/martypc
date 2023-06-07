@@ -40,6 +40,7 @@ use marty_core::{
 };
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use bytemuck;
 
 pub fn render_cga_direct_bench(c: &mut Criterion) {
     // One-time setup code goes here
@@ -186,6 +187,15 @@ pub fn render_cga_direct_bench(c: &mut Criterion) {
             );
         });
     });        
+
+    c.bench_function("render_bytemuck_u8_to_u32_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            let frame_u32: &mut [u32] = black_box(bytemuck::cast_slice_mut(&mut frame_i));
+        });
+    });      
 }
 
 criterion_group!(render_benches, render_cga_direct_bench);

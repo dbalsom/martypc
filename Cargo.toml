@@ -16,6 +16,7 @@ path = "frontend/main.rs"
 [dependencies]
 marty_core = { path = "./core/"}
 marty_render = { path = "./frontend/render"}
+bytemuck = "1.13.1"
 cpal = "0.13.5"
 #egui = "0.20"
 emath = "0.20"

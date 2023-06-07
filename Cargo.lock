@@ -1734,6 +1734,7 @@ dependencies = [
 name = "martypc"
 version = "0.1.2"
 dependencies = [
+ "bytemuck",
  "cpal",
  "criterion",
  "egui",
