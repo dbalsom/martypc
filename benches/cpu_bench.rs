@@ -30,16 +30,14 @@ use std::{
 
 use rand::Rng;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 
 use marty_core::{
     cpu_808x::{Cpu},
     cpu_common::CpuType,
-    bus::{BusInterface, ClockFactor},
     bytequeue::ByteQueue,
     config::{MachineType, TraceMode},
-    machine_manager::{MACHINE_DESCS, MachineDescriptor},
-    tracelogger::TraceLogger
+    machine_manager::{MACHINE_DESCS},
 };
 
 pub fn cpu_decode_bench<'a>(c: &mut Criterion) {
