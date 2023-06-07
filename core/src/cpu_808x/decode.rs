@@ -517,7 +517,7 @@ impl<'a> Cpu<'a> {
         }
 
         // Match templatized operands.
-        let mut match_op = |op_template| -> Result<(OperandType, OperandSize), Box<dyn std::error::Error>> {
+        let mut match_op = |op_template| -> (OperandType, OperandSize) {
             match op_template {
 
                 OperandTemplate::ModRM8 => {
@@ -526,7 +526,7 @@ impl<'a> Cpu<'a> {
                         AddressingMode::RegisterMode => OperandType::Register8(modrm.get_op1_reg8()),
                         _=> OperandType::AddressingMode(addr_mode),
                     };
-                    Ok((operand_type, OperandSize::Operand8))
+                    (operand_type, OperandSize::Operand8)
                 }
                 OperandTemplate::ModRM16 => {
                     let addr_mode = modrm.get_addressing_mode();
@@ -534,19 +534,19 @@ impl<'a> Cpu<'a> {
                         AddressingMode::RegisterMode => OperandType::Register16(modrm.get_op1_reg16()),
                         _=> OperandType::AddressingMode(addr_mode)
                     };
-                    Ok((operand_type, OperandSize::Operand16))
+                    (operand_type, OperandSize::Operand16)
                 }
                 OperandTemplate::Register8 => {
                     let operand_type = OperandType::Register8(modrm.get_op2_reg8());
-                    Ok((operand_type, OperandSize::Operand8))
+                    (operand_type, OperandSize::Operand8)
                 }
                 OperandTemplate::Register16 => {              
                     let operand_type = OperandType::Register16(modrm.get_op2_reg16());
-                    Ok((operand_type, OperandSize::Operand16))       
+                    (operand_type, OperandSize::Operand16)     
                 }
                 OperandTemplate::SegmentRegister => {
                     let operand_type = OperandType::Register16(modrm.get_op2_segmentreg16());
-                    Ok((operand_type, OperandSize::Operand16))
+                    (operand_type, OperandSize::Operand16)
                 }
                 OperandTemplate::Register8Encoded => {
                     let operand_type = match opcode & OPCODE_REGISTER_SELECT_MASK {
@@ -560,7 +560,7 @@ impl<'a> Cpu<'a> {
                         0x07 => OperandType::Register8(Register8::BH),
                         _ => OperandType::InvalidOperand
                     };
-                    Ok((operand_type, OperandSize::Operand8))
+                    (operand_type, OperandSize::Operand8)
                 }
                 OperandTemplate::Register16Encoded => {
                     let operand_type = match opcode & OPCODE_REGISTER_SELECT_MASK {
@@ -574,55 +574,55 @@ impl<'a> Cpu<'a> {
                         0x07 => OperandType::Register16(Register16::DI),
                         _ => OperandType::InvalidOperand
                     };
-                    Ok((operand_type, OperandSize::Operand16))
+                    (operand_type, OperandSize::Operand16)
                 }
                 OperandTemplate::Immediate8 => {
                     // Peek at immediate value now, fetch during execute
                     let operand = bytes.q_peek_u8();
                     size += 1;
-                    Ok((OperandType::Immediate8(operand), OperandSize::Operand8))
+                    (OperandType::Immediate8(operand), OperandSize::Operand8)
                 }
                 OperandTemplate::Immediate16 => {
                     // Peek at immediate value now, fetch during execute
                     let operand = bytes.q_peek_u16();
                     size += 2;
-                    Ok((OperandType::Immediate16(operand), OperandSize::Operand16))
+                    (OperandType::Immediate16(operand), OperandSize::Operand16)
                 }
                 OperandTemplate::Immediate8SignExtended => {
                     // Peek at immediate value now, fetch during execute
                     let operand = bytes.q_peek_i8();
                     size += 1;
-                    Ok((OperandType::Immediate8s(operand), OperandSize::Operand8))
+                    (OperandType::Immediate8s(operand), OperandSize::Operand8)
                 }
                 OperandTemplate::Relative8 => {
                     // Peek at rel8 value now, fetch during execute
                     let operand = bytes.q_peek_i8();
                     size += 1;
-                    Ok((OperandType::Relative8(operand), OperandSize::Operand8))
+                    (OperandType::Relative8(operand), OperandSize::Operand8)
                 }
                 OperandTemplate::Relative16 => {
                     // Peek at rel16 value now, fetch during execute
                     let operand = bytes.q_peek_i16();
                     size += 2;
-                    Ok((OperandType::Relative16(operand), OperandSize::Operand16))                
+                    (OperandType::Relative16(operand), OperandSize::Operand16)             
                 }
                 OperandTemplate::Offset8 => {
                     // Peek at offset8 value now, fetch during execute
                     let operand = bytes.q_peek_u16();
                     size += 2;
-                    Ok((OperandType::Offset8(operand), OperandSize::Operand8))
+                    (OperandType::Offset8(operand), OperandSize::Operand8)
                 }
                 OperandTemplate::Offset16 => {
                     // Peek at offset16 value now, fetch during execute
                     let operand = bytes.q_peek_u16();
                     size += 2;
-                    Ok((OperandType::Offset16(operand), OperandSize::Operand16))
+                    (OperandType::Offset16(operand), OperandSize::Operand16)
                 }
                 OperandTemplate::FixedRegister8(r8) => {
-                    Ok((OperandType::Register8(r8), OperandSize::Operand8))
+                    (OperandType::Register8(r8), OperandSize::Operand8)
                 }
                 OperandTemplate::FixedRegister16(r16) => {
-                    Ok((OperandType::Register16(r16), OperandSize::Operand16))
+                    (OperandType::Register16(r16), OperandSize::Operand16)
                 }
                 /*
                 OperandTemplate::NearAddress => {
@@ -634,20 +634,20 @@ impl<'a> Cpu<'a> {
                 OperandTemplate::FarAddress => {
                     let (segment, offset) = bytes.q_peek_farptr16();
                     size += 4;
-                    Ok((OperandType::FarAddress(segment,offset), OperandSize::NoSize))
+                    (OperandType::FarAddress(segment,offset), OperandSize::NoSize)
                 }
-                _=>Ok((OperandType::NoOperand,OperandSize::NoOperand))
+                _=>(OperandType::NoOperand,OperandSize::NoOperand)
             }
         };
 
         match operand1_template {
             OperandTemplate::NoTemplate => {},
-            _=> (operand1_type, operand1_size) = match_op(operand1_template)?
+            _=> (operand1_type, operand1_size) = match_op(operand1_template)
         }
     
         match operand2_template {
             OperandTemplate::NoTemplate => {},
-            _=> (operand2_type, operand2_size) = match_op(operand2_template)?
+            _=> (operand2_type, operand2_size) = match_op(operand2_template)
         }
 
         // Set a flag if either of the instruction operands is a memory operand.
