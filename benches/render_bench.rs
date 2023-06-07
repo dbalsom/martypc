@@ -26,6 +26,7 @@
 
 pub const CGA_FRAME_INDEX_SIZE: usize =  238944;
 pub const CGA_FRAME_RGBA_SIZE: usize = CGA_FRAME_INDEX_SIZE * 8;
+pub const CGA_FRAME_RGBA_RESIZED: usize = 768 * 576 * 4;
 
 use rand::Rng;
 
@@ -70,6 +71,7 @@ pub fn render_cga_direct_bench(c: &mut Criterion) {
     }
     let mut frame_i = std::iter::repeat(0).take(CGA_FRAME_INDEX_SIZE).collect::<Vec<_>>();
     let mut frame_rgb = std::iter::repeat(0).take(CGA_FRAME_RGBA_SIZE).collect::<Vec<_>>();
+    let mut frame_resized_rgb = std::iter::repeat(0).take(CGA_FRAME_RGBA_RESIZED).collect::<Vec<_>>();
 
     c.bench_function("render_cga_direct_bench", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
@@ -88,6 +90,66 @@ pub fn render_cga_direct_bench(c: &mut Criterion) {
             );
         });
     });
+
+    c.bench_function("render_cga_direct_u32_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            renderer.draw_cga_direct_u32(
+                &mut frame_rgb, 
+                768, 
+                236, 
+                &frame_i,
+                &extents,
+                false,
+                &composite_params,
+                None
+            );
+        });
+    });    
+
+    c.bench_function("render_resize_linear_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        let mut resample_ctx = marty_render::ResampleContext::new();
+
+        resample_ctx.precalc(768, 472, 768, 576);
+
+        b.iter(|| {
+            // Measured code goes here
+            marty_render::resize_linear(
+                &frame_rgb, 
+                768, 
+                472, 
+                &mut frame_resized_rgb, 
+                768, 
+                576,
+                &resample_ctx
+            );
+        });
+    });    
+
+    c.bench_function("render_resize_linear_fast_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        let mut resample_ctx = marty_render::ResampleContext::new();
+
+        resample_ctx.precalc(768, 472, 768, 576);
+
+        b.iter(|| {
+            // Measured code goes here
+            marty_render::resize_linear_fast(
+                &mut frame_rgb, 
+                768, 
+                472, 
+                &mut frame_resized_rgb, 
+                768, 
+                576,
+                &mut resample_ctx
+            );
+        });
+    });        
 }
 
 criterion_group!(render_benches, render_cga_direct_bench);

@@ -1,9 +1,10 @@
 
 ## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-XX)
 
+* Utilize bytemuck crate in CGA index->RGBA conversion, about 3x performance improvement
+* Reorganized project structure. Using Criterion for benchmarking components.
 * Update Pixels library to 0.12.1
-* Optimized linear interpolator. Now executes in ~50% of the time
-* PIC fix for GLaBIOS FDC error
+* Use fast_image_resize crate for SIMD accelleration. Aspect correction is now approx 5X faster with equivalent quality.
 * Fixed bug in PIT latch logic
 * Added CTRL-ALT-DEL menu option
 

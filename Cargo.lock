@@ -1092,6 +1092,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast_image_resize"
+version = "2.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc789a40040e11bbe4ba31ca319406805a12fe3f8d71314bbc4bd076602ad55a"
+dependencies = [
+ "num-traits",
+ "thiserror",
+]
+
+[[package]]
 name = "fdeflate"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1705,7 +1715,9 @@ dependencies = [
 name = "marty_render"
 version = "0.1.2"
 dependencies = [
+ "bytemuck",
  "cgmath",
+ "fast_image_resize",
  "image",
  "marty_core",
  "rand",

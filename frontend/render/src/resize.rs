@@ -24,6 +24,11 @@
 
 */
 
+use std::num::NonZeroU32;
+
+use fast_image_resize as fr;
+use fr::{Resizer, ResizeAlg, FilterType, DynamicImageView, Image, PixelType};
+
 pub struct ResampleParam {
     w: u8,
     iw: u8,
@@ -31,8 +36,8 @@ pub struct ResampleParam {
     y_off_high: usize,
     dy_offset: usize,
 }
-
 pub struct ResampleContext {
+    resizer: Option<Resizer>,
     src_w: u32,
     src_h: u32,
     dst_w: u32,
@@ -43,7 +48,17 @@ pub struct ResampleContext {
 impl ResampleContext {
     pub fn new() -> Self {
 
+        let mut resizer = Resizer::new(ResizeAlg::SuperSampling(FilterType::Bilinear, 4));
+
+        /*
+        unsafe {
+            //resizer.set_cpu_extensions(fr::CpuExtensions::Avx2);
+            resizer.set_cpu_extensions(fr::CpuExtensions::Sse4_1);
+        }
+        */
+
         Self {
+            resizer: Some(resizer),
             src_w: 0,
             src_h: 0,
             dst_w: 0,
@@ -100,13 +115,11 @@ pub fn resize_linear(
     dst_h: u32,
     ctx: &ResampleContext) 
 {
-
     assert_eq!(ctx.src_h, src_h);
     assert_eq!(ctx.dst_h, dst_h);
     assert!(dst.len() >= (dst_w * dst_h * 4) as usize);
 
     for y in 0..(dst_h as usize) {
-
         for x in (0..(dst_w as usize * 4)).step_by(4) {
             
             let low_off: usize = ctx.params[y].y_off_low + x;
@@ -120,4 +133,20 @@ pub fn resize_linear(
             //dst[dyo + 3] = 255;
         }
     }
+}
+
+pub fn resize_linear_fast(
+    src: &mut [u8], 
+    src_w: u32, 
+    src_h: u32, 
+    dst: &mut[u8],
+    dst_w: u32, 
+    dst_h: u32,
+    ctx: &mut ResampleContext) 
+{
+
+    let src_img = Image::from_slice_u8(NonZeroU32::new(src_w).unwrap(), NonZeroU32::new(src_h).unwrap(), src, PixelType::U8x4).unwrap();
+    let mut dst_img = Image::from_slice_u8(NonZeroU32::new(dst_w).unwrap(), NonZeroU32::new(dst_h).unwrap(), dst, PixelType::U8x4).unwrap();
+
+    ctx.resizer.as_mut().unwrap().resize(&src_img.view(), &mut dst_img.view_mut()).unwrap();
 }

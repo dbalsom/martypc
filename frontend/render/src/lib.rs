@@ -36,6 +36,8 @@
 
 use std::path::Path;
 
+use bytemuck::*;
+
 pub mod resize;
 pub mod composite;
 
@@ -179,6 +181,47 @@ const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
         [0xF3, 0x4E, 0xF3, 0xFF], // 13 - Light Magenta
         [0xF3, 0xF3, 0x4E, 0xFF], // 14 - Yellow
         [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+    ],
+];
+
+// Little-endian
+const CGA_RGBA_COLORS_U32: &[[u32; 16]; 2] = &[
+    [
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][0]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][1]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][2]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][3]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][4]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][5]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][6]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][7]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][8]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][9]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][10]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][11]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][12]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][13]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][14]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][15]),
+    ],
+    // VileR's palette
+    [
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][0]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][1]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][2]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][3]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][4]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][5]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][6]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][7]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][8]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][9]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][10]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][11]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][12]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][13]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][14]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][15]),
     ],
 ];
 
@@ -815,6 +858,74 @@ impl VideoRenderer {
             self.draw_vertical_xor_line(frame, w, max_x, max_y, beam.0);
         }
     }
+
+    /// Draw the CGA card in Direct Mode. 
+    /// Cards in Direct Mode generate their own framebuffers, we simply display the current back buffer
+    /// Optionally composite processing is performed.
+    pub fn draw_cga_direct_u32(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,
+        dbuf: &[u8],
+        extents: &DisplayExtents,
+        composite_enabled: bool,
+        composite_params: &CompositeParams,
+        beam_pos: Option<(u32, u32)>
+    ) {
+
+        if composite_enabled {
+            self.draw_cga_direct_composite(frame, w, h, dbuf, extents, composite_params);
+            return
+        }
+
+        // Attempt to center the image by reducing right overscan 
+        //let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
+        //let overscan_half = overscan_total / 2;
+
+        let mut horiz_adjust = extents.aperture_x;
+        if extents.aperture_x + extents.aperture_w >= extents.field_w {
+            horiz_adjust = 0;
+        }
+        /*
+        if overscan_half < extents.overscan_l {
+            // We want to shift image to the right 
+            horiz_adjust = extents.overscan_l - overscan_half;
+        }
+        */
+
+        // Assume display buffer visible data starts at offset 0
+
+        let max_y = std::cmp::min(h / 2, extents.aperture_h);
+        let max_x = std::cmp::min(w, extents.aperture_w);
+
+        //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
+
+        let frame_u32: &mut [u32] = bytemuck::cast_slice_mut(frame);
+
+        for y in 0..max_y {
+
+            let dbuf_row_offset = y as usize * (extents.row_stride / 4);
+            let frame_row0_offset = ((y * 2) * w) as usize;
+            let frame_row1_offset = (((y * 2) * w) + (w)) as usize;
+
+            for x in 0..max_x {
+                let fo0 = frame_row0_offset + x as usize;
+                let fo1 = frame_row1_offset + x as usize;
+
+                let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+
+                frame_u32[fo0] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                frame_u32[fo1] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+            }
+        }
+
+        // Draw crosshairs for debugging crt beam pos
+        if let Some(beam) = beam_pos {
+            self.draw_horizontal_xor_line(frame, w, max_x, max_y, beam.1);
+            self.draw_vertical_xor_line(frame, w, max_x, max_y, beam.0);
+        }
+    }    
 
     pub fn draw_cga_direct_composite(
         &mut self,

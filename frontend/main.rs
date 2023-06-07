@@ -1266,6 +1266,7 @@ fn main() {
                                             beam_pos
                                         );
 
+                                        /*
                                         marty_render::resize_linear(
                                             &render_src, 
                                             video_data.render_w, 
@@ -1274,7 +1275,18 @@ fn main() {
                                             video_data.aspect_w, 
                                             video_data.aspect_h,
                                             &resample_context
-                                        );                            
+                                        );
+                                        */
+                                        marty_render::resize_linear_fast(
+                                            &mut render_src, 
+                                            video_data.render_w, 
+                                            video_data.render_h, 
+                                            pixels.frame_mut(), 
+                                            video_data.aspect_w, 
+                                            video_data.aspect_h,
+                                            &mut resample_context
+                                        );
+
                                     }
                                     false => {
                                         video.draw_cga_direct(
