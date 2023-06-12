@@ -18,13 +18,15 @@
 
     --------------------------------------------------------------------------
 
-    devices::cga.rs
+    devices::cga::mod.rs
 
     Implementation of the IBM CGA card, built around the Motorola MC6845 
     display controller.
 
-*/
+    This implementation is a bit complex due to being able to clock the CGA
+    by a single tick/pixel or by character/8 pixels.
 
+*/
 
 #![allow(dead_code)]
 use std::{
@@ -33,7 +35,17 @@ use std::{
     convert::TryInto
 };
 
-use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
+use bytemuck;
+
+#[macro_use]
+mod io;
+mod mmio;
+mod tablegen;
+mod videocard;
+
+use crate::devices::cga::tablegen::*;
+
+use crate::bus::{BusInterface, DeviceRunTimeUnit};
 use crate::config::VideoType;
 use crate::tracelogger::TraceLogger;
 use crate::videocard::*;
@@ -139,14 +151,6 @@ const CGA_CURSOR_BLINK_RATE_US: f64 = FRAME_TIME_US * 8.0;
 
 const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
 
-pub const CRTC_REGISTER_SELECT: u16         = 0x3D4;
-pub const CRTC_REGISTER: u16                = 0x3D5;
-
-pub const CGA_MODE_CONTROL_REGISTER: u16    = 0x3D8;
-pub const CGA_COLOR_CONTROL_REGISTER: u16   = 0x3D9;
-pub const CGA_STATUS_REGISTER: u16          = 0x3DA;
-pub const CGA_LIGHTPEN_REGISTER: u16        = 0x3DB;
-
 const MODE_MATCH_MASK: u8       = 0b0001_1111;
 const MODE_HIRES_TEXT: u8       = 0b0000_0001;
 const MODE_GRAPHICS: u8         = 0b0000_0010;
@@ -174,7 +178,7 @@ const STATUS_VERTICAL_RETRACE: u8       = 0b0000_1000;
 // Include the standard 8x8 CGA font.
 // TODO: Support alternate font with thinner glyphs? It was normally not accessable except 
 // by soldering a jumper
-static CGA_FONT: &'static [u8] = include_bytes!("../../../assets/cga_8by8.bin");
+const CGA_FONT: &'static [u8] = include_bytes!("../../../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const CGA_HCHAR_CLOCK: u8 = 8;
@@ -210,6 +214,7 @@ pub enum CGAColor {
     Yellow,
     WhiteBright
 } */
+
 const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 2, 4, 6],       // Red / Green / Brown
     [0, 10, 12, 14],    // Red / Green / Brown High Intensity
@@ -226,13 +231,55 @@ const CGA_VBLANK_COLOR: u8 = 0;
 const CGA_VBLANK_DEBUG_COLOR: u8 = 14;
 const CGA_DISABLE_COLOR: u8 = 0;
 const CGA_DISABLE_DEBUG_COLOR: u8 = 2;
-const CGA_OVERSCAN_COLOR: u8 = 1;
+const CGA_OVERSCAN_COLOR: u8 = 5;
 /*
 const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
 */
 
 const CGA_CURSOR_MAX: usize = 32;
+
+// Solid color spans of 8 pixels.
+// Used for drawing overscan fast with bytemuck
+const CGA_COLORS_U64: [u64; 16] = [
+    0x0000000000000000,
+    0x0101010101010101,
+    0x0202020202020202,
+    0x0303030303030303,
+    0x0404040404040404,
+    0x0505050505050505,
+    0x0606060606060606,
+    0x0707070707070707,
+    0x0808080808080808,
+    0x0909090909090909,
+    0x0A0A0A0A0A0A0A0A,
+    0x0B0B0B0B0B0B0B0B,
+    0x0C0C0C0C0C0C0C0C,
+    0x0D0D0D0D0D0D0D0D,
+    0x0E0E0E0E0E0E0E0E,
+    0x0F0F0F0F0F0F0F0F,
+];
+
+// Solid color spans of 8 pixels.
+// Used for drawing debug info into index buffer.
+const CGA_DEBUG_U64: [u64; 16] = [
+    0x0000000000000000,
+    0x1010101010101010,
+    0x2020202020202020,
+    0x3030303030303030,
+    0x4040404040404040,
+    0x5050505050505050,
+    0x6060606060606060,
+    0x7070707070707070,
+    0x8080808080808080,
+    0x9090909090909090,
+    0xA0A0A0A0A0A0A0A0,
+    0xB0B0B0B0B0B0B0B0,
+    0xC0C0C0C0C0C0C0C0,
+    0xD0D0D0D0D0D0D0D0,
+    0xE0E0E0E0E0E0E0E0,
+    0xF0F0F0F0F0F0F0F0,
+];
 
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum ClockMode {
@@ -242,25 +289,33 @@ pub enum ClockMode {
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
-        $self.trace_logger.print(&format!($($t)*));
-        $self.trace_logger.print("\n".to_string());
+        if $self.trace_logger.is_some() {
+            $self.trace_logger.print(&format!($($t)*));
+            $self.trace_logger.print("\n".to_string());
+        }
     }};
 }
 
+pub(crate) use trace;
+
 macro_rules! trace_regs {
     ($self:ident) => {
-        $self.trace_logger.print(
-            &format!(
-                "[SL:{:03} HCC:{:03} VCC:{:03} VT:{:03} VS:{:03}] ", 
-                $self.scanline,
-                $self.hcc_c0,
-                $self.vcc_c4,
-                $self.crtc_vertical_total,
-                $self.crtc_vertical_sync_pos
-            )
-        );
+        if $self.trace_logger.is_some() {
+            $self.trace_logger.print(
+                &format!(
+                    "[SL:{:03} HCC:{:03} VCC:{:03} VT:{:03} VS:{:03}] ", 
+                    $self.scanline,
+                    $self.hcc_c0,
+                    $self.vcc_c4,
+                    $self.crtc_vertical_total,
+                    $self.crtc_vertical_sync_pos
+                )
+            );
+        }
     };
 }
+
+pub(crate) use trace_regs;
 
 pub struct CGACard {
     
@@ -269,9 +324,10 @@ pub struct CGACard {
     last_vsync_cycles: u64,
     cur_screen_cycles: u64,
     cycles_per_vsync: u64,
-    sink_cycles: u64,
+    sink_cycles: u32,
 
     mode_pending: bool,
+    clock_pending: bool,
     mode_byte: u8,
     display_mode: DisplayMode,
     mode_enable: bool,
@@ -388,6 +444,7 @@ pub struct CGACard {
     debug_color: u8,
 
     trace_logger: TraceLogger,
+    debug_counter: u64,
 }
 
 #[derive(Debug)]
@@ -412,76 +469,6 @@ pub enum CRTCRegister {
     LightPenPositionL
 }
 
-impl IoDevice for CGACard {
-    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
-
-        // Catch up to CPU state.
-        if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
-            //log::debug!("Ticking {} clocks on IO read.", ticks);
-            for _ in 0..ticks {
-                self.tick();
-            }
-            self.ticks_advanced += ticks;
-            self.calc_cycle_debt();
-        }
-
-        match port {
-            CGA_MODE_CONTROL_REGISTER => {
-                log::error!("CGA: Read from Mode control register!");
-                0
-            }            
-            CGA_STATUS_REGISTER => {
-                self.handle_status_register_read()
-            }
-            CRTC_REGISTER => {
-                self.handle_crtc_register_read()
-            }
-            _ => {
-                0
-            }
-        }
-    }
-
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
-
-        // Catch up to CPU state.
-        if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
-            for _ in 0..ticks {
-                self.tick();
-            }
-            self.ticks_advanced += ticks;
-            self.calc_cycle_debt();
-        }
-
-        match port {
-            CGA_MODE_CONTROL_REGISTER => {
-                self.handle_mode_register(data);
-            }
-            CRTC_REGISTER_SELECT => {
-                self.handle_crtc_register_select(data);
-            }
-            CRTC_REGISTER => {
-                self.handle_crtc_register_write(data);
-            }
-            CGA_COLOR_CONTROL_REGISTER => {
-                self.handle_cc_register_write(data);
-            }
-            _ => {}
-        }
-    }
-
-    fn port_list(&self) -> Vec<u16> {
-        vec![
-            CRTC_REGISTER_SELECT,
-            CRTC_REGISTER,
-            CGA_MODE_CONTROL_REGISTER,
-            CGA_COLOR_CONTROL_REGISTER,
-            CGA_LIGHTPEN_REGISTER,
-            CGA_STATUS_REGISTER,
-        ]
-    }
-
-}
 
 // CGA implementation of Default for DisplayExtents.
 // Each videocard implementation should implement sensible defaults.
@@ -521,6 +508,7 @@ impl CGACard {
 
             mode_byte: 0,
             mode_pending: false,
+            clock_pending: false,
             display_mode: DisplayMode::Mode0TextBw40,
             mode_enable: true,
             mode_graphics: false,
@@ -642,7 +630,8 @@ impl CGACard {
 
             debug_color: 0,
 
-            trace_logger
+            trace_logger,
+            debug_counter: 0
         };
 
         if video_frame_debug {
@@ -657,29 +646,71 @@ impl CGACard {
         cga
     }
 
+    fn catch_up(&mut self, delta: DeviceRunTimeUnit) {
+
+        if self.sink_cycles > 0 {
+            // Don't catch up when sinking;
+            return
+        }
+        // Catch up to CPU state.
+        if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
+            //log::debug!("Ticking {} clocks on IO read.", ticks);
+
+            let phase_offset = self.calc_phase_offset();
+
+            // Can we squeeze a character update into the catch-up interval?
+            if (ticks > phase_offset) && ((ticks - phase_offset) >= self.char_clock) {
+                //log::warn!("can afford character tick in catch_up()");
+
+                // Catch up to LCLOCK
+                for _ in 0..phase_offset {
+                    self.tick();
+                }
+
+                if self.calc_phase_offset() != 0 { 
+                    log::error!("catch up failed: {} + {}" , self.cycles, phase_offset );
+                }
+
+                // Tick a character
+                self.tick_char();
+
+                // Tick any remaining cycles
+                for _ in 0..(ticks - phase_offset - self.char_clock) {
+                    self.tick();
+                }
+            }
+            else {
+                // Not enough ticks for a full character, just catch up
+                for _ in 0..ticks {
+                    self.tick();
+                }
+            }
+
+            self.ticks_advanced += ticks; // must be +=
+            self.pixel_clocks_owed = self.calc_cycles_owed();
+        }
+    }
+
     /// Update the number of pixel clocks we must execute before we can return to clocking the 
     /// CGA card by character clock.  When an IO read/write occurs, the CGA card is updated to
     /// the current clock cycle by ticking pixels. During run() we then have to tick by pixels
     /// until we are back in phase with the character clock.
     #[inline]
-    fn calc_cycle_debt(&mut self) {
+    fn calc_cycles_owed(&mut self) -> u32 {
 
         if self.ticks_advanced % CGA_LCHAR_CLOCK as u32 > 0 {
             // We have advanced the CGA card out of phase with the character clock. Count 
             // how many pixel clocks we need to tick by to be back in phase.
-            
-            /*
-            log::trace!(
-                "calc_cycle_debt(): ticks_advanced: {} catch_up: {}", 
-                self.ticks_advanced, 
-                (CGA_CHAR_CLOCK as u32 * 2) - (self.ticks_advanced % (CGA_CHAR_CLOCK as u32 * 2))
-            );
-            */
-            
-            //self.pixel_clocks_owed = CGA_LCHAR_CLOCK as u32 - (self.ticks_advanced % CGA_LCHAR_CLOCK as u32);
-            self.pixel_clocks_owed = ((!self.cycles + 1) & 0x0F) as u32;
-
+            ((!self.cycles + 1) & 0x0F) as u32
         }
+        else {
+            0
+        }
+    }
+    
+    #[inline]
+    fn calc_phase_offset(&mut self) -> u32 {
+        ((!self.cycles + 1) & 0x0F) as u32
     }
 
     fn get_cursor_span(&self) -> (u8, u8) {
@@ -724,7 +755,8 @@ impl CGACard {
     /// Update the CRTC start address. Usually called after a CRTC register write updates the HO or LO byte.
     fn update_start_address(&mut self) {
 
-        self.crtc_start_address = ((self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize) & 0x3FFF;
+        // HO is already masked to 6 bits when set
+        self.crtc_start_address = (self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize;
 
         trace_regs!(self);
         trace!(
@@ -916,6 +948,12 @@ impl CGACard {
 
     fn update_mode(&mut self) {
 
+        let clock_changed = self.mode_hires_txt != (self.mode_byte & MODE_HIRES_TEXT != 0);
+
+        if clock_changed {
+            self.clock_pending = true;
+        }
+
         self.mode_hires_txt = self.mode_byte & MODE_HIRES_TEXT != 0;
         self.mode_graphics  = self.mode_byte & MODE_GRAPHICS != 0;
         self.mode_bw        = self.mode_byte & MODE_BW != 0;
@@ -929,19 +967,8 @@ impl CGACard {
         // in which case overscan must be black (0).
         self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.cc_altcolor };
 
-        // Clock divisor is 1 in high res text mode, 2 in all other modes
-        // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
-        (
-            self.clock_divisor, 
-            self.char_clock, 
-            self.char_clock_mask, 
-            self.char_clock_odd_mask
-        ) = if self.mode_hires_txt {
-            (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
-        }
-        else {
-            (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
-        };
+        // Attempt to update clock.
+        self.update_clock();
 
         // Updated mask to exclude enable bit in mode calculation.
         // "Disabled" isn't really a video mode, it just controls whether
@@ -952,13 +979,14 @@ impl CGACard {
             0b0_0000 => DisplayMode::Mode1TextCo40,
             0b0_0101 => DisplayMode::Mode2TextBw80,
             0b0_0001 => DisplayMode::Mode3TextCo80,
+            0b0_0011 => DisplayMode::ModeTextAndGraphicsHack,
             0b0_0010 => DisplayMode::Mode4LowResGraphics,
             0b0_0110 => DisplayMode::Mode5LowResAltPalette,
             0b1_0110 => DisplayMode::Mode6HiResGraphics,
             0b1_0010 => DisplayMode::Mode7LowResComposite,
             _ => {
                 trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
-                log::error!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                log::warn!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
                 DisplayMode::Mode3TextCo80
             }
         };
@@ -973,12 +1001,38 @@ impl CGACard {
             self.clock_divisor                
         );
 
+        /*
         log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {} Clock: {}", 
             self.display_mode,
             self.mode_byte, 
             self.mode_enable,
             self.clock_divisor
         );
+        */
+    }
+
+    /// Update the CGA character clock. Can only be done on LCLOCK boundaries to simplify 
+    /// our logic.
+    #[inline]
+    fn update_clock(&mut self) {
+
+        if self.clock_pending && (self.cycles & 0x0F == 0) {
+            // Clock divisor is 1 in high res text mode, 2 in all other modes
+            // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
+            (
+                self.clock_divisor, 
+                self.char_clock, 
+                self.char_clock_mask, 
+                self.char_clock_odd_mask
+            ) = if self.mode_hires_txt {
+                (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
+            }
+            else {
+                (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
+            };
+
+            self.clock_pending = false;
+        }
     }
 
     fn handle_mode_register(&mut self, mode_byte: u8) {
@@ -1078,7 +1132,7 @@ impl CGACard {
             self.back_buf = 0;
         }
         
-        self.buf[self.back_buf].fill(0x00);
+        self.buf[self.back_buf].fill(0);
     }    
 
     /// Return the bit value at (col,row) of the given font glyph
@@ -1125,10 +1179,6 @@ impl CGACard {
         //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
     }
 
-    pub fn reset_beam(&mut self) {
-
-    }
-
     pub fn draw_overscan_pixel(&mut self) {
         self.buf[self.back_buf][self.rba] = self.cc_overscan_color;
 
@@ -1138,18 +1188,17 @@ impl CGACard {
         }
     }
 
-    pub fn draw_debug_pixel(&mut self) {
-        //self.buf[self.back_buf][self.rba] = self.cc_overscan_color;
-        if self.rba < CGA_MAX_CLOCK - 1 {
-            self.buf[self.back_buf][self.rba] = CGA_DEBUG_COLOR;
+    pub fn draw_pixel(&mut self, color: u8) {
 
-            if self.clock_divisor == 2 {
-                // If we are in a 320 column mode, duplicate the last pixel drawn
-                self.buf[self.back_buf][self.rba + 1] = CGA_DEBUG_COLOR;
-            }
+        self.buf[self.back_buf][self.rba] = color & 0x0F;
+
+        if self.clock_divisor == 2 {
+            // If we are in a 320 column mode, duplicate the last pixel drawn
+            self.buf[self.back_buf][self.rba + 1] = color & 0x0F;
         }
     }    
 
+    /*
     #[inline]
     pub fn draw_solid_char(&mut self, color: u8) {
 
@@ -1159,7 +1208,39 @@ impl CGACard {
             self.buf[self.back_buf][self.rba + i] = color;
         }
     }
+    */
 
+    /// Draw a character (8 or 16 pixels) using a single solid color.
+    /// Since all pixels are the same we can draw 64 bits at a time.
+    #[inline]
+    pub fn draw_solid_char(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+
+        frame_u64[self.rba >> 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
+        if self.clock_divisor == 2 {
+            frame_u64[(self.rba >> 3) + 1] = CGA_COLORS_U64[(color & 0x0F) as usize];
+        }
+    }
+
+    /// Draw a character in hires mode (8 pixels) using a single solid color.
+    /// Since all pixels are the same we can draw 64 bits at a time.
+    #[inline]
+    pub fn draw_solid_hchar(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[self.rba >> 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
+    }
+
+    /// Draw a character in lowres mode (16 pixels) using a single solid color.
+    /// Since all pixels are the same we can draw 64 bits at a time.
+    #[inline]
+    pub fn draw_solid_lchar(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[self.rba >> 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
+        frame_u64[(self.rba >> 3) + 1] = CGA_COLORS_U64[(color & 0x0F) as usize];
+    }    
+
+    /// Draw a single character glyph column pixel in text mode, doubling the pixel if 
+    /// in 40 column mode.
     pub fn draw_text_mode_pixel(&mut self) {
         let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
             true => {
@@ -1174,7 +1255,7 @@ impl CGACard {
         };
 
         // Do cursor
-        if self.cursor_status && self.blink_state && (self.vma == self.crtc_cursor_address) {
+        if (self.vma == self.crtc_cursor_address) && self.cursor_status && self.blink_state {
             // This cell has the cursor address, cursor is enabled and not blinking
             if self.cursor_data[(self.vlc_c9 & 0x1F) as usize] {
                 new_pixel = self.cur_fg;
@@ -1182,7 +1263,7 @@ impl CGACard {
         }
 
         if !self.mode_enable {
-            new_pixel = self.cc_altcolor;
+            new_pixel = 0;
         }
 
         self.buf[self.back_buf][self.rba] = new_pixel;
@@ -1193,6 +1274,44 @@ impl CGACard {
         }
     }
 
+    /// Get the 64-bit value representing the specified row of the specified character 
+    /// glyph in high-resolution text mode.
+    #[inline]
+    pub fn get_hchar_glyph_row(&self, glyph: usize, row: usize) -> u64 {
+
+        if self.cur_blink && !self.blink_state {
+            CGA_COLORS_U64[self.cur_bg as usize]
+        }
+        else {
+            let glyph_row_base = CGA_HIRES_GLYPH_TABLE[glyph & 0xFF][row];
+
+            // Combine glyph mask with foreground and background colors.
+            glyph_row_base & CGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base & CGA_COLORS_U64[self.cur_bg as usize]
+        }
+    }
+
+    /// Get a tuple of 64-bit values representing the specified row of the specified character
+    /// glyph in low-resolution (40-column) mode.
+    #[inline]
+    pub fn get_lchar_glyph_rows(&self, glyph: usize, row: usize) -> (u64, u64) {
+
+        if self.cur_blink && !self.blink_state {
+            let glyph = CGA_COLORS_U64[self.cur_bg as usize];
+            (glyph, glyph)
+        }
+        else {
+            let glyph_row_base_0 = CGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][0][row];
+            let glyph_row_base_1 = CGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][1][row];
+
+            // Combine glyph mask with foreground and background colors.
+            let glyph0 = glyph_row_base_0 & CGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base_0 & CGA_COLORS_U64[self.cur_bg as usize];
+            let glyph1 = glyph_row_base_1 & CGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base_1 & CGA_COLORS_U64[self.cur_bg as usize];
+
+            (glyph0, glyph1)
+        }
+    }
+
+    /*
     pub fn draw_text_mode_char(&mut self) {
 
         let draw_span = (8 * self.clock_divisor) as usize;
@@ -1231,6 +1350,63 @@ impl CGACard {
             self.draw_solid_char(0);
         }
     }
+    */
+
+    /// Draw an entire character row in high resolution text mode (8 pixels)
+    pub fn draw_text_mode_hchar(&mut self) {
+
+        //let draw_span = (8 * self.clock_divisor) as usize;
+
+        // Do cursor if visible, enabled and defined
+        if     self.vma == self.crtc_cursor_address
+            && self.cursor_status 
+            && self.blink_state
+            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize] 
+        {
+            self.draw_solid_hchar(self.cur_fg);
+        }
+        else if self.mode_enable {
+
+            let glyph_row: u64;
+            // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
+            glyph_row = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
+    
+            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+            frame_u64[self.rba >> 3] = glyph_row;
+        }
+        else {
+            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
+            self.draw_solid_hchar(0);
+        }
+    }
+
+    /// Draw an entire character row in low resolution text mode (16 pixels)
+    pub fn draw_text_mode_lchar(&mut self) {
+
+        //let draw_span = (8 * self.clock_divisor) as usize;
+
+        // Do cursor if visible, enabled and defined
+        if     self.vma == self.crtc_cursor_address
+            && self.cursor_status 
+            && self.blink_state
+            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize] 
+        {
+            self.draw_solid_lchar(self.cur_fg);
+        }
+        else if self.mode_enable {
+            // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
+            let (glyph_row0, glyph_row1) = self.get_lchar_glyph_rows(self.cur_char as usize, self.vlc_c9 as usize);
+    
+            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+            frame_u64[self.rba >> 3] = glyph_row0;
+            frame_u64[(self.rba >> 3) + 1] = glyph_row1;
+        }
+        else {
+            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
+            self.draw_solid_lchar(0);
+        }
+    }
+
 
     /// Draw a pixel in low resolution graphics mode (320x200)
     /// In this mode, pixels are doubled
@@ -1249,6 +1425,8 @@ impl CGACard {
         self.buf[self.back_buf][self.rba + 1] = new_pixel;
     }
 
+    /* old implementation
+
     /// Draw a character column in low resolution graphics mode (320x200)
     /// In this mode, pixels are doubled
     pub fn draw_lowres_gfx_mode_char(&mut self) {
@@ -1257,7 +1435,7 @@ impl CGACard {
             let draw_span = 8 as usize;
 
             for i in 0..draw_span {
-                let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, i as u8);
+                let new_pixel = self.get_lowres_pixel_color(self.vlc_c9, i as u8);
                 self.buf[self.back_buf][self.rba + (i << 1)] = new_pixel;
                 self.buf[self.back_buf][self.rba + (i << 1) + 1] = new_pixel;
             }
@@ -1266,16 +1444,36 @@ impl CGACard {
             self.draw_solid_char(self.cc_altcolor);
         }
     }
+    */
+
+    /// Draw 16 pixels in low res graphics mode (320x200)
+    /// This routine uses precalculated lookups and masks to generate two u64
+    /// values to write to the index frame buffer directly.
+    pub fn draw_lowres_gfx_mode_char(&mut self) {
+
+        if self.mode_enable {
+
+            let lchar_dat = self.get_lowres_gfx_lchar(self.vlc_c9);
+            let color0 = lchar_dat.0.0;
+            let color1 = lchar_dat.1.0;
+            let mask0 = lchar_dat.0.1;
+            let mask1 = lchar_dat.1.1;
+
+            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+            
+            frame_u64[self.rba >> 3] = color0 | (mask0 & CGA_COLORS_U64[self.cc_altcolor as usize]);
+            frame_u64[(self.rba >> 3) + 1] = color1 | (mask1 & CGA_COLORS_U64[self.cc_altcolor as usize]);
+        }
+        else {
+            self.draw_solid_char(self.cc_altcolor);
+        }
+    }    
 
     /// Draw pixels in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn at the same time.
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
-        let offset = if self.vlc_c9 > 0 { 0x2000 } else { 0 };
-        let base_addr = (((self.vma & 0x3FFF) << 1) + offset) & 0x3FFF;
 
-        if self.rba >= CGA_MAX_CLOCK - 2 {
-            return;
-        }
+        let base_addr = self.get_gfx_addr(self.vlc_c9);
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
         
@@ -1303,6 +1501,7 @@ impl CGACard {
         }
     }    
 
+    /*
     /// Draw a single character column in high resolution graphics mode (640x200)
     pub fn draw_hires_gfx_mode_char(&mut self) {
 
@@ -1339,13 +1538,33 @@ impl CGACard {
             for i in 0..(CGA_LCHAR_CLOCK as usize) {
                 self.buf[self.back_buf][self.rba + i] = self.disable_color;
             }
+        } 
+    }
+    */
+
+    /// Draw a single character column in high resolution graphics mode (640x200)
+    pub fn draw_hires_gfx_mode_char(&mut self) {
+        
+        let base_addr = self.get_gfx_addr(self.vlc_c9);
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+
+        if self.mode_enable {
+    
+            let byte0 = self.mem[base_addr];
+            let byte1 = self.mem[base_addr + 1];
+
+            frame_u64[self.rba >> 3] = CGA_HIRES_GFX_TABLE[self.cc_altcolor as usize][byte0 as usize];
+            frame_u64[(self.rba >> 3) + 1] = CGA_HIRES_GFX_TABLE[self.cc_altcolor as usize][byte1 as usize];
+        }
+        else {
+            frame_u64[self.rba >> 3] = 0;
+            frame_u64[(self.rba >> 3) + 1] = 0;
         }
     }
 
     pub fn get_lowres_pixel_color(&self, row: u8, col: u8) -> u8 {
 
-        let offset = if row > 0 { 0x2000 } else { 0 };
-        let base_addr = (((self.vma & 0x3FFF) << 1) + offset) & 0x3FFF;
+        let base_addr = self.get_gfx_addr(row);
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
@@ -1359,9 +1578,34 @@ impl CGACard {
         }
     }
 
+    /// Look up the low res graphics glyphs and masks for the current lo-res graphics mode
+    /// byte (vma)
+    #[inline]
+    pub fn get_lowres_gfx_lchar(&self, row: u8) -> (&(u64, u64), &(u64, u64)) {
+
+        let base_addr = self.get_gfx_addr(row);
+        (
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr + 1] as usize]
+        )
+    }
+
+    /// Calculate the byte address given the current value of vma; given that the address
+    /// programmed into the CRTC start register is interpreted by the CGA as a word address.
+    /// In graphics mode, the row counter determines whether address line A12 from the 
+    /// CRTC is set. This effectively creates a 0x2000 byte offset for odd character rows.
+    #[inline]
+    pub fn get_gfx_addr(&self, row: u8) -> usize {
+        let row_offset = if (row & 0x01) != 0 { 0x1000 } else { 0 };
+        let addr = (self.vma & 0x0FFF | row_offset) << 1;
+        addr 
+    }
+
     pub fn get_screen_ticks(&self) -> u64 {
         self.cur_screen_cycles
     }
+    
+    /*
 
     /// Execute one CGA character.
     pub fn tick_char(&mut self) {
@@ -1383,8 +1627,8 @@ impl CGACard {
         
         // Don't execute even character clocks in low-res mode
         if self.clock_divisor == 2 && (self.cycles & 0x0F == 0) {
-            //log::trace!("skipping odd hchar: {:X}", self.cycles);
-           return 
+            log::trace!("skipping odd hchar: {:X}", self.cycles);
+            return 
         }
 
         // Only draw if render buffer address is in bounds.
@@ -1414,7 +1658,7 @@ impl CGACard {
                 self.draw_solid_char(self.cc_overscan_color);
             }
             else {
-                //log::warn!("invalid display state...");
+                log::warn!("invalid display state...");
             }
         }
 
@@ -1433,6 +1677,205 @@ impl CGACard {
 
         self.tick_crtc_char();
     }
+    */
+
+    /// Execute a hires or lowres character clock as appropriate.
+    #[inline]
+    pub fn tick_char(&mut self) {
+        if self.clock_divisor == 2 {
+            self.tick_lchar();
+        }
+        else {
+            self.tick_hchar();
+        }
+    }
+
+    /// Execute one high resolution character clock.
+    pub fn tick_hchar(&mut self) {
+
+        // sink_cycles must be factor of 8
+        // assert_eq!(self.sink_cycles & 0x07, 0);
+
+        if self.sink_cycles & 0x07 != 0 {
+            log::error!("sink_cycles: {} not divisible by 8", self.sink_cycles);
+        }
+
+        if self.sink_cycles > 0 {
+            self.sink_cycles = self.sink_cycles.saturating_sub(8);
+            return
+        }
+
+        // Cycles must be a factor of 8 and char_clock == 8
+        assert_eq!(self.cycles & 0x07, 0);
+        assert_eq!(self.char_clock, 8);        
+
+        self.cycles += 8;
+        self.cur_screen_cycles += 8;
+
+        // Only draw if render buffer address is in bounds.
+        if self.rba < (CGA_MAX_CLOCK - 8) {
+            if self.in_display_area {
+                // Draw current character row
+                if !self.mode_graphics {
+                    self.draw_text_mode_hchar();
+                }
+                else if self.mode_hires_gfx {
+                    self.draw_hires_gfx_mode_char();
+                }
+                else {
+                    self.draw_solid_hchar(self.cc_overscan_color);
+                }
+            }
+            else if self.in_crtc_hblank {
+                // Draw hblank in debug color
+                self.draw_solid_hchar(self.hblank_color);
+            }
+            else if self.in_crtc_vblank {
+                // Draw vblank in debug color
+                self.draw_solid_hchar(self.vblank_color);
+            }
+            else if self.vborder | self.hborder {
+                // Draw overscan
+                if self.debug {
+                    self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                }
+                else {
+                    self.draw_solid_hchar(self.cc_overscan_color);
+                }
+            }
+            else {
+                //log::warn!("invalid display state...");
+            }
+        }
+
+        // Update position to next pixel and character column.
+        self.beam_x += 8 * self.clock_divisor as u32;
+        self.rba += 8 * self.clock_divisor as usize;
+
+        // If we have reached the right edge of the 'monitor', return the raster position
+        // to the left side of the screen.
+        if self.beam_x >= CGA_XRES_MAX {
+            self.beam_x = 0;
+            self.beam_y += 1;
+            self.in_monitor_hsync = false;
+            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
+        }
+
+        self.tick_crtc_char();
+        self.update_clock();
+    }
+
+    /// Execute one low resolution character clock.
+    pub fn tick_lchar(&mut self) {
+        
+        // Cycles must be a factor of 16 and char_clock == 16
+        assert_eq!(self.cycles & 0x0F, 0);
+        assert_eq!(self.char_clock, 16);
+
+        // sink_cycles must be factor of 8
+        //assert!((self.sink_cycles & 0x07) == 0);
+
+        if self.sink_cycles & 0x0F != 0 {
+            log::error!("sink_cycles: {} not divisible by 16", self.sink_cycles);
+        }
+
+        if self.sink_cycles > 0 {
+            self.sink_cycles = self.sink_cycles.saturating_sub(16);
+            return
+        }
+
+        self.cycles += 16;
+        self.cur_screen_cycles += 16;
+
+        // Only draw if render buffer address is in bounds.
+        if self.rba < (CGA_MAX_CLOCK - 16) {
+            if self.in_display_area {
+                // Draw current character row
+
+                if !self.mode_graphics {
+                    self.draw_text_mode_lchar();
+                }
+                else if self.mode_hires_gfx {
+                    self.draw_hires_gfx_mode_char();
+                }
+                else {
+                    self.draw_lowres_gfx_mode_char();
+                }
+            }
+            else if self.in_crtc_hblank {
+                // Draw hblank in debug color
+                self.draw_solid_lchar(self.hblank_color);
+            }
+            else if self.in_crtc_vblank {
+                // Draw vblank in debug color
+                self.draw_solid_lchar(self.vblank_color);
+            }
+            else if self.vborder | self.hborder {
+                // Draw overscan
+                self.draw_solid_lchar(self.cc_overscan_color);
+            }
+            else {
+                //log::warn!("invalid display state...");
+            }
+        }
+
+        // Update position to next pixel and character column.
+        self.beam_x += 16;
+        self.rba += 16;
+
+        // If we have reached the right edge of the 'monitor', return the raster position
+        // to the left side of the screen.
+        if self.beam_x >= CGA_XRES_MAX {
+            self.beam_x = 0;
+            self.beam_y += 1;
+            self.in_monitor_hsync = false;
+            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
+        }
+
+        self.tick_crtc_char();
+        self.update_clock();
+    }
+
+    pub fn debug_tick2(&mut self) {
+        if self.sink_cycles > 0 {
+            self.sink_cycles = self.sink_cycles.saturating_sub(1);
+            return
+        }
+        self.cycles += 1;
+        self.cur_screen_cycles += 1;
+
+        // Don't execute even cycles if we are in half-clock mode
+        if self.clock_divisor == 2 && (self.cycles & 0x01 == 0) {
+            return;
+        }
+
+        let saved_rba = self.rba;
+
+        if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
+            self.draw_pixel(CGA_DEBUG_COLOR);
+        }
+
+        // Update position to next pixel and character column.
+        self.beam_x += self.clock_divisor as u32;
+        self.rba += self.clock_divisor as usize;
+        self.char_col += 1;
+
+        if self.beam_x == CGA_XRES_MAX {
+            self.beam_x = 0;
+            self.beam_y += 1;
+            self.in_monitor_hsync = false;
+            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
+        }
+
+        if self.rba != saved_rba + self.clock_divisor as usize {
+            log::warn!("bad rba increment");
+        }  
+
+        // Done with the current character      
+        if self.char_col == CGA_HCHAR_CLOCK {
+            self.tick_crtc_char();
+        }    
+    }
 
     /// Execute one CGA clock cycle.
     pub fn tick(&mut self) {
@@ -1449,10 +1892,11 @@ impl CGACard {
             return;
         }
 
-        if self.in_display_area {
-            // Draw current pixel
-            if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
+        let saved_rba = self.rba;
 
+        if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
+            if self.in_display_area {
+                // Draw current pixel
                 if !self.mode_graphics {
                     self.draw_text_mode_pixel();
                 }
@@ -1463,32 +1907,26 @@ impl CGACard {
                     self.draw_lowres_gfx_mode_pixel();
                 }
             }
-        }
-        else if self.in_crtc_hblank {
-            // Draw hblank in debug color
-            if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
+            else if self.in_crtc_hblank {
+                // Draw hblank in debug color
                 self.buf[self.back_buf][self.rba] = self.hblank_color;
             }
-        }
-        else if self.in_crtc_vblank {
-            // Draw vblank in debug color
-            if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
+            else if self.in_crtc_vblank {
+                // Draw vblank in debug color
                 self.buf[self.back_buf][self.rba] = self.vblank_color;
             }
-        }
-        else if self.vborder | self.hborder {
-            // Draw overscan
-            if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
+            else if self.vborder | self.hborder {
+                // Draw overscan
                 if self.debug {
-                    self.draw_debug_pixel();
+                    self.draw_pixel(CGA_OVERSCAN_COLOR);
                 }
                 else {
                     self.draw_overscan_pixel();
                 }
             }
-        }
-        else {
-            //log::warn!("invalid display state...");
+            else {
+                log::warn!("invalid display state...");
+            }
         }
 
         // Update position to next pixel and character column.
@@ -1534,10 +1972,14 @@ impl CGACard {
             self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
         }
 
+        if self.rba != saved_rba + self.clock_divisor as usize {
+            log::warn!("bad rba increment");
+        }  
+
         // Done with the current character      
         if self.char_col == CGA_HCHAR_CLOCK {
             self.tick_crtc_char();
-        }        
+        }              
     }
 
     /// Update the CRTC logic for next character.
@@ -1562,15 +2004,24 @@ impl CGACard {
         self.vma += 1;
         self.set_char_addr();
 
-        // Glyph colun reset to 0 for next char
+        // Glyph column reset to 0 for next char
         self.char_col = 0;
 
+        // Process horizontal blanking period
         if self.in_crtc_hblank {
+
             // Increment horizontal sync counter.
             self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
 
-            // End horizontal sync when we reach R3
-            if self.hsc_c3l == self.crtc_sync_width {
+            let hsync_target = if self.clock_divisor == 1 { 
+                self.crtc_sync_width
+            }
+            else {
+                5
+            };
+
+            // Do a horizontal sync at either sync_width or sync_width / 2 in lowres mode
+            if self.hsc_c3l == hsync_target {
                 // We've left horizontal blank, enter left overscan.
 
                 // Update the video mode, if an update is pending.
@@ -1578,9 +2029,6 @@ impl CGACard {
                     self.update_mode();
                     self.mode_pending = false;
                 }
-
-                self.hsc_c3l = 0;
-                self.in_crtc_hblank = false;
 
                 if self.in_crtc_vblank {
 
@@ -1618,6 +2066,12 @@ impl CGACard {
                 let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
                 self.rba = new_rba;
             }
+
+            // End horizontal blank when we reach R3
+            if self.hsc_c3l == self.crtc_sync_width {
+                self.in_crtc_hblank = false;
+                self.hsc_c3l = 0;
+            }            
         }
 
         if self.hcc_c0 == self.crtc_horizontal_displayed {
@@ -1741,6 +2195,15 @@ impl CGACard {
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
 
+        if self.cycles_per_vsync > 300000 {
+            log::warn!(
+                "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}", 
+                self.char_clock,
+                self.cycles_per_vsync, 
+                self.beam_y
+            );
+        }
+
         // Only do a vsync if we are past the minimum scanline #.
         // A monitor will refuse to vsync too quickly.
         if self.beam_y > CGA_MONITOR_VSYNC_MIN {
@@ -1752,7 +2215,7 @@ impl CGACard {
             if self.beam_y > 258 && self.beam_y < 262 {
                 // This is a "short" frame. Calculate delta.
                 let delta_y = 262 - self.beam_y;
-                self.sink_cycles = (delta_y * 912) as u64;
+                self.sink_cycles = delta_y * 912;
 
                 //log::trace!("sink_cycles: {}", self.sink_cycles);
             }
@@ -1780,515 +2243,3 @@ impl CGACard {
 
 }
 
-// Helper macro for pushing video card state entries. 
-// For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
-macro_rules! push_reg_str {
-    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{} {:?}", $decorator, $reg ), VideoCardStateEntry::String(format!("{}", $val))))
-    };
-}
-
-/*
-macro_rules! push_reg_str_bin8 {
-    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
-    };
-}
-
-macro_rules! push_reg_str_enum {
-    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
-    };
-}   
-*/
-
-impl VideoCard for CGACard {
-
-    fn get_video_type(&self) -> VideoType {
-        VideoType::CGA
-    }
-
-    fn get_render_mode(&self) -> RenderMode {
-        RenderMode::Direct
-    }
-
-    fn get_display_mode(&self) -> DisplayMode {
-        self.display_mode
-    }
-
-    fn get_display_size(&self) -> (u32, u32) {
-
-        // CGA supports a single fixed 8x8 font. The size of the displayed window 
-        // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
-        // (Excepting fancy CRTC tricks that delay vsync)
-        let mut width = self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32;
-        let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
-
-        if self.mode_hires_gfx {
-            width = width * 2;
-        }
-        (width, height)
-    }
-
-    fn get_display_extents(&self) -> &DisplayExtents {
-        &self.extents[self.back_buf]
-    }
-
-    fn get_display_aperture(&self) -> (u32, u32) {
-        (self.extents[0].aperture_w, self.extents[0].aperture_h)
-    }
-
-    /// Get the position of the electron beam.
-    fn get_beam_pos(&self) -> Option<(u32, u32)> {
-        Some((self.beam_x, self.beam_y))
-    }
-
-    /// Tick the CGA the specified number of video clock cycles.
-    fn debug_tick(&mut self, ticks: u32) {
-
-        let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
-        let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
-
-        for _ in 0..pixel_ticks {
-            self.tick();
-        }
-        for _ in 0..lchar_ticks {
-            self.tick_char();
-            self.tick_char();
-        }
-        log::trace!("debug_tick(): new cur_screen_cycles: {}", self.cur_screen_cycles);
-    }
-
-    #[inline]
-    fn get_overscan_color(&self) -> u8 {
-        if self.mode_hires_gfx {
-            // In highres mode, the color control register controls the foreground color, not overscan
-            // so overscan must be black.
-            0
-        }
-        else {
-            self.cc_altcolor
-        }
-    }
-
-    /// Get the current scanline being rendered.
-    fn get_scanline(&self) -> u32 {
-        self.scanline
-    }
-
-    /// Return whether or not to double scanlines for this video device. For CGA, this is always
-    /// true.
-    fn get_scanline_double(&self) -> bool {
-        true
-    }
-
-    /// Return the u8 slice representing the front buffer of the device. (Direct rendering only)
-    fn get_display_buf(&self) -> &[u8] {
-        &self.buf[self.front_buf][..]
-    }
-
-    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
-    /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
-    /// progress.    
-    fn get_back_buf(&self) -> &[u8] {
-
-        &self.buf[self.back_buf][..]
-    }  
-
-    /// Get the current display refresh rate of the device. For CGA, this is always 60.
-    fn get_refresh_rate(&self) -> u32 {
-        60
-    }
-
-    fn is_40_columns(&self) -> bool {
-
-        match self.display_mode {
-            DisplayMode::Mode0TextBw40 => true,
-            DisplayMode::Mode1TextCo40 => true,
-            DisplayMode::Mode2TextBw80 => false,
-            DisplayMode::Mode3TextCo80 => false,
-            DisplayMode::Mode4LowResGraphics => true,
-            DisplayMode::Mode5LowResAltPalette => true,
-            DisplayMode::Mode6HiResGraphics => false,
-            DisplayMode::Mode7LowResComposite => false,
-            _=> false
-        }
-    }
-
-    #[inline]
-    fn is_graphics_mode(&self) -> bool {
-        self.mode_graphics
-    }
-
-    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
-    fn get_start_address(&self) -> u16 {
-        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
-    }
-
-    fn get_cursor_info(&self) -> CursorInfo {
-        let addr = self.get_cursor_address();
-
-        match self.display_mode {
-            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
-                CursorInfo{
-                    addr,
-                    pos_x: (addr % 40) as u32,
-                    pos_y: (addr / 40) as u32,
-                    line_start: self.crtc_cursor_start_line,
-                    line_end: self.crtc_cursor_end_line,
-                    visible: self.get_cursor_status()
-                }
-            }
-            DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
-                CursorInfo{
-                    addr,
-                    pos_x: (addr % 80) as u32,
-                    pos_y: (addr / 80) as u32,
-                    line_start: self.crtc_cursor_start_line,
-                    line_end: self.crtc_cursor_end_line,
-                    visible: self.get_cursor_status()
-                }
-            }
-            _=> {
-                // Not a valid text mode
-                CursorInfo{
-                    addr: 0,
-                    pos_x: 0,
-                    pos_y: 0,
-                    line_start: 0,
-                    line_end: 0,
-                    visible: false
-                }
-            }
-        }
-    }
-    
-    fn get_clock_divisor(&self) -> u32 {
-        1
-    }
-
-    fn get_current_font(&self) -> FontInfo {
-        FontInfo {
-            w: CGA_HCHAR_CLOCK as u32,
-            h: CRTC_FONT_HEIGHT as u32,
-            font_data: CGA_FONT
-        }
-    }
-
-    fn get_character_height(&self) -> u8 {
-        self.crtc_maximum_scanline_address + 1
-    }    
-
-    /// Return the current palette number, intensity attribute bit, and alt color
-    fn get_cga_palette(&self) -> (CGAPalette, bool) {
-
-        let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
-        
-        // Get background color
-        let alt_color = match self.cc_register & 0x0F {
-            0b0000 => CGAColor::Black,
-            0b0001 => CGAColor::Blue,
-            0b0010 => CGAColor::Green,
-            0b0011 => CGAColor::Cyan,
-            0b0100 => CGAColor::Red,
-            0b0101 => CGAColor::Magenta,
-            0b0110 => CGAColor::Brown,
-            0b0111 => CGAColor::White,
-            0b1000 => CGAColor::BlackBright,
-            0b1001 => CGAColor::BlueBright,
-            0b1010 => CGAColor::GreenBright,
-            0b1011 => CGAColor::CyanBright,
-            0b1100 => CGAColor::RedBright,
-            0b1101 => CGAColor::MagentaBright,
-            0b1110 => CGAColor::Yellow,
-            _ => CGAColor::WhiteBright
-        };
-
-        // Are we in high res mode?
-        if self.mode_hires_gfx {
-            return (CGAPalette::Monochrome(alt_color), true); 
-        }
-
-        let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
-            true => CGAPalette::MagentaCyanWhite(alt_color),
-            false => CGAPalette::RedGreenYellow(alt_color)
-        };
-        
-        // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
-        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx { 
-            palette = CGAPalette::RedCyanWhite(alt_color);
-        }
-    
-        (palette, intensity)
-    }    
-
-    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
-
-        let mut map = HashMap::new();
-        
-        let mut general_vec = Vec::new();
-
-        general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
-        general_vec.push((format!("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
-        general_vec.push((format!("Video Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
-        general_vec.push((format!("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
-        general_vec.push((format!("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
-        map.insert("General".to_string(), general_vec);
-
-        let mut crtc_vec = Vec::new();
-
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "[R0]", self.crtc_horizontal_total);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayed, "[R1]", self.crtc_horizontal_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalSyncPosition, "[R2]", self.crtc_horizontal_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::SyncWidth, "[R3]", self.crtc_sync_width);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R4]", self.crtc_vertical_total);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotalAdjust, "[R5]", self.crtc_vertical_total_adjust);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayed, "[R6]", self.crtc_vertical_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalSync, "[R7]", self.crtc_vertical_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::InterlaceMode, "[R8]", self.crtc_interlace_mode);
-        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLineAddress, "[R9]", self.crtc_maximum_scanline_address);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R10]", self.crtc_cursor_start_line);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R11]", self.crtc_cursor_end_line);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R12]", self.crtc_start_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "[R13]", self.crtc_start_address_lo);
-        crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.crtc_start_address))));
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "[R14]", self.crtc_cursor_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "[R15]", self.crtc_cursor_address_lo);
-        map.insert("CRTC".to_string(), crtc_vec);
-
-        let mut internal_vec = Vec::new();
-
-        internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
-        internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
-        internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
-        internal_vec.push((format!("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
-        internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
-        internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
-        internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
-        internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
-        internal_vec.push((format!("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
-        internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
-        internal_vec.push((format!("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
-        internal_vec.push((format!("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
-        internal_vec.push((format!("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
-        internal_vec.push((format!("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
-        internal_vec.push((format!("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
-        internal_vec.push((format!("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
-        internal_vec.push((format!("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
-        internal_vec.push((format!("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
-        internal_vec.push((format!("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
-        internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
-        internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
-        internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-        internal_vec.push((format!("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
-        map.insert("Internal".to_string(), internal_vec);
-
-        map       
-    }
-
-    fn run(&mut self, time: DeviceRunTimeUnit) {
-
-        let mut pixel_clocks = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
-            ticks
-        }
-        else {
-            panic!("CGA requires SystemTicks time unit.")
-        };
-
-        if pixel_clocks == 0 {
-            panic!("CGA run() with 0 ticks");
-        }
-
-        if self.ticks_advanced > pixel_clocks {
-            panic!("Impossible condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, pixel_clocks);
-        }
-
-        pixel_clocks -= self.ticks_advanced;
-        self.clocks_accum += pixel_clocks;
-        self.ticks_advanced = 0;
-
-        // Clock by pixel clock to catch up with character clock.
-        for _ in 0..self.pixel_clocks_owed {
-            self.tick();
-            self.pixel_clocks_owed -= 1;
-            self.clocks_accum = self.clocks_accum.saturating_sub(1);
-
-            if self.clocks_accum == 0 {
-                return
-            }
-        }
-
-        /*
-        //assert!(self.cycles & self.char_clock_mask as u64 == 0);
-        if self.cycles & self.char_clock_mask as u64 != 0 {
-            log::warn!(
-                "Ticked all owed cycles but out of phase with char clock: {} cycles: {} out of phase: {}", 
-                self.char_clock, 
-                self.cycles, 
-                self.cycles % self.char_clock as u64
-            );
-        }
-        */
-
-        // Drain accumulator and tick by character clock.
-        while self.clocks_accum > self.char_clock {
-            // Handle blinking. TODO: Move blink handling into tick().
-            self.blink_accum_clocks += self.char_clock;
-            if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                self.blink_state = !self.blink_state;
-                self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
-            }
-            self.tick_char();
-            if self.clock_divisor == 2 {
-                self.tick_char();
-            }
-            self.clocks_accum -= self.char_clock;
-        }
-    }
-
-    fn reset(&mut self) {
-        log::debug!("Resetting")
-    }
-
-    fn get_pixel(&self, _x: u32, _y:u32) -> &[u8] {
-        &DUMMY_PIXEL
-    }
-
-    fn get_pixel_raw(&self, _x: u32, _y:u32) -> u8 {
-        0
-    }
-
-    fn get_plane_slice(&self, _plane: usize) -> &[u8] {
-        &DUMMY_PLANE
-    }
-
-    fn get_frame_count(&self) -> u64 {
-        self.frame_count
-    }
-
-    fn dump_mem(&self, path: &Path) {
-
-        let mut filename = path.to_path_buf();
-        filename.push("cga_mem.bin");
-        
-        match std::fs::write(filename.clone(), &*self.mem) {
-            Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename.display())
-            }
-            Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
-            }
-        }
-    }
-
-    fn write_trace_log(&mut self, msg: String) {
-        self.trace_logger.print(msg);
-    }    
-
-    fn trace_flush(&mut self) {
-        self.trace_logger.flush();
-    }
-
-}
-
-/// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
-/// but we handle the mirroring of VRAM this way, and for consistency with other devices
-impl MemoryMappedDevice for CGACard {
-
-    fn get_read_wait(&mut self, _address: usize, cycles: u32) -> u32 {
-        // Look up wait states given the last ticked clock cycle + elapsed cycles
-        // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
-        let waits = WAIT_TABLE[phase];
-
-        trace!(
-            self, 
-            "READ_U8 (T2): PHASE: {:02X}, WAITS: {}", 
-            phase,
-            waits
-        );
-        waits
-    }
-
-    fn get_write_wait(&mut self, _address: usize, cycles: u32) -> u32 {
-        // Look up wait states given the last ticked clock cycle + elapsed cycles
-        // passed in.
-        let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
-        let waits = WAIT_TABLE[phase];
-
-        trace!(
-            self, 
-            "WRITE_U8 (T2): PHASE: {:02X}, WAITS: {}", 
-            phase,
-            waits
-        );
-        waits
-    }
-
-    fn read_u8(&mut self, address: usize, cycles: u32) -> (u8, u32) {
-
-        let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
-        if a_offset < CGA_MEM_SIZE {
-            // Read within memory range
-
-            // Look up wait states given the last ticked clock cycle + elapsed cycles
-            // passed in.
-            let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
-            let waits = WAIT_TABLE[phase];
-
-            trace!(
-                self, 
-                "READ_U8: {:04X}:{:02X} PHASE: {:02X}, WAITS: {}", 
-                a_offset, 
-                self.mem[a_offset],
-                phase,
-                waits
-            );
-            (self.mem[a_offset], waits)
-        }
-        else {
-            // Read out of range, shouldn't happen...
-            (0xFF, 0)
-        }
-    }
-
-    fn write_u8(&mut self, address: usize, byte: u8, cycles: u32) -> u32 {
-        let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
-        if a_offset < CGA_MEM_SIZE {
-            self.mem[a_offset] = byte;
-
-            // Look up wait states given the last ticked clock cycle + elapsed cycles
-            // passed in.
-            let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
-            trace!(
-                self, 
-                "WRITE_U8: {:04X}:{:02X} PHASE: {:02X}, WAITS: {}", 
-                a_offset, 
-                byte,
-                phase,
-                WAIT_TABLE[phase]
-            );            
-            WAIT_TABLE[phase]
-        }
-        else {
-            // Write out of range, shouldn't happen...
-            0
-        }
-    }
-
-    fn read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
-
-        let (lo_byte, wait1) = MemoryMappedDevice::read_u8(self, address, 0);
-        let (ho_byte, wait2) = MemoryMappedDevice::read_u8(self, address + 1, 0);
-
-        log::warn!("Unsupported 16 bit read from VRAM");
-        return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
-    }    
-
-    fn write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
-        //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
-        log::warn!("Unsupported 16 bit write to VRAM");
-        0
-    }
-
-}

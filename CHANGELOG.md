@@ -1,13 +1,23 @@
 
 ## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-XX)
 
+* Redesigned CGA card with 'dynamic clocking' support. Card will now switch between clocking by cycle or character as appropriate.
+* Added port mirrors for CGA (thanks th3bar0n)
+* Fixed address wrapping for graphics modes (thanks th3bar0n)
+* Fixed handling of mode enable flag in text mode (thanks VileR)
+* Improved hsync logic for 40 column (7.15Mhz character clock) modes. Screen is properly centered in such modes.
+* Implemented better composite adjustment defaults (Matches colors in 8088mph better)
 * Switched from cgmath to glam vector library. Approx 30% speedup in CGA composite simulation.
-* Utilize bytemuck crate in CGA index->RGBA conversion, about 3x performance improvement
-* Reorganized project structure. Using Criterion for benchmarking components.
+* Utilized bytemuck crate to write 32 bits at a time for CGA index->RGBA conversion, about 3x performance improvement
+* Reorganized project structure. Refactored emulator core to Rust library and frontend components.
+* Added Criterion for benchmarking components.
 * Update Pixels library to 0.12.1
 * Use fast_image_resize crate for SIMD accelleration. Aspect correction is now approx 5X faster with equivalent quality.
-* Fixed bug in PIT latch logic
+* Fixed bug in PIT latch logic (thanks 640KB)
 * Added CTRL-ALT-DEL menu option
+* Known issues
+    ** Floppy images are read-only.
+    ** Hitting a key during boot on a 5160 machine can halt the CPU.
 
 ## [0.1.1](https://github.com/dbalsom/martypc/releases/tag/0.1.1) (2023-05-31)
 
