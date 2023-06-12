@@ -1341,7 +1341,7 @@ impl BusInterface {
 
                 self.cga_tick_accum += sys_ticks;
                 
-                if self.cga_tick_accum > 16 {
+                if self.cga_tick_accum > 8 {
                     cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum));
                     self.cga_tick_accum = 0;
 
