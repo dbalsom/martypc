@@ -26,7 +26,7 @@
 use egui::ColorImage;
 //use image;
 
-static LOGO_IMAGE: &[u8] = include_bytes!("../../assets/marty_logo_about.png");
+static LOGO_IMAGE: &[u8] = include_bytes!("../../../assets/marty_logo_about.png");
 
 // Support other images later if needed
 #[derive(Debug, PartialEq, Eq, Hash)]

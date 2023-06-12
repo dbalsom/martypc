@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "core",
-    "frontend/render"
+    "frontend_libs/render"
 ]
 
 [package]
@@ -11,11 +11,11 @@ edition = "2021"
 
 [[bin]]
 name = "martypc"
-path = "frontend/main.rs"
+path = "frontends/martypc_pixels_desktop/main.rs"
 
 [dependencies]
 marty_core = { path = "./core/"}
-marty_render = { path = "./frontend/render"}
+marty_render = { path = "./frontend_libs/render"}
 bytemuck = "1.13.1"
 cpal = "0.13.5"
 #egui = "0.20"
@@ -45,6 +45,9 @@ rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 [dependencies.egui-winit]
 git = "https://github.com/emilk/egui.git"
 rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { version = "0.15", features = ["webgl"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
