@@ -107,6 +107,7 @@ pub enum DisplayMode {
     Mode1TextCo40,
     Mode2TextBw80,
     Mode3TextCo80,
+    ModeTextAndGraphicsHack,
     Mode4LowResGraphics,
     Mode5LowResAltPalette,
     Mode6HiResGraphics,
