@@ -1925,7 +1925,7 @@ impl CGACard {
                 }
             }
             else {
-                log::warn!("invalid display state...");
+                //log::warn!("invalid display state...");
             }
         }
 
