@@ -87,6 +87,10 @@ impl SoundPlayer {
         let buffer = RingBuffer::new(buffer_size as usize );
         let (buffer_producer, mut buffer_consumer) = buffer.split();
 
+        #[cfg(target_arch = "wasm32")]
+        let err_fn = |err| log::error!("An error occurred on stream: {}", err);
+
+        #[cfg(not(target_arch = "wasm32"))]
         let err_fn = |err| eprintln!("An error occurred during streaming: {}", err);
 
         //let mut debug_snd_file = File::create("output2.pcm").expect("Couldn't open debug pcm file");
