@@ -30,14 +30,16 @@ use std::{
 
 use rand::Rng;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use marty_core::{
-    cpu_808x::{Cpu},
+    cpu_808x::{Cpu, Segment, ReadWriteFlag},
     cpu_common::CpuType,
     bytequeue::ByteQueue,
     config::{MachineType, TraceMode},
     machine_manager::{MACHINE_DESCS},
+    tracelogger::TraceLogger,
+    config::VideoType
 };
 
 pub fn cpu_decode_bench<'a>(c: &mut Criterion) {
@@ -45,8 +47,9 @@ pub fn cpu_decode_bench<'a>(c: &mut Criterion) {
 
     //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
 
-    let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
-    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, Some(trace_file_option));
+    let mut trace_logger = TraceLogger::None;
+    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
+    
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
     cpu.randomize_mem();
@@ -61,8 +64,175 @@ pub fn cpu_decode_bench<'a>(c: &mut Criterion) {
         });
 
     });
-
 }
 
-criterion_group!(cpu_benches, cpu_decode_bench);
+pub fn cpu_random_baseline<'a>(c: &mut Criterion) {
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
+
+    //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
+
+    let mut rng = rand::thread_rng();
+
+    c.bench_function("cpu_random_baseline", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+            let addr = black_box(rng.gen_range(0..0xFFFF));
+        });
+
+    });
+}
+
+pub fn cpu_biu_write_bench<'a>(c: &mut Criterion) {
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
+
+    //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
+    
+    let mut trace_logger = TraceLogger::None;
+    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
+
+    let mut rng = rand::thread_rng();
+    cpu.randomize_seed(0);
+    cpu.randomize_mem();
+
+    c.bench_function("cpu_biu_write_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+
+            let addr = rng.gen_range(0..0xFFFF);
+            cpu.biu_write_u8(Segment::CS, addr << 4, 0, ReadWriteFlag::Normal);
+        });
+
+    });
+}
+
+pub fn cpu_bus_write_bench<'a>(c: &mut Criterion) {
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
+
+    //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
+
+    let mut trace_logger = TraceLogger::None;
+    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
+
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_XT_5160];
+
+    // Install devices
+    cpu.bus_mut().install_devices(
+        VideoType::CGA, 
+        &machine_desc, 
+        TraceLogger::None, 
+        false
+    );
+
+    let mut rng = rand::thread_rng();
+    cpu.randomize_seed(0);
+    cpu.randomize_mem();
+
+    c.bench_function("cpu_bus_write_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+
+            let addr = rng.gen_range(0..0xFFFF);
+            _ = cpu.bus_mut().write_u8(addr as usize, 0xFF, 0).unwrap();
+        });
+
+    });
+}
+
+pub fn cpu_bus_write_cga_bench<'a>(c: &mut Criterion) {
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
+
+    //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
+
+    let mut trace_logger = TraceLogger::None;
+    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
+
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_XT_5160];
+
+    // Install devices
+    cpu.bus_mut().install_devices(
+        VideoType::CGA, 
+        &machine_desc, 
+        TraceLogger::None, 
+        false
+    );
+
+
+    let mut rng = rand::thread_rng();
+    cpu.randomize_seed(0);
+    cpu.randomize_mem();
+
+    c.bench_function("cpu_bus_write_cga_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+
+            // CGA memory range to target MMIO.
+            let addr = rng.gen_range(0xB8000..0xBC000);
+            _ = cpu.bus_mut().write_u8(addr as usize, 0xFF, 0).unwrap();
+        });
+
+    });
+}
+
+pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
+
+    //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
+
+    let mut trace_logger = TraceLogger::None;
+    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
+
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_XT_5160];
+
+    // Install devices
+    cpu.bus_mut().install_devices(
+        VideoType::CGA, 
+        &machine_desc, 
+        TraceLogger::None, 
+        false
+    );
+
+
+    let mut rng = rand::thread_rng();
+    cpu.randomize_seed(0);
+    cpu.randomize_mem();
+
+    c.bench_function("cpu_bus_read_cga_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+
+            // CGA memory range to target MMIO.
+            let addr = rng.gen_range(0xB8000..0xBC000);
+            _ = cpu.bus_mut().read_u8(addr as usize, 0).unwrap();
+        });
+
+    });
+}
+
+/*
+criterion_group!(
+    cpu_benches, 
+    cpu_decode_bench, 
+    cpu_random_baseline, 
+    cpu_biu_write_bench,
+    cpu_bus_write_bench,
+    cpu_bus_write_cga_bench
+);
+*/
+criterion_group!(
+    cpu_benches,
+    cpu_bus_write_bench,
+    cpu_bus_write_cga_bench,
+    cpu_bus_read_cga_bench
+);
+
 criterion_main!(cpu_benches);
