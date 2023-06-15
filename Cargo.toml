@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "core",
-    "frontend_libs/render"
+    "frontend_libs/render",
+    "frontends/martypc_pixels_wasm32"
 ]
 
 [package]
@@ -27,6 +28,7 @@ image = { version = "0.24.2", default-features = false, features = ["png"] }
 log = "0.4"
 pixels = "0.12.1"
 rand = "0.8.5"
+getrandom = "0.2.6"
 regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
@@ -34,6 +36,7 @@ serialport = "4.2.0"
 winit = "0.27"
 winit_input_helper = "0.13"
 
+# These are specific snapshots due to requirements from Pixels 0.12.1
 [dependencies.egui]
 git = "https://github.com/emilk/egui.git"
 rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
@@ -42,12 +45,28 @@ rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 git = "https://github.com/emilk/egui.git"
 rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 
-[dependencies.egui-winit]
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"
+
+# Conditional dependencies for wasm32 target. 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+cpal = { version = "0.13.5", features = ["wasm-bindgen"]}
+console_error_panic_hook = "0.1"
+console_log = "0.2"
+error-iter = "0.4"
+getrandom = { version = "0.2.6", features = ["js"] }
+instant = "0.1.12"
+#futures = "0.3.28"
+js-sys = "0.3.63"
+wasm-bindgen = "0.2.86"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["GpuTextureFormat", "Request", "RequestInit", "Response", "Headers", "Blob", "FileReader", "ProgressEvent"] }
+wgpu = { version = "0.15", features = ["webgl"] }
+
+# Conditional dependencies for NOT wasm32 target.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.egui-winit]
 git = "https://github.com/emilk/egui.git"
 rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-wgpu = { version = "0.15", features = ["webgl"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
