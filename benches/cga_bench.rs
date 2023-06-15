@@ -81,7 +81,7 @@ pub fn cga_tick_bench(c: &mut Criterion) {
 
         b.iter(|| {
             // Measured code goes here
-            cga.draw_text_mode_char();
+            cga.draw_text_mode_hchar();
         });
     });
 
