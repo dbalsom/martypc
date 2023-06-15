@@ -27,7 +27,7 @@ marty*.toml
 *.cfg
 *.log
 *.exe
-
+/frontends/martypc_pixels_wasm32/wasm/
 icon.png
 
 # Assembly stuff
