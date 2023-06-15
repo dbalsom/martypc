@@ -37,14 +37,18 @@ use std::{
 #[derive(Debug)]
 pub enum FloppyError {
     DirNotFound,
+    ImageNotFound,
     FileReadError,
+    FileWriteError,
 }
 impl Error for FloppyError {}
 impl Display for FloppyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &*self {
             FloppyError::DirNotFound => write!(f, "Couldn't find the requested directory."),
+            FloppyError::ImageNotFound => write!(f, "Specified image name could not be found in floppy manager."),
             FloppyError::FileReadError => write!(f, "A file read error occurred."),
+            FloppyError::FileWriteError => write!(f, "A file write error occurred."),
         }
     }
 }
@@ -134,8 +138,24 @@ impl FloppyManager {
                 }
             };
         }
-
         Ok(floppy_vec)
     }
+
+    pub fn save_floppy_data(&self, data: &[u8], name: &OsString ) -> Result<(), FloppyError> {
+
+        if let Some(floppy) = self.image_map.get(name) {
+
+            match std::fs::write(&floppy.path, data) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    eprintln!("Couldn't save floppy image: {}", e);
+                    return Err(FloppyError::FileWriteError)
+                }
+            }
+        }
+        else {
+            Err(FloppyError::ImageNotFound)
+        }
+    }    
 
 }

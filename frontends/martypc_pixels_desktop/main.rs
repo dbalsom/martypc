@@ -241,6 +241,12 @@ impl KeyboardData {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // Dummy main for wasm32 target
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
 
     env_logger::init();
@@ -1433,6 +1439,24 @@ fn main() {
                                             eprintln!("Failed to read floppy image file: {:?} Error: {}", filename, e);
                                         }
                                     }                                
+                                }
+                                GuiEvent::SaveFloppy(drive_select, filename) => {
+                                    log::debug!("Save floppy image: {:?} into drive: {}", filename, drive_select);
+
+                                    if let Some(fdc) = machine.fdc() {
+                                        
+                                        let floppy = fdc.get_image_data(drive_select);
+                                        if let Some(floppy_image) = floppy {
+                                            match floppy_manager.save_floppy_data(floppy_image,&filename) {
+                                                Ok(()) => {
+                                                    log::info!("Floppy image successfully saved: {:?}", filename);
+                                                }
+                                                Err(err) => {
+                                                    log::warn!("Floppy image failed to save: {}", err);
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 GuiEvent::EjectFloppy(drive_select) => {
                                     log::info!("Ejecting floppy in drive: {}", drive_select);

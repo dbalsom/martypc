@@ -493,6 +493,17 @@ impl FloppyController {
         Ok(())
     }
 
+    pub fn get_image_data(&self, drive_select: usize) -> Option<&[u8]> {
+
+        if self.drives[drive_select].disk_image.len() > 0 {
+            // We have at least some kind of disk image, return it
+            Some(&self.drives[drive_select].disk_image)
+        }
+        else {
+            None
+        }
+    }
+
     /// Unload (eject) the disk in the specified drive
     pub fn unload_image(&mut self, drive_select: usize) {
         let drive = &mut self.drives[drive_select];

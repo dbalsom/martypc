@@ -154,6 +154,7 @@ pub enum GuiEvent {
     LoadVHD(usize, OsString),
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, OsString),
+    SaveFloppy(usize, OsString),
     EjectFloppy(usize),
     BridgeSerialPort(String),
     DumpVRAM,
@@ -185,6 +186,7 @@ pub enum DeviceSelection {
 pub(crate) struct Framework {
     // State for egui.
     egui_ctx: Context,
+    #[cfg(not(target_arch = "wasm32"))]
     egui_state: egui_winit::State,
     screen_descriptor: ScreenDescriptor,
     renderer: Renderer,
@@ -231,8 +233,8 @@ pub(crate) struct GuiState {
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
-    new_floppy_name0: Option<OsString>,
-    new_floppy_name1: Option<OsString>,
+    floppy0_name: Option<OsString>,
+    floppy1_name: Option<OsString>,
     
     // VHD Images
     vhd_names: Vec<OsString>,
@@ -297,9 +299,14 @@ impl Framework {
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
 
         let egui_ctx = Context::default();
+
+        #[cfg(not(target_arch = "wasm32"))]
         let mut egui_state = egui_winit::State::new(event_loop);
-        egui_state.set_max_texture_side(max_texture_size);
-        egui_state.set_pixels_per_point(scale_factor);
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            egui_state.set_max_texture_side(max_texture_size);
+            egui_state.set_pixels_per_point(scale_factor);
+        }
 
         let screen_descriptor = ScreenDescriptor {
             size_in_pixels: [width, height],
@@ -321,6 +328,7 @@ impl Framework {
 
         Self {
             egui_ctx,
+            #[cfg(not(target_arch = "wasm32"))]
             egui_state,
             screen_descriptor,
             renderer,
@@ -340,6 +348,7 @@ impl Framework {
 
     /// Handle input events from the window manager.
     pub(crate) fn handle_event(&mut self, event: &winit::event::WindowEvent) {
+        #[cfg(not(target_arch = "wasm32"))]
         let _ = self.egui_state.on_event(&self.egui_ctx, event);
     }
 
@@ -358,20 +367,23 @@ impl Framework {
     /// Prepare egui.
     pub(crate) fn prepare(&mut self, window: &Window) {
         // Run the egui frame and create all paint jobs to prepare for rendering.
-        let raw_input = self.egui_state.take_egui_input(window);
-        let gui_start = Instant::now();
-        
-        let output = self.egui_ctx.run(raw_input, |egui_ctx| {
-            // Draw the application.
-            self.gui.ui(egui_ctx);
-        });
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let raw_input = self.egui_state.take_egui_input(window);
+            let gui_start = Instant::now();
+            
+            let output = self.egui_ctx.run(raw_input, |egui_ctx| {
+                // Draw the application.
+                self.gui.ui(egui_ctx);
+            });
 
-        self.textures.append(output.textures_delta);
-        self.egui_state
-            .handle_platform_output(window, &self.egui_ctx, output.platform_output);
-        self.paint_jobs = self.egui_ctx.tessellate(output.shapes);
+            self.textures.append(output.textures_delta);
+            self.egui_state
+                .handle_platform_output(window, &self.egui_ctx, output.platform_output);
+            self.paint_jobs = self.egui_ctx.tessellate(output.shapes);
 
-        self.gui.perf_stats.gui_time = Instant::now() - gui_start;
+            self.gui.perf_stats.gui_time = Instant::now() - gui_start;
+        }
     }
 
     /// Render egui.
@@ -478,8 +490,8 @@ impl GuiState {
             perf_stats: Default::default(),
         
             floppy_names: Vec::new(),
-            new_floppy_name0: Option::None,
-            new_floppy_name1: Option::None,
+            floppy0_name: Option::None,
+            floppy1_name: Option::None,
 
             vhd_names: Vec::new(),
             new_vhd_name0: Option::None,

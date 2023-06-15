@@ -123,7 +123,7 @@ impl GuiState {
                     _ => (false, false)
                 };
 
-                ui.set_min_size(egui::vec2(200.0, 0.0));
+                ui.set_min_size(egui::vec2(240.0, 0.0));
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
 
                 ui.menu_button("💾 Load Floppy in Drive A:...", |ui| {
@@ -135,7 +135,7 @@ impl GuiState {
                             
                             log::debug!("Selected floppy filename: {:?}", name);
                             
-                            self.new_floppy_name0 = Some(name.clone());
+                            self.floppy0_name = Some(name.clone());
                             self.event_queue.push_back(GuiEvent::LoadFloppy(0, name.clone()));
                             ui.close_menu();
                         }
@@ -151,20 +151,46 @@ impl GuiState {
                             
                             log::debug!("Selected floppy filename: {:?}", name);
                             
-                            self.new_floppy_name1 = Some(name.clone());
+                            self.floppy1_name = Some(name.clone());
                             self.event_queue.push_back(GuiEvent::LoadFloppy(1, name.clone()));
                             ui.close_menu();
                         }
                     }
-                });      
+                });
+
+                ui.add_enabled_ui(self.floppy0_name.is_some(), |ui| {
+                    if ui.button("💾 Save changes to Floppy in Drive A:").clicked() {
+                            
+                        log::debug!("Saving floppy filename: {:?}", self.floppy0_name);
+                        
+                        if let Some(name) = &self.floppy0_name {
+                            self.event_queue.push_back(GuiEvent::SaveFloppy(0, name.clone()));
+                        }
+                        ui.close_menu();
+                    }
+                });
+
+                ui.add_enabled_ui(self.floppy1_name.is_some(), |ui| {
+                    if ui.button("💾 Save changes to Floppy in Drive B:").clicked() {
+                            
+                        log::debug!("Saving floppy filename: {:?}", self.floppy1_name);
+                        
+                        if let Some(name) = &self.floppy1_name {
+                            self.event_queue.push_back(GuiEvent::SaveFloppy(1, name.clone()));
+                        }
+                        ui.close_menu();
+                    }
+                });                
                 
                 if ui.button("⏏ Eject Floppy in Drive A:").clicked() {
                     self.event_queue.push_back(GuiEvent::EjectFloppy(0));
+                    self.floppy0_name = None;
                     ui.close_menu();
                 };       
                 
                 if ui.button("⏏ Eject Floppy in Drive B:").clicked() {
                     self.event_queue.push_back(GuiEvent::EjectFloppy(1));
+                    self.floppy1_name = None;
                     ui.close_menu();
                 };                              
 
