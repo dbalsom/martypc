@@ -56,6 +56,13 @@ use crate::bus::{BusInterface, MEM_CP_BIT};
 
 pub const BIOS_READ_CYCLE_COST: u32 = 4;
 
+#[derive (Copy, Clone, Debug)]
+pub struct RawRomDescriptor {
+    pub addr: u32,
+    pub offset: u32,
+    pub org: RomFileOrganization
+}
+
 #[derive (Debug)]
 pub enum RomError {
     DirNotFound,
@@ -159,7 +166,8 @@ pub struct RomManager {
     rom_images: HashMap<&'static str, Vec<u8>>,
     features_available: Vec<RomFeature>,
     features_requested: Vec<RomFeature>,
-    rom_override: Option<Vec<RomOverride>>
+    rom_override: Option<Vec<RomOverride>>,
+    raw_roms: Vec<(Vec<u8>, RawRomDescriptor)>
 }
 
 impl RomManager {
@@ -1326,7 +1334,8 @@ impl RomManager {
             rom_images: HashMap::new(),
             features_available: Vec::new(),
             features_requested,
-            rom_override
+            rom_override,
+            raw_roms: Vec::new()
         }
     }
 
@@ -1571,6 +1580,16 @@ impl RomManager {
     /// Only copy Feature ROMs if they match the list of requested features.
     pub fn copy_into_memory(&self, bus: &mut BusInterface) -> bool {
 
+        if self.raw_roms.len() > 0 {
+            // Some raw roms were loaded, copy them into memory.
+
+            for raw_rom in &self.raw_roms {
+                log::warn!("Copying raw rom into memory: {:?}", raw_rom.1);
+                _ = RomManager::copy_into_memory_raw(bus, &raw_rom.0, raw_rom.1);
+            }
+            return true;
+        }
+        
         if let Some(_) = &self.rom_override {
             if let Err(e) = self.copy_into_memory_override(bus) {
                 log::error!("Failed to load override rom set: {}", e);
@@ -1680,6 +1699,57 @@ impl RomManager {
         else {
             panic!("copy_into_memory_override() called with no override!");
         }
+
+        Ok(())
+    }
+
+    pub fn add_raw_rom(&mut self, rom: &[u8], rom_desc: RawRomDescriptor) {
+
+        self.raw_roms.push((rom.to_vec(), rom_desc));
+    }
+
+    pub fn copy_into_memory_raw(
+        bus: &mut BusInterface,
+        rom: &[u8], 
+        rom_desc: RawRomDescriptor
+    ) -> Result<(), RomError> 
+    {
+
+        let mut rom_image_vec = rom.to_vec();
+
+        match rom_desc.org {
+            RomFileOrganization::Normal => {},
+            RomFileOrganization::Reversed => {
+                // Reverse the rom if required
+                rom_image_vec = rom_image_vec.into_iter().rev().collect();
+            }
+            _ => {
+                log::error!("Unimplemented ROM override organization: {:?}", rom_desc.org );
+                return Err(RomError::Unimplemented);
+            }
+        }
+
+        match bus.copy_from(
+            // TODO: Override offset?
+            &rom_image_vec[(rom_desc.offset as usize)..], 
+            rom_desc.addr as usize, 
+            0, 
+            true) {
+
+            Ok(_) => {
+                log::debug!("[ROM OVERRIDE] Mounted raw rom at location {:06X}", 
+                    rom_desc.addr
+                );
+            }
+            Err(e) => {
+                log::debug!("Failed to mount raw rom at location {:06X}: {}", 
+                    rom_desc.addr,
+                    e
+                );
+
+                return Err(RomError::FileError);
+            }
+        }             
 
         Ok(())
     }
