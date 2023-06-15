@@ -237,11 +237,14 @@ pub struct Validator {
 pub struct Machine {
     pub model: MachineType,
     pub rom_override: Option<Vec<RomOverride>>,
+    pub raw_rom: bool,
     pub turbo: bool,
     pub video: VideoType,
     pub hdc: HardDiskControllerType,
     pub drive0: Option<String>,
     pub drive1: Option<String>,
+    pub floppy0: Option<String>,
+    pub floppy1: Option<String>
 }
 
 
@@ -389,6 +392,17 @@ where
 
     // Command line arguments override config file arguments
     toml_args.overlay(shell_args);
+
+    Ok(toml_args)
+}
+
+pub fn get_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::Error>
+{
+    let mut toml_args: ConfigFileParams;
+
+    toml_args = toml::from_str(toml_text)?;
+    
+    log::debug!("toml_config: {:?}", toml_args);
 
     Ok(toml_args)
 }
