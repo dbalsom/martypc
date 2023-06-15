@@ -26,7 +26,7 @@
 use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     /// Execute the RELJMP microcode routine, optionally including the jump into the procedure.
     #[inline]

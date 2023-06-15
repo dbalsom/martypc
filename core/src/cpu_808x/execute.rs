@@ -69,7 +69,7 @@ macro_rules! alu_op {
 }
 */
 
-impl<'a> Cpu<'a> {
+impl Cpu {
     /// Execute the current instruction. At the phase this function is called we have 
     /// fetched and decoded any prefixes, the opcode byte, modrm and any displacement
     /// and populated an Instruction struct.

@@ -66,6 +66,8 @@ use crate::cpu_808x::microcode::*;
 use crate::cpu_808x::addressing::AddressingMode;
 use crate::cpu_808x::queue::{InstructionQueue, QueueDelay};
 use crate::cpu_808x::biu::*;
+// Make ReadWriteFlag available to benchmarks
+pub use crate::cpu_808x::biu::ReadWriteFlag;
 
 use crate::cpu_common::{CpuType, CpuOption};
 
@@ -79,6 +81,7 @@ use crate::bytequeue::*;
 //use crate::interrupt::log_post_interrupt;
 
 use crate::syntax_token::*;
+use crate::tracelogger::TraceLogger;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{
@@ -87,8 +90,6 @@ use crate::cpu_validator::{
 };
 #[cfg(feature = "arduino_validator")]
 use crate::arduino8088_validator::{ArduinoValidator};
-#[cfg(feature = "arduino_validator")]
-use crate::tracelogger::TraceLogger;
 
 macro_rules! trace_print {
     ($self:ident, $($t:tt)*) => {{
@@ -99,7 +100,7 @@ macro_rules! trace_print {
         }
     }};
 }
-pub(crate) use trace_print;
+use trace_print;
 
 const QUEUE_MAX: usize = 6;
 const FETCH_DELAY: u8 = 2;
@@ -605,7 +606,7 @@ pub struct I8288 {
 }
 
 #[derive(Default)]
-pub struct Cpu<'a> 
+pub struct Cpu
 {
     
     cpu_type: CpuType,
@@ -718,7 +719,7 @@ pub struct Cpu<'a>
 
     trace_enabled: bool,
     trace_mode: TraceMode,
-    trace_writer: Option<Box<dyn Write + 'a>>,
+    trace_logger: TraceLogger,
     trace_comment: Vec<&'static str>,
     trace_instr: u16,
     trace_str_vec: Vec<String>,
@@ -949,12 +950,12 @@ impl Default for FetchState {
     }
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
-    pub fn new<TraceWriter: Write + 'a>(
+    pub fn new(
         cpu_type: CpuType,
         trace_mode: TraceMode,
-        trace_writer: Option<TraceWriter>,
+        trace_logger: TraceLogger,
         #[cfg(feature = "cpu_validator")]
         validator_type: ValidatorType,
         #[cfg(feature = "cpu_validator")]
@@ -996,9 +997,8 @@ impl<'a> Cpu<'a> {
             }            
         }
 
+        cpu.trace_logger = trace_logger;
         cpu.trace_mode = trace_mode;
-        // Unwrap the writer Option and stick it in an Option<Box<>> or None if None
-        cpu.trace_writer = trace_writer.map_or(None, |trace_writer| Some(Box::new(trace_writer)));
         cpu.cpu_type = cpu_type;
 
         //cpu.instruction_history_on = true; // Control this from config/GUI instead
@@ -1089,7 +1089,6 @@ impl<'a> Cpu<'a> {
         }
 
         trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip);
-
     }
 
     #[allow(dead_code)]
@@ -2704,15 +2703,14 @@ impl<'a> Cpu<'a> {
 
     #[inline]
     pub fn trace_print(&mut self, trace_str: &str) {
-        if let Some(w) = self.trace_writer.as_mut() {
-            let mut _r = w.write_all(trace_str.as_bytes());
-            _r = w.write_all("\n".as_bytes());
+        if self.trace_logger.is_some() {
+            self.trace_logger.println(trace_str);
         }
     }
 
     pub fn trace_flush(&mut self) {
-        if let Some(w) = self.trace_writer.as_mut() {
-            w.flush().unwrap();
+        if self.trace_logger.is_some() {
+            self.trace_logger.flush();
         }
 
         #[cfg(feature = "cpu_validator")]

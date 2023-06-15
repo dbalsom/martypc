@@ -31,10 +31,17 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::path::Path;
 
+#[derive (Debug)]
 pub enum TraceLogger {
     FileWriter(BufWriter<File>),
     Console,
     None,
+}
+
+impl Default for TraceLogger {
+    fn default() -> TraceLogger {
+        TraceLogger::None
+    }
 }
 
 impl TraceLogger {
@@ -55,11 +62,25 @@ impl TraceLogger {
     #[inline(always)]
     pub fn print<S: AsRef<str> + std::fmt::Display>(&mut self, msg: S) {
         match self {
-            TraceLogger::FileWriter(buf) => { _ = buf.write_all(msg.as_ref().as_bytes()); },
+            TraceLogger::FileWriter(buf) => { 
+                _ = buf.write_all(msg.as_ref().as_bytes()); 
+            },
             TraceLogger::Console => println!("{}", msg),
             TraceLogger::None => (),
         }
     }
+    
+    #[inline(always)]
+    pub fn println<S: AsRef<str> + std::fmt::Display>(&mut self, msg: S) {
+        match self {
+            TraceLogger::FileWriter(buf) => { 
+                _ = buf.write_all(msg.as_ref().as_bytes()); 
+                _ = buf.write_all("\n".as_bytes());
+            },
+            TraceLogger::Console => println!("{}", msg),
+            TraceLogger::None => (),
+        }
+    }    
 
     pub fn flush(&mut self) {
         if let TraceLogger::FileWriter(file) = self {
@@ -68,7 +89,7 @@ impl TraceLogger {
     }
 
     #[inline(always)]
-    pub fn is_some(&mut self) -> bool {
+    pub fn is_some(&self) -> bool {
         matches!(*self, TraceLogger::FileWriter(_) | TraceLogger::Console)
     }
 }

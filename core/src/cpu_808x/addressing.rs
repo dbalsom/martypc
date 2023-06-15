@@ -62,7 +62,7 @@ pub enum FarPtr {
     Segment
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     #[allow(dead_code)]
     fn is_register_mode(mode: AddressingMode) {

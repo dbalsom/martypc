@@ -44,7 +44,7 @@ macro_rules! get_rand_range {
     }
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     #[allow(dead_code)]
     pub fn randomize_seed(&mut self, mut seed: u64) {

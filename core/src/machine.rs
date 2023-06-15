@@ -52,7 +52,7 @@ use crate::{
     cpu_808x::{Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
     cpu_common::{CpuType, CpuOption},
     machine_manager::{MachineDescriptor},
-    rom_manager::RomManager,
+    rom_manager::{RomManager, RawRomDescriptor},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
     videocard::{VideoCard, VideoCardState},
@@ -185,7 +185,7 @@ pub struct PitData {
 }
 
 #[allow(dead_code)]
-pub struct Machine<'a> 
+pub struct Machine 
 {
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
@@ -194,7 +194,7 @@ pub struct Machine<'a>
     sound_player: SoundPlayer,
     rom_manager: RomManager,
     load_bios: bool,
-    cpu: Cpu<'a>, 
+    cpu: Cpu, 
     speaker_buf_producer: Producer<u8>,
     pit_data: PitData,
     debug_snd_file: Option<File>,
@@ -207,7 +207,7 @@ pub struct Machine<'a>
     system_ticks: u64,
 }
 
-impl<'a> Machine<'a> {
+impl Machine {
     pub fn new(
         config: &ConfigFileParams,
         machine_type: MachineType,
@@ -216,24 +216,24 @@ impl<'a> Machine<'a> {
         video_type: VideoType,
         sound_player: SoundPlayer,
         rom_manager: RomManager,
-        ) -> Machine<'a> 
+        ) -> Machine 
     {
 
         //let mut io_bus = IoBusInterface::new();
         
         //let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
 
-        let mut trace_file_option = None;
+        let mut trace_logger = TraceLogger::None;
+
         if config.emulator.trace_mode != TraceMode::None {
             // Open the trace file if specified
             if let Some(filename) = &config.emulator.trace_file {
-                match File::create(filename) {
-                    Ok(file) => {
-                        trace_file_option = Some(Box::new(BufWriter::new(file)));
-                    },
-                    Err(e) => {
-                        eprintln!("Couldn't create specified tracelog file: {}", e);
-                    }
+
+                trace_logger = TraceLogger::from_filename(filename);
+
+                if !trace_logger.is_some() {
+                    log::error!("Couldn't create specified CPU tracelog file: {}", filename);
+                    eprintln!("Couldn't create specified CPU tracelog file: {}", filename);
                 }
             }
         }
@@ -264,7 +264,7 @@ impl<'a> Machine<'a> {
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
             trace_mode,
-            trace_file_option,
+            trace_logger,
             #[cfg(feature = "cpu_validator")]
             config.validator.vtype.unwrap(),
             #[cfg(feature = "cpu_validator")]

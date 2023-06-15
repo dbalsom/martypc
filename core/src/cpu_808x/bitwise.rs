@@ -27,7 +27,7 @@
 use crate::cpu_808x::*;
 use crate::cpu_808x::mnemonic::Mnemonic;
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     pub(crate) fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {
 

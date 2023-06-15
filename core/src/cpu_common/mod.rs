@@ -52,7 +52,7 @@ use crate::cpu_808x::*;
 
 pub mod alu;
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     pub fn common_test(&self) {
         //log::trace!("I'm a common cpu function!");

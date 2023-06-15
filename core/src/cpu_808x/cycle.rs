@@ -54,7 +54,7 @@ macro_rules! validate_write_u8 {
     };
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     #[inline]
     pub fn set_mc_pc(&mut self, instr: u16) {
@@ -365,7 +365,7 @@ impl<'a> Cpu<'a> {
                     || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle) 
                 {
                     if self.bus_status == BusStatus::CodeFetch {
-                        trace_print!(self, "fetch delay here?");
+                        //trace_print!(self, "fetch delay here?");
                     }
                 }
             }

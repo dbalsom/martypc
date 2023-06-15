@@ -45,7 +45,7 @@ pub enum ReadWriteFlag {
     RNI
 }
 
-impl ByteQueue for Cpu<'_> {
+impl ByteQueue for Cpu {
     fn seek(&mut self, _pos: usize) {
         // Instruction queue does not support seeking
     }
@@ -131,7 +131,7 @@ impl ByteQueue for Cpu<'_> {
 }
 
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     /// Read a byte from the instruction queue.
     /// Either return a byte currently in the queue, or fetch a byte into the queue and 

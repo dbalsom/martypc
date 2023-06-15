@@ -28,7 +28,7 @@
 use crate::cpu_808x::*;
 use crate::cpu_808x::muldiv::*;
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     /// Ascii Adjust after Addition
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.

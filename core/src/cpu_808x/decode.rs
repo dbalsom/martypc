@@ -98,7 +98,7 @@ impl Display for InstructionDecodeError{
     }
 }
 
-impl<'a> Cpu<'a> {
+impl Cpu {
     pub fn decode(bytes: &mut impl ByteQueue) -> Result<Instruction, Box<dyn std::error::Error>> {
 
         let mut operand1_type: OperandType = OperandType::NoOperand;

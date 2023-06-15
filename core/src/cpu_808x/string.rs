@@ -26,7 +26,7 @@
 
 use crate::cpu_808x::*;
 
-impl<'a> Cpu<'a> {
+impl Cpu {
     pub fn string_op(&mut self, opcode: Mnemonic, segment_override: SegmentOverride) {
 
         let (segment_value_base_ds, segment_base_ds) = match segment_override {

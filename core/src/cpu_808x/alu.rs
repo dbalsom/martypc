@@ -31,7 +31,7 @@ use crate::cpu_common::alu::*;
 
 //use num_traits::PrimInt;
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     #[inline(always)]
     fn set_parity_flag_from_u8(&mut self, operand: u8) {

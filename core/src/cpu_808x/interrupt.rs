@@ -26,7 +26,7 @@
 
 use crate::cpu_808x::*;
 
-impl<'a> Cpu<'a> {
+impl Cpu {
 
     /// Execute the IRET microcode routine.
     pub fn iret_routine(&mut self) {
