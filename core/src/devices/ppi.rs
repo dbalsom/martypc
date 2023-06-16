@@ -40,7 +40,7 @@ pub const PPI_PORT_C: u16 = 0x62;
 pub const PPI_COMMAND_PORT: u16 = 0x63;
 
 pub const KB_RESET_US: f64 = 10_000.0; // Time with clock line pulled low before kb is reset - 10ms
-pub const KB_RESET_DELAY_US: f64 = 1_000.0; // Delay period between detecting reset and sending reset byte - 1ms
+pub const KB_RESET_DELAY_US: f64 = 0.0; // Delay period between detecting reset and sending reset byte - 1ms
 
 // Dipswitch information from
 // http://www.minuszerodegrees.net/5150/misc/5150_motherboard_switch_settings.htm
@@ -145,6 +145,7 @@ pub struct Ppi {
     pb_byte: u8,
     kb_byte: u8,
     clear_keyboard: bool,
+    kb_enabled: bool,
     dip_sw1: u8,
     dip_sw2: u8,
     timer_in: bool,
@@ -155,6 +156,7 @@ pub struct Ppi {
 // other components. Components connected to the PPI will receive a reference
 // to this structure on creation, and can read or modify the wire state via 
 // Cell's internal mutability.
+// (unimplemented)
 pub struct PpiWires {
     timer_monitor: Cell<bool>,
     timer_gate2: Cell<bool>,
@@ -216,6 +218,7 @@ impl Ppi {
             pb_byte: 0,
             kb_byte: 0,
             clear_keyboard: false,
+            kb_enabled: true,
             dip_sw1: match machine_type {
                 MachineType::IBM_PC_5150 => {
                     SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits
@@ -241,10 +244,18 @@ impl IoDevice for Ppi {
         match port {
             PPI_PORT_A => {
                 // Return dip switch block 1 or kb_byte depending on port mode
-                // 5160 will always return kb_byte
+                // 5160 will always return kb_byte.
+                // PPI PB7 supresses keyboard shift register output.
                 match self.port_a_mode {
                     PortAMode::SwitchBlock1 => self.dip_sw1,
-                    PortAMode::KeyboardByte => self.kb_byte
+                    PortAMode::KeyboardByte => {
+                        if self.kb_enabled {
+                            self.kb_byte
+                        }
+                        else {
+                            0
+                        }
+                    }
                 }
             },
             PPI_PORT_B => {
@@ -316,17 +327,19 @@ impl Ppi {
                     self.port_c_mode = PortCMode::Switch2Five;
                 }
 
-                // Besides controlling the state of port A, this bit also triggers a 
-                // clear of the keyboard
+                // Besides controlling the state of port A, this bit also suppresses IRQ1
                 if byte & PORTB_PRESENT_SW1_PORTA != 0 {
                     self.clear_keyboard = true;
+                    self.kb_enabled = false;
                     self.port_a_mode = PortAMode::SwitchBlock1
                 }
                 else {
+                    self.kb_enabled = true;
                     self.port_a_mode = PortAMode::KeyboardByte
                 }
             }
             MachineType::IBM_XT_5160 => {
+                
                 // 5160 Behavior only
                 if byte & PORTB_SW1_SELECT == 0 {
                     // If Bit 3 is OFF, PC0-PC3 represent SW1 S1-S4
@@ -336,10 +349,13 @@ impl Ppi {
                     self.port_c_mode = PortCMode::Switch1FiveToEight;
                 }
 
-                // On the 5160, this bit just triggers a clear of the keyboard. Port A
-                // always presents the KB byte.
+                // On the 5160, this bit clears the keyboard and suppresses IRQ1.
                 if byte & PORTB_KB_CLEAR != 0 {
                     self.clear_keyboard = true;
+                    self.kb_enabled = false;
+                }
+                else {
+                    self.kb_enabled = true;
                 }
                 self.port_a_mode = PortAMode::KeyboardByte;
             }
@@ -369,8 +385,14 @@ impl Ppi {
 
     }
 
+    /// Send a byte to the keyboard.
     pub fn send_keyboard(&mut self, byte: u8 ) {
         self.kb_byte = byte;
+    }
+
+    /// Return whether the keyboard enable line (PB7) is set.
+    pub fn kb_enabled(&self) -> bool {
+        self.kb_enabled
     }
 
     pub fn calc_port_c_value(&self) -> u8 {
@@ -451,7 +473,7 @@ impl Ppi {
         self.speaker_in = state;
     }
 
-    // Return whether NMI generation is enabled
+    /// Return whether NMI generation is enabled
     pub fn nmi_enabled(&self) -> bool {
         self.pb_byte & PORTB_PARITY_MB_EN == 0 || self.pb_byte & PORTB_PARITY_EX_EN == 0
     }
@@ -486,7 +508,10 @@ impl Ppi {
 
                 log::trace!("PPI: Sending keyboard reset byte");
                 self.kb_byte = 0xAA;
-                pic.request_interrupt(1);
+
+                if self.kb_enabled {
+                    pic.request_interrupt(1);
+                }
             }
         }
     }

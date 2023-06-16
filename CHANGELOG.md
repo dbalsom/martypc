@@ -17,9 +17,9 @@
 * Update Pixels library to 0.12.1
 * Use fast_image_resize crate for SIMD accelleration. Aspect correction is now approx 5X faster with equivalent quality.
 * Fixed bug in PIT latch logic (thanks 640KB)
+* Fixed bug in PIC IRR logic (thanks 640KB)
+* Fixed bug in PPI handling of keyboard enable line (Fixes halt on boot on 5160)
 * Added CTRL-ALT-DEL menu option
-* Known issues
-    * Hitting a key during boot on a 5160 machine can halt the CPU.
 
 ## [0.1.1](https://github.com/dbalsom/martypc/releases/tag/0.1.1) (2023-05-31)
 
