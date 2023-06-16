@@ -2,6 +2,7 @@
 ## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-XX)
 
 * Redesigned CGA card with 'dynamic clocking' support. Card will now switch between clocking by cycle or character as appropriate.
+* Improved performance when CPU is halted.
 * Added menu options to save changes to loaded floppy image(s).
 * Fixed CPU cycle tracelogging
 * Added port mirrors for CGA (thanks th3bar0n)

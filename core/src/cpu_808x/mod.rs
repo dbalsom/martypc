@@ -1946,10 +1946,13 @@ impl Cpu {
             }
         }
 
+        // Halt state can be expensive since if we only executing a single cycle. 
+        // See if we can get away with executing 3 halt cycles at at time - demo effects may require more precision
         if self.halted {
-            // Run one cycle of halt state
             self.cycle_i(self.mc_pc);
-            return Ok((StepResult::Normal, 1))
+            self.cycle_i(self.mc_pc);
+            self.cycle_i(self.mc_pc);
+            return Ok((StepResult::Normal, 3))
         }
 
         // A real 808X CPU maintains a single Program Counter or PC register that points to the next instruction
