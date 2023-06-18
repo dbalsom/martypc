@@ -49,7 +49,7 @@ pub fn cpu_decode_bench<'a>(c: &mut Criterion) {
 
     let mut trace_logger = TraceLogger::None;
     let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
-    
+
     let mut rng = rand::thread_rng();
     cpu.randomize_seed(0);
     cpu.randomize_mem();
@@ -144,43 +144,6 @@ pub fn cpu_bus_write_bench<'a>(c: &mut Criterion) {
     });
 }
 
-pub fn cpu_bus_write_cga_bench<'a>(c: &mut Criterion) {
-    let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
-
-    //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
-
-    let mut trace_logger = TraceLogger::None;
-    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
-
-    let machine_desc = MACHINE_DESCS[&MachineType::IBM_XT_5160];
-
-    // Install devices
-    cpu.bus_mut().install_devices(
-        VideoType::CGA, 
-        &machine_desc, 
-        TraceLogger::None, 
-        false
-    );
-
-
-    let mut rng = rand::thread_rng();
-    cpu.randomize_seed(0);
-    cpu.randomize_mem();
-
-    c.bench_function("cpu_bus_write_cga_bench", |b| {
-        // Per-sample (note that a sample can be many iterations) setup goes here
-
-        b.iter(|| {
-            // Measured code goes here
-
-            // CGA memory range to target MMIO.
-            let addr = rng.gen_range(0xB8000..0xBC000);
-            _ = cpu.bus_mut().write_u8(addr as usize, 0xFF, 0).unwrap();
-        });
-
-    });
-}
-
 pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
     let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
 
@@ -218,6 +181,44 @@ pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
     });
 }
 
+pub fn cpu_bus_write_cga_bench<'a>(c: &mut Criterion) {
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_PC_5150];
+
+    //let mut bus = BusInterface::new(ClockFactor::Divisor(3), machine_desc);
+
+    let mut trace_logger = TraceLogger::None;
+    let mut cpu = Cpu::new(CpuType::Intel8088, TraceMode::None, trace_logger);
+
+    let machine_desc = MACHINE_DESCS[&MachineType::IBM_XT_5160];
+
+    // Install devices
+    cpu.bus_mut().install_devices(
+        VideoType::CGA, 
+        &machine_desc, 
+        TraceLogger::None, 
+        false
+    );
+
+
+    let mut rng = rand::thread_rng();
+    cpu.randomize_seed(0);
+    cpu.randomize_mem();
+
+    c.bench_function("cpu_bus_write_cga_bench", |b| {
+        // Per-sample (note that a sample can be many iterations) setup goes here
+
+        b.iter(|| {
+            // Measured code goes here
+
+            // CGA memory range to target MMIO.
+            let addr = rng.gen_range(0xB8000..0xBC000);
+            _ = cpu.bus_mut().write_u8(addr as usize, 0xFF, 0).unwrap();
+        });
+
+    });
+}
+
+
 /*
 criterion_group!(
     cpu_benches, 
@@ -231,8 +232,9 @@ criterion_group!(
 criterion_group!(
     cpu_benches,
     cpu_bus_write_bench,
+    cpu_bus_read_cga_bench,
     cpu_bus_write_cga_bench,
-    cpu_bus_read_cga_bench
+    
 );
 
 criterion_main!(cpu_benches);
