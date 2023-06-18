@@ -40,7 +40,7 @@ pub const PPI_PORT_C: u16 = 0x62;
 pub const PPI_COMMAND_PORT: u16 = 0x63;
 
 pub const KB_RESET_US: f64 = 10_000.0; // Time with clock line pulled low before kb is reset - 10ms
-pub const KB_RESET_DELAY_US: f64 = 0.0; // Delay period between detecting reset and sending reset byte - 1ms
+pub const KB_RESET_DELAY_US: f64 = 1000.0; // Delay period between detecting reset and sending reset byte - 1ms
 
 // Dipswitch information from
 // http://www.minuszerodegrees.net/5150/misc/5150_motherboard_switch_settings.htm
@@ -339,7 +339,7 @@ impl Ppi {
                 }
             }
             MachineType::IBM_XT_5160 => {
-                
+
                 // 5160 Behavior only
                 if byte & PORTB_SW1_SELECT == 0 {
                     // If Bit 3 is OFF, PC0-PC3 represent SW1 S1-S4
@@ -385,14 +385,17 @@ impl Ppi {
 
     }
 
-    /// Send a byte to the keyboard.
+    /// Send a byte to the keyboard shift register.
     pub fn send_keyboard(&mut self, byte: u8 ) {
-        self.kb_byte = byte;
+        // Only send a scancode if the keyboard is not actively being reset.
+        if self.kb_enabled && !self.kb_clock_low {
+            self.kb_byte = byte;
+        }
     }
 
-    /// Return whether the keyboard enable line (PB7) is set.
+    /// Return whether the keyboard enable line (PB7) is set and the keyboard clock line is not held low.
     pub fn kb_enabled(&self) -> bool {
-        self.kb_enabled
+        self.kb_enabled && !self.kb_clock_low
     }
 
     pub fn calc_port_c_value(&self) -> u8 {
