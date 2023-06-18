@@ -1500,7 +1500,7 @@ impl MemoryMappedDevice for EGACard {
         0
     }
 
-    fn read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
@@ -1539,16 +1539,16 @@ impl MemoryMappedDevice for EGACard {
         }
     }
 
-    fn read_u16(&mut self, address: usize, cycles: u32) -> (u16, u32) {
+    fn mmio_read_u16(&mut self, address: usize, cycles: u32) -> (u16, u32) {
 
-        let (lo_byte, wait1) = MemoryMappedDevice::read_u8(self, address, cycles);
-        let (ho_byte, wait2) = MemoryMappedDevice::read_u8(self, address + 1, cycles);
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, cycles);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, cycles);
 
         //log::warn!("Unsupported 16 bit read from VRAM");
         ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
-    fn write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
@@ -1677,7 +1677,7 @@ impl MemoryMappedDevice for EGACard {
         0
     }
 
-    fn write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
+    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
         log::warn!("Unsupported 16 bit write to VRAM");
         0
     }

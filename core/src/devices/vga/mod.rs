@@ -1893,7 +1893,7 @@ impl MemoryMappedDevice for VGACard {
         0
     }
 
-    fn read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
@@ -1961,16 +1961,16 @@ impl MemoryMappedDevice for VGACard {
         (0, 0)
     }
 
-    fn read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
+    fn mmio_read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
 
-        let (lo_byte, wait1) = MemoryMappedDevice::read_u8(self, address, 0);
-        let (ho_byte, wait2) = MemoryMappedDevice::read_u8(self, address + 1, 0);
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0);
 
         log::warn!("Unsupported 16 bit read from VRAM");
         ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
-    fn write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
 
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
@@ -2192,7 +2192,7 @@ impl MemoryMappedDevice for VGACard {
         0
     }
 
-    fn write_u16(&mut self, address: usize, data: u16, _cycles: u32) -> u32 {
+    fn mmio_write_u16(&mut self, address: usize, data: u16, _cycles: u32) -> u32 {
         trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
         0

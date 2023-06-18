@@ -381,6 +381,7 @@ pub struct CGACard {
     hborder: bool,
     vborder: bool,
 
+
     cc_register: u8,
     clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
     clock_mode: ClockMode,
@@ -2010,7 +2011,15 @@ impl CGACard {
         // Process horizontal blanking period
         if self.in_crtc_hblank {
 
-            // Increment horizontal sync counter.
+            // Increment horizontal sync counter (wrapping)
+
+            /*
+            if ((self.hsc_c3l + 1) & 0x0F) != self.hsc_c3l.wrapping_add(1) {
+                log::warn!("hsc0: {} hsc1: {}", ((self.hsc_c3l + 1) & 0x0F), self.hsc_c3l.wrapping_add(1));
+            }
+            */
+
+            //self.hsc_c3l = (self.hsc_c3l + 1) & 0x0F;
             self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
 
             let hsync_target = if self.clock_divisor == 1 { 
@@ -2020,10 +2029,8 @@ impl CGACard {
                 5
             };
 
-            // Do a horizontal sync at either sync_width or sync_width / 2 in lowres mode
+            // Do a horizontal sync
             if self.hsc_c3l == hsync_target {
-                // We've left horizontal blank, enter left overscan.
-
                 // Update the video mode, if an update is pending.
                 if self.mode_pending {
                     self.update_mode();

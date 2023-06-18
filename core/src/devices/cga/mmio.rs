@@ -61,12 +61,12 @@ impl MemoryMappedDevice for CGACard {
         waits
     }
 
-    fn read_u8(&mut self, address: usize, cycles: u32) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, cycles: u32) -> (u8, u32) {
 
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
         if a_offset < CGA_MEM_SIZE {
             // Read within memory range
-
+            
             // Look up wait states given the last ticked clock cycle + elapsed cycles
             // passed in.
             let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
@@ -81,6 +81,8 @@ impl MemoryMappedDevice for CGACard {
                 waits
             );
             (self.mem[a_offset], waits)
+
+            //(self.mem[a_offset], 0)
         }
         else {
             // Read out of range, shouldn't happen...
@@ -88,7 +90,7 @@ impl MemoryMappedDevice for CGACard {
         }
     }
 
-    fn write_u8(&mut self, address: usize, byte: u8, cycles: u32) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, byte: u8, cycles: u32) -> u32 {
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
         if a_offset < CGA_MEM_SIZE {
             self.mem[a_offset] = byte;
@@ -112,16 +114,16 @@ impl MemoryMappedDevice for CGACard {
         }
     }
 
-    fn read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
+    fn mmio_read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
 
-        let (lo_byte, wait1) = MemoryMappedDevice::read_u8(self, address, 0);
-        let (ho_byte, wait2) = MemoryMappedDevice::read_u8(self, address + 1, 0);
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0);
 
         log::warn!("Unsupported 16 bit read from VRAM");
         return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }    
 
-    fn write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
+    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
         0
