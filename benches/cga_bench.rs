@@ -34,10 +34,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 pub fn cga_tick_bench(c: &mut Criterion) {
     // One-time setup code goes here
 
-    let mut cga = CGACard::new(TraceLogger::None, false);
-
     c.bench_function("cga_bench_tick", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
+        let mut cga = CGACard::new(TraceLogger::None, false);
 
         b.iter(|| {
             // Measured code goes here
@@ -48,6 +47,8 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     c.bench_function("cga_bench_tick_char", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
+        let mut cga = CGACard::new(TraceLogger::None, false);
+
         b.iter(|| {
             // Measured code goes here
             cga.tick_char();
@@ -56,6 +57,8 @@ pub fn cga_tick_bench(c: &mut Criterion) {
 
     c.bench_function("cga_bench_frame_by_pixel_ticks", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
+
+        let mut cga = CGACard::new(TraceLogger::None, false);
 
         b.iter(|| {
             // Measured code goes here
@@ -68,6 +71,8 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     c.bench_function("cga_bench_frame_by_char_ticks", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
+        let mut cga = CGACard::new(TraceLogger::None, false);
+
         b.iter(|| {
             // Measured code goes here
             for _ in 0..29868 {
@@ -78,6 +83,8 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     
     c.bench_function("cga_bench_draw_textmode_char", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
+
+        let mut cga = CGACard::new(TraceLogger::None, false);
 
         b.iter(|| {
             // Measured code goes here
