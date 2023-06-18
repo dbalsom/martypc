@@ -6,17 +6,20 @@ edition = "2021"
 [lib]
 name = "marty_pixels_wasm32_player"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 marty_core = { path = "../../core/"}
 marty_render = { path = "../../frontend_libs/render"}
+pixels_stretch_renderer = { path = "../../frontend_libs/pixels_stretch_renderer" }
+
 bytemuck = "1.13.1"
 cpal = "0.13.5"
 #egui = "0.20"
 emath = "0.20"
 #egui-wgpu = "0.21"
 #egui-winit = { version = "0.20", default-features = false, features = ["links"] }
-env_logger = "0.9"
+#env_logger = "0.9"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 log = "0.4"
 pixels = "0.12.1"
@@ -45,3 +48,5 @@ cpal = { version = "0.13.5", features = ["wasm-bindgen"]}
 git = "https://github.com/emilk/egui.git"
 rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"

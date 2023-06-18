@@ -1757,7 +1757,6 @@ dependencies = [
  "cpal",
  "egui-winit",
  "emath 0.20.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "env_logger",
  "error-iter",
  "getrandom",
  "image",
@@ -1767,6 +1766,7 @@ dependencies = [
  "marty_core",
  "marty_render",
  "pixels",
+ "pixels_stretch_renderer",
  "rand",
  "regex",
  "resize",
@@ -2389,6 +2389,16 @@ dependencies = [
  "pollster",
  "raw-window-handle 0.5.0",
  "thiserror",
+ "ultraviolet",
+ "wgpu",
+]
+
+[[package]]
+name = "pixels_stretch_renderer"
+version = "0.1.2"
+dependencies = [
+ "bytemuck",
+ "pixels",
  "ultraviolet",
  "wgpu",
 ]

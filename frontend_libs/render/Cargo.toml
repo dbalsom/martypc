@@ -1,11 +1,12 @@
 [package]
 name = "marty_render"
 version = "0.1.2"
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "marty_render"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 marty_core = { path = "../../core" }
