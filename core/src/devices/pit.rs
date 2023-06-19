@@ -821,6 +821,7 @@ impl ProgrammableIntervalTimer {
         for i in 0..3 {
             self.channels[i].mode.update(ChannelMode::InterruptOnTerminalCount);
             self.channels[i].channel_state = ChannelState::WaitingForReload;
+            self.channels[i].count_register.update(0);
             self.channels[i].counting_element.update(0);
             self.channels[i].read_state = ReadState::NoRead;
             self.channels[i].count_is_latched = false;
