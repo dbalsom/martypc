@@ -1321,7 +1321,7 @@ impl BusInterface {
                     if let Some(pic) = &mut self.pic1 {
                         // TODO: Should we let the PPI do this directly?
                         //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
-                        pic.request_interrupt(1);
+                        pic.pulse_interrupt(1);
                     }   
                 }
             }
@@ -1498,6 +1498,12 @@ impl BusInterface {
         self.pic1.as_mut().unwrap().reset();
         //self.video.borrow_mut().reset();
     }
+
+    /// Call the reset methods for devices to be reset on warm boot
+    pub fn reset_devices_warm(&mut self) {
+        self.pit.as_mut().unwrap().reset();
+        //self.pic1.as_mut().unwrap().reset();
+    }    
 
     /// Read an 8-bit value from an IO port.
     /// 

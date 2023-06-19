@@ -216,6 +216,11 @@ impl Pic {
         if byte & ICW1_IS_ICW1 != 0 {
             // Parse Initialization Command Word
             if let InitializationState::Normal = self.init_state {
+
+                // Reset the IMR & ISR on ICW
+                self.isr = 0;
+                self.imr = 0;
+                
                 log::debug!("PIC: Read ICW1: {:02X}", byte);
             }
             else {
@@ -252,7 +257,7 @@ impl Pic {
         }
         else if byte & OCW_IS_OCW3 != 0  { 
             
-            let rr = match byte & OCW3_RR_COMMAND {
+            self.read_select = match byte & OCW3_RR_COMMAND {
                 0b10 => {
                     //log::debug!("PIC: OCW3 Read Selected IRR register");
                     ReadSelect::IRR
@@ -263,8 +268,6 @@ impl Pic {
                 }
                 _ => self.read_select
             };
-            self.read_select = rr;
-
         }
         else {
             log::trace!("PIC: Unhandled command: {:02X}", byte)
@@ -432,9 +435,9 @@ impl Pic {
         }
     }
 
+    /// Called by a device to request interrupt service.
+    /// Simulates a low-to-high transition of the corresponding IR line.
     pub fn request_interrupt(&mut self, interrupt: u8) {
-        // Called by a device to request interrupt service
-        // Simulates IR line going high
 
         if interrupt > 7 {
             panic!("PIC: Received interrupt out of range: {}", interrupt);
@@ -464,9 +467,45 @@ impl Pic {
         }
     }
 
+    /// Called by a device that pulses the IR line to request service (like the keyboard)
+    /// Simulates a low-to-high-to-low transition of the corresponding IR line.
+    pub fn pulse_interrupt(&mut self, interrupt: u8) {
+
+        if interrupt > 7 {
+            panic!("PIC: Received interrupt out of range: {}", interrupt);
+        }
+
+        //log::trace!("PIC: Interrupt {} requested by device", interrupt);
+
+        // Interrupts 0-7 map to bits 0-7 in IMR register
+        let intr_bit: u8 = 0x01 << interrupt;
+
+        // Set the request bit in the IRR register directly. 
+        // Since the IR line is 'pulsed' we clear it now. It is likely too short to register in any
+        // debug display anyway (kb IR is ~100ns)
+        self.ir &= !intr_bit;
+        self.irr |= intr_bit; 
+
+        if self.imr & intr_bit != 0 {
+            // If the corresponding bit is set in the IMR, it is masked: do not process right now
+            self.interrupt_stats[interrupt as usize].imr_masked_count += 1;
+        }
+        else if self.isr & intr_bit != 0 {
+            // If the corresponding bit is set in the ISR, do not process right now
+            self.interrupt_stats[interrupt as usize].isr_masked_count += 1;
+        }
+        else {
+            // Interrupt is not masked or already in service, process it...
+            // (Set INT request line high)
+            self.intr = true;
+            self.interrupt_stats[interrupt as usize].serviced_count += 1;
+        }
+    }    
+
+    /// Called by device to withdraw interrupt service request
+    /// Simulates a high-to-low transition of the corresponding IR line.
     pub fn clear_interrupt(&mut self, interrupt: u8) {
-        // Called by device to withdraw interrupt service request
-        // Simulates IR line going low
+
         if interrupt > 7 {
             panic!("PIC: Received interrupt out of range: {}", interrupt);
         }
