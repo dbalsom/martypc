@@ -109,7 +109,7 @@ impl VideoCard for CGACard {
                 self.tick_hchar();
             }
         }
-        log::trace!("debug_tick(): new cur_screen_cycles: {}", self.cur_screen_cycles);
+        log::warn!("debug_tick(): new cur_screen_cycles: {} beam_x: {} beam_y: {}", self.cur_screen_cycles, self.beam_x, self.beam_y);
     }
 
     #[inline]
@@ -341,6 +341,10 @@ impl VideoCard for CGACard {
 
     fn run(&mut self, time: DeviceRunTimeUnit) {
 
+        if self.scanline > 1000 {
+            log::error!("run(): scanlines way too high: {}", self.scanline);
+        }
+
         let mut pixel_clocks = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
             ticks
         }
@@ -352,12 +356,11 @@ impl VideoCard for CGACard {
             panic!("CGA run() with 0 ticks");
         }
 
-        /*
         if self.ticks_advanced > pixel_clocks {
             panic!("Impossible condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, pixel_clocks);
-        }*/
+        }
 
-        let orig_clock = self.cycles;
+        let orig_cycles = self.cycles;
         let orig_ticks_advanced = self.ticks_advanced;
         let orig_clocks_accum = self.clocks_accum;
         let orig_clocks_owed = self.pixel_clocks_owed;
@@ -367,16 +370,25 @@ impl VideoCard for CGACard {
         self.ticks_advanced = 0;
 
         if (self.cycles + self.pixel_clocks_owed as u64) & self.char_clock_mask != 0 { 
-            log::error!("pixel_clocks_owed incorrect: does not put clock back in phase.");
+            log::error!(
+                "pixel_clocks_owed incorrect: does not put clock back in phase. cycles: {} owed: {} mask: {:X}", 
+                self.cycles, 
+                self.pixel_clocks_owed,
+                self.char_clock_mask
+            );
         }
 
         // Clock by pixel clock to catch up with character clock.
-        for _ in 0..self.pixel_clocks_owed {
+        let mut tick_count = 0;
+
+        while self.pixel_clocks_owed > 0 {
             self.tick();
+            tick_count += 1;
             self.pixel_clocks_owed -= 1;
             self.clocks_accum = self.clocks_accum.saturating_sub(1);
 
             if self.clocks_accum == 0 {
+                //log::warn!("exhausted accumulator trying to catch up to lclock");
                 return
             }
         }
@@ -387,20 +399,26 @@ impl VideoCard for CGACard {
 
         if self.cycles & self.char_clock_mask as u64 != 0 {
             log::warn!(
-                "out of phase with char clock: {} mask: {:02X} cycles: {} out of phase: {} advanced: {} owed: {} accum: {}", 
+                "out of phase with char clock: {} mask: {:02X} cycles: {} out of phase: {} cycles: {} advanced: {} owed: {} accum: {} tick_ct: {}", 
 
                 self.char_clock,
                 self.char_clock_mask,
                 self.cycles, 
                 self.cycles % self.char_clock as u64,
+                orig_cycles,
                 orig_ticks_advanced,
                 orig_clocks_owed,
-                orig_clocks_accum
+                orig_clocks_accum,
+                tick_count
             );
         }
 
         // Drain accumulator and tick by character clock.
         while self.clocks_accum > self.char_clock {
+
+            if self.clocks_accum > 10000 {
+                log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
+            }
 
             /*
             if self.debug_counter >= 3638297 {
