@@ -67,9 +67,9 @@
         var baseName = path.substring(path.lastIndexOf('/') + 1);
 
         // Set the src to the same base name with .json extension
-        json_file = baseName + '.json';
+        var jsonFile = baseName + '.json';
         
-        fetch(json_file)
+        fetch(jsonFile)
             .then(response => response.json())
             .then(data => {
                 // Select the table by its ID and populate it with data from the JSON file
