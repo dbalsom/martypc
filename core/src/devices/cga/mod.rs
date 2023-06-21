@@ -325,6 +325,7 @@ pub struct CGACard {
     cur_screen_cycles: u64,
     cycles_per_vsync: u64,
     sink_cycles: u32,
+    catching_up: bool,
 
     mode_pending: bool,
     clock_pending: bool,
@@ -506,6 +507,7 @@ impl CGACard {
             cur_screen_cycles: 0,
             cycles_per_vsync: 0,
             sink_cycles: 0,
+            catching_up: false,
 
             mode_byte: 0,
             mode_pending: false,
@@ -649,13 +651,18 @@ impl CGACard {
 
     fn catch_up(&mut self, delta: DeviceRunTimeUnit) {
 
+        /*
         if self.sink_cycles > 0 {
             // Don't catch up when sinking;
             return
         }
+        */
+
         // Catch up to CPU state.
         if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
             //log::debug!("Ticking {} clocks on IO read.", ticks);
+
+            self.catching_up = true; // Setting this flag disables mode changes.
 
             let phase_offset = self.calc_phase_offset();
 
@@ -676,7 +683,7 @@ impl CGACard {
                 self.tick_char();
 
                 // Tick any remaining cycles
-                for _ in 0..(ticks - phase_offset - self.char_clock) {
+                for _ in 0..(ticks - phase_offset - self.char_clock as u32) {
                     self.tick();
                 }
             }
@@ -689,6 +696,7 @@ impl CGACard {
 
             self.ticks_advanced += ticks; // must be +=
             self.pixel_clocks_owed = self.calc_cycles_owed();
+            self.catching_up = false;
         }
     }
 
@@ -1762,6 +1770,10 @@ impl CGACard {
             self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
         }
 
+        if self.cycles & self.char_clock_mask != 0 {
+            log::error!("tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+        }  
+
         self.tick_crtc_char();
         self.update_clock();
     }
@@ -1833,6 +1845,10 @@ impl CGACard {
             self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
         }
 
+        if self.cycles & self.char_clock_mask != 0 {
+            log::error!("tick_lchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+        }  
+
         self.tick_crtc_char();
         self.update_clock();
     }
@@ -1888,8 +1904,8 @@ impl CGACard {
         self.cycles += 1;
         self.cur_screen_cycles += 1;
 
-        // Don't execute even cycles if we are in half-clock mode
-        if self.clock_divisor == 2 && (self.cycles & 0x01 == 0) {
+        // Don't execute odd cycles if we are in half-clock mode
+        if self.clock_divisor == 2 && (self.cycles & 0x01 == 1) {
             return;
         }
 
@@ -1979,6 +1995,9 @@ impl CGACard {
 
         // Done with the current character      
         if self.char_col == CGA_HCHAR_CLOCK {
+            if self.cycles & self.char_clock_mask != 0 {
+                log::error!("tick(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+            }            
             self.tick_crtc_char();
         }              
     }
@@ -2032,7 +2051,8 @@ impl CGACard {
             // Do a horizontal sync
             if self.hsc_c3l == hsync_target {
                 // Update the video mode, if an update is pending.
-                if self.mode_pending {
+                // It is important not to change graphics mode while we are catching up during an IO instruction.
+                if !self.catching_up && self.mode_pending {
                     self.update_mode();
                     self.mode_pending = false;
                 }
@@ -2197,7 +2217,7 @@ impl CGACard {
     }
 
     pub fn do_vsync(&mut self) {
-        
+
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
@@ -2224,6 +2244,9 @@ impl CGACard {
                 let delta_y = 262 - self.beam_y;
                 self.sink_cycles = delta_y * 912;
 
+                if self.cycles & self.char_clock_mask != 0 {
+                    log::error!("vsync out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+                }
                 //log::trace!("sink_cycles: {}", self.sink_cycles);
             }
 
