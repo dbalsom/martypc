@@ -64,7 +64,7 @@
         var path = window.location.pathname;
 
         // Extract the base filename
-        var file = path.substring(path.lastIndexOf('/') + 1);
+        var baseName = path.substring(path.lastIndexOf('/') + 1);
 
         // Set the src to the same base name with .json extension
         json_file = baseName + '.json';
