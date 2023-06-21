@@ -1,0 +1,51 @@
+# Mac stuff
+.DS_Store
+
+# Windows stufff
+Thumbs.db
+
+# Rust compiler output
+/target
+
+# Visual Studio Code editor files
+/.vscode
+
+# Emulator files
+
+/rom
+/roms
+/floppy
+/hdd
+/dumps
+/builds
+/screenshots
+/traces
+/program
+/releases
+marty*.toml
+!/install/martypc.toml
+*.pcm
+*.cfg
+*.log
+*.exe
+/frontends/martypc_pixels_wasm32/wasm/
+icon.png
+
+# Assembly stuff
+/asm
+
+# gh-pages stuff
+/assets
+/roms
+/util
+/install
+/frontends
+/frontend_libs
+/core
+/benches
+*.toml
+*.lock
+*.md
+build.rs
+launch.json
+LICENSE
