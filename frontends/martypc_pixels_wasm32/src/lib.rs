@@ -257,7 +257,7 @@ pub async fn run() {
 
     
 
-    #[cfg(target_arch = "wasm32")]
+    //#[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::JsCast;
         use winit::platform::web::WindowExtWebSys;
@@ -273,11 +273,12 @@ pub async fn run() {
 
         let window = Rc::clone(&window);
 
+        let client_window = web_sys::window().unwrap();
+        let dpr = client_window.device_pixel_ratio();
+
         // Initialize winit window with current dimensions of browser client
         //window.set_inner_size(get_window_size());
         window.set_inner_size(PhysicalSize::new(768, 576));
-
-        let client_window = web_sys::window().unwrap();
 
         // Attach winit canvas to body element
         web_sys::window()
@@ -290,6 +291,32 @@ pub async fn run() {
                 // Append the canvas to the div.
                 div.append_child(&web_sys::Element::from(window.canvas()))
                     .ok()
+
+                /*
+                // Get the canvas element
+                let canvas = web_sys::Element::from(window.canvas());
+
+                // Cast the Element to HtmlCanvasElement so we can modify it.
+                let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>().unwrap();
+
+                // Get the device pixel ratio
+                let dpr = client_window.device_pixel_ratio();
+                log::warn!("dpr is: {}", dpr);
+
+                // Set the size of the canvas in pixels
+                let width = 768.0; // desired width in CSS pixels
+                let height = 576.0; // desired height in CSS pixels
+                canvas.set_width((width * dpr) as u32);
+                canvas.set_height((height * dpr) as u32);
+
+                // Scale the canvas back down to the desired size using CSS
+                let style = canvas.style();
+                style.set_property("width", &(width.to_string() + "px")).unwrap();
+                style.set_property("height", &(height.to_string() + "px")).unwrap();
+
+                // Append the canvas to the div
+                div.append_child(&canvas).ok()
+                */
             })
             .expect("Couldn't append canvas to the specified div!");
 
