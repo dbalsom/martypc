@@ -63,10 +63,9 @@
         // Get the path, e.g., "/path/foo.html"
         var path = window.location.pathname;
 
-        // Extract the base filename
-        var baseName = path.substring(path.lastIndexOf('/') + 1);
-
-        // Set the src to the same base name with .json extension
+        // Get the equivalent name but with .json extension
+        var fileName = path.substring(path.lastIndexOf('/') + 1);
+        var baseName = fileName.split('.')[0];
         var jsonFile = baseName + '.json';
         
         fetch(jsonFile)
