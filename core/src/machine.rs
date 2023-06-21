@@ -961,8 +961,8 @@ impl Machine {
                 CpuOption::SimulateDramRefresh(
                     true, 
                     self.timer_ticks_to_cpu_cycles(dma_counter), 
-                    //self.timer_ticks_to_cpu_cycles(dma_counter_val)
-                    self.timer_ticks_to_cpu_cycles(0)
+                    self.timer_ticks_to_cpu_cycles(dma_counter_val)
+                    //self.timer_ticks_to_cpu_cycles(0)
                 )
             )
         }
