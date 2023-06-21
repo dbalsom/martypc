@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MartyPC Player</title>
+    
+    <link rel="stylesheet" href="player.css">
+    
+    <style>
+
+    </style>
+    
+    <script type="module" src="player.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="left-panel">
+            <img src="./img/martypc_logo_small.png" alt="MartyPC Logo">
+            <table id="title-info">
+                <tr>
+                    <td>Title:</td>
+                    <td>Game Name</td>
+                </tr>
+                <tr>
+                    <td>Platform:</td>
+                    <td>PC</td>
+                </tr>
+                <tr>
+                    <td>Year:</td>
+                    <td>2023</td>
+                </tr>
+            </table>
+            <button id="run-button">Run</button>
+        </div>
+        <div class="right-panel" id="marty-canvas-container">
+            <!-- The canvas element will be dynamically created here -->
+        </div>
+    </div>
+</body>
+</html>

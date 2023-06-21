@@ -1,0 +1,14 @@
+{
+  "name": "marty_pixels_wasm32_player",
+  "version": "0.1.2",
+  "files": [
+    "marty_pixels_wasm32_player_bg.wasm",
+    "marty_pixels_wasm32_player.js",
+    "marty_pixels_wasm32_player.d.ts"
+  ],
+  "module": "marty_pixels_wasm32_player.js",
+  "types": "marty_pixels_wasm32_player.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

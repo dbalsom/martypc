@@ -1,0 +1,83 @@
+* {
+    box-sizing: border-box;
+}
+
+body, html {
+    margin: 0;
+    height: 100%;
+    font-family: Arial, sans-serif;
+    background-color: #382D59; /* Base Color */
+}
+
+.container {
+    position: relative;
+    display: flex;
+    height: 100%;
+    padding: 20px;
+}
+
+a {
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+}
+
+a:hover {
+    background-color: indigo;
+}
+
+.left-panel {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    padding: 20px;
+    background-color: #4F416D; /* Slightly lighter than the base color */
+    width: 300px;
+    max-height: calc(100% - 40px);
+    overflow-y: auto;
+    border-radius: 8px;
+    color: #F4E4FF; /* Light text color */
+}
+
+.left-panel img {
+    max-width: 100%;
+}
+
+.left-panel table {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.left-panel td {
+    padding: 4px;
+}
+
+.left-panel button {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+    background-color: #8A77A1; /* Complementary Color */
+    color: white;
+    border: none;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.left-panel button:hover {
+    background-color: #715B89; /* Darken the button color on hover */
+}
+
+.right-panel {
+    width: 768px;
+    height: 576px;
+    background-color: #483773; /* Slightly different shade */
+    margin-left: 340px;
+    border-radius: 0px;
+}
+
+.right-panel > canvas {
+    width: 100%!important;      /* Gross hack to stretch canvas via CSS for high DPI modes */
+    height: 100%!important;
+    object-fit: contain;
+}   

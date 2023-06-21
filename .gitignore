@@ -49,3 +49,4 @@ icon.png
 build.rs
 launch.json
 LICENSE
+!/web/cfg/*.toml

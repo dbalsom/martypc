@@ -1,0 +1,193 @@
+# marty.toml
+# Configuration file for the MartyPC emulator.
+
+[emulator]
+# ----------------------------------------------------------------------------
+# General emulator options
+# ----------------------------------------------------------------------------
+
+# Base emulator data folder.
+basedir = "./"
+
+# Power on the emulated machine on startup (only applicable in gui mode)
+autostart = true
+
+# Run the CPU on startup - if false CPU will start paused
+# (only applicable in gui mode)
+cpu_autostart = true
+
+# Run the emulator without gui
+headless = false
+
+# Run the instruction fuzzer (requires validator feature)
+fuzzer = false
+
+# Run the emulator in benchmark mode (headless) See benchmark options in 
+# machine section to configure the benchmark operation. (Not yet implemented)
+benchmark = false
+
+# Run the emulated machine as fast as possible. Note this isn't just a CPU 
+# boost, the entire system including timer will accellerate. 
+# NOTE: This will cause unstable FPS. Mostly used for debugging.
+warpspeed = false 
+
+# Do aspect correction to convert display buffer to 4:3.  May introduce some
+# resampling blur. This can be toggled on/off in options menu.
+correct_aspect = true
+
+# Debug mode does a few miscellaneous things. 
+# - CPU Autostart is disabled
+# - Several debug panels are opened automatically
+# - CPU Instruction history is turned on (overrides setting)
+debug_mode = true
+
+# Don't load BIOS if true (not useful on its own)
+no_bios = false
+
+# Run the specified program instead of booting BIOS. The CPU reset vector will
+# be set to 'run_bin_seg:run_bin_ofs'
+#run_bin = "./program/a_effect.bin"
+run_bin_seg = 0x1000
+run_bin_ofs = 0x0000
+
+# ----------------------------------------------------------------------------
+# Debug Tracing Options
+# ----------------------------------------------------------------------------
+# CPU tracing may be enabled by specifying trace_mode
+# Tracing does not begin unless trace_on == true or set in GUI
+#
+# Valid values for trace_mode:
+# "Instruction" -> Perform per-instruction traces (slow, big)
+# "Cycle" -> Perform per-cycle traces (slowest, biggest)
+#  >>> WARNING: This will quickly make multi-gigabyte files.
+#
+# Additionally, a valid value for trace_file must be supplied.
+#
+trace_on = false
+trace_mode = "Cycle"
+trace_file = "./traces/instr_trace.log"
+
+# Enable Video tracing. Video device may log memory and register read/writes.
+#video_trace_file = "./traces/video_trace.log"
+
+# Enable Video frame debugging. This will display the entire video field 
+# including overscan and blanking periods for cards that support Direct 
+# rendering (CGA only for now)
+video_frame_debug = false
+
+# Enable PIT output save to file.  All samples from PIT will be saved to disk.
+#  >>> WARNING: This will quickly make multi-gigabyte files.
+#pit_output_file = "./traces/pit_output.pcm"
+# Use emulator service interrupt to trigger PIT output writing
+#pit_output_int_trigger = true 
+
+[gui]
+# ----------------------------------------------------------------------------
+# GUI options options
+# ----------------------------------------------------------------------------
+
+# Disable the GUI entirely. Use autostart=true or you'll have no way to start
+# the machine.
+gui_disabled = false 
+
+# Specify the base color for GUI control theme. Ideally use something dark and 
+# desaturated. Comment out for default EGUI theme.
+
+theme_color = 0x382D59  # Marty purple
+#theme_color = 0x2D4859  # Alt blue
+
+[cpu]
+# ----------------------------------------------------------------------------
+# Various CPU related options.
+# ----------------------------------------------------------------------------
+
+# Enable CPU wait states. This includes wait states from DMA, memory access
+# and device IO. Setting this to false may speed up the CPU, but reduce 
+# accuracy (Area 5150 will break)
+wait_states_enabled = true
+
+# Attempt to detect when the CPU is executing invalid instructions and halt.
+# May need to disable for certain test programs like acid88
+off_rails_detection = false
+
+# Whether to enable instruction history by default. This slows down the 
+# emulator a modest amount when enabled.
+instruction_history = false
+
+[input]
+# ----------------------------------------------------------------------------
+
+# Some platforms reverse the left and right mouse button id #'s. 
+# We try to detect this, but it can be overridden here.
+reverse_mouse_buttons = false
+
+[machine]
+# Machine info
+# ----------------------------------------------------------------------------
+
+# Emulated machine model type.
+# ----------------------------------------------------------------------------
+# Valid options for model are:
+# "IBM_PC_5150"
+# "IBM_XT_5160"
+
+#model = "IBM_PC_5150"
+model = "IBM_XT_5160"
+
+rom_override = [
+    { path = "/bin/GLABIOS_0.2.4_8T.ROM", address = 0xFE000, offset=0, org="Normal" }
+]
+
+# Load rom from raw byte slice. Used for wasm32 target.
+raw_rom = true
+
+# Turbo Button
+# ----------------------------------------------------------------------------
+# Change the clock divisor/multiplier for the CPU to run the CPU faster than 
+# normal. Other devices like the timer will continue to run at the same rate.
+#
+# On IBM PC/XT, turbo increases CPU clock from 4.77Mhz to 7.16Mhz.
+turbo = false
+
+# Video card type.
+# ----------------------------------------------------------------------------
+# Valid options for video are:
+# "CGA"
+# "EGA"
+# "VGA"
+video = "CGA"
+
+# Hard Disk Controller Type
+# ----------------------------------------------------------------------------
+# Valid options for hard disk controller are:
+# "None"  - No hard disk controller will be present
+# "Xebec" - Emulates the IBM/Xebec 20MB Fixed Disk Controller
+
+hdc = "None"
+#hdc = "Xebec"
+
+# VHD to mount into drive0 (Typically C:)
+#drive0 = "dos330.vhd"
+
+# VHD to mount into drive1 (Typically D:)
+#drive1 = "games.vhd"
+
+# Floppy image to load into floppy drive0 (A:)
+floppy0 = "/bin/areaboot.img"
+
+# Floppy image to load into floppy drive1 (B:)
+#floppy1 = "fd1.img"
+
+
+# Options for the CPU Validator module.
+# ----------------------------------------------------------------------------
+# You must have an Arduino8088 connected via USB to utilize
+# the validator. For more information, see 
+# https://github.com/dbalsom/arduino_8088
+[validator]
+type = "Arduino8088"
+trigger_address = 0xFFFF0
+trace_file = "./traces/validator_trace.log"
+
+
+
