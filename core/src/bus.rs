@@ -1330,6 +1330,7 @@ impl BusInterface {
         // There will always be a PIC, so safe to unwrap.
         let pic = self.pic1.as_mut().unwrap();
 
+        pic.run(sys_ticks);
 
         // There will always be a PIT, so safe to unwrap.
         let mut pit = self.pit.take().unwrap();

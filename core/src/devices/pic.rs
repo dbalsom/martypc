@@ -114,7 +114,10 @@ pub struct Pic {
     expecting_icw4: bool,    // ICW3 not supported in Single mode operation
     error: bool,             // We encountered an invalid condition or request
 
-    interrupt_stats: Vec<InterruptStats>
+    interrupt_stats: Vec<InterruptStats>,
+
+    intr_scheduled: bool,
+    intr_timer: u32
 }
 
 #[derive(Clone, Default)]
@@ -181,7 +184,10 @@ impl Pic {
             expecting_icw2: false,
             expecting_icw4: false,
             error: false,
-            interrupt_stats: vec![InterruptStats::new(); 8]
+            interrupt_stats: vec![InterruptStats::new(); 8],
+
+            intr_scheduled: false,
+            intr_timer: 0
         }
     }
 
@@ -220,7 +226,7 @@ impl Pic {
                 // Reset the IMR & ISR on ICW
                 self.isr = 0;
                 self.imr = 0;
-                
+
                 log::debug!("PIC: Read ICW1: {:02X}", byte);
             }
             else {
@@ -426,8 +432,8 @@ impl Pic {
             let is_in_service = ir_bit & self.isr != 0;
 
             if have_request && !is_masked && !is_in_service {
-                // (Set INT request line high)
-                self.intr = true;
+                // IRR bit is set and now unmasked; Set INTR line high after some delay.
+                self.schedule_intr(9); // TODO: Placeholder value. we should measure the actual delay with a scope.
                 self.interrupt_stats[interrupt as usize].serviced_count += 1;
             }
 
@@ -580,4 +586,21 @@ impl Pic {
         }
         state
     }
+
+    pub fn schedule_intr(&mut self, sys_ticks: u32) {
+        self.intr_scheduled = true;
+        self.intr_timer = sys_ticks;
+    }
+
+    /// Run the PIC. This is primarily used to effect a delay in raising INTR when the IMR is 
+    /// changed.
+    pub fn run(&mut self, sys_ticks: u32) {
+        if self.intr_scheduled {
+            self.intr_timer = self.intr_timer.saturating_sub(sys_ticks);
+            if self.intr_timer == 0 {
+                self.intr_scheduled = false;
+            }
+        }
+    }
+
 }
