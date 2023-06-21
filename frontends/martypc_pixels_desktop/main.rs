@@ -1078,20 +1078,21 @@ fn main() {
 
                     // Emulation time budget is 16ms - render time in ms - fudge factor
                     let render_time = stat_counter.render_time.as_micros();
-                    let emulation_time = stat_counter.emulation_time.as_millis();
-                    let mut emulation_time_allowed_ms = 16;
-                    if render_time < 16 {
+                    let emulation_time = stat_counter.emulation_time.as_micros();
+
+                    let mut emulation_time_allowed_us = 15667;
+                    if render_time < 15667 {
                         // Rendering time has left us some emulation headroom
-                        emulation_time_allowed_ms = 16_u128.saturating_sub(render_time);
+                        emulation_time_allowed_us = 15667_u128.saturating_sub(render_time);
                     }
                     else {
                         // Rendering is too long to run at 60fps. Just ignore render time for now.
                     }                    
 
                     // If emulation time took too long, reduce CYCLE_TARGET
-                    if emulation_time > emulation_time_allowed_ms {
+                    if emulation_time > emulation_time_allowed_us {
                         // Emulation running slower than 60fps
-                        let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+                        let factor: f64 = (stat_counter.emulation_time.as_micros() as f64) / emulation_time_allowed_us as f64;
                         // Decrease speed by half of scaling factor
 
                         let old_target = stat_counter.cycle_target;
@@ -1107,11 +1108,11 @@ fn main() {
                         );
                         */
                     }
-                    else if (emulation_time > 0) && (emulation_time < emulation_time_allowed_ms) {
+                    else if (emulation_time > 0) && (emulation_time < emulation_time_allowed_us) {
                         // Emulation could run faster
                             
                         // Increase speed by half of scaling factor
-                        let factor: f64 = (stat_counter.emulation_time.as_millis() as f64) / emulation_time_allowed_ms as f64;
+                        let factor: f64 = (stat_counter.emulation_time.as_micros() as f64) / emulation_time_allowed_us as f64;
 
                         let old_target = stat_counter.cycle_target;
                         let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
