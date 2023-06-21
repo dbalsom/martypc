@@ -1330,6 +1330,7 @@ impl BusInterface {
         // There will always be a PIC, so safe to unwrap.
         let pic = self.pic1.as_mut().unwrap();
 
+
         // There will always be a PIT, so safe to unwrap.
         let mut pit = self.pit.take().unwrap();
 
@@ -1362,7 +1363,7 @@ impl BusInterface {
         }
 
         // Save current count info.
-        let (pit_reload_value, _) = pit.get_channel_count(0);
+        let (pit_reload_value, pit_counting_element) = pit.get_channel_count(0);
 
         // Do hack for Area5150 :(
         if pit_reload_value == 5117 {
@@ -1440,10 +1441,11 @@ impl BusInterface {
                         if screen_tick_pos > screen_target {
                             let ticks_adj = screen_tick_pos - screen_target;
                             log::warn!(
-                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks.", 
+                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})", 
                                 screen_target, 
                                 screen_tick_pos, 
-                                ticks_adj
+                                ticks_adj,
+                                pit_counting_element
                             );
                             
                             cga.debug_tick(233472 - ticks_adj as u32);
@@ -1464,13 +1466,15 @@ impl BusInterface {
                         if screen_tick_pos > screen_target {
                             let ticks_adj = screen_tick_pos - screen_target;
                             log::warn!(
-                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks.", 
+                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})", 
                                 screen_target, 
                                 screen_tick_pos, 
-                                ticks_adj
+                                ticks_adj,
+                                pit_counting_element
                             );
                             
                             cga.debug_tick(233472 - ticks_adj as u32);
+                            
                             //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
                         }
                         
