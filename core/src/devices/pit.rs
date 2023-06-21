@@ -200,7 +200,10 @@ pub struct PitStringState {
 }
 
 impl IoDevice for ProgrammableIntervalTimer {
-    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
+    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
+
+        // Catch up to CPU state.
+        //self.catch_up(delta);
 
         match port {
             PIT_COMMAND_REGISTER => 0,
@@ -213,17 +216,10 @@ impl IoDevice for ProgrammableIntervalTimer {
 
     fn write_u8(&mut self, port: u16, data: u8, bus_opt: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
 
-        // Catch PIT up to CPU.
-        let ticks = self.ticks_from_time(delta, self.timewarp);
-        //self.timewarp = self.time_from_ticks(ticks);
-        self.timewarp = delta;  // the above is technically the correct way but it breaks stuff(?)
-
         let bus = bus_opt.unwrap();
 
-        //log::debug!("ticking PIT {} times on IO write. delta: {:?}", ticks, delta);
-        for _ in 0..ticks {
-            self.tick(bus, None)
-        }
+        // Catch up to CPU state.
+        self.catch_up(bus, delta);
 
         // PIT will always receive a reference to bus, so it is safe to unwrap.
         match port {
@@ -276,8 +272,10 @@ impl Channel {
     }
 
     pub fn set_mode(&mut self, mode: ChannelMode, rw_mode: RwMode, bcd: bool, bus: &mut BusInterface) {
-        // Not latch command, carry on
+
         self.output_latch.update(0);
+        self.counting_element.update(0);
+        
         self.count_is_latched = false;
         self.armed = false;
         //self.ce_undefined = false;
@@ -451,9 +449,11 @@ impl Channel {
                 // No read in progress
                 match *self.rw_mode {
                     RwMode::Lsb => {
+                        self.count_is_latched = false;
                         (*self.output_latch & 0xFF) as u8
                     },
                     RwMode::Msb => {
+                        self.count_is_latched = false;
                         ((*self.output_latch >> 8) & 0xFF) as u8
                     },
                     RwMode::LsbMsb => {
@@ -464,6 +464,7 @@ impl Channel {
             }
             ReadState::ReadLsb => {
                 // Word read in progress
+                self.count_is_latched = false;
                 self.change_read_state(ReadState::NoRead);
                 ((*self.output_latch >> 8) & 0xFF) as u8
             }
@@ -828,6 +829,18 @@ impl ProgrammableIntervalTimer {
             self.channels[i].ce_undefined = false;
             self.channels[i].output.update(false);
             self.channels[i].bcd_mode = false;
+        }
+    }
+
+    fn catch_up(&mut self, bus: &mut BusInterface, delta: DeviceRunTimeUnit) {
+        // Catch PIT up to CPU.
+        let ticks = self.ticks_from_time(delta, self.timewarp);
+        //self.timewarp = self.time_from_ticks(ticks);
+        self.timewarp = delta;  // the above is technically the correct way but it breaks stuff(?)
+
+        //log::debug!("ticking PIT {} times on IO write. delta: {:?}", ticks, delta);
+        for _ in 0..ticks {
+            self.tick(bus, None)
         }
     }
 
