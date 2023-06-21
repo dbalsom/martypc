@@ -135,7 +135,7 @@ reverse_mouse_buttons = false
 model = "IBM_XT_5160"
 
 rom_override = [
-    { path = "/bin/GLABIOS_0.2.4_8T.ROM", address = 0xFE000, offset=0, org="Normal" }
+    { path = "./bin/GLABIOS_0.2.4_8T.ROM", address = 0xFE000, offset=0, org="Normal" }
 ]
 
 # Load rom from raw byte slice. Used for wasm32 target.
@@ -173,7 +173,7 @@ hdc = "None"
 #drive1 = "games.vhd"
 
 # Floppy image to load into floppy drive0 (A:)
-floppy0 = "/bin/areaboot.img"
+floppy0 = "./bin/areaboot.img"
 
 # Floppy image to load into floppy drive1 (B:)
 #floppy1 = "fd1.img"
