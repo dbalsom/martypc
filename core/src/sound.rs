@@ -37,6 +37,11 @@ use ringbuf::{
 //use std::io::Write;
 
 pub const VOLUME_ADJUST: f32 = 0.10;
+
+#[cfg(target_arch = "wasm32")]
+pub const BUFFER_MS: f32 = 100.0;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub const BUFFER_MS: f32 = 30.0;
 
 pub struct SoundPlayer {
