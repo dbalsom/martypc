@@ -1,19 +1,15 @@
         
     let wasmInitialized = false;
-    import init, { BrowserStatus, start, run } from './marty_pixels_wasm32_player.js';
+    import init, { start, run } from './marty_pixels_wasm32_player.js';
 
     // Initialize the WebAssembly module
     async function runWasm() {
         if (!wasmInitialized) {
             console.log('Initializing wasm...');
             await init(); // This is necessary to initialize the WASM module
-
-            window.sharedState = {
-                browserStatus: true
-            };
             
             // Call the start function or any other exported function
-            run(window.browserStatus);
+            run(window.sharedState.cfg);
         }
     }
     
@@ -43,7 +39,7 @@
         console.log('Window is no longer in focus, pausing emulator.');
         
         if ( window.sharedState != null ) {
-            window.sharedState.browserStatus = false;
+            window.sharedState.browserFocus = false;
         }
     });
 
@@ -51,13 +47,19 @@
         console.log('Window is now in focus, resuming emulator.');
         
         if ( window.sharedState != null ) {
-            window.sharedState.browserStatus = true;
+            window.sharedState.browserFocus = true;
         }
     });
     
     document.addEventListener('DOMContentLoaded', updateCanvasPosition);
     
     document.addEventListener('DOMContentLoaded', function() {
+        
+        window.sharedState = {
+            browserFocus: true,
+            cfg: ""
+        };        
+        
         // Fetch the JSON file
         
         // Get the path, e.g., "/path/foo.html"
@@ -95,7 +97,8 @@
                     </tr>                    
                 `;
                 
-            document.title = `MartyPC Player - ${data.title}`;
+                window.sharedState.cfg = data.cfg;
+                document.title = `MartyPC Player - ${data.title}`;
             })
             .catch(error => console.error('Error fetching the JSON file:', error));
     });    
