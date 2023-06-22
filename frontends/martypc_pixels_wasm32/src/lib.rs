@@ -9,16 +9,9 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::JsValue;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::JsFuture;
-
-/*
-use futures::{
-    future::TryFutureExt,
-    TryStreamExt
-};
-*/
-
 use web_sys::{Request, RequestInit, Response, Headers, Blob, FileReader, ProgressEvent, console, window};
 use js_sys;
+use js_sys::Reflect;
 
 use error_iter::ErrorIter as _;
 use log::error;
@@ -70,12 +63,10 @@ const RENDER_ASPECT: f32 = 0.75;
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 
-/// Representation of the application state. In this example, a box will bounce around the screen.
-struct World {
-    box_x: i16,
-    box_y: i16,
-    velocity_x: i16,
-    velocity_y: i16,
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = window, js_name = sharedState)]
+    static SHARED_STATE: JsValue;
 }
 
 // Rendering Stats
@@ -484,6 +475,14 @@ pub async fn run() {
             stat_counter.fps = stat_counter.current_fps;
             stat_counter.current_fps = 0;
             stat_counter.last_second = Instant::now();
+        }
+
+        // Don't run the emulator if not in focus. 
+        let focus = Reflect::get(&SHARED_STATE, &JsValue::from_str("browserFocus")).unwrap();
+
+        if !focus {
+            stat_counter.last_frame = Instant::now();
+            return
         }
 
         // Decide whether to draw a frame
