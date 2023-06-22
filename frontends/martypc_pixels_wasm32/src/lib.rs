@@ -19,7 +19,7 @@ use pixels::{Pixels, SurfaceTexture};
 use std::rc::Rc;
 use winit::{
     dpi::{PhysicalSize, LogicalSize},
-    event::{Event, VirtualKeyCode},
+    event::{Event, WindowEvent, VirtualKeyCode},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder
 };
@@ -206,7 +206,7 @@ fn read_blob_as_array_buffer(blob: &web_sys::Blob) -> js_sys::Promise {
 }
 
 #[wasm_bindgen]
-pub async fn run() {
+pub async fn run(cfg: &str) {
 
     // Emulator stuff
     let mut stat_counter = Counter::new();
@@ -311,11 +311,13 @@ pub async fn run() {
             })
             .expect("Couldn't append canvas to the specified div!");
 
+        log::warn!("Got config file name: {}", cfg);
+
         // Try to load toml config.
         let mut opts = web_sys::RequestInit::new();
         opts.method("GET");
 
-        let request = web_sys::Request::new_with_str_and_init("./cfg/martypc_wasm.toml", &opts).expect("Couldn't create request for configuration file.");
+        let request = web_sys::Request::new_with_str_and_init(&format!("./cfg/{}", cfg), &opts).expect("Couldn't create request for configuration file.");
         request.headers().set("Content-Type", "text/plain").expect("Couldn't set headers!");
 
         let resp_value = JsFuture::from(client_window.fetch_with_request(&request)).await.unwrap();
@@ -355,7 +357,7 @@ pub async fn run() {
             None => panic!("No floppy image specified!")
         };
 
-        log::warn!("Got config file. Rom to load: {:?} Floppy to load: {:?}", rom_override[0].path, floppy_path_str);
+        log::warn!("Read config file. Rom to load: {:?} Floppy to load: {:?}", rom_override[0].path, floppy_path_str);
         
         // Convert Path to str
         let rom_path_str = &rom_override[0].path.clone().into_os_string().into_string().unwrap();
@@ -467,7 +469,77 @@ pub async fn run() {
         video_data.aspect_h,
     );
 
+    // Start buffer playback
+    machine.play_sound_buffer();
+
     event_loop.run(move |event, _, control_flow| {
+
+
+        match event {
+            Event::WindowEvent{ event, .. } => {
+
+                match event {
+                    WindowEvent::ModifiersChanged(modifier_state) => {
+                        //kb_data.ctrl_pressed = modifier_state.ctrl();
+                    }
+                    WindowEvent::KeyboardInput {
+                        input: winit::event::KeyboardInput {
+                            virtual_keycode: Some(keycode),
+                            state,
+                            ..
+                        },
+                        ..
+                    } => {
+
+                        match state {
+                            winit::event::ElementState::Pressed => {
+                                
+                                if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                    //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                    machine.key_press(keycode);
+                                };
+                            },
+                            winit::event::ElementState::Released => {
+                                if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                    //log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                    machine.key_release(keycode);
+                                };
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+            },
+            // Draw the current frame
+            Event::RedrawRequested(event) => {
+                
+                //world.draw(pixels.frame_mut());
+
+                //stat_counter.current_fps += 1;
+                
+                if let Err(e) = pixels.render_with(
+                    |encoder, render_target, context| {
+                        let fill_texture = stretching_renderer.get_texture_view();
+
+                        //context.scaling_renderer.render(encoder, fill_texture);
+                    
+                        stretching_renderer.render(encoder, render_target);
+                        Ok(())
+                    }
+                ) {
+                    log::error!("pixels.render_with error: {}", e);
+                };
+
+                /*
+                if let Err(err) = pixels.render() {
+                    log_error("pixels.render", err);
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                }
+                */
+            } 
+            _ => {}           
+        }
 
         let elapsed_ms = stat_counter.last_second.elapsed().as_millis();
         if elapsed_ms > 1000 {
@@ -680,61 +752,10 @@ pub async fn run() {
                             _ => panic!("Invalid combination of VideoType and RenderMode")
                         }
                     }
+
+                    window.request_redraw();
         }
 
-        // Draw the current frame
-        if let Event::RedrawRequested(_) = event {
-            
-            //world.draw(pixels.frame_mut());
-
-            //stat_counter.current_fps += 1;
-            
-            if let Err(e) = pixels.render_with(
-                |encoder, render_target, context| {
-                    let fill_texture = stretching_renderer.get_texture_view();
-                    
-                    //context.scaling_renderer.render(encoder, fill_texture);
-    
-                    stretching_renderer.render(encoder, render_target);
-                    Ok(())
-                }
-            ) {
-                log::error!("pixels.render_with error: {}", e);
-            };
-
-            /*
-            if let Err(err) = pixels.render() {
-                log_error("pixels.render", err);
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-            */
-        }
-
-        // Handle input events
-        if input.update(&event) {
-            // Close events
-            if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
-                
-                // No point in quitting if someone hits escape in the browser.
-                //*control_flow = ControlFlow::Exit;
-                return;
-            }
-
-            // Resize the window
-            if let Some(size) = input.window_resized() {
-                /*
-                if let Err(err) = pixels.resize_surface(size.width, size.height) {
-                    log_error("pixels.resize_surface", err);
-                    *control_flow = ControlFlow::Exit;
-                    return;
-                }
-                */
-            }
-
-            // Request a redraw
-            window.request_redraw();
-        }
     });
 }
 
