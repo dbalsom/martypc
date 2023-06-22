@@ -9,6 +9,7 @@
             await init(); // This is necessary to initialize the WASM module
             
             // Call the start function or any other exported function
+            wasmInitialized = true;
             run(window.sharedState.cfg);
         }
     }
@@ -17,10 +18,20 @@
     document.getElementById('run-button').addEventListener('click', runWasm);
 
     function updateCanvasPosition() {
+
+        const canvasContainer = document.getElementById('marty-canvas-container');
+
+        if (window.innerWidth < 1170) {
+            canvasContainer.style.marginLeft = 'auto';
+            canvasContainer.style.marginRight = 'auto';
+            canvasContainer.style.marginTop = '20px';
+            return
+        }
+
+        /*
         const windowWidth = window.innerWidth;
         const leftPanelWidth = 340; // 300px width + 20px padding + 20px margin
         const canvasWidth = 768;
-        const canvasContainer = document.getElementById('marty-canvas-container');
 
         const centerPosition = (windowWidth - canvasWidth) / 2;
 
@@ -32,6 +43,7 @@
             canvasContainer.style.marginLeft = 'auto';
             canvasContainer.style.marginRight = 'auto';
         }
+        */
     }
 
     window.addEventListener('resize', updateCanvasPosition);
