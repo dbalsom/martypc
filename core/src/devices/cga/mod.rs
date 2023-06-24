@@ -976,6 +976,9 @@ impl CGACard {
         // in which case overscan must be black (0).
         self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.cc_altcolor };
 
+        // Reinterpret the CC register based on new mode.
+        self.update_palette();
+
         // Attempt to update clock.
         self.update_clock();
 
@@ -1009,6 +1012,8 @@ impl CGACard {
             self.mode_enable,
             self.clock_divisor                
         );
+
+
 
         /*
         log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {} Clock: {}", 
@@ -1100,13 +1105,19 @@ impl CGACard {
     /// and background/overscan color (foreground color in high res graphics mode)
     fn handle_cc_register_write(&mut self, data: u8) {
 
-        //log::trace!("Write to color control register: {:02X}", data);
+        self.cc_register = data;
+        self.update_palette();
+
+        log::trace!("Write to color control register: {:02X}", data);
+    }
+
+    fn update_palette(&mut self) {
 
         if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
             self.cc_palette = 4; // Select Red, Cyan and White palette (undocumented)
         }
         else {
-            if data & CC_PALETTE_BIT != 0 {
+            if self.cc_register & CC_PALETTE_BIT != 0 {
                 self.cc_palette = 2; // Select Magenta, Cyan, White palette
             }
             else {
@@ -1114,17 +1125,15 @@ impl CGACard {
             }
         }
 
-        if data & CC_BRIGHT_BIT != 0 {
+        if self.cc_register & CC_BRIGHT_BIT != 0 {
             self.cc_palette += 1; // Switch to high-intensity palette
         }
 
-        self.cc_altcolor = data & 0x0F;
+        self.cc_altcolor = self.cc_register & 0x0F;
 
         if !self.mode_hires_gfx {
             self.cc_overscan_color = self.cc_altcolor;
         }
-
-        self.cc_register = data;
     }
 
     /// Swaps the front and back buffers by exchanging indices.
