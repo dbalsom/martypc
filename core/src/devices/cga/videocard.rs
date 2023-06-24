@@ -341,9 +341,11 @@ impl VideoCard for CGACard {
 
     fn run(&mut self, time: DeviceRunTimeUnit) {
 
+        /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);
         }
+        */
 
         let mut pixel_clocks = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
             ticks
