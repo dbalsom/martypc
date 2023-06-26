@@ -144,7 +144,8 @@ pub struct Ppi {
     kb_resets_counter: u32,
     pb_byte: u8,
     kb_byte: u8,
-    clear_keyboard: bool,
+    keyboard_clear_scheduled: bool,
+    ksr_cleared: bool,
     kb_enabled: bool,
     dip_sw1: u8,
     dip_sw2: u8,
@@ -217,7 +218,8 @@ impl Ppi {
             kb_resets_counter: 0,
             pb_byte: 0,
             kb_byte: 0,
-            clear_keyboard: false,
+            keyboard_clear_scheduled: false,
+            ksr_cleared: true,
             kb_enabled: true,
             dip_sw1: match machine_type {
                 MachineType::IBM_PC_5150 => {
@@ -329,7 +331,7 @@ impl Ppi {
 
                 // Besides controlling the state of port A, this bit also suppresses IRQ1
                 if byte & PORTB_PRESENT_SW1_PORTA != 0 {
-                    self.clear_keyboard = true;
+                    self.keyboard_clear_scheduled = true;
                     self.kb_enabled = false;
                     self.port_a_mode = PortAMode::SwitchBlock1
                 }
@@ -351,7 +353,7 @@ impl Ppi {
 
                 // On the 5160, this bit clears the keyboard and suppresses IRQ1.
                 if byte & PORTB_KB_CLEAR != 0 {
-                    self.clear_keyboard = true;
+                    self.keyboard_clear_scheduled = true;
                     self.kb_enabled = false;
                 }
                 else {
@@ -388,7 +390,8 @@ impl Ppi {
     /// Send a byte to the keyboard shift register.
     pub fn send_keyboard(&mut self, byte: u8 ) {
         // Only send a scancode if the keyboard is not actively being reset.
-        if self.kb_enabled && !self.kb_clock_low {
+        if self.kb_enabled && self.ksr_cleared && !self.kb_clock_low {
+            self.ksr_cleared = false;
             self.kb_byte = byte;
         }
     }
@@ -485,8 +488,9 @@ impl Ppi {
 
         // Our keyboard byte was read, so clear the interrupt request line and reset the byte
         // read at the keyboard IO port to 0
-        if self.clear_keyboard {
-            self.clear_keyboard = false;
+        if self.keyboard_clear_scheduled {
+            self.keyboard_clear_scheduled = false;
+            self.ksr_cleared = true;
             self.kb_byte = 0;
             pic.clear_interrupt(1);
             //log::trace!("PPI: Clearing keyboard");
