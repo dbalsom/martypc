@@ -436,22 +436,7 @@ impl RomManager {
                 },
                 RomSet {
                     machine_type: MachineType::IBM_XT_5160,
-                    priority: 5,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xFFFF, 0),
-                    roms: vec![
-                        "9696472098999c02217bf922786c1f4a", // 5160 BIOS u18 v05/09/86
-                        "df9f29de490d7f269a6405df1fed69b7", // 5160 BIOS u19 v05/09/86
-                        "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
-                        "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
-                        "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
-                        "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed            
-                        "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS        
-                    ]
-                },
-                RomSet {
-                    machine_type: MachineType::IBM_XT_5160,
-                    priority: 5,
+                    priority: 2,
                     is_complete: Cell::new(false),
                     reset_vector: (0xFFFF, 0),
                     roms: vec![
