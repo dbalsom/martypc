@@ -1,0 +1,8 @@
+{
+    "title": "Area 5150",
+    "developer": "MobyGamer",
+    "platform": "IBM PC/XT",
+    "year": "2022",
+    "link": "https://github.com/MobyGamer/CGACompatibilityTester",
+    "cfg": "cgacomp.toml"
+}
