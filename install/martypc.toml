@@ -21,7 +21,7 @@ fuzzer = false
 # Run the emulated machine as fast as possible. Note this isn't just a CPU 
 # boost, the entire system including timer will accellerate. 
 # NOTE: This will cause unstable FPS. Mostly used for debugging.
-warpspeed = false 
+warpspeed = true
 
 # Do aspect correction to convert display buffer to 4:3.  May introduce some
 # resampling blur. This can be toggled on/off in options menu.
@@ -152,14 +152,14 @@ video = "CGA"
 # "None"  - No hard disk controller will be present
 # "Xebec" - Emulates the IBM/Xebec 20MB Fixed Disk Controller
 
-hdc = "None"
-#hdc = "Xebec"
+#hdc = "None"
+hdc = "Xebec"
 
 # VHD to mount into drive0 (Typically C:)
-#drive0 = "dos330.vhd"
+drive0 = "dos330.vhd"
 
 # VHD to mount into drive1 (Typically D:)
-#drive1 = "games.vhd"
+drive1 = "games.vhd"
 
 # Options for the CPU Validator module.
 # ----------------------------------------------------------------------------
