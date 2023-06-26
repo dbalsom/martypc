@@ -125,8 +125,11 @@ const CGA_MONITOR_VSYNC_MIN: u32 = 0;
 // including overscan. Anything more is likely to be hidden by the monitor bezel or not 
 // shown for some other reason. This is mostly calculated based off Area5150's highest
 // resolution modes.
-const CGA_DISPLAY_EXTENT_X: u32 = 768;
-const CGA_DISPLAY_EXTENT_Y: u32 = 236;
+const CGA_APERTURE_EXTENT_X: u32 = 768;
+const CGA_APERTURE_EXTENT_Y: u32 = 236;
+
+const CGA_APERTURE_CROP_LEFT: u32 = 48;
+const CGA_APERTURE_CROP_TOP: u32 = 0;
 
 // For derivision of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
 // We run the CGA card independent of the CPU frequency.
@@ -480,10 +483,10 @@ impl Default for DisplayExtents {
         Self {
             field_w: CGA_XRES_MAX,
             field_h: CGA_YRES_MAX,
-            aperture_w: CGA_DISPLAY_EXTENT_X,
-            aperture_h: CGA_DISPLAY_EXTENT_Y,
-            aperture_x: 8,
-            aperture_y: 0,
+            aperture_w: CGA_APERTURE_EXTENT_X,
+            aperture_h: CGA_APERTURE_EXTENT_Y,
+            aperture_x: CGA_APERTURE_CROP_LEFT,
+            aperture_y: CGA_APERTURE_CROP_TOP,
             visible_w: 0,
             visible_h: 0,
             overscan_l: 0,
@@ -2050,8 +2053,10 @@ impl CGACard {
             //self.hsc_c3l = (self.hsc_c3l + 1) & 0x0F;
             self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
 
+            // Implement a fixed hsync width from the monitor's perspective - 
+            // A wider programmed hsync width than these values shifts the displayed image to the right.
             let hsync_target = if self.clock_divisor == 1 { 
-                self.crtc_sync_width
+                std::cmp::min(10, self.crtc_sync_width)
             }
             else {
                 5
