@@ -68,7 +68,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}",
+            "cwd": "${workspaceFolder}/install",
             "env": {
                 "RUST_LOG": "martypc=trace",
                 "RUST_LOG_STYLE": "always",
