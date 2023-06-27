@@ -1,4 +1,4 @@
-# marty.toml
+# martypc.toml
 # Configuration file for the MartyPC emulator.
 
 [emulator]
@@ -12,15 +12,18 @@ basedir = "./"
 # Power on the emulated machine on startup (only applicable in gui mode)
 autostart = true
 
-# Run the emulator without gui
+# Run the emulator without a display window
 headless = false
 
 # Run the instruction fuzzer (requires validator feature)
 fuzzer = false
 
 # Run the emulated machine as fast as possible. Note this isn't just a CPU 
-# boost, the entire system including timer will accellerate. 
-# NOTE: This will cause unstable FPS. Mostly used for debugging.
+# boost, the entire system including timer, sound and video will run faster.
+# NOTE: This can cause emulator instability. This is intended for internal 
+# development use and debugging. 
+
+# Please DO NOT report bugs/issues encountered using this mode.
 warpspeed = false 
 
 # Do aspect correction to convert display buffer to 4:3.  May introduce some
