@@ -1437,7 +1437,7 @@ impl BusInterface {
     
                         //let screen_target = 17256
                         //let screen_target = 16344;
-                        let screen_target = 15432;
+                        let screen_target = 15432 + 40;
                         // Only adjust if we are late
                         if screen_tick_pos > screen_target {
                             let ticks_adj = screen_tick_pos - screen_target;
@@ -1462,7 +1462,7 @@ impl BusInterface {
                         let screen_tick_pos = cga.get_screen_ticks();
     
                         //let screen_target = 17256;
-                        let screen_target = 16344;
+                        let screen_target = 16344 + 40;
                         // Only adjust if we are late
                         if screen_tick_pos > screen_target {
                             let ticks_adj = screen_tick_pos - screen_target;
