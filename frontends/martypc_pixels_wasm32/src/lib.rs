@@ -434,6 +434,9 @@ pub async fn run(cfg: &str) {
             }
         }
 
+        // Set CPU options
+        machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled));
+
         /*
         // Listen for resize event on browser client. Adjust winit window dimensions
         // on event trigger
