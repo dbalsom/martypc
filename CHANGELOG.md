@@ -3,6 +3,7 @@
 
 * Redesigned CGA card with 'dynamic clocking' support. Card will now switch between clocking by cycle or character as appropriate.
 * Improved hsync logic, screens in all graphics modes are now horizontally centered properly.
+* Added 1.44MB floppy image definition. Somehow, these are readable(!?) (thanks xcloudplatform for discovering this)
 * Fixed CGA palette handling bug. Fixes California Games CGAMORE mode. (thanks VileR)
 * Added short tick delay between writing PIC IMR and raising any unmasked IRR bit to INTR. Fixes halts on warm boot.
 * Improved performance when CPU is halted.
@@ -23,6 +24,9 @@
 * Fixed bug in PIC IRR logic (thanks 640KB)
 * Fixed bug in PPI handling of keyboard enable line (Fixes halt on boot on 5160)
 * Added CTRL-ALT-DEL menu option
+* Known issues:
+    * Formatting floppies is limited to 360K due to fixed drive type. 
+    * Regression: PIT latching fix has now made 8088MPH report a 1% CPU variation.
 
 ## [0.1.1](https://github.com/dbalsom/martypc/releases/tag/0.1.1) (2023-05-31)
 

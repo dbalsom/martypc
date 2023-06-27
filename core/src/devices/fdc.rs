@@ -165,6 +165,13 @@ lazy_static! {
                     heads: 2,
                     sectors: 15
                 }                                
+            ),(
+                1_474_560,
+                DiskFormat{ 
+                    cylinders: 80,
+                    heads: 2,
+                    sectors: 18
+                }                                
             )
         ]);
         map
