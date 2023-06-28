@@ -958,11 +958,47 @@ impl CGACard {
         }
     }
 
+    /// Return true if the pending mode change defined by mode_byte would change from text mode to
+    /// graphics mode, or vice-versa
+    fn is_deferred_mode_change(&self, new_mode_byte: u8) -> bool {
+
+        // In general, we can determine whether we are in graphics mode or text mode by 
+        // checking the graphics bit, however, the graphics bit is allowed to coexist with the 
+        // HIREST_TEXT bit in an undocumented combination that remains in text mode but allows
+        // a selectable background color.
+   
+        // If both graphics and hi-res text bits are set, we are still in text mode
+        let old_text_mode = (self.mode_byte & 0b01 != 0) || (self.mode_byte & 0b11 == 0b11);
+        let old_graphics_mode = self.mode_byte & 0b10 != 0;
+
+        // If both graphics and hi-res text bits are set, we are still in text mode
+        let new_text_mode = (new_mode_byte & 0b01 != 0) || (new_mode_byte & 0b11 == 0b11);
+        let new_graphics_mode = new_mode_byte & 0b10 != 0;
+
+        // Determine the effective mode for self.mode_byte
+        let old_mode_is_graphics = old_graphics_mode && !old_text_mode;
+        let old_mode_is_text = !old_mode_is_graphics; // This includes high-resolution text mode and normal text mode
+
+        // Determine the effective mode for new_mode_byte
+        let new_mode_is_graphics = new_graphics_mode && !new_text_mode;
+        let new_mode_is_text = !new_mode_is_graphics; // This includes high-resolution text mode and normal text mode
+
+        // Return true if the mode is changing between text and graphics or vice versa
+        (old_mode_is_text && new_mode_is_graphics) || (old_mode_is_graphics && new_mode_is_text)
+
+    }
+
+    /// Update the CGA graphics mode. This function may be called some time after the mode
+    /// register is actually written to, depending on if we are changing from text to graphics mode 
+    /// or vice versa.
     fn update_mode(&mut self) {
 
+        // Will this mode change change the character clock?
         let clock_changed = self.mode_hires_txt != (self.mode_byte & MODE_HIRES_TEXT != 0);
 
         if clock_changed {
+            // Flag the clock for pending change.  The clock can only be changed in phase with
+            // LCHAR due to our dynamic clocking logic. 
             self.clock_pending = true;
         }
 
@@ -1016,9 +1052,8 @@ impl CGACard {
             self.clock_divisor                
         );
 
+        /* Disabled debug due to noise. Some effects in Area 5150 write mode many times per frame
 
-
-        /*
         log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {} Clock: {}", 
             self.display_mode,
             self.mode_byte, 
@@ -1052,11 +1087,21 @@ impl CGACard {
         }
     }
 
+    /// Handle a write to the CGA mode register. Defer the mode change if it would change 
+    /// from graphics mode to text mode or back (Need to measure this on real hardware)
     fn handle_mode_register(&mut self, mode_byte: u8) {
-
-        // Latch the mode change and mark it pending. We will change the mode on next hsync.
-        self.mode_byte = mode_byte;
-        self.mode_pending = true;
+        
+        if self.is_deferred_mode_change(mode_byte) {
+            // Latch the mode change and mark it pending. We will change the mode on next hsync.
+            self.mode_pending = true;
+            self.mode_byte = mode_byte;
+        }
+        else {
+            // We're not changing from text to graphcis or vice versa, so we do not have to 
+            // defer the update.
+            self.mode_byte = mode_byte;
+            self.update_mode();
+        }
     }
 
     /// Handle a read from the CGA status register. This register has bits to indicate whether
