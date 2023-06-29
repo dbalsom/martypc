@@ -50,3 +50,6 @@ rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 
 [target.wasm32-unknown-unknown]
 runner = "wasm-server-runner"
+
+[features]
+devtools=[]
