@@ -1,6 +1,7 @@
 
 ## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-XX)
 
+* Relicensed MartyPC under the MIT license.
 * Redesigned CGA card with 'dynamic clocking' support. Card will now switch between clocking by cycle or character as appropriate.
 * Improved hsync logic, screens in all graphics modes are now horizontally centered properly.
 * Added 1.44MB floppy image definition. Somehow, these are readable(!?) (thanks xcloudplatform for discovering this)
@@ -18,15 +19,16 @@
 * Reorganized project structure. Refactored emulator core to Rust library and frontend components.
 * Added Criterion for benchmarking components.
 * Update Pixels library to 0.12.1
-* Use fast_image_resize crate for SIMD accelleration. Aspect correction is now approx 5X faster with equivalent quality.
-* Fixed innaccuracy in keyboard shift register handling 
+* Use fast_image_resize crate for SIMD acceleration. Aspect correction is now approximately 5X faster with equivalent quality.
+* Fixed inaccuracy in keyboard shift register handling 
 * Fixed bug in PIT latch logic (thanks 640KB)
 * Fixed bug in PIC IRR logic (thanks 640KB)
 * Fixed bug in PPI handling of keyboard enable line (Fixes halt on boot on 5160)
 * Added CTRL-ALT-DEL menu option
 * Known issues:
+    * Turbo mode may cause the IBM BIOS to halt during POST during PIT checkout.
     * Formatting floppies is limited to 360K due to fixed drive type. 
-    * Regression: PIT latching fix has now made 8088MPH report a 1% CPU variation.
+    * Regression: PIT latch logic change has now made 8088MPH report a 1% CPU variation. I believe this is more a timer issue than a CPU issue.
 
 ## [0.1.1](https://github.com/dbalsom/martypc/releases/tag/0.1.1) (2023-05-31)
 
