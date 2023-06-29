@@ -226,173 +226,23 @@ impl RomManager {
                 },
                 RomSet {
                     machine_type: MachineType::IBM_PC_5150,
+                    priority: 2,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
+                    roms: vec![
+                        "ea839aeb26460c4a5b6844374eb24086", // GLABIOS_0.2.5_8PC.ROM
+                        "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
+                        "eb28f0e8d3f641f2b58a3677b3b998cc",  // Basic v1.01
+                        //"66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                    ]
+                },                
+                RomSet {
+                    machine_type: MachineType::IBM_PC_5150,
                     priority: 10,
                     is_complete: Cell::new(false),
                     reset_vector: (0xFFFF, 0),
                     roms: vec![
                         "3a0eacac07f1020b95ce06043982dfd1" // Supersoft Diagnostic ROM
-                    ]
-                },
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 10,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xFFFF, 0),
-                    roms: vec![
-                        "b612305db2df43f88f9fb7f9b42d696e" // add.bin test suite
-                    ]
-                },    
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 11,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "7c075d48c950ef1d2900c1a10698ac6c" // bitwise.bin test suite
-                    ]
-                },      
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 12,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "a3e85d6807b8f92547681eaca5fbb92f" // bcdcnv.bin test suite
-                    ]
-                },  
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 13,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "6b0a52be2b82fbfaf0e00b0c195c11c1" // cmpneg.bin test suite
-                    ]
-                },    
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 14,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "87e6183b7a3f9e6f797e7bea092bc74d" // control.bin test suite
-                    ]
-                },                   
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 15,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "d0d91c22fce1d2d57fa591190362d0a8" // datatrnf.bin test suite
-                    ]
-                },                
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 16,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "19a32b41480d0e7a6f77f748eaa231c9" // div.bin test suite
-                    ]
-                },   
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 17,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "4cee4ef637299fe7e48196d3da1eb846" // interrupt.bin test suite
-                    ]
-                },       
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 18,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "edcd652c64df0bfb923d5499ea713992" // jmpmov.bin test suite
-                    ]
-                },      
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 19,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "bdd8489b68773ccaeab434e985409ba6" // jump1.bin test suite
-                    ]
-                },
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 20,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "c9243ef5e2c6b6723db313473bf2519b" // jump2.bin test suite
-                    ]
-                },  
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 21,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "7e81ea262fec23f0c20c8e11e7b2689a" // mul.bin test suite
-                    ]
-                }, 
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 22,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "cb8c54acd992166a67ea3927131cf219" // rep.bin test suite
-                    ]
-                },       
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 23,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "317e7c9ce01851b6227ac01d48c7778e" // rotate.bin test suite
-                    ]
-                },  
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 24,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "b2e5c51c10a1ce987cccebca8d0ba5c2" // segpr.bin test suite
-                    ]
-                },         
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 25,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "3aa4d3110127adfa652812f0428d620a" // shifts.bin test suite
-                    ]
-                },        
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 26,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "845902b2b98e43580c3b44a3c09c8376" // strings.bin test suite
-                    ]
-                }, 
-                RomSet {
-                    machine_type: MachineType::IBM_PC_5150,
-                    priority: 27,
-                    is_complete: Cell::new(false),
-                    reset_vector: (0xF000, 0),
-                    roms: vec![
-                        "2e8df7c7c23646760dd18749d03b7b5a" // sub.bin test suite
                     ]
                 },  
                 RomSet {
@@ -452,7 +302,20 @@ impl RomManager {
                         "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
                         "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed    
                     ]
-                }            
+                },
+                RomSet {
+                    machine_type: MachineType::IBM_XT_5160,
+                    priority: 2,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
+                    roms: vec![
+                        "3297be75783428c128915a7cc1e9374d", // GLABIOS_0.2.5_8XC.ROM
+                        "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                        "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
+                        "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
+                        "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed    
+                    ]
+                }                 
 
             ]),
             rom_sets_complete: Vec::new(),
@@ -540,7 +403,28 @@ impl RomManager {
                     patches: Vec::new(),
                     checkpoints: HashMap::new()                  
                 }      
-            ),(
+            ),
+            (
+                "ea839aeb26460c4a5b6844374eb24086", // GLABIOS_0.2.5_8PC.ROM
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_PC_5150,
+                    feature: None,
+                    order: RomOrder::Normal,       
+                    interleave: RomInterleave::None,
+                    optional: false,
+                    priority: 1,
+                    address: 0xFE000,
+                    offset: 0,
+                    size: 8192,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()
+                }
+            ),            
+            (
                 "2ad31da203a49b504fad3a34af0c719f",
                 RomDescriptor {
                     rom_type: RomType::BASIC,
@@ -789,7 +673,28 @@ impl RomManager {
                     patches: Vec::new(),
                     checkpoints: HashMap::new()
                 }
-            ),(
+            ),
+            (
+                "3297be75783428c128915a7cc1e9374d", // GLABIOS_0.2.5_8XC.ROM
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,       
+                    interleave: RomInterleave::None,
+                    optional: false,
+                    priority: 1,
+                    address: 0xFE000,
+                    offset: 0,
+                    size: 8192,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: Vec::new(),
+                    checkpoints: HashMap::new()
+                }
+            ),
+            (
                 "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                 RomDescriptor {
                     rom_type: RomType::BIOS,
