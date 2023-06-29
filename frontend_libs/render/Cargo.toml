@@ -18,3 +18,4 @@ fast_image_resize = "2.7.3"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 rand = "0.8.5"
 
+log = "0.4"

@@ -1789,6 +1789,7 @@ dependencies = [
  "fast_image_resize",
  "glam",
  "image",
+ "log",
  "marty_core",
  "rand",
 ]
