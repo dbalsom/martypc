@@ -108,7 +108,8 @@ pub const SW2_RAM_608K: u8       = 0b0000_1110;
 pub const SW2_RAM_640K: u8       = 0b0000_1101;
 pub const SW2_5: u8              = 0b0001_0000;
 
-pub const SW2_RAM_TEST: u8       = 0b1110_1111;
+// Above constants are not used yet, this controls the actual RAM amount (inverted DIP)
+pub const SW2_RAM_TEST: u8       = 0b1111_0010; // 640K
 
 // PORT B INPUTS
 pub const PORTB_TIMER2_GATE: u8  = 0b0000_0001;
