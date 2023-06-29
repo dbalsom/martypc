@@ -1,0 +1,7 @@
+*.wasm
+*.wasm.d.ts
+*.ts
+marty_pixels_wasm32_player.js
+package.json
+
+/bin

@@ -1,0 +1,8 @@
+{
+    "title": "FreeDOS",
+    "developer": "The FreeDOS Project",
+    "platform": "IBM PC/XT",
+    "year": "2023",
+    "link": "https://www.freedos.org/",
+    "cfg": "freedos.toml"
+}

@@ -23,7 +23,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "debug,naga=error,wgpu_core=error,martypc::cpu=debug,martypc::machine=trace,martypc::dma=debug,martypc::pit=trace,martypc::cga=trace,martypc::hdc=trace",
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
@@ -45,7 +45,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_1/",
+            "cwd": "${workspaceFolder}/releases/0_1_2/",
             "env": {
                 "RUST_LOG": "debug,naga=error,wgpu_core=error",
                 "RUST_LOG_STYLE": "always",
@@ -70,7 +70,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "martypc=trace",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
@@ -91,7 +91,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_1/",
+            "cwd": "${workspaceFolder}/releases/0_1_2/",
             "env": {
                 "RUST_LOG": "martypc=trace",
                 "RUST_LOG_STYLE": "always",

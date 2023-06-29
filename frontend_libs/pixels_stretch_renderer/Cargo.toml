@@ -1,0 +1,15 @@
+[package]
+name = "pixels_stretch_renderer"
+version = "0.1.2"
+edition = "2021"
+
+[lib]
+name = "pixels_stretch_renderer"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+bytemuck = "1.13.1"
+pixels = "0.12.1"
+ultraviolet = "0.9"
+wgpu = "0.15"
