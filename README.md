@@ -2,29 +2,29 @@
 
 # MartyPC
 
-MartyPC is a cross-platform IBM PC emulator written in Rust. Development began April, 2022. It should build on Windows, Linux and MacOS (Including M1)
+### User Guide
+
+[Click here to access the MartyPC User Guide.](https://github.com/dbalsom/martypc/wiki/MartyPC-User-Guide)
+
+MartyPC is a cross-platform IBM PC emulator written in Rust. Development began April, 2022. It should build on Windows, Linux and MacOS (Including M1). Currently, releases are Windows only.
 
 ### Why another PC emulator?
 
-This was a hobby project to see if I could write an emulator from scratch. This was also my first project learning Rust. I had modest goals, but MartyPC has reached a level of development that I never thought possible when originally starting. I would be happy if MartyPC could serve as a "reference emulator" - perhaps not the fastest or most fully featured, but written in a clear, readable way that describes the operation of the system and hardware, and is packed with debugging tools and ample logging for future emulator developers or demo authors.
+MartyPC was originally just a hobby project to see if I could write an emulator from scratch, while learning the Rust programming language. My original goals were modest, but MartyPC has reached a level of functionality that I never thought possible when originally starting. I would be happy if MartyPC could serve as a "reference emulator" - perhaps not the fastest or most fully featured, but written in a clear, readable way that describes the operation of the system and hardware, and is packed with debugging tools and ample logging for developers of emulators or oldschool software.
 
 ## Accuracy
 
-Since Nov 2022, I have been working diligently to make MartyPC's 8088 CPU emulation cycle-accurate.  I have been validating the operation of the CPU against a real 8088 connected to an Arduino Mega microcontroller. See my [Arduino8088 project](https://github.com/dbalsom/arduino_8088) for more details. This allows an instruction to be simultaneously executed on the emulator and a real CPU and the execution results compared, cycle-by-cycle.
+I began work on making MartyPC's 8088 CPU emulation cycle-accurate in November of 2022. To do so, I validated the operation of the CPU against a real 8088 CPU connected to an Arduino MEGA microcontroller. See my [Arduino8088 project](https://github.com/dbalsom/arduino_8088) for more details. This allows an instruction to be simultaneously executed on the emulator and a real CPU and the execution results compared, cycle-by-cycle. More info on this process is described [on my blog](https://martypc.blogspot.com/2023/06/hardware-validating-emulator.html).
 
 In April 2023, MartyPC became accurate enough to run the infamous PC demo, 8088MPH.
 
-In May 2023, MartyPC became the first PC emulator (that I am aware of) capable of running the PC demo Area5150 completely. (See video here: https://www.youtube.com/watch?v=zADeLm9g0Zg )
+In May 2023, MartyPC became the first PC emulator capable of emulating every effect in the PC demo Area 5150. (See video here: https://www.youtube.com/watch?v=zADeLm9g0Zg )
+
+In June of 2023, the WebAssembly build of MartyPC could run Area 5150 [in your web browser](https://dbalsom.github.io/martypc/web/area5150.html).
 
 ## Special Thanks
 
-I have a long list of people to thank (See the About box!) but I would especially like to mention the contributions made by reenigne. Without his work reverse-engineering the 8088 microcode, this emulator would never have been possible. I also thank him for putting up with all my dumb questions.
-
-## Requirements
-
-MartyPC requires an original IBM PC 5150 or 5160 BIOS ROM be placed in the /roms folder. For hard disk support you will also need the 20Mbit Fixed Disk Adapter ROM. For EGA or VGA support you will need the appropriate IBM EGA or VGA adapater ROM. More details can be found in the roms.txt file within the /roms folder distribution.
-
-Place floppy raw sector images (IMA or IMG) in the /floppy folder and Marty will find them on start-up. Floppy images up to 720k are supported.
+I have a long list of people to thank (See the About box!) but I would especially like to mention the contributions made by reenigne. Without his work reverse-engineering the 8088 microcode, this emulator would never have been possible. I also thank him for putting up with my endless questions.
 
 ## Features
 
@@ -32,7 +32,7 @@ Currently MartyPC will emulate an original IBM 5150 PC or 5160 XT.
 
 The following devices are at least partially implemented:
 
-* CGA Card - A fairly accurate, cycle-based implementation of the IBM CGA including the Motorola MC6845 CRTC controller allows MartyPC to run many demanding PC demos. Composite simulation is supported, emulating an "old style" CGA.  Some work still remains on getting better composite color accuracy.
+* CGA Card - A fairly accurate, cycle-based implementation of the IBM CGA including the Motorola MC6845 CRTC controller allows MartyPC to run many demanding PC demos. Composite output and monitor simulation is supported, with MartyPC emulating an "old style" CGA.  Some work still remains on getting better composite color accuracy. 
 * EGA/VGA Cards - Basic graphics modes are supported: 320x200, 640x350 & 640x480 16-color, and Mode13 (320x200 /w 256 colors). CGA compatibility modes remain unimplemented. May need conversion to cycle-accurate forms for games like Commander Keen. Work in progress. 
 * µPD764 Floppy Disk Controller - Enough FDC commands are implemented to make DOS happy.
 * IBM 20MB Fixed Disk Controller - Emulated with basic VHD support, although only one specific drive geometry is supported so you will need to use the VHDs created by the emulator.
