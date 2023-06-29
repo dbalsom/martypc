@@ -1,5 +1,5 @@
 
-## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-XX)
+## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-29)
 
 * Relicensed MartyPC under the MIT license.
 * Redesigned CGA card with 'dynamic clocking' support. Card will now switch between clocking by cycle or character as appropriate.
