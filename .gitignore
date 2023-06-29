@@ -21,12 +21,13 @@ Thumbs.db
 /traces
 /program
 /releases
-*.toml
+marty*.toml
 !/install/martypc.toml
 *.pcm
 *.cfg
 *.log
-
+*.exe
+/frontends/martypc_pixels_wasm32/wasm/
 icon.png
 
 # Frontend files

@@ -1,0 +1,38 @@
+
+[package]
+name = "marty_core"
+version = "0.1.2"
+edition = "2021"
+
+[lib]
+name = "marty_core"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow = "1.0.58"
+arraydeque = "0.4.5"
+bpaf = { version = "0.7.7", features = ["derive"] }
+bytemuck = "1.13.1"
+cpal = "0.13.5"
+lazy_static = "1.4.0"
+log = "0.4"
+md5 = "0.7.0"
+modular-bitfield = "0.11.2"
+rand = "0.8.5"
+regex = "1.5.5"
+ringbuf = "0.2.8"
+serde = { version = "1.0.107", features = ["derive"] }
+serde_derive = "1.0.107"
+serde_with = "2.1.0"
+serialport = "4.2.0"
+toml = "0.5.10"
+uuid = { version = "1.1.2", features = ["v4"]}
+winit = "0.27"
+winit_input_helper = "0.13"
+
+[features]
+arduino_validator = []
+cpu_validator = []
+ega = []
+vga = []

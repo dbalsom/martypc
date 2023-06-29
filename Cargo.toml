@@ -1,41 +1,76 @@
+[workspace]
+members = [
+    "core",
+    "frontend_libs/render",
+    "frontend_libs/pixels_stretch_renderer",
+    "frontends/martypc_pixels_wasm32"
+]
+
 [package]
 name = "martypc"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "martypc"
+path = "frontends/martypc_pixels_desktop/main.rs"
 
 [dependencies]
-anyhow = "1.0.58"
-arraydeque = "0.4.5"
-bpaf = { version = "0.7.7", features = ["derive"] }
-cgmath = "0.18.0"
+marty_core = { path = "./core/"}
+marty_render = { path = "./frontend_libs/render"}
+bytemuck = "1.13.1"
 cpal = "0.13.5"
-egui = "0.20"
+#egui = "0.20"
 emath = "0.20"
-#egui_wgpu_backend = "0.17"
-egui-wgpu = "0.20"
-egui-winit = { version = "0.20", default-features = false, features = ["links"] }
+#egui-wgpu = "0.21"
+#egui-winit = { version = "0.20", default-features = false, features = ["links"] }
 env_logger = "0.9"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
-lazy_static = "1.4.0"
 log = "0.4"
-md5 = "0.7.0"
-modular-bitfield = "0.11.2"
-pixels = "0.11.0"
+pixels = "0.12.1"
 rand = "0.8.5"
+getrandom = "0.2.6"
 regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
-ringbuf = "0.2.8"
-serde = { version = "1.0.107", features = ["derive"] }
-serde_derive = "1.0.107"
-serde_with = "2.1.0"
 serialport = "4.2.0"
-toml = "0.5.10"
-uuid = { version = "1.1.2", features = ["v4"]}
 winit = "0.27"
 winit_input_helper = "0.13"
+
+# These are specific snapshots due to requirements from Pixels 0.12.1
+[dependencies.egui]
+git = "https://github.com/emilk/egui.git"
+rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
+
+[dependencies.egui-wgpu]
+git = "https://github.com/emilk/egui.git"
+rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
+
+[target.wasm32-unknown-unknown]
+runner = "wasm-server-runner"
+
+# Conditional dependencies for wasm32 target. 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+cpal = { version = "0.13.5", features = ["wasm-bindgen"]}
+console_error_panic_hook = "0.1"
+console_log = "0.2"
+error-iter = "0.4"
+getrandom = { version = "0.2.6", features = ["js"] }
+instant = "0.1.12"
+#futures = "0.3.28"
+js-sys = "0.3.63"
+wasm-bindgen = "0.2.86"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["GpuTextureFormat", "Request", "RequestInit", "Response", "Headers", "Blob", "FileReader", "ProgressEvent"] }
+wgpu = { version = "0.15", features = ["webgl"] }
+
+# Conditional dependencies for NOT wasm32 target.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies.egui-winit]
+git = "https://github.com/emilk/egui.git"
+rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
+
+[dev-dependencies]
+criterion = "0.5.1"
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -45,10 +80,22 @@ opt-level = 3
 #strip = true 
 
 [features]
-arduino_validator = []
-cpu_validator = []
-ega = []
-vga = []
+arduino_validator = ["marty_core/arduino_validator"]
+cpu_validator = ["marty_core/cpu_validator"]
+ega = ["marty_core/ega"]
+vga = ["marty_core/vga"]
 
 [build-dependencies]
 winres = "0.1"
+
+[[bench]]
+name = "cga_bench"
+harness = false
+
+[[bench]]
+name = "render_bench"
+harness= false
+
+[[bench]]
+name = "cpu_bench"
+harness = false
