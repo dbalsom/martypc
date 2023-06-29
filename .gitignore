@@ -29,5 +29,8 @@ Thumbs.db
 
 icon.png
 
+# Frontend files
+/frontends/martypc_pixels_wasm32/web/bin
+
 # Assembly stuff
 /asm
