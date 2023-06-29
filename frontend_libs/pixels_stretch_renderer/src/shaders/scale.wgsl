@@ -1,7 +1,7 @@
 /*
     MartyPC Emulator 
     (C)2023 Daniel Balsom
-    https://github.com/dbalsom/marty
+    https://github.com/dbalsom/martypc
 
     ---------------------------------------------------------------------------
 

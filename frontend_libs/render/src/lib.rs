@@ -1,20 +1,26 @@
 /*
-    Marty PC Emulator 
-    (C)2023 Daniel Balsom
-    https://github.com/dbalsom/marty
+    MartyPC
+    https://github.com/dbalsom/martypc
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+    Copyright 2022-2023 Daniel Balsom
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the “Software”),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
 
@@ -54,6 +60,7 @@ use marty_core::{
 };
 
 use image;
+use log;
 
 pub const ATTR_BLUE_FG: u8      = 0b0000_0001;
 pub const ATTR_GREEN_FG: u8     = 0b0000_0010;
@@ -941,16 +948,15 @@ impl VideoRenderer {
             let max_w = std::cmp::min(w, extents.aperture_w);
             let max_h = std::cmp::min(h / 2, extents.aperture_h);
             
-    
             //log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
-
+            //log::debug!("composite: aperture.x: {}", extents.aperture_x);
 
             process_cga_composite_int(
                 dbuf, 
                 extents.aperture_w, 
                 extents.aperture_h, 
-                extents.overscan_l,
-                extents.overscan_t,
+                extents.aperture_x,
+                extents.aperture_y,
                 extents.row_stride as u32, 
                 composite_buf);
 

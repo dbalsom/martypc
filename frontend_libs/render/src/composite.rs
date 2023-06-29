@@ -1,20 +1,26 @@
 /*
-    Marty PC Emulator 
-    (C)2023 Daniel Balsom
-    https://github.com/dbalsom/marty
+    MartyPC
+    https://github.com/dbalsom/martypc
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+    Copyright 2022-2023 Daniel Balsom
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the “Software”),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
 
@@ -106,7 +112,7 @@ pub fn process_cga_composite_int(
     cga_buf: &[u8], 
     img_w: u32, 
     img_h: u32, 
-    _x_offset: u32,
+    x_offset: u32,
     _y_offset: u32,
     stride: u32, 
     img_out: &mut [u8]
@@ -117,7 +123,7 @@ pub fn process_cga_composite_int(
     let mut dst_o = 0;
 
     for y in 0..img_h {
-        for x in 0..img_w {
+        for x in x_offset..(img_w - x_offset) {
             //get_sample_slice_cga(&cga_buf, img_w, img_h, x, y, &mut sample_slice);
             //let luma = get_cga_luma_avg_from_slice(&sample_slice, x as i32 - (WINDOW_SIZE / 2));
 
@@ -183,11 +189,11 @@ pub fn process_cga_composite_int(
                     hhdot_value += INTENSITY_GAIN_INT;
                 }
                 
-                //let dst_o = ((y * img_w * 2) + (x * 2)) as usize;
+                let dst_o = ((y * img_w * 2) + ((x- x_offset) * 2)) as usize;
                 img_out[dst_o + h] =  hhdot_value as u8;
                 
             }
-            dst_o += 2;
+            //dst_o += 2;
         }
     }
 
