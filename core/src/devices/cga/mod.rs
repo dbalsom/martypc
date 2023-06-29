@@ -1769,7 +1769,7 @@ impl CGACard {
         // assert_eq!(self.sink_cycles & 0x07, 0);
 
         if self.sink_cycles & 0x07 != 0 {
-            log::error!("sink_cycles: {} not divisible by 8", self.sink_cycles);
+            log::warn!("sink_cycles: {} not divisible by 8", self.sink_cycles);
         }
 
         if self.sink_cycles > 0 {

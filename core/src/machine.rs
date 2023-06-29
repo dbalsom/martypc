@@ -577,7 +577,8 @@ impl Machine {
         self.kb_buf.push_back(0x38); // Left-alt
         self.kb_buf.push_back(0x53); // Delete
 
-        self.bus_mut().reset_devices_warm();
+        // Debugging only. A real PC does not reset anything on ctrl-alt-del
+        //self.bus_mut().reset_devices_warm();
 
         self.kb_buf.push_back(0x1D | 0x80);
         self.kb_buf.push_back(0x38 | 0x80);
