@@ -66,7 +66,7 @@ impl AboutDialog {
             ui.label("©2023 Daniel Balsom (GloriousCow)");
 
             ui.label("Github:");
-            ui.hyperlink("https://github.com/dbalsom/marty");
+            ui.hyperlink("https://github.com/dbalsom/martypc");
         });
 
         ui.separator();
