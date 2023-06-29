@@ -230,7 +230,7 @@ impl RomManager {
                     is_complete: Cell::new(false),
                     reset_vector: (0xFFFF, 0),
                     roms: vec![
-                        "ea839aeb26460c4a5b6844374eb24086", // GLABIOS_0.2.5_8PC.ROM
+                        "d2fbadfecb1bd5509ddeaf40acf143ec", // GLABIOS_0.2.5_8PC.ROM
                         "2ad31da203a49b504fad3a34af0c719f",  // Basic v1.0
                         "eb28f0e8d3f641f2b58a3677b3b998cc",  // Basic v1.01
                         //"66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
@@ -309,7 +309,7 @@ impl RomManager {
                     is_complete: Cell::new(false),
                     reset_vector: (0xFFFF, 0),
                     roms: vec![
-                        "3297be75783428c128915a7cc1e9374d", // GLABIOS_0.2.5_8XC.ROM
+                        "f36c2dd29344eff6f55135f8b3014b81", // GLABIOS_0.2.5_8XC.ROM
                         "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
                         "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
                         "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
@@ -405,7 +405,7 @@ impl RomManager {
                 }      
             ),
             (
-                "ea839aeb26460c4a5b6844374eb24086", // GLABIOS_0.2.5_8PC.ROM
+                "d2fbadfecb1bd5509ddeaf40acf143ec", // GLABIOS_0.2.5_8PC.ROM
                 RomDescriptor {
                     rom_type: RomType::BIOS,
                     present: false,
@@ -675,7 +675,7 @@ impl RomManager {
                 }
             ),
             (
-                "3297be75783428c128915a7cc1e9374d", // GLABIOS_0.2.5_8XC.ROM
+                "f36c2dd29344eff6f55135f8b3014b81", // GLABIOS_0.2.5_8XC.ROM
                 RomDescriptor {
                     rom_type: RomType::BIOS,
                     present: false,
