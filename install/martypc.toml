@@ -12,19 +12,26 @@ basedir = "./"
 # Power on the emulated machine on startup (only applicable in gui mode)
 autostart = true
 
-# Run the emulator without a display window
+# Run the CPU on startup - if false CPU will start paused
+# (only applicable in gui mode)
+cpu_autostart = false
+
+# Run the emulator without gui or display
 headless = false
 
 # Run the instruction fuzzer (requires validator feature)
 fuzzer = false
 
-# Run the emulated machine as fast as possible. Note this isn't just a CPU 
-# boost, the entire system including timer, sound and video will run faster.
-# NOTE: This can cause emulator instability. This is intended for internal 
-# development use and debugging. 
+# Run the emulator in benchmark mode (headless) See benchmark options in 
+# machine section to configure the benchmark operation. (Not yet implemented)
+benchmark = false
 
-# Please DO NOT report bugs/issues encountered using this mode.
-warpspeed = false 
+# Run the emulated machine as fast as possible. Note this isn't just a CPU 
+# boost, the entire system including timer, sound and video will accellerate. 
+
+# NOTE: This will cause emulator instability. This feature is intended for developer use.
+# Please do not submit bug reports for issues encounted while using this mode.
+warpspeed = false
 
 # Do aspect correction to convert display buffer to 4:3.  May introduce some
 # resampling blur. This can be toggled on/off in options menu.
@@ -42,8 +49,8 @@ no_bios = false
 # Run the specified program instead of booting BIOS. The CPU reset vector will
 # be set to 'run_bin_seg:run_bin_ofs'
 #run_bin = "./program/a_effect.bin"
-#run_bin_seg = 0x1000
-#run_bin_ofs = 0x0000
+run_bin_seg = 0x1000
+run_bin_ofs = 0x0000
 
 # ----------------------------------------------------------------------------
 # Debug Tracing Options
@@ -59,8 +66,8 @@ no_bios = false
 # Additionally, a valid value for trace_file must be supplied.
 #
 trace_on = false
-trace_mode = "Cycle"
-#trace_file = "./traces/instr_trace.log"
+trace_mode = "Instruction"
+trace_file = "./traces/instr_trace.log"
 
 # Enable Video tracing. Video device may log memory and register read/writes.
 #video_trace_file = "./traces/video_trace.log"
@@ -134,6 +141,8 @@ model = "IBM_XT_5160"
 #    { path = "./roms/BIOS_5160_09MAY86_U19_62X0819_68X4370_27256_F000.BIN", address = 0xF0000, offset=0, org="Normal" },
 #    { path = "./roms/BIOS_5160_09MAY86_U18_59X7268_62X0890_27256_F800.BIN", address = 0xF8000, offset=0, org="Normal" }
 #]
+
+raw_rom = false
 
 # Turbo Button
 # ----------------------------------------------------------------------------
