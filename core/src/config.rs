@@ -246,6 +246,7 @@ pub struct Machine {
     pub raw_rom: bool,
     pub turbo: bool,
     pub video: VideoType,
+    pub composite: bool,
     pub hdc: HardDiskControllerType,
     pub drive0: Option<String>,
     pub drive1: Option<String>,

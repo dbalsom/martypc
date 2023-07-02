@@ -633,10 +633,6 @@ impl GuiState {
         *self.window_open_flags.get_mut(&window).unwrap() = true;
     }
 
-    pub fn get_composite_enabled(&self) -> bool {
-        self.composite
-    }
-
     pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {
         self.cpu_control.get_breakpoints()
     }

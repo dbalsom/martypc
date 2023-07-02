@@ -560,6 +560,7 @@ fn main() {
     machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
 
     framework.gui.set_option(GuiOption::TurboButton, config.machine.turbo);
+    framework.gui.set_option(GuiOption::CompositeDisplay, config.machine.composite);
 
     // Debug mode on? 
     if config.emulator.debug_mode {
@@ -1227,7 +1228,7 @@ fn main() {
                     }
 
                     // -- Draw video memory --
-                    let composite_enabled = framework.gui.get_composite_enabled();
+                    let composite_enabled = framework.gui.get_option(GuiOption::CompositeDisplay).unwrap_or(false);
                     let aspect_correct = framework.gui.get_option(GuiOption::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
@@ -1598,11 +1599,9 @@ fn main() {
                                     machine.ctrl_alt_del();
                                 }
                                 GuiEvent::CompositeAdjust(params) => {
+                                    //log::warn!("got composite params: {:?}", params);
                                     video_data.composite_params = params;
-
-                                    if framework.gui.get_composite_enabled() {
-                                        video.cga_direct_mode_update(video_data.last_mode_byte);
-                                    }
+                                    video.cga_direct_param_update(&params);
                                 }
                                 _ => {}
                             }

@@ -119,8 +119,9 @@ pub struct AspectRatio {
     pub v: u32,
 }
 
-#[derive (Copy, Clone)]
+#[derive (Copy, Clone, Debug)]
 pub struct CompositeParams {
+    pub phase: usize,
     pub contrast: f64,
     pub hue: f64,
     pub sat: f64,
@@ -130,10 +131,11 @@ pub struct CompositeParams {
 impl Default for CompositeParams {
     fn default() -> Self {
         Self {
+            phase: 0,
             contrast: 1.0,
             hue: 1.0,
-            sat: 1.15,
-            luma: 1.15
+            sat: 1.0,
+            luma: 1.0
         }
     }
 }
@@ -1072,7 +1074,7 @@ impl VideoRenderer {
         // Convert to composite line by line
         for y in 0..(h / 2) {
             //let s_o (= ((y * w) ) as usize;
-            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture_x as usize);
+            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture_x as usize) + self.composite_params.phase;
             let d_o = ((y * 2) as usize) * ((w as usize) * size_of::<u32>());
 
             let in_slice = &dbuf[s_o..(s_o + (w as usize))];
