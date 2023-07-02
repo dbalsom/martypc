@@ -29,27 +29,31 @@
     This module implements various Video rendering functions. Video card devices
     render in either Direct or Indirect mode.
 
-    In direct mode, the video device draws directly to intermediate representation
-    framebuffer, which the render module displays.
+    In Direct mode, the video device draws directly to a framebuffer in an
+    intermediate representation, which the render module converts and displays.
 
-    In indirect mode, the render module draws the video device's VRAM directly. 
+    In Indirect mode, the render module draws the video device's VRAM directly. 
     This is fast, but not always accurate if register writes happen mid-frame.
-
 */
 
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
 use std::path::Path;
+use std::mem::size_of;
 
 use bytemuck::*;
 
 pub mod resize;
 pub mod composite;
+// Reenigne composite
+pub mod composite_new;
 
 // Re-export submodules
 pub use self::resize::*;
 pub use self::composite::*;
+
+use composite_new::{ReCompositeContext, ReCompositeBuffers};
 
 use marty_core::{
     config::VideoType,
@@ -104,7 +108,8 @@ pub struct VideoData {
     pub aspect_w: u32,
     pub aspect_h: u32,
     pub aspect_correction_enabled: bool,
-    pub composite_params: CompositeParams
+    pub composite_params: CompositeParams,
+    pub last_mode_byte: u8
 }
 
 
@@ -116,14 +121,16 @@ pub struct AspectRatio {
 
 #[derive (Copy, Clone)]
 pub struct CompositeParams {
-    pub hue: f32,
-    pub sat: f32,
-    pub luma: f32
+    pub contrast: f64,
+    pub hue: f64,
+    pub sat: f64,
+    pub luma: f64
 }
 
 impl Default for CompositeParams {
     fn default() -> Self {
         Self {
+            contrast: 1.0,
             hue: 1.0,
             sat: 1.15,
             luma: 1.15
@@ -351,6 +358,8 @@ pub fn get_ega_gfx_color64(bits: u8) -> &'static [u8; 4] {
     }
 }
 
+/// Attempt a simple 4-pixel lookup to composite artifact color. 
+/// This is legacy code - you cannot accurately convert a composite image this way
 pub fn get_cga_composite_color( bits: u8, palette: &CGAPalette ) -> &'static [u8; 4] {
 
     match (bits, palette) {
@@ -436,10 +445,18 @@ pub struct VideoRenderer {
     cols: u32,
     rows: u32,
 
+    // Legacy composite stuff
     composite_buf: Option<Vec<u8>>,
-    composite_params: CompositeParams,
     sync_table_w: u32,
-    sync_table: Vec<(f32, f32, f32)>
+    sync_table: Vec<(f32, f32, f32)>,
+
+    // Reenigne composite stuff
+    composite_ctx: ReCompositeContext,
+    composite_bufs: ReCompositeBuffers,
+    last_cga_mode: u8,
+
+    // Composite adjustments    
+    composite_params: CompositeParams,
 }
 
 impl VideoRenderer {
@@ -463,10 +480,16 @@ impl VideoRenderer {
             cols: 80,
             rows: 25,
 
+            // Legacy composite stuff
             composite_buf: composite_vec_opt,
             composite_params: Default::default(),
             sync_table_w: 0,
-            sync_table: Vec::new()
+            sync_table: Vec::new(),
+
+            // Reenigne composite stuff
+            composite_ctx: ReCompositeContext::new(),
+            composite_bufs: ReCompositeBuffers::new(),
+            last_cga_mode: 0,
         }
     }
 
@@ -794,8 +817,9 @@ impl VideoRenderer {
     }
 
     /// Draw the CGA card in Direct Mode. 
-    /// Cards in Direct Mode generate their own framebuffers, we simply display the current back buffer
-    /// Optionally composite processing is performed.
+    /// The CGA in Direct mode generates its own indexed-color framebuffer, which is
+    /// converted to 32-bit RGBA for display based on the selected display aperture profile.
+    /// Optionally, composite processing is performed.
     pub fn draw_cga_direct(
         &mut self,
         frame: &mut [u8],
@@ -804,12 +828,13 @@ impl VideoRenderer {
         dbuf: &[u8],
         extents: &DisplayExtents,
         composite_enabled: bool,
-        composite_params: &CompositeParams,
+        _composite_params: &CompositeParams,
         beam_pos: Option<(u32, u32)>
     ) {
 
         if composite_enabled {
-            self.draw_cga_direct_composite(frame, w, h, dbuf, extents, composite_params);
+            //self.draw_cga_direct_composite(frame, w, h, dbuf, extents, composite_params);
+            self.draw_cga_direct_composite_reenigne(frame, w, h, dbuf, extents);
             return
         }
 
@@ -867,8 +892,12 @@ impl VideoRenderer {
     }
 
     /// Draw the CGA card in Direct Mode. 
-    /// Cards in Direct Mode generate their own framebuffers, we simply display the current back buffer
-    /// Optionally composite processing is performed.
+    /// The CGA in Direct mode generates its own indexed-color framebuffer, which is
+    /// converted to 32-bit RGBA for display based on the selected display aperture profile.
+    /// Optionally, composite processing is performed.
+    /// 
+    /// This version uses bytemuck to convert the framebuffer 32 bits at a time, which 
+    /// is much faster (benchmarked)
     pub fn draw_cga_direct_u32(
         &mut self,
         frame: &mut [u8],
@@ -877,31 +906,20 @@ impl VideoRenderer {
         dbuf: &[u8],
         extents: &DisplayExtents,
         composite_enabled: bool,
-        composite_params: &CompositeParams,
+        _composite_params: &CompositeParams,
         beam_pos: Option<(u32, u32)>
     ) {
 
         if composite_enabled {
-            self.draw_cga_direct_composite_u32(frame, w, h, dbuf, extents, composite_params);
+            self.draw_cga_direct_composite_reenigne(frame, w, h, dbuf, extents);
+            //self.draw_cga_direct_composite_u32(frame, w, h, dbuf, extents, composite_params);
             return
         }
-
-        // Attempt to center the image by reducing right overscan 
-        //let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
-        //let overscan_half = overscan_total / 2;
 
         let mut horiz_adjust = extents.aperture_x;
         if extents.aperture_x + extents.aperture_w >= extents.field_w {
             horiz_adjust = 0;
         }
-        /*
-        if overscan_half < extents.overscan_l {
-            // We want to shift image to the right 
-            horiz_adjust = extents.overscan_l - overscan_half;
-        }
-        */
-
-        // Assume display buffer visible data starts at offset 0
 
         let max_y = std::cmp::min(h / 2, extents.aperture_h);
         let max_x = std::cmp::min(w, extents.aperture_w);
@@ -912,9 +930,10 @@ impl VideoRenderer {
 
         for y in 0..max_y {
 
-            let dbuf_row_offset = y as usize * (extents.row_stride / 4);
+            let dbuf_row_offset = y as usize * extents.row_stride;
+
             let frame_row0_offset = ((y * 2) * w) as usize;
-            let frame_row1_offset = (((y * 2) * w) + (w)) as usize;
+            let frame_row1_offset = (((y * 2) * w) + w) as usize;
 
             for x in 0..max_x {
                 let fo0 = frame_row0_offset + x as usize;
@@ -922,6 +941,7 @@ impl VideoRenderer {
 
                 let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
 
+                // TODO: Would it be better for cache concurrency to do one line at a time?
                 frame_u32[fo0] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
                 frame_u32[fo1] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
             }
@@ -934,6 +954,7 @@ impl VideoRenderer {
         }
     }    
 
+    /// Render the CGA Direct framebuffer as a composite artifact color simulation.
     pub fn draw_cga_direct_composite(
         &mut self,
         frame: &mut [u8],
@@ -976,13 +997,16 @@ impl VideoRenderer {
                 frame, 
                 max_w, 
                 max_h, 
-                composite_params.hue, 
-                composite_params.sat,
-                composite_params.luma
+                composite_params.hue as f32, 
+                composite_params.sat as f32,
+                composite_params.luma as f32
             );
         }
     }
 
+    /// Render the CGA Direct framebuffer as a composite artifact color simulation.
+    /// This version uses bytemuck to convert the framebuffer 32 bits at a time, which is 
+    /// much faster (benchmarked)
     pub fn draw_cga_direct_composite_u32(
         &mut self,
         frame: &mut [u8],
@@ -1003,8 +1027,8 @@ impl VideoRenderer {
                 dbuf, 
                 extents.aperture_w, 
                 extents.aperture_h, 
-                extents.overscan_l,
-                extents.overscan_t,
+                extents.aperture_x,
+                extents.aperture_y,
                 extents.row_stride as u32, 
                 composite_buf);
 
@@ -1024,11 +1048,81 @@ impl VideoRenderer {
                 frame, 
                 max_w, 
                 max_h, 
-                composite_params.hue, 
-                composite_params.sat,
-                composite_params.luma
+                composite_params.hue as f32, 
+                composite_params.sat as f32,
+                composite_params.luma as f32
             );
         }
+    }
+
+    /// Render the CGA Direct framebuffer as a composite artifact color simulation.
+    /// 
+    /// This version uses reenigne's composite color multiplexer algorithm.
+    /// It is 3x faster than my sampling algorithm and produces more accurate colors; 
+    /// I know when I'm beat.
+    pub fn draw_cga_direct_composite_reenigne(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,        
+        dbuf: &[u8],
+        extents: &DisplayExtents,
+    ) {    
+
+        // Convert to composite line by line
+        for y in 0..(h / 2) {
+            //let s_o (= ((y * w) ) as usize;
+            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture_x as usize);
+            let d_o = ((y * 2) as usize) * ((w as usize) * size_of::<u32>());
+
+            let in_slice = &dbuf[s_o..(s_o + (w as usize))];
+
+            let d_span = (w as usize) * size_of::<u32>();
+            let d_end = d_o + d_span + d_span;
+            // Create an output slice that is 2x one scanline. We copy the first part of the scanline
+            // to the last part after scanline processing to double scanlines.
+            let out_slice = &mut frame[d_o..d_end];
+            let out_slice32: &mut [u32] = bytemuck::cast_slice_mut(out_slice);
+
+            self.composite_ctx.composite_process(
+                0, 
+                w as usize, 
+                &mut self.composite_bufs, 
+                in_slice, 
+                out_slice32
+            );
+
+            out_slice32.copy_within(0..(w as usize), w as usize);
+        }
+    }
+
+    /// Inform the CGA Direct renderer of mode changes. This is only really required by 
+    /// reenigne's composite conversion algorithm as it will recalculate composite parameters
+    /// based on the hires or color mode bits changing.
+    pub fn cga_direct_mode_update(
+        &mut self,
+        mode: u8
+    ) {
+        if mode != self.last_cga_mode {
+            // Mode has changed; recalculate composite parameters.
+            log::debug!("mode changed: recalculating composite parameters...");
+            self.composite_ctx.recalculate(mode);
+            self.last_cga_mode = mode;
+        }
+    }
+
+    /// Inform the CGA Direct renderer of adjustment changes.
+    /// reenigne's composite conversion algorithm will recalculate composite parameters
+    /// when adjustments are changed.
+    pub fn cga_direct_param_update(
+        &mut self,
+        composite_params: &CompositeParams
+    ) {
+        
+        self.composite_ctx.adjust(composite_params);
+        self.composite_ctx.recalculate(self.last_cga_mode);
+        
+        self.composite_params = *composite_params;
     }
 
 }
@@ -1229,7 +1323,14 @@ pub fn draw_cga_gfx_mode_highres2x(frame: &mut [u8], frame_w: u32, _frame_h: u32
 }
 
 
-pub fn draw_gfx_mode2x_composite(frame: &mut [u8], frame_w: u32, _frame_h: u32, mem: &[u8], pal: CGAPalette, _intensity: bool) {
+pub fn draw_gfx_mode2x_composite(
+    frame: &mut [u8], 
+    frame_w: u32, 
+    _frame_h: u32, 
+    mem: &[u8], 
+    pal: CGAPalette, 
+    _intensity: bool
+) {
     // First half of graphics memory contains all EVEN rows (0, 2, 4, 6, 8)
     
     let mut field_src_offset = 0;

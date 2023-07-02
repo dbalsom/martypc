@@ -499,7 +499,9 @@ impl Default for DisplayExtents {
             overscan_r: 0,
             overscan_t: 0,
             overscan_b: 0,
-            row_stride: CGA_XRES_MAX as usize
+            row_stride: CGA_XRES_MAX as usize,
+
+            mode_byte: 0
         }
     }
 }
@@ -2330,6 +2332,11 @@ impl CGACard {
 
             self.scanline = 0;
             self.frame_count += 1;
+
+            // Save the current mode byte, used for composite rendering. 
+            // The mode could have changed several times per frame, but I am not sure how the composite rendering should 
+            // really handle that...
+            self.extents[self.front_buf].mode_byte = self.mode_byte;
 
             // Swap the display buffers
             self.swap();   

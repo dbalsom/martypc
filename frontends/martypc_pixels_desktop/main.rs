@@ -467,6 +467,7 @@ fn main() {
         aspect_h: 480,
         aspect_correction_enabled: false,
         composite_params: Default::default(),
+        last_mode_byte: 0,
     };
 
     // Create resampling context
@@ -1268,30 +1269,27 @@ fn main() {
                             (VideoType::CGA, RenderMode::Direct) => {
                                 // Draw device's front buffer in direct mode (CGA only for now)
 
+                                let extents = video_card.get_display_extents();
+
+                                if video_data.last_mode_byte != extents.mode_byte {
+                                    // Mode byte has changed, recalculate composite parameters
+                                    video.cga_direct_mode_update(extents.mode_byte);
+                                    video_data.last_mode_byte = extents.mode_byte;
+                                }
+
                                 match aspect_correct {
                                     true => {
-                                        video.draw_cga_direct(
+                                        video.draw_cga_direct_u32(
                                             &mut render_src,
                                             video_data.render_w, 
                                             video_data.render_h,                                             
                                             video_buffer,
-                                            video_card.get_display_extents(),
+                                            extents,
                                             composite_enabled,
                                             &video_data.composite_params,
                                             beam_pos
                                         );
 
-                                        /*
-                                        marty_render::resize_linear(
-                                            &render_src, 
-                                            video_data.render_w, 
-                                            video_data.render_h, 
-                                            pixels.frame_mut(), 
-                                            video_data.aspect_w, 
-                                            video_data.aspect_h,
-                                            &resample_context
-                                        );
-                                        */
                                         marty_render::resize_linear_fast(
                                             &mut render_src, 
                                             video_data.render_w, 
@@ -1301,15 +1299,14 @@ fn main() {
                                             video_data.aspect_h,
                                             &mut resample_context
                                         );
-
                                     }
                                     false => {
-                                        video.draw_cga_direct(
+                                        video.draw_cga_direct_u32(
                                             pixels.frame_mut(),
                                             video_data.render_w, 
                                             video_data.render_h,                                                                                         
                                             video_buffer,
-                                            video_card.get_display_extents(),
+                                            extents,
                                             composite_enabled,
                                             &video_data.composite_params,
                                             beam_pos                                         
@@ -1599,6 +1596,13 @@ fn main() {
                                 }
                                 GuiEvent::CtrlAltDel => {
                                     machine.ctrl_alt_del();
+                                }
+                                GuiEvent::CompositeAdjust(params) => {
+                                    video_data.composite_params = params;
+
+                                    if framework.gui.get_composite_enabled() {
+                                        video.cga_direct_mode_update(video_data.last_mode_byte);
+                                    }
                                 }
                                 _ => {}
                             }

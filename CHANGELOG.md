@@ -1,4 +1,8 @@
 
+## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-XX-xx)
+
+* Replaced CGA composite simulation code with reenigne's color multiplexer algorithm, for more accurate colors and a 3x speed improvement.
+
 ## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-29)
 
 * Relicensed MartyPC under the MIT license.

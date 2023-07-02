@@ -150,7 +150,6 @@ impl VideoCard for CGACard {
     /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
     /// progress.    
     fn get_back_buf(&self) -> &[u8] {
-
         &self.buf[self.back_buf][..]
     }  
 
