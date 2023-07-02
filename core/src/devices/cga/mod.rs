@@ -1853,9 +1853,11 @@ impl CGACard {
         // sink_cycles must be factor of 8
         //assert!((self.sink_cycles & 0x07) == 0);
 
+        /*
         if self.sink_cycles & 0x0F != 0 {
             log::error!("sink_cycles: {} not divisible by 16", self.sink_cycles);
         }
+        */
 
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(16);
