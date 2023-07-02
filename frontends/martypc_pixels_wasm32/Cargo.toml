@@ -1,6 +1,6 @@
 [package]
 name = "marty_pixels_wasm32_player"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 
 [lib]

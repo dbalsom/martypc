@@ -45,7 +45,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_2/",
+            "cwd": "${workspaceFolder}/releases/0_1_3/",
             "env": {
                 "RUST_LOG": "debug,naga=error,wgpu_core=error",
                 "RUST_LOG_STYLE": "always",
@@ -91,7 +91,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_2/",
+            "cwd": "${workspaceFolder}/releases/0_1_3/",
             "env": {
                 "RUST_LOG": "martypc=trace",
                 "RUST_LOG_STYLE": "always",

@@ -1723,7 +1723,7 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "arraydeque",
@@ -1749,7 +1749,7 @@ dependencies = [
 
 [[package]]
 name = "marty_pixels_wasm32_player"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bytemuck",
  "console_error_panic_hook",
@@ -1782,7 +1782,7 @@ dependencies = [
 
 [[package]]
 name = "marty_render"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bytemuck",
  "cgmath",
@@ -1796,7 +1796,7 @@ dependencies = [
 
 [[package]]
 name = "martypc"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bytemuck",
  "console_error_panic_hook",
@@ -2396,7 +2396,7 @@ dependencies = [
 
 [[package]]
 name = "pixels_stretch_renderer"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bytemuck",
  "pixels",
