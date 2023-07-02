@@ -4,5 +4,6 @@
     "platform": "IBM PC/XT",
     "year": "2023",
     "link": "https://www.freedos.org/",
+    "instructions": "",
     "cfg": "freedos.toml"
 }

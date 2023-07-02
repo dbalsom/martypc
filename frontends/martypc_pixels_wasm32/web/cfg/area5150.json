@@ -4,5 +4,7 @@
     "platform": "IBM PC/XT",
     "year": "2022",
     "link": "https://www.pouet.net/prod.php?which=91938",
-    "cfg": "area5150.toml"
+    "instructions": "",
+    "cfg": "area5150.toml",
+    "notes": "Another amazing demo from the makers of 8088MPH. This demo heavily abuses text mode to produce some striking 16 color effects on the CGA."
 }
