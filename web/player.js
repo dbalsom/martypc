@@ -24,7 +24,7 @@
         if (window.innerWidth < 1170) {
             canvasContainer.style.marginLeft = 'auto';
             canvasContainer.style.marginRight = 'auto';
-            canvasContainer.style.marginTop = '20px';
+            canvasContainer.style.marginBottom = '20px';
             return
         }
 
@@ -44,6 +44,11 @@
             canvasContainer.style.marginRight = 'auto';
         }
         */
+    }
+
+    function sanitizeTitle(title) {
+        // Remove all characters that are not alphanumeric
+        return title.replace(/[^a-zA-Z0-9]/g, '');
     }
 
     window.addEventListener('resize', updateCanvasPosition);
@@ -73,44 +78,58 @@
         };        
         
         // Fetch the JSON file
-        
-        // Get the path, e.g., "/path/foo.html"
-        var path = window.location.pathname;
 
-        // Get the equivalent name but with .json extension
-        var fileName = path.substring(path.lastIndexOf('/') + 1);
-        var baseName = fileName.split('.')[0];
-        var jsonFile = baseName + '.json';
+        // Get the URL query parameters
+        var params = new URLSearchParams(window.location.search);
+
+        // Get the title parameter from the URL, e.g., "area5150" from "?title=area5150"
+        var title = sanitizeTitle(params.get('title'));
+
+        // If the title parameter exists, use it to create the JSON file name
+        if (title) {
+            var jsonFile = './cfg/' + title + '.json';
         
-        fetch(jsonFile)
-            .then(response => response.json())
-            .then(data => {
-                // Select the table by its ID and populate it with data from the JSON file
-                document.querySelector('#title-info').innerHTML = `
-                    <tr>
-                        <td>Title:</td>
-                        <td>${data.title}</td>
-                    </tr>
-                    <tr>
-                        <td>Developer:</td>
-                        <td>${data.developer}</td>
-                    </tr>                    
-                    <tr>
-                        <td>Platform:</td>
-                        <td>${data.platform}</td>
-                    </tr>
-                    <tr>
-                        <td>Year:</td>
-                        <td>${data.year}</td>
-                    </tr>
-                    <tr>
-                        <td>Link:</td>
-                        <td><a href="${data.link}" target="_blank">More Info</a></td>
-                    </tr>                    
-                `;
+            fetch(jsonFile)
+                .then(response => response.json())
+                .then(data => {
+                    // Select the table by its ID and populate it with data from the JSON file
+                    document.querySelector('#title-info').innerHTML = `
+                        <tr>
+                            <td>Title:</td>
+                            <td>${data.title}</td>
+                        </tr>
+                        <tr>
+                            <td>Developer:</td>
+                            <td>${data.developer}</td>
+                        </tr>                    
+                        <tr>
+                            <td>Platform:</td>
+                            <td>${data.platform}</td>
+                        </tr>
+                        <tr>
+                            <td>Year:</td>
+                            <td>${data.year}</td>
+                        </tr>
+                        <tr>
+                            <td>Link:</td>
+                            <td><a href="${data.link}" target="_blank">More Info</a></td>
+                        </tr>       
+                        <tr>
+                            <td class="notes-header">Instructions:</td>
+                            <td>${data.instructions}</a></td>
+                        </tr>                                    
+                        <tr>
+                            <td class="notes-header">Notes:</td>
+                            <td><div class="title-notes">${data.notes}</div></td>
+                        </tr>                             
+                    `;
                 
-                window.sharedState.cfg = data.cfg;
-                document.title = `MartyPC Player - ${data.title}`;
-            })
-            .catch(error => console.error('Error fetching the JSON file:', error));
+                    window.sharedState.cfg = data.cfg;
+                    document.title = `MartyPC Player - ${data.title}`;
+                })
+                .catch(error => console.error('Error fetching the JSON file:', error));
+        } else {
+            console.error('Title parameter is missing in the URL.');
+        }
+
     });    

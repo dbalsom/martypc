@@ -175,7 +175,7 @@ hdc = "None"
 #drive1 = "games.vhd"
 
 # Floppy image to load into floppy drive0 (A:)
-floppy0 = "./bin/fd1.img"
+floppy0 = "./bin/midemo.img"
 
 # Floppy image to load into floppy drive1 (B:)
 #floppy1 = "fd1.img"

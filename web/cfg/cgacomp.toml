@@ -135,7 +135,7 @@ reverse_mouse_buttons = false
 model = "IBM_XT_5160"
 
 rom_override = [
-    { path = "./bin/GLABIOS_0.2.4_8T.ROM", address = 0xFE000, offset=0, org="Normal" }
+    { path = "./bin/GLABIOS_0.2.5a_8X_MPC2.ROM", address = 0xFE000, offset=0, org="Normal" }
 ]
 
 # Load rom from raw byte slice. Used for wasm32 target.

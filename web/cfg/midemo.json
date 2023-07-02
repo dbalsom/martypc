@@ -1,0 +1,10 @@
+{
+    "title": "The Secret of Monkey Island (Demo)",
+    "developer": "LucasArts",
+    "platform": "IBM PC/XT/AT",
+    "year": "1990",
+    "link": "https://www.mobygames.com/game/616/the-secret-of-monkey-island/",
+    "cfg": "midemo.toml",
+    "instructions": "",
+    "notes": "This demo features an interesting character interaction not seen in the full version."
+}
