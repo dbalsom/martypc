@@ -1,0 +1,10 @@
+{
+    "title": "8088MPH",
+    "developer": "Hornet, CRTC & Desire",
+    "platform": "IBM PC/XT",
+    "year": "2015",
+    "link": "https://www.pouet.net/prod.php?which=65371",
+    "cfg": "8088mph.toml",
+    "instructions": "Hit enter at the calibration screen to begin.",
+    "notes": "This infamous PC demo requires a Composite monitor connected to a CGA card. By clever manipulation of NTSC artifact colors and CRTC registers in text mode, it manages to produce an unheard of palette on the CGA card, which was more typically associated with ugly 4 color graphics."
+}

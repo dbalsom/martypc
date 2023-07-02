@@ -4,5 +4,6 @@
     "platform": "IBM PC/XT",
     "year": "1990",
     "link": "https://www.mobygames.com/game/3200/pharaohs-tomb/",
-    "cfg": "ptomb.toml"
+    "cfg": "ptomb.toml",
+    "notes": "George Broussard would go on to found 3d Realms, makers of Duke Nukem 3D. He famously misspelled his own name in the title credits of this game."
 }
