@@ -10,6 +10,6 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 bytemuck = "1.13.1"
-pixels = "0.12.1"
+pixels = "0.13"
 ultraviolet = "0.9"
-wgpu = "0.15"
+wgpu = "0.16"
