@@ -157,6 +157,8 @@ turbo = false
 # "VGA"
 video = "CGA"
 
+composite = false
+
 # Hard Disk Controller Type
 # ----------------------------------------------------------------------------
 # Valid options for hard disk controller are:
