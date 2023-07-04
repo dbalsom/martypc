@@ -10,6 +10,7 @@ members = [
 name = "martypc"
 version = "0.1.3"
 edition = "2021"
+license = "MIT"
 
 [[bin]]
 name = "martypc"
@@ -20,31 +21,22 @@ marty_core = { path = "./core/"}
 marty_render = { path = "./frontend_libs/render"}
 bytemuck = "1.13.1"
 cpal = "0.13.5"
-#egui = "0.20"
+egui = "0.22"
 emath = "0.20"
-#egui-wgpu = "0.21"
-#egui-winit = { version = "0.20", default-features = false, features = ["links"] }
+egui-wgpu = "0.22"
+egui-winit = { version = "0.22", default-features = false, features = ["links"] }
 env_logger = "0.9"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 log = "0.4"
-pixels = "0.12.1"
+pixels = "0.13"
 rand = "0.8.5"
 getrandom = "0.2.6"
 regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
 serialport = "4.2.0"
-winit = "0.27"
-winit_input_helper = "0.13"
-
-# These are specific snapshots due to requirements from Pixels 0.12.1
-[dependencies.egui]
-git = "https://github.com/emilk/egui.git"
-rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
-
-[dependencies.egui-wgpu]
-git = "https://github.com/emilk/egui.git"
-rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
+winit = "0.28"
+winit_input_helper = "0.14"
 
 [target.wasm32-unknown-unknown]
 runner = "wasm-server-runner"
@@ -62,12 +54,7 @@ js-sys = "0.3.63"
 wasm-bindgen = "0.2.86"
 wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["GpuTextureFormat", "Request", "RequestInit", "Response", "Headers", "Blob", "FileReader", "ProgressEvent"] }
-wgpu = { version = "0.15", features = ["webgl"] }
-
-# Conditional dependencies for NOT wasm32 target.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies.egui-winit]
-git = "https://github.com/emilk/egui.git"
-rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
+wgpu = { version = "0.16", features = ["webgl"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
