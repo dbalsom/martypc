@@ -20,7 +20,7 @@ In April 2023, MartyPC became accurate enough to run the infamous PC demo, 8088M
 
 In May 2023, MartyPC became the first PC emulator capable of emulating every effect in the PC demo Area 5150. (See video here: https://www.youtube.com/watch?v=zADeLm9g0Zg )
 
-In June of 2023, the WebAssembly build of MartyPC could run both [8088MPH](dbalsom.github.io/martypc/web/player.html?title=8088mph) and [Area 5150](dbalsom.github.io/martypc/web/player.html?title=area5150) in your web browser!
+In June of 2023, the WebAssembly build of MartyPC could run both [8088MPH](https://dbalsom.github.io/martypc/web/player.html?title=8088mph) and [Area 5150](https://dbalsom.github.io/martypc/web/player.html?title=area5150) in your web browser!
 
 ## Special Thanks
 
