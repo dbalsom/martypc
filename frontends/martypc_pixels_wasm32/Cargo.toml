@@ -44,6 +44,7 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["GpuTextureFormat", "Request", "RequestInit", "Response", "Headers", "Blob", "FileReader", "ProgressEvent"] }
 instant = "0.1.12"
 cpal = { version = "0.13.5", features = ["wasm-bindgen"]}
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies.egui-winit]
 git = "https://github.com/emilk/egui.git"
 rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
