@@ -2,6 +2,7 @@
 name = "pixels_stretch_renderer"
 version = "0.1.3"
 edition = "2021"
+license = "MIT"
 
 [lib]
 name = "pixels_stretch_renderer"
