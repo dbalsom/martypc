@@ -24,9 +24,11 @@
 
     --------------------------------------------------------------------------
 
-    main.rs
+    lib.rs
 
-    Main emulator entrypoint
+    MartyPC Desktop front-end main library component.
+
+    MartyPC Desktop includes the full GUI and debugger interface.
 
 */
 
@@ -253,7 +255,7 @@ fn main() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn main() {
+pub fn run() {
 
     env_logger::init();
 

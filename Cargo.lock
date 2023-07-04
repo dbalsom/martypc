@@ -1660,6 +1660,16 @@ dependencies = [
 name = "martypc"
 version = "0.1.3"
 dependencies = [
+ "marty_core",
+ "marty_render",
+ "martypc_pixels_desktop",
+ "winres",
+]
+
+[[package]]
+name = "martypc_pixels_desktop"
+version = "0.1.3"
+dependencies = [
  "bytemuck",
  "console_error_panic_hook",
  "console_log",
@@ -1690,7 +1700,6 @@ dependencies = [
  "wgpu",
  "winit",
  "winit_input_helper",
- "winres",
 ]
 
 [[package]]
