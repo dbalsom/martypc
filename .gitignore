@@ -8,7 +8,8 @@ Thumbs.db
 /target
 
 # Visual Studio Code editor files
-/.vscode
+#/.vscode
+/.vscode/settings.json
 
 # Emulator files
 /rom
