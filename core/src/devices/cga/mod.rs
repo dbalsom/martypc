@@ -1811,7 +1811,8 @@ impl CGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.debug {
-                    self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    self.draw_solid_hchar(self.cc_overscan_color);
                 }
                 else {
                     self.draw_solid_hchar(self.cc_overscan_color);
@@ -1892,7 +1893,13 @@ impl CGACard {
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                self.draw_solid_lchar(self.cc_overscan_color);
+                if self.debug {
+                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    self.draw_solid_hchar(self.cc_overscan_color);
+                }
+                else {                
+                    self.draw_solid_lchar(self.cc_overscan_color);
+                }
             }
             else {
                 //log::warn!("invalid display state...");
@@ -2002,7 +2009,8 @@ impl CGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.debug {
-                    self.draw_pixel(CGA_OVERSCAN_COLOR);
+                    //self.draw_pixel(CGA_OVERSCAN_COLOR);
+                    self.draw_overscan_pixel();
                 }
                 else {
                     self.draw_overscan_pixel();
