@@ -1,6 +1,7 @@
 
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-XX-xx)
 
+* Mapped Right Alt, Control and Shift to emulated Left Alt, Control and Shift.
 * Added UI warning when MartyPC is compiled in debug mode (unfortunately the default behavior of cargo build)
 * Replaced CGA composite simulation code with reenigne's color multiplexer algorithm, for more accurate colors and a 3x speed improvement.
 * Added contrast, phase and CGA type controls to composite adjustment window.
@@ -8,6 +9,7 @@
 * Update egui and egui-wgpu 0.22
 * Update winit to 0.29* 
     * Winit 0.29 fixes reported keyboard issues with non-US keyboard layouts unable to type certain keys.
+    * Winit 0.29 fixes excessively high UPS (updates per second) on Arch Linux
 * Enable basic clipboard integration in debugger for copy/paste of breakpoints. This feature will be expanded.
 * Fork egui-winit 0.22 to manually update winit dependency to 0.29.
 
