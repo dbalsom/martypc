@@ -68,6 +68,13 @@ impl PerformanceViewerControl {
             ui.label(egui::RichText::new(format!("{}", self.stats.backend)));
             ui.end_row();
 
+            ui.label("Build: ");
+            #[cfg(debug_assertions)]
+            ui.label(egui::RichText::new(format!("DEBUG")));
+            #[cfg(not(debug_assertions))]
+            ui.label(egui::RichText::new(format!("Release")));
+            ui.end_row();
+
             ui.label("Internal resolution: ");
             ui.label(egui::RichText::new(format!("{}, {}", 
                 self.video_data.render_w, 

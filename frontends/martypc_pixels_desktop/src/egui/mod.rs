@@ -228,6 +228,7 @@ pub(crate) struct GuiState {
     /// Only show the associated window when true.
     window_open_flags: HashMap::<GuiWindow, bool>,
     error_dialog_open: bool,
+    warning_dialog_open: bool,
     
     option_flags: HashMap::<GuiOption, bool>,
 
@@ -261,6 +262,7 @@ pub(crate) struct GuiState {
     exec_control: Rc<RefCell<ExecutionControl>>,
 
     error_string: String,
+    warning_string: String,
 
     pub about_dialog: AboutDialog,
     pub cpu_control: CpuControl,
@@ -486,6 +488,7 @@ impl GuiState {
             event_queue: VecDeque::new(),
             window_open_flags,
             error_dialog_open: false,
+            warning_dialog_open: false,
 
             option_flags,
 
@@ -516,6 +519,7 @@ impl GuiState {
             exec_control: exec_control.clone(),
 
             error_string: String::new(),
+            warning_string: String::new(),
 
             about_dialog: AboutDialog::new(),
             cpu_control: CpuControl::new(exec_control.clone()),
@@ -594,6 +598,16 @@ impl GuiState {
         self.error_dialog_open = false;
         self.error_string = String::new();
     }
+
+    pub fn show_warning(&mut self, warn_str: &String) {
+        self.warning_dialog_open = true;
+        self.warning_string = warn_str.clone();
+    }
+
+    pub fn clear_warning(&mut self) {
+        self.warning_dialog_open = false;
+        self.warning_string = String::new();
+    }    
 
     pub fn set_machine_state(&mut self, state: MachineState) {
         self.machine_state = state;
@@ -695,6 +709,15 @@ impl GuiState {
             .show(ctx, |_ui| {
 
             });            
+
+        egui::Window::new("Warning")
+            .open(&mut self.warning_dialog_open)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new("⚠").color(egui::Color32::YELLOW).font(egui::FontId::proportional(40.0)));
+                    ui.label(&self.warning_string);
+                });
+            });
 
         egui::Window::new("Error")
             .open(&mut self.error_dialog_open)

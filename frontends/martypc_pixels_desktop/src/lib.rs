@@ -579,6 +579,17 @@ pub fn run() {
         config.emulator.autostart = false;
     }
 
+    #[cfg(debug_assertions)]
+    if config.emulator.debug_warn {
+        // User compiled MartyPC in debug mode, let them know...
+        framework.gui.show_warning(
+            &"MartyPC has been compiled in debug mode and will be extremely slow.\n \
+            
+                    To compile in release mode, use 'cargo build -r'\n \
+                    To disable this error, set debug_warn=false in martypc.toml.".to_string()
+        );
+    }
+
     // Load program binary if one was specified in config options
     if let Some(prog_bin) = config.emulator.run_bin {
 

@@ -200,6 +200,9 @@ pub struct Emulator {
     #[serde(default)]
     pub debug_mode: bool,
 
+    #[serde(default = "_default_false")]
+    pub debug_warn: bool,    
+
     #[serde(default)]
     pub no_bios: bool,
 
