@@ -2,9 +2,13 @@
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-XX-xx)
 
 * Update Pixels to 0.13
-* Update egui, egui-wgpu and egui-winit to 0.22
-* Update winit to 0.28
+* Update egui and egui-wgpu 0.22
+* Update winit to 0.29* 
+    * Winit 0.29 fixes reported keyboard issues with non-US keyboard layouts unable to type certain keys.
+* Enable basic clipboard integration in debugger for copy/paste of breakpoints. This feature will be expanded.
+* Fork egui-winit 0.22 to manually update winit dependency to 0.29.
 * Replaced CGA composite simulation code with reenigne's color multiplexer algorithm, for more accurate colors and a 3x speed improvement.
+* Added contrast, phase and CGA type controls to composite adjustment window.
 
 ## [0.1.2](https://github.com/dbalsom/martypc/releases/tag/0.1.2) (2023-06-29)
 
