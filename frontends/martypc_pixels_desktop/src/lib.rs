@@ -101,8 +101,12 @@ use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
 use marty_render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
 
 const EGUI_MENU_BAR: u32 = 25;
-const WINDOW_WIDTH: u32 = 1280;
-const WINDOW_HEIGHT: u32 = 960 + EGUI_MENU_BAR * 2;
+
+const WINDOW_MIN_WIDTH: u32 = 640;
+const WINDOW_MIN_HEIGHT: u32 = 480;
+
+const WINDOW_WIDTH: u32 = WINDOW_MIN_WIDTH;
+const WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT + EGUI_MENU_BAR * 2;
 
 const DEFAULT_RENDER_WIDTH: u32 = 640;
 const DEFAULT_RENDER_HEIGHT: u32 = 400;
@@ -572,6 +576,12 @@ pub fn run() {
     framework.gui.set_option(GuiOption::TurboButton, config.machine.turbo);
     framework.gui.set_option(GuiOption::CompositeDisplay, config.machine.composite);
 
+    // Disable warpspeed feature if 'devtools' flag not on.
+    #[cfg(not(feature = "devtools"))]
+    {
+        config.emulator.warpspeed = false;
+    }
+
     // Debug mode on? 
     if config.emulator.debug_mode {
         // Open default debug windows
@@ -592,7 +602,6 @@ pub fn run() {
         // User compiled MartyPC in debug mode, let them know...
         framework.gui.show_warning(
             &"MartyPC has been compiled in debug mode and will be extremely slow.\n \
-            
                     To compile in release mode, use 'cargo build -r'\n \
                     To disable this error, set debug_warn=false in martypc.toml.".to_string()
         );
@@ -649,10 +658,15 @@ pub fn run() {
                 // Get the current monitor resolution. 
                 if let Some(monitor) = window.current_monitor() {
                     let monitor_size = monitor.size();
-                    
+                    let dip_scale = monitor.scale_factor();
+
                     log::debug!("Current monitor resolution: {}x{}", monitor_size.width, monitor_size.height);
 
-                    if ((aper_correct_x * 2) <= monitor_size.width) && ((aper_correct_y * 2) <= monitor_size.height) {
+                    // Take into account DPI scaling for window-fit.
+                    let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
+                    let scaled_height = ((aper_correct_y * 2) as f64 * dip_scale) as u32;
+
+                    if (scaled_width <= monitor_size.width) && (scaled_height <= monitor_size.height) {
                         // Monitor is large enough to double the display window
                         double_res = true;
                     }
