@@ -455,8 +455,8 @@ pub fn run() {
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
 
-    // Set machine state to Running if autostart option was set in config
-    if config.emulator.autostart {
+    // Set CPU state to Running if cpu_autostart option was set in config
+    if config.emulator.cpu_autostart {
         exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
 
@@ -549,6 +549,14 @@ pub fn run() {
         rom_manager
     );
 
+    // Set the inital power-on state.
+    if config.emulator.auto_poweron {
+        machine.change_state(MachineState::On);
+    }
+    else {
+        machine.change_state(MachineState::Off);
+    }
+
     // Set options from config. We do this now so that we can set the same state for both GUI and machine
     framework.gui.set_option(GuiOption::CorrectAspect, config.emulator.correct_aspect);
 
@@ -576,7 +584,7 @@ pub fn run() {
         machine.set_cpu_option(CpuOption::InstructionHistory(true));
 
         // Disable autostart
-        config.emulator.autostart = false;
+        config.emulator.cpu_autostart = false;
     }
 
     #[cfg(debug_assertions)]
