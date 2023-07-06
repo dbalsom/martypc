@@ -28,8 +28,6 @@ serde_with = "2.1.0"
 serialport = "4.2.0"
 toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"]}
-winit = "0.28"
-winit_input_helper = "0.14"
 
 [features]
 arduino_validator = []

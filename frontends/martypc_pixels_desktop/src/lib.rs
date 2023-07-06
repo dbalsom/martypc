@@ -45,6 +45,7 @@ use std::{
 };
 
 mod egui;
+mod input;
 
 #[cfg(feature = "arduino_validator")]
 mod main_fuzzer;
@@ -62,16 +63,17 @@ use winit::{
         DeviceEvent, 
         ElementState, 
         StartCause, 
-        VirtualKeyCode,
     },
     event_loop::{
         ControlFlow,
         EventLoop
     },
-    window::WindowBuilder
+    keyboard::{KeyCode, ModifiersKeyState},
+    window::WindowBuilder,
+
 };
 
-use winit_input_helper::WinitInputHelper;
+//use winit_input_helper::WinitInputHelper;
 
 #[cfg(feature = "arduino_validator")]
 use crate::main_fuzzer::main_fuzzer;
@@ -91,10 +93,6 @@ use marty_core::{
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
-    input::{
-        self,
-        MouseButton
-    },
     util
 };
 
@@ -423,7 +421,9 @@ pub fn run() {
 
     // Init graphics & GUI 
     let event_loop = EventLoop::new();
-    let mut input = WinitInputHelper::new();
+    
+    //let mut input = WinitInputHelper::new();
+    
     let window = {
         let size = LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
         WindowBuilder::new()
@@ -761,7 +761,8 @@ pub fn run() {
 
         //*control_flow = ControlFlow::Poll;
     
-        // Handle input events
+        // winit_input_helper
+        /*
         if input.update(&event) {
             // Close events
             
@@ -788,12 +789,15 @@ pub fn run() {
             // Update internal state and request a redraw
             window.request_redraw();
         }
+        */
 
         match event {
+
             Event::NewEvents(StartCause::Init) => {
                 // Initialization stuff here?
                 stat_counter.last_second = Instant::now();
             }
+
             Event::DeviceEvent{ event, .. } => {
                 match event {
                     DeviceEvent::MouseMotion {
@@ -820,6 +824,8 @@ pub fn run() {
                         // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse 
                         // clicks are 'sticky', if a button was pressed during the last update period it will be sent as
                         // pressed during virtual mouse update.
+
+                        use input::MouseButton;
 
                         match (mbutton, state) {
                             (MouseButton::Left, ElementState::Pressed) => {
@@ -852,14 +858,36 @@ pub fn run() {
                 }
             }
             Event::WindowEvent{ event, .. } => {
-
                 match event {
+
+                    // Handle events previous handled by winit_input_helper...
+                    WindowEvent::ScaleFactorChanged{ scale_factor, .. } => {
+                        framework.scale_factor(scale_factor);
+                    }     
+                    WindowEvent::Resized(size) => {
+                        log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
+                        if pixels.resize_surface(size.width, size.height).is_err() {
+                            // Some error occured but not much we can do about it.
+                            // Errors get thrown when the window minimizes.
+                        }
+                        framework.resize(size.width, size.height);
+                    }
+                    WindowEvent::CloseRequested => {
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+
+                    // Handle all other events
                     WindowEvent::ModifiersChanged(modifier_state) => {
-                        kb_data.ctrl_pressed = modifier_state.ctrl();
+
+                        kb_data.ctrl_pressed = matches!(modifier_state.lcontrol_state(), ModifiersKeyState::Pressed);
+                        kb_data.ctrl_pressed |= matches!(modifier_state.rcontrol_state(), ModifiersKeyState::Pressed);
+                        framework.handle_event(&event);
                     }
                     WindowEvent::KeyboardInput {
-                        input: winit::event::KeyboardInput {
-                            virtual_keycode: Some(keycode),
+
+                        event: winit::event::KeyEvent {
+                            physical_key: keycode,
                             state,
                             ..
                         },
@@ -868,7 +896,7 @@ pub fn run() {
 
                         // Match global hotkeys regardless of egui focus
                         match (state, keycode) {
-                            (winit::event::ElementState::Pressed, VirtualKeyCode::F10 ) => {
+                            (winit::event::ElementState::Pressed, KeyCode::F10 ) => {
                                 if kb_data.ctrl_pressed {
                                     // Ctrl-F10 pressed. Toggle mouse capture.
                                     log::info!("Control F10 pressed. Capturing mouse cursor.");
@@ -916,13 +944,13 @@ pub fn run() {
                             match state {
                                 winit::event::ElementState::Pressed => {
                                     
-                                    if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                    if let Some(keycode) = input::match_keycode(keycode) {
                                         //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                         machine.key_press(keycode);
                                     };
                                 },
                                 winit::event::ElementState::Released => {
-                                    if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                    if let Some(keycode) = input::match_keycode(keycode) {
                                         //log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                         machine.key_release(keycode);
                                     };

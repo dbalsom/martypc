@@ -14,10 +14,10 @@ marty_core = { path = "../../core/"}
 marty_render = { path = "../../frontend_libs/render"}
 bytemuck = "1.13.1"
 cpal = "0.13.5"
-egui = "0.22"
+#egui = "0.22"
 emath = "0.20"
-egui-wgpu = "0.22"
-egui-winit = { version = "0.22", default-features = false, features = ["links"] }
+#egui-wgpu = "0.22"
+#egui-winit = { version = "0.22", default-features = false, features = ["links"] }
 env_logger = "0.9"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 log = "0.4"
@@ -28,8 +28,20 @@ regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
 serialport = "4.2.0"
-winit = "0.28"
-winit_input_helper = "0.14"
+winit = { version = "=0.29.0-beta.0" }
+#winit_input_helper = "0.14"
+
+[dependencies.egui]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "winit_0_29"
+
+[dependencies.egui-wgpu]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "winit_0_29"
+
+[dependencies.egui-winit]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "winit_0_29"
 
 # Conditional dependencies for wasm32 target. 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

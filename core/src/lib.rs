@@ -55,7 +55,6 @@ pub mod util;
 pub mod vhd;
 pub mod vhd_manager;
 pub mod videocard; // VideoCard trait
-pub mod input;
 
 pub mod cpu_validator; // CpuValidator trait
 
