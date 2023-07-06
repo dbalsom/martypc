@@ -105,7 +105,7 @@ impl PerformanceViewerControl {
             ui.label("Emulation time: ");
             ui.label(egui::RichText::new(format!("{}", ((self.stats.emulation_time.as_micros() as f64) / 1000.0))));
             ui.end_row();
-            ui.label("Render time: ");
+            ui.label("Framebuffer time: ");
             ui.label(egui::RichText::new(format!("{}", ((self.stats.render_time.as_micros() as f64) / 1000.0))));
             ui.end_row();
             ui.label("Gui Render time: ");
