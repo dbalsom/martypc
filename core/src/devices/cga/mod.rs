@@ -653,6 +653,10 @@ impl CGACard {
             cga.extents[1].aperture_w = CGA_XRES_MAX;
             cga.extents[0].aperture_h = CGA_YRES_MAX;
             cga.extents[1].aperture_h = CGA_YRES_MAX;
+            cga.extents[0].aperture_x = 0;
+            cga.extents[1].aperture_x = 0;
+            cga.extents[0].aperture_y = 0;
+            cga.extents[1].aperture_y = 0;            
             cga.vblank_color = CGA_VBLANK_DEBUG_COLOR;
             cga.hblank_color = CGA_HBLANK_DEBUG_COLOR;
             cga.disable_color = CGA_DISABLE_DEBUG_COLOR;

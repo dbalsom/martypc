@@ -125,7 +125,8 @@ pub struct CompositeParams {
     pub contrast: f64,
     pub hue: f64,
     pub sat: f64,
-    pub luma: f64
+    pub luma: f64,
+    pub new_cga: bool
 }
 
 impl Default for CompositeParams {
@@ -135,7 +136,8 @@ impl Default for CompositeParams {
             contrast: 1.0,
             hue: 1.0,
             sat: 1.0,
-            luma: 1.0
+            luma: 1.0,
+            new_cga: false,
         }
     }
 }
@@ -818,6 +820,7 @@ impl VideoRenderer {
         }
     }
 
+    /*
     /// Draw the CGA card in Direct Mode. 
     /// The CGA in Direct mode generates its own indexed-color framebuffer, which is
     /// converted to 32-bit RGBA for display based on the selected display aperture profile.
@@ -830,7 +833,7 @@ impl VideoRenderer {
         dbuf: &[u8],
         extents: &DisplayExtents,
         composite_enabled: bool,
-        _composite_params: &CompositeParams,
+        composite_params: &CompositeParams,
         beam_pos: Option<(u32, u32)>
     ) {
 
@@ -892,6 +895,7 @@ impl VideoRenderer {
             self.draw_vertical_xor_line(frame, w, max_x, max_y, beam.0);
         }
     }
+    */
 
     /// Draw the CGA card in Direct Mode. 
     /// The CGA in Direct mode generates its own indexed-color framebuffer, which is
@@ -909,16 +913,19 @@ impl VideoRenderer {
         extents: &DisplayExtents,
         composite_enabled: bool,
         _composite_params: &CompositeParams,
-        beam_pos: Option<(u32, u32)>
+        beam_pos: Option<(u32, u32)>,
     ) {
 
         if composite_enabled {
+            // The new composite code gets its parameters updated when they are changed, so
+            // we don't need to pass params to the draw function.
             self.draw_cga_direct_composite_reenigne(frame, w, h, dbuf, extents);
             //self.draw_cga_direct_composite_u32(frame, w, h, dbuf, extents, composite_params);
             return
         }
 
         let mut horiz_adjust = extents.aperture_x;
+        // Ignore aperture x adjustment if it pushes us outside of the field boundaries
         if extents.aperture_x + extents.aperture_w >= extents.field_w {
             horiz_adjust = 0;
         }
@@ -1071,10 +1078,19 @@ impl VideoRenderer {
         extents: &DisplayExtents,
     ) {    
 
+        let phase_adjust = if extents.aperture_w < (extents.field_w - 4) {
+            // We have room to shift phase
+            self.composite_params.phase
+        }
+        else {
+            // No room to adjust phase, disable phase adjustment.
+            0
+        };
+
         // Convert to composite line by line
         for y in 0..(h / 2) {
             //let s_o (= ((y * w) ) as usize;
-            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture_x as usize) + self.composite_params.phase;
+            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture_x as usize) + phase_adjust;
             let d_o = ((y * 2) as usize) * ((w as usize) * size_of::<u32>());
 
             let in_slice = &dbuf[s_o..(s_o + (w as usize))];

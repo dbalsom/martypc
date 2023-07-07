@@ -88,6 +88,12 @@ impl CompositeAdjustControl {
                 }     
                 ui.end_row();
 
+                ui.label(egui::RichText::new("CGA Type:").text_style(egui::TextStyle::Monospace));
+                if ui.checkbox(&mut self.params.new_cga, "New CGA").changed() {
+                    update = true;
+                }
+                ui.end_row();
+
                 if update {
                     self.params.phase = (self.temp_phase / 90.0).round() as usize;
                     events.push_back(GuiEvent::CompositeAdjust(self.params));

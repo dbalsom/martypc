@@ -264,6 +264,8 @@ impl ReCompositeContext {
         self.hue_offset = (p.hue - 1.0) * 100.0;
         self.saturation = p.sat * 100.0;
         self.brightness = (p.luma - 1.0) * 10.0;
+
+        self.new_cga = p.new_cga;
     }
 
     pub fn composite_process(
