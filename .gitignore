@@ -23,13 +23,16 @@ Thumbs.db
 /program
 /releases
 marty*.toml
-!/install/martypc.toml
 *.pcm
 *.cfg
 *.log
 *.exe
 /frontends/martypc_pixels_wasm32/wasm/
 icon.png
+
+# Example install dir
+!/install/martypc.toml
+!/install/icon.png
 
 # Frontend files
 /frontends/martypc_pixels_wasm32/web/bin
