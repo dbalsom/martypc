@@ -1,9 +1,10 @@
 
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-XX-xx)
 
+
 * Disabled window doubling if window would not fit on screen due to DPI scaling.
 * Decreased minimum window size
-* Disabled warpspeed config flag.
+* Disabled warpspeed config flag
 * Renamed 'autostart' config flag to 'auto_poweron' and fixed poweron logic.
 * Mapped Right Alt, Control and Shift to emulated Left Alt, Control and Shift.
 * Added UI warning when MartyPC is compiled in debug mode (unfortunately the default behavior of cargo build)
