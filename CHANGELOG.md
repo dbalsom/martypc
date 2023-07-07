@@ -1,4 +1,8 @@
 
+## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-07-XX)
+
+* Don't recalculate composite parameters if mode change was enable bit only
+
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-07-06)
 
 * Disabled window doubling if window would not fit on screen due to DPI scaling.

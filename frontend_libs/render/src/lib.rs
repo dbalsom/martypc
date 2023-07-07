@@ -1121,9 +1121,10 @@ impl VideoRenderer {
         &mut self,
         mode: u8
     ) {
-        if mode != self.last_cga_mode {
+        // Ignore enable bit when comparing mode.
+        if (mode & cga::CGA_MODE_ENABLE_MASK) != (self.last_cga_mode & cga::CGA_MODE_ENABLE_MASK) {
             // Mode has changed; recalculate composite parameters.
-            log::debug!("mode changed: recalculating composite parameters...");
+            //log::debug!("mode changed: new:{:02X} old:{:02X} recalculating composite parameters...", mode, self.last_cga_mode);
             self.composite_ctx.recalculate(mode);
             self.last_cga_mode = mode;
         }

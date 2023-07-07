@@ -70,6 +70,8 @@ pub const CGA_MEM_APERTURE: usize = 0x8000;
 pub const CGA_MEM_SIZE: usize = 0x4000; // 16384 bytes
 pub const CGA_MEM_MASK: usize = !0x4000; // Applying this mask will implement memory mirror.
 
+pub const CGA_MODE_ENABLE_MASK: u8 = 0b1_0111;
+
 // Sensible defaults for CRTC registers. A real CRTC is probably uninitialized. 
 // 4/5/2023: Changed these values to 40 column mode.
 const DEFAULT_HORIZONTAL_TOTAL: u8 = 56;
@@ -1037,7 +1039,7 @@ impl CGACard {
         // "Disabled" isn't really a video mode, it just controls whether
         // the CGA card outputs video at a given moment. This can be toggled on
         // and off during a single frame, such as done in VileR's fontcmp.com
-        self.display_mode = match self.mode_byte & 0b1_0111 {
+        self.display_mode = match self.mode_byte & CGA_MODE_ENABLE_MASK {
             0b0_0100 => DisplayMode::Mode0TextBw40,
             0b0_0000 => DisplayMode::Mode1TextCo40,
             0b0_0101 => DisplayMode::Mode2TextBw80,
