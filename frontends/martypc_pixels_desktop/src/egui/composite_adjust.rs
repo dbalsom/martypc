@@ -65,7 +65,7 @@ impl CompositeAdjustControl {
                 ui.end_row();   
 
                 ui.label(egui::RichText::new("Hue:").text_style(egui::TextStyle::Monospace));
-                if ui.add(egui::Slider::new(&mut self.params.hue, 0.0..=2.0)).changed() {
+                if ui.add(egui::Slider::new(&mut self.params.hue, -180.0..=180.0)).changed() {
                     update = true;
                 }
                 ui.end_row();

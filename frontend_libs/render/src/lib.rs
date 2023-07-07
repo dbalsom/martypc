@@ -134,7 +134,7 @@ impl Default for CompositeParams {
         Self {
             phase: 0,
             contrast: 1.0,
-            hue: 1.0,
+            hue: 0.0,
             sat: 1.0,
             luma: 1.0,
             new_cga: false,

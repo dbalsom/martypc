@@ -261,7 +261,7 @@ impl ReCompositeContext {
     /// Arguments are scaled as required by algorithm.
     pub fn adjust(&mut self, p: &CompositeParams) {
         self.contrast   = p.contrast * 100.0;
-        self.hue_offset = (p.hue - 1.0) * 100.0;
+        self.hue_offset = p.hue;
         self.saturation = p.sat * 100.0;
         self.brightness = (p.luma - 1.0) * 10.0;
 
