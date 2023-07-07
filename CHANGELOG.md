@@ -1,6 +1,5 @@
 
-## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-XX-xx)
-
+## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-07-06)
 
 * Disabled window doubling if window would not fit on screen due to DPI scaling.
 * Decreased minimum window size
