@@ -24,9 +24,11 @@
 
     --------------------------------------------------------------------------
 
-    main.rs
+    lib.rs
 
-    Main emulator entrypoint
+    MartyPC Desktop front-end main library component.
+
+    MartyPC Desktop includes the full GUI and debugger interface.
 
 */
 
@@ -43,6 +45,7 @@ use std::{
 };
 
 mod egui;
+mod input;
 
 #[cfg(feature = "arduino_validator")]
 mod main_fuzzer;
@@ -60,16 +63,17 @@ use winit::{
         DeviceEvent, 
         ElementState, 
         StartCause, 
-        VirtualKeyCode,
     },
     event_loop::{
         ControlFlow,
         EventLoop
     },
-    window::WindowBuilder
+    keyboard::{KeyCode, ModifiersKeyState},
+    window::WindowBuilder,
+
 };
 
-use winit_input_helper::WinitInputHelper;
+//use winit_input_helper::WinitInputHelper;
 
 #[cfg(feature = "arduino_validator")]
 use crate::main_fuzzer::main_fuzzer;
@@ -89,10 +93,6 @@ use marty_core::{
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
-    input::{
-        self,
-        MouseButton
-    },
     util
 };
 
@@ -101,8 +101,12 @@ use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
 use marty_render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
 
 const EGUI_MENU_BAR: u32 = 25;
-const WINDOW_WIDTH: u32 = 1280;
-const WINDOW_HEIGHT: u32 = 960 + EGUI_MENU_BAR * 2;
+
+const WINDOW_MIN_WIDTH: u32 = 640;
+const WINDOW_MIN_HEIGHT: u32 = 480;
+
+const WINDOW_WIDTH: u32 = WINDOW_MIN_WIDTH;
+const WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT + EGUI_MENU_BAR * 2;
 
 const DEFAULT_RENDER_WIDTH: u32 = 640;
 const DEFAULT_RENDER_HEIGHT: u32 = 400;
@@ -253,7 +257,7 @@ fn main() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn main() {
+pub fn run() {
 
     env_logger::init();
 
@@ -421,7 +425,9 @@ fn main() {
 
     // Init graphics & GUI 
     let event_loop = EventLoop::new();
-    let mut input = WinitInputHelper::new();
+    
+    //let mut input = WinitInputHelper::new();
+    
     let window = {
         let size = LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
         WindowBuilder::new()
@@ -453,8 +459,8 @@ fn main() {
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
 
-    // Set machine state to Running if autostart option was set in config
-    if config.emulator.autostart {
+    // Set CPU state to Running if cpu_autostart option was set in config
+    if config.emulator.cpu_autostart {
         exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
 
@@ -467,6 +473,7 @@ fn main() {
         aspect_h: 480,
         aspect_correction_enabled: false,
         composite_params: Default::default(),
+        last_mode_byte: 0,
     };
 
     // Create resampling context
@@ -546,6 +553,14 @@ fn main() {
         rom_manager
     );
 
+    // Set the inital power-on state.
+    if config.emulator.auto_poweron {
+        machine.change_state(MachineState::On);
+    }
+    else {
+        machine.change_state(MachineState::Off);
+    }
+
     // Set options from config. We do this now so that we can set the same state for both GUI and machine
     framework.gui.set_option(GuiOption::CorrectAspect, config.emulator.correct_aspect);
 
@@ -559,6 +574,13 @@ fn main() {
     machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
 
     framework.gui.set_option(GuiOption::TurboButton, config.machine.turbo);
+    framework.gui.set_option(GuiOption::CompositeDisplay, config.machine.composite);
+
+    // Disable warpspeed feature if 'devtools' flag not on.
+    #[cfg(not(feature = "devtools"))]
+    {
+        config.emulator.warpspeed = false;
+    }
 
     // Debug mode on? 
     if config.emulator.debug_mode {
@@ -572,7 +594,17 @@ fn main() {
         machine.set_cpu_option(CpuOption::InstructionHistory(true));
 
         // Disable autostart
-        config.emulator.autostart = false;
+        config.emulator.cpu_autostart = false;
+    }
+
+    #[cfg(debug_assertions)]
+    if config.emulator.debug_warn {
+        // User compiled MartyPC in debug mode, let them know...
+        framework.gui.show_warning(
+            &"MartyPC has been compiled in debug mode and will be extremely slow.\n \
+                    To compile in release mode, use 'cargo build -r'\n \
+                    To disable this error, set debug_warn=false in martypc.toml.".to_string()
+        );
     }
 
     // Load program binary if one was specified in config options
@@ -626,10 +658,15 @@ fn main() {
                 // Get the current monitor resolution. 
                 if let Some(monitor) = window.current_monitor() {
                     let monitor_size = monitor.size();
-                    
+                    let dip_scale = monitor.scale_factor();
+
                     log::debug!("Current monitor resolution: {}x{}", monitor_size.width, monitor_size.height);
 
-                    if ((aper_correct_x * 2) <= monitor_size.width) && ((aper_correct_y * 2) <= monitor_size.height) {
+                    // Take into account DPI scaling for window-fit.
+                    let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
+                    let scaled_height = ((aper_correct_y * 2) as f64 * dip_scale) as u32;
+
+                    if (scaled_width <= monitor_size.width) && (scaled_height <= monitor_size.height) {
                         // Monitor is large enough to double the display window
                         double_res = true;
                     }
@@ -757,7 +794,8 @@ fn main() {
 
         //*control_flow = ControlFlow::Poll;
     
-        // Handle input events
+        // winit_input_helper
+        /*
         if input.update(&event) {
             // Close events
             
@@ -784,12 +822,15 @@ fn main() {
             // Update internal state and request a redraw
             window.request_redraw();
         }
+        */
 
         match event {
+
             Event::NewEvents(StartCause::Init) => {
                 // Initialization stuff here?
                 stat_counter.last_second = Instant::now();
             }
+
             Event::DeviceEvent{ event, .. } => {
                 match event {
                     DeviceEvent::MouseMotion {
@@ -816,6 +857,8 @@ fn main() {
                         // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse 
                         // clicks are 'sticky', if a button was pressed during the last update period it will be sent as
                         // pressed during virtual mouse update.
+
+                        use input::MouseButton;
 
                         match (mbutton, state) {
                             (MouseButton::Left, ElementState::Pressed) => {
@@ -848,14 +891,36 @@ fn main() {
                 }
             }
             Event::WindowEvent{ event, .. } => {
-
                 match event {
+
+                    // Handle events previous handled by winit_input_helper...
+                    WindowEvent::ScaleFactorChanged{ scale_factor, .. } => {
+                        framework.scale_factor(scale_factor);
+                    }     
+                    WindowEvent::Resized(size) => {
+                        log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
+                        if pixels.resize_surface(size.width, size.height).is_err() {
+                            // Some error occured but not much we can do about it.
+                            // Errors get thrown when the window minimizes.
+                        }
+                        framework.resize(size.width, size.height);
+                    }
+                    WindowEvent::CloseRequested => {
+                        *control_flow = ControlFlow::Exit;
+                        return;
+                    }
+
+                    // Handle all other events
                     WindowEvent::ModifiersChanged(modifier_state) => {
-                        kb_data.ctrl_pressed = modifier_state.ctrl();
+
+                        kb_data.ctrl_pressed = matches!(modifier_state.lcontrol_state(), ModifiersKeyState::Pressed);
+                        kb_data.ctrl_pressed |= matches!(modifier_state.rcontrol_state(), ModifiersKeyState::Pressed);
+                        framework.handle_event(&event);
                     }
                     WindowEvent::KeyboardInput {
-                        input: winit::event::KeyboardInput {
-                            virtual_keycode: Some(keycode),
+
+                        event: winit::event::KeyEvent {
+                            physical_key: keycode,
                             state,
                             ..
                         },
@@ -864,7 +929,7 @@ fn main() {
 
                         // Match global hotkeys regardless of egui focus
                         match (state, keycode) {
-                            (winit::event::ElementState::Pressed, VirtualKeyCode::F10 ) => {
+                            (winit::event::ElementState::Pressed, KeyCode::F10 ) => {
                                 if kb_data.ctrl_pressed {
                                     // Ctrl-F10 pressed. Toggle mouse capture.
                                     log::info!("Control F10 pressed. Capturing mouse cursor.");
@@ -912,13 +977,13 @@ fn main() {
                             match state {
                                 winit::event::ElementState::Pressed => {
                                     
-                                    if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                    if let Some(keycode) = input::match_keycode(keycode) {
                                         //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                         machine.key_press(keycode);
                                     };
                                 },
                                 winit::event::ElementState::Released => {
-                                    if let Some(keycode) = input::match_virtual_keycode(keycode) {
+                                    if let Some(keycode) = input::match_keycode(keycode) {
                                         //log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                         machine.key_release(keycode);
                                     };
@@ -1226,7 +1291,7 @@ fn main() {
                     }
 
                     // -- Draw video memory --
-                    let composite_enabled = framework.gui.get_composite_enabled();
+                    let composite_enabled = framework.gui.get_option(GuiOption::CompositeDisplay).unwrap_or(false);
                     let aspect_correct = framework.gui.get_option(GuiOption::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
@@ -1268,30 +1333,27 @@ fn main() {
                             (VideoType::CGA, RenderMode::Direct) => {
                                 // Draw device's front buffer in direct mode (CGA only for now)
 
+                                let extents = video_card.get_display_extents();
+
+                                if video_data.last_mode_byte != extents.mode_byte {
+                                    // Mode byte has changed, recalculate composite parameters
+                                    video.cga_direct_mode_update(extents.mode_byte);
+                                    video_data.last_mode_byte = extents.mode_byte;
+                                }
+
                                 match aspect_correct {
                                     true => {
-                                        video.draw_cga_direct(
+                                        video.draw_cga_direct_u32(
                                             &mut render_src,
                                             video_data.render_w, 
                                             video_data.render_h,                                             
                                             video_buffer,
-                                            video_card.get_display_extents(),
+                                            extents,
                                             composite_enabled,
                                             &video_data.composite_params,
                                             beam_pos
                                         );
 
-                                        /*
-                                        marty_render::resize_linear(
-                                            &render_src, 
-                                            video_data.render_w, 
-                                            video_data.render_h, 
-                                            pixels.frame_mut(), 
-                                            video_data.aspect_w, 
-                                            video_data.aspect_h,
-                                            &resample_context
-                                        );
-                                        */
                                         marty_render::resize_linear_fast(
                                             &mut render_src, 
                                             video_data.render_w, 
@@ -1301,15 +1363,14 @@ fn main() {
                                             video_data.aspect_h,
                                             &mut resample_context
                                         );
-
                                     }
                                     false => {
-                                        video.draw_cga_direct(
+                                        video.draw_cga_direct_u32(
                                             pixels.frame_mut(),
                                             video_data.render_w, 
                                             video_data.render_h,                                                                                         
                                             video_buffer,
-                                            video_card.get_display_extents(),
+                                            extents,
                                             composite_enabled,
                                             &video_data.composite_params,
                                             beam_pos                                         
@@ -1599,6 +1660,11 @@ fn main() {
                                 }
                                 GuiEvent::CtrlAltDel => {
                                     machine.ctrl_alt_del();
+                                }
+                                GuiEvent::CompositeAdjust(params) => {
+                                    //log::warn!("got composite params: {:?}", params);
+                                    video_data.composite_params = params;
+                                    video.cga_direct_param_update(&params);
                                 }
                                 _ => {}
                             }

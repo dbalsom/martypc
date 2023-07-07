@@ -183,7 +183,10 @@ pub struct Emulator {
     pub basedir: PathBuf,
 
     #[serde(default = "_default_true")]
-    pub autostart: bool,
+    pub auto_poweron: bool,
+
+    #[serde(default = "_default_true")]
+    pub cpu_autostart: bool,
 
     #[serde(default = "_default_false")]
     pub headless: bool,
@@ -199,6 +202,9 @@ pub struct Emulator {
 
     #[serde(default)]
     pub debug_mode: bool,
+
+    #[serde(default = "_default_false")]
+    pub debug_warn: bool,    
 
     #[serde(default)]
     pub no_bios: bool,
@@ -246,6 +252,7 @@ pub struct Machine {
     pub raw_rom: bool,
     pub turbo: bool,
     pub video: VideoType,
+    pub composite: bool,
     pub hdc: HardDiskControllerType,
     pub drive0: Option<String>,
     pub drive1: Option<String>,
@@ -294,7 +301,7 @@ pub struct CmdLineArgs {
     pub fuzzer: bool,
 
     #[bpaf(long, switch)]
-    pub autostart: bool,
+    pub auto_poweron: bool,
 
     #[bpaf(long, switch)]
     pub warpspeed: bool,
@@ -349,7 +356,7 @@ impl ConfigFileParams {
         }
         self.emulator.headless |= shell_args.headless;
         self.emulator.fuzzer |= shell_args.fuzzer;
-        self.emulator.autostart |= shell_args.autostart;
+        self.emulator.auto_poweron |= shell_args.auto_poweron;
         self.emulator.warpspeed |= shell_args.warpspeed;
         self.emulator.correct_aspect |= shell_args.correct_aspect;
         self.emulator.debug_mode |= shell_args.debug_mode;

@@ -1,0 +1,10 @@
+{
+    "title": "CGA_COMP: CGA Compatibility Tester",
+    "developer": "MobyGamer",
+    "platform": "IBM PC/XT",
+    "year": "2022",
+    "link": "https://github.com/MobyGamer/CGACompatibilityTester",
+    "instructions": "",
+    "cfg": "cgacomp.toml",
+    "notes": "MobyGamer aka Trixter is the founder of MobyGames."
+}

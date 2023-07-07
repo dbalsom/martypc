@@ -190,6 +190,8 @@ pub struct DisplayExtents {
     pub overscan_t: u32,    // Size in pixels of the top overscan area
     pub overscan_b: u32,    // Size in pixels of the bottom overscan area
     pub row_stride: usize,  // Number of bytes in frame buffer to skip to reach next row
+
+    pub mode_byte: u8       // Mode byte. Used by CGA modes only.
 }
 
 pub trait VideoCard {

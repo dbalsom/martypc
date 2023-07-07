@@ -158,7 +158,7 @@ fn start() {
     #[cfg(not(target_arch = "wasm32"))]
     {
         env_logger::init();
-        pollster::block_on(run());
+        //pollster::block_on(run());
     }
 }
 
@@ -218,6 +218,7 @@ pub async fn run(cfg: &str) {
         aspect_h: DEFAULT_ASPECT_HEIGHT,
         aspect_correction_enabled: false,
         composite_params: Default::default(),
+        last_mode_byte: 0,
     };
 
     // Create the video renderer
@@ -244,10 +245,9 @@ pub async fn run(cfg: &str) {
 
     let window = Rc::new(window);
 
+    let mut composite_enabled;
     let mut machine;
-
     
-
     //#[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::JsCast;
@@ -412,6 +412,9 @@ pub async fn run(cfg: &str) {
                 offset: rom_override[0].offset,
                 org: rom_override[0].org
             });
+
+        // capture option before moving to machine
+        composite_enabled = config.machine.composite;
 
         machine = Machine::new(
             &config,
@@ -661,7 +664,6 @@ pub async fn run(cfg: &str) {
                     }
 
                     // -- Draw video memory --
-                    let composite_enabled = false;
                     let aspect_correct = false;
 
                     let render_start = Instant::now();
@@ -683,6 +685,14 @@ pub async fn run(cfg: &str) {
                             (VideoType::CGA, RenderMode::Direct) => {
                                 // Draw device's front buffer in direct mode (CGA only for now)
 
+                                let extents = video_card.get_display_extents();
+
+                                if video_data.last_mode_byte != extents.mode_byte {
+                                    // Mode byte has changed, recalculate composite parameters
+                                    video.cga_direct_mode_update(extents.mode_byte);
+                                    video_data.last_mode_byte = extents.mode_byte;
+                                }
+
                                 match aspect_correct {
                                     true => {
                                         video.draw_cga_direct(
@@ -690,23 +700,12 @@ pub async fn run(cfg: &str) {
                                             video_data.render_w, 
                                             video_data.render_h,                                             
                                             video_buffer,
-                                            video_card.get_display_extents(),
+                                            extents,
                                             composite_enabled,
                                             &video_data.composite_params,
                                             beam_pos
                                         );
 
-                                        /*
-                                        marty_render::resize_linear(
-                                            &render_src, 
-                                            video_data.render_w, 
-                                            video_data.render_h, 
-                                            pixels.frame_mut(), 
-                                            video_data.aspect_w, 
-                                            video_data.aspect_h,
-                                            &resample_context
-                                        );
-                                        */
                                         marty_render::resize_linear_fast(
                                             &mut render_src, 
                                             video_data.render_w, 
@@ -724,7 +723,7 @@ pub async fn run(cfg: &str) {
                                             video_data.render_w, 
                                             video_data.render_h,                                                                                         
                                             video_buffer,
-                                            video_card.get_display_extents(),
+                                            extents,
                                             composite_enabled,
                                             &video_data.composite_params,
                                             beam_pos                                         

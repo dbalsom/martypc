@@ -409,7 +409,7 @@ impl GuiState {
                         );
                         ui.close_menu();
                     }
-                    if ui.checkbox(&mut self.composite, "Composite Monitor").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CompositeDisplay), "Composite Monitor").clicked() {
                         ui.close_menu();
                     }
 

@@ -1,4 +1,5 @@
 # martypc.toml
+# Version 0.1.3
 # Configuration file for the MartyPC emulator.
 
 [emulator]
@@ -10,28 +11,13 @@
 basedir = "./"
 
 # Power on the emulated machine on startup (only applicable in gui mode)
-autostart = true
+auto_poweron = true
 
-# Run the CPU on startup - if false CPU will start paused
-# (only applicable in gui mode)
-cpu_autostart = false
-
-# Run the emulator without gui or display
+# Run the emulator without gui
 headless = false
 
 # Run the instruction fuzzer (requires validator feature)
 fuzzer = false
-
-# Run the emulator in benchmark mode (headless) See benchmark options in 
-# machine section to configure the benchmark operation. (Not yet implemented)
-benchmark = false
-
-# Run the emulated machine as fast as possible. Note this isn't just a CPU 
-# boost, the entire system including timer, sound and video will accellerate. 
-
-# NOTE: This will cause emulator instability. This feature is intended for developer use.
-# Please do not submit bug reports for issues encounted while using this mode.
-warpspeed = false
 
 # Do aspect correction to convert display buffer to 4:3.  May introduce some
 # resampling blur. This can be toggled on/off in options menu.
@@ -43,14 +29,19 @@ correct_aspect = true
 # - CPU Instruction history is turned on (overrides setting)
 debug_mode = false
 
+# Warn if MartyPC was compiled in debug mode. Disable this if you intended to
+# do so and don't want the nag.  Unfortunately, 'cargo build' makes a debug 
+# build by default...
+debug_warn = true
+
 # Don't load BIOS if true (not useful on its own)
 no_bios = false
 
 # Run the specified program instead of booting BIOS. The CPU reset vector will
 # be set to 'run_bin_seg:run_bin_ofs'
 #run_bin = "./program/a_effect.bin"
-run_bin_seg = 0x1000
-run_bin_ofs = 0x0000
+#run_bin_seg = 0x1000
+#run_bin_ofs = 0x0000
 
 # ----------------------------------------------------------------------------
 # Debug Tracing Options
@@ -66,8 +57,8 @@ run_bin_ofs = 0x0000
 # Additionally, a valid value for trace_file must be supplied.
 #
 trace_on = false
-trace_mode = "Instruction"
-trace_file = "./traces/instr_trace.log"
+trace_mode = "Cycle"
+#trace_file = "./traces/instr_trace.log"
 
 # Enable Video tracing. Video device may log memory and register read/writes.
 #video_trace_file = "./traces/video_trace.log"
@@ -100,7 +91,7 @@ theme_color = 0x382D59  # Marty purple
 
 [cpu]
 # ----------------------------------------------------------------------------
-# Various CPU related options
+# Various CPU related options.
 # ----------------------------------------------------------------------------
 
 # Enable CPU wait states. This includes wait states from DMA, memory access
@@ -136,12 +127,25 @@ reverse_mouse_buttons = false
 #model = "IBM_PC_5150"
 model = "IBM_XT_5160"
 
+# ROM Override
+# ----------------------------------------------------------------------------
 # Specify a specific BIOS to load. This overrides MartyPC's ROM autodetection.
+
+# This feature is intended for advanced users. The address will depend on the
+# ROM loaded. Please indicate if you are using this feature if you need to
+# report issues.
+
+# Values for 'org' include
+#    Normal,
+#    Reversed,
+#    InterleavedEven,
+#    InterleavedOdd
 #rom_override = [
 #    { path = "./roms/BIOS_5160_09MAY86_U19_62X0819_68X4370_27256_F000.BIN", address = 0xF0000, offset=0, org="Normal" },
 #    { path = "./roms/BIOS_5160_09MAY86_U18_59X7268_62X0890_27256_F800.BIN", address = 0xF8000, offset=0, org="Normal" }
 #]
 
+# Used by web player. Do not modify.
 raw_rom = false
 
 # Turbo Button
@@ -157,6 +161,9 @@ turbo = false
 # Valid options for video are:
 # "CGA"
 video = "CGA"
+
+# Emulate a composite monitor? Only meaningful for CGA.
+composite = false
 
 # Hard Disk Controller Type
 # ----------------------------------------------------------------------------

@@ -16,6 +16,15 @@ body, html {
     padding: 20px;
 }
 
+.image-link {
+    border: none;
+    outline: none;
+}
+
+.borderless-image {
+    border: none;
+}
+
 a {
     color: white;
     text-decoration: none;
@@ -23,7 +32,7 @@ a {
 }
 
 a:hover {
-    background-color: indigo;
+    background-color: transparent;
 }
 
 .left-panel {
@@ -94,6 +103,8 @@ a:hover {
     }
     .left-panel {
         padding-right: 20px;
+        order: 2;
+        overflow: auto;
     }
     .left-panel, .right-panel {
         /* Set both panels to 100% width when stacked */
@@ -101,6 +112,16 @@ a:hover {
     }  
     .right_panel {
         margin: 0px;
-        margin-top: 20px;
+        margin-bottom: 20px;
+        order: 1;
     }
+}
+
+.notes-header {
+    vertical-align: top;
+}
+
+.title-notes {
+    font-size: 0.8em; /* Make text slightly smaller */
+    text-justify: inter-word; /* Improves spacing between words */
 }

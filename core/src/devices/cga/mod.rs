@@ -499,7 +499,9 @@ impl Default for DisplayExtents {
             overscan_r: 0,
             overscan_t: 0,
             overscan_b: 0,
-            row_stride: CGA_XRES_MAX as usize
+            row_stride: CGA_XRES_MAX as usize,
+
+            mode_byte: 0
         }
     }
 }
@@ -651,6 +653,10 @@ impl CGACard {
             cga.extents[1].aperture_w = CGA_XRES_MAX;
             cga.extents[0].aperture_h = CGA_YRES_MAX;
             cga.extents[1].aperture_h = CGA_YRES_MAX;
+            cga.extents[0].aperture_x = 0;
+            cga.extents[1].aperture_x = 0;
+            cga.extents[0].aperture_y = 0;
+            cga.extents[1].aperture_y = 0;            
             cga.vblank_color = CGA_VBLANK_DEBUG_COLOR;
             cga.hblank_color = CGA_HBLANK_DEBUG_COLOR;
             cga.disable_color = CGA_DISABLE_DEBUG_COLOR;
@@ -1809,7 +1815,8 @@ impl CGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.debug {
-                    self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    self.draw_solid_hchar(self.cc_overscan_color);
                 }
                 else {
                     self.draw_solid_hchar(self.cc_overscan_color);
@@ -1851,9 +1858,11 @@ impl CGACard {
         // sink_cycles must be factor of 8
         //assert!((self.sink_cycles & 0x07) == 0);
 
+        /*
         if self.sink_cycles & 0x0F != 0 {
             log::error!("sink_cycles: {} not divisible by 16", self.sink_cycles);
         }
+        */
 
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(16);
@@ -1888,7 +1897,13 @@ impl CGACard {
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                self.draw_solid_lchar(self.cc_overscan_color);
+                if self.debug {
+                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    self.draw_solid_hchar(self.cc_overscan_color);
+                }
+                else {                
+                    self.draw_solid_lchar(self.cc_overscan_color);
+                }
             }
             else {
                 //log::warn!("invalid display state...");
@@ -1998,7 +2013,8 @@ impl CGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.debug {
-                    self.draw_pixel(CGA_OVERSCAN_COLOR);
+                    //self.draw_pixel(CGA_OVERSCAN_COLOR);
+                    self.draw_overscan_pixel();
                 }
                 else {
                     self.draw_overscan_pixel();
@@ -2330,6 +2346,11 @@ impl CGACard {
 
             self.scanline = 0;
             self.frame_count += 1;
+
+            // Save the current mode byte, used for composite rendering. 
+            // The mode could have changed several times per frame, but I am not sure how the composite rendering should 
+            // really handle that...
+            self.extents[self.front_buf].mode_byte = self.mode_byte;
 
             // Swap the display buffers
             self.swap();   

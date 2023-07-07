@@ -259,7 +259,22 @@ impl RomManager {
                         "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed
                         "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS
                     ]
-                },                                                                                                                
+                },     
+                RomSet {
+                    machine_type: MachineType::IBM_XT_5160,
+                    priority: 3,
+                    is_complete: Cell::new(false),
+                    reset_vector: (0xFFFF, 0),
+                    roms: vec![
+                        "1a2ac1ae0fe0f7783197e78da8b3126c", // 5160 BIOS u18 v11/08/82
+                        "69e2bd1d08c893cbf841607c8749d5bd", // 5160 BIOS u19 v11/08/82 (8k version)
+                        "66631d1a095d8d0d54cc917fbdece684", // IBM / Xebec 20 MB Fixed Disk Drive Adapter
+                        "0636f46316f3e15cb287ce3da6ba43a1", // IBM EGA card
+                        "2057a38cb472300205132fb9c01d9d85", // IBM VGA card
+                        "2c8a4e1db93d2cbe148b66122747e4f2", // IBM VGA card trimmed
+                        "5455948e02dcb8824af45f30e8e46ce6", // SeaBios VGA BIOS
+                    ]
+                },                                                                                                                             
                 RomSet {
                     machine_type: MachineType::IBM_XT_5160,
                     priority: 4,
@@ -482,7 +497,7 @@ impl RomManager {
                     checkpoints: HashMap::new()
                 }
             ),(
-                "e816a89768a1bf4b8d52b454d5c9d1e1", // BIOS_5160_08NOV82_U19_5000027_27256.BIN
+                "e816a89768a1bf4b8d52b454d5c9d1e1", // BIOS_5160_08NOV82_U19_5000027_27256.BIN (32k Version)
                 RomDescriptor {
                     rom_type: RomType::BIOS,
                     present: false,
@@ -496,6 +511,58 @@ impl RomManager {
                     address: 0xF0000,
                     offset: 0,
                     size: 32768,       
+                    cycle_cost: BIOS_READ_CYCLE_COST,
+                    patches: vec![
+                        RomPatch {
+                            desc: "Patch ROS checksum routine",
+                            checkpoint: 0xFE0AE,
+                            address: 0xFE0D7,
+                            bytes: vec![0xEB, 0x00],
+                            patched: false
+                        },
+                        RomPatch{
+                            desc: "Patch RAM Check Routine for faster boot",
+                            checkpoint: 0xFE46A,
+                            address: 0xFE49D,
+                            bytes: vec![0x90, 0x90, 0x90, 0x90, 0x90],
+                            patched: false
+                        },                        
+                    ],
+                    checkpoints: HashMap::from([
+                        (0xFE01A, "RAM Check Routine"),
+                        (0xFE05B, "8088 Processor Test"),
+                        (0xFE0AE, "ROS Checksum Test I"),
+                        (0xFE0D9, "8237 DMA Initialization Test"),
+                        (0xFE135, "Start DRAM Refresh"),
+                        (0xFE166, "Base 16K RAM Test"),
+                        (0xFE242, "Initialize CRTC Controller"),
+                        (0xFE329, "8259 Interrupt Controller Test"),
+                        (0xFE35D, "8253 Timer Checkout"),
+                        (0xFE3A2, "Keyboard Test"),
+                        (0xFE3DE, "Setup Interrupt Vector Table"),
+                        (0xFE418, "Expansion I/O Box Test"),
+                        (0xFE46A, "Additional R/W Storage Test"),
+                        /*
+                        (0xFE53C, "Optional ROM Scan"),
+                        (0xFE55B, "Diskette Attachment Test"),
+                        */
+                    ])
+                }
+            ),(
+                "69e2bd1d08c893cbf841607c8749d5bd", // BIOS_5160_08NOV82_U19_5000027.BIN (86box 8k version)
+                RomDescriptor {
+                    rom_type: RomType::BIOS,
+                    present: false,
+                    filename: PathBuf::new(),
+                    machine_type: MachineType::IBM_XT_5160,
+                    feature: None,
+                    order: RomOrder::Normal,   
+                    interleave: RomInterleave::None,
+                    optional: false,
+                    priority: 1,
+                    address: 0xFE000,
+                    offset: 0,
+                    size: 8192,       
                     cycle_cost: BIOS_READ_CYCLE_COST,
                     patches: vec![
                         RomPatch {
@@ -1455,6 +1522,13 @@ impl RomManager {
             if !self.features_available.contains(feature) {
                 return Err(RomError::RomNotFoundForFeature(*feature));
             }
+        }
+
+        // Tell the user what ROMs we are actually going to use
+        for rom_str in &rom_set_active.roms {
+            let rom_desc = self.get_romdesc(*rom_str).unwrap();
+
+            println!("Using ROM: {}", rom_desc.filename.display());
         }
 
         // Store active rom set 

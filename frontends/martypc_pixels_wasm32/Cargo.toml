@@ -1,7 +1,8 @@
 [package]
 name = "marty_pixels_wasm32_player"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
+license = "MIT"
 
 [lib]
 name = "marty_pixels_wasm32_player"
@@ -15,25 +16,25 @@ pixels_stretch_renderer = { path = "../../frontend_libs/pixels_stretch_renderer"
 
 bytemuck = "1.13.1"
 cpal = "0.13.5"
-#egui = "0.20"
+egui = "0.22"
 emath = "0.20"
-#egui-wgpu = "0.21"
-#egui-winit = { version = "0.20", default-features = false, features = ["links"] }
+egui-wgpu = "0.22"
+egui-winit = { version = "0.22", default-features = false, features = ["links"] }
 #env_logger = "0.9"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 log = "0.4"
-pixels = "0.12.1"
+pixels = "0.13"
 rand = "0.8.5"
 getrandom = { version = "0.2.6", features = ["js"] }
 regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
 serialport = "4.2.0"
-winit = "0.27"
-winit_input_helper = "0.13"
+winit = "0.28"
+winit_input_helper = "0.14"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wgpu = { version = "0.15", features = ["webgl"] }
+wgpu = { version = "0.16", features = ["webgl"] }
 error-iter = "0.4"
 console_error_panic_hook = "0.1"
 console_log = "0.2"
@@ -44,9 +45,6 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["GpuTextureFormat", "Request", "RequestInit", "Response", "Headers", "Blob", "FileReader", "ProgressEvent"] }
 instant = "0.1.12"
 cpal = { version = "0.13.5", features = ["wasm-bindgen"]}
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies.egui-winit]
-git = "https://github.com/emilk/egui.git"
-rev = "f222ee044edf8beebfaf5dd7be15c9f318f20886"
 
 [target.wasm32-unknown-unknown]
 runner = "wasm-server-runner"
