@@ -1663,7 +1663,7 @@ pub fn run() {
                                     screenshot_path.push("screenshots");
 
                                     video.screenshot(
-                                        &mut render_src,
+                                        &pixels.frame()[0..(video_data.render_w as usize * video_data.render_h as usize * std::mem::size_of::<u32>())],
                                         video_data.render_w, 
                                         video_data.render_h, 
                                         &screenshot_path

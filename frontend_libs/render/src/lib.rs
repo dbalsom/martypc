@@ -610,7 +610,7 @@ impl VideoRenderer {
 
     pub fn screenshot(
         &self,
-        frame: &mut [u8],
+        frame: &[u8],
         frame_w: u32, 
         frame_h: u32,
         path: &Path) 
