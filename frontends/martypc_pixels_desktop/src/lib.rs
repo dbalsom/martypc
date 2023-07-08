@@ -914,10 +914,11 @@ pub fn run() {
                     }
 
                     // Handle all other events
-                    WindowEvent::ModifiersChanged(modifier_state) => {
+                    WindowEvent::ModifiersChanged(modifiers) => {
 
-                        kb_data.ctrl_pressed = matches!(modifier_state.lcontrol_state(), ModifiersKeyState::Pressed);
-                        kb_data.ctrl_pressed |= matches!(modifier_state.rcontrol_state(), ModifiersKeyState::Pressed);
+                        let state = modifiers.state();
+
+                        kb_data.ctrl_pressed = state.control_key();
                         framework.handle_event(&event);
                     }
                     WindowEvent::KeyboardInput {
