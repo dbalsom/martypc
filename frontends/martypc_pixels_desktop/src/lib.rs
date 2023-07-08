@@ -541,6 +541,9 @@ pub fn run() {
         std::process::exit(1);        
     }
 
+    // Save config items before we move config to machine
+    let debug_keyboard = config.emulator.debug_keyboard;
+
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
@@ -927,6 +930,10 @@ pub fn run() {
                         ..
                     } => {
 
+                        if debug_keyboard { 
+                            println!("{:?}", event);
+                        }
+
                         // Match global hotkeys regardless of egui focus
                         match (state, keycode) {
                             (winit::event::ElementState::Pressed, KeyCode::F10 ) => {
@@ -992,10 +999,14 @@ pub fn run() {
                         }
                         else {
                             // Egui widget has focus, so send keyboard event to egui
+
+                            if debug_keyboard { 
+                                println!("Keyboard event sent to framework.");
+                            }
                             framework.handle_event(&event);
                         }
                     },
-                    _ => {
+                    _ => {       
                         framework.handle_event(&event);
                     }
                 }

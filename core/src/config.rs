@@ -206,6 +206,9 @@ pub struct Emulator {
     #[serde(default = "_default_false")]
     pub debug_warn: bool,    
 
+    #[serde(default = "_default_false")]
+    pub debug_keyboard: bool,
+
     #[serde(default)]
     pub no_bios: bool,
 
@@ -328,6 +331,9 @@ pub struct CmdLineArgs {
     pub debug_mode: bool,
 
     #[bpaf(long, switch)]
+    pub debug_keyboard: bool,
+
+    #[bpaf(long, switch)]
     pub no_bios: bool,
 
     #[bpaf(long, switch)]
@@ -362,6 +368,7 @@ impl ConfigFileParams {
         self.emulator.debug_mode |= shell_args.debug_mode;
         self.emulator.no_bios |= shell_args.no_bios;
         self.emulator.video_frame_debug |= shell_args.video_frame_debug;
+        self.emulator.debug_keyboard |= shell_args.debug_keyboard;
 
         if let Some(run_bin) = shell_args.run_bin {
             self.emulator.run_bin = Some(run_bin);
