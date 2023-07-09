@@ -561,11 +561,6 @@ pub fn run() {
         machine.change_state(MachineState::Off);
     }
 
-    let debug_keyboard = config.emulator.debug_keyboard;
-
-    // Do PIT phase offset option
-    machine.pit_adjust((config.machine.pit_phase.unwrap_or(0) & 0x03));
-
     // Set options from config. We do this now so that we can set the same state for both GUI and machine
     framework.gui.set_option(GuiOption::EnableSnow, config.machine.cga_snow.unwrap_or(false));
     machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
