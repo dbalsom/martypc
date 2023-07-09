@@ -689,23 +689,17 @@ impl CGACard {
     }
 
     /// Reset CGA state (on reboot, for example)
-    /// This function removes the tracelogger and will need to be re-attached
     fn reset_private(&mut self) {
 
+        let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
+
         // Save non-default values
-        
-        // Can't save tracelogger because it isn't Copy :(
-        //let trace_logger = self.trace_logger;
-        let debug = self.debug;
-        let enable_snow = self.enable_snow;
-
-        *self = Self::default();
-
-        // Restore settings
-
-        //self.trace_logger = trace_logger;
-        self.debug = debug;
-        self.enable_snow = enable_snow;
+        *self = Self {
+            debug: self.debug,
+            enable_snow: self.enable_snow,
+            trace_logger,
+            ..Self::default()
+        }
     }
 
     fn catch_up(&mut self, delta: DeviceRunTimeUnit) {
