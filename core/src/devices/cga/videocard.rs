@@ -56,6 +56,17 @@ macro_rules! push_reg_str_enum {
 
 impl VideoCard for CGACard {
 
+    fn set_video_option(&mut self, opt: VideoOption) {
+        
+        match opt {
+            VideoOption::EnableSnow(state) => {
+                log::debug!("VideoOption::EnableSnow set to: {}", state);
+                self.enable_snow = state;
+            }
+            _=> {}
+        }
+    }
+
     fn get_video_type(&self) -> VideoType {
         VideoType::CGA
     }
@@ -339,6 +350,7 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
         internal_vec.push((format!("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
+        internal_vec.push((format!("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
         map       

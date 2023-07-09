@@ -61,7 +61,7 @@ use crate::{
     rom_manager::{RomManager, RawRomDescriptor},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
-    videocard::{VideoCard, VideoCardState},
+    videocard::{VideoCard, VideoCardState, VideoOption},
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
@@ -441,6 +441,13 @@ impl Machine {
     pub fn get_cpu_option(&mut self, opt: CpuOption) -> bool {
         self.cpu.get_option(opt)
     }    
+
+    /// Send the specified video option to the active videocard device
+    pub fn set_video_option(&mut self, opt: VideoOption) {
+        if let Some(video) = self.cpu.bus_mut().video_mut() {
+            video.set_video_option(opt);
+        }
+    }
 
     /// Flush all trace logs for devices that have one
     pub fn flush_trace_logs(&mut self) {

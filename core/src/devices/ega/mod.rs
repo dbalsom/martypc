@@ -987,6 +987,10 @@ impl EGACard {
 
 impl VideoCard for EGACard {
 
+    fn set_video_option(&mut self, opt: VideoOption) {
+        // No options implemented
+    }
+
     fn get_video_type(&self) -> VideoType {
         VideoType::EGA
     }

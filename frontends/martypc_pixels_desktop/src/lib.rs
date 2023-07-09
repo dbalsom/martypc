@@ -89,7 +89,7 @@ use marty_core::{
     machine_manager::MACHINE_DESCS,
     vhd_manager::{VHDManager, VHDManagerError},
     vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode},
+    videocard::{RenderMode, VideoOption},
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
@@ -541,9 +541,6 @@ pub fn run() {
         std::process::exit(1);        
     }
 
-    // Save config items before we move config to machine
-    let debug_keyboard = config.emulator.debug_keyboard;
-
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
@@ -564,7 +561,12 @@ pub fn run() {
         machine.change_state(MachineState::Off);
     }
 
+    let debug_keyboard = config.emulator.debug_keyboard;
+
     // Set options from config. We do this now so that we can set the same state for both GUI and machine
+    framework.gui.set_option(GuiOption::EnableSnow, config.machine.cga_snow.unwrap_or(false));
+    machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
+
     framework.gui.set_option(GuiOption::CorrectAspect, config.emulator.correct_aspect);
 
     framework.gui.set_option(GuiOption::CpuEnableWaitStates, config.cpu.wait_states_enabled);
@@ -577,7 +579,7 @@ pub fn run() {
     machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
 
     framework.gui.set_option(GuiOption::TurboButton, config.machine.turbo);
-    framework.gui.set_option(GuiOption::CompositeDisplay, config.machine.composite);
+    framework.gui.set_option(GuiOption::CompositeDisplay, config.machine.composite.unwrap_or(false));
 
     // Disable warpspeed feature if 'devtools' flag not on.
     #[cfg(not(feature = "devtools"))]
@@ -1462,6 +1464,9 @@ pub fn run() {
                                         (GuiOption::TurboButton, state) => {
                                             machine.set_turbo_mode(state);
                                         }
+                                        (GuiOption::EnableSnow, state) => {
+                                            machine.set_video_option(VideoOption::EnableSnow(state));
+                                        }                                        
                                         _ => {}
                                     }
                                 }

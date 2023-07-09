@@ -67,28 +67,40 @@ impl MemoryMappedDevice for CGACard {
         waits
     }
 
-    fn mmio_read_u8(&mut self, address: usize, cycles: u32) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
+
+        /*
+        if self.enable_snow {
+            // Catch up to CPU state.
+
+            // TODO: We need to pass converted ticks from the CPU here, in case the frequency is different
+            self.catch_up(DeviceRunTimeUnit::SystemTicks(cycles * 3));
+        }*/
 
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
         if a_offset < CGA_MEM_SIZE {
-            // Read within memory range
-            
-            // Look up wait states given the last ticked clock cycle + elapsed cycles
-            // passed in.
-            let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
-            let waits = WAIT_TABLE[phase];
+
+            // Do snow every other hchar
+            if self.cycles & 0b1000 == 0 {
+                // Save bus parameters for snow emulation
+                self.last_bus_addr = a_offset;
+                self.last_bus_value = self.mem[a_offset] ^ 0xAA; // this becomes the char attribute
+                self.dirty_snow = true;
+                self.snow_char = self.mem[a_offset];  // 0xDD; // this becomes the character glyph
+
+                //log::debug!("snow attr: {:08b}", self.mem[a_offset]);
+            }
+            else {
+                
+            }
 
             trace!(
                 self, 
-                "READ_U8: {:04X}:{:02X} PHASE: {:02X}, WAITS: {}", 
+                "READ_U8: {:04X}:{:02X}", 
                 a_offset, 
                 self.mem[a_offset],
-                phase,
-                waits
             );
-            (self.mem[a_offset], waits)
-
-            //(self.mem[a_offset], 0)
+            (self.mem[a_offset], 0)
         }
         else {
             // Read out of range, shouldn't happen...
@@ -96,23 +108,25 @@ impl MemoryMappedDevice for CGACard {
         }
     }
 
-    fn mmio_write_u8(&mut self, address: usize, byte: u8, cycles: u32) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
         if a_offset < CGA_MEM_SIZE {
+
+            // Save bus parameters for snow emulation
+            self.last_bus_addr = a_offset;
+            self.last_bus_value = byte;
+            self.dirty_snow = true;
+            self.snow_char = self.mem[a_offset];
+
             self.mem[a_offset] = byte;
 
-            // Look up wait states given the last ticked clock cycle + elapsed cycles
-            // passed in.
-            let phase = (self.cycles + cycles as u64 + 1) as usize & (0x0F as usize);
             trace!(
                 self, 
-                "WRITE_U8: {:04X}:{:02X} PHASE: {:02X}, WAITS: {}", 
+                "WRITE_U8: {:04X}:{:02X}", 
                 a_offset, 
-                byte,
-                phase,
-                WAIT_TABLE[phase]
+                byte
             );            
-            WAIT_TABLE[phase]
+            0
         }
         else {
             // Write out of range, shouldn't happen...
