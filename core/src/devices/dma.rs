@@ -355,6 +355,11 @@ impl DMAController {
             dreq: false
         }
     }
+    
+    /// Reset the DMA controller
+    pub fn reset(&mut self) {
+        // TODO:
+    }
 
     pub fn handle_addr_port_read(&mut self, channel: usize) -> u8 {
         if channel >= DMA_CHANNEL_COUNT {

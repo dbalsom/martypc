@@ -47,7 +47,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_3/",
+            "cwd": "${workspaceFolder}/releases/0_1_4/",
             "env": {
                 "RUST_LOG": "debug,naga=error,wgpu_core=error",
                 "RUST_LOG_STYLE": "always",
@@ -63,7 +63,7 @@
                     "build",
                     "--bin=martypc",
                     "--package=martypc",
-                    "--features"
+                    "--features",
                     "devtools"
                 ],
                 "filter": {

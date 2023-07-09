@@ -475,7 +475,8 @@ impl VideoCard for CGACard {
     }
 
     fn reset(&mut self) {
-        log::debug!("Resetting")
+        log::debug!("Resetting");
+        self.reset_private();
     }
 
     fn get_pixel(&self, _x: u32, _y:u32) -> &[u8] {

@@ -514,13 +514,11 @@ impl Default for DisplayExtents {
     }
 }
 
-impl CGACard {
+impl Default for CGACard {
+    fn default() -> Self {
 
-    pub fn new(trace_logger: TraceLogger, video_frame_debug: bool) -> Self {
-
-        let mut cga = Self {
-
-            debug: video_frame_debug,
+        Self {
+            debug: false,
             cycles: 0,
             last_vsync_cycles: 0,
             cur_screen_cycles: 0,
@@ -659,9 +657,20 @@ impl CGACard {
 
             debug_color: 0,
 
-            trace_logger,
+            trace_logger: TraceLogger::None,
             debug_counter: 0
-        };
+        }
+    }
+}
+
+impl CGACard {
+
+    pub fn new(trace_logger: TraceLogger, video_frame_debug: bool) -> Self {
+
+        let mut cga = Self::default();
+        
+        cga.trace_logger = trace_logger;
+        cga.debug = video_frame_debug;
 
         if video_frame_debug {
             cga.extents[0].aperture_w = CGA_XRES_MAX;
@@ -677,6 +686,26 @@ impl CGACard {
             cga.disable_color = CGA_DISABLE_DEBUG_COLOR;
         }
         cga
+    }
+
+    /// Reset CGA state (on reboot, for example)
+    /// This function removes the tracelogger and will need to be re-attached
+    fn reset_private(&mut self) {
+
+        // Save non-default values
+        
+        // Can't save tracelogger because it isn't Copy :(
+        //let trace_logger = self.trace_logger;
+        let debug = self.debug;
+        let enable_snow = self.enable_snow;
+
+        *self = Self::default();
+
+        // Restore settings
+
+        //self.trace_logger = trace_logger;
+        self.debug = debug;
+        self.enable_snow = enable_snow;
     }
 
     fn catch_up(&mut self, delta: DeviceRunTimeUnit) {

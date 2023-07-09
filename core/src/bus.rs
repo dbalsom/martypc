@@ -1517,9 +1517,26 @@ impl BusInterface {
 
     /// Call the reset methods for all devices on the bus
     pub fn reset_devices(&mut self) {
-        self.pit.as_mut().unwrap().reset();
-        self.pic1.as_mut().unwrap().reset();
-        //self.video.borrow_mut().reset();
+
+        // Reset PIT
+        if let Some(pit) = self.pit.as_mut() {
+            pit.reset();
+        }
+    
+        // Reset PIC
+        if let Some(pic1) = self.pic1.as_mut() {
+            pic1.reset();
+        }
+
+        // Reset DMA
+        if let Some(dma1) = self.dma1.as_mut() {
+            dma1.reset();
+        }
+
+        // Reset video card
+        if let Some(video) = self.video_mut() {
+            video.reset();
+        }
     }
 
     /// Call the reset methods for devices to be reset on warm boot
