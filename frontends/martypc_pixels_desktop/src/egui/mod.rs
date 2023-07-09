@@ -153,6 +153,7 @@ pub enum GuiOption {
     CpuTraceLoggingEnabled,
     TurboButton,
     ShowBackBuffer,
+    EnableSnow
 }
 
 #[allow(dead_code)]
@@ -481,7 +482,8 @@ impl GuiState {
             (GuiOption::CpuInstructionHistory, false),
             (GuiOption::CpuTraceLoggingEnabled, false),
             (GuiOption::TurboButton, false),
-            (GuiOption::ShowBackBuffer, true)
+            (GuiOption::ShowBackBuffer, true),
+            (GuiOption::EnableSnow, true)
         ].into();
 
         Self { 

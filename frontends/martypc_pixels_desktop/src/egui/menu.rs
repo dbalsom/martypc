@@ -413,6 +413,19 @@ impl GuiState {
                         ui.close_menu();
                     }
 
+                    if ui.checkbox(&mut self.get_option_mut(GuiOption::EnableSnow), "Enable Snow").clicked() {
+
+                        let new_opt = self.get_option(GuiOption::EnableSnow).unwrap();
+
+                        self.event_queue.push_back(
+                            GuiEvent::OptionChanged(
+                                GuiOption::EnableSnow, 
+                                new_opt 
+                            )
+                        );
+                        ui.close_menu();
+                    }
+
                     if ui.button("Composite Adjustments...").clicked() {
                         *self.window_flag(GuiWindow::CompositeAdjust) = true;
                         ui.close_menu();

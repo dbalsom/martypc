@@ -232,7 +232,8 @@ pub struct BusInterface {
     mouse: Option<Mouse>,
     video: VideoCardDispatch,
 
-    cycles_to_ticks: [u32; 256],
+    cycles_to_ticks: [u32; 256],    // TODO: Benchmarks don't show any faster than raw multiplication. It's not slower either though.
+    pit_ticks_advance: u32,         // We can schedule extra PIT ticks to add when run() occurs. This is generally used for PIT phase offset adjustment.
 
     timer_trigger1_armed: bool,
     timer_trigger2_armed: bool,
@@ -365,6 +366,7 @@ impl Default for BusInterface {
             video: VideoCardDispatch::None,
 
             cycles_to_ticks: [0; 256],
+            pit_ticks_advance: 0,
 
             timer_trigger1_armed: false,
             timer_trigger2_armed: false,     
@@ -404,6 +406,7 @@ impl BusInterface {
             video: VideoCardDispatch::None,
 
             cycles_to_ticks: [0; 256],
+            pit_ticks_advance: 0,
 
             timer_trigger1_armed: false,
             timer_trigger2_armed: false,  
@@ -1307,6 +1310,12 @@ impl BusInterface {
         }
     }
 
+    // Schedule extra ticks for the PIT.
+    pub fn adjust_pit(&mut self, ticks: u32) {
+        log::debug!("Scheduling {} extra system ticks for PIT", ticks);
+        self.pit_ticks_advance = ticks;
+    }
+
     pub fn run_devices(
         &mut self, 
         us: f64, 
@@ -1354,7 +1363,10 @@ impl BusInterface {
             pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::Microseconds(us));
         }
         else {
-            pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::SystemTicks(sys_ticks));
+            // We can only adjust phase of PIT if we are using system ticks, and that's okay. It's only really useful
+            // on an 5150/5160. 
+            pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance));
+            self.pit_ticks_advance = 0;
         }
         
         // Has PIT channel 1 changed?

@@ -13,7 +13,9 @@
                     "build",
                     "-r",
                     "--bin=martypc",
-                    "--package=martypc"
+                    "--package=martypc",
+                    "--features",
+                    "devtools"
                 ],
                 "filter": {
                     "name": "martypc",
@@ -60,7 +62,9 @@
                 "args": [
                     "build",
                     "--bin=martypc",
-                    "--package=martypc"
+                    "--package=martypc",
+                    "--features"
+                    "devtools"
                 ],
                 "filter": {
                     "name": "martypc",

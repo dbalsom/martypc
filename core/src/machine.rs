@@ -61,7 +61,7 @@ use crate::{
     rom_manager::{RomManager, RawRomDescriptor},
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
-    videocard::{VideoCard, VideoCardState},
+    videocard::{VideoCard, VideoCardState, VideoOption},
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
@@ -442,6 +442,13 @@ impl Machine {
         self.cpu.get_option(opt)
     }    
 
+    /// Send the specified video option to the active videocard device
+    pub fn set_video_option(&mut self, opt: VideoOption) {
+        if let Some(video) = self.cpu.bus_mut().video_mut() {
+            video.set_video_option(opt);
+        }
+    }
+
     /// Flush all trace logs for devices that have one
     pub fn flush_trace_logs(&mut self) {
         self.cpu.trace_flush();
@@ -517,6 +524,13 @@ impl Machine {
         let (a,b) = self.pit_data.buffer_consumer.as_slices();
 
         a.iter().cloned().chain(b.iter().cloned()).collect()
+    }
+
+    /// Adjust the relative phase of CPU and PIT; this is done by subtracting the relevant number of 
+    /// system ticks from the next run of the PIT.
+    pub fn pit_adjust(&mut self, ticks: u32) {
+
+        self.cpu.bus_mut().adjust_pit(ticks);
     }
 
     pub fn pic_state(&mut self) -> PicStringState {

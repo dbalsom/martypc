@@ -338,6 +338,13 @@ pub struct CGACard {
     sink_cycles: u32,
     catching_up: bool,
 
+    enable_snow: bool,
+    dirty_snow: bool,
+    snow_char: u8,
+    last_bus_value: u8,
+    last_bus_addr: usize,
+    snow_count: u64,
+
     mode_pending: bool,
     clock_pending: bool,
     mode_byte: u8,
@@ -392,7 +399,6 @@ pub struct CGACard {
     in_last_vblank_line: bool,
     hborder: bool,
     vborder: bool,
-
 
     cc_register: u8,
     clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
@@ -521,6 +527,13 @@ impl CGACard {
             cycles_per_vsync: 0,
             sink_cycles: 0,
             catching_up: false,
+
+            enable_snow: false,
+            dirty_snow: true,
+            snow_char: 0,
+            last_bus_value: 0,
+            last_bus_addr: 0,
+            snow_count: 0,
 
             mode_byte: 0,
             mode_pending: false,
@@ -1234,28 +1247,35 @@ impl CGACard {
         // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
         let addr = (self.vma & CGA_TEXT_MODE_WRAP) << 1;
 
-        if addr < CGA_MEM_SIZE - 1 {
-            self.cur_char = self.mem[addr];
-            self.cur_attr = self.mem[addr + 1];
-    
-            self.cur_fg = self.cur_attr & 0x0F;
-            
-            // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors 
-            // are available. 
-            // If blinking is disabled, all 16 colors are available as background attributes.
-            if self.mode_blinking {
-                self.cur_bg = (self.cur_attr >> 4) & 0x07;
-                self.cur_blink = self.cur_attr & 0x80 != 0;
-            }
-            else {
-                self.cur_bg = self.cur_attr >> 4;
-                self.cur_blink = false;
-            }
+        // Generate snow if we are in hires mode, have a dirty bus, and hclock is odd
+        if self.enable_snow && self.mode_hires_txt && self.dirty_snow && (self.cycles & 0b1000 != 0) {
+            self.cur_char = self.snow_char;
+            self.cur_attr = self.last_bus_value;
+            self.dirty_snow = false;
+            self.snow_count += 1;
         }
         else {
-            log::warn!("Character read out of range!");
+            // No snow
+            self.cur_char = self.mem[addr];
+            self.cur_attr = self.mem[addr + 1];
         }
+
+        self.cur_fg = self.cur_attr & 0x0F;
         
+        // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors 
+        // are available. 
+        // If blinking is disabled, all 16 colors are available as background attributes.
+        if self.mode_blinking {
+            self.cur_bg = (self.cur_attr >> 4) & 0x07;
+            self.cur_blink = self.cur_attr & 0x80 != 0;
+        }
+        else {
+            self.cur_bg = self.cur_attr >> 4;
+            self.cur_blink = false;
+        }
+
+        self.dirty_snow = false;
+
         //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
     }
 

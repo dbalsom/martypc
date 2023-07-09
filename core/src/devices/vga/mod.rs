@@ -1289,6 +1289,10 @@ macro_rules! push_reg_str_enum {
 
 impl VideoCard for VGACard {
 
+    fn set_video_option(&mut self, opt: VideoOption) {
+        // No options implemented
+    }
+
     fn get_video_type(&self) -> VideoType {
         VideoType::VGA
     }

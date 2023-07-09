@@ -27,10 +27,12 @@ martypc_pixels_desktop = { path = "frontends/martypc_pixels_desktop"}
 #strip = true 
 
 [features]
+devtools = ["martypc_pixels_desktop/devtools"]
 arduino_validator = ["marty_core/arduino_validator"]
 cpu_validator = ["marty_core/cpu_validator"]
 ega = ["marty_core/ega"]
 vga = ["marty_core/vga"]
+
 
 [build-dependencies]
 winres = "0.1"

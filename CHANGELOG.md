@@ -1,6 +1,7 @@
 
 ## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-07-XX)
 
+* Added basic CGA snow emulation. Not yet 100% accurate.
 * Fixed screenshot function when aspect-correction is off
 * Fixed mouse capture hotkey (CTRL-F10)
 * Add debug_keyboard config flag - this will print keyboard event info to the console for support

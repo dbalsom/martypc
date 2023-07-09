@@ -78,6 +78,12 @@ pub enum VideoCardDispatch {
     Vga(VGACard),
 }
 
+// Video options that can be sent to a VideoCard device. Not all adapters will support
+// each option. For example, CGA snow is of course only specific to the CGA card.
+pub enum VideoOption {
+    EnableSnow(bool)
+}
+
 // This enum determines the rendering method of the given videocard device. 
 // Direct mode means the video card draws to a double buffering scheme itself,
 // Indirect mode means that the video renderer draws the device's VRAM. I think 
@@ -195,6 +201,9 @@ pub struct DisplayExtents {
 }
 
 pub trait VideoCard {
+
+    /// Apply the specified VideoOption to the adapter.
+    fn set_video_option(&mut self, opt: VideoOption);
 
     /// Returns the type of the adapter.
     fn get_video_type(&self) -> VideoType;
