@@ -26,6 +26,8 @@ serde = { version = "1.0.107", features = ["derive"] }
 serde_derive = "1.0.107"
 serde_with = "2.1.0"
 serialport = "4.2.0"
+strum = "0.25"
+strum_macros = "0.25"
 toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"]}
 

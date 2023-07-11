@@ -34,14 +34,36 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 
 use crate::devices::pit::PitType;
-use crate::config::MachineType;
+use crate::config::{MachineType, VideoType, KeyboardType};
 use crate::cpu_common::CpuType;
 use crate::bus::ClockFactor;
+use crate::tracelogger::TraceLogger;
 
 // Clock derivision from reenigne
 // See https://www.vogons.org/viewtopic.php?t=55049
 pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5/11.0;
 pub const PIT_DIVISOR: u32 = 12;
+
+/// This enum is intended to represent any specific add-on device type
+/// that the bus needs to know about.
+pub enum DeviceType {
+    Keyboard(KeyboardType),
+    VideoCard(VideoType),
+}
+
+pub struct MmioSpec {
+    base_addr: u32,
+    size: u32
+}
+
+pub struct DeviceSpec {
+    dtype: DeviceType,          // Type of device.
+    debug: bool,                // Whether or not device should enable debug functionality. 
+    tracelog: TraceLogger,      // Tracelogger for device to use.
+    mmio: Option<MmioSpec>,     // Whether or not device has a mmio mapping.
+    io: bool,                   // Whether or not device registers IO ports / requires IO dispatch.
+    hotplug: bool,              // Whether or not a device can be added/removed while machine is running.
+}
 
 #[derive (Copy, Clone, Debug)]
 pub enum KbControllerType {

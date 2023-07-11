@@ -39,7 +39,8 @@ use std::{
     cell::Cell, 
     collections::VecDeque,
     fs::File,
-    io::{BufWriter, Write}
+    io::{BufWriter, Write},
+    path::PathBuf
 };
 
 use crate::{
@@ -54,6 +55,7 @@ use crate::{
         fdc::{FloppyController},
         hdc::{HardDiskController},
         mouse::Mouse,
+        keyboard::KeyboardModifiers
     },
     cpu_808x::{Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
     cpu_common::{CpuType, CpuOption},
@@ -62,6 +64,7 @@ use crate::{
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
     videocard::{VideoCard, VideoCardState, VideoOption},
+    keys::MartyKey
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
@@ -71,6 +74,14 @@ pub const STEP_OVER_TIMEOUT: u32 = 320000;
 pub const NUM_HDDS: u32 = 2;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
+
+#[derive(Copy, Clone, Debug)]
+pub struct KeybufferEntry {
+    pub keycode: MartyKey,
+    pub pressed: bool,
+    pub modifiers: KeyboardModifiers,
+    pub translate: bool
+}
 
 #[derive(Copy, Clone, Debug)]
 pub enum MachineState {
@@ -204,7 +215,7 @@ pub struct Machine
     speaker_buf_producer: Producer<u8>,
     pit_data: PitData,
     debug_snd_file: Option<File>,
-    kb_buf: VecDeque<u8>,
+    kb_buf: VecDeque<KeybufferEntry>,
     error: bool,
     error_str: Option<String>,
     cpu_factor: ClockFactor,
@@ -315,6 +326,27 @@ impl Machine {
             video_trace, 
             config.emulator.video_frame_debug
         );
+
+        // Load keyboard translation file if specified.
+
+        if let Some(kb_string) = &config.machine.keyboard_layout {
+            let mut kb_translation_path = PathBuf::new();
+            kb_translation_path.push(config.emulator.basedir.clone());
+            kb_translation_path.push("keyboard");
+            kb_translation_path.push(format!("keyboard_{}.toml", kb_string));
+
+            match cpu.bus_mut().keyboard_mut().load_mapping(&kb_translation_path) {
+                Ok(_) => {
+                    println!("Loaded keyboard mapping file: {}", kb_translation_path.display());
+                }
+                Err(e) => {
+                    eprintln!("Failed to load keyboard mapping file: {} Err: {}", kb_translation_path.display(), e )
+                }
+            }
+        }
+
+        // Set keyboard debug flag.
+        cpu.bus_mut().keyboard_mut().set_debug(config.emulator.debug_keyboard);
 
         // Load BIOS ROM images unless config option suppressed rom loading
         if !config.emulator.no_bios {
@@ -574,19 +606,35 @@ impl Machine {
         &self.error_str
     }
 
-    /// Enter a keypress scancode into the keyboard buffer.
-    pub fn key_press(&mut self, code: u8) {
-        self.kb_buf.push_back(code);
+    /// Enter a keypress keycode into the emulator keyboard buffer.
+    pub fn key_press(&mut self, keycode: MartyKey, modifiers: KeyboardModifiers) {
+
+        self.kb_buf.push_back(
+            KeybufferEntry{
+                keycode,
+                pressed: true,
+                modifiers,
+                translate: true
+            }
+        );
     }
 
-    /// Enter a key release scancode into the keyboard buffer.
-    pub fn key_release(&mut self, code: u8 ) {
+    /// Enter a key release keycode into the emulator keyboard buffer.
+    pub fn key_release(&mut self, keycode: MartyKey ) {
         // HO Bit set converts a scancode into its 'release' code
-        self.kb_buf.push_back(code | 0x80);
+        self.kb_buf.push_back(            
+            KeybufferEntry{
+                keycode,
+                pressed: false,
+                modifiers: KeyboardModifiers::default(),
+                translate: true
+            }
+        );
     }
 
     /// Simulate the user pressing control-alt-delete.
     pub fn ctrl_alt_del(&mut self) {
+        /*
         self.kb_buf.push_back(0x1D); // Left-control
         self.kb_buf.push_back(0x38); // Left-alt
         self.kb_buf.push_back(0x53); // Delete
@@ -597,6 +645,7 @@ impl Machine {
         self.kb_buf.push_back(0x1D | 0x80);
         self.kb_buf.push_back(0x38 | 0x80);
         self.kb_buf.push_back(0x53 | 0x80);
+        */
     }
 
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
@@ -957,11 +1006,11 @@ impl Machine {
         // 
         // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
         // fast typist and this method seems to work fine.
-        let mut kb_byte_opt: Option<u8> = None;
+        let mut kb_event_opt: Option<KeybufferEntry> = None;
         if self.kb_buf.len() > 0 && !*kb_event_processed {
 
-            kb_byte_opt = self.kb_buf.pop_front();
-            if kb_byte_opt.is_some() {
+            kb_event_opt = self.kb_buf.pop_front();
+            if kb_event_opt.is_some() {
                 *kb_event_processed = true;
             }
         }
@@ -972,8 +1021,9 @@ impl Machine {
         let device_event = self.cpu.bus_mut().run_devices(
             us, 
             sys_ticks,
-            kb_byte_opt, 
-            &mut self.speaker_buf_producer
+            kb_event_opt, 
+            &mut self.kb_buf,
+            &mut self.speaker_buf_producer,
         );
 
         // Currently only one device run event type

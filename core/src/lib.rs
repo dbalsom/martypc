@@ -42,6 +42,7 @@ pub mod cpu_808x;
 pub mod floppy_manager;
 pub mod file_util;
 pub mod interrupt;
+pub mod keys;
 pub mod machine;
 pub mod machine_manager;
 pub mod memerror;
@@ -51,7 +52,6 @@ pub mod syntax_token;
 pub mod tracelogger;
 pub mod updatable;
 pub mod util;
-
 pub mod vhd;
 pub mod vhd_manager;
 pub mod videocard; // VideoCard trait

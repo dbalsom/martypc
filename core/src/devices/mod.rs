@@ -36,6 +36,7 @@ pub mod ega;
 #[cfg(feature = "vga")]
 pub mod vga;
 
+pub mod keyboard;
 pub mod pit;
 pub mod pic;
 pub mod ppi;

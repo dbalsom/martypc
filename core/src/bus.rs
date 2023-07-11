@@ -36,7 +36,7 @@
 
 #![allow(dead_code)]
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     fmt,
     path::Path
 };
@@ -47,8 +47,9 @@ use crate::cpu_808x::*;
 use crate::bytequeue::*;
 
 use crate::syntax_token::SyntaxToken;
+use crate::machine::KeybufferEntry;
 use crate::machine_manager::MachineDescriptor;
-use crate::config::VideoType;
+use crate::config::{KeyboardType, VideoType};
 
 use crate::devices::{
     pit::Pit,
@@ -58,7 +59,8 @@ use crate::devices::{
     serial::*,
     fdc::FloppyController,
     hdc::*,
-    mouse::*
+    mouse::*,
+    keyboard::*,
 };
 
 use crate::tracelogger::TraceLogger;
@@ -86,6 +88,8 @@ pub const MEM_BPE_BIT: u8   = 0b0010_0000; // Bit to signify that this address i
 pub const MEM_BPA_BIT: u8   = 0b0001_0000; // Bit to signify that this address is associated with a breakpoint on access
 pub const MEM_CP_BIT: u8    = 0b0000_1000; // Bit to signify that this address is a ROM checkpoint
 pub const MEM_MMIO_BIT: u8  = 0b0000_0100; // Bit to signify that this address is MMIO mapped
+
+pub const KB_UPDATE_RATE: f64 = 5000.0; // Keyboard device update rate in microseconds 
 
 #[derive (Copy, Clone, Debug)]
 pub enum ClockFactor {
@@ -210,6 +214,8 @@ pub enum MmioDeviceType {
 pub struct BusInterface {
     cpu_factor: ClockFactor,
     machine_desc: Option<MachineDescriptor>,
+    keyboard_type: KeyboardType,
+    keyboard: Keyboard,
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
@@ -238,7 +244,8 @@ pub struct BusInterface {
     timer_trigger1_armed: bool,
     timer_trigger2_armed: bool,
 
-    cga_tick_accum: u32
+    cga_tick_accum: u32,
+    kb_us_accum: f64,
 }
 
 impl ByteQueue for BusInterface {
@@ -342,6 +349,8 @@ impl Default for BusInterface {
             cpu_factor: ClockFactor::Divisor(3),
 
             machine_desc: None,
+            keyboard_type: KeyboardType::ModelF,
+            keyboard: Keyboard::new(KeyboardType::ModelF, false),
             memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
@@ -349,7 +358,6 @@ impl Default for BusInterface {
             mmio_map_fast: [MmioDeviceType::Memory; ADDRESS_SPACE >> MMIO_MAP_SHIFT],
             mmio_data: MmioData::new(),
             cursor: 0,
-
 
             io_map: HashMap::new(),
             ppi: None,
@@ -372,46 +380,24 @@ impl Default for BusInterface {
             timer_trigger2_armed: false,     
 
             cga_tick_accum: 0,
+            kb_us_accum: 0.0,
         }        
     }
 }
 
 impl BusInterface {
-    pub fn new(cpu_factor: ClockFactor, machine_desc: MachineDescriptor) -> BusInterface {
+    pub fn new(
+        cpu_factor: ClockFactor, 
+        machine_desc: MachineDescriptor,
+        keyboard_type: KeyboardType,
+    ) -> BusInterface 
+    {
         BusInterface {
-
             cpu_factor,
-
             machine_desc: Some(machine_desc),
-            memory: vec![0; ADDRESS_SPACE],
-            memory_mask: vec![0; ADDRESS_SPACE],
-            desc_vec: Vec::new(),
-            mmio_map: Vec::new(),
-            mmio_map_fast: [MmioDeviceType::Memory; ADDRESS_SPACE >> MMIO_MAP_SHIFT],
-            mmio_data: MmioData::new(),            
-            cursor: 0,
-
-            io_map: HashMap::new(),
-            ppi: None,
-            pit: None,
-            dma_counter: 0,
-            dma1: None,
-            dma2: None,
-            pic1: None,
-            pic2: None,        
-            serial: None,    
-            fdc: None,
-            hdc: None,
-            mouse: None,
-            video: VideoCardDispatch::None,
-
-            cycles_to_ticks: [0; 256],
-            pit_ticks_advance: 0,
-
-            timer_trigger1_armed: false,
-            timer_trigger2_armed: false,  
-
-            cga_tick_accum: 0,        
+            keyboard_type,
+            keyboard: Keyboard::new(keyboard_type, false),
+            ..BusInterface::default()     
         }
     }
 
@@ -1320,27 +1306,68 @@ impl BusInterface {
         &mut self, 
         us: f64, 
         sys_ticks: u32, 
-        kb_byte_opt: Option<u8>, 
-        speaker_buf_producer: &mut Producer<u8>) -> Option<DeviceEvent>
+        kb_event_opt: Option<KeybufferEntry>, 
+        kb_buf: &mut VecDeque<KeybufferEntry>,
+        speaker_buf_producer: &mut Producer<u8>
+    ) -> Option<DeviceEvent>
+        
     {
 
         let mut event = None;
 
         // Send keyboard events to devices.
-        if let Some(kb_byte) = kb_byte_opt {
+        if let Some(kb_event) = kb_event_opt {
             //log::debug!("Got keyboard byte: {:02X}", kb_byte);
-            if let Some(ppi) = &mut self.ppi {
-                ppi.send_keyboard(kb_byte);
 
-                if ppi.kb_enabled() {
-                    if let Some(pic) = &mut self.pic1 {
-                        // TODO: Should we let the PPI do this directly?
-                        //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
-                        pic.pulse_interrupt(1);
-                    }   
+            match kb_event.pressed {
+                true => self.keyboard.key_down(kb_event.keycode, &kb_event.modifiers, Some(kb_buf)),
+                false => self.keyboard.key_up(kb_event.keycode)
+            }
+            
+            // Read a byte from the keyboard
+            if let Some(kb_byte) = self.keyboard.recv_scancode() {
+
+                // Do we have a PPI? if so, send the scancode to the PPI
+                if let Some(ppi) = &mut self.ppi {
+
+                    ppi.send_keyboard(kb_byte);
+    
+                    if ppi.kb_enabled() {
+                        if let Some(pic) = &mut self.pic1 {
+                            // TODO: Should we let the PPI do this directly?
+                            //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
+                            pic.pulse_interrupt(1);
+                        }   
+                    }
                 }
             }
         }
+
+        // Accumulate us and run the keyboard when scheduled.
+        self.kb_us_accum += us;
+        if self.kb_us_accum > KB_UPDATE_RATE {
+            self.keyboard.run(KB_UPDATE_RATE);
+            self.kb_us_accum -= KB_UPDATE_RATE;
+
+            // Read a byte from the keyboard
+            if let Some(kb_byte) = self.keyboard.recv_scancode() {
+
+                // Do we have a PPI? if so, send the scancode to the PPI
+                if let Some(ppi) = &mut self.ppi {
+
+                    ppi.send_keyboard(kb_byte);
+    
+                    if ppi.kb_enabled() {
+                        if let Some(pic) = &mut self.pic1 {
+                            // TODO: Should we let the PPI do this directly?
+                            //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
+                            pic.pulse_interrupt(1);
+                        }   
+                    }
+                }
+            }            
+        }
+
 
         // There will always be a PIC, so safe to unwrap.
         let pic = self.pic1.as_mut().unwrap();
@@ -1849,4 +1876,10 @@ impl BusInterface {
             }
         }
     }
+
+    pub fn keyboard_mut(&mut self) -> &mut Keyboard {
+        &mut self.keyboard
+    }
+
+
 }

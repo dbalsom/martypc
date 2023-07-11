@@ -61,6 +61,27 @@ impl FromStr for MachineType {
     }
 }
 
+// Define the various types of keyboard we can emulate.
+#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
+pub enum KeyboardType {
+    ModelF,
+    ModelM
+}
+
+impl FromStr for KeyboardType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s {
+            "ModelF" => Ok(KeyboardType::ModelF),
+            "ModelM" => Ok(KeyboardType::ModelM),
+            _ => Err("Bad value for keyboard_type".to_string()),
+        }
+    }
+}
+
 #[allow (dead_code)]
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
@@ -258,13 +279,14 @@ pub struct Machine {
     pub composite: Option<bool>,
     pub cga_snow: Option<bool>,
     pub pit_phase: Option<u32>,
+    pub keyboard_type: KeyboardType,
+    pub keyboard_layout: Option<String>,
     pub hdc: HardDiskControllerType,
     pub drive0: Option<String>,
     pub drive1: Option<String>,
     pub floppy0: Option<String>,
     pub floppy1: Option<String>
 }
-
 
 #[derive(Debug, Deserialize)]
 pub struct Cpu {

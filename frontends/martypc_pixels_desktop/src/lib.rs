@@ -50,6 +50,7 @@ mod input;
 #[cfg(feature = "arduino_validator")]
 mod main_fuzzer;
 
+use input::TranslateKey;
 use crate::egui::{Framework, DeviceSelection};
 
 use log::error;
@@ -84,6 +85,7 @@ use marty_core::{
     machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
     cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
+    devices::keyboard::KeyboardModifiers,
     rom_manager::{RomManager, RomError, RomFeature},
     floppy_manager::{FloppyManager, FloppyError},
     machine_manager::MACHINE_DESCS,
@@ -93,7 +95,8 @@ use marty_core::{
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
-    util
+    util,
+    keys
 };
 
 
@@ -243,11 +246,15 @@ impl MouseData {
 }
 
 struct KeyboardData {
+    modifiers: KeyboardModifiers,
     ctrl_pressed: bool
 }
 impl KeyboardData {
     fn new() -> Self {
-        Self { ctrl_pressed: false }
+        Self { 
+            modifiers: KeyboardModifiers::default(),    
+            ctrl_pressed: false 
+        }
     }
 }
 
@@ -924,6 +931,10 @@ pub fn run() {
                         let state = modifiers.state();
 
                         kb_data.ctrl_pressed = state.control_key();
+                        kb_data.modifiers.control = state.control_key();
+                        kb_data.modifiers.alt = state.alt_key();
+                        kb_data.modifiers.shift = state.shift_key();
+                        kb_data.modifiers.meta = state.super_key();
                         framework.handle_event(&event);
                     }
                     WindowEvent::KeyboardInput {
@@ -931,12 +942,13 @@ pub fn run() {
                         event: winit::event::KeyEvent {
                             physical_key: keycode,
                             state,
+                            repeat,
                             ..
                         },
                         ..
                     } => {
 
-                        if debug_keyboard { 
+                        if !repeat && debug_keyboard { 
                             println!("{:?}", event);
                         }
 
@@ -987,19 +999,20 @@ pub fn run() {
                             // An egui widget doesn't have focus, so send an event to the emulated machine
                             // TODO: widget seems to lose focus before 'enter' is processed in a text entry, passing that 
                             // enter to the emulator
-                            match state {
-                                winit::event::ElementState::Pressed => {
-                                    
-                                    if let Some(keycode) = input::match_keycode(keycode) {
-                                        //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
-                                        machine.key_press(keycode);
-                                    };
-                                },
-                                winit::event::ElementState::Released => {
-                                    if let Some(keycode) = input::match_keycode(keycode) {
-                                        //log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
-                                        machine.key_release(keycode);
-                                    };
+
+                            // ignore host typematic repeat
+                            if !repeat {
+                                match state {
+                                    winit::event::ElementState::Pressed => {
+                                        machine.key_press(keycode.to_internal(), kb_data.modifiers);
+                                        if debug_keyboard { 
+                                            println!("Key pressed: {:?}", keycode);
+                                            //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
+                                        }
+                                    },
+                                    winit::event::ElementState::Released => {
+                                        machine.key_release(keycode.to_internal());
+                                    }
                                 }
                             }
                         }
