@@ -86,7 +86,7 @@ impl FloppyManager {
             Err(_) => return Err(FloppyError::DirNotFound)
         };
 
-        let extensions = ["img", "ima"];
+        let extensions = ["img", "ima", "dsk"];
 
         // Clear and rebuild image lists.
         self.image_vec.clear();
