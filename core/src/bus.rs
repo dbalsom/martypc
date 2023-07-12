@@ -1614,7 +1614,8 @@ impl BusInterface {
                 }
                 IoDeviceType::Pit => {
                     // There will always be a PIT, so safe to unwrap
-                    self.pit.as_mut().unwrap().read_u8(port, nul_delta)
+                    self.pit.as_mut().unwrap().read_u8(port, DeviceRunTimeUnit::SystemTicks(sys_ticks))
+                    //self.pit.as_mut().unwrap().read_u8(port, nul_delta)
                 }
                 IoDeviceType::DmaPrimary => {
                     // There will always be a primary DMA, so safe to unwrap                    
