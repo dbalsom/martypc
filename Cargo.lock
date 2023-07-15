@@ -1737,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "marty_render"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "bytemuck",
  "cgmath",
@@ -1751,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "martypc"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "marty_core",
  "marty_render",

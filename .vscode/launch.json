@@ -95,7 +95,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_3/",
+            "cwd": "${workspaceFolder}/releases/0_1_4/",
             "env": {
                 "RUST_LOG": "martypc=trace",
                 "RUST_LOG_STYLE": "always",
