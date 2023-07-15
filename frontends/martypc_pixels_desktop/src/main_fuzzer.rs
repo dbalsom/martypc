@@ -51,12 +51,12 @@ use marty_core::{
     devices::pic::Pic,
 };
 
-pub fn main_fuzzer <'a>(
+pub fn main_fuzzer (
     config: &ConfigFileParams,
     _rom_manager: RomManager,
     _floppy_manager: FloppyManager
 ) {
-
+    /* 
     let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
     if config.emulator.trace_mode != TraceMode::None {
         // Open the trace file if specified
@@ -71,6 +71,7 @@ pub fn main_fuzzer <'a>(
             }
         }
     }
+    */
 
     //let mut io_bus = IoBusInterface::new();
     let pic = Rc::new(RefCell::new(Pic::new()));    
@@ -84,7 +85,7 @@ pub fn main_fuzzer <'a>(
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
         config.emulator.trace_mode,
-        Some(trace_file_option),
+        TraceLogger::None,
         #[cfg(feature = "cpu_validator")]
         config.validator.vtype.unwrap(),
         #[cfg(feature = "cpu_validator")]
@@ -131,6 +132,8 @@ pub fn main_fuzzer <'a>(
 
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
+
+        cpu.random_inst_from_opcodes(&[0x37]);
 
         //cpu.random_inst_from_opcodes(&[0x90]);
 
@@ -242,7 +245,7 @@ pub fn main_fuzzer <'a>(
         //cpu.random_grp_instruction(0xFE, &[4, 5]); // JMP & JMPF
         //cpu.random_grp_instruction(0xFF, &[4, 5]); // JMP & JMPF
         //cpu.random_grp_instruction(0xFE, &[6, 7]); // 8-bit broken PUSH & POP
-        cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
+        //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
         let instruction_address = 

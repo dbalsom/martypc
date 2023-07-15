@@ -28,8 +28,8 @@ martypc_pixels_desktop = { path = "frontends/martypc_pixels_desktop"}
 
 [features]
 devtools = ["martypc_pixels_desktop/devtools"]
-arduino_validator = ["marty_core/arduino_validator"]
-cpu_validator = ["marty_core/cpu_validator"]
+arduino_validator = ["marty_core/arduino_validator", "martypc_pixels_desktop/arduino_validator"]
+cpu_validator = ["marty_core/cpu_validator", "martypc_pixels_desktop/cpu_validator"]
 ega = ["marty_core/ega"]
 vga = ["marty_core/vga"]
 
