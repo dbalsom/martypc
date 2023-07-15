@@ -1026,16 +1026,25 @@ impl Machine {
             &mut self.speaker_buf_producer,
         );
 
-        // Currently only one device run event type
-        if let Some(DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val)) = device_event {
-            self.cpu.set_option(
-                CpuOption::SimulateDramRefresh(
-                    true, 
-                    self.timer_ticks_to_cpu_cycles(dma_counter), 
-                    self.timer_ticks_to_cpu_cycles(dma_counter_val)
-                    //self.timer_ticks_to_cpu_cycles(0)
-                )
-            )
+        if let Some(event) = device_event {
+
+            match event {
+                DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val) => {
+                    self.cpu.set_option(
+                        CpuOption::SimulateDramRefresh(
+                            true, 
+                            self.timer_ticks_to_cpu_cycles(dma_counter), 
+                            self.timer_ticks_to_cpu_cycles(dma_counter_val)
+                            //self.timer_ticks_to_cpu_cycles(0)
+                        )
+                    )
+                },
+                DeviceEvent::DramRefreshEnable(state) if state == false => {
+                    // Stop refresh
+                    self.cpu.set_option(CpuOption::SimulateDramRefresh(false, 0, 0));
+                },
+                _=> {}
+            }
         }
 
         // Sample the PIT channel #2 for sound

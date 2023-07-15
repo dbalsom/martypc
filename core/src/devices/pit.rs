@@ -88,6 +88,12 @@ impl From<u8> for ChannelMode {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum ReloadFlag {
+    Normal,
+    ReloadNextCycle
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, BitfieldSpecifier)]
 pub enum PitType {
     Model8253,
@@ -124,7 +130,7 @@ pub enum ChannelState {
     WaitingForGate,
     WaitingForLoadCycle,
     WaitingForLoadTrigger,
-    Counting
+    Counting(ReloadFlag)
 }
 
 #[derive(Debug, PartialEq)] 
@@ -170,10 +176,13 @@ pub struct Channel {
     bcd_mode: bool,
     gate: Updatable<bool>,
     incomplete_reload: bool,
+    dirty: bool,                     // Have channel parameters changed since last checked?
+    ticked: bool,                    // Has the counting element been ticked at least once?
+
 }
 pub struct ProgrammableIntervalTimer {
     ptype: PitType,
-    crystal: f64,
+    _crystal: f64,
     clock_divisor: u32,
     pit_cycles: u64,
     sys_tick_accumulator: u32,
@@ -273,7 +282,9 @@ impl Channel {
             output_latch: Updatable::Dirty(0, false),
             bcd_mode: false,
             gate: Updatable::Dirty(false, false),
-            incomplete_reload: false
+            incomplete_reload: false,
+            dirty: false,
+            ticked: false
         }
     }
 
@@ -332,6 +343,7 @@ impl Channel {
         self.mode.update(mode);
         self.rw_mode.update(rw_mode);
         self.bcd_mode = bcd;
+        self.dirty = true;
 
         // Setting any mode stops counter.
         self.change_channel_state(ChannelState::WaitingForReload);
@@ -339,6 +351,23 @@ impl Channel {
         self.load_state = LoadState::WaitingForLsb;
         self.load_type = LoadType::InitialLoad;
 
+    }
+
+    /// Return (and reset) the dirty flag, along with whether we are counting and if the counting
+    /// element has ticked.  The latter is to help discriminate whether a 0 count value indicates
+    /// inital vs terminal count.
+    #[inline]
+    pub fn is_dirty(&mut self) -> (bool, bool, bool) {
+
+        let is_dirty = self.dirty;
+        self.dirty = false;
+
+        let is_counting = match self.channel_state {
+            ChannelState::Counting(_) => true,
+            _ => false
+        };
+
+        (is_dirty, is_counting, self.ticked)
     }
 
     pub fn change_output_state(
@@ -374,6 +403,7 @@ impl Channel {
     pub fn latch_count(&mut self) {
         self.output_latch.update(*self.counting_element);
         self.count_is_latched = true;
+        self.dirty = true;
     }
 
     pub fn set_gate(
@@ -562,6 +592,8 @@ impl Channel {
                 }
             }
         }
+
+        self.dirty = true;
     }
 
     pub fn change_read_state(&mut self, new_state: ReadState) {
@@ -575,6 +607,14 @@ impl Channel {
 
     pub fn change_channel_state(&mut self, new_state: ChannelState ) {
         self.cycles_in_state = 0;
+
+        match (&self.channel_state, &new_state) {
+            (ChannelState::Counting(_), ChannelState::Counting(_)) => {},
+            (_, ChannelState::Counting(_)) => {
+                self.dirty = true;
+            }
+            _=> {}
+        }
         self.channel_state = new_state;
     }
 
@@ -616,6 +656,8 @@ impl Channel {
             self.output_latch.set(*self.counting_element);
         }
 
+        self.ticked = true;
+
         return;
     }
   
@@ -632,7 +674,9 @@ impl Channel {
 
     pub fn tick(&mut self, bus: &mut BusInterface, _buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
 
-        if self.channel_state == ChannelState::WaitingForLoadCycle {
+        if self.channel_state == ChannelState::WaitingForLoadCycle 
+            || self.channel_state == ChannelState::Counting(ReloadFlag::ReloadNextCycle) {
+
             // Load the current reload value into the counting element, applying the load mask
             self.counting_element.update(*self.count_register & self.load_mask);
 
@@ -648,7 +692,7 @@ impl Channel {
             //self.load_state = LoadState::Loaded;
 
             // Start counting.
-            self.change_channel_state(ChannelState::Counting);
+            self.change_channel_state(ChannelState::Counting(ReloadFlag::Normal));
 
             // Set output state as appropriate for mode.
             self.change_output_state(self.output_on_reload, bus);
@@ -671,7 +715,7 @@ impl Channel {
             return            
         }
 
-        if let ChannelState::Counting | ChannelState::WaitingForLoadTrigger = self.channel_state {
+        if let ChannelState::Counting(ReloadFlag::Normal) | ChannelState::WaitingForLoadTrigger = self.channel_state {
 
             match *self.mode {
                 ChannelMode::InterruptOnTerminalCount => {
@@ -703,7 +747,7 @@ impl Channel {
                         if *self.counting_element == 1 {
                             self.change_output_state(false, bus);
                             self.output_on_reload = true;
-                            self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                            self.change_channel_state(ChannelState::Counting(ReloadFlag::ReloadNextCycle));
                         }
                     }
                 }
@@ -728,7 +772,7 @@ impl Channel {
                                     if *self.output {
                                         // When output is high, reload is delayed one cycle.
                                         self.output_on_reload = !*self.output; // Toggle output state next cycle
-                                        self.change_channel_state(ChannelState::WaitingForLoadCycle); // Reload next cycle                      
+                                        self.change_channel_state(ChannelState::Counting(ReloadFlag::ReloadNextCycle)); // Reload next cycle                      
                                     }
                                     else {
                                         // Output is low. Reload and update output immediately.
@@ -793,7 +837,7 @@ impl Channel {
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new(ptype: PitType, crystal: f64, clock_divisor: u32) -> Self {
+    pub fn new(ptype: PitType, _crystal: f64, clock_divisor: u32) -> Self {
         /*
             The Intel documentation says: 
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -807,7 +851,7 @@ impl ProgrammableIntervalTimer {
         }
         Self {
             ptype,
-            crystal,
+            _crystal,
             clock_divisor,
             pit_cycles: 0,
             sys_tick_accumulator: 0,
@@ -1030,6 +1074,12 @@ impl ProgrammableIntervalTimer {
         (*self.channels[channel].count_register.get(), *self.channels[channel].counting_element.get())
     }
 
+    /// Return the dirty flags for the specified timer channel. See the description of is_dirty under Channel.
+    #[inline]
+    pub fn is_dirty(&mut self, channel: usize) -> (bool, bool, bool) {
+        self.channels[channel].is_dirty()
+    }
+
     pub fn tick(
         &mut self,
         bus: &mut BusInterface,
@@ -1044,7 +1094,6 @@ impl ProgrammableIntervalTimer {
         if let Some(ppi) = bus.ppi_mut() {
             speaker_data = ppi.get_pb1_state();
             self.channels[2].set_gate(ppi.get_pit_channel2_gate(), bus);
-
         }
 
         self.channels[0].tick(bus, None);
@@ -1136,6 +1185,12 @@ impl ProgrammableIntervalTimer {
                     format!("{:?}", *self.channels[i].mode), self.channels[i].mode.is_dirty(), 0
                 )
             );
+            channel_map.insert(
+                "Channel State:", 
+                SyntaxToken::StateString(
+                    format!("{:?}", self.channels[i].channel_state), false, 0
+                )
+            );            
             channel_map.insert(
                 "Counting Element:", 
                 SyntaxToken::StateString(

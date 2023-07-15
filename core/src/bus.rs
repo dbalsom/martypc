@@ -104,7 +104,8 @@ pub enum DeviceRunTimeUnit {
 }
 
 pub enum DeviceEvent {
-    DramRefreshUpdate(u16, u16)
+    DramRefreshUpdate(u16, u16),
+    DramRefreshEnable(bool)
 }
 
 pub trait MemoryMappedDevice {  
@@ -246,6 +247,7 @@ pub struct BusInterface {
 
     cga_tick_accum: u32,
     kb_us_accum: f64,
+    refresh_active: bool
 }
 
 impl ByteQueue for BusInterface {
@@ -381,6 +383,7 @@ impl Default for BusInterface {
 
             cga_tick_accum: 0,
             kb_us_accum: 0.0,
+            refresh_active: false
         }        
     }
 }
@@ -1382,6 +1385,42 @@ impl BusInterface {
             ppi.run(pic, us);
         }
 
+        // Has PIT channel 1 (DMA timer) changed?
+        let (pit_dirty, pit_counting, pit_ticked) = pit.is_dirty(1);
+
+        if pit_dirty {
+            log::debug!("Pit is dirty! counting: {} ticked: {}", pit_counting, pit_ticked);
+        }
+        if pit_counting && pit_dirty {
+            let (dma_count_register, dma_counting_element) = pit.get_channel_count(1);
+            log::debug!("pit dirty and counting! count register: {} counting element: {} ", dma_count_register, dma_counting_element);
+            
+            if (dma_counting_element <= dma_count_register) {
+                // DRAM refresh DMA counter has changed. If the counting element is in range,
+                // update the CPU's DRAM refresh simulation.
+                log::debug!("DRAM refresh DMA counter updated: {}, {}", dma_count_register, dma_counting_element);
+                self.dma_counter = dma_count_register;
+    
+                // Invert the dma counter value as Cpu counts up toward total
+
+                if dma_counting_element == 0 && !pit_ticked {
+                    // Counter is still at initial 0 - not a terminal count.
+                    event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, 0));
+                }
+                else {
+                    // Timer is at terminal count!
+                    event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, dma_count_register - dma_counting_element));
+                }
+                self.refresh_active = true;
+            }
+        }
+        else if !pit_counting && self.refresh_active {
+            // Timer 1 isn't counting anymore! Disable DRAM refresh...
+            log::debug!("Channel 1 not counting. Disabling DRAM refresh...");
+            event = Some(DeviceEvent::DramRefreshEnable(false));
+            self.refresh_active = false;
+        }
+
         // Run the PIT. The PIT communicates with lots of things, so we send it the entire bus.
         // The PIT may have a separate clock crystal, such as in the IBM AT. In this case, there may not 
         // be an integer number of PIT ticks per system ticks. Therefore the PIT can take either
@@ -1396,18 +1435,6 @@ impl BusInterface {
             self.pit_ticks_advance = 0;
         }
         
-        // Has PIT channel 1 changed?
-        let (dma_counter, dma_counter_val) = pit.get_channel_count(1);
-        if (dma_counter != self.dma_counter) && (dma_counter_val < dma_counter) {
-            // DRAM refresh DMA counter has changed. If the counting element is in range,
-            // update the CPU's DRAM refresh simulation.
-            log::debug!("DRAM refresh DMA counter updated: {}, {}", dma_counter, dma_counter_val);
-            self.dma_counter = dma_counter;
-
-            // Invert the dma counter value as Cpu counts up toward total
-            event = Some(DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter - dma_counter_val));
-        }
-
         // Save current count info.
         let (pit_reload_value, pit_counting_element) = pit.get_channel_count(0);
 
