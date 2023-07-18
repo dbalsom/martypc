@@ -697,6 +697,7 @@ impl CGACard {
         *self = Self {
             debug: self.debug,
             enable_snow: self.enable_snow,
+            frame_count: self.frame_count,  // Keep frame count as to not confuse frontend
             trace_logger,
             ..Self::default()
         }
