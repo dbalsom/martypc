@@ -947,6 +947,8 @@ impl Cpu {
             }
             0xC4 => {
                 // LES - Load ES from Pointer
+                self.cycles_i(2, &[0x0F0, 0x0F1]);
+
                 // Operand 2 is far pointer
                 let (les_segment, les_offset) = 
                     self.read_operand_farptr(
@@ -965,6 +967,8 @@ impl Cpu {
             }
             0xC5 => {
                 // LDS - Load DS from Pointer
+                self.cycles_i(2, &[0x0F4, 0x0F5]);
+
                 // Operand 2 is far pointer
                 let (lds_segment, lds_offset) = 
                     self.read_operand_farptr(
