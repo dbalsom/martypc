@@ -83,6 +83,7 @@ pub struct ModRmByte {
     b_rm:  u8,
     pre_disp_cost: u8,
     post_disp_cost: u8,
+    disp_mc: u16,
     disp: Displacement,
     addressing_mode: AddressingMode
 }
@@ -95,7 +96,8 @@ impl Default for ModRmByte {
             b_reg: 0,
             b_rm: 0,
             pre_disp_cost: 0,
-            post_disp_cost: 0,            
+            post_disp_cost: 0,
+            disp_mc: 0,  
             disp: Displacement::NoDisp,
             addressing_mode: AddressingMode::BxSi
         }
@@ -167,6 +169,7 @@ const MODRM_TABLE: [ModRmByte; 256] = {
             b_rm: 0,
             pre_disp_cost: 0,
             post_disp_cost: 0,
+            disp_mc: 0,
             disp: Displacement::NoDisp,
             addressing_mode: AddressingMode::BxSi
         }; 256
@@ -204,32 +207,32 @@ const MODRM_TABLE: [ModRmByte; 256] = {
         //
         // Oddly, fetching an 8-bit displacement takes longer than 16-bit!
         // This is due to an extra jump at microcode line 1de.
-        let (pre_disp_cost, post_disp_cost) = match byte & MODRM_ADDR_MASK {
-            MODRM_ADDR_BX_SI =>        (4,0),
-            MODRM_ADDR_BX_DI =>        (5,0),
-            MODRM_ADDR_BP_SI =>        (5,0),
-            MODRM_ADDR_BP_DI =>        (4,0),
-            MODRM_ADDR_SI =>           (2,0),
-            MODRM_ADDR_DI =>           (2,0),
-            MODRM_ADDR_DISP16 =>       (0,1),
-            MODRM_ADDR_BX =>           (2,0),
-            MODRM_ADDR_BX_SI_DISP8 =>  (4,3), 
-            MODRM_ADDR_BX_DI_DISP8 =>  (5,3), 
-            MODRM_ADDR_BP_SI_DISP8 =>  (5,3),
-            MODRM_ADDR_BP_DI_DISP8 =>  (4,3),
-            MODRM_ADDR_DI_DISP8 =>     (2,3),
-            MODRM_ADDR_SI_DISP8 =>     (2,3),
-            MODRM_ADDR_BP_DISP8 =>     (2,3),
-            MODRM_ADDR_BX_DISP8 =>     (2,3),
-            MODRM_ADDR_BX_SI_DISP16 => (4,2),
-            MODRM_ADDR_BX_DI_DISP16 => (5,2),
-            MODRM_ADDR_BP_SI_DISP16 => (5,2),
-            MODRM_ADDR_BP_DI_DISP16 => (4,2),
-            MODRM_ADDR_SI_DISP16 =>    (2,2),
-            MODRM_ADDR_DI_DISP16 =>    (2,2),
-            MODRM_ADDR_BP_DISP16 =>    (2,2),
-            MODRM_ADDR_BX_DISP16 =>    (2,2),
-            _=> (0,0)
+        let (pre_disp_cost, post_disp_cost, disp_mc) = match byte & MODRM_ADDR_MASK {
+            MODRM_ADDR_BX_SI =>        (4,0,0),
+            MODRM_ADDR_BX_DI =>        (5,0,0),
+            MODRM_ADDR_BP_SI =>        (5,0,0),
+            MODRM_ADDR_BP_DI =>        (4,0,0),
+            MODRM_ADDR_SI =>           (2,0,0),
+            MODRM_ADDR_DI =>           (2,0,0),
+            MODRM_ADDR_DISP16 =>       (0,1,0x1DC),
+            MODRM_ADDR_BX =>           (2,0,0),
+            MODRM_ADDR_BX_SI_DISP8 =>  (4,3,0x1DE), 
+            MODRM_ADDR_BX_DI_DISP8 =>  (5,3,0x1DE), 
+            MODRM_ADDR_BP_SI_DISP8 =>  (5,3,0x1DE),
+            MODRM_ADDR_BP_DI_DISP8 =>  (4,3,0x1DE),
+            MODRM_ADDR_DI_DISP8 =>     (2,3,0x1DE),
+            MODRM_ADDR_SI_DISP8 =>     (2,3,0x1DE),
+            MODRM_ADDR_BP_DISP8 =>     (2,3,0x1DE),
+            MODRM_ADDR_BX_DISP8 =>     (2,3,0x1DE),
+            MODRM_ADDR_BX_SI_DISP16 => (4,2,0x1DE),
+            MODRM_ADDR_BX_DI_DISP16 => (5,2,0x1DE),
+            MODRM_ADDR_BP_SI_DISP16 => (5,2,0x1DE),
+            MODRM_ADDR_BP_DI_DISP16 => (4,2,0x1DE),
+            MODRM_ADDR_SI_DISP16 =>    (2,2,0x1DE),
+            MODRM_ADDR_DI_DISP16 =>    (2,2,0x1DE),
+            MODRM_ADDR_BP_DISP16 =>    (2,2,0x1DE),
+            MODRM_ADDR_BX_DISP16 =>    (2,2,0x1DE),
+            _=> (0,0,0)
         };   
 
         // Set the addressing mode based on the cominbation of Mod and R/M bitfields + Displacement.
@@ -275,6 +278,7 @@ const MODRM_TABLE: [ModRmByte; 256] = {
             b_rm,
             pre_disp_cost,
             post_disp_cost,
+            disp_mc,
             disp: displacement,
             addressing_mode
         };
@@ -334,12 +338,12 @@ impl ModRmByte {
         let (displacement, size) = match self.disp {
 
             Displacement::Pending8 => {
-                bytes.set_pc(0x1de);
+                bytes.set_pc(self.disp_mc);
                 let tdisp = bytes.q_read_i8(QueueType::Subsequent, QueueReader::Biu);
                 (Displacement::Disp8(tdisp), 1)
             }
             Displacement::Pending16 => {
-                bytes.set_pc(0x1de);                
+                bytes.set_pc(self.disp_mc);                
                 let tdisp = bytes.q_read_i16(QueueType::Subsequent, QueueReader::Biu);
                 (Displacement::Disp16(tdisp), 2)
             }
