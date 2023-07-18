@@ -1017,6 +1017,36 @@ impl Cpu {
 
     pub fn reset(&mut self) {
         
+        log::debug!("Resetting...");
+        /*
+        let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
+
+        // Save non-default values
+        *self = Self {
+            // Save parameters to new()
+            cpu_type: self.cpu_type,
+            reset_vector: self.reset_vector,
+            trace_mode: self.trace_mode,
+            trace_logger,
+            // Save options
+            instruction_history_on: self.instruction_history_on,
+            dram_refresh_simulation: self.dram_refresh_simulation,
+            halt_resume_delay: self.halt_resume_delay,
+            off_rails_detection: self.off_rails_detection,
+            enable_wait_states: self.enable_wait_states,
+            trace_enabled: self.trace_enabled,
+
+            // Copy bus
+            bus: self.bus,
+
+            #[cfg(feature = "cpu_validator")]
+            validator_type: ValidatorType,
+            #[cfg(feature = "cpu_validator")]
+            validator_trace: TraceLogger,
+            ..Self::default()
+        };
+        */
+
         self.state = CpuState::Normal;
         
         self.set_register16(Register16::AX, 0);
@@ -1183,7 +1213,7 @@ impl Cpu {
                     self.cycle();
                     self.mc_pc = MC_NONE;
                     finalize_timeout += 1;
-                    if finalize_timeout == 16 {
+                    if finalize_timeout == 20 {
                         self.trace_flush();
                         panic!("Finalize timeout! wait states: {}", self.wait_states);
                     }
@@ -2666,14 +2696,14 @@ impl Cpu {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} D:{} {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
                 self.address_bus,
                 seg_str,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
-                dma_dreq_chr,
+                dma_str,
                 bus_str,
                 t_str,
                 xfer_str,
