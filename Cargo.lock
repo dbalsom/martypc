@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "arraydeque",
@@ -1761,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_pixels_desktop"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "bytemuck",
  "console_error_panic_hook",
@@ -2367,7 +2367,7 @@ dependencies = [
 
 [[package]]
 name = "pixels_stretch_renderer"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "bytemuck",
  "pixels",

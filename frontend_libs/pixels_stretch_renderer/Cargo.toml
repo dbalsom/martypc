@@ -1,6 +1,6 @@
 [package]
 name = "pixels_stretch_renderer"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 license = "MIT"
 
