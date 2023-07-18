@@ -240,7 +240,7 @@ impl Cpu {
                 CpuType::Intel8088 => {
                     if self.queue.len() == 3 {
                         self.biu_state = BiuState::Resuming(3);
-                        trace_print!(self, "Resuming from suspend due to queue read.");
+                        //trace_print!(self, "Resuming from suspend due to queue read.");                        
                         self.biu_schedule_fetch();
                     }
                 }
@@ -357,7 +357,8 @@ impl Cpu {
         */
     }
 
-    /// Abort a scheduled fetch when an EU bus request has been received.
+    /// Abort a fetch that has just started (on T1) due to an EU bus request on previous
+    /// T3 or later. This incurs two penalty cycles.
     pub fn biu_abort_fetch(&mut self) {
 
         self.fetch_state = FetchState::Aborted(2);
@@ -918,7 +919,13 @@ impl Cpu {
         }
     }   
 
-    /// Begin a new bus cycle of the specified type. Set the address latch and set the data bus appropriately.
+    /// Begins a new bus cycle of the specified type.
+    /// 
+    /// This is a complex operation; we must wait for the current bus transfer, if any, to complete.
+    /// We must process any delays and penalties as appropriate. For example, if we initiate a 
+    /// request for a bus cycle when a prefetch is scheduled, we will incur a 2 cycle abort penalty.
+    /// 
+    /// Note: this function is for EU bus requests only. It cannot start a CODE fetch.
     pub fn biu_bus_begin(
         &mut self, 
         new_bus_status: BusStatus, 
@@ -955,17 +962,21 @@ impl Cpu {
             // prefetching until the bus transfer is complete.
 
             if self.transfer_n == 0 {
-                // First transfer, advance MC PC to next instruction.
+                // On first transfer, advance MC PC to next instruction.
                 self.next_mc();
             }
             
             self.bus_pending_eu = true; 
             match self.fetch_state {
                 FetchState::Scheduled(_) | FetchState::Delayed(_) => {
-                    // Don't block prefetching if already scheduled.
+                    // Can't block prefetching if already scheduled.
                 }
                 _ => {
                     if self.is_before_last_wait() && !self.fetch_suspended {
+                        // We can prevent any prefetch from being scheduled this cycle by 
+                        // if the request comes in before T3/TwLast. This 'claims' the bus
+                        // for the EU.
+
                         //trace_print!(self, "Blocking fetch: T:{:?}", self.t_cycle);
                         self.fetch_state = FetchState::BlockedByEU;
                     }
@@ -973,18 +984,25 @@ impl Cpu {
             }
         }
 
-        // Wait for the current bus cycle to terminate.
+        // Wait for any current bus cycle to terminate.
         let mut _waited_cycles = self.biu_bus_wait_finish();
+
+        // If there was an active bus cycle, we're now on T4 - tick over to T1 to get 
+        // ready to start the new bus cycle. This will trigger the prefetcher, which
+        // will use the 'bus_pending_eu' flag to suppress certain behavior (ie, don't
+        // suspend BIU on pending bus request)
         if self.t_cycle == TCycle::T4 {
             self.cycle();
             _waited_cycles += 1;
         }
-
-        // Wait until we have left Resuming bus state.
+        
+        // Wait until we have left Resuming biu state (biu_state was BiuState::Resuming)
         _waited_cycles += self.biu_bus_wait_for_resume();
-        // Wait until we have left Delayed fetch state.
+
+        // Wait until we have left Delayed fetch state (fetch_state was FetchState::Delayed)
         _waited_cycles += self.biu_bus_wait_on_delay();
 
+        // Release our lock on the bus.
         if self.fetch_state == FetchState::BlockedByEU {
             self.fetch_state = FetchState::Idle;
         }
@@ -997,13 +1015,18 @@ impl Cpu {
         }        
 
         if new_bus_status == BusStatus::CodeFetch {
-            // Prefetch is starting so reset prefetch scheculed flag
+            // Prefetch is starting so reset prefetch scheduled flag
             self.fetch_state = FetchState::InProgress;
             self.transfer_n = 0;
         }
 
+        // When we waited for any bus transfer to complete and then ticked to T1, the bus status is now either:
+        //      - Passive, in the case no prefetch was scheduled
+        //      - CodeFetch, in the case a prefetch was scheduled (and we will need to abort it)
         if self.bus_status == BusStatus::Passive || self.bus_status == BusStatus::CodeFetch || self.t_cycle == TCycle::T4 {
 
+            // Consider a prefetch to be scheduled in either the scheduled or delayed fetch states.
+            // Fetch can be delayed in circumstances like specific queue length (3 for 8088)
             let fetch_scheduled = match self.fetch_state {
                 FetchState::Scheduled(_) => true,
                 FetchState::Delayed(3) => true,
@@ -1019,13 +1042,18 @@ impl Cpu {
                 }
                 BiuState::Suspended => {
                     // The BIU is suspended. Delay the first operation of any bus transfer by 3 cycles.
+
                     if new_bus_status == BusStatus::Halt {
+                        // There is a one-cycle delay before the Halt status begins.
                         self.cycle();
                     }
                     else if self.transfer_n == 0 {
+                        // Suspend delays for the BIU only apply to the first byte of a transfer.
+
                         self.biu_state = BiuState::SDelayed(3);
                         // Claim the bus for the EU.
                         self.fetch_state = FetchState::BlockedByEU;
+                        // Execute the SDelayed states.
                         self.cycles(3);
                         // Return to Suspended state after bus op.
                         self.biu_state = BiuState::Suspended; 
@@ -1041,6 +1069,7 @@ impl Cpu {
                 }
             }
 
+            // Finally, begin the new bus state.
             self.bus_status = new_bus_status;
             self.bus_segment = bus_segment;
             self.t_cycle = TCycle::TInit;
