@@ -82,6 +82,32 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'martypc', run specified program",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "marty_runprog.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },         
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'martypc' release candidate",
             "cargo": {
                 "args": [
@@ -148,7 +174,7 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "martypc=trace",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
@@ -175,7 +201,7 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "martypc=trace",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
