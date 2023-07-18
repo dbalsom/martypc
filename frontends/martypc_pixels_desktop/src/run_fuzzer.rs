@@ -24,8 +24,8 @@
 
     ---------------------------------------------------------------------------
 
-    main_fuzzer.rs - Implement the main procedure for fuzzer mode.
-                     Requires CPU validator.
+    run_fuzzer.rs - Implement the main procedure for fuzzer mode.
+                    Requires CPU validator feature.
 */
 
 use std::{
@@ -51,7 +51,7 @@ use marty_core::{
     devices::pic::Pic,
 };
 
-pub fn main_fuzzer (
+pub fn run_fuzzer (
     config: &ConfigFileParams,
     _rom_manager: RomManager,
     _floppy_manager: FloppyManager
