@@ -680,7 +680,7 @@ impl RemoteCpu {
                     
                     if self.queue_first_fetch {
                         // Popped a byte for the next instruction. End the current instruction execution
-                        trace!(log, "Next \"first byte\" read from queue. Ending instruction.");
+                        trace!(log, "Next \"first byte\" read from queue. Ending instruction at cycle: {}", self.cycle_num);
                         self.end_instruction = true;
                     }
 
