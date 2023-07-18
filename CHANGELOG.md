@@ -1,6 +1,9 @@
 
 ## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-07-XX)
 
+* Fixed CPU cycle timings for LES and LDS instructions
+* Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
+* Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
 * Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
 * Added basic CGA snow emulation. Not yet 100% accurate.
 * Fixed screenshot function when aspect-correction is off

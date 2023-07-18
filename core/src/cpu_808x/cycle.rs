@@ -376,26 +376,39 @@ impl Cpu {
                 }
             }
             FetchState::Scheduled(0) => {
+                // A fetch is scheduled for this cycle; however we may have additional delays to process.
 
-                if matches!(self.next_fetch_state, FetchState::Delayed(_)) {
-                    // Don't begin a fetch delay if the queue is full, stall the BIU immediately.
-                    if !self.biu_queue_has_room() {
-                        self.biu_abort_fetch_full();
+                // If bus_pending_eu is true, then we arrived here during biu_bus_begin. 
+                // That means that we biu_bus_begin will process a fetch abort. 
+                // In that case, we should do nothing instead of transitioning to a new fetch state.
+                if !self.bus_pending_eu {
+
+                    // Check if we are entering Delayed fetch states, but the queue is full. 
+                    if !self.biu_queue_has_room() && matches!(self.next_fetch_state, FetchState::Delayed(_)) {
+                    
+                        if self.bus_pending_eu {
+                            // Don't stall the BIU if there is pending bus request from the EU - we are likely
+                            // in bus_begin() and will process an abort instead.                            
+                            self.trace_comment("SHOULD ABORT!");
+                        }
+                        else {
+                            self.biu_abort_fetch_full();
+                        }
                     }
-                }
-                else if self.last_queue_delay == QueueDelay::Read 
-                    && self.biu_state == BiuState::Operating 
-                {
-                    // Sc2 delay
-                    self.next_fetch_state = FetchState::Delayed(2);
-                    self.trace_comment("DELAY2");
-                }                
-
-                if self.next_fetch_state == FetchState::InProgress {
-                    self.begin_fetch();
-                }
-                else {
-                    self.fetch_state = self.next_fetch_state;
+                    else if self.last_queue_delay == QueueDelay::Read && self.biu_state == BiuState::Operating {
+                        // Sc2 delay
+                        self.next_fetch_state = FetchState::Delayed(2);
+                        self.trace_comment("DELAY2");
+                    }                
+                
+                    // Begin a fetch if we are not transitioning into any delay state, otherwise transition
+                    // into said state.
+                    if self.next_fetch_state == FetchState::InProgress {
+                        self.begin_fetch();
+                    }
+                    else {
+                        self.fetch_state = self.next_fetch_state;
+                    }
                 }
             }
             FetchState::DelayDone => {
@@ -452,13 +465,13 @@ impl Cpu {
 
             match &mut self.dma_state {
                 DmaState::Idle => {
-                    if self.dram_refresh_cycles == self.dram_refresh_cycle_target + self.dram_refresh_adjust {
+                    if self.dram_refresh_cycles >= (self.dram_refresh_cycle_target) {
                         // DRAM refresh cycle counter has hit target. 
                         // Begin DMA transfer simulation by issuing a DREQ.
                         self.dma_state = DmaState::Dreq;
 
                         // Reset counter.
-                        self.dram_refresh_cycles = self.dram_refresh_adjust;
+                        self.dram_refresh_cycles = 0;
                     }
                 }
                 DmaState::Dreq => {
