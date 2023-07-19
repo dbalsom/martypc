@@ -374,6 +374,7 @@ pub enum Displacement {
 #[derive(Copy, Clone, Debug)]
 pub enum DmaState {
     Idle,
+    TimerTrigger,
     Dreq,
     Hrq,
     HoldA,
@@ -2653,6 +2654,7 @@ impl Cpu {
 
         let dma_str = match self.dma_state {
             DmaState::Idle => "  ",
+            DmaState::TimerTrigger => "TIMR",
             DmaState::Dreq => "DREQ",
             DmaState::Hrq => "HRQ ",
             DmaState::HoldA => "HLDA",
