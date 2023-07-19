@@ -311,8 +311,8 @@ impl Cpu {
         //trace_print!(self, "Suspending BIU");
     }    
 
-    /// Schedule a prefetch to occur after either 2 or 4 cycles, depending on queue
-    /// length. If the queue is full, nothing happens.
+    /// Schedule a prefetch. Depending on queue state, there may be Delay cycles scheduled
+    /// that begin after the inital two Scheduled cycles are complete.
     pub fn biu_schedule_fetch(&mut self) {
         if let FetchState::Scheduled(_) = self.fetch_state {
             // Fetch already scheduled, do nothing
