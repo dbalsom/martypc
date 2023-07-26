@@ -90,7 +90,9 @@ impl TraceLogger {
 
     pub fn flush(&mut self) {
         if let TraceLogger::FileWriter(file) = self {
-            _ = file.flush()
+            if let Err(e) = file.flush() {
+                log::error!("Failed to flush trace log: {}", e);
+            }
         }
     }
 
