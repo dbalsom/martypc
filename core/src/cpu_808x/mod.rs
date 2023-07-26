@@ -1985,6 +1985,9 @@ impl Cpu {
 
         // Halt state can be expensive since if we only executing a single cycle. 
         // See if we can get away with executing 3 halt cycles at at time - demo effects may require more precision
+
+        // TODO: Adjust this value based on Timer channel 0 count - if no interrupt is pending soon we can do more
+        // cycles per halt.
         if self.halted {
             self.cycle_i(self.mc_pc);
             self.cycle_i(self.mc_pc);
@@ -2232,7 +2235,7 @@ impl Cpu {
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
-                    self.trace_print(&self.instruction_state_string());   
+                    self.trace_print(&self.instruction_state_string(last_cs, last_ip));   
                 }                
 
                 Ok((StepResult::Normal, self.instr_cycle))
@@ -2258,7 +2261,7 @@ impl Cpu {
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
-                    self.trace_print(&self.instruction_state_string());   
+                    self.trace_print(&self.instruction_state_string(last_cs, last_ip));   
                 }
    
                 // Only CALLS will set a step over target. 
@@ -2730,10 +2733,10 @@ impl Cpu {
         cycle_str
     }
 
-    pub fn instruction_state_string(&self) -> String {
+    pub fn instruction_state_string(&self, last_cs: u16, last_ip: u16) -> String {
         let mut instr_str = String::new();
 
-        instr_str.push_str(&format!("{:04x}:{:04x} {}\n", self.cs, self.ip, self.i));
+        instr_str.push_str(&format!("{:04x}:{:04x} {}\n", last_cs, last_ip, self.i));
         instr_str.push_str(&format!("AX: {:04x} BX: {:04x} CX: {:04x} DX: {:04x}\n", self.ax, self.bx, self.cx, self.dx));
         instr_str.push_str(&format!("SP: {:04x} BP: {:04x} SI: {:04x} DI: {:04x}\n", self.sp, self.bp, self.si, self.di));
         instr_str.push_str(&format!("CS: {:04x} DS: {:04x} ES: {:04x} SS: {:04x}\n", self.cs, self.ds, self.es, self.ss));

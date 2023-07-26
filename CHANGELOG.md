@@ -1,6 +1,7 @@
 
 ## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-07-XX)
 
+* Fixed CS:IP reporting in Instruction trace mode logs
 * Fixed memory leak in Instruction trace mode (thanks Folkert)
 * Fixed CPU cycle timings for LES and LDS instructions
 * Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
