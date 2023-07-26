@@ -104,7 +104,33 @@
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
-        },         
+        },   
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'martypc', run specified program (runaway)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "./cfg/runaway_alloc.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        }, 
         {
             "type": "lldb",
             "request": "launch",

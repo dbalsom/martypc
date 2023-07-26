@@ -23,6 +23,7 @@ Thumbs.db
 /program
 /releases
 /keyboard
+/cfg
 marty*.toml
 *.pcm
 *.cfg
