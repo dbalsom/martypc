@@ -112,7 +112,7 @@ const QUEUE_MAX: usize = 6;
 const FETCH_DELAY: u8 = 2;
 
 const CPU_HISTORY_LEN: usize = 32;
-const CPU_CALL_STACK_LEN: usize = 16;
+const CPU_CALL_STACK_LEN: usize = 128;
 
 const INTERRUPT_VEC_LEN: usize = 4;
 const INTERRUPT_BREAKPOINT: u8 = 1;
@@ -1819,15 +1819,22 @@ impl Cpu {
     /// Push an entry on to the call stack. This can either be a CALL or an INT.
     pub fn push_call_stack(&mut self, entry: CallStackEntry, cs: u16, ip: u16) {
 
-        self.call_stack.push_back(entry);
+        if self.call_stack.len() < CPU_CALL_STACK_LEN {
+            self.call_stack.push_back(entry);
 
-        // Flag the specified CS:IP as a return address
-        let return_addr = Cpu::calc_linear_address(cs, ip);
+            // Flag the specified CS:IP as a return address
+            let return_addr = Cpu::calc_linear_address(cs, ip);
+    
+            self.bus.set_flags(return_addr as usize, MEM_RET_BIT);
+        }
+        else {
+            // TODO: set a flag to indicate that the call stack has overflowed?
 
-        self.bus.set_flags(return_addr as usize, MEM_RET_BIT);
+        }
     }
 
     /// Rewind the call stack to the specified address.
+    /// 
     /// We have to rewind the call stack to the earliest appearance of this address we returned to, 
     /// because popping the call stack clears the return flag from the memory location, so we don't 
     /// support reentrancy.

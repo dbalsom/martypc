@@ -1,6 +1,7 @@
 
 ## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-07-XX)
 
+* Fixed issue where Call Stack could grow uncontrollably with recursive code or interrupts
 * Fixed CS:IP reporting in Instruction trace mode logs
 * Fixed memory leak in Instruction trace mode (thanks Folkert)
 * Fixed CPU cycle timings for LES and LDS instructions
