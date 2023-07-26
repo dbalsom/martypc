@@ -2764,7 +2764,7 @@ impl Cpu {
 
     #[inline]
     pub fn trace_comment(&mut self, comment: &'static str) {
-        if self.trace_enabled {
+        if self.trace_enabled && (self.trace_mode == TraceMode::Cycle) {
             self.trace_comment.push(comment);
         }
     }
