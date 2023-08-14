@@ -664,7 +664,7 @@ pub struct Cpu
     */
 
     // BIU stuff
-    biu_state: BiuState,            // State of BIU. Operating / Suspended / Resuming
+    biu_state_new: BiuStateNew,     // State of BIU: Idle, EU, PF (Prefetcher) or transition state
     ready: bool,                    // READY line from 8284
     queue: InstructionQueue,
     fetch_size: TransferSize,
@@ -684,8 +684,9 @@ pub struct Cpu
     bus_status: BusStatus,
     bus_segment: Segment,
     transfer_size: TransferSize,    // Width of current bus transfer
-    operand_size: OperandSize,      // Width of the operand being transferred. Prefetch 
-    transfer_n: u32,                // Byte number of current operand (ex: 1/2 bytes of Word operand)
+    operand_size: OperandSize,      // Width of the operand being transferred
+    transfer_n: u32,                // Current transfer number (Either 1 or 2, for byte or word operand, respectively)
+    final_transfer: bool,           // Flag that determines if the current bus transfer is the final transfer for this bus request
     bus_wait_states: u32,
     wait_states: u32,
     lock: bool,                     // LOCK pin. Asserted during 2nd INTA bus cycle. 
@@ -753,8 +754,8 @@ pub struct Cpu
     // DMA stuff
     dma_state: DmaState,
     dram_refresh_simulation: bool,
-    dram_refresh_cycle_target: u32,
-    dram_refresh_cycles: u32,
+    dram_refresh_cycle_period: u32,
+    dram_refresh_cycle_num: u32,
     dram_refresh_adjust: u32,
     dma_aen: bool,
 
@@ -880,7 +881,8 @@ pub enum ExecutionResult {
 
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum TCycle {
-    TInit,
+    Tinit,
+    Ti,
     T1,
     T2,
     T3,
@@ -890,7 +892,23 @@ pub enum TCycle {
 
 impl Default for TCycle {
     fn default() -> TCycle {
-        TCycle::T1
+        TCycle::Ti
+    }
+}
+
+#[derive (Copy, Clone, Debug, PartialEq)]
+pub enum BiuStateNew {
+    Idle,
+    ToIdle(u8),
+    Prefetch,
+    ToPrefetch(u8),
+    Eu,
+    ToEu(u8)
+}
+
+impl Default for BiuStateNew {
+    fn default() -> BiuStateNew {
+        BiuStateNew::Idle
     }
 }
 
@@ -943,6 +961,7 @@ impl Default for QueueOp {
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum FetchState {
     Idle,
+    Suspended,
     InProgress,
     Scheduled(u8),
     Delayed(u8),
@@ -1160,6 +1179,7 @@ impl Cpu {
         }
     }
 
+    #[inline]
     pub fn is_before_last_wait(&self) -> bool {
         match self.t_cycle {
             TCycle::T1 | TCycle::T2 => true,
@@ -1175,15 +1195,11 @@ impl Cpu {
         }
     }
 
-    pub fn is_operand_complete(&self) -> bool {
-        match self.operand_size {
-            OperandSize::Operand8 => {
-                self.transfer_n == 1
-            }
-            OperandSize::Operand16 => {
-                self.transfer_n == 2
-            }
-            _ => true
+    #[inline]
+    pub fn is_before_t3(&self) -> bool {
+        match self.t_cycle {
+            TCycle::T1 | TCycle::T2 => true,
+            _ => false
         }
     }
 
@@ -1233,7 +1249,7 @@ impl Cpu {
                 self.last_queue_direction = QueueDirection::Read;
 
                 // Check if reading the queue will resume the BIU if stalled.
-                self.biu_resume_on_queue_read();
+                self.biu_fetch_on_queue_read();
 
                 if self.nx {
                     self.trace_comment("NX");
@@ -1261,7 +1277,8 @@ impl Cpu {
             n: self.instr_cycle,
             addr: self.address_bus,
             t_state: match self.t_cycle {
-                TCycle::TInit | TCycle::T1 => BusCycle::T1,
+                TCycle::Tinit | TCycle::T1 => BusCycle::T1,
+                TCycle::Ti => BusCycle::T1,
                 TCycle::T2 => BusCycle::T2,
                 TCycle::T3 => BusCycle::T3,
                 TCycle::Tw => BusCycle::Tw,
@@ -2366,6 +2383,21 @@ impl Cpu {
         step_result
     }
 
+
+    /// Finalize the current CPU instruction.
+    /// 
+    /// This function is meant to be called after devices are run after an instruction. 
+    /// 
+    /// Normally, this function will fetch the first byte of the next instruction. 
+    /// Running devices can generate interrupts. If the INTR line is set by a device,
+    /// we do not want to fetch the next byte - we want to jump directly into the 
+    /// interrupt routine - *unless* we are in a REP, in which case we set a flag
+    /// so that the interrupt execution can occur on the next call to step() to simulate
+    /// the string instruction calling RPTI. 
+    pub fn step_finalize(&mut self) {
+
+    }
+
     /// Set a terminating code address for the CPU. This is mostly used in conjunction with the 
     /// CPU validator or running standalone binaries.
     pub fn set_end_address(&mut self, end: usize) {
@@ -2496,7 +2528,7 @@ impl Cpu {
         call_stack_string
     }
 
-    pub fn cycle_state_string(&self, short: bool) -> String {
+    pub fn cycle_state_string(&self, dma_count: u16, short: bool) -> String {
 
         let ale_str = match self.i8288.ale {
             true => "A:",
@@ -2533,11 +2565,13 @@ impl Cpu {
             false => ' '
         };
 
-        let mut _biu_chr = match self.biu_state {
-            BiuState::Operating => '.',
-            BiuState::Suspended => 'S',
-            BiuState::Resuming(_) => 'R',
-            BiuState::SDelayed(_) => 'D'
+        let biu_state_new_str = match self.biu_state_new {
+            BiuStateNew::ToIdle(_) => ">I ",
+            BiuStateNew::ToPrefetch(_) => ">PF",
+            BiuStateNew::ToEu(_) => ">EU",
+            BiuStateNew::Idle => "I  ",
+            BiuStateNew::Prefetch => "PF ",
+            BiuStateNew::Eu => "EU "
         };
 
         /*
@@ -2591,7 +2625,8 @@ impl Cpu {
         };
 
         let t_str = match self.t_cycle {
-            TCycle::TInit => "T0",
+            TCycle::Tinit => "Tx",
+            TCycle::Ti => "Ti",
             TCycle::T1 => "T1",
             TCycle::T2 => "T2",
             TCycle::T3 => "T3",
@@ -2662,8 +2697,10 @@ impl Cpu {
             'R'
         };
 
+        let dma_count_str = &format!("{:02} {:02}", dma_count, self.dram_refresh_cycle_num);
+
         let dma_str = match self.dma_state {
-            DmaState::Idle => "  ",
+            DmaState::Idle => dma_count_str,
             DmaState::TimerTrigger => "TIMR",
             DmaState::Dreq => "DREQ",
             DmaState::Hrq => "HRQ ",
@@ -2683,7 +2720,7 @@ impl Cpu {
         let mut cycle_str;
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {:03} | {}",
+                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
                 self.address_bus,
@@ -2694,7 +2731,7 @@ impl Cpu {
                 bus_str,
                 t_str,
                 xfer_str,
-                format!("{:?}", self.biu_state),
+                biu_state_new_str,
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
                 self.last_queue_len,
@@ -2708,7 +2745,7 @@ impl Cpu {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:4}| {:04} {:02} {:06} | {:<12}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
@@ -2719,7 +2756,7 @@ impl Cpu {
                 bus_str,
                 t_str,
                 xfer_str,
-                format!("{:?}", self.biu_state),
+                biu_state_new_str,
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
                 self.last_queue_len,
@@ -2839,8 +2876,8 @@ impl Cpu {
             CpuOption::SimulateDramRefresh(state, cycle_target, cycles) => {
                 log::debug!("Setting SimulateDramRefresh to: {:?} ({},{})", state, cycle_target, cycles);
                 self.dram_refresh_simulation = state;
-                self.dram_refresh_cycle_target = cycle_target;
-                self.dram_refresh_cycles = cycles;
+                self.dram_refresh_cycle_period = cycle_target;
+                self.dram_refresh_cycle_num = cycles;
             }
             CpuOption::DramRefreshAdjust(adj) => {
 

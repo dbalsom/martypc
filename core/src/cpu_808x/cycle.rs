@@ -87,8 +87,6 @@ impl Cpu {
     /// and otherwise do all necessary actions to advance the cpu state.
     pub fn cycle_i(&mut self, instr: u16) {
 
-        let byte;
-
         if instr == MC_NONE {
             self.trace_instr = self.mc_pc;
         }
@@ -97,9 +95,11 @@ impl Cpu {
             self.trace_instr = instr;
         }
 
-        if self.t_cycle == TCycle::TInit {
+        if self.t_cycle == TCycle::Tinit {
             self.t_cycle = TCycle::T1;
         }
+
+        self.instr_elapsed += 1;
 
         // Operate current t-state
         match self.bus_status {
@@ -109,10 +109,10 @@ impl Cpu {
             BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | 
             BusStatus::IoWrite | BusStatus::CodeFetch | BusStatus::InterruptAck => {
                 match self.t_cycle {
-                    TCycle::TInit => {
+                    TCycle::Tinit => {
                         panic!("Can't execute TInit state");
                     },
-                    TCycle::T1 => {
+                    TCycle::Ti | TCycle::T1 => {
                     },
                     TCycle::T2 => {
 
@@ -147,11 +147,9 @@ impl Cpu {
                         match self.bus_status {
                             BusStatus::CodeFetch | BusStatus::MemRead => {
                                 self.bus_wait_states = self.bus.get_read_wait(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                self.instr_elapsed = 0;
                             }
                             BusStatus::MemWrite => {
                                 self.bus_wait_states = self.bus.get_write_wait(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                self.instr_elapsed = 0;
                             }
                             BusStatus::IoRead => {
                                 self.bus_wait_states = 1;
@@ -168,121 +166,35 @@ impl Cpu {
                             self.wait_states = 0;
                         }
                     }
-                    TCycle::T3 | TCycle::Tw => {
-                        if self.t_cycle == TCycle::T3 {
-
-                            self.wait_states += self.bus_wait_states;
+                    TCycle::T3 => {
+                        
+                        self.wait_states += self.bus_wait_states;
+                        
+                        if self.wait_states == 0 {
+                            // Do bus transfer on T3 if no wait states.
+                            self.do_bus_transfer();
                         }
+                        
+                        // A prefetch decision is always made on T3 of the last bus cycle of an atomic
+                        // bus operation, regardless of wait states.
+                        if self.final_transfer {
+                            self.biu_make_biu_decision();
+                        }                               
+                    }
+                    TCycle::Tw => {
 
-                        // Reading/writing occurs on T3 (with 0 wait states) or the last Tw state.
                         if self.is_last_wait() {
-
-                            match (self.bus_status, self.transfer_size) {
-                                (BusStatus::CodeFetch, TransferSize::Byte) => {
-                                    (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                    self.instr_elapsed = 0;
-                                    self.data_bus = byte as u16;
-                                    self.transfer_n += 1;
-
-                                    validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Mem, ReadType::Code);
-                                }
-                                (BusStatus::CodeFetch, TransferSize::Word) => {
-                                    (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                    self.instr_elapsed = 0;  
-                                    self.transfer_n += 1;
-                                }
-                                (BusStatus::MemRead, TransferSize::Byte) => {
-                                    (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                    self.instr_elapsed = 0;
-                                    self.data_bus = byte as u16;
-                                    self.transfer_n += 1;
-
-                                    validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Mem, ReadType::Data);
-                                }                            
-                                (BusStatus::MemRead, TransferSize::Word) => {
-                                    (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
-                                    self.instr_elapsed = 0;
-                                    self.transfer_n += 1;
-                                }                         
-                                (BusStatus::MemWrite, TransferSize::Byte) => {
-                                    self.i8288.mwtc = true;
-                                    _ = 
-                                        self.bus.write_u8(
-                                            self.address_bus as usize, 
-                                            (self.data_bus & 0x00FF) as u8, 
-                                            self.instr_elapsed
-                                        ).unwrap();
-                                    self.instr_elapsed = 0;
-                                    self.transfer_n += 1;
-
-                                    validate_write_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Mem );
-                                }
-                                (BusStatus::MemWrite, TransferSize::Word) => {
-                                    self.i8288.mwtc = true;
-                                    _ = self.bus.write_u16(self.address_bus as usize, self.data_bus, self.instr_elapsed).unwrap();
-                                    self.instr_elapsed = 0;
-                                    self.transfer_n += 1;
-                                }
-                                (BusStatus::IoRead, TransferSize::Byte) => {
-                                    self.i8288.iorc = true;
-                                    byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16, self.instr_elapsed);
-                                    self.data_bus = byte as u16;
-                                    self.instr_elapsed = 0;
-                                    self.transfer_n += 1;
-
-                                    validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Io, ReadType::Data);
-                                }
-                                (BusStatus::IoWrite, TransferSize::Byte) => {
-                                    self.i8288.iowc = true;
-                                    self.bus.io_write_u8(
-                                        (self.address_bus & 0xFFFF) as u16, 
-                                        (self.data_bus & 0x00FF) as u8,
-                                        self.instr_elapsed
-                                    );
-                                    self.instr_elapsed = 0;
-                                    self.transfer_n += 1;
-
-                                    validate_write_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Io );
-                                }          
-                                (BusStatus::InterruptAck, TransferSize::Byte) => {
-                                    // The vector is read from the PIC directly before we even enter an INTA bus state, so there's
-                                    // nothing to do.
-
-                                    // Deassert lock 
-                                    if self.transfer_n == 1 {
-                                        //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
-                                        self.lock = false;
-                                    }
-                                    self.transfer_n += 1;
-                                }
-                                _=> {
-                                    trace_print!(self, "Unhandled bus state!");
-                                    log::warn!("Unhandled bus status: {:?}!", self.bus_status);
-                                }
-                            }
-
-                            // If we're not in the middle of a word transfer, schedule a prefetch if appropriate.
-                            if self.is_operand_complete() {
-                                self.biu_make_fetch_decision();
-                            }
-                        }
+                            // Reading/writing occurs on the last Tw state.
+                            self.do_bus_transfer();
+                        }                       
                     }
                     TCycle::T4 => {
-                        match (self.bus_status, self.transfer_size) {
-                            (BusStatus::CodeFetch, TransferSize::Byte) => {
-                                //log::debug!("Code fetch completed!");
-                                //log::debug!("Pushed byte {:02X} to queue!", self.data_bus as u8);
-                                //trace_print!(self, "Queue direction -> Write!");
-                                self.last_queue_direction = QueueDirection::Write;
-                                self.queue.push8(self.data_bus as u8);
-                                self.pc = (self.pc + 1) & 0xFFFFFu32;
-                            }
-                            (BusStatus::CodeFetch, TransferSize::Word) => {
-                                self.last_queue_direction = QueueDirection::Write;
-                                self.queue.push16(self.data_bus);
-                                self.pc = (self.pc + 2) & 0xFFFFFu32;
-                            }
-                            _=> {}                        
+
+                        // If we just completed a code fetch, make the byte available in the queue.
+                        if let BusStatus::CodeFetch = self.bus_status {
+                            self.last_queue_direction = QueueDirection::Write;
+                            self.queue.push8(self.data_bus as u8);
+                            self.pc = (self.pc + 1) & 0xFFFFFu32;
                         }
                     }
                 }
@@ -295,8 +207,13 @@ impl Cpu {
 
         // Perform cycle tracing, if enabled
         if self.trace_enabled && self.trace_mode == TraceMode::Cycle {
-            self.trace_print(&self.cycle_state_string(false));   
-            self.trace_str_vec.push(self.cycle_state_string(true));
+
+            // Get value of timer channel #1 for DMA printout
+            let (_, dma_count) = self.bus.pit().as_ref().unwrap().get_channel_count(1);
+
+            let state_str = self.cycle_state_string(dma_count, false);
+            self.trace_print(&state_str);   
+            self.trace_str_vec.push(state_str);
 
             self.trace_comment.clear();
             self.trace_instr = MC_NONE;            
@@ -310,17 +227,18 @@ impl Cpu {
 
         // Do DRAM refresh (DMA channel 0) simulation
         if self.enable_wait_states && self.dram_refresh_simulation {
-            self.dram_refresh_cycles += 1;
+
+            self.dram_refresh_cycle_num -= 1;
 
             match &mut self.dma_state {
                 DmaState::Idle => {
-                    if self.dram_refresh_cycles >= (self.dram_refresh_cycle_target) {
-                        // DRAM refresh cycle counter has hit target. 
+                    if self.dram_refresh_cycle_num == 0 {
+                        // DRAM refresh cycle counter has hit terminal count. 
                         // Begin DMA transfer simulation by issuing a DREQ.
                         self.dma_state = DmaState::Dreq;
 
                         // Reset counter.
-                        self.dram_refresh_cycles = 0;
+                        self.dram_refresh_cycle_num = self.dram_refresh_cycle_period;
                     }
                 }
                 DmaState::TimerTrigger => {
@@ -379,21 +297,38 @@ impl Cpu {
 
         // Transition to next T state
         self.t_cycle = match self.t_cycle {
-            TCycle::TInit => {
+            TCycle::Tinit => {
                 // A new bus cycle has been initiated, begin it in T1.
                 TCycle::T1
             }
-            TCycle::T1 => {
-                // If bus status is PASV, stay in T1 (no bus transfer occurring)
-                // Otherwise if there is a valid bus status on T1, transition to T2, unless
-                // status is HALT, which only lasts one cycle.
+            TCycle::Ti => {
+                // If bus status is PASV, stay in Ti (no bus transfer occurring)
                 match self.bus_status {
-                    BusStatus::Passive => TCycle::T1,
+                    BusStatus::Passive => TCycle::Ti,
                     BusStatus::Halt => {
                         // Halt only lasts for one cycle. Reset status and ALE.
                         self.bus_status = BusStatus::Passive;
                         self.i8288.ale = false;
+                        TCycle::Ti
+                    }
+                    _ => {
                         TCycle::T1
+                    }
+                }                
+            }
+            TCycle::T1 => {
+                // If there is a valid bus status on T1, transition to T2, unless
+                // status is HALT, which only lasts one cycle.
+                match self.bus_status {
+                    BusStatus::Passive => {
+                        //panic!("T1 with passive bus"),
+                        TCycle::T1
+                    }
+                    BusStatus::Halt => {
+                        // Halt only lasts for one cycle. Reset status and ALE.
+                        self.bus_status = BusStatus::Passive;
+                        self.i8288.ale = false;
+                        TCycle::Ti
                     }
                     _ => {
                         TCycle::T2
@@ -424,9 +359,9 @@ impl Cpu {
                 }                
             }
             TCycle::T4 => {
-                // We reached the end of a bus transfer, to transition back to T1 and PASV.
+                // We reached the end of a bus transfer, to transition back to Ti and PASV.
                 self.bus_status = BusStatus::Passive;
-                TCycle::T1
+                TCycle::Ti
             }            
         };
 
@@ -461,13 +396,14 @@ impl Cpu {
                             self.trace_comment("SHOULD ABORT!");
                         }
                         else {
-                            self.biu_abort_fetch_full();
+                            //self.biu_abort_fetch_full();
                         }
                     }
-                    else if self.last_queue_delay == QueueDelay::Read && self.biu_state == BiuState::Operating {
+                    else if self.last_queue_delay == QueueDelay::Read && !self.fetch_suspended {
                         // Sc2 delay
-                        self.next_fetch_state = FetchState::Delayed(2);
-                        self.trace_comment("DELAY2");
+
+                        //self.next_fetch_state = FetchState::Delayed(2);
+                        //self.trace_comment("DELAY2");
                     }                
                 
                     // Begin a fetch if we are not transitioning into any delay state, otherwise transition
@@ -488,11 +424,11 @@ impl Cpu {
                     self.fetch_state = self.next_fetch_state;
                 }
             }
-            FetchState::Idle if self.biu_state != BiuState::Suspended => {
-                
+            FetchState::Idle if !self.fetch_suspended => {
+
                 if self.queue_op == QueueOp::Flush {
                     //trace_print!(self, "Flush scheduled fetch!");
-                    self.biu_schedule_fetch();
+                    self.biu_schedule_fetch(2);
                 }
                 
                 if (self.bus_status == BusStatus::Passive) && (self.t_cycle == TCycle::T1) {
@@ -512,7 +448,7 @@ impl Cpu {
         self.queue_op = QueueOp::Idle;
 
         self.instr_cycle += 1;
-        self.instr_elapsed += 1;
+
         self.cycle_num += 1;
         self.wait_states = self.wait_states.saturating_sub(1);
 
@@ -531,8 +467,87 @@ impl Cpu {
 
     }
 
+    pub fn do_bus_transfer(&mut self) {
+
+        let byte;
+
+        match (self.bus_status, self.transfer_size) {
+            (BusStatus::CodeFetch, TransferSize::Byte) => {
+                (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
+                self.data_bus = byte as u16;
+
+                validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Mem, ReadType::Code);
+            }
+            (BusStatus::CodeFetch, TransferSize::Word) => {
+                (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
+            }
+            (BusStatus::MemRead, TransferSize::Byte) => {
+                (byte, _) = self.bus.read_u8(self.address_bus as usize, self.instr_elapsed).unwrap();
+                self.instr_elapsed = 0;
+                self.data_bus = byte as u16;
+
+                validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Mem, ReadType::Data);
+            }                            
+            (BusStatus::MemRead, TransferSize::Word) => {
+                (self.data_bus, _) = self.bus.read_u16(self.address_bus as usize, self.instr_elapsed).unwrap();
+                self.instr_elapsed = 0;
+            }                         
+            (BusStatus::MemWrite, TransferSize::Byte) => {
+                self.i8288.mwtc = true;
+                _ = 
+                    self.bus.write_u8(
+                        self.address_bus as usize, 
+                        (self.data_bus & 0x00FF) as u8, 
+                        self.instr_elapsed
+                    ).unwrap();
+                self.instr_elapsed = 0;
+
+                validate_write_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Mem );
+            }
+            (BusStatus::MemWrite, TransferSize::Word) => {
+                self.i8288.mwtc = true;
+                _ = self.bus.write_u16(self.address_bus as usize, self.data_bus, self.instr_elapsed).unwrap();
+                self.instr_elapsed = 0;
+            }
+            (BusStatus::IoRead, TransferSize::Byte) => {
+                self.i8288.iorc = true;
+                byte = self.bus.io_read_u8((self.address_bus & 0xFFFF) as u16, self.instr_elapsed);
+                self.data_bus = byte as u16;
+                self.instr_elapsed = 0;
+
+                validate_read_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Io, ReadType::Data);
+            }
+            (BusStatus::IoWrite, TransferSize::Byte) => {
+                self.i8288.iowc = true;
+                self.bus.io_write_u8(
+                    (self.address_bus & 0xFFFF) as u16, 
+                    (self.data_bus & 0x00FF) as u8,
+                    self.instr_elapsed
+                );
+                self.instr_elapsed = 0;
+
+                validate_write_u8!(self, self.address_bus, (self.data_bus & 0x00FF) as u8, BusType::Io );
+            }          
+            (BusStatus::InterruptAck, TransferSize::Byte) => {
+                // The vector is read from the PIC directly before we even enter an INTA bus state, so there's
+                // nothing to do.
+
+                // Deassert lock 
+                if self.transfer_n == 1 {
+                    //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
+                    self.lock = false;
+                }
+                self.transfer_n += 1;
+            }
+            _=> {
+                trace_print!(self, "Unhandled bus state!");
+                log::warn!("Unhandled bus status: {:?}!", self.bus_status);
+            }
+        }
+    }
+
     pub fn begin_fetch(&mut self) {
-        if let BiuState::Operating | BiuState::Resuming(1) = self.biu_state {
+        if let BiuStateNew::Prefetch | BiuStateNew::ToPrefetch(_) = self.biu_state_new {
             //trace_print!(self, "scheduling fetch: {}", self.queue.len());
             
             if self.biu_queue_has_room() {
@@ -550,13 +565,17 @@ impl Cpu {
                     TransferSize::Byte => OperandSize::Operand8,
                     TransferSize::Word => OperandSize::Operand16
                 };
-                self.transfer_n = 0;
+                self.transfer_n = 1;
+                self.final_transfer = true;
             }
             else if !self.bus_pending_eu {
                 // Cancel fetch if queue is full and no pending bus request from EU that 
                 // would otherwise trigger an abort.
                 self.biu_abort_fetch_full();
             }
+        }
+        else {
+            log::error!("Tried to fetch in invalid BIU state: {:?}", self.biu_state_new);
         }
     }
 

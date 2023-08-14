@@ -32,20 +32,6 @@
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
 
-#[derive (Debug, PartialEq)]
-pub enum BiuState {
-    Operating,
-    Suspended,
-    SDelayed(u8),
-    Resuming(u8)
-}
-
-impl Default for BiuState {
-    fn default() -> Self {
-        BiuState::Operating
-    }
-}
-
 pub enum ReadWriteFlag {
     Normal,
     RNI
@@ -186,7 +172,7 @@ impl Cpu {
             //self.trace_comment("Q_READ");
             byte = self.queue.pop();
             self.last_queue_direction = QueueDirection::Read;
-            self.biu_resume_on_queue_read();
+            self.biu_fetch_on_queue_read();
         }
         else {
             // Queue is empty, wait for a byte to be fetched into the queue then return it.
@@ -231,130 +217,149 @@ impl Cpu {
         byte
     }
 
-    pub fn biu_resume_on_queue_read(&mut self) {
-
-        if matches!(self.biu_state, BiuState::Suspended) {
-            match self.cpu_type {
-                // 8088 will have room in queue at 3 bytes,
-                // 8086 will have room in queue at 4 bytes
-                CpuType::Intel8088 => {
-                    if self.queue.len() == 3 {
-                        self.biu_state = BiuState::Resuming(3);
-                        //trace_print!(self, "Resuming from suspend due to queue read.");                        
-                        self.biu_schedule_fetch();
-                    }
-                }
-                CpuType::Intel8086 => {
-                    if self.queue.len() == 4 {
-                        // We can fetch again after this read
-                        self.biu_state = BiuState::Resuming(3);
-                        self.biu_schedule_fetch();
-                    }
-                }
-            }
+    pub fn biu_fetch_on_queue_read(&mut self) {
+        // TODO: What if queue is read during transitional state?
+        if matches!(self.biu_state_new, BiuStateNew::Idle) && self.queue.len() == 3 {
+            self.biu_change_state(BiuStateNew::Prefetch);
+            //trace_print!(self, "Transitioning BIU from idle to prefetch due to queue read.");                        
+            self.biu_schedule_fetch(3);
         }
     }
 
-    /*
-    pub fn biu_queue_fetch(&mut self, bus: &mut BusInterface) {
+    /// This function will cycle the CPU until a byte is available in the instruction queue,
+    /// then read it out, to prepare for execution of the next instruction. 
+    /// 
+    /// We consider this byte 'preloaded' - this does not correspond to a real CPU state
+    pub fn biu_fetch_next(&mut self) {
 
-        self.biu_bus_begin(BusStatus::CodeFetch, self.pc, 0, TransferSize::Byte);
-        self.bus_wait_finish();
-        /*
-        let byte;
-        let _cost;
-        if self.cycle_state == CycleState::T3 {
-            (byte, _cost) = bus.read_u8(self.pc as usize).unwrap();
-            // TODO: Handle wait states here
-
-            #[cfg(feature = "cpu_validator")]
-            {
-                // Validator code fetch
-                self.validator.as_mut().unwrap().emu_read_byte(self.pc, byte, ReadType::Code);
+        // Don't fetch if we are in a string instruction that is still repeating.
+        if !self.in_rep {
+            self.trace_comment("FETCH");
+            let mut finalize_timeout = 0;
+            
+            /*
+            if MICROCODE_FLAGS_8088[self.mc_pc as usize] == RNI {
+                trace_print!(self, "Executed terminating RNI!");
             }
-            // Proceed to T4 and store byte
-            self.cycle();
-            //self.queue.push();
-            self.pc += 1;
+            */
+
+            if self.queue.len() == 0 {
+                while { 
+                    if self.nx {
+                        self.trace_comment("NX");
+                        self.next_mc();
+                        self.nx = false;
+                        self.rni = false;
+                    }
+                    self.cycle();
+                    self.mc_pc = MC_NONE;
+                    finalize_timeout += 1;
+                    if finalize_timeout == 20 {
+                        self.trace_flush();
+                        panic!("FETCH timeout! wait states: {}", self.wait_states);
+                    }
+                    self.queue.len() == 0
+                } {}
+                // Should be a byte in the queue now. Preload it
+                self.queue.set_preload();
+                self.queue_op = QueueOp::First;
+                self.last_queue_direction = QueueDirection::Read;
+                self.trace_comment("FETCH_END");
+                self.cycle();
+            }
+            else {
+                self.queue.set_preload();
+                self.queue_op = QueueOp::First;
+                self.last_queue_direction = QueueDirection::Read;
+
+                // Check if reading the queue will resume the BIU if stalled.
+                self.biu_fetch_on_queue_read();
+
+                if self.nx {
+                    self.trace_comment("NX");
+                    self.next_mc();
+                }
+
+                if self.rni {
+                    self.trace_comment("RNI");
+                    self.rni = false;
+                }
+                
+                self.trace_comment("FETCH_END");
+                self.cycle();
+            }
         }
-        self.bus_status = BusStatus::Passive;
-        */
     }
-    */
 
     pub fn biu_suspend_fetch(&mut self) {
         self.trace_comment("SUSP");
         self.fetch_suspended = true;
+        self.fetch_state = FetchState::Idle;
 
         // SUSP waits for any current fetch to complete.
         if self.bus_status == BusStatus::CodeFetch {
             self.biu_bus_wait_finish();
-            //self.cycle();
+            self.biu_change_state(BiuStateNew::Idle);
+            self.cycle();
         }
-
-        self.biu_state = BiuState::Suspended;
+        else {
+            // new state logic: transition to B_idle
+            self.biu_change_state(BiuStateNew::Idle);
+        }
     }
 
+    /*
     pub fn biu_suspend_fetch_i(&mut self, mc: u16) {
         self.trace_comment("SUSP");
         self.fetch_suspended = true;
+        self.fetch_state = FetchState::Idle;
+        self.biu_state = BiuState::Suspended;
+        // new state logic: transition to B_idle
+        self.biu_change_state(BiuStateNew::Idle);
 
         // SUSP waits for any current fetch to complete.
         if self.bus_status == BusStatus::CodeFetch {
             self.biu_bus_wait_finish();
-            self.biu_state = BiuState::Suspended;
-            self.cycle_i(mc);
+            
+            //self.cycle_i(mc);
         }
-        else {
-            self.biu_state = BiuState::Suspended;
-        }
-        //trace_print!(self, "Suspending BIU");
-    }    
+    }
+    */    
 
     /// Schedule a prefetch. Depending on queue state, there may be Delay cycles scheduled
     /// that begin after the inital two Scheduled cycles are complete.
-    pub fn biu_schedule_fetch(&mut self) {
+    pub fn biu_schedule_fetch(&mut self, ct: u8) {
         if let FetchState::Scheduled(_) = self.fetch_state {
             // Fetch already scheduled, do nothing
             return
         }
         
-        // The 8088 introduces a 3-cycle scheduling delay when there are 3
-        // bytes in the queue.
-        // The 8086 introduces a 3-cycle scheduling delay when there are either
-        // 3 or 4 bytes in the queue (guessing)
+        // The 8088 applies a 3-cycle fetch delay if:
+        //      - We are scheduling a prefetch during a CODE fetch
+        //      - The queue length was 3 at the beginning of T3
 
-        if self.bus_status == BusStatus::CodeFetch && 
-            (
-                self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)
-            ) 
+        // If we are in some kind of bus transfer (not passive) then add any wait states that 
+        // might apply.
+        let schedule_adjust = if self.bus_status != BusStatus::Passive {
+            self.wait_states as u8
+        }
+        else {
+            0
+        };
+
+        if self.bus_status == BusStatus::CodeFetch 
+            && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)) 
         {
-            self.fetch_state = FetchState::Scheduled(2);
+            self.fetch_state = FetchState::Scheduled(ct + schedule_adjust);
             self.next_fetch_state = FetchState::Delayed(3);
         }
         else {
-            self.fetch_state = FetchState::Scheduled(2);
+            self.fetch_state = FetchState::Scheduled(ct + schedule_adjust);
             self.next_fetch_state = FetchState::InProgress;
         };
 
-        /*
-        match self.cpu_type {
-            CpuType::Intel8088 => {
-                match self.queue.len() {
-                    0..=2 => self.fetch_state = FetchState::Scheduled(2),
-                    3 => self.fetch_state = FetchState::Scheduled(fetch_delay),
-                    _ => {}
-                }
-            }
-            CpuType::Intel8086 => {
-                match self.queue.len() {
-                    0..=2 => self.fetch_state = FetchState::Scheduled(2),
-                    3..=4 => self.fetch_state = FetchState::Scheduled(fetch_delay),
-                    _ => {}
-                }
-            }
-        }
-        */
+        // new bus logic: transition to PF state
+        self.biu_change_state(BiuStateNew::Prefetch);
     }
 
     /// Abort a fetch that has just started (on T1) due to an EU bus request on previous
@@ -366,15 +371,21 @@ impl Cpu {
         self.bus_status = BusStatus::Passive;
         self.i8288.ale = false;
         self.trace_comment("ABORT");
+
+        // new bus logic: transition to EU state
+        self.biu_change_state(BiuStateNew::Eu);
+        
         self.cycles(2);
     }
 
     /// Abort a scheduled fetch when it cannot be completed because the queue is full.
     pub fn biu_abort_fetch_full(&mut self) {
-        self.biu_state = BiuState::Suspended;
+
+        // new bus logic: Enter idle state when we can't fetch.
+        self.biu_change_state(BiuStateNew::Idle);
         self.fetch_state = FetchState::Idle;
         self.bus_status = BusStatus::Passive;
-        self.trace_comment("BIU_STALL");
+        self.trace_comment("BIU_IDLE");
     }
 
     /*
@@ -405,11 +416,8 @@ impl Cpu {
         self.fetch_state = FetchState::Idle;
         self.fetch_suspended = false;
 
-        // BIU can be resumed after a SUSP by a request from the EU.
-        // So don't enter resuming state unless we are still suspended.
-        if self.biu_state == BiuState::Suspended {
-            self.biu_state = BiuState::Resuming(3);
-        }
+        // new state logic: enter prefetch state
+        self.biu_change_state(BiuStateNew::Prefetch);
     }
 
     pub fn biu_update_pc(&mut self) {
@@ -439,48 +447,74 @@ impl Cpu {
         }
     }
 
-    pub fn biu_make_fetch_decision(&mut self) {
-        /*
-        if self.biu_queue_has_room() && !self.bus_pending_eu && !self.fetch_suspended {
-            self.biu_schedule_fetch();
-        }
-        */
+    /// This function handles the logic performed by the BIU on T3 of a bus transfer to 
+    /// potentially change BIU states.
+    pub fn biu_make_biu_decision(&mut self) {
 
         if (self.queue.len() == 3 && self.queue_op == QueueOp::Idle) || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle) {
             self.trace_comment("THREE");
         }
 
-        // If the BIU is operating, we can schedule a fetch if the EU does not own the bus
-        let can_fetch = match (&self.biu_state, &self.fetch_state) {
-            (_, FetchState::BlockedByEU) => false,  // 
-            (BiuState::Operating, _) => true,
-            _=> false
-        };
-
-        /*
-        //if self.biu_queue_has_room() && can_fetch && self.queue_op != QueueOp::Flush {
-        if can_fetch && self.queue_op != QueueOp::Flush { 
-            // 8088 schedules fetch even when queue is full
-            self.biu_schedule_fetch();
+        if self.fetch_state == FetchState::BlockedByEU {
+            // EU has claimed the bus this m-cycle, so transition to EU state.
+            self.biu_change_state(BiuStateNew::Eu);
         }
-        */
-
-        if can_fetch {
-            self.biu_schedule_fetch();
+        else {
+            // EU has not claimed the bus, attempt to prefetch...
+            if self.biu_queue_has_room() {
+                if !self.fetch_suspended {
+                    self.biu_schedule_fetch(2);
+                }
+            }
+            else {
+                // No room in queue for fetch. Transition to idle state!
+                self.biu_change_state(BiuStateNew::Idle);
+            }
         }
     }
 
+    /// Transition the BIU state machine to a new state. 
+    /// We must enter a transitional state to get to the requested state.
+    pub fn biu_change_state(&mut self, new_state: BiuStateNew) {
+
+        self.biu_state_new = match (self.biu_state_new, new_state) {
+            (BiuStateNew::Idle, BiuStateNew::Eu) => BiuStateNew::ToEu(3),
+            (BiuStateNew::Idle, BiuStateNew::Prefetch) => BiuStateNew::ToPrefetch(3),
+            (BiuStateNew::Prefetch, BiuStateNew::Idle) => BiuStateNew::ToIdle(1),
+            (BiuStateNew::Prefetch, BiuStateNew::Eu) => BiuStateNew::ToEu(2),
+            (BiuStateNew::Eu, BiuStateNew::Idle) => BiuStateNew::ToIdle(1),
+            (BiuStateNew::Eu, BiuStateNew::Prefetch) => BiuStateNew::ToPrefetch(2),
+            _ => self.biu_state_new
+        }
+    }
+
+    /// Tick the current BIU state machine state and resolve transitional states
+    /// when associated timer has expired.
     #[inline]
-    pub fn biu_tick_state(&mut self) {
+    pub fn biu_tick_state(&mut self) { 
 
-        if let BiuState::Resuming(ref mut c) = self.biu_state {
-            *c = c.saturating_sub(1);
-
-            // Resume BIU if resume operation completed
-            if *c == 0 {
-                self.biu_state = BiuState::Operating;
+        self.biu_state_new = match self.biu_state_new {
+            BiuStateNew::Idle | BiuStateNew::Prefetch | BiuStateNew::Eu => self.biu_state_new,
+            BiuStateNew::ToIdle(_) => BiuStateNew::Idle,
+            BiuStateNew::ToPrefetch(ref mut c) => {
+                *c = c.saturating_sub(1);
+                if *c == 0 {
+                    BiuStateNew::Prefetch
+                }
+                else {
+                    BiuStateNew::ToPrefetch(*c)
+                }
             }
-        }       
+            BiuStateNew::ToEu(ref mut c) => {
+                *c = c.saturating_sub(1);
+                if *c == 0 {
+                    BiuStateNew::Eu
+                }
+                else {
+                    BiuStateNew::ToEu(*c)
+                }
+            }
+        }
     }
 
     #[inline]
@@ -819,44 +853,27 @@ impl Cpu {
         }
     }
 
-    /// If the BIU state is not Operating, wait until it is.
-    pub fn biu_bus_wait_for_resume(&mut self) -> u32 {
-        let mut bus_cycles_elapsed = 0;
-
-        loop {
-            match self.biu_state {
-                BiuState::Operating => {
-                    return bus_cycles_elapsed;
-                }
-                BiuState::Resuming(_) => {
-                    self.cycle();
-                    bus_cycles_elapsed += 1;
-                    continue;
-                }
-                BiuState::Suspended => {
-                    return 0
-                }
-                BiuState::SDelayed(_) => {
-                    return 0
-                }
-            }
-        }
-    }
-
     /// If the fetch state is Delayed(_), wait until it is not.
-    pub fn biu_bus_wait_on_delay(&mut self) -> u32 {
-        let mut delay_cycles_elapsed = 0;
+    pub fn biu_bus_wait_on_delay(&mut self) {
         loop {
             if let FetchState::Delayed(_) = self.fetch_state {
                 self.trace_comment("BUS_WAIT_ON_DELAY");
                 self.cycle();
-                delay_cycles_elapsed += 1;
             }
             else {
                 break
             }
         }
-        delay_cycles_elapsed
+    }
+
+    /// If the BIU state is a transitional state, wait until it is not.
+    pub fn biu_wait_for_transition(&mut self) {
+        loop {
+            match self.biu_state_new {
+                BiuStateNew::ToEu(_) | BiuStateNew::ToPrefetch(_) | BiuStateNew::ToIdle(_) => self.cycle(),
+                _ => break
+            }
+        }
     }
 
     /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
@@ -960,11 +977,6 @@ impl Cpu {
         if new_bus_status != BusStatus::CodeFetch {
             // The EU has requested a Read/Write cycle, if we haven't scheduled a prefetch, block 
             // prefetching until the bus transfer is complete.
-
-            if self.transfer_n == 0 {
-                // On first transfer, advance MC PC to next instruction.
-                self.next_mc();
-            }
             
             self.bus_pending_eu = true; 
             match self.fetch_state {
@@ -972,7 +984,7 @@ impl Cpu {
                     // Can't block prefetching if already scheduled.
                 }
                 _ => {
-                    if self.is_before_last_wait() && !self.fetch_suspended {
+                    if self.is_before_t3() { //&& !matches!(self.biu_state_new, BiuStateNew::Idle) {
                         // We can prevent any prefetch from being scheduled this cycle by 
                         // if the request comes in before T3/TwLast. This 'claims' the bus
                         // for the EU.
@@ -989,18 +1001,20 @@ impl Cpu {
 
         // If there was an active bus cycle, we're now on T4 - tick over to T1 to get 
         // ready to start the new bus cycle. This will trigger the prefetcher, which
-        // will use the 'bus_pending_eu' flag to suppress certain behavior (ie, don't
-        // suspend BIU on pending bus request)
+        // will use the 'bus_pending_eu' flag to suppress certain behavior
         if self.t_cycle == TCycle::T4 {
             self.cycle();
             _waited_cycles += 1;
         }
         
         // Wait until we have left Resuming biu state (biu_state was BiuState::Resuming)
-        _waited_cycles += self.biu_bus_wait_for_resume();
+        //_waited_cycles += self.biu_bus_wait_for_resume();
+
+        // Wait for any transitional BIU state to complete.
+        self.biu_wait_for_transition();
 
         // Wait until we have left Delayed fetch state (fetch_state was FetchState::Delayed)
-        _waited_cycles += self.biu_bus_wait_on_delay();
+        self.biu_bus_wait_on_delay();
 
         // Release our lock on the bus.
         if self.fetch_state == FetchState::BlockedByEU {
@@ -1009,15 +1023,29 @@ impl Cpu {
         
         self.bus_pending_eu = false;
 
-        // Reset the transfer number if this is the first transfer of a word
-        if first {
-            self.transfer_n = 0;
-        }        
-
-        if new_bus_status == BusStatus::CodeFetch {
-            // Prefetch is starting so reset prefetch scheduled flag
-            self.fetch_state = FetchState::InProgress;
-            self.transfer_n = 0;
+        // Set the final_transfer flag if this is the last bus cycle of an atomic bus transfer
+        // (word read/writes cannot be interrupted by prefetches)
+        if let TransferSize::Word = size {
+            self.transfer_n = 1;
+            self.final_transfer = true;
+        }
+        else if first {
+            self.final_transfer = match op_size {
+                OperandSize::Operand8 => {
+                    self.transfer_n = 1;
+                    true
+                },
+                OperandSize::Operand16 => {
+                    self.transfer_n = 1;
+                    false
+                },
+                _ => panic!("invalid OperandSize")
+            }
+        }    
+        else {
+            // first == false is only possible if doing word transfer on 8088
+            self.transfer_n = 2;
+            self.final_transfer = true;
         }
 
         // When we waited for any bus transfer to complete and then ticked to T1, the bus status is now either:
@@ -1025,6 +1053,7 @@ impl Cpu {
         //      - CodeFetch, in the case a prefetch was scheduled (and we will need to abort it)
         if self.bus_status == BusStatus::Passive || self.bus_status == BusStatus::CodeFetch || self.t_cycle == TCycle::T4 {
 
+            /* 
             // Consider a prefetch to be scheduled in either the scheduled or delayed fetch states.
             // Fetch can be delayed in circumstances like specific queue length (3 for 8088)
             let fetch_scheduled = match self.fetch_state {
@@ -1032,7 +1061,39 @@ impl Cpu {
                 FetchState::Delayed(3) => true,
                 _ => false,
             };
+            */
 
+            // Handle the three main BIU states. (Transitional states are invalid at this point)
+            match self.biu_state_new {
+                BiuStateNew::Eu => {
+                    // Nothing to do; we are in the right state
+                }
+                BiuStateNew::Prefetch => {
+                    // We transitioned to the Prefetch state on T3. We need to perform a prefetch abort
+                    // (transition back to the EU state)
+                    self.biu_abort_fetch();
+                }
+                BiuStateNew::Idle => {
+                    // We transitioned to the Idle state on T3, because prefetching was suspended or the queue was full.
+                    // Transition to EU state to begin bus transfer.
+                    if new_bus_status == BusStatus::Halt {
+                        // There is a one-cycle delay before the Halt status begins.
+                        self.cycle();
+                    }
+                    else if self.transfer_n == 1 {
+                        // Only change state on first byte of any bus operation
+                        self.biu_change_state(BiuStateNew::Eu);
+
+                        // Execute the transition states.
+                        self.cycles(3);
+                    }                                    
+                }
+                _ => {
+                    self.trace_flush();
+                    panic!("Beginning bus transfer in invalid state: {:?}", self.biu_state_new);
+                }
+            }
+            /*
             match self.biu_state {
                 BiuState::Operating => {
                     if new_bus_status != BusStatus::CodeFetch && (fetch_scheduled || self.fetch_state == FetchState::InProgress) {
@@ -1047,7 +1108,7 @@ impl Cpu {
                         // There is a one-cycle delay before the Halt status begins.
                         self.cycle();
                     }
-                    else if self.transfer_n == 0 {
+                    else if self.transfer_n == 1 {
                         // Suspend delays for the BIU only apply to the first byte of a transfer.
 
                         self.biu_state = BiuState::SDelayed(3);
@@ -1068,20 +1129,17 @@ impl Cpu {
                     unreachable!("Shouldn't be in SDelayed state on bus request");
                 }
             }
+            */
 
             // Finally, begin the new bus state.
             self.bus_status = new_bus_status;
             self.bus_segment = bus_segment;
-            self.t_cycle = TCycle::TInit;
+            self.t_cycle = TCycle::Tinit;
             self.address_bus = address;
             self.i8288.ale = true;
             self.data_bus = data as u16;
             self.transfer_size = size;
             self.operand_size = op_size;
-
-            if self.transfer_n > 1 {
-                self.transfer_n = 0;
-            }
         }
         else {
             self.trace_flush();
