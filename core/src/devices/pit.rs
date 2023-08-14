@@ -885,10 +885,13 @@ impl ProgrammableIntervalTimer {
     fn catch_up(&mut self, bus: &mut BusInterface, delta: DeviceRunTimeUnit) {
         // Catch PIT up to CPU.
         let ticks = self.ticks_from_time(delta, self.timewarp);
+
+        //log::debug!("ticking PIT {} times on IO write. delta: {:?} timewarp: {:?}", ticks, delta, self.timewarp);
+
         //self.timewarp = self.time_from_ticks(ticks);
         self.timewarp = delta;  // the above is technically the correct way but it breaks stuff(?)
 
-        //log::debug!("ticking PIT {} times on IO write. delta: {:?}", ticks, delta);
+        
         for _ in 0..ticks {
             self.tick(bus, None)
         }
@@ -1051,6 +1054,8 @@ impl ProgrammableIntervalTimer {
 
         let do_ticks = self.ticks_from_time(run_unit, self.timewarp);
 
+        //log::trace!("doing {} ticks, run_unit: {:?} timewarp: {:?}", do_ticks, run_unit, self.timewarp);
+
         //assert!(do_ticks >= self.timewarp);
 
         self.timewarp = DeviceRunTimeUnit::SystemTicks(0);
@@ -1070,8 +1075,14 @@ impl ProgrammableIntervalTimer {
 
     /// Returns the specified channels' count register (reload value) and counting element
     /// in a tuple.
+    #[inline]
     pub fn get_channel_count(&self, channel: usize) -> (u16, u16) {
         (*self.channels[channel].count_register.get(), *self.channels[channel].counting_element.get())
+    }
+
+    #[inline]
+    pub fn get_timer_accum(&self) -> u32 {
+        self.sys_tick_accumulator
     }
 
     /// Return the dirty flags for the specified timer channel. See the description of is_dirty under Channel.
@@ -1099,6 +1110,8 @@ impl ProgrammableIntervalTimer {
         self.channels[0].tick(bus, None);
         self.channels[1].tick(bus, None);
         self.channels[2].tick(bus, None);
+
+        //log::trace!("tick(): cycle: {} channel 1 count: {}", self.pit_cycles * 4 + 7, *self.channels[1].counting_element);
 
         let mut speaker_sample = *self.channels[2].output && speaker_data;
 

@@ -104,7 +104,7 @@ pub enum DeviceRunTimeUnit {
 }
 
 pub enum DeviceEvent {
-    DramRefreshUpdate(u16, u16),
+    DramRefreshUpdate(u16, u16, u32),
     DramRefreshEnable(bool)
 }
 
@@ -1302,7 +1302,7 @@ impl BusInterface {
     // Schedule extra ticks for the PIT.
     pub fn adjust_pit(&mut self, ticks: u32) {
         log::debug!("Scheduling {} extra system ticks for PIT", ticks);
-        self.pit_ticks_advance = ticks;
+        self.pit_ticks_advance += ticks;
     }
 
     pub fn run_devices(
@@ -1385,42 +1385,6 @@ impl BusInterface {
             ppi.run(pic, us);
         }
 
-        // Has PIT channel 1 (DMA timer) changed?
-        let (pit_dirty, pit_counting, pit_ticked) = pit.is_dirty(1);
-
-        if pit_dirty {
-            log::debug!("Pit is dirty! counting: {} ticked: {}", pit_counting, pit_ticked);
-        }
-        if pit_counting && pit_dirty {
-            let (dma_count_register, dma_counting_element) = pit.get_channel_count(1);
-            log::debug!("pit dirty and counting! count register: {} counting element: {} ", dma_count_register, dma_counting_element);
-            
-            if (dma_counting_element <= dma_count_register) {
-                // DRAM refresh DMA counter has changed. If the counting element is in range,
-                // update the CPU's DRAM refresh simulation.
-                log::debug!("DRAM refresh DMA counter updated: {}, {}", dma_count_register, dma_counting_element);
-                self.dma_counter = dma_count_register;
-    
-                // Invert the dma counter value as Cpu counts up toward total
-
-                if dma_counting_element == 0 && !pit_ticked {
-                    // Counter is still at initial 0 - not a terminal count.
-                    event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, 0));
-                }
-                else {
-                    // Timer is at terminal count!
-                    event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, dma_count_register - dma_counting_element));
-                }
-                self.refresh_active = true;
-            }
-        }
-        else if !pit_counting && self.refresh_active {
-            // Timer 1 isn't counting anymore! Disable DRAM refresh...
-            log::debug!("Channel 1 not counting. Disabling DRAM refresh...");
-            event = Some(DeviceEvent::DramRefreshEnable(false));
-            self.refresh_active = false;
-        }
-
         // Run the PIT. The PIT communicates with lots of things, so we send it the entire bus.
         // The PIT may have a separate clock crystal, such as in the IBM AT. In this case, there may not 
         // be an integer number of PIT ticks per system ticks. Therefore the PIT can take either
@@ -1433,6 +1397,51 @@ impl BusInterface {
             // on an 5150/5160. 
             pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::SystemTicks(sys_ticks + self.pit_ticks_advance));
             self.pit_ticks_advance = 0;
+        }
+
+        // Has PIT channel 1 (DMA timer) changed?
+        let (pit_dirty, pit_counting, pit_ticked) = pit.is_dirty(1);
+
+        if pit_dirty {
+            log::debug!("Pit is dirty! counting: {} ticked: {}", pit_counting, pit_ticked);
+        }
+
+        if pit_counting && pit_dirty {
+            // Pit is dirty and counting. Update the the DMA scheduler.
+
+            let (dma_count_register, dma_counting_element) = pit.get_channel_count(1);
+
+            // Get the timer accumulator to provide tick offset to DMA scheduler.
+            // The timer ticks every 12 system ticks by default on PC/XT; if 11 ticks are stored in the accumulator,
+            // this represents two CPU cycles, so we need to adjust the scheduler by that much.
+            let dma_add_ticks = pit.get_timer_accum();
+
+            log::debug!("pit dirty and counting! count register: {} counting element: {} ", dma_count_register, dma_counting_element);
+            
+            if (dma_counting_element <= dma_count_register) {
+                // DRAM refresh DMA counter has changed. If the counting element is in range,
+                // update the CPU's DRAM refresh simulation.
+                log::debug!("DRAM refresh DMA counter updated: {}, {}, +{}", dma_count_register, dma_counting_element, dma_add_ticks);
+                self.dma_counter = dma_count_register;
+    
+                // Invert the dma counter value as Cpu counts up toward total
+
+                if dma_counting_element == 0 && !pit_ticked {
+                    // Counter is still at initial 0 - not a terminal count.
+                    event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, 0, 0));
+                }
+                else {
+                    // Timer is at terminal count!
+                    event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, dma_counting_element, dma_add_ticks));
+                }
+                self.refresh_active = true;
+            }
+        }
+        else if !pit_counting && self.refresh_active {
+            // Timer 1 isn't counting anymore! Disable DRAM refresh...
+            log::debug!("Channel 1 not counting. Disabling DRAM refresh...");
+            event = Some(DeviceEvent::DramRefreshEnable(false));
+            self.refresh_active = false;
         }
         
         // Save current count info.
@@ -1741,13 +1750,10 @@ impl BusInterface {
 
         // Convert cycles to system clock ticks
         let sys_ticks = match self.cpu_factor {
-            ClockFactor::Divisor(d) => {
-                d as u32 * cycles
-            }
-            ClockFactor::Multiplier(m) => {
-                cycles / m as u32
-            }
+            ClockFactor::Divisor(n) => cycles * (n as u32),
+            ClockFactor::Multiplier(n) => cycles / (n as u32)
         };
+
         let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
 
         if let Some(device_id) = self.io_map.get(&port) {
@@ -1760,6 +1766,7 @@ impl BusInterface {
                 }
                 IoDeviceType::Pit => {
                     if let Some(mut pit) = self.pit.take() {
+                        //log::debug!("writing PIT with {} cycles", cycles);
                         pit.write_u8(port, data, Some(self), DeviceRunTimeUnit::SystemTicks(sys_ticks));
                         self.pit = Some(pit);
                     }

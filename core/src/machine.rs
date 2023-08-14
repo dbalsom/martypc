@@ -716,6 +716,16 @@ impl Machine {
         }
     }
 
+    #[inline]
+    /// Convert a count of system clock ticks to CPU cycles based on the current CPU
+    /// clock divisor.
+    fn system_ticks_to_cpu_cycles(&self, ticks: u32) -> u32 {
+        match self.cpu_factor {
+            ClockFactor::Divisor(n) => (ticks + (n as u32) - 1) / (n as u32),
+            ClockFactor::Multiplier(n) => ticks * (n as u32)
+        }
+    }    
+
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) -> u64 {
 
         let mut kb_event_processed = false;
@@ -1029,7 +1039,7 @@ impl Machine {
         if let Some(event) = device_event {
 
             match event {
-                DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val) => {
+                DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val, dma_tick_adjust) => {
                     self.cpu.set_option(
                         CpuOption::SimulateDramRefresh(
                             true, 
