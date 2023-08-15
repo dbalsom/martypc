@@ -1,6 +1,9 @@
 
-## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-07-XX)
+## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-08-XX)
 
+* Added MMIO peek functions. Allows Memory debug viewer to peek into MMIO regions, if device supports.
+* Brand new, simplified BIU state logic
+* Fixed & Improved DMA refresh scheduling. (Fixes 8088MPH CPU test)
 * Fixed issue where Call Stack could grow uncontrollably with recursive code or interrupts
 * Fixed CS:IP reporting in Instruction trace mode logs
 * Fixed memory leak in Instruction trace mode (thanks Folkert)

@@ -758,6 +758,7 @@ pub struct Cpu
     dram_refresh_cycle_num: u32,
     dram_refresh_adjust: u32,
     dma_aen: bool,
+    dma_wait_states: u32,
 
     // Trap stuff
     trap_enable_delay: u32,             // Number of cycles to delay trap flag enablement. 
@@ -964,9 +965,10 @@ pub enum FetchState {
     Suspended,
     InProgress,
     Scheduled(u8),
+    ScheduleNext,
     Delayed(u8),
     DelayDone,
-    Aborted(u8),
+    Aborting(u8),
     BlockedByEU
 }
 
@@ -1168,7 +1170,7 @@ impl Cpu {
     pub fn is_last_wait(&self) -> bool {
         match self.t_cycle {
             TCycle::T3 | TCycle::Tw => {
-                if self.wait_states == 0 {
+                if self.wait_states == 0 && self.dma_wait_states == 0 {
                     true
                 }
                 else {
@@ -1184,7 +1186,7 @@ impl Cpu {
         match self.t_cycle {
             TCycle::T1 | TCycle::T2 => true,
             TCycle::T3 | TCycle::Tw => {
-                if self.wait_states != 0 {
+                if self.wait_states > 0 || self.dma_wait_states > 0 {
                     true
                 }
                 else {

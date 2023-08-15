@@ -338,6 +338,7 @@ impl Cpu {
         //      - We are scheduling a prefetch during a CODE fetch
         //      - The queue length was 3 at the beginning of T3
 
+        /*
         // If we are in some kind of bus transfer (not passive) then add any wait states that 
         // might apply.
         let schedule_adjust = if self.bus_status != BusStatus::Passive {
@@ -346,17 +347,34 @@ impl Cpu {
         else {
             0
         };
+        */
 
-        if self.bus_status == BusStatus::CodeFetch 
-            && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)) 
-        {
-            self.fetch_state = FetchState::Scheduled(ct + schedule_adjust);
-            self.next_fetch_state = FetchState::Delayed(3);
+        if ct == 0 {
+            // Schedule count of 0 indicates fetch after bus transfer is complete, ie, ScheduleNext
+            if self.bus_status == BusStatus::CodeFetch 
+                && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)) 
+            {
+                self.fetch_state = FetchState::ScheduleNext;
+                self.next_fetch_state = FetchState::Delayed(3);
+            }
+            else {
+                self.fetch_state = FetchState::ScheduleNext;
+                self.next_fetch_state = FetchState::InProgress;
+            };
         }
         else {
-            self.fetch_state = FetchState::Scheduled(ct + schedule_adjust);
-            self.next_fetch_state = FetchState::InProgress;
-        };
+            
+            if self.bus_status == BusStatus::CodeFetch 
+                && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)) 
+            {
+                self.fetch_state = FetchState::Scheduled(ct);
+                self.next_fetch_state = FetchState::Delayed(3);
+            }
+            else {
+                self.fetch_state = FetchState::Scheduled(ct);
+                self.next_fetch_state = FetchState::InProgress;
+            };
+        }
 
         // new bus logic: transition to PF state
         self.biu_change_state(BiuStateNew::Prefetch);
@@ -366,7 +384,7 @@ impl Cpu {
     /// T3 or later. This incurs two penalty cycles.
     pub fn biu_abort_fetch(&mut self) {
 
-        self.fetch_state = FetchState::Aborted(2);
+        self.fetch_state = FetchState::Aborting(2);
         self.t_cycle = TCycle::T1;
         self.bus_status = BusStatus::Passive;
         self.i8288.ale = false;
@@ -463,7 +481,7 @@ impl Cpu {
             // EU has not claimed the bus, attempt to prefetch...
             if self.biu_queue_has_room() {
                 if !self.fetch_suspended {
-                    self.biu_schedule_fetch(2);
+                    self.biu_schedule_fetch(0);
                 }
             }
             else {
@@ -533,7 +551,7 @@ impl Cpu {
             FetchState::Scheduled(c) => {
                 *c = c.saturating_sub(1);
             }
-            FetchState::Aborted(c) => {
+            FetchState::Aborting(c) => {
                 *c = c.saturating_sub(1);
 
                 if *c == 0 {

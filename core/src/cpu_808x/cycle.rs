@@ -228,11 +228,11 @@ impl Cpu {
         // Do DRAM refresh (DMA channel 0) simulation
         if self.enable_wait_states && self.dram_refresh_simulation {
 
-            self.dram_refresh_cycle_num -= 1;
+            self.dram_refresh_cycle_num = self.dram_refresh_cycle_num.saturating_sub(1);
 
             match &mut self.dma_state {
                 DmaState::Idle => {
-                    if self.dram_refresh_cycle_num == 0 {
+                    if self.dram_refresh_cycle_num == 0 && self.dram_refresh_cycle_period > 0 {
                         // DRAM refresh cycle counter has hit terminal count. 
                         // Begin DMA transfer simulation by issuing a DREQ.
                         self.dma_state = DmaState::Dreq;
@@ -282,8 +282,7 @@ impl Cpu {
                     *cycles = cycles.saturating_sub(1);
                     if *cycles == 3 {
                         // DMAWAIT asserted on S2
-                        self.wait_states += 7; // Effectively 6 as this is decremented this cycle
-                        //self.wait_states += 6_u32.saturating_sub(self.wait_states);
+                        self.dma_wait_states = 7; // Effectively 6 as this is decremented this cycle
                         self.ready = false;
                     }
                     if *cycles == 0 {
@@ -338,7 +337,7 @@ impl Cpu {
             TCycle::T2 => TCycle::T3,
             TCycle::T3 => {
                 // If no wait states have been reported, advance to T3, otherwise go to Tw
-                if self.wait_states == 0 {
+                if self.wait_states == 0 && self.dma_wait_states == 0 {
                     self.biu_bus_end();
                     TCycle::T4
                 }
@@ -349,7 +348,7 @@ impl Cpu {
             TCycle::Tw => {
                 // If we are handling wait states, continue in Tw (decrement at end of cycle)
                 // If we have handled all wait states, transition to T4
-                if self.wait_states > 0 {
+                if self.wait_states > 0 || self.dma_wait_states > 0 {
                     //log::debug!("wait states: {}", self.wait_states);
                     TCycle::Tw
                 }
@@ -369,17 +368,7 @@ impl Cpu {
         self.biu_tick_prefetcher();
 
         match self.fetch_state {
-            FetchState::Scheduled(1) => {
-                //trace_print!(self, "fetch decision: {}", self.queue.len());
-                if (self.queue.len() == 3 && self.queue_op == QueueOp::Idle) 
-                    || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle) 
-                {
-                    if self.bus_status == BusStatus::CodeFetch {
-                        //trace_print!(self, "fetch delay here?");
-                    }
-                }
-            }
-            FetchState::Scheduled(0) => {
+            FetchState::ScheduleNext | FetchState::Scheduled(0) => {
                 // A fetch is scheduled for this cycle; however we may have additional delays to process.
 
                 // If bus_pending_eu is true, then we arrived here during biu_bus_begin. 
@@ -387,32 +376,16 @@ impl Cpu {
                 // In that case, we should do nothing instead of transitioning to a new fetch state.
                 if !self.bus_pending_eu {
 
-                    // Check if we are entering Delayed fetch states, but the queue is full. 
-                    if !self.biu_queue_has_room() && matches!(self.next_fetch_state, FetchState::Delayed(_)) {
-                    
-                        if self.bus_pending_eu {
-                            // Don't stall the BIU if there is pending bus request from the EU - we are likely
-                            // in bus_begin() and will process an abort instead.                            
-                            self.trace_comment("SHOULD ABORT!");
+                    if let BusStatus::Passive = self.bus_status {       
+                
+                        // Begin a fetch if we are not transitioning into any delay state, otherwise transition
+                        // into said state.
+                        if self.next_fetch_state == FetchState::InProgress {
+                            self.begin_fetch();
                         }
                         else {
-                            //self.biu_abort_fetch_full();
+                            self.fetch_state = self.next_fetch_state;
                         }
-                    }
-                    else if self.last_queue_delay == QueueDelay::Read && !self.fetch_suspended {
-                        // Sc2 delay
-
-                        //self.next_fetch_state = FetchState::Delayed(2);
-                        //self.trace_comment("DELAY2");
-                    }                
-                
-                    // Begin a fetch if we are not transitioning into any delay state, otherwise transition
-                    // into said state.
-                    if self.next_fetch_state == FetchState::InProgress {
-                        self.begin_fetch();
-                    }
-                    else {
-                        self.fetch_state = self.next_fetch_state;
                     }
                 }
             }
@@ -451,6 +424,7 @@ impl Cpu {
 
         self.cycle_num += 1;
         self.wait_states = self.wait_states.saturating_sub(1);
+        self.dma_wait_states = self.dma_wait_states.saturating_sub(1);
 
         /* 
         // Try to catch a runaway instruction?
