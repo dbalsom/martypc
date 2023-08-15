@@ -112,6 +112,8 @@ pub trait MemoryMappedDevice {
     fn get_read_wait(&mut self, address: usize, cycles: u32) -> u32;
     fn mmio_read_u8(&mut self, address: usize, cycles: u32) -> (u8, u32);
     fn mmio_read_u16(&mut self, address: usize, cycles: u32) -> (u16, u32);
+    fn mmio_peek_u8(&self, address: usize) -> u8;
+    fn mmio_peek_u16(&self, address: usize) -> u16;
 
     fn get_write_wait(&mut self, address: usize, cycles: u32) -> u32;
     fn mmio_write_u8(&mut self, address: usize, data: u8, cycles: u32) -> u32; 
@@ -699,6 +701,51 @@ impl BusInterface {
         Err(MemError::ReadOutOfBoundsError)
     }
 
+    pub fn peek_u8(&self, address: usize) -> Result<u8, MemError> {
+        if address < self.memory.len() {
+            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+                // Address is not mapped.
+                let b: u8 = self.memory[address];
+                return Ok(b)
+            }
+            else {
+                // Handle memory-mapped devices
+                for map_entry in &self.mmio_map {
+                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
+
+                        match map_entry.1 {
+                            MmioDeviceType::Video => {
+                                match &self.video {
+                                    VideoCardDispatch::Cga(cga) => {
+                                        let data = MemoryMappedDevice::mmio_peek_u8(cga, address);
+                                        return Ok(data);
+                                    }
+                                    #[cfg(feature = "ega")]
+                                    VideoCardDispatch::Ega(ega) => {
+                                        let data = MemoryMappedDevice::mmio_peek_u8(ega, address);
+                                        return Ok(data);
+                                    }
+                                    #[cfg(feature = "vga")]
+                                    VideoCardDispatch::Vga(vga) => {
+                                        let data = MemoryMappedDevice::mmio_peek_u8(vga, address);
+                                        return Ok(data);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _=> {}
+                        }
+                        return Err(MemError::MmioError)
+                    }
+                }
+                // We didn't match any mmio devices, return raw memory
+                let b: u8 = self.memory[address];
+                return Ok(b)
+            }
+        }
+        Err(MemError::ReadOutOfBoundsError)
+    }
+
     pub fn read_u16(&mut self, address: usize, cycles: u32) -> Result<(u16, u32), MemError> {
         if address < self.memory.len() - 1 {
             if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
@@ -1065,6 +1112,103 @@ impl BusInterface {
                     SyntaxToken::MemoryByteAsciiValue(
                         (display_address + i) as u32,
                         *byte,
+                        char_str, 
+                        0
+                    )
+                );
+                i += 1;
+            }
+
+            vec.push(line_vec);
+            display_address += 16;
+        }
+
+        vec
+    }
+
+    /// Dump memory to a vector of vectors of SyntaxTokens.
+    /// 
+    /// Uses bus peek functions to resolve MMIO addresses.
+    pub fn dump_flat_tokens_ex(&self, address: usize, cursor: usize, mut size: usize) -> Vec<Vec<SyntaxToken>> {
+
+        let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
+
+        if address >= self.memory.len() {
+            // Start address is invalid. Send only an error token.
+            let mut linevec = Vec::new();
+
+            linevec.push(SyntaxToken::ErrorString("REQUEST OUT OF BOUNDS".to_string()));
+            vec.push(linevec);
+
+            return vec;
+        }
+        else if address + size >= self.memory.len() {
+            // Request size invalid. Send truncated result.
+            let new_size = size - ((address + size) - self.memory.len());
+            size = new_size
+        }
+
+        let addr_vec = Vec::from_iter(address..address+size);
+        let mut display_address = address;
+
+        for dump_addr_row in addr_vec.chunks_exact(16) {
+
+            let mut line_vec = Vec::new();
+
+            // Push memory flat address tokens
+            line_vec.push(
+                SyntaxToken::MemoryAddressFlat(
+                    display_address as u32,
+                    format!("{:05X}", display_address)
+                )
+            );
+
+            // Build hex byte value tokens
+            let mut i = 0;
+            for addr in dump_addr_row {
+
+                let byte = self.peek_u8(*addr).unwrap();
+
+                if (display_address + i) == cursor {
+                    line_vec.push(
+                        SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32, 
+                            byte,
+                            format!("{:02X}", byte),
+                            true, // Set cursor on this byte
+                            0
+                        )
+                    );
+                }
+                else {
+                    line_vec.push(
+                        SyntaxToken::MemoryByteHexValue(
+                            (display_address + i) as u32, 
+                            byte,
+                            format!("{:02X}", byte),
+                            false,
+                            0
+                        )
+                    );
+                }
+                i += 1;
+            }
+
+            // Build ASCII representation tokens
+            let mut i = 0;
+            for addr in dump_addr_row {
+
+                let byte = self.peek_u8(*addr).unwrap();
+
+                let char_str = match byte {
+                    00..=31 => ".".to_string(),
+                    32..=127 => format!("{}", byte as char),
+                    128.. => ".".to_string()
+                };
+                line_vec.push(
+                    SyntaxToken::MemoryByteAsciiValue(
+                        (display_address + i) as u32,
+                        byte,
                         char_str, 
                         0
                     )

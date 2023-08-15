@@ -1980,6 +1980,36 @@ impl MemoryMappedDevice for VGACard {
         ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
+    fn mmio_peek_u8(&self, address: usize) -> u8 {
+        // RAM Enable disables memory mapped IO
+        if !self.misc_output_register.enable_ram() {
+            return 0;
+        }
+
+        // Validate address is within current memory map and get the offset into VRAM
+        let offset = match self.plane_bounds_check(address) {
+            Some(offset) => offset,
+            None => return 0
+        };
+
+        self.planes[0].buf[offset]
+    }
+
+    fn mmio_peek_u16(&self, address: usize) -> u16 {
+        // RAM Enable disables memory mapped IO
+        if !self.misc_output_register.enable_ram() {
+            return 0;
+        }
+
+        // Validate address is within current memory map and get the offset into VRAM
+        let offset = match self.plane_bounds_check(address) {
+            Some(offset) => offset,
+            None => return 0
+        };
+
+        (self.planes[0].buf[offset] as u16) << 8 | self.planes[0].buf[offset + 1] as u16
+    }    
+
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
 
         // RAM Enable disables memory mapped IO

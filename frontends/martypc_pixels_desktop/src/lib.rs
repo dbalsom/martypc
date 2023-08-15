@@ -1805,7 +1805,7 @@ pub fn run() {
                             None => (0,0)
                         };
 
-                        let mem_dump_vec = machine.bus().dump_flat_tokens(mem_dump_addr as usize, addr as usize, 256);
+                        let mem_dump_vec = machine.bus().dump_flat_tokens_ex(mem_dump_addr as usize, addr as usize, 256);
                     
                         //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
                         framework.gui.memory_viewer.set_memory(mem_dump_vec);

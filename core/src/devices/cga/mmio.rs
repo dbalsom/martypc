@@ -108,6 +108,20 @@ impl MemoryMappedDevice for CGACard {
         }
     }
 
+    fn mmio_peek_u8(&self, address: usize) -> u8 {
+
+        let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
+
+        self.mem[a_offset]
+    }
+
+    fn mmio_peek_u16(&self, address: usize) -> u16 {
+
+        let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
+
+        (self.mem[a_offset] as u16) << 8 | self.mem[a_offset + 1] as u16
+    }    
+
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
         let a_offset = (address & CGA_MEM_MASK) - CGA_MEM_ADDRESS;
         if a_offset < CGA_MEM_SIZE {
