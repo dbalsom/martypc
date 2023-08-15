@@ -37,7 +37,7 @@
 use crate::bus::{BusInterface, IoDevice, DeviceRunTimeUnit};
 
 
-pub const PIC_INTERRUPT_OFFSET: u8 = 8;
+//pub const PIC_INTERRUPT_OFFSET: u8 = 8;
 
 pub const PIC_COMMAND_PORT: u16 = 0x20;
 pub const PIC_DATA_PORT: u16    = 0x21;
@@ -47,6 +47,8 @@ const ICW1_SINGLE_MODE: u8      = 0b0000_0010; // Bit is set if PIC is operating
 const ICW1_ADI: u8              = 0b0000_0100; // Bit is set if PIC is using a call address interval of 4, otherwise 8
 const ICW1_LTIM: u8             = 0b0000_1000; // Bit is set if PIC is in Level Triggered Mode
 const ICW1_IS_ICW1: u8          = 0b0001_0000; // Bit determines if input is ICW1
+
+const ICW2_MASK: u8             = 0b1111_1000; // Bit mask for ICW2 offset
 
 const ICW4_8088_MODE: u8        = 0b0000_0001; // Bit on if 8086/8088 mode (required)
 const ICW4_AEOI_MODE: u8        = 0b0000_0010; // Bit on if Auto EOI is enabled
@@ -172,7 +174,7 @@ impl Pic {
     pub fn new() -> Self {
         Self {
             init_state: InitializationState::Normal,
-            int_offset: PIC_INTERRUPT_OFFSET,    // Interrupt Vector Offset is always 8
+            int_offset: 0,
             imr: 0xFF,                           // All IRQs initially masked
             isr: 0x00,
             irr: 0,
@@ -384,8 +386,8 @@ impl Pic {
             }
             InitializationState::ExpectingICW2 => {
                 // This value should be an ICW2 based on just receiving an ICW1 on control port
-
                 log::debug!("PIC: Read ICW2: {:02X}", byte);
+                self.int_offset = byte & ICW2_MASK;
                 self.init_state = InitializationState::ExpectingICW4;
                 return;
             }
@@ -561,7 +563,7 @@ impl Pic {
                 // INT line low
                 self.intr = false;
 
-                return Some(irq + PIC_INTERRUPT_OFFSET)
+                return Some(irq | self.int_offset)
             }
             ir_bit <<= 1;
         }

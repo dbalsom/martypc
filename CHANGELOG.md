@@ -1,6 +1,7 @@
 
 ## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-08-XX)
 
+* Honor IRQ offset specified in IWC2 to PIC
 * Added MMIO peek functions. Allows Memory debug viewer to peek into MMIO regions, if device supports.
 * Brand new, simplified BIU state logic
 * Fixed & Improved DMA refresh scheduling. (Fixes 8088MPH CPU test)
