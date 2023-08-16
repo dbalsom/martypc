@@ -25,7 +25,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace",
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace,marty_core::devices::dma=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
