@@ -434,10 +434,7 @@ impl Cpu {
         }
         */
 
-        self.last_queue_delay = self.queue.get_delay();
         self.last_queue_len = self.queue.len();
-
-
     }
 
     pub fn do_bus_transfer(&mut self) {

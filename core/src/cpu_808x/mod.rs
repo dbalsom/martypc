@@ -70,7 +70,7 @@ mod fuzzer;
 use crate::cpu_808x::mnemonic::Mnemonic;
 use crate::cpu_808x::microcode::*;
 use crate::cpu_808x::addressing::AddressingMode;
-use crate::cpu_808x::queue::{InstructionQueue, QueueDelay};
+use crate::cpu_808x::queue::InstructionQueue;
 use crate::cpu_808x::biu::*;
 // Make ReadWriteFlag available to benchmarks
 pub use crate::cpu_808x::biu::ReadWriteFlag;
@@ -677,7 +677,6 @@ pub struct Cpu
     queue_byte: u8,
     last_queue_byte: u8,
     last_queue_len: usize,
-    last_queue_delay: QueueDelay,
     t_cycle: TCycle,
     bus_status: BusStatus,
     bus_segment: Segment,
@@ -1103,7 +1102,6 @@ impl Cpu {
 
         self.queue_op = QueueOp::Idle;
         self.last_queue_op = QueueOp::Idle;
-        self.last_queue_delay = QueueDelay::None;
         self.fetch_state = FetchState::Idle;
 
         self.i8288.ale = false;

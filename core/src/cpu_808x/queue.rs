@@ -33,19 +33,6 @@
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
 
-#[derive (Copy, Clone, PartialEq)]
-pub enum QueueDelay {
-    Read,
-    Write,
-    None
-}
-
-impl Default for QueueDelay {
-    fn default() -> Self {
-        QueueDelay::None
-    }
-}
-
 pub struct InstructionQueue {
     size: usize,
     len: usize,
@@ -54,7 +41,6 @@ pub struct InstructionQueue {
     q: [u8; QUEUE_MAX],
     _dt: [QueueType; QUEUE_MAX],
     preload: Option<u8>,
-    delay: QueueDelay
 }
 
 impl Default for InstructionQueue {
@@ -73,7 +59,6 @@ impl InstructionQueue {
             q: [0; QUEUE_MAX],
             _dt: [QueueType::First; QUEUE_MAX],
             preload: None,
-            delay: QueueDelay::None,
         }
     }
 
@@ -128,16 +113,7 @@ impl InstructionQueue {
             //self.dt[self.front] = dtype;
 
             self.front = (self.front + 1) % self.size;
-            self.len += 1;
-
-            if self.len == 3 {
-                // Queue length of 3 after push. Set delay flag A.
-                // TODO: Handle 8086? We should set delay on 4 as well(?)
-                self.delay = QueueDelay::Write;
-            }
-            else {
-                self.delay = QueueDelay::None;
-            }            
+            self.len += 1;     
         }
         else {
             panic!("Queue overrun!");
@@ -158,27 +134,9 @@ impl InstructionQueue {
             self.back = (self.back + 1) % self.size;
             self.len -= 1;
 
-            if self.len >= 3 {
-                // Queue length of 3 or 4 after pop. Set Read delay.
-                // This should cover 8088 and 8086(?)
-                self.delay = QueueDelay::Read;
-            }
-            else {
-                self.delay = QueueDelay::None;
-            }
-
             return byte
         }
         panic!("Queue underrun!");
-    }
-
-    /// Get the active bus delay type based on the last queue operation.
-    /// Delay Write is set when the queue length is 3 (or 4 on 8086) and the last operation was a push.
-    /// Delay Read is set when the queue length is 3 (or 4 on 8086) and the last operation was a pop.
-    /// Delay None is set if neither of these conditions apply.
-    #[inline]
-    pub fn get_delay(&self) -> QueueDelay {
-        self.delay
     }
 
     /// Flush the processor queue. This resets the queue to an empty state
@@ -188,7 +146,6 @@ impl InstructionQueue {
         self.back = 0;
         self.front = 0;
         self.preload = None;
-        self.delay = QueueDelay::None;
     }
 
     /// Convert the contents of the processor instruction queue to a hexadecimal string.
