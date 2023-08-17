@@ -192,7 +192,6 @@ impl Cpu {
 
                         // If we just completed a code fetch, make the byte available in the queue.
                         if let BusStatus::CodeFetch = self.bus_status {
-                            self.last_queue_direction = QueueDirection::Write;
                             self.queue.push8(self.data_bus as u8);
                             self.pc = (self.pc + 1) & 0xFFFFFu32;
                         }

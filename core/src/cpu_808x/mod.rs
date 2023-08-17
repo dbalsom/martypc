@@ -675,7 +675,6 @@ pub struct Cpu
     bus_pending_eu: bool,           // Has the EU requested a bus operation?
     queue_op: QueueOp,
     last_queue_op: QueueOp,
-    last_queue_direction: QueueDirection,
     queue_byte: u8,
     last_queue_byte: u8,
     last_queue_len: usize,
@@ -930,20 +929,6 @@ impl Default for BusStatus {
         BusStatus::Passive
     }
 }
-
-#[derive (Copy, Clone, Debug, PartialEq)]
-pub enum QueueDirection {
-    None,
-    Read,
-    Write,
-}
-
-impl Default for QueueDirection {
-    fn default() -> Self {
-        QueueDirection::None
-    }
-}
-
 
 #[derive (Copy, Clone, Debug, PartialEq)]
 pub enum QueueOp {
@@ -1241,14 +1226,12 @@ impl Cpu {
                 // Should be a byte in the queue now. Preload it
                 self.queue.set_preload();
                 self.queue_op = QueueOp::First;
-                self.last_queue_direction = QueueDirection::Read;
                 self.trace_comment("FINALIZE_END");
                 self.cycle();
             }
             else {
                 self.queue.set_preload();
                 self.queue_op = QueueOp::First;
-                self.last_queue_direction = QueueDirection::Read;
 
                 // Check if reading the queue will resume the BIU if stalled.
                 self.biu_fetch_on_queue_read();
@@ -2556,12 +2539,6 @@ impl Cpu {
             QueueOp::Subsequent => 'S',
         };
 
-        let q_dir_chr = match self.last_queue_direction {
-            QueueDirection::None => ' ',
-            QueueDirection::Read => 'R',
-            QueueDirection::Write => 'W',
-        };
-
         let q_preload_char = match self.queue.has_preload() {
             true => '*',
             false => ' '
@@ -2722,7 +2699,7 @@ impl Cpu {
         let mut cycle_str;
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {:03} | {}",
+                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
                 self.address_bus,
@@ -2737,7 +2714,6 @@ impl Cpu {
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
                 self.last_queue_len,
-                q_dir_chr,
                 q_preload_char,
                 self.queue.to_string(),
                 q_read_str,
@@ -2747,7 +2723,7 @@ impl Cpu {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
@@ -2762,7 +2738,6 @@ impl Cpu {
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
                 self.last_queue_len,
-                q_dir_chr,
                 q_preload_char,
                 self.queue.to_string(),
                 q_read_str,
