@@ -671,7 +671,6 @@ pub struct Cpu
     fetch_state: FetchState,
     next_fetch_state: FetchState,
     fetch_suspended: bool,
-    fetch_delay: u32,               // Number of cycles until prefetch starts
     bus_pending_eu: bool,           // Has the EU requested a bus operation?
     queue_op: QueueOp,
     last_queue_op: QueueOp,

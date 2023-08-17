@@ -261,12 +261,10 @@ impl ByteQueue for BusInterface {
         self.cursor
     }
 
-    fn delay(&mut self, _delay: u32) {}
     fn wait(&mut self, _cycles: u32) {}
     fn wait_i(&mut self, _cycles: u32, _instr: &[u16]) {}
     fn wait_comment(&mut self, _comment: &str) {}
     fn set_pc(&mut self, _pc: u16) {}
-    fn clear_delay(&mut self) {}
 
     fn q_read_u8(&mut self, _dtype: QueueType, _reader: QueueReader) -> u8 {
         if self.cursor < self.memory.len() {

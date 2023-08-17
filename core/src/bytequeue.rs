@@ -53,9 +53,6 @@ pub trait ByteQueue {
     fn seek(&mut self, pos: usize);
     fn tell(&self) -> usize;
 
-    fn delay(&mut self, delay: u32);
-    fn clear_delay(&mut self);
-
     fn wait(&mut self, cycles: u32);
     fn wait_i(&mut self, cycles: u32, instr: &[u16]);
     fn wait_comment(&mut self, comment: &'static str);

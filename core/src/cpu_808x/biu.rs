@@ -47,10 +47,6 @@ impl ByteQueue for Cpu {
         self.pc as usize - (self.queue.len() + (self.queue.has_preload() as usize))
     }
 
-    fn delay(&mut self, delay: u32) {
-        self.fetch_delay += delay;
-    }
-
     fn wait(&mut self, cycles: u32) {
         self.cycles(cycles);
     }
@@ -65,10 +61,6 @@ impl ByteQueue for Cpu {
 
     fn set_pc(&mut self, pc: u16) {
         self.mc_pc = pc;
-    }
-
-    fn clear_delay(&mut self) {
-        self.fetch_delay = 0;
     }
 
     fn q_read_u8(&mut self, dtype: QueueType, reader: QueueReader) -> u8 {
@@ -158,15 +150,6 @@ impl Cpu {
 
         if self.queue.len() > 0 {
             // The queue has an available byte. Return it.
-
-            // Handle fetch delays.
-            // Delays are set during decode from instructions with no modrm
-            while self.fetch_delay > 0 {
-                //log::trace!("Fetch delay skip: {}", self.fetch_delay);
-                self.fetch_delay -= 1;
-                self.trace_comment("fetch delay");
-                self.cycle();
-            }
 
             //self.trace_print("biu_queue_read: pop()");
             //self.trace_comment("Q_READ");

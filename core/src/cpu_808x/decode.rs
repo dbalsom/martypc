@@ -112,9 +112,6 @@ impl Cpu {
         let mut operand1_size: OperandSize = OperandSize::NoOperand;
         let mut operand2_size: OperandSize = OperandSize::NoOperand;
 
-        //let op_address = bytes.tell() as u32;
-        bytes.clear_delay();
-
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
 
@@ -503,24 +500,10 @@ impl Cpu {
             loaded_modrm = true;
         }
 
-        if !loaded_modrm {
-            // No modrm. Set a one cycle fetch delay. This has no effect when reading from memory.
-            // When fetching from the processor instruction queue, the 2nd byte must be a modrm or 
-            // the fetch is skipped for that cycle.            
-            //bytes.delay(1);
-        }
-
         if loaded_modrm && (op_flags & I_LOAD_EA == 0) {
             // The EA calculated by the modrm will not be loaded (ie, we proceed to EADONE instead of EALOAD).
             bytes.wait_i(2, &[0x1e3, MC_RTN]);
         }         
-
-        // Handle fetch delays for 0xF0, 0xF1, 0xF2, 0xF3
-        // These instructions decrement and compare CX before fetching their rel8 operand, taking two
-        // additional cycles. This is hacky but necessary to have seperate decode/execute phases.
-        if opcode & 0xFC == 0xF0 {
-            //bytes.delay(2);
-        }
 
         // Match templatized operands.
         let mut match_op = |op_template| -> (OperandType, OperandSize) {
