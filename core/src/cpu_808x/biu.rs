@@ -598,8 +598,6 @@ impl Cpu {
             true
         );
         let _cycles_waited = self.biu_bus_wait_finish();
-        
-        //validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
 
         (self.data_bus & 0x00FF) as u8
     }
@@ -619,8 +617,6 @@ impl Cpu {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
             ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
         };
-        
-        //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
     }
 
     pub fn biu_io_read_u8(&mut self, addr: u16) -> u8 {
@@ -635,8 +631,6 @@ impl Cpu {
             true
         );
         let _cycles_waited = self.biu_bus_wait_finish();
-        
-        //validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
 
         (self.data_bus & 0x00FF) as u8
     }
@@ -718,118 +712,74 @@ impl Cpu {
         };
     }    
 
+    /// Request a word size (16-bit) bus read transfer from the BIU.
+    /// The 8088 divides word transfers up into two consecutive byte size transfers.
     pub fn biu_read_u16(&mut self, seg: Segment, addr: u32, flag: ReadWriteFlag) -> u16 {
 
         let mut word;
 
-        match self.cpu_type {
-            CpuType::Intel8088 => {
-                // 8088 performs two consecutive byte transfers
-                self.biu_bus_begin(
-                    BusStatus::MemRead, 
-                    seg, 
-                    addr, 
-                    0, 
-                    TransferSize::Byte,
-                    OperandSize::Operand16,
-                    true
-                );
-                self.biu_bus_wait_finish();
-                word = self.data_bus & 0x00FF;
+        self.biu_bus_begin(
+            BusStatus::MemRead, 
+            seg, 
+            addr, 
+            0, 
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            true
+        );
+        self.biu_bus_wait_finish();
+        word = self.data_bus & 0x00FF;
 
-                //validate_read_u8!(self, addr, (self.data_bus & 0x00FF) as u8, ReadType::Data);
-
-                self.biu_bus_begin(
-                    BusStatus::MemRead, 
-                    seg, 
-                    addr.wrapping_add(1), 
-                    0, 
-                    TransferSize::Byte,
-                    OperandSize::Operand16,
-                    false
-                );
-                match flag {
-                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-                    ReadWriteFlag::RNI => {
-                        // self.bus_wait_until(TCycle::T3)
-                        self.biu_bus_wait_finish()
-                    }
-                };
-                word |= (self.data_bus & 0x00FF) << 8;
-
-                //validate_read_u8!(self, addr + 1, (self.data_bus & 0x00FF) as u8, ReadType::Data);
-                word
+        self.biu_bus_begin(
+            BusStatus::MemRead, 
+            seg, 
+            addr.wrapping_add(1), 
+            0, 
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            false
+        );
+        match flag {
+            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+            ReadWriteFlag::RNI => {
+                // self.bus_wait_until(TCycle::T3)
+                self.biu_bus_wait_finish()
             }
-            CpuType::Intel8086 => {
-                self.biu_bus_begin(
-                    BusStatus::MemRead, 
-                    seg, 
-                    addr, 
-                    0, 
-                    TransferSize::Word,
-                    OperandSize::Operand16,
-                    true
-                );
-                match flag {
-                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
-                };
+        };
+        word |= (self.data_bus & 0x00FF) << 8;
 
-                self.data_bus
-            }
-        }
+        word
     }
 
+    /// Request a word size (16-bit) bus write transfer from the BIU.
+    /// The 8088 divides word transfers up into two consecutive byte size transfers.
     pub fn biu_write_u16(&mut self, seg: Segment, addr: u32, word: u16, flag: ReadWriteFlag) {
 
-        match self.cpu_type {
-            CpuType::Intel8088 => {
-                // 8088 performs two consecutive byte transfers
-                self.biu_bus_begin(
-                    BusStatus::MemWrite, 
-                    seg, 
-                    addr, 
-                    word & 0x00FF, 
-                    TransferSize::Byte,
-                    OperandSize::Operand16,
-                    true);
+        // 8088 performs two consecutive byte transfers
+        self.biu_bus_begin(
+            BusStatus::MemWrite, 
+            seg, 
+            addr, 
+            word & 0x00FF, 
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            true);
 
-                //validate_write_u8!(self, addr, (word & 0x00FF) as u8);
+        self.biu_bus_wait_finish();
 
-                self.biu_bus_wait_finish();
+        self.biu_bus_begin(
+            BusStatus::MemWrite, 
+            seg, 
+            addr.wrapping_add(1), 
+            (word >> 8) & 0x00FF, 
+            TransferSize::Byte,
+            OperandSize::Operand16,
+            false);
 
-                self.biu_bus_begin(
-                    BusStatus::MemWrite, 
-                    seg, 
-                    addr.wrapping_add(1), 
-                    (word >> 8) & 0x00FF, 
-                    TransferSize::Byte,
-                    OperandSize::Operand16,
-                    false);
-
-                //validate_write_u8!(self, addr + 1, ((word >> 8) & 0x00FF) as u8);
-
-                match flag {
-                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
-                };
-            }
-            CpuType::Intel8086 => {
-                self.biu_bus_begin(
-                    BusStatus::MemWrite, 
-                    seg, 
-                    addr, 
-                    word, 
-                    TransferSize::Word,
-                    OperandSize::Operand16,
-                    true);
-                match flag {
-                    ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-                    ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
-                };
-            }
-        }
-
+        match flag {
+            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+        };
     }    
 
     /// If in an active bus cycle, cycle the cpu until the bus cycle has reached T4.
