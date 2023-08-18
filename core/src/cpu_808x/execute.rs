@@ -1156,13 +1156,11 @@ impl Cpu {
                 
                 // Handle segment override, default DS
                 let segment = Cpu::segment_override(self.i.segment_override, Segment::DS);
-
                 let disp16: u16 = self.bx.wrapping_add(self.al as u16);
-
-                let addr = self.calc_linear_address_seg(segment, disp16);
                 
                 self.cycles_i(3, &[0x10c, 0x10d, 0x10e]);
-                let value = self.biu_read_u8(segment, addr);
+
+                let value = self.biu_read_u8(segment, disp16);
                 
                 self.set_register8(Register8::AL, value as u8);
             }
@@ -1699,12 +1697,11 @@ impl Cpu {
                             let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
 
                             // Read one byte of offset and one byte of segment
-                            let offset_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset);
-                            let segment_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset + 2);
+                            let offset = self.biu_read_u8(ea_segment, ea_offset);
 
-                            let offset = self.biu_read_u8(ea_segment, offset_addr);
                             self.cycles_i(3, &[0x1e2, MC_RTN, 0x068]); // RTN delay
-                            let segment = self.biu_read_u8(ea_segment, segment_addr);
+                            
+                            let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
 
                             self.cycle_i(0x06a);
                             self.biu_suspend_fetch();
@@ -1768,10 +1765,8 @@ impl Cpu {
                             let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
 
                             // Read one byte of offset and one byte of segment
-                            let offset_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset);
-                            let segment_addr = Cpu::calc_linear_address(ea_segment_value, ea_offset + 2);
-                            let offset = self.biu_read_u8(ea_segment, offset_addr);
-                            let segment = self.biu_read_u8(ea_segment, segment_addr);
+                            let offset = self.biu_read_u8(ea_segment, ea_offset);
+                            let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
 
                             self.biu_suspend_fetch();
                             self.cycles(4);
@@ -1926,8 +1921,7 @@ impl Cpu {
                             
                             // Read the segment from Seg:0004 
                             let offset = 0x0004;    
-                            let flat_addr = self.calc_linear_address_seg(seg, offset);
-                            let segment = self.biu_read_u16(seg, flat_addr, ReadWriteFlag::Normal);
+                            let segment = self.biu_read_u16(seg, offset, ReadWriteFlag::Normal);
 
                             self.cycle_i(0x06a);
                             self.biu_suspend_fetch();
@@ -1993,8 +1987,7 @@ impl Cpu {
                             
                             // Read the segment from Seg:0004 
                             offset = 0x0004;    
-                            let flat_addr = self.calc_linear_address_seg(seg, offset);
-                            let segment = self.biu_read_u16(seg, flat_addr, ReadWriteFlag::Normal);
+                            let segment = self.biu_read_u16(seg, offset, ReadWriteFlag::Normal);
 
                             self.cs = segment;
                             self.biu_queue_flush();

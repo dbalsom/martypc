@@ -39,26 +39,19 @@ impl Cpu {
         
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2); 
-        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        self.biu_write_u8(Segment::SS, stack_addr, data, flag);
+        self.biu_write_u8(Segment::SS, self.sp, data, flag);
     }
 
     pub fn push_u16(&mut self, data: u16, flag: ReadWriteFlag) {
 
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
-
-        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        //let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
-        self.biu_write_u16(Segment::SS, stack_addr, data, flag);
+        self.biu_write_u16(Segment::SS, self.sp, data, flag);
     }
 
     pub fn pop_u16(&mut self) -> u16 {
 
-        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        
-        //let (result, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
-        let result = self.biu_read_u16(Segment::SS, stack_addr, ReadWriteFlag::Normal);
+        let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
         
         // Stack pointer shrinks upwards
         self.sp = self.sp.wrapping_add(2);
@@ -86,19 +79,13 @@ impl Cpu {
             Register16::IP => self.ip,    
             _ => panic!("Invalid register")            
         };
-        
-        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-
-        //let _cost = self.bus.write_u16(stack_addr as usize, data).unwrap();
-        self.biu_write_u16(Segment::SS, stack_addr, data, flag);
-
+    
+        self.biu_write_u16(Segment::SS, self.sp, data, flag);
     }
 
     pub fn pop_register16(&mut self, reg: Register16, flag: ReadWriteFlag) {
 
-        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-    
-        let data = self.biu_read_u16(Segment::SS, stack_addr, flag);
+        let data = self.biu_read_u16(Segment::SS, self.sp, flag);
 
         let mut update_sp = true;
         match reg {
@@ -134,22 +121,14 @@ impl Cpu {
 
     pub fn push_flags(&mut self, wflag: ReadWriteFlag) {
 
-        // TODO: Handle stack exception per Intel manual when SP==1
-
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
-
-        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-
-        //let _cost = self.bus.write_u16(stack_addr as usize, self.flags).unwrap();
-        self.biu_write_u16(Segment::SS, stack_addr, self.flags, wflag);
+        self.biu_write_u16(Segment::SS, self.sp, self.flags, wflag);
     }
 
     pub fn pop_flags(&mut self) {
 
-        let stack_addr = Cpu::calc_linear_address(self.ss, self.sp);
-        //let (result, _cost) = self.bus.read_u16(stack_addr as usize).unwrap();
-        let result = self.biu_read_u16(Segment::SS, stack_addr, ReadWriteFlag::Normal);
+        let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
 
         let trap_was_set = self.get_flag(Flag::Trap);
 

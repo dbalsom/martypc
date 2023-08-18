@@ -586,7 +586,9 @@ impl Cpu {
         self.biu_bus_wait_finish();
     }
 
-    pub fn biu_read_u8(&mut self, seg: Segment, addr: u32) -> u8 {
+    pub fn biu_read_u8(&mut self, seg: Segment, offset: u16) -> u8 {
+
+        let addr = self.calc_linear_address_seg(seg, offset);
 
         self.biu_bus_begin(
             BusStatus::MemRead, 
@@ -602,7 +604,9 @@ impl Cpu {
         (self.data_bus & 0x00FF) as u8
     }
 
-    pub fn biu_write_u8(&mut self, seg: Segment, addr: u32, byte: u8, flag: ReadWriteFlag) {
+    pub fn biu_write_u8(&mut self, seg: Segment, offset: u16, byte: u8, flag: ReadWriteFlag) {
+
+        let addr = self.calc_linear_address_seg(seg, offset);
 
         self.biu_bus_begin(
             BusStatus::MemWrite, 
@@ -694,6 +698,7 @@ impl Cpu {
             OperandSize::Operand16,
             true
         );
+
         self.biu_bus_wait_finish();
 
         self.biu_bus_begin(
@@ -714,9 +719,10 @@ impl Cpu {
 
     /// Request a word size (16-bit) bus read transfer from the BIU.
     /// The 8088 divides word transfers up into two consecutive byte size transfers.
-    pub fn biu_read_u16(&mut self, seg: Segment, addr: u32, flag: ReadWriteFlag) -> u16 {
+    pub fn biu_read_u16(&mut self, seg: Segment, offset: u16, flag: ReadWriteFlag) -> u16 {
 
         let mut word;
+        let mut addr = self.calc_linear_address_seg(seg, offset);
 
         self.biu_bus_begin(
             BusStatus::MemRead, 
@@ -727,13 +733,15 @@ impl Cpu {
             OperandSize::Operand16,
             true
         );
+
         self.biu_bus_wait_finish();
         word = self.data_bus & 0x00FF;
+        addr = self.calc_linear_address_seg(seg, offset.wrapping_add(1));
 
         self.biu_bus_begin(
             BusStatus::MemRead, 
             seg, 
-            addr.wrapping_add(1), 
+            addr, 
             0, 
             TransferSize::Byte,
             OperandSize::Operand16,
@@ -753,7 +761,9 @@ impl Cpu {
 
     /// Request a word size (16-bit) bus write transfer from the BIU.
     /// The 8088 divides word transfers up into two consecutive byte size transfers.
-    pub fn biu_write_u16(&mut self, seg: Segment, addr: u32, word: u16, flag: ReadWriteFlag) {
+    pub fn biu_write_u16(&mut self, seg: Segment, offset: u16, word: u16, flag: ReadWriteFlag) {
+
+        let mut addr = self.calc_linear_address_seg(seg, offset);
 
         // 8088 performs two consecutive byte transfers
         self.biu_bus_begin(
@@ -766,11 +776,12 @@ impl Cpu {
             true);
 
         self.biu_bus_wait_finish();
+        addr = self.calc_linear_address_seg(seg, offset.wrapping_add(1));
 
         self.biu_bus_begin(
             BusStatus::MemWrite, 
             seg, 
-            addr.wrapping_add(1), 
+            addr, 
             (word >> 8) & 0x00FF, 
             TransferSize::Byte,
             OperandSize::Operand16,

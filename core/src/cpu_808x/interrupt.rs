@@ -80,11 +80,13 @@ impl Cpu {
         }
 
         self.cycles_i(3, &[0x19d, 0x19e, 0x19f]);
+        
         // Read the IVT
-        let ivt_addr = Cpu::calc_linear_address(0x0000, (interrupt as usize * INTERRUPT_VEC_LEN) as u16);
-        let new_ip = self.biu_read_u16(Segment::None, ivt_addr, ReadWriteFlag::Normal);
+        let vec_addr = (interrupt as usize * INTERRUPT_VEC_LEN) as u16;
+
+        let new_ip = self.biu_read_u16(Segment::None, vec_addr, ReadWriteFlag::Normal);
         self.cycle_i(0x1a1);
-        let new_cs = self.biu_read_u16(Segment::None, ivt_addr + 2, ReadWriteFlag::Normal);
+        let new_cs = self.biu_read_u16(Segment::None, vec_addr.wrapping_add(2), ReadWriteFlag::Normal);
 
         // Add interrupt to call stack
         self.push_call_stack(
@@ -251,16 +253,17 @@ impl Cpu {
             self.set_breakpoint_flag();
         }
 
-        //log::debug!("in INTR routine!");
         if !skip_first {
             self.cycle_i(0x019d);
         }
         self.cycles_i(2, &[0x19e, 0x19f]);
+
         // Read the IVT
-        let ivt_addr = Cpu::calc_linear_address(0x0000, (vector as usize * INTERRUPT_VEC_LEN) as u16);
-        let new_ip = self.biu_read_u16(Segment::None, ivt_addr, ReadWriteFlag::Normal);
+        let vec_addr = (vector as usize * INTERRUPT_VEC_LEN) as u16;
+
+        let new_ip = self.biu_read_u16(Segment::None, vec_addr, ReadWriteFlag::Normal);
         self.cycle_i(0x1a1);
-        let new_cs = self.biu_read_u16(Segment::None, ivt_addr + 2, ReadWriteFlag::Normal);
+        let new_cs = self.biu_read_u16(Segment::None, vec_addr.wrapping_add(2), ReadWriteFlag::Normal);
 
         // Add interrupt to call stack
         self.push_call_stack(

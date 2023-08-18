@@ -86,6 +86,7 @@ impl Cpu {
         base.wrapping_add(offset as u16)
     }
     
+    #[inline]
     pub fn calc_linear_address_seg(&self, segment: Segment, offset: u16) -> u32 {
 
         let segment_val: u16 = match segment {
@@ -234,7 +235,6 @@ impl Cpu {
 
             self.mc_pc = 0x1e0; // EALOAD - 1
             let (_segment_val, segment, offset) = self.calc_effective_address(ea_mode, self.i.segment_override);
-            let flat_addr = self.calc_linear_address_seg(segment, offset);
 
             self.trace_comment("EALOAD");
 
@@ -250,12 +250,12 @@ impl Cpu {
             if ea_size == OperandSize::Operand16 {
                 // Width is word
                 assert!(ea_size == OperandSize::Operand16);
-                self.ea_opr = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
+                self.ea_opr = self.biu_read_u16(segment, offset, ReadWriteFlag::Normal);
             }
             else {
                 // Width is byte
                 assert!(ea_size == OperandSize::Operand8);
-                self.ea_opr = self.biu_read_u8(segment, flat_addr) as u16;
+                self.ea_opr = self.biu_read_u8(segment, offset) as u16;
             }
             self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD            
         }
@@ -285,10 +285,8 @@ impl Cpu {
             }
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
-
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                let byte = self.biu_read_u8(segment, flat_addr);
+                let byte = self.biu_read_u8(segment, offset);
                 Some(byte)
             },
             OperandType::Register8(reg8) => {
@@ -336,8 +334,7 @@ impl Cpu {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
 
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                let word = self.biu_read_u16(segment, flat_addr, ReadWriteFlag::Normal);
+                let word = self.biu_read_u16(segment, offset, ReadWriteFlag::Normal);
 
                 Some(word)
             }
@@ -382,10 +379,8 @@ impl Cpu {
         match operand {
             OperandType::AddressingMode(mode) => {
                 let offset = self.ea_opr;
-
                 let (segment_val, segment, ea_offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment_val, ea_offset);
-                let segment = self.biu_read_u16(segment, flat_addr + 2, flag);
+                let segment = self.biu_read_u16(segment, ea_offset + 2, flag);
                 Some((segment, offset))
             },
             OperandType::Register16(_) => {
@@ -398,11 +393,8 @@ impl Cpu {
                     SegmentOverride::DS  => (self.ds, Segment::DS),
                 };
 
-                let flat_addr = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea);
-                let flat_addr2 = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea.wrapping_add(2));
-
-                let offset = self.biu_read_u16(segment_base_ds, flat_addr, ReadWriteFlag::Normal);
-                let segment = self.biu_read_u16(segment_base_ds, flat_addr2, ReadWriteFlag::Normal);
+                let offset = self.biu_read_u16(segment_base_ds, self.last_ea, ReadWriteFlag::Normal);
+                let segment = self.biu_read_u16(segment_base_ds, self.last_ea.wrapping_add(2), ReadWriteFlag::Normal);
                 Some((segment, offset))
             },
             _ => None
@@ -414,11 +406,10 @@ impl Cpu {
         match operand {
             OperandType::AddressingMode(mode) => {
                 let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = Cpu::calc_linear_address(segment_val, offset);
 
                 match ptr {
-                    FarPtr::Offset => Some(self.biu_read_u16(segment, flat_addr, flag)),
-                    FarPtr::Segment => Some(self.biu_read_u16(segment, flat_addr.wrapping_add(2), flag))
+                    FarPtr::Offset => Some(self.biu_read_u16(segment, offset, flag)),
+                    FarPtr::Segment => Some(self.biu_read_u16(segment, offset.wrapping_add(2), flag))
                 }
             },
             OperandType::Register16(_) => {
@@ -431,12 +422,9 @@ impl Cpu {
                     SegmentOverride::DS  => (self.ds, Segment::DS),
                 };
 
-                //let _flat_addr = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea);
-                let flat_addr2 = Cpu::calc_linear_address(segment_value_base_ds, self.last_ea.wrapping_add(2));
-
                 match ptr {
                     FarPtr::Offset => Some(0),
-                    FarPtr::Segment => Some(self.biu_read_u16(segment_base_ds, flat_addr2, flag))
+                    FarPtr::Segment => Some(self.biu_read_u16(segment_base_ds, self.last_ea.wrapping_add(2), flag))
                 }
             },
             _ => None
@@ -452,8 +440,7 @@ impl Cpu {
                 self.cycle();
 
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                self.biu_write_u8(segment, flat_addr, value, flag);
+                self.biu_write_u8(segment, offset, value, flag);
             }
             OperandType::Register8(reg8) => {
                 match reg8 {
@@ -469,8 +456,7 @@ impl Cpu {
             },
             OperandType::AddressingMode(mode) => {
                 let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                self.biu_write_u8(segment, flat_addr, value, flag);
+                self.biu_write_u8(segment, offset, value, flag);
             }
             _ => {}
         }
@@ -485,8 +471,7 @@ impl Cpu {
                 self.cycle();
 
                 let segment = Cpu::segment_override(seg_override, Segment::DS);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                self.biu_write_u16(segment, flat_addr, value, flag);
+                self.biu_write_u16(segment, offset, value, flag);
             }
             OperandType::Register16(reg16) => {
                 match reg16 {
@@ -514,8 +499,7 @@ impl Cpu {
             }
             OperandType::AddressingMode(mode) => {
                 let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
-                let flat_addr = self.calc_linear_address_seg(segment, offset);
-                self.biu_write_u16(segment, flat_addr, value, flag);
+                self.biu_write_u16(segment, offset, value, flag);
             }
             _ => {}
         }
