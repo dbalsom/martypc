@@ -76,6 +76,12 @@ pub fn run_fuzzer (
     //let mut io_bus = IoBusInterface::new();
     let pic = Rc::new(RefCell::new(Pic::new()));    
 
+    // Create the cpu trace file, if specified
+    let mut cpu_trace = TraceLogger::None;
+    if let Some(trace_filename) = &config.emulator.trace_file {
+        cpu_trace = TraceLogger::from_filename(&trace_filename);
+    }
+
     // Create the validator trace file, if specified
     let mut validator_trace = TraceLogger::None;
     if let Some(trace_filename) = &config.validator.trace_file {
@@ -85,7 +91,7 @@ pub fn run_fuzzer (
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
         config.emulator.trace_mode,
-        TraceLogger::None,
+        cpu_trace,
         #[cfg(feature = "cpu_validator")]
         config.validator.vtype.unwrap(),
         #[cfg(feature = "cpu_validator")]
@@ -113,7 +119,6 @@ pub fn run_fuzzer (
 
         // ALU ops
         
-        /*
         cpu.random_inst_from_opcodes(
             &[
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
@@ -126,14 +131,14 @@ pub fn run_fuzzer (
                 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, // CMP
             ]
         );
-        */
+        
         // Completed 5000 tests
         
 
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
 
-        cpu.random_inst_from_opcodes(&[0x37]);
+        //cpu.random_inst_from_opcodes(&[0x37]);
 
         //cpu.random_inst_from_opcodes(&[0x90]);
 
@@ -334,7 +339,15 @@ pub fn run_fuzzer (
         log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
         
         // Set terminating address for CPU validator.
-        cpu.set_end_address((i.address + i.size) as usize);
+
+        let end_address = 
+            Cpu::calc_linear_address(
+                cpu.get_register16(Register16::CS),  
+                cpu.get_register16(Register16::IP).wrapping_add(i.size as u16)
+            );
+
+        cpu.set_end_address(end_address as usize);
+        log::trace!("Setting end address: {:05X}", end_address);
 
         // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
         // execution per iteration. The 8088 makes no such distinction.

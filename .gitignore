@@ -24,6 +24,7 @@ Thumbs.db
 /releases
 /keyboard
 /cfg
+/tests/v*
 marty*.toml
 *.pcm
 *.cfg
@@ -31,6 +32,9 @@ marty*.toml
 *.exe
 /frontends/martypc_pixels_wasm32/wasm/
 icon.png
+
+# Allow tests/tools directory
+!/tests/tools
 
 # Example install dir
 !/install/martypc.toml

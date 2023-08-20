@@ -1115,6 +1115,9 @@ impl Cpu {
         self.step_over_target = None;
         self.end_addr = 0xFFFFF;
 
+        self.nx = false;
+        self.rni = false;
+
         // Reset takes 6 cycles before first fetch
         self.cycle();
         self.biu_suspend_fetch();
@@ -2079,6 +2082,11 @@ impl Cpu {
             #[cfg(feature = "cpu_validator")]
             {
                 let vregs = self.get_vregisters();
+
+                if vregs.flags & CPU_FLAG_TRAP != 0 {
+                    log::warn!("Trap flag is set - may break validator!");
+                }
+
                 if let Some(ref mut validator) = self.validator {
 
                     if (instruction_address as usize) == self.validator_end {
@@ -2184,7 +2192,7 @@ impl Cpu {
 
                                                 // Validation has reached program end address
                                                 if let Err(e) = validator.validate_regs(&vregs) {
-                                                    log::warn!("Validation failure: {} Halting execution.", e);
+                                                    log::warn!("Register validation failure: {} Halting execution.", e);
                                                     self.is_running = false;
                                                     self.is_error = true;
                                                     return Err(CpuError::CpuHaltedError(instruction_address))
@@ -2920,6 +2928,12 @@ impl Cpu {
     pub fn get_validator_state(&self) -> CpuValidatorState {
         self.validator_state
     }
+
+    #[cfg(feature = "cpu_validator")]
+    pub fn get_validator(&mut self) -> &Option<Box<dyn CpuValidator>> {
+        &self.validator
+    }
+        
 
 }
 

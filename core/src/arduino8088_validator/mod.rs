@@ -95,22 +95,6 @@ pub enum ValidatorState {
     Finished
 }
 
-#[derive (Copy, Clone, Debug, PartialEq)]
-pub enum BusOpType {
-    CodeRead,
-    MemRead,
-    MemWrite,
-    IoRead,
-    IoWrite,
-}
-
-#[derive (Copy, Clone)]
-pub struct BusOp {
-    op_type: BusOpType,
-    addr: u32,
-    data: u8,
-    flags: u8
-}
 
 #[derive (Default)]
 pub struct InstructionContext {
@@ -192,6 +176,10 @@ pub struct ArduinoValidator {
     visit_once: bool,
     visited: Vec<bool>,
 
+    last_cpu_states: Vec<CycleState>,
+    last_cpu_ops: Vec<BusOp>,
+    last_cpu_queue: Vec<u8>,
+
     log_prefix: String,
     trace_logger: TraceLogger
 }
@@ -236,6 +224,10 @@ impl ArduinoValidator {
             mask_flags: true,
             visit_once: VISIT_ONCE,
             visited: vec![false; 0x100000],
+
+            last_cpu_ops: Vec::new(),
+            last_cpu_states: Vec::new(),
+            last_cpu_queue: Vec::new(),
 
             log_prefix: String::new(),
             trace_logger
@@ -621,6 +613,9 @@ impl CpuValidator for ArduinoValidator {
         let mut reg_buf: [u8; 28] = [0; 28];
         ArduinoValidator::regs_to_buf(&mut reg_buf, &self.current_instr.regs[0]);
 
+        trace_debug!(self, "\n{}", &self.current_instr.regs[0]);
+        trace_debug!(self, "Flags: {}", RemoteCpu::flags_string(self.current_instr.regs[0].flags));
+
         self.cpu.load(&reg_buf).expect("validate() error: Load registers failed.");
     }
 
@@ -780,6 +775,9 @@ impl CpuValidator for ArduinoValidator {
             }
         }
 
+        self.last_cpu_states = cpu_states;
+        self.last_cpu_ops = self.current_instr.cpu_ops.clone();
+        self.last_cpu_queue = self.cpu.queue();
         self.reset_instruction();
 
         // Did this instruction enter finalize state?
@@ -795,7 +793,20 @@ impl CpuValidator for ArduinoValidator {
 
     fn validate_regs(&mut self, regs: &VRegisters) -> Result<(), ValidatorError> {
 
-        let mut store_regs = self.cpu.store().expect("Failed to store registers!");
+        let mut store_regs = match self.cpu.store() {
+            Ok(regs) => regs,
+            Err(e) => {
+
+                log::error!("validate_regs failed: {}", e);
+                match self.cpu.get_last_error() {
+                    Ok(error_str) => log::error!("get_last_error(): {}", error_str),
+                    Err(e) => log::error!("get_last_error() failed: {}", e)
+                };
+                self.trace_logger.flush();
+                panic!("fatal error, stopping validation");
+            }
+        };
+
         self.cpu.adjust_ip(&mut store_regs);
 
         if !self.validate_registers(&regs) {
@@ -899,4 +910,63 @@ impl CpuValidator for ArduinoValidator {
     fn flush(&mut self) {
         self.trace_logger.flush();
     }
+
+    /// Get a reference to the vector of CycleStates, presumably after an instruction has
+    /// been successfully validated
+    fn cycle_states(&self) -> &Vec<CycleState> {
+        &self.last_cpu_states
+    }
+
+    /// Return the name of the current test - should be the disassembled instruction form
+    fn name(&self) -> String {
+        self.current_instr.name.clone()
+    }
+
+    fn instr_bytes(&self) -> Vec<u8> {
+        self.current_instr.instr.clone()
+    }
+
+    fn initial_regs(&self) -> VRegisters {
+        self.current_instr.regs[0]
+    }
+
+    fn final_regs(&self) -> VRegisters {
+        self.current_instr.regs[1]
+    }
+
+    /// Return all operations performed by the cpu during last instruction validation.
+    fn cpu_ops(&self) -> Vec<BusOp> {
+        self.last_cpu_ops.clone()
+    }
+
+    /// Return the initial reads performed by this instruction, stopping when a write is 
+    /// encountered.
+    fn cpu_reads(&self) -> Vec<BusOp> {
+
+        // Copy ops vec up until the first write
+
+        //log::debug!("filtering {} bus ops from CPU", self.last_cpu_ops.len());
+
+        let mut read_vec: Vec<_> = self.last_cpu_ops.iter()
+            .take_while(
+                |&&op| {
+                    match op.op_type {
+                        BusOpType::CodeRead | BusOpType::MemRead | BusOpType::IoRead => true,
+                        _ => false
+                    } 
+                 }
+            )
+            .cloned()
+            .collect();
+
+        // Filter out fetches
+        read_vec.retain(|&op| !matches!(op.op_type, BusOpType::CodeRead));
+
+        read_vec
+    }
+
+    fn cpu_queue(&self) -> Vec<u8> {
+        self.last_cpu_queue.clone()
+    }
+
 }

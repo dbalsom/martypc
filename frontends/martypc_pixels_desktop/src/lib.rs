@@ -49,6 +49,11 @@ mod input;
 
 #[cfg(feature = "arduino_validator")]
 mod run_fuzzer;
+#[cfg(feature = "arduino_validator")]
+mod run_gentests;
+#[cfg(feature = "arduino_validator")]
+mod cpu_test;
+
 
 mod run_headless;
 
@@ -80,6 +85,10 @@ use winit::{
 
 #[cfg(feature = "arduino_validator")]
 use crate::run_fuzzer::run_fuzzer;
+
+#[cfg(feature = "arduino_validator")]
+use crate::run_gentests::run_gentests;
+
 
 use marty_core::{
     breakpoints::BreakPointType,
@@ -417,6 +426,13 @@ pub fn run() {
         log::debug!("Found serial port: {:?}", port);
     }
 
+    log::debug!("Test mode: {:?}", config.tests.test_mode);
+
+    // If test generate mode was specified, run the emulator in test generation mode now
+    #[cfg(feature = "cpu_validator")]
+    if let Some(TestMode::Generate) = config.tests.test_mode {
+        return run_gentests(&config);
+    }
 
     // If fuzzer mode was specified, run the emulator in fuzzer mode now
     #[cfg(feature = "cpu_validator")]

@@ -137,6 +137,8 @@ pub struct RemoteCpu {
     busop_n: usize,
     owe_busop: bool,
     fetch_rollover: bool,
+    instruction_ended: bool,
+    program_ended: bool,
     prefetch_n: usize,
     v_pc: usize,
 }
@@ -186,6 +188,8 @@ impl RemoteCpu {
             busop_n: 0,
             owe_busop: false,
             fetch_rollover: false,
+            instruction_ended: false,
+            program_ended: false,
             prefetch_n: 0,
             v_pc: 0,
         }
@@ -253,6 +257,8 @@ impl RemoteCpu {
         self.bus_cycle = BusCycle::T1;
         self.mcycle_state = BusState::CODE; // First state after reset is a code fetch
         self.last_cycle_state = None;
+        self.instruction_ended = false;
+        self.program_ended = false;
         self.fetch_rollover = false;
         self.just_reset = true;
         self.queue.flush();
@@ -296,7 +302,15 @@ impl RemoteCpu {
                     // Bus type must match 
                     //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::CodeRead);
 
-                    if (emu_mem_ops[self.busop_n].addr as usize) < self.instr_end_addr {
+                    if (emu_mem_ops[self.busop_n].addr as usize) == self.instr_end_addr {
+                        self.instruction_ended = true;
+                    }
+
+                    if (emu_mem_ops[self.busop_n].addr as usize) == self.program_end_addr {
+                        self.program_ended = true;
+                    }                    
+
+                    if !self.instruction_ended {
 
                         /*
                         if instr[self.v_pc] != emu_mem_ops[self.busop_n].data {
@@ -331,8 +345,8 @@ impl RemoteCpu {
                         self.busop_n += 1;
                     }
                     else {
-                        // This fetch is for the next instruction ( >= self.instr_end_addr) ... flag the byte in the queue
-                        // so we know to end this instruction when it is read out from the queue.
+                        // We have reached the end of the current instruction (fetched from instr_end_addr) ... 
+                        // flag the byte in the queue so we know to end this instruction when it is read out from the queue.
 
                         if emu_mem_ops[self.busop_n].addr != self.address_latch {
                             trace!(log, "CPU fetch address != EMU fetch address");
@@ -340,7 +354,7 @@ impl RemoteCpu {
 
                         trace!(
                             log, 
-                            "CPU fetch: [{:05X}][{:05X}] -> 0x{:02X} cycle: {}", 
+                            "CPU fetch next: [{:05X}][{:05X}] -> 0x{:02X} cycle: {}", 
                             self.address_latch,
                             emu_mem_ops[self.busop_n].addr, 
                             emu_mem_ops[self.busop_n].data, 
@@ -361,7 +375,8 @@ impl RemoteCpu {
                         // program state can be moved to Finalize and registers read out for comparison.
 
                         // Otherwise we've just reached the end of the instruction, and set the end instruction flag.
-                        if (emu_mem_ops[self.busop_n].addr as usize) == self.program_end_addr {
+                        if self.program_ended {
+                            self.instruction_ended = true;
                             self.data_type = QueueDataType::Finalize;
                             self.data_bus = OPCODE_NOP;
                         }
@@ -557,6 +572,10 @@ impl RemoteCpu {
 
         // Transition into next state.
         self.bus_cycle = match self.bus_cycle {
+            BusCycle::Ti => {
+                // We get out of Ti state on ALE
+                BusCycle::Ti
+            }
             BusCycle::T1 => {
                 // Capture the state of the bus transfer in T1, as the state will go PASV in t3-t4
                 //self.mcycle_state = get_bus_state!(self.status);
@@ -592,6 +611,7 @@ impl RemoteCpu {
 
         // Handle current T-state
         match self.bus_cycle {
+            BusCycle::Ti => {},
             BusCycle::T1 => {
                 // Capture the state of the bus transfer in T1, as the state will go PASV in t3-t4
                 self.mcycle_state = get_bus_state!(self.status);
@@ -813,6 +833,7 @@ impl RemoteCpu {
         self.finalize = false;
         self.flushed = false;
         self.discard_front = false;
+        self.instruction_ended = false;
 
         self.address_latch = self.cpu_client.read_address_latch().expect("Failed to get address latch!");
         
@@ -918,6 +939,10 @@ impl RemoteCpu {
         Ok(ArduinoValidator::buf_to_regs(&buf))
     }
 
+    pub fn get_last_error(&mut self) -> Result<String, CpuClientError> {
+        self.cpu_client.get_last_error()
+    }
+
     pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
         ((segment as u32) << 4) + offset as u32 & 0xFFFFFu32
     }
@@ -930,6 +955,10 @@ impl RemoteCpu {
         let ip_offset = flat_csip.wrapping_sub(self.queue_fetch_addr);
 
         regs.ip = regs.ip.wrapping_sub(ip_offset as u16);
+    }
+
+    pub fn queue(&self) -> Vec<u8> {
+        self.queue.to_vec()
     }
 
     pub fn get_queue_str(q: &[u8], len: usize) -> String {
@@ -1007,6 +1036,7 @@ impl RemoteCpu {
         };
 
         let t_str = match c.t_state {
+            BusCycle::Ti => "Ti",
             BusCycle::T1 => "T1",
             BusCycle::T2 => "T2",
             BusCycle::T3 => "T3",
@@ -1121,6 +1151,7 @@ impl RemoteCpu {
         };
 
         let t_str = match self.bus_cycle {
+            BusCycle::Ti => "Ti",
             BusCycle::T1 => "T1",
             BusCycle::T2 => "T2",
             BusCycle::T3 => "T3",
@@ -1169,18 +1200,24 @@ impl RemoteCpu {
     }
 
     pub fn print_regs(regs: &VRegisters) {
-        let reg_str = format!(
-            "AX: {:04x} BX: {:04x} CX: {:04x} DX: {:04x}\n\
-            SP: {:04x} BP: {:04x} SI: {:04x} DI: {:04x}\n\
-            CS: {:04x} DS: {:04x} ES: {:04x} SS: {:04x}\n\
-            IP: {:04x}\n\
-            FLAGS: {:04x}",
-            regs.ax, regs.bx, regs.cx, regs.dx,
-            regs.sp, regs.bp, regs.si, regs.di,
-            regs.cs, regs.ds, regs.es, regs.ss,
-            regs.ip,
-            regs.flags );
-        
-          println!("{}", reg_str);        
+          println!("{}", regs);        
+    }
+
+    pub fn flags_string(f: u16) -> String {
+
+        let c_chr = if CPU_FLAG_CARRY & f != 0 { 'C' } else { 'c' };
+        let p_chr = if CPU_FLAG_PARITY & f != 0 { 'P' } else { 'p' };
+        let a_chr = if CPU_FLAG_AUX_CARRY & f != 0 { 'A' } else { 'a' };
+        let z_chr = if CPU_FLAG_ZERO & f != 0 { 'Z' } else { 'z' };
+        let s_chr = if CPU_FLAG_SIGN & f != 0 { 'S' } else { 's' };
+        let t_chr = if CPU_FLAG_TRAP & f != 0 { 'T' } else {  't' };
+        let i_chr = if CPU_FLAG_INT_ENABLE & f != 0 { 'I' } else { 'i' };
+        let d_chr = if CPU_FLAG_DIRECTION & f != 0 { 'D' } else { 'd' };
+        let o_chr = if CPU_FLAG_OVERFLOW & f != 0 { 'O' } else { 'o' };
+  
+        format!(
+            "1111{}{}{}{}{}{}0{}0{}1{}", 
+            o_chr, d_chr, i_chr, t_chr, s_chr, z_chr, a_chr, p_chr, c_chr
+        )
     }
 }

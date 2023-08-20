@@ -85,8 +85,10 @@ impl Cpu {
 
         // Randomize flags
         let mut flags: u16 = get_rand!(self);
-        // Clear trap flag
+        // Clear trap & interrupt flags
         flags &= !CPU_FLAG_TRAP;
+        flags &= !CPU_FLAG_INT_ENABLE;
+
         self.set_flags(flags);
 
         //self.set_flags(0);

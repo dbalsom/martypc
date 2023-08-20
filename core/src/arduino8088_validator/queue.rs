@@ -125,4 +125,16 @@ impl InstructionQueue {
         }
     }
 
+    pub fn to_vec(&self) -> Vec<u8> {
+
+        let mut q_vec = Vec::new();
+
+        for i in 0..self.len {
+            q_vec.push(self.q[(self.back + i) % QUEUE_SIZE].opcode);
+        }
+
+        q_vec
+    }
+
+
 }

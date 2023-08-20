@@ -200,11 +200,39 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug,marty_core::devices::pic=trace,marty_core::devices::ppi=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
         },         
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'martypc', generate tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_gentests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            "postDebugTask": "runCondenseScript"
+        },        
         {
             "type": "lldb",
             "request": "launch",
@@ -227,7 +255,7 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug,martypc_pixels_desktop=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }

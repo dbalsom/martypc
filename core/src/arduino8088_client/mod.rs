@@ -246,7 +246,7 @@ impl CpuClient {
     pub fn try_port(port_info: serialport::SerialPortInfo) -> Option<Box<dyn serialport::SerialPort>> {
 
         let port_result = serialport::new(port_info.port_name.clone(), ARD8088_BAUD)
-            .timeout(std::time::Duration::from_millis(20))
+            .timeout(std::time::Duration::from_millis(2000))
             .stop_bits(serialport::StopBits::One)
             .parity(serialport::Parity::None)
             .open();

@@ -176,6 +176,34 @@ impl FromStr for TraceMode {
     }
 }
 
+#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
+pub enum TestMode {
+    None,
+    Generate,
+    Validate
+}
+
+impl Default for TestMode {
+    fn default() -> Self { 
+        TestMode::None
+    }
+}
+
+impl FromStr for TestMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(TestMode::None),
+            "generate" => Ok(TestMode::Generate),
+            "validate" => Ok(TestMode::Validate),
+            _ => Err("Bad value for testmode".to_string()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct RomOverride {
     pub path: PathBuf,
@@ -270,6 +298,17 @@ pub struct Validator {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Tests {
+    pub test_mode: Option<TestMode>,
+    pub test_seed: Option<u64>,
+    pub test_dir: Option<String>,
+    pub test_opcode_range: Option<Vec<u8>>,
+    pub test_opcode_exclude_list: Option<Vec<u8>>,
+    pub test_opcode_gen_count: Option<u32>,
+    pub test_opcode_gen_append: Option<bool>
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Machine {
     pub model: MachineType,
     pub rom_override: Option<Vec<RomOverride>>,
@@ -307,7 +346,8 @@ pub struct ConfigFileParams {
     pub input: Input,
     pub machine: Machine,
     pub cpu: Cpu,
-    pub validator: Validator
+    pub validator: Validator,
+    pub tests: Tests
 }
 
 #[derive(Debug, Bpaf)]

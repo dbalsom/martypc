@@ -208,7 +208,12 @@ impl Cpu {
         if self.trace_enabled && self.trace_mode == TraceMode::Cycle {
 
             // Get value of timer channel #1 for DMA printout
-            let (_, dma_count) = self.bus.pit().as_ref().unwrap().get_channel_count(1);
+
+            let mut dma_count = 0;
+
+            if let Some(pit) = self.bus.pit_mut().as_mut() {
+                (_, dma_count) = pit.get_channel_count(1);
+            }
 
             let state_str = self.cycle_state_string(dma_count, false);
             self.trace_print(&state_str);   

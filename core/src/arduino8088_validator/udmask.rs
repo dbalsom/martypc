@@ -303,11 +303,11 @@ pub const FLAG_MASK_LOOKUP: [FlagMask; 256] =  [
     FlagMask { opcode: 0xFB, group: 0, mask: 0 },
     FlagMask { opcode: 0xFC, group: 0, mask: 0 },
     FlagMask { opcode: 0xFD, group: 0, mask: 0 },
-    FlagMask { opcode: 0xFE, group: 0, mask: 0 },
-    FlagMask { opcode: 0xFF, group: 0, mask: 0 }
+    FlagMask { opcode: 0xFE, group: 5, mask: 0 },
+    FlagMask { opcode: 0xFF, group: 5, mask: 0 }
 ];
 
-pub const FLAG_MASK_GROUP_LOOKUP: [[FlagMask; 8]; 4] = [
+pub const FLAG_MASK_GROUP_LOOKUP: [[FlagMask; 8]; 5] = [
     // Group #1 0x80-0x83
     [
         FlagMask { opcode: 0x80, group: 0, mask: 0 },
@@ -352,6 +352,18 @@ pub const FLAG_MASK_GROUP_LOOKUP: [[FlagMask; 8]; 4] = [
         FlagMask { opcode: 0xF6, group: 0, mask: VFLAG_CARRY | VFLAG_PARITY | VFLAG_AUXILIARY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
         FlagMask { opcode: 0xF6, group: 0, mask: VFLAG_CARRY | VFLAG_PARITY | VFLAG_AUXILIARY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
     ],
+
+    // Group #5 0xFE-0xFF
+    [
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+        FlagMask { opcode: 0xFE, group: 0, mask: 0 },
+    ],    
 ];
 
 impl ArduinoValidator {
@@ -373,5 +385,9 @@ impl ArduinoValidator {
         }
 
         masked_flags
+    }
+
+    pub fn is_group_opcode(opcode: u8) -> bool {
+        FLAG_MASK_LOOKUP[opcode as usize].group != 0
     }
 }
