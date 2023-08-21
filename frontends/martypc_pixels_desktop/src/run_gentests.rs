@@ -59,11 +59,9 @@ use crate::cpu_test::{CpuTest, TestState};
 
 use serde::{Serialize, Deserialize};
 
-pub fn run_gentests (
-    config: &ConfigFileParams
-) {
+pub fn run_gentests (config: &ConfigFileParams) {
 
-    let pic = Rc::new(RefCell::new(Pic::new()));    
+    //let pic = Rc::new(RefCell::new(Pic::new()));    
 
     // Create the cpu trace file, if specified
     let mut cpu_trace = TraceLogger::None;
