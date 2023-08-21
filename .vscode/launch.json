@@ -208,6 +208,35 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Release executable 'martypc', generate tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_gentests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },           
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'martypc', generate tests",
             "cargo": {
                 "args": [
