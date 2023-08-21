@@ -1498,6 +1498,11 @@ impl Cpu {
         }
     }
 
+    #[inline]
+    pub fn get_flags(&self) -> u16 {
+        self.flags
+    }
+
     // Sets one of the 8 bit registers.
     // It's tempting to represent the H/X registers as a union, because they are one.
     // However, in the exercise of this project I decided to avoid all unsafe code.
@@ -2066,6 +2071,7 @@ impl Cpu {
                 //log::trace!("Fetching instruction...");
                 self.i.address = instruction_address;
             }
+            
             
             // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait 
             // implementation, which fetches instruction bytes through the processor instruction queue.
@@ -2934,6 +2940,23 @@ impl Cpu {
         &self.validator
     }
         
+    pub fn flags_string(f: u16) -> String {
+
+        let c_chr = if CPU_FLAG_CARRY & f != 0 { 'C' } else { 'c' };
+        let p_chr = if CPU_FLAG_PARITY & f != 0 { 'P' } else { 'p' };
+        let a_chr = if CPU_FLAG_AUX_CARRY & f != 0 { 'A' } else { 'a' };
+        let z_chr = if CPU_FLAG_ZERO & f != 0 { 'Z' } else { 'z' };
+        let s_chr = if CPU_FLAG_SIGN & f != 0 { 'S' } else { 's' };
+        let t_chr = if CPU_FLAG_TRAP & f != 0 { 'T' } else {  't' };
+        let i_chr = if CPU_FLAG_INT_ENABLE & f != 0 { 'I' } else { 'i' };
+        let d_chr = if CPU_FLAG_DIRECTION & f != 0 { 'D' } else { 'd' };
+        let o_chr = if CPU_FLAG_OVERFLOW & f != 0 { 'O' } else { 'o' };
+  
+        format!(
+            "1111{}{}{}{}{}{}0{}0{}1{}", 
+            o_chr, d_chr, i_chr, t_chr, s_chr, z_chr, a_chr, p_chr, c_chr
+        )
+    }
 
 }
 

@@ -50,10 +50,11 @@ mod input;
 #[cfg(feature = "arduino_validator")]
 mod run_fuzzer;
 #[cfg(feature = "arduino_validator")]
+mod cpu_test;
+#[cfg(feature = "arduino_validator")]
 mod run_gentests;
 #[cfg(feature = "arduino_validator")]
-mod cpu_test;
-
+mod run_runtests;
 
 mod run_headless;
 
@@ -88,6 +89,9 @@ use crate::run_fuzzer::run_fuzzer;
 
 #[cfg(feature = "arduino_validator")]
 use crate::run_gentests::run_gentests;
+
+#[cfg(feature = "arduino_validator")]
+use crate::run_runtests::run_runtests;
 
 
 use marty_core::{
@@ -430,8 +434,10 @@ pub fn run() {
 
     // If test generate mode was specified, run the emulator in test generation mode now
     #[cfg(feature = "cpu_validator")]
-    if let Some(TestMode::Generate) = config.tests.test_mode {
-        return run_gentests(&config);
+    match config.tests.test_mode {
+        Some(TestMode::Generate) => return run_gentests(&config),
+        Some(TestMode::Validate) => return run_runtests(&config),
+        Some(TestMode::None) | None => {}
     }
 
     // If fuzzer mode was specified, run the emulator in fuzzer mode now
