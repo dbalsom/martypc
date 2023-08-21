@@ -322,20 +322,34 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     _ => false,
                 };
 
-                let addr = 
-                    u32::from_str_radix(&seq.next_element::<String>()?
-                        .ok_or_else(|| de::Error::invalid_length(1, &self))?[..], 16)
-                        .map_err(de::Error::custom)?;
+                let addr = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
 
                 let a_type = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(2, &self))?.as_str() {
                     "ES" => AccessType::AlternateData,
                     "SS" => AccessType::Stack,
                     "CS" => AccessType::CodeOrNone,
                     "DS" => AccessType::Data,
+                    "--" => AccessType::CodeOrNone,
                     _ => return Err(de::Error::custom("invalid a_type")),
                 };
 
-                let b_state = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(4, &self))?.as_str() {
+                let mem_str: String = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                let mrdc = mem_str.chars().nth(0) == Some('R');
+                let amwc = mem_str.chars().nth(1) == Some('A');
+                let mwtc = mem_str.chars().nth(2) == Some('W');
+
+                let io_str: String = seq
+                    .next_element()?
+                    .ok_or_else(|| de::Error::invalid_length(4, &self))?;
+                let iorc  = io_str.chars().nth(0) == Some('R');
+                let aiowc = io_str.chars().nth(1) == Some('A');
+                let iowc  = io_str.chars().nth(2) == Some('W');                               
+
+                let data_bus = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
+
+                let b_state = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(6, &self))?.as_str() {
                     "CODE" => BusState::CODE,
                     "MEMR" => BusState::MEMR,
                     "MEMW" => BusState::MEMW,
@@ -346,7 +360,7 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     _ => return Err(de::Error::custom("invalid b_state")),
                 };                
 
-                let t_state = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(2, &self))?.as_str() {
+                let t_state = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(7, &self))?.as_str() {
                     "T1" => BusCycle::T1,
                     "T2" => BusCycle::T2,
                     "T3" => BusCycle::T3,
@@ -356,10 +370,15 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     _ => return Err(de::Error::custom("invalid a_type")),
                 };
 
-                // ... continue in a similar manner for all fields ...
-
-                // For the sake of brevity, I won't expand on all fields here.
-                // Just follow the same pattern.
+                let q_op = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(8, &self))?.as_str() {
+                    "F" => QueueOp::First,
+                    "S" => QueueOp::Subsequent,
+                    "E" => QueueOp::Flush,
+                    "-" => QueueOp::Idle,
+                    _ =>  return Err(de::Error::custom("invalid q_op")),
+                };
+                
+                let q_byte = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(9, &self))?;
 
                 // Return the constructed CycleState at the end.
                 Ok(CycleState {
@@ -369,19 +388,18 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     a_type,
                     b_state,
                     ale,
-                    mrdc: false,
-                    amwc: false,
-                    mwtc: false,
-                    iorc: false,
-                    aiowc: false,
-                    iowc: false,
+                    mrdc,
+                    amwc,
+                    mwtc,
+                    iorc,
+                    aiowc,
+                    iowc,
                     inta: false,
-                    q_op: QueueOp::Idle,
-                    q_byte: 0,
+                    q_op,
+                    q_byte,
                     q_len: 0,
                     q: [0; 4],
-                    data_bus: 0,
-                    
+                    data_bus,
                 })
 
                 //pub n: u32,

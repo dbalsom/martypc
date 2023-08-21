@@ -231,7 +231,7 @@
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             },
-            "postDebugTask": "runCondenseScript"
+            //"postDebugTask": "runCondenseScript"
         },        
         {
             "type": "lldb",

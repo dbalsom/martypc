@@ -238,10 +238,6 @@
             "type": "shell",
             "command": "python ${workspaceFolder}/tests/tools/condense.py ${workspaceFolder}/tests/v1",
             "problemMatcher": [],
-            "presentation": {
-                "reveal": "always",
-                "panel": "new"
-            }
         }        
 	]
 }

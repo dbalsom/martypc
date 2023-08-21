@@ -35,7 +35,8 @@ use std::{
     io::{BufReader, BufWriter, Write, ErrorKind, Seek, SeekFrom},
     cell::RefCell,
     rc::Rc,
-    path::PathBuf
+    path::PathBuf,
+    time::Instant
 };
 
 use marty_core::{
@@ -145,13 +146,20 @@ pub fn run_gentests (
     test_base_path.push(config.emulator.basedir.clone());
     test_base_path.push(test_path_postfix);
 
+       
+
     for test_opcode in opcode_list {
+
+        let test_start_instant = Instant::now(); 
 
         // Attempt to open the json file for this opcode.
 
         // First, generate the appropriate filename (XX.json where XX == opcode in hex)
+        
         let mut test_path = test_base_path.clone();
+        //log::debug!("Using base path: {:?}", test_path);
         test_path.push(&format!("{:02X}.json", test_opcode));
+        log::debug!("Using filename: {:?}", test_path);
 
         let mut test_file_opt: Option<File> = None;
         let mut tests: Vec<CpuTest>;
@@ -319,7 +327,11 @@ pub fn run_gentests (
 
         }
 
-        println!("Test generation complete for opcode: {:02}. Generated {} tests.", test_opcode, test_num);
+        let test_elapsed = test_start_instant.elapsed().as_secs_f32();
+
+        println!("Test generation complete for opcode: {:02}. Generated {} tests in {:.2} seconds", test_opcode, test_num, test_elapsed);
+        let avg_test_elapsed = test_elapsed / test_num as f32;
+        println!("Avg test time: {:.2}", avg_test_elapsed);
 
         write_tests_to_file(test_path, tests);
 
@@ -349,10 +361,37 @@ pub fn read_tests_from_file(file: &File, path: PathBuf) -> Option<Vec<CpuTest>> 
 
 pub fn write_tests_to_file(path: PathBuf, tests: Vec<CpuTest>) {
 
-    let mut file = match OpenOptions::new().write(true).truncate(true).open(path) {
-        Ok(file) => file,
-        Err(e) => panic!("Couldn't reopen output file for writing: {:?}", e)
-    };
+    let mut file_opt: Option<File>;
+
+    if path.exists() { 
+        file_opt = match OpenOptions::new().write(true).truncate(true).open(path.clone()) {
+            Ok(file) => Some(file),
+            Err(e) => {
+                eprintln!("Couldn't reopen output file {:?} for writing: {:?}", path, e);
+                None
+            }
+        };
+    }
+    else {
+        file_opt 
+            = match OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .truncate(true)
+                .open(path.clone())  {
+                    Ok(file) => Some(file),
+                    Err(e) => {
+                        eprintln!("Couldn't create output file {:?}: {:?}", path, e);
+                        None
+                    }                    
+                }
+    }
+
+    if let None = file_opt {
+        panic!("Couldn't open or create output file!");
+    }
+
+    let mut file = file_opt.unwrap();
 
     file.seek(SeekFrom::Start(0)).expect("Couldn't seek file.");
     file.set_len(0).expect("Couldn't truncate file");
@@ -478,7 +517,7 @@ pub fn initial_state_from_ops(
                         // This operation corresponds to an initial fetch.
                         // Just as a sanity check, compare bytes.
                         assert_eq!(*byte, op.data);
-                        log::debug!("Validated initial instruction fetch: [{:05X}]:{:02X}", op.addr, op.data);
+                        //log::debug!("Validated initial instruction fetch: [{:05X}]:{:02X}", op.addr, op.data);
                     }
                     else {
                         // How can we be fetching the same byte twice? 
@@ -498,7 +537,7 @@ pub fn initial_state_from_ops(
                     }
                     else {
                         // Address wasn't shadowed, so safe to add this fetch to the initial state.
-                        log::debug!("Adding subsequent instruction fetch to initial state [{:05X}]:{:02X}", op.addr, op.data);
+                        //log::debug!("Adding subsequent instruction fetch to initial state [{:05X}]:{:02X}", op.addr, op.data);
                         initial_state.insert(op.addr, 0x90);
                     }
                 }
