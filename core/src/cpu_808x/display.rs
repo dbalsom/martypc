@@ -235,10 +235,13 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
     
     let instruction_string: String = match op_type {
         OperandType::Immediate8(imm8) => {
-            format!("{:#04X}", imm8)
+            format!("{:02X}h", imm8)
         }
+        OperandType::Immediate8s(imm8) => {
+            format!("{:02X}h", imm8)
+        }         
         OperandType::Immediate16(imm16) => {
-            format!("{:#04X}",imm16)
+            format!("{:04X}h",imm16)
         }
         OperandType::Relative8(rel8) => {
             //if i.flags & INSTRUCTION_REL_JUMP != 0 {
@@ -249,7 +252,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
             //else {
             //    format!("{:#06X}", rel8)
             //}
-            format!("{:#04X}", rel8)
+            format!("{:02X}h", rel8)
         }
         OperandType::Relative16(rel16) => {
             //if i.flags & INSTRUCTION_REL_JUMP != 0 {
@@ -260,7 +263,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
             //else {
             //    format!("{:#06X}", rel16)
             //}            
-            format!("{:#06X}", rel16)
+            format!("{:04X}h", rel16)
         }
         OperandType::Offset8(offset8) => {
             let segment;
@@ -278,7 +281,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
                     segment = "ds".to_string();
                 }
             }            
-            format!("byte ptr {}:[{:#06X}]", segment, offset8)
+            format!("byte {}:[{:04X}h]", segment, offset8)
         }
         OperandType::Offset16(offset16) => {
             let segment;
@@ -296,7 +299,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
                     segment = "ds".to_string();
                 }
             }                        
-            format!("word ptr {}:[{:#06X}]", segment, offset16)
+            format!("word {}:[{:04X}h]", segment, offset16)
         }
         OperandType::Register8(reg8) => {
             match reg8 {
@@ -329,8 +332,8 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
         },
         OperandType::AddressingMode(addr_mode) => {
             let mut ptr_prefix: String = match op_size {
-                OperandSize::Operand8 => "byte ptr ".to_string(),
-                OperandSize::Operand16 => "word ptr ".to_string(),
+                OperandSize::Operand8 => "byte ".to_string(),
+                OperandSize::Operand16 => "word ".to_string(),
                 OperandSize::NoOperand => "*invalid ptr* ".to_string(),
                 OperandSize::NoSize => "".to_string()
             };
@@ -340,7 +343,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect) -> String {
             }
             // LES and LDS point to a DWORD address 
             if let Mnemonic::LES | Mnemonic::LDS = i.mnemonic {
-                ptr_prefix = "dword ptr ".to_string()
+                ptr_prefix = "dword ".to_string()
             }
 
             let mut segment1 = "ds".to_string();
