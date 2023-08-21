@@ -336,16 +336,16 @@ impl<'de> de::Deserialize<'de> for CycleState {
                 let mem_str: String = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(3, &self))?;
-                let mrdc = mem_str.chars().nth(0) == Some('R');
-                let amwc = mem_str.chars().nth(1) == Some('A');
-                let mwtc = mem_str.chars().nth(2) == Some('W');
+                let mrdc = mem_str.chars().nth(0) != Some('R');
+                let amwc = mem_str.chars().nth(1) != Some('A');
+                let mwtc = mem_str.chars().nth(2) != Some('W');
 
                 let io_str: String = seq
                     .next_element()?
                     .ok_or_else(|| de::Error::invalid_length(4, &self))?;
-                let iorc  = io_str.chars().nth(0) == Some('R');
-                let aiowc = io_str.chars().nth(1) == Some('A');
-                let iowc  = io_str.chars().nth(2) == Some('W');                               
+                let iorc  = io_str.chars().nth(0) != Some('R');
+                let aiowc = io_str.chars().nth(1) != Some('A');
+                let iowc  = io_str.chars().nth(2) != Some('W');                               
 
                 let data_bus = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
 
@@ -401,26 +401,6 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     q: [0; 4],
                     data_bus,
                 })
-
-                //pub n: u32,
-                //pub addr: u32,
-                //pub t_state: BusCycle,
-                //pub a_type: AccessType,
-                //pub b_state: BusState,
-                //pub ale: bool,
-                //pub mrdc: bool,
-                //pub amwc: bool,
-                //pub mwtc: bool,
-                //pub iorc: bool,
-                //pub aiowc: bool,
-                //pub iowc: bool,
-                //pub inta: bool,
-                //pub q_op: QueueOp,
-                //pub q_byte: u8,
-                //pub q_len: u32,
-                //pub q: [u8; 4],
-                //pub data_bus: u16,
-
             }
         }
 
