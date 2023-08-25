@@ -25,6 +25,7 @@ Thumbs.db
 /keyboard
 /cfg
 /tests/v*
+/tests/tools/gen_list.py
 marty*.toml
 *.pcm
 *.cfg
