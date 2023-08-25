@@ -95,7 +95,9 @@ pub fn run_fuzzer (
         #[cfg(feature = "cpu_validator")]
         config.validator.vtype.unwrap(),
         #[cfg(feature = "cpu_validator")]
-        validator_trace
+        validator_trace,
+        #[cfg(feature = "cpu_validator")]
+        config.validator.baud_rate.unwrap_or(1_000_000)
     );
 
     cpu.randomize_seed(1234);

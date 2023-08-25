@@ -295,6 +295,7 @@ pub struct Validator {
     pub vtype: Option<ValidatorType>,
     pub trigger_address: Option<u32>,
     pub trace_file: Option<String>,
+    pub baud_rate: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

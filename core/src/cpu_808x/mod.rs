@@ -970,7 +970,9 @@ impl Cpu {
         #[cfg(feature = "cpu_validator")]
         validator_type: ValidatorType,
         #[cfg(feature = "cpu_validator")]
-        validator_trace: TraceLogger
+        validator_trace: TraceLogger,
+        #[cfg(feature = "cpu_validator")]
+        validator_baud: u32
     ) -> Self {
         let mut cpu: Cpu = Default::default();
         
@@ -991,7 +993,7 @@ impl Cpu {
 
                 #[cfg(feature = "arduino_validator")]
                 ValidatorType::Arduino8088 => {
-                    Some(Box::new(ArduinoValidator::new(validator_trace)))
+                    Some(Box::new(ArduinoValidator::new(validator_trace, validator_baud)))
                 }
                 _=> {
                     None

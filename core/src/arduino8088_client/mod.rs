@@ -220,12 +220,12 @@ pub struct CpuClient {
 }
 
 impl CpuClient {
-    pub fn init() -> Result<CpuClient, CpuClientError> {
+    pub fn init(baud_rate: u32) -> Result<CpuClient, CpuClientError> {
         match serialport::available_ports() {
             Ok(ports) => {
                 for port in ports {
                     log::trace!("Found serial port: {}", port.port_name );
-                    if let Some(rtk_port) = CpuClient::try_port(port) {
+                    if let Some(rtk_port) = CpuClient::try_port(port, baud_rate) {
                         return Ok(
                             CpuClient {
                                 port: Rc::new(RefCell::new(rtk_port))
@@ -243,9 +243,9 @@ impl CpuClient {
     }
 
     /// Try to access an Arduino8088 on the specified port. Return the port if successful, otherwise None.
-    pub fn try_port(port_info: serialport::SerialPortInfo) -> Option<Box<dyn serialport::SerialPort>> {
+    pub fn try_port(port_info: serialport::SerialPortInfo, baud_rate: u32) -> Option<Box<dyn serialport::SerialPort>> {
 
-        let port_result = serialport::new(port_info.port_name.clone(), ARD8088_BAUD)
+        let port_result = serialport::new(port_info.port_name.clone(), baud_rate)
             .timeout(std::time::Duration::from_millis(2000))
             .stop_bits(serialport::StopBits::One)
             .parity(serialport::Parity::None)

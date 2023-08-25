@@ -191,7 +191,9 @@ pub fn run_tests(tests: &Vec<CpuTest>, config: &ConfigFileParams) -> TestResults
         #[cfg(feature = "cpu_validator")]
         ValidatorType::None,
         #[cfg(feature = "cpu_validator")]
-        validator_trace
+        validator_trace,
+        #[cfg(feature = "cpu_validator")]
+        config.validator.baud_rate.unwrap_or(1_000_000)
     );
 
     // We should have a vector of tests now.

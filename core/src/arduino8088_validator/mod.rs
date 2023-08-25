@@ -186,13 +186,13 @@ pub struct ArduinoValidator {
 
 impl ArduinoValidator {
 
-    pub fn new(trace_logger: TraceLogger) -> Self {
+    pub fn new(trace_logger: TraceLogger, baud_rate: u32) -> Self {
 
         // Trigger addr is address at which to start validation
         // if trigger_addr == V_INVALID_POINTER then validate        
         let trigger_addr = V_INVALID_POINTER;
 
-        let cpu_client = match CpuClient::init() {
+        let cpu_client = match CpuClient::init(baud_rate) {
             Ok(client) => client,
             Err(e) => {
                 panic!("Failed to initialize ArduinoValidator: {}", e);

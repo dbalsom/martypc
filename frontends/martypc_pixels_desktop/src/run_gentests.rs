@@ -82,7 +82,9 @@ pub fn run_gentests (config: &ConfigFileParams) {
         #[cfg(feature = "cpu_validator")]
         config.validator.vtype.unwrap(),
         #[cfg(feature = "cpu_validator")]
-        validator_trace
+        validator_trace,
+        #[cfg(feature = "cpu_validator")]
+        config.validator.baud_rate.unwrap_or(1_000_000)
     );
 
     if let Some(seed) = config.tests.test_seed {
