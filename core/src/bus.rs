@@ -442,11 +442,13 @@ impl BusInterface {
         let src_size = src.len();
         if location as usize + src_size > self.memory.len() {
             // copy request goes out of bounds
+            log::error!("copy out of range: {} len: {}", location, src_size);
             return Err(false)
         }
-
+        
         let mem_slice: &mut [u8] = &mut self.memory[location..location + src_size];
         let mask_slice: &mut [u8] = &mut self.memory_mask[location..location + src_size];
+
         for (dst, src) in mem_slice.iter_mut().zip(src) {
             *dst = *src;
         }
@@ -493,6 +495,10 @@ impl BusInterface {
     pub fn get_slice_at(&self, start: usize, len: usize ) -> &[u8] {
         &self.memory[start..start+len]
     }
+
+    pub fn get_vec_at(&self, start: usize, len: usize ) -> Vec<u8> {
+        self.memory[start..start+len].to_vec()
+    }    
 
     pub fn set_descriptor(&mut self, start: usize, size: usize, cycle_cost: u32, read_only: bool) {
         // TODO: prevent overlapping descriptors

@@ -155,7 +155,7 @@ impl Cpu {
 
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
-        self.bus.copy_from(instr.make_contiguous(), addr as usize, 0, false).unwrap();
+        self.bus.copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false).unwrap();
 
     }
 

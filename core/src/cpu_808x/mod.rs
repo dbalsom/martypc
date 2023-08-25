@@ -2131,6 +2131,11 @@ impl Cpu {
         // Load the mod/rm operand for the instruction, if applicable.
         self.load_operand();
 
+        #[cfg(feature = "cpu_validator")]
+        let (peek_fetch, _) = self.bus.read_u8(self.pc as usize, 0).unwrap();
+        #[cfg(feature = "cpu_validator")]
+        let instr_slice = &self.bus.get_vec_at(instruction_address as usize, self.i.size as usize);
+    
         // Execute the current decoded instruction.
         let exec_result = self.execute_instruction();
 
@@ -2149,16 +2154,7 @@ impl Cpu {
 
                     // End validation of current instruction
                     let vregs = self.get_vregisters();
-
-                    /*
-                    if exec_result == ExecutionResult::Okay {
-                        vregs.ip = self.ip.wrapping_add(self.i.size as u16);
-                    }
-                    */
                     
-                    let (peek_fetch, _) = self.bus.read_u8(self.pc as usize, 0).unwrap();
-                    let instr_slice = self.bus.get_slice_at(instruction_address as usize, self.i.size as usize);
-
                     if self.i.size == 0 {
                         log::error!("Invalid length: [{:05X}] {}", instruction_address, self.i);
                     }

@@ -224,14 +224,26 @@ pub fn run_gentests (config: &ConfigFileParams) {
         'testloop: while test_num < test_limit {
 
             cpu.reset();
-
-            test_num += 1;
+            cpu.randomize_mem();
             cpu.randomize_regs();
-    
-            while cpu.get_register16(Register16::IP) > 0xFFF0 {
+
+            let mut instruction_address = 
+                Cpu::calc_linear_address(
+                    cpu.get_register16(Register16::CS),  
+                    cpu.get_register16(Register16::IP)
+                );
+
+            while (cpu.get_register16(Register16::IP) > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
                 // Avoid IP wrapping issues for now
                 cpu.randomize_regs();
+                instruction_address = 
+                    Cpu::calc_linear_address(
+                        cpu.get_register16(Register16::CS),  
+                        cpu.get_register16(Register16::IP)
+                    );
             }
+            
+            test_num += 1;
     
             // Is the specified opcode a group instruction?
     
@@ -253,7 +265,7 @@ pub fn run_gentests (config: &ConfigFileParams) {
             }
             
             // Decode this instruction
-            let instruction_address = 
+            instruction_address = 
                 Cpu::calc_linear_address(
                     cpu.get_register16(Register16::CS),  
                     cpu.get_register16(Register16::IP)
