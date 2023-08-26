@@ -195,7 +195,7 @@ impl RemoteCpu {
         }
     }
 
-    pub fn update_state(&mut self) -> CycleState {
+    pub fn update_state(&mut self, cycle: bool) -> CycleState {
 
         /*
         self.program_state = self.cpu_client.get_program_state().expect("Failed to get program state!");
@@ -205,13 +205,26 @@ impl RemoteCpu {
         self.data_bus = self.cpu_client.read_data_bus().expect("Failed to get data bus!");
         */
 
-        (
-            self.program_state, 
-            self.control_status, 
-            self.status, 
-            self.command_status, 
-            self.data_bus
-        ) = self.cpu_client.get_cycle_state().expect("Failed to get cycle state!");
+        match cycle {
+            true => {
+                (
+                    self.program_state, 
+                    self.control_status, 
+                    self.status, 
+                    self.command_status, 
+                    self.data_bus
+                ) = self.cpu_client.cycle_get_cycle_state().expect("Failed to get cycle state!");
+            }
+            false => {
+                (
+                    self.program_state, 
+                    self.control_status, 
+                    self.status, 
+                    self.command_status, 
+                    self.data_bus
+                ) = self.cpu_client.get_cycle_state().expect("Failed to get cycle state!");
+            }
+        }
 
         self.access_type = get_access_type!(self.status);
         self.bus_state = get_bus_state!(self.status);
@@ -302,7 +315,7 @@ impl RemoteCpu {
                     // Bus type must match 
                     //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::CodeRead);
 
-                    if (emu_mem_ops[self.busop_n].addr as usize) == self.instr_end_addr {
+                    if (emu_mem_ops[self.busop_n].addr as usize) == (self.instr_end_addr - 1) {
                         self.instruction_ended = true;
                     }
 
@@ -565,7 +578,8 @@ impl RemoteCpu {
         log: &mut TraceLogger
     ) -> Result<CycleState, ValidatorError> {
 
-        self.cpu_client.cycle().expect("Failed to cycle cpu!");
+        // Disable cycling; update_state(); will cycle cpu
+        //self.cpu_client.cycle().expect("Failed to cycle cpu!");
         self.cycle_num += 1;
 
         //log::trace!("Cycle #{}", self.cycle_num);
@@ -604,7 +618,7 @@ impl RemoteCpu {
             }            
         };
 
-        let mut cycle_info = self.update_state();
+        let mut cycle_info = self.update_state(true);
         if self.program_state == ProgramState::ExecuteDone {
             return Ok(cycle_info)
         }
@@ -842,7 +856,7 @@ impl RemoteCpu {
         // Include post-reset cycle state if we just reset the CPU
         // as reset includes the first T1 cycle with ALE.
         if self.just_reset {
-            let cycle_state = self.update_state();
+            let cycle_state = self.update_state(false);
             cycle_vec.push(cycle_state);
             self.just_reset = false;
         }

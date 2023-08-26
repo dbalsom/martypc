@@ -703,13 +703,14 @@ impl CpuValidator for ArduinoValidator {
 
         trace_debug!(
             self,
-            "{}: {} {:02X?} @ [{:04X}:{:04X}] Memops: {} End: {:05X}", 
+            "{}: {} {:02X?} @ [{:04X}:{:04X}] Memops: {} Start: {:05X} End: {:05X}", 
             discard_or_validate, 
             name, 
             self.current_instr.instr, 
             self.current_instr.regs[0].cs, 
             self.current_instr.regs[0].ip,
             self.current_instr.emu_ops.len(),
+            ip_addr,
             self.current_instr.instr_end
         );
 

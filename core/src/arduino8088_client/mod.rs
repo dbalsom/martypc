@@ -60,7 +60,8 @@ pub enum ServerCommand {
     CmdGetProgramState = 0x12,
     CmdGetLastError    = 0x13,
     CmdGetCycleState   = 0x14,
-    CmdInvalid         = 0x15,
+    CmdCGetCycleState  = 0x15,
+    CmdInvalid         = 0x16,
 }
 
 #[derive(Debug, PartialEq)]
@@ -547,4 +548,32 @@ impl CpuClient {
 
         Ok((state, control_bits, buf[1], buf[2], buf[3]))
     }
+
+    pub fn cycle_get_cycle_state(&mut self) -> Result<(ProgramState, u8, u8, u8, u8), CpuClientError> {
+        let mut buf: [u8; 4] = [0; 4];
+        self.send_command_byte(ServerCommand::CmdCGetCycleState)?;
+        self.recv_buf(&mut buf)?;
+        self.read_result_code()?;
+
+        let state_bits: u8 = buf[0] >> 4;
+        let state: ProgramState = match state_bits {
+            0x00 => ProgramState::Reset,
+            0x01 => ProgramState::JumpVector,
+            0x02 => ProgramState::Load,
+            0x03 => ProgramState::LoadDone,
+            0x04 => ProgramState::Execute,
+            0x05 => ProgramState::ExecuteFinalize,
+            0x06 => ProgramState::ExecuteDone,
+            0x07 => ProgramState::Store,
+            0x08 => ProgramState::StoreDone,
+            0x09 => ProgramState::Done,
+            _ => {
+                return Err(CpuClientError::BadValue);
+            }
+        };
+
+        let control_bits = buf[0] & 0x0F;
+
+        Ok((state, control_bits, buf[1], buf[2], buf[3]))
+    }    
 }
