@@ -27,6 +27,20 @@
 			"type": "cargo",
 			"command": "build",
 			"args": [
+                "-r",
+				"--features",
+				"cpu_validator,arduino_validator"
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo build release with validator"
+		},        
+		{
+			"type": "cargo",
+			"command": "build",
+			"args": [
 				"--target",
 				"wasm32-unknown-unknown"
 			],
