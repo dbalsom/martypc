@@ -150,203 +150,213 @@ pub fn run_gentests (config: &ConfigFileParams) {
 
     for test_opcode in opcode_list {
 
-        let test_start_instant = Instant::now(); 
+        let is_grp = ArduinoValidator::is_group_opcode(test_opcode);
+        let max_ext = if is_grp { 7 } else { 0 };
 
-        // Attempt to open the json file for this opcode.
+        for op_ext in 0..=max_ext {
 
-        // First, generate the appropriate filename (XX.json where XX == opcode in hex)
+            let test_start_instant = Instant::now(); 
+
+            // Attempt to open the json file for this opcode.
+    
+            // First, generate the appropriate filename.
+            // If group opcode, (XX.Y.json where XX == opcode in hex, Y == opcode extension)
+            // Otherwise, XX.json
+            
+            let mut test_path = test_base_path.clone();
+            //log::debug!("Using base path: {:?}", test_path);
+
+            if !is_grp {
+                test_path.push(&format!("{:02X}.json", test_opcode));
+            }
+            else {
+                test_path.push(&format!("{:02X}.{:01X}.json", test_opcode, op_ext));
+            }
+
+            log::debug!("Using filename: {:?}", test_path);
+    
+            let mut test_file_opt: Option<File> = None;
+            let mut tests: Vec<CpuTest>;
+    
+            // If we are not appending tests, don't bother to open the existing test file.
+            if test_append {
+                let file_result = File::open(test_path.clone());
+    
+                let mut had_to_create = false;
         
-        let mut test_path = test_base_path.clone();
-        //log::debug!("Using base path: {:?}", test_path);
-        test_path.push(&format!("{:02X}.json", test_opcode));
-        log::debug!("Using filename: {:?}", test_path);
+                match file_result {
+                    Ok(file) => {
 
-        let mut test_file_opt: Option<File> = None;
-        let mut tests: Vec<CpuTest>;
-
-        // If we are not appending tests, don't bother to open the existing test file.
-        if test_append {
-            let file_result = File::open(test_path.clone());
-
-            let mut had_to_create = false;
-    
-            match file_result {
-                Ok(file) => {
-                    println!("Opened existing test file for opcode {:02X}: {:?}", test_opcode, test_path);
-                    test_file_opt = Some(file);
-                },
-                Err(error) => match error.kind() {
-                    ErrorKind::NotFound => {
-                        println!("File not found: {:?} Attempting to create.", test_path);
-    
-                        match File::create(test_path.clone()) {
-                            Ok(file) => {
-                                println!("Created test file: {:?}", test_path);
-    
-                                test_file_opt = Some(file);
-                                had_to_create = true;
-                            },
-                            Err(err) => {
-                                eprintln!("Failed to create test file: {:?}: {:?}", test_path, err);
-                                return
-                            }
+                        if !is_grp {
+                            println!("Opened existing test file for opcode {:02X}: {:?}", test_opcode, test_path);
                         }
+                        else {
+                            println!("Opened existing test file for opcode {:02X}.{:01X}: {:?}", test_opcode, op_ext, test_path);
+                        }
+                        
+                        test_file_opt = Some(file);
                     },
-                    error => {
-                        println!("Failed to open the file due to: {:?}", error);
+                    Err(error) => match error.kind() {
+                        ErrorKind::NotFound => {
+                            println!("File not found: {:?} Attempting to create.", test_path);
+        
+                            match File::create(test_path.clone()) {
+                                Ok(file) => {
+                                    println!("Created test file: {:?}", test_path);
+        
+                                    test_file_opt = Some(file);
+                                    had_to_create = true;
+                                },
+                                Err(err) => {
+                                    eprintln!("Failed to create test file: {:?}: {:?}", test_path, err);
+                                    return
+                                }
+                            }
+                        },
+                        error => {
+                            println!("Failed to open the file due to: {:?}", error);
+                        }
                     }
                 }
+        
+                if test_file_opt.is_none() {
+                    return;
+                }
+        
+                // We should have a valid file now
+                let test_file = test_file_opt.unwrap();
+                
+        
+                if !had_to_create {
+                    tests = read_tests_from_file(&test_file, test_path.clone()).expect("Failed to read tests from JSON file.");
+                } 
+                else {
+                    tests = Vec::new();
+                }
             }
-    
-            if test_file_opt.is_none() {
-                return;
-            }
-    
-            // We should have a valid file now
-            let test_file = test_file_opt.unwrap();
-            
-    
-            if !had_to_create {
-                tests = read_tests_from_file(&test_file, test_path.clone()).expect("Failed to read tests from JSON file.");
-            } 
             else {
+                // Not appending tests. Just create an empty test vec.
                 tests = Vec::new();
             }
-        }
-        else {
-            // Not appending tests. Just create an empty test vec.
-            tests = Vec::new();
-        }
-
-        // We should have a vector of tests now.
-        println!("Loaded {} tests from file.", tests.len());
-
-        test_num = tests.len() as u32;
-
-        'testloop: while test_num < test_limit {
-
-            cpu.reset();
-            cpu.randomize_mem();
-            cpu.randomize_regs();
-
-            let mut instruction_address = 
-                Cpu::calc_linear_address(
-                    cpu.get_register16(Register16::CS),  
-                    cpu.get_register16(Register16::IP)
-                );
-
-            while (cpu.get_register16(Register16::IP) > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
-                // Avoid IP wrapping issues for now
+    
+            // We should have a vector of tests now.
+            println!("Loaded {} tests from file.", tests.len());
+    
+            test_num = tests.len() as u32;
+    
+            'testloop: while test_num < test_limit {
+    
+                cpu.reset();
+                cpu.randomize_mem();
                 cpu.randomize_regs();
+    
+                let mut instruction_address = 
+                    Cpu::calc_linear_address(
+                        cpu.get_register16(Register16::CS),  
+                        cpu.get_register16(Register16::IP)
+                    );
+    
+                while (cpu.get_register16(Register16::IP) > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
+                    // Avoid IP wrapping issues for now
+                    cpu.randomize_regs();
+                    instruction_address = 
+                        Cpu::calc_linear_address(
+                            cpu.get_register16(Register16::CS),  
+                            cpu.get_register16(Register16::IP)
+                        );
+                }
+                
+                test_num += 1;
+        
+                // Is the specified opcode a group instruction?
+                if is_grp {
+                    cpu.random_grp_instruction(test_opcode, &[op_ext]);
+                }
+                else {
+                    cpu.random_inst_from_opcodes(&[test_opcode]);
+                }
+
+                // Decode this instruction
                 instruction_address = 
                     Cpu::calc_linear_address(
                         cpu.get_register16(Register16::CS),  
                         cpu.get_register16(Register16::IP)
                     );
-            }
-            
-            test_num += 1;
-    
-            // Is the specified opcode a group instruction?
-    
-            let mut have_good_instruction = false;
-    
-            while !have_good_instruction {
-                if ArduinoValidator::is_group_opcode(test_opcode) {
-                    // Generate a random extension form of this group opcode.
-                    cpu.random_grp_instruction(test_opcode, &[0, 1, 2, 3, 4, 5, 6, 7]);
-
-                    have_good_instruction = true;
+        
+                cpu.bus_mut().seek(instruction_address as usize);
+                let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
+        
+                let mut i = match Cpu::decode(cpu.bus_mut()) {
+                    Ok(i) => i,
+                    Err(_) => {
+                        log::error!("Instruction decode error, skipping...");
+                        continue 'testloop; 
+                    }                
+                };
+        
+                // Skip N successful instructions
+        
+                // was at 13546
+                if test_num < 0 {
+                    continue;
                 }
-                else {
-                    // Not a group opcode - generate a normal random instruction
-                    cpu.random_inst_from_opcodes(&[test_opcode]);
-
-                    have_good_instruction = true;
+        
+                cpu.set_option(CpuOption::EnableWaitStates(false));
+                cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));        
+        
+                let mut rep = false;
+        
+                i.address = instruction_address;
+           
+                println!("Test {}: Creating test for instruction: {} opcode:{:02X}", test_num, i, opcode);
+                
+                // Set terminating address for CPU validator.
+        
+                let end_address = 
+                    Cpu::calc_linear_address(
+                        cpu.get_register16(Register16::CS),  
+                        cpu.get_register16(Register16::IP).wrapping_add(i.size as u16)
+                    );
+        
+                cpu.set_end_address(end_address as usize);
+                log::trace!("Setting end address: {:05X}", end_address);
+        
+                // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
+                // execution per iteration. The 8088 makes no such distinction.
+                loop {
+                    match cpu.step(false) {
+                        Ok((_, cycles)) => {
+                            log::trace!("Instruction reported {} cycles", cycles);
+        
+                            if rep & cpu.in_rep() {
+                                continue
+                            }
+                            break;
+                        },
+                        Err(err) => {
+                            log::error!("CPU Error: {}\n", err);
+                            cpu.trace_flush();
+                            break 'testloop;
+                        } 
+                    }
                 }
-            }
-            
-            // Decode this instruction
-            instruction_address = 
-                Cpu::calc_linear_address(
-                    cpu.get_register16(Register16::CS),  
-                    cpu.get_register16(Register16::IP)
-                );
     
-            cpu.bus_mut().seek(instruction_address as usize);
-            let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
+                let validator = cpu.get_validator().as_ref().unwrap();
     
-            let mut i = match Cpu::decode(cpu.bus_mut()) {
-                Ok(i) => i,
-                Err(_) => {
-                    log::error!("Instruction decode error, skipping...");
-                    continue 'testloop; 
-                }                
-            };
+                let cpu_test = get_test_info(validator);
     
-            // Skip N successful instructions
+                tests.push(cpu_test);
     
-            // was at 13546
-            if test_num < 0 {
-                continue;
             }
     
-            cpu.set_option(CpuOption::EnableWaitStates(false));
-            cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));        
+            let test_elapsed = test_start_instant.elapsed().as_secs_f32();
     
-            let mut rep = false;
+            println!("Test generation complete for opcode: {:02}. Generated {} tests in {:.2} seconds", test_opcode, test_num, test_elapsed);
+            let avg_test_elapsed = test_elapsed / test_num as f32;
+            println!("Avg test time: {:.2}", avg_test_elapsed);
     
-            i.address = instruction_address;
-       
-            println!("Test {}: Creating test for instruction: {} opcode:{:02X}", test_num, i, opcode);
-            
-            // Set terminating address for CPU validator.
-    
-            let end_address = 
-                Cpu::calc_linear_address(
-                    cpu.get_register16(Register16::CS),  
-                    cpu.get_register16(Register16::IP).wrapping_add(i.size as u16)
-                );
-    
-            cpu.set_end_address(end_address as usize);
-            log::trace!("Setting end address: {:05X}", end_address);
-    
-            // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
-            // execution per iteration. The 8088 makes no such distinction.
-            loop {
-                match cpu.step(false) {
-                    Ok((_, cycles)) => {
-                        log::trace!("Instruction reported {} cycles", cycles);
-    
-                        if rep & cpu.in_rep() {
-                            continue
-                        }
-                        break;
-                    },
-                    Err(err) => {
-                        log::error!("CPU Error: {}\n", err);
-                        cpu.trace_flush();
-                        break 'testloop;
-                    } 
-                }
-            }
-
-            let validator = cpu.get_validator().as_ref().unwrap();
-
-            let cpu_test = get_test_info(validator);
-
-            tests.push(cpu_test);
-
+            write_tests_to_file(test_path, tests);
         }
-
-        let test_elapsed = test_start_instant.elapsed().as_secs_f32();
-
-        println!("Test generation complete for opcode: {:02}. Generated {} tests in {:.2} seconds", test_opcode, test_num, test_elapsed);
-        let avg_test_elapsed = test_elapsed / test_num as f32;
-        println!("Avg test time: {:.2}", avg_test_elapsed);
-
-        write_tests_to_file(test_path, tests);
-
     }
     
     //std::process::exit(0);
