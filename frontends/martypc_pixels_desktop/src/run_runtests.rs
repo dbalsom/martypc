@@ -72,14 +72,16 @@ pub struct TestResults {
 
 pub fn run_runtests(config: &ConfigFileParams) {
 
-    let mut test_path_postfix = "tests".to_string();
+    let mut test_path = "./tests".to_string();
     if let Some(test_dir) = &config.tests.test_dir {
-        test_path_postfix = test_dir.clone();
+        test_path = test_dir.clone();
     }
 
     let mut test_base_path = PathBuf::new();
-    test_base_path.push(config.emulator.basedir.clone());
-    test_base_path.push(test_path_postfix);
+    //test_base_path.push(config.emulator.basedir.clone());
+
+    // Interpret as absolute path
+    test_base_path.push(test_path);
 
     log::debug!("Using test path: {:?}", test_base_path);
 
