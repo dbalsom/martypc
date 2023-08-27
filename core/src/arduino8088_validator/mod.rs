@@ -588,6 +588,7 @@ impl CpuValidator for ArduinoValidator {
         }
         */
 
+        /* disable discarding for now
         if let ValidatorMode::Instruction = self.mode {
             // Cannot discard instructions in Cycle mode.
             if self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize] {
@@ -595,6 +596,7 @@ impl CpuValidator for ArduinoValidator {
                 self.current_instr.discard = true;
             }
         }
+        */
  
         self.end_addr = end_program;
 

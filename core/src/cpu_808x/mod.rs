@@ -1003,7 +1003,7 @@ impl Cpu {
             };
 
             if let Some(ref mut validator) = cpu.validator {
-                match validator.init(validator_mode, true, true, true) {
+                match validator.init(validator_mode, true, true, false) {
                     true => {},
                     false => {
                         panic!("Failed to init cpu validator.");
