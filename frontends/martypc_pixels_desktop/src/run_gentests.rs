@@ -75,6 +75,9 @@ pub fn run_gentests (config: &ConfigFileParams) {
         validator_trace = TraceLogger::from_filename(&trace_filename);
     }
 
+    #[cfg(feature = "cpu_validator")]
+    use marty_core::cpu_validator::ValidatorMode;
+
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
         config.emulator.trace_mode,
@@ -83,6 +86,8 @@ pub fn run_gentests (config: &ConfigFileParams) {
         config.validator.vtype.unwrap(),
         #[cfg(feature = "cpu_validator")]
         validator_trace,
+        #[cfg(feature = "cpu_validator")]
+        ValidatorMode::Instruction,
         #[cfg(feature = "cpu_validator")]
         config.validator.baud_rate.unwrap_or(1_000_000)
     );
@@ -326,7 +331,8 @@ pub fn run_gentests (config: &ConfigFileParams) {
                 loop {
                     match cpu.step(false) {
                         Ok((_, cycles)) => {
-                            log::trace!("Instruction reported {} cycles", cycles);
+                            
+                            //log::trace!("Instruction reported {} cycles", cycles);
         
                             if rep & cpu.in_rep() {
                                 continue
@@ -432,7 +438,8 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
 
     let cpu_ops = validator.cpu_ops();
     let cpu_reads = validator.cpu_reads();
-    log::debug!("Got {} CPU reads from instruction.", cpu_reads.len());
+    
+    //log::debug!("Got {} CPU reads from instruction.", cpu_reads.len());
 
     let (initial_state, initial_ram) = initial_state_from_ops(initial_regs.cs, initial_regs.ip, &bytes, &cpu_ops);
 

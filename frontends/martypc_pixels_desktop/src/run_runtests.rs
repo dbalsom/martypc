@@ -186,6 +186,9 @@ pub fn run_tests(tests: &Vec<CpuTest>, config: &ConfigFileParams) -> TestResults
     }
     */
 
+    #[cfg(feature = "cpu_validator")]
+    use marty_core::cpu_validator::ValidatorMode;
+
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
         config.emulator.trace_mode,
@@ -194,6 +197,8 @@ pub fn run_tests(tests: &Vec<CpuTest>, config: &ConfigFileParams) -> TestResults
         ValidatorType::None,
         #[cfg(feature = "cpu_validator")]
         validator_trace,
+        #[cfg(feature = "cpu_validator")]
+        ValidatorMode::Instruction,
         #[cfg(feature = "cpu_validator")]
         config.validator.baud_rate.unwrap_or(1_000_000)
     );
@@ -275,6 +280,12 @@ pub fn run_tests(tests: &Vec<CpuTest>, config: &ConfigFileParams) -> TestResults
 
         i.address = instruction_address;
     
+        let disassembly_str = format!("{}", i);
+        
+        if test.name != disassembly_str {
+            log::warn!("Test disassembly mismatch!");
+        }
+
         println!("Test {}: Running test for instruction: {} ({})", n, i, i.size);
         
         // Set terminating address for CPU validator.

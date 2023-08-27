@@ -278,6 +278,9 @@ impl Machine {
             }
         }            
 
+        #[cfg(feature = "cpu_validator")]
+        use crate::cpu_validator::ValidatorMode;
+
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
             trace_mode,
@@ -286,6 +289,8 @@ impl Machine {
             config.validator.vtype.unwrap(),
             #[cfg(feature = "cpu_validator")]
             validator_trace,
+            #[cfg(feature = "cpu_validator")]
+            ValidatorMode::Cycle,
             #[cfg(feature = "cpu_validator")]
             config.validator.baud_rate.unwrap_or(1_000_000)
         );

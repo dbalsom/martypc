@@ -88,6 +88,9 @@ pub fn run_fuzzer (
         validator_trace = TraceLogger::from_filename(&trace_filename);
     }
 
+    #[cfg(feature = "cpu_validator")]
+    use marty_core::cpu_validator::ValidatorMode;
+
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
         config.emulator.trace_mode,
@@ -96,6 +99,8 @@ pub fn run_fuzzer (
         config.validator.vtype.unwrap(),
         #[cfg(feature = "cpu_validator")]
         validator_trace,
+        #[cfg(feature = "cpu_validator")]
+        ValidatorMode::Instruction,
         #[cfg(feature = "cpu_validator")]
         config.validator.baud_rate.unwrap_or(1_000_000)
     );
@@ -121,6 +126,7 @@ pub fn run_fuzzer (
 
         // ALU ops
         
+        /*
         cpu.random_inst_from_opcodes(
             &[
                 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, // ADD
@@ -133,13 +139,15 @@ pub fn run_fuzzer (
                 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D, // CMP
             ]
         );
+        */
         
         // Completed 5000 tests
         
 
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
-
+        cpu.random_inst_from_opcodes(&[0x37]);
+        
         //cpu.random_inst_from_opcodes(&[0x37]);
 
         //cpu.random_inst_from_opcodes(&[0x90]);

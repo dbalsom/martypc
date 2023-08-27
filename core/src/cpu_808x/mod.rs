@@ -972,6 +972,8 @@ impl Cpu {
         #[cfg(feature = "cpu_validator")]
         validator_trace: TraceLogger,
         #[cfg(feature = "cpu_validator")]
+        validator_mode: ValidatorMode,
+        #[cfg(feature = "cpu_validator")]        
         validator_baud: u32
     ) -> Self {
         let mut cpu: Cpu = Default::default();
@@ -1001,7 +1003,7 @@ impl Cpu {
             };
 
             if let Some(ref mut validator) = cpu.validator {
-                match validator.init(ValidatorMode::Cycle, true, true, true) {
+                match validator.init(validator_mode, true, true, true) {
                     true => {},
                     false => {
                         panic!("Failed to init cpu validator.");

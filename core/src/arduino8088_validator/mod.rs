@@ -613,8 +613,8 @@ impl CpuValidator for ArduinoValidator {
         let mut reg_buf: [u8; 28] = [0; 28];
         ArduinoValidator::regs_to_buf(&mut reg_buf, &self.current_instr.regs[0]);
 
-        trace_debug!(self, "\n{}", &self.current_instr.regs[0]);
-        trace_debug!(self, "Flags: {}", RemoteCpu::flags_string(self.current_instr.regs[0].flags));
+        //trace_debug!(self, "\n{}", &self.current_instr.regs[0]);
+        //trace_debug!(self, "Flags: {}", RemoteCpu::flags_string(self.current_instr.regs[0].flags));
 
         self.cpu.load(&reg_buf).expect("validate() error: Load registers failed.");
     }
@@ -725,6 +725,7 @@ impl CpuValidator for ArduinoValidator {
             );
 
         let (mut cpu_states, discard) = self.cpu.step(
+            self.mode,
             &self.current_instr.instr,
             instr_addr,
             self.do_cycle_trace,
