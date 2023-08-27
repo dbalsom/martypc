@@ -955,11 +955,13 @@ impl RemoteCpu {
                 return Err(ValidatorError::CpuError);
             }
 
+            /*
             if self.cycle_num > 200 {
                 trace!(log, "CPU cycle timeout!");
                 RemoteCpu::dump_cycles(&cycle_vec);
                 return Err(ValidatorError::CpuError);
             }
+            */
 
             // cycle trace if enabled
             if cycle_trace == true {
