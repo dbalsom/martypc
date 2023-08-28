@@ -132,6 +132,53 @@ impl Cpu {
             _ => {}
         }
 
+        let mut modrm_valid = false;
+        let mut modrm_byte: u8  = get_rand!(self);
+
+        while !modrm_valid {
+
+            modrm_byte = get_rand!(self);
+
+            // Filter out invalid forms of some instructions that cannot
+            // reasonably be validated.
+            match opcode {
+                // LEA
+                0x8D => {
+                    if modrm_byte & 0xC0 == 0xC0 {
+                        // Reg form, invalid.
+                        continue;
+                    }
+                }
+                // LES | LDS
+                0xC4 | 0xC5 => {
+                    if modrm_byte & 0xC0 == 0xC0 {
+                        // Reg form, invalid.
+                        continue;
+                    }
+                }
+                // POP 
+                0x8F => {
+                    if (modrm_byte >> 3) & 0x07 != 0 {
+                        // reg != 0, invalid.
+                        continue;
+                    }
+                    if (modrm_byte & 0xC0) == 0xC0 {
+                        // register form invalid
+                        continue;
+                    }
+                    //log::debug!("Picked valid modrm for 0x8F: {:02X}", modrm_byte);
+                }
+                _=> {}
+            }
+
+            modrm_valid = true;
+        }
+
+        // Add 'modrm' byte (even if not used)
+        //let modrm_byte: u8 = get_rand!(self);
+
+        instr.push_back(modrm_byte);
+
         // Add a segment override prefix with 50% probability
         let do_segment_prefix: u8 = get_rand!(self);
 
@@ -146,8 +193,8 @@ impl Cpu {
             }
         }
 
-        // Add six random instruction bytes
-        for _ in 0..6 {
+        // Add five random instruction bytes (+modrm makes 6)
+        for _ in 0..5 {
             let instr_byte: u8 = get_rand!(self);
 
             instr.push_back(instr_byte);
@@ -155,6 +202,7 @@ impl Cpu {
 
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
+        //log::debug!("Using instruction vector: {:?}", instr.make_contiguous());
         self.bus.copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false).unwrap();
 
     }

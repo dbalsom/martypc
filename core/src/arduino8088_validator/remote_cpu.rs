@@ -532,8 +532,10 @@ impl RemoteCpu {
                 self.cpu_client.write_data_bus(self.data_bus).expect("Failed to write data bus.");
             }
             else {
-                trace!(log, "Bus op underflow on IN");
-                self.error = Some(RemoteCpuError::BusOpUnderflow);
+                trace!(log, "Bus op underflow on IN. Substituing 0xFF");
+                ///self.error = Some(RemoteCpuError::BusOpUnderflow)
+                /// 
+                self.cpu_client.write_data_bus(0xFF).expect("Failed to write data bus.");
             }
         }
 
