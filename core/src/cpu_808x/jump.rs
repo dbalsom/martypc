@@ -54,8 +54,8 @@ impl Cpu {
         if jump {
             self.cycle_i(MC_JUMP);
         }
-        self.biu_suspend_fetch();
-        self.cycles_i(3, &[0x06b, 0x06c, MC_CORR]);
+        self.biu_suspend_fetch(); // 0x06B
+        self.cycles_i(2, &[0x06c, MC_CORR]);
         // Push return segment to stack
         self.push_u16(self.cs, ReadWriteFlag::Normal);
         self.cs = new_cs;

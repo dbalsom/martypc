@@ -621,6 +621,12 @@ impl Cpu {
                 // This instruction reads a direct FAR address from the instruction queue. (See 0xEA for its twin JMPF)
                 let (segment, offset) = self.read_operand_faraddr();
 
+                self.ip = self.ip.wrapping_add(self.i.size as u16);
+                let next_i = self.ip;
+
+                self.farcall(segment, offset, true);
+
+                /* 
                 // Jump to FARCALL
                 self.cycle_i(MC_JUMP);
                 self.biu_suspend_fetch();
@@ -630,7 +636,7 @@ impl Cpu {
                 self.push_register16(Register16::CS, ReadWriteFlag::Normal);
                 
                 self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]);
-                let next_i = self.ip + (self.i.size as u16);
+                */
 
                 // Save next address if we step over this CALL.
                 self.step_over_target = Some(CpuAddress::Segmented(self.cs, next_i));
@@ -646,6 +652,7 @@ impl Cpu {
                     next_i
                 );
 
+                /*
                 self.cs = segment;
                 self.ip = offset;
 
@@ -653,6 +660,7 @@ impl Cpu {
                 self.biu_queue_flush();
                 self.cycles_i(3, &[0x077, 0x078, 0x079]); 
                 self.push_u16(next_i, ReadWriteFlag::RNI);
+                */
                 jump = true;
             }
             0x9B => {
