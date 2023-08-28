@@ -658,8 +658,10 @@ impl Cpu {
         //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
     }
 
-    pub fn biu_io_read_u16(&mut self, addr: u16, flag: ReadWriteFlag) {
+    pub fn biu_io_read_u16(&mut self, addr: u16, flag: ReadWriteFlag) -> u16 {
         
+        let mut word;
+
         self.biu_bus_begin(
             BusStatus::IoRead, 
             Segment::None, 
@@ -671,10 +673,12 @@ impl Cpu {
         );
         self.biu_bus_wait_finish();
 
+        word = self.data_bus & 0x00FF;
+
         self.biu_bus_begin(
             BusStatus::IoRead, 
             Segment::None, 
-            addr as u32, 
+            (addr + 1) as u32, 
             0, 
             TransferSize::Byte,
             OperandSize::Operand16,
@@ -685,6 +689,10 @@ impl Cpu {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
             ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
         };
+
+        word |= (self.data_bus & 0x00FF) << 8;
+
+        word        
     }        
 
     pub fn biu_io_write_u16(&mut self, addr: u16, word: u16, flag: ReadWriteFlag) {

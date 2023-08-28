@@ -1245,8 +1245,8 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 self.cycles_i(2, &[0x0ad, 0x0ae]);
 
-                let in_byte = self.biu_io_read_u8(op2_value as u16);
-                self.set_register16(Register16::AX, in_byte as u16);
+                let in_word = self.biu_io_read_u16(op2_value as u16, ReadWriteFlag::Normal);
+                self.set_register16(Register16::AX, in_word as u16);
             }
             0xE6 => {
                 // OUT imm8, al
@@ -1353,8 +1353,8 @@ impl Cpu {
             0xED => {
                 // IN ax, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                let in_byte = self.biu_io_read_u8(op2_value);
-                self.set_register16(Register16::AX, in_byte as u16);
+                let in_word = self.biu_io_read_u16(op2_value, ReadWriteFlag::Normal);
+                self.set_register16(Register16::AX, in_word as u16);
             }
             0xEE => {
                 // OUT dx, al
