@@ -133,6 +133,9 @@ impl Cpu {
                     }
                     _ => {}
                 }
+
+                // Mask CX to 8 bits.
+                self.cx = self.cx & 0x00FF;
             }
             0x9D => {
                 // POPF. 
@@ -147,6 +150,14 @@ impl Cpu {
 
                 self.bus_mut().write_u16(flat_addr as usize, flag_word, 0).expect("Couldn't write stack!");
             }
+            0xD2 | 0xD3 => {
+                // Shifts and rotates by cl.
+                // Mask CL to 6 bits to shorten tests.
+                // This will still catch emulators that are masking CL to 5 bits.
+
+                self.cl = self.cl & 0x3F;
+            }
+
             _ => {}
         }
 
