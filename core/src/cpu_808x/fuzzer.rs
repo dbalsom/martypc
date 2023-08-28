@@ -102,6 +102,11 @@ impl Cpu {
             let n: u8 = get_rand!(self);
             self.bus.write_u8(i, n, 0).expect("Mem err");
         }
+
+        // Write a basic IVT to handle DIV exceptions.
+        self.bus.write_u16(0x00000, 0x0400, 0).expect("Mem err writing IVT");
+        self.bus.write_u16(0x00004, 0x0000, 0).expect("Mem err writing IVT");
+        self.bus.write_u8(0x00400, 0xCF, 0).expect("Mem err writing IRET");
     }
 
     #[allow(dead_code)]
