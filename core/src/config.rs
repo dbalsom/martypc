@@ -304,6 +304,7 @@ pub struct Tests {
     pub test_seed: Option<u64>,
     pub test_dir: Option<String>,
     pub test_opcode_range: Option<Vec<u8>>,
+    pub test_extension_range: Option<Vec<u8>>,
     pub test_opcode_exclude_list: Option<Vec<u8>>,
     pub test_opcode_gen_count: Option<u32>,
     pub test_opcode_gen_append: Option<bool>

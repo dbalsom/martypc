@@ -154,9 +154,20 @@ pub fn run_gentests (config: &ConfigFileParams) {
     for test_opcode in opcode_list {
 
         let is_grp = ArduinoValidator::is_group_opcode(test_opcode);
-        let max_ext = if is_grp { 7 } else { 0 };
 
-        for op_ext in 0..=max_ext {
+        let mut start_ext = 0;
+        let mut end_ext = if is_grp { 7 } else { 0 };
+
+        if let Some(range) = &config.tests.test_extension_range {
+            if range.len() < 2 {
+                panic!("Invalid test opcode extension range specified!");
+            }
+            
+            start_ext = range[0];
+            end_ext = range[1];
+        }
+
+        for op_ext in start_ext..=end_ext {
 
             let test_start_instant = Instant::now(); 
 
