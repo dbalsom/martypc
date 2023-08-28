@@ -502,7 +502,18 @@ impl Cpu {
 
         if loaded_modrm && (op_flags & I_LOAD_EA == 0) {
             // The EA calculated by the modrm will not be loaded (ie, we proceed to EADONE instead of EALOAD).
-            bytes.wait_i(2, &[0x1e3, MC_RTN]);
+
+            if opcode == 0x8F {
+                if let AddressingMode::RegisterMode = modrm.get_addressing_mode() {
+                    // Don't process modrm cycles?
+                }
+                else {
+                    bytes.wait_i(2, &[0x1e3, MC_RTN]);
+                }
+            }
+            else {
+                bytes.wait_i(2, &[0x1e3, MC_RTN]);
+            }
         }         
 
         // Match templatized operands.
