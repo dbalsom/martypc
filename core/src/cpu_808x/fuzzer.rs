@@ -129,6 +129,19 @@ impl Cpu {
                     _ => {}
                 }
             }
+            0x9D => {
+                // POPF. 
+                // We need to modify the word at SS:SP to clear the trap flag bit.
+
+                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp);
+
+                let (mut flag_word, _) = self.bus_mut().read_u16(flat_addr as usize, 0).expect("Couldn't read stack!");
+                
+                // Clear trap flag
+                flag_word = flag_word & !CPU_FLAG_TRAP;
+
+                self.bus_mut().write_u16(flat_addr as usize, flag_word, 0).expect("Couldn't write stack!");
+            }
             _ => {}
         }
 

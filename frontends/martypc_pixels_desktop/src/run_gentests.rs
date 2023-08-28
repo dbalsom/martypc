@@ -130,7 +130,7 @@ pub fn run_gentests (config: &ConfigFileParams) {
         &mut vec![
             0x26, 0x2E, 0x36, 0x3E, // Segment override prefixes
             0x9B, // WAIT instruction
-            0x9D, // POPF (figure out a way to handle this?)
+            //0x9D, // POPF (figure out a way to handle this?)
             0xF0, 0xF1, 0xF2, 0xF3, // Prefixes
             0xF4
         ]
@@ -150,8 +150,6 @@ pub fn run_gentests (config: &ConfigFileParams) {
     let mut test_base_path = PathBuf::new();
     test_base_path.push(config.emulator.basedir.clone());
     test_base_path.push(test_path_postfix);
-
-       
 
     for test_opcode in opcode_list {
 
