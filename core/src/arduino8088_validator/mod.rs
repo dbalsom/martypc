@@ -40,7 +40,7 @@ use crate::cpu_808x::{
     CPU_FLAG_OVERFLOW
 };
 
-mod remote_cpu;
+pub mod remote_cpu;
 mod queue;
 mod udmask;
 
