@@ -547,6 +547,9 @@ impl PartialEq<CycleState> for CycleState {
             && self.q_op == other.q_op;
 
         let equals_b = match self.t_state {
+            BusCycle::Ti => {
+                true
+            }
             BusCycle::T1 => {
                 if self.ale {
                     self.addr == other.addr
