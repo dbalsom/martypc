@@ -335,6 +335,17 @@ pub fn run_gentests (config: &ConfigFileParams) {
                 cpu.set_end_address(end_address as usize);
                 log::trace!("Setting end address: {:05X}", end_address);
         
+
+                match i.mnemonic {
+                    Mnemonic::MOVSB | Mnemonic::MOVSW | Mnemonic::CMPSB | Mnemonic::CMPSW | Mnemonic::STOSB | 
+                    Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::SCASB | Mnemonic::SCASW => {
+                        // limit cx to 31
+                        cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0xFF);
+                        rep = true;
+                    }
+                    _ => {}
+                }
+
                 // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
                 // execution per iteration. The 8088 makes no such distinction.
                 loop {
@@ -687,6 +698,8 @@ pub fn final_state_from_ops(initial_state: HashMap<u32, u8>, all_ops: Vec<BusOp>
 
 pub fn clean_cycle_states(states: &mut Vec<CycleState>) {
 
+    let pre_clean_len = states.len();
+
     // Drop all states before first Fetch
     let mut found = false;
     states.retain(|state| {
@@ -695,6 +708,10 @@ pub fn clean_cycle_states(states: &mut Vec<CycleState>) {
         }
         found
     });
+
+    let trimmed_ct = pre_clean_len - states.len();
+
+    log::debug!("Clean: Deleted {} cycle states", trimmed_ct);
 
     for mut state in states {
         // Set address bus to 0 if no ALE signal.
