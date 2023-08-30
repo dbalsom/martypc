@@ -591,4 +591,10 @@ impl Cpu {
         self.nx = true;
         //self.cycles_i(ct, instrs);
     }
+
+    #[cfg(feature = "cpu_validator")]
+    pub fn get_cycle_states(&self) -> &Vec<CycleState> {
+        &self.cycle_states
+    }
+
 }
