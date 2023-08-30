@@ -474,6 +474,8 @@ impl Cpu {
     /// We must enter a transitional state to get to the requested state.
     pub fn biu_change_state(&mut self, new_state: BiuStateNew) {
 
+        //self.biu_wait_for_transition();
+
         self.biu_state_new = match (self.biu_state_new, new_state) {
             (BiuStateNew::Idle, BiuStateNew::Eu) => BiuStateNew::ToEu(3),
             (BiuStateNew::Idle, BiuStateNew::Prefetch) => BiuStateNew::ToPrefetch(3),
