@@ -475,6 +475,16 @@ fn run_tests(
         cpu.set_end_address(end_address as usize);
         log::debug!("Setting end address: {:05X}", end_address);
 
+        match i.mnemonic {
+            Mnemonic::MOVSB | Mnemonic::MOVSW | Mnemonic::CMPSB | Mnemonic::CMPSW | Mnemonic::STOSB | 
+            Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::SCASB | Mnemonic::SCASW => {
+                // limit cx to 31
+                cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0x7F);
+                rep = true;
+            }
+            _ => {}
+        }
+
         // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
         // execution per iteration. The 8088 makes no such distinction.
         loop {
@@ -559,6 +569,8 @@ fn run_tests(
             _ = writeln!(log, "Test {:05}: Test cycles validated!", n);
         }
         else {
+            print_cycle_diff(&test.cycles, &cpu_cycles);
+            
             cpu.trace_flush();
             panic!("Test validation failure!");
         }
@@ -738,8 +750,8 @@ fn validate_cycles(
             trace_error!(
                 log, 
                 "State validation failure: {:?} vs {:?}", 
-                serde_json::to_string(&emu_states[i]).unwrap(), 
-                serde_json::to_string(&cpu_states[i]).unwrap()
+                &emu_states[i], 
+                &cpu_states[i]
             );
 
             return (false, i)
