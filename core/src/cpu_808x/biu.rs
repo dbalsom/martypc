@@ -279,7 +279,7 @@ impl Cpu {
         if self.bus_status == BusStatus::CodeFetch {
             self.biu_bus_wait_finish();
             self.biu_change_state(BiuStateNew::Idle);
-            self.cycle();
+            //self.cycle();
         }
         else {
             // new state logic: transition to B_idle
