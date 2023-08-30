@@ -1288,8 +1288,8 @@ impl Cpu {
                 // Fetch rel16 operand
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                self.biu_suspend_fetch();
-                self.cycles_i(4, &[0x07e, 0x07f, MC_CORR, 0x080]);
+                self.biu_suspend_fetch(); // 0x07E
+                self.cycles_i(3, &[0x07f, MC_CORR, 0x080]);
                 
                 // Calculate offset of next instruction
                 let cs = self.get_register16(Register16::CS);
