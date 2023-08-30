@@ -120,6 +120,8 @@ impl Cpu {
 
         instr.push_back(opcode);
 
+        let mut enable_segment_prefix = true;
+
         // Add rep prefixes to string ops with 50% probability
         let do_rep_prefix: u8 = get_rand!(self);
         match opcode {
@@ -157,7 +159,10 @@ impl Cpu {
 
                 self.cl = self.cl & 0x3F;
             }
-
+            0xC0..=0xC3 | 0xC8..=0xCF => {
+                // RETN, RETF, INT[X], IRET
+                enable_segment_prefix = false;
+            }
             _ => {}
         }
 
@@ -211,7 +216,7 @@ impl Cpu {
         // Add a segment override prefix with 50% probability
         let do_segment_prefix: u8 = get_rand!(self);
 
-        if do_segment_prefix > 127 {
+        if enable_segment_prefix && do_segment_prefix > 127 {
             // use last 4 bits to determine prefix
             match do_segment_prefix & 0x03 {
                 0b00 => instr.push_front(0x26), // ES override
