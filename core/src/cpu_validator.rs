@@ -186,7 +186,7 @@ pub enum BusState {
     PASV = 7    // Passive
 }
 
-#[derive (Copy, Clone)]
+#[derive (Copy, Clone, Debug)]
 pub struct CycleState {
     pub n: u32,
     pub addr: u32,
@@ -406,6 +406,130 @@ impl<'de> de::Deserialize<'de> for CycleState {
 
         deserializer.deserialize_seq(CycleStateVisitor)
     }
+}
+
+impl Display for CycleState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+
+        let ale_str = match self.ale {
+            true => "A:",
+            false => "  "
+        };
+
+        let mut seg_str = "  ";
+        if self.t_state != BusCycle::T1 {
+            // Segment status only valid in T2+
+            seg_str = match self.a_type {
+                AccessType::AlternateData  => "ES",
+                AccessType::Stack => "SS",
+                AccessType::CodeOrNone => "CS",
+                AccessType::Data => "DS"
+            };    
+        }
+
+        let q_op_chr = match self.q_op {
+            QueueOp::Idle => ' ',
+            QueueOp::First => 'F',
+            QueueOp::Flush => 'E',
+            QueueOp::Subsequent => 'S'
+        };
+
+        // All read/write signals are active/low
+        let rs_chr   = match !self.mrdc {
+            true => 'R',
+            false => '.',
+        };
+        let aws_chr  = match !self.aiowc {
+            true => 'A',
+            false => '.',
+        };
+        let ws_chr   = match !self.mwtc {
+            true => 'W',
+            false => '.',
+        };
+        let ior_chr  = match !self.iorc {
+            true => 'R',
+            false => '.',
+        };
+        let aiow_chr = match !self.aiowc {
+            true => 'A',
+            false => '.',
+        };
+        let iow_chr  = match !self.iowc {
+            true => 'W',
+            false => '.',
+        };        
+
+        let bus_str = match self.b_state {
+            BusState::INTA => "INTA",
+            BusState::IOR  => "IOR ",
+            BusState::IOW  => "IOW ",
+            BusState::HALT => "HALT",
+            BusState::CODE => "CODE",
+            BusState::MEMR => "MEMR",
+            BusState::MEMW => "MEMW",
+            BusState::PASV => "PASV"           
+        };
+
+        let t_str = match self.t_state {
+            BusCycle::Ti => "Ti",
+            BusCycle::T1 => "T1",
+            BusCycle::T2 => "T2",
+            BusCycle::T3 => "T3",
+            BusCycle::T4 => "T4",
+            BusCycle::Tw => "Tw",
+        };
+
+        let is_reading = !self.mrdc | !self.iorc;
+        let is_writing = !self.mwtc | !self.aiowc | !self.iowc;
+
+        let mut xfer_str = "      ".to_string();
+        if is_reading {
+            xfer_str = format!("<-r {:02X}", self.data_bus);
+        }
+        else if is_writing {
+            xfer_str = format!("w-> {:02X}", self.data_bus);
+        }
+
+        let mut q_read_str = String::new();
+
+        if self.q_op == QueueOp::First {
+            // First byte of opcode read from queue. Decode it to opcode or group specifier
+            q_read_str = format!("<-q {:02X}", self.q_byte);
+        }
+        else if self.q_op == QueueOp::Subsequent {
+            q_read_str = format!("<-q {:02X}", self.q_byte);
+        }         
+      
+        write!(
+            f,
+            "{:08} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} {:04} {:02} {:06} | {:1}{:1} {} {:6}",
+            self.n,
+            ale_str,
+            self.addr,
+            seg_str,
+            rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
+            bus_str,
+            t_str,
+            xfer_str,
+            q_op_chr,
+            self.q_len,
+            get_queue_str(&self.q, self.q_len as usize),
+            q_read_str,
+        )
+    }
+}
+
+pub fn get_queue_str(q: &[u8], len: usize) -> String {
+
+    let mut outer = "[".to_string();
+    let mut inner = String::new();
+
+    for i in 0..len {
+        inner.push_str(&format!("{:02X}", q[i]));
+    }
+    outer.push_str(&format!("{:8}]", inner));
+    outer
 }
 
 impl PartialEq<CycleState> for CycleState {
