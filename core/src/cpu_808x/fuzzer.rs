@@ -105,7 +105,7 @@ impl Cpu {
 
         // Write a basic IVT to handle DIV exceptions.
         self.bus.write_u16(0x00000, 0x0400, 0).expect("Mem err writing IVT");
-        self.bus.write_u16(0x00004, 0x0000, 0).expect("Mem err writing IVT");
+        self.bus.write_u16(0x00002, 0x0000, 0).expect("Mem err writing IVT");
         self.bus.write_u8(0x00400, 0xCF, 0).expect("Mem err writing IRET");
     }
 
@@ -135,7 +135,7 @@ impl Cpu {
                 }
 
                 // Mask CX to 8 bits.
-                self.cx = self.cx & 0x00FF;
+                //self.cx = self.cx & 0x00FF;
             }
             0x9D => {
                 // POPF. 
