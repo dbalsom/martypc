@@ -42,7 +42,7 @@ impl Cpu {
         }
         //self.biu_suspend_fetch_i(0x0d2);
         self.biu_suspend_fetch();
-        self.cycles_i(3, &[0x0d2, 0x0d3, 0x0d4]);
+        self.cycles_i(4, &[0x0d2, 0x0d3, MC_CORR, 0x0d4]);
         self.ip = new_ip;
         self.biu_queue_flush(); // 0d5
         self.cycle_i(0x0d5);
