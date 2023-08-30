@@ -340,7 +340,7 @@ pub fn run_gentests (config: &ConfigFileParams) {
                     Mnemonic::MOVSB | Mnemonic::MOVSW | Mnemonic::CMPSB | Mnemonic::CMPSW | Mnemonic::STOSB | 
                     Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::SCASB | Mnemonic::SCASW => {
                         // limit cx to 31
-                        cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0xFF);
+                        cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0x7F);
                         rep = true;
                     }
                     _ => {}
