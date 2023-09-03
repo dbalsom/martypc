@@ -583,7 +583,7 @@ impl Cpu {
         }
 
         // 157: tmpa-> X        | RNI
-        //self.cycle_i(0x15f);
+        //self.cycle_i(0x157);
 
         (tmpa, tmpc)
     }
