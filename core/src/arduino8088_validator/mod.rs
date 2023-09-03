@@ -143,6 +143,13 @@ impl InstructionContext {
     }
 }
 
+pub fn difference<T: std::cmp::Ord + std::ops::Sub<T, Output = T>>(a: T, b: T) -> T {
+    if a > b {
+        a - b
+    } else {
+        b - a
+    }
+}
 pub struct ArduinoValidator {
 
     //cpu_client: Option<CpuClient>,
@@ -302,7 +309,7 @@ impl ArduinoValidator {
         }
     }
 
-    pub fn validate_mem_ops(&mut self, discard: bool) -> bool {
+    pub fn validate_mem_ops(&mut self, discard: bool, flags: u8) -> bool {
 
         if discard {
             if self.current_instr.emu_ops.len() > 0 {
@@ -331,7 +338,6 @@ impl ArduinoValidator {
             return false;
         }
 
-
         for i in 0..self.current_instr.emu_ops.len() {
 
             if self.current_instr.emu_ops[i].op_type != self.current_instr.cpu_ops[i].op_type {
@@ -358,7 +364,13 @@ impl ArduinoValidator {
                 return false;
             }
 
-            if self.current_instr.emu_ops[i].data != self.current_instr.cpu_ops[i].data {
+            let validate_data = match self.current_instr.emu_ops[i].op_type {
+                BusOpType::MemWrite if (flags & VAL_NO_WRITES != 0) => false,
+                BusOpType::MemRead if (flags & VAL_NO_READS != 0) => false,
+                _=> true
+            };
+
+            if validate_data && (self.current_instr.emu_ops[i].data != self.current_instr.cpu_ops[i].data) {
                 trace_error!(
                     self,
                     "Bus op #{} data mismatch: EMU:{:?}:{:05X} CPU:{:?}:{:05X}",
@@ -473,20 +485,39 @@ impl ArduinoValidator {
 
     pub fn validate_cycles(
         &mut self, 
+        flags: u8,
         cpu_states: &[CycleState], 
         emu_states: &[CycleState]
     ) -> (bool, usize) {
 
-        if emu_states.len() != cpu_states.len() {
-            // Cycle count mismatch
+        let difference = difference(emu_states.len(), cpu_states.len());
+
+        // Allow a one cycle variance if appropriate flag is set, otherwise require lengths match.
+
+        if flags & VAL_ALLOW_ONE != 0 {
+            // Difference of up to one cycle is allowed..
+            if difference > 1 {
+                // But exceeded, fail!
+                return (false, 0)
+            }
+            else if difference == 1 {
+                // Cycle states are going to be different, so don't bother comparing.
+                return (true, 0)
+            }
+            // Difference is 0, so continue as normal.
+        }
+        else if emu_states.len() != cpu_states.len() {
+            // No difference was allowed, and difference was found. Failed.
             return (false, 0)
         }
 
-        for i in 0..cpu_states.len() {
+        if difference == 0 || (flags & VAL_ALLOW_ONE == 0) {
+            for i in 0..cpu_states.len() {
 
-            if emu_states[i] != cpu_states[i] {
-                // Cycle state mismatch
-                return (false, i)
+                if emu_states[i] != cpu_states[i] {
+                    // Cycle state mismatch
+                    return (false, i)
+                }
             }
         }
 
@@ -625,6 +656,7 @@ impl CpuValidator for ArduinoValidator {
         &mut self, 
         name: String, 
         instr: &[u8], 
+        flags: u8,
         peek_fetch: u16,
         has_modrm: bool, 
         _cycles: i32, 
@@ -726,7 +758,7 @@ impl CpuValidator for ArduinoValidator {
                 self.current_instr.regs[0].ip
             );
 
-        let (mut cpu_states, discard) = self.cpu.step(
+        let (mut cpu_states, discard) = match self.cpu.step(
             self.mode,
             &self.current_instr.instr,
             instr_addr,
@@ -737,11 +769,33 @@ impl CpuValidator for ArduinoValidator {
             &mut self.current_instr.cpu_prefetch, 
             &mut self.current_instr.cpu_ops,
             &mut self.trace_logger
-        )?;
+        ) 
+        {
+            Ok(stepresult) => stepresult,
+            Err(_) => match self.cpu.get_error() {
+                Some(RemoteCpuError::BusOpUnderflow) => {
+                    // Handle the specific error
+                    trace_error!(self, "Memory validation failure. CPU bus op underflow.");
+
+                    let states = self.cpu.get_states().clone();
+                    self.print_cycle_diff(&states, &emu_states);
+                    self.trace_logger.flush();
+                    return Err(ValidatorError::MemOpMismatch);        
+                
+                },
+                // You can add more error handlers here
+                // For instance:
+                // MyError::OtherError => { ... }
+                None => {
+                    panic!("Unknown CPU error!");
+                }
+                _ => return Err(ValidatorError::CpuError),  // Propagate other errors
+            }
+        };
 
         if self.current_instr.opcode != 0x9C {
             // We ignore PUSHF results due to undefined flags causing write mismatches
-            if !self.validate_mem_ops(discard) {
+            if !self.validate_mem_ops(discard, flags) {
     
                 trace_error!(self, "Memory validation failure. EMU:");
                 RemoteCpu::print_regs(&self.current_instr.regs[1]);
@@ -760,7 +814,7 @@ impl CpuValidator for ArduinoValidator {
             // Only validate CPU cycles if any were provided
 
             self.correct_queue_counts(&mut cpu_states);
-            let (result, cycle_num) = self.validate_cycles(&cpu_states, &emu_states);
+            let (result, cycle_num) = self.validate_cycles(flags, &cpu_states, &emu_states);
 
             if !result {
                 trace_error!(self, "Cycle state validation failure @ cycle {}", cycle_num);    
