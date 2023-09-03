@@ -304,6 +304,13 @@ impl Cpu {
         self.int_count += 1;
     }
 
+    /// Perform INT0 (Divide By 0)
+    pub fn int0(&mut self) {
+        self.cycles_i(2, &[0x1a7, MC_JUMP]);
+        self.intr_routine(0, InterruptType::Hardware, true);
+        self.int_count += 1;        
+    }
+
     /// Perform INT1 (Trap)
     pub fn int1(&mut self) {
         self.cycles_i(2, &[0x198, MC_JUMP]);
