@@ -32,7 +32,7 @@
 use std::{
     ffi::OsStr,
     fs::{read_dir, create_dir, copy, read_to_string, File, OpenOptions},
-    collections::HashMap,
+    collections::{LinkedList, HashMap},
     io::{BufReader, BufWriter, Write, ErrorKind, Read, Seek, SeekFrom},
     path::PathBuf,
     time::{Instant, Duration}
@@ -266,7 +266,7 @@ pub fn run_runtests(config: &ConfigFileParams) {
     
 }
 
-pub fn read_tests_from_file(test_path: PathBuf) -> Option<Vec<CpuTest>> {
+pub fn read_tests_from_file(test_path: PathBuf) -> Option<LinkedList<CpuTest>> {
 
     let test_file_opt = match File::open(test_path.clone()) {
         Ok(file) => {
@@ -322,7 +322,7 @@ pub fn read_tests_from_file(test_path: PathBuf) -> Option<Vec<CpuTest>> {
             Ok(json_obj) => Some(json_obj),
             Err(e) if e.is_eof() => {
                 println!("JSON file {:?} is empty. Creating new vector.", test_path);
-                Some(Vec::new())
+                Some(LinkedList::new())
             } 
             Err(e) => {
                 eprintln!("Failed to read json from file: {:?}: {:?}", test_path, e);
@@ -336,7 +336,7 @@ pub fn read_tests_from_file(test_path: PathBuf) -> Option<Vec<CpuTest>> {
 
 fn run_tests(
     metadata: &Metadata,
-    tests: &Vec<CpuTest>, 
+    tests: &LinkedList<CpuTest>, 
     opcode: u8,
     extension_opt: Option<u8>,
     config: &ConfigFileParams, 
