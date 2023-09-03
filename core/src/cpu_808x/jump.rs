@@ -91,8 +91,9 @@ impl Cpu {
 
         self.cycle_i(MC_JUMP);
         self.set_mc_pc(0x0c2);
-        self.pop_register16(Register16::IP, ReadWriteFlag::Normal);
+        self.pop_register16(Register16::IP, ReadWriteFlag::RNI);
         self.biu_suspend_fetch();
+        //self.cycle_i(MC_NONE);
         self.cycles_i(2, &[0x0c3, 0x0c4]);
 
         let far2 = self.i.opcode & 0x08 != 0;
@@ -109,7 +110,5 @@ impl Cpu {
             self.biu_queue_flush();
             self.cycles_i(2, &[0x0c5, MC_RTN]);
         }
-
-        self.cycles_i(2, &[0x0c7, MC_RTN]);
     }
 }
