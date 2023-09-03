@@ -30,11 +30,9 @@
     Includes all main opcode implementations.
 */
 
-
 use crate::cpu_808x::*;
 use crate::cpu_808x::biu::*;
 use crate::util;
-
 
 /*
 macro_rules! read_operand {
@@ -1030,7 +1028,6 @@ impl Cpu {
                 // Save next address if we step over this INT.
                 self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip));
 
-                self.cycles_i(4, &[0x1b0, MC_JUMP, 0x1b2, MC_JUMP]); // Jump to INTR
                 self.int3();
                 jump = true;    
             }
@@ -1053,6 +1050,8 @@ impl Cpu {
                 // INTO - Call Overflow Interrupt Handler
                 if self.get_flag(Flag::Overflow) {
 
+                    self.cycles_i(4, &[0x1ac, 0x1ad, MC_JUMP, 0x1af]);
+
                     self.ip = self.ip.wrapping_add(self.i.size as u16);
 
                     // Save next address if we step over this INT.
@@ -1061,6 +1060,10 @@ impl Cpu {
                     self.sw_interrupt(4);
             
                     jump = true;
+                }
+                else {
+                    // Overflow not set. 
+                    self.cycles_i(2, &[0x1ac, 0x1ad]);
                 }
             }
             0xCF => {
@@ -1104,8 +1107,10 @@ impl Cpu {
                 
                 // If there is a terminal write to M, don't process RNI on line 0x92
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycle_i(0x092);
-                }      
+                    //if self.cl != 0 {
+                        self.cycle_i(0x092);
+                    //}
+                }
 
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
  
@@ -1140,6 +1145,14 @@ impl Cpu {
                 let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
                 
                 if !self.aam(op1_value) {
+
+                    self.set_szp_flags_from_result_u8(0);
+                    self.clear_flag(Flag::AuxCarry);
+                    self.clear_flag(Flag::Carry);
+                    self.clear_flag(Flag::Overflow);
+                    self.ip = self.ip.wrapping_add(self.i.size as u16);
+                    self.int0();
+                    jump = true;    
                     exception = CpuException::DivideError;
                 }
             }
@@ -1463,6 +1476,10 @@ impl Cpu {
                         let product = self.mul8(self.al, op1_value, false, negate);
                         self.set_register16(Register16::AX, product);
 
+                        if let OperandType::Register8(_) = self.i.operand1_type {
+                            self.cycle();
+                        }
+
                         self.set_szp_flags_from_result_u8(self.ah);
                     }
                     Mnemonic::IMUL => {
@@ -1471,6 +1488,10 @@ impl Cpu {
                         //self.multiply_i8(op1_value as i8);
                         let product = self.mul8(self.al, op1_value, true, negate);
                         self.set_register16(Register16::AX, product);
+
+                        if let OperandType::Register8(_) = self.i.operand1_type {
+                            self.cycle();
+                        }
 
                         self.set_szp_flags_from_result_u8(self.ah);
                     }                    
@@ -1491,6 +1512,21 @@ impl Cpu {
                                 self.set_register8(Register8::AH, ah); // Remainder in AH
                             }
                             Err(_) => {
+
+                                self.set_szp_flags_from_result_u8(self.ah);
+                                //self.set_flag(Flag::Zero);
+                                //self.clear_flag(Flag::Sign);
+                                self.clear_flag(Flag::AuxCarry);
+                                self.clear_flag(Flag::Carry);
+                                self.clear_flag(Flag::Overflow);
+                                
+                                self.ip = self.ip.wrapping_add(self.i.size as u16);
+
+                                //self.cycle_i(MC_JUMP);
+                                self.int0();
+                                
+                                //jump = true;    
+
                                 exception = CpuException::DivideError;
                             }
                         }
@@ -1511,6 +1547,18 @@ impl Cpu {
                                 self.set_register8(Register8::AH, ah); // Remainder in AH
                             }
                             Err(_) => {
+
+                                self.set_szp_flags_from_result_u8(0);
+                                self.clear_flag(Flag::AuxCarry);
+                                self.clear_flag(Flag::Carry);
+                                self.clear_flag(Flag::Overflow);
+                                self.clear_flag(Flag::Parity);
+                                self.ip = self.ip.wrapping_add(self.i.size as u16);
+
+                                self.cycle_i(MC_JUMP);
+                                self.int0();
+                                
+                                //jump = true;                                  
                                 exception = CpuException::DivideError;
                             }
                         }
@@ -1557,6 +1605,12 @@ impl Cpu {
                         //self.multiply_u16(op1_value);
 
                         let (dx, ax) = self.mul16(self.ax, op1_value, false, negate);
+
+                        if let OperandType::Register16(_) = self.i.operand1_type {
+                            self.cycle();
+                        }
+
+                        //self.cycle();
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);
 
@@ -1566,8 +1620,13 @@ impl Cpu {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         // Multiply handles writing to dx:ax
                         //self.multiply_i16(op1_value as i16);
-
+                         
                         let (dx, ax) = self.mul16(self.ax, op1_value, true, negate);
+
+                        if let OperandType::Register16(_) = self.i.operand1_type {
+                            self.cycle();
+                        }
+
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);    
 
@@ -1882,6 +1941,12 @@ impl Cpu {
                             self.cycle_i(0x068);
                             let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override, ReadWriteFlag::Normal).unwrap();
 
+                            self.ip = self.ip.wrapping_add(self.i.size as u16);
+                            let next_i = self.ip;
+            
+                            self.farcall(segment, offset, true);
+
+                            /*
                             //log::debug!("CALLF: jump to [{:04X}:{:04X}]", segment, offset);
                             self.cycle_i(0x06a);
 
@@ -1891,6 +1956,7 @@ impl Cpu {
 
                             self.push_register16(Register16::CS, ReadWriteFlag::Normal);
                             let next_i = self.ip + (self.i.size as u16);
+                            */
 
                             // Save next address if we step over this CALL.
                             self.step_over_target = Some(CpuAddress::Segmented(self.cs, next_i));
@@ -1907,6 +1973,7 @@ impl Cpu {
                                 next_i
                             );
 
+                            /*
                             self.cs = segment;
                             self.ip = offset;
                             self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
@@ -1915,6 +1982,7 @@ impl Cpu {
                             self.cycles_i(3, &[0x077, 0x078, 0x079]);
                             // Push return IP of next instruction
                             self.push_u16(next_i, ReadWriteFlag::RNI);
+                            */
                         }
                         else if let OperandType::Register16(_) = self.i.operand1_type {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
