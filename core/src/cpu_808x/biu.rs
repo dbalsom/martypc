@@ -216,7 +216,7 @@ impl Cpu {
         // Don't fetch if we are in a string instruction that is still repeating.
         if !self.in_rep {
             self.trace_comment("FETCH");
-            let mut finalize_timeout = 0;
+            let mut fetch_timeout = 0;
             
             /*
             if MICROCODE_FLAGS_8088[self.mc_pc as usize] == RNI {
@@ -234,8 +234,8 @@ impl Cpu {
                     }
                     self.cycle();
                     self.mc_pc = MC_NONE;
-                    finalize_timeout += 1;
-                    if finalize_timeout == 20 {
+                    fetch_timeout += 1;
+                    if fetch_timeout == 20 {
                         self.trace_flush();
                         panic!("FETCH timeout! wait states: {}", self.wait_states);
                     }
@@ -458,13 +458,19 @@ impl Cpu {
         }
         else {
             // EU has not claimed the bus, attempt to prefetch...
-            if self.biu_queue_has_room() {
-                if !self.fetch_suspended {
+
+            if !self.fetch_suspended {
+
+                if self.biu_queue_has_room() {
                     self.biu_schedule_fetch(0);
+                }
+                else {
+                    // No room in queue for fetch. Transition to idle state!
+                    self.biu_change_state(BiuStateNew::Idle);
                 }
             }
             else {
-                // No room in queue for fetch. Transition to idle state!
+                // Fetching is suspended, so transition back to Idle.
                 self.biu_change_state(BiuStateNew::Idle);
             }
         }
@@ -483,6 +489,10 @@ impl Cpu {
             (BiuStateNew::Prefetch, BiuStateNew::Eu) => BiuStateNew::ToEu(2),
             (BiuStateNew::Eu, BiuStateNew::Idle) => BiuStateNew::ToIdle(1),
             (BiuStateNew::Eu, BiuStateNew::Prefetch) => BiuStateNew::ToPrefetch(2),
+            (BiuStateNew::ToEu(_) | BiuStateNew::ToPrefetch(_), BiuStateNew::Idle) => {
+                // Cancel transition to EU/PF and go right to idle.
+                BiuStateNew::Idle
+            }
             _ => self.biu_state_new
         }
     }
@@ -834,12 +844,14 @@ impl Cpu {
 
     /// If the BIU state is a transitional state, wait until it is not.
     pub fn biu_wait_for_transition(&mut self) {
+        self.trace_comment("TRANS_WAIT_START");
         loop {
             match self.biu_state_new {
                 BiuStateNew::ToEu(_) | BiuStateNew::ToPrefetch(_) | BiuStateNew::ToIdle(_) => self.cycle(),
                 _ => break
             }
         }
+        self.trace_comment("TRANS_WAIT_DONE");
     }
 
     /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
@@ -962,6 +974,11 @@ impl Cpu {
         
         // Wait until we have left Resuming biu state (biu_state was BiuState::Resuming)
         //_waited_cycles += self.biu_bus_wait_for_resume();
+
+        // If we are in Delayed cycles, try to change state to service EU.
+        if let FetchState::Delayed(_) = self.fetch_state {
+            self.biu_change_state(BiuStateNew::Eu);
+        }
 
         // Wait for any transitional BIU state to complete.
         self.biu_wait_for_transition();
