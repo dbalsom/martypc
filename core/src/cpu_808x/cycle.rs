@@ -193,7 +193,9 @@ impl Cpu {
                         // If we just completed a code fetch, make the byte available in the queue.
                         if let BusStatus::CodeFetch = self.bus_status {
                             self.queue.push8(self.data_bus as u8);
-                            self.pc = (self.pc + 1) & 0xFFFFFu32;
+                            
+                            //self.pc = (self.pc + 1) & 0xFFFFFu32;
+                            self.inc_pc();
                         }
                     }
                 }
@@ -395,7 +397,9 @@ impl Cpu {
             }
             FetchState::DelayDone => {
                 if self.next_fetch_state == FetchState::InProgress {
-                    self.begin_fetch();
+                    if self.biu_state_new == BiuStateNew::Prefetch {
+                        self.begin_fetch();
+                    }
                 }
                 else {
                     self.fetch_state = self.next_fetch_state;
@@ -440,6 +444,29 @@ impl Cpu {
         */
 
         self.last_queue_len = self.queue.len();
+    }
+
+    /// Temporary function to increment pc. Needed to handle wraparound
+    /// of code segment.  This should be unnecessary once pc is converted to u16.
+    pub fn inc_pc(&mut self) {
+
+        // pc shouldn't be less than cs:00
+        if self.pc < ((self.cs as u32) << 4) {
+            // Bad pc, fall back to old behavior.
+            self.pc = (self.pc + 1) & 0xFFFFF;
+            return
+        }
+
+        assert!(self.pc >= ((self.cs as u32) << 4));
+
+        // Subtract cs from pc to get the 'real' value of pc
+        let mut real_pc: u16 = (self.pc - ((self.cs as u32) << 4)) as u16;
+
+        // Increment real pc with wraparound
+        real_pc = real_pc.wrapping_add(1);
+
+        // Calculate new 'linear' pc
+        self.pc = Cpu::calc_linear_address(self.cs, real_pc);
     }
 
     pub fn do_bus_transfer(&mut self) {
@@ -551,6 +578,8 @@ impl Cpu {
         }
         else {
             log::error!("Tried to fetch in invalid BIU state: {:?}", self.biu_state_new);
+            self.trace_flush();
+            panic!("{}", format!("Tried to fetch in invalid BIU state: {:?}", self.biu_state_new));
         }
     }
 
