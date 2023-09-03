@@ -44,7 +44,7 @@ macro_rules! trace {
 
 const ADDRESS_SPACE: usize = 1_048_576;
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum RemoteCpuError {
     BusOpAddressMismatch(u32, u32),
     SubsequentByteFetchOutOfRange(u32, u32),
@@ -133,6 +133,7 @@ pub struct RemoteCpu {
     flushed: bool,
     discard_front: bool,
     error: Option<RemoteCpuError>,
+    cycle_states: Vec<CycleState>,
 
     // Validator stuff
     busop_n: usize,
@@ -186,6 +187,7 @@ impl RemoteCpu {
             flushed: false,
             discard_front: false,
             error: None,
+            cycle_states: Vec::new(),
 
             busop_n: 0,
             owe_busop: false,
@@ -277,6 +279,7 @@ impl RemoteCpu {
         self.fetch_rollover = false;
         self.just_reset = true;
         self.queue.flush();
+        self.cycle_states.clear();
     }
 
     pub fn is_last_wait(&self) -> bool {
@@ -859,6 +862,14 @@ impl RemoteCpu {
     }
     */
 
+    pub fn get_error(&self) -> Option<RemoteCpuError> {
+        self.error
+    }
+    
+    pub fn get_states(&self) -> &Vec<CycleState> {
+        &self.cycle_states
+    }
+
     pub fn step(
         &mut self, 
         mode: ValidatorMode,
@@ -889,6 +900,7 @@ impl RemoteCpu {
         self.flushed = false;
         self.discard_front = false;
         self.instruction_ended = false;
+        self.cycle_states.clear();
 
         self.address_latch = self.cpu_client.read_address_latch().expect("Failed to get address latch!");
         
@@ -954,6 +966,7 @@ impl RemoteCpu {
             if let Some(e) = &self.error {
                 trace!(log, "CPU error during step(): {}", e);
                 RemoteCpu::dump_cycles(&cycle_vec);
+                self.cycle_states = cycle_vec;
                 return Err(ValidatorError::CpuError);
             }
 
