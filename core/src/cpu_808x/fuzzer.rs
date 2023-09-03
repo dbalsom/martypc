@@ -152,6 +152,19 @@ impl Cpu {
 
                 self.bus_mut().write_u16(flat_addr as usize, flag_word, 0).expect("Couldn't write stack!");
             }
+            0xCF => {
+                // IRET.
+                // We need to modify the word at SS:SP + 4 to clear the trap flag bit.
+
+                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp.wrapping_add(4));
+
+                let (mut flag_word, _) = self.bus_mut().read_u16(flat_addr as usize, 0).expect("Couldn't read stack!");
+                
+                // Clear trap flag
+                flag_word = flag_word & !CPU_FLAG_TRAP;
+
+                self.bus_mut().write_u16(flat_addr as usize, flag_word, 0).expect("Couldn't write stack!");                
+            }
             0xD2 | 0xD3 => {
                 // Shifts and rotates by cl.
                 // Mask CL to 6 bits to shorten tests.
@@ -236,7 +249,7 @@ impl Cpu {
 
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
-        //log::debug!("Using instruction vector: {:?}", instr.make_contiguous());
+        log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus.copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false).unwrap();
 
     }
@@ -266,15 +279,50 @@ impl Cpu {
             }
         }
 
-
+        let mut modrm_valid = false;
         // Add a modrm
         let mut modrm_byte: u8 = get_rand!(self);
 
-        // Inject the operand extension. First, clear the REG bits
-        modrm_byte &= !MODRM_REG_MASK;
+        while !modrm_valid {
 
-        // Now set the reg bits to extension #
-        modrm_byte |= (extension << 3) & MODRM_REG_MASK;
+            modrm_byte = get_rand!(self);
+            
+            // Inject the operand extension. First, clear the REG bits
+            modrm_byte &= !MODRM_REG_MASK;
+
+            // Now set the reg bits to extension #
+            modrm_byte |= (extension << 3) & MODRM_REG_MASK;
+
+            // Filter out invalid forms of some instructions that cannot
+            // reasonably be validated.
+            match opcode {
+                // FF group opcode
+                0xFF => {
+                    match modrm_byte & 0b00_111_000 {
+                        0b00_011_000 => {
+                            // FF.3 CALLF
+                            if modrm_byte & 0xC0 == 0xC0 {
+                                // Reg form, invalid.
+                                continue;
+                            }
+                        }
+                        0b00_101_000 => {
+                            // FF.5 JMPF
+                            if modrm_byte & 0xC0 == 0xC0 {
+                                // Reg form, invalid.
+                                continue;
+                            }
+                        }                        
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+
+            modrm_valid = true;
+        }
+
+
 
         // Finally push the modrm
         instr.push_back(modrm_byte);
