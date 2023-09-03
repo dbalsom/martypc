@@ -192,6 +192,8 @@ pub fn run_gentests (config: &ConfigFileParams) {
             let mut test_file_opt: Option<File> = None;
             let mut tests: Vec<CpuTest>;
     
+            let mut advance_rng_ct = 0;
+
             // If we are not appending tests, don't bother to open the existing test file.
             if test_append {
                 let file_result = File::open(test_path.clone());
@@ -240,7 +242,6 @@ pub fn run_gentests (config: &ConfigFileParams) {
                 // We should have a valid file now
                 let test_file = test_file_opt.unwrap();
                 
-        
                 if !had_to_create {
                     tests = read_tests_from_file(&test_file, test_path.clone()).expect("Failed to read tests from JSON file.");
                 } 
@@ -256,7 +257,8 @@ pub fn run_gentests (config: &ConfigFileParams) {
             // We should have a vector of tests now.
             println!("Loaded {} tests from file.", tests.len());
     
-            test_num = tests.len() as u32;
+            //test_num = tests.len() as u32;
+            advance_rng_ct = tests.len() as u32;
     
             'testloop: while test_num < test_limit {
     
@@ -298,7 +300,7 @@ pub fn run_gentests (config: &ConfigFileParams) {
                     );
         
                 cpu.bus_mut().seek(instruction_address as usize);
-                let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
+                let opcode = cpu.bus().peek_u8(instruction_address as usize).expect("mem err");
         
                 let mut i = match Cpu::decode(cpu.bus_mut()) {
                     Ok(i) => i,
@@ -308,10 +310,9 @@ pub fn run_gentests (config: &ConfigFileParams) {
                     }                
                 };
         
-                // Skip N successful instructions
-        
-                // was at 13546
-                if test_num < 0 {
+                // Replicate RNG for existing test, but don't re-generate test. Skip ahead.
+                // This allows us to seamlessly resume test set generation, in theory. 
+                if test_num < advance_rng_ct {
                     continue;
                 }
         
@@ -322,7 +323,7 @@ pub fn run_gentests (config: &ConfigFileParams) {
         
                 i.address = instruction_address;
            
-                println!("Test {}: Creating test for instruction: {} opcode:{:02X}", test_num, i, opcode);
+                println!("Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X}", test_num, i, opcode, i.address);
                 
                 // Set terminating address for CPU validator.
         
@@ -343,6 +344,14 @@ pub fn run_gentests (config: &ConfigFileParams) {
                         cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0x7F);
                         rep = true;
                     }
+                    Mnemonic::SETMO | Mnemonic::SETMOC | Mnemonic::ROL | Mnemonic::ROR | 
+                    Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
+                        // Limit cl to 0-63.
+                        cpu.set_register8(Register8::CL, cpu.get_register8(Register8::CL) & 0x3F);
+                        //cpu.set_register8(Register8::CL, 3);
+
+                        log::debug!("SHIFT OP: CL is {:02X}", cpu.get_register8(Register8::CL));
+                    }                    
                     _ => {}
                 }
 
@@ -351,9 +360,7 @@ pub fn run_gentests (config: &ConfigFileParams) {
                 loop {
                     match cpu.step(false) {
                         Ok((_, cycles)) => {
-                            
                             //log::trace!("Instruction reported {} cycles", cycles);
-        
                             if rep & cpu.in_rep() {
                                 continue
                             }
@@ -373,6 +380,10 @@ pub fn run_gentests (config: &ConfigFileParams) {
     
                 tests.push(cpu_test);
     
+                // Write every 1000 tests to file.
+                if tests.len() % 1000 == 0 {
+                    write_tests_to_file(test_path.clone(), &tests);
+                }
             }
     
             let test_elapsed = test_start_instant.elapsed().as_secs_f32();
@@ -381,7 +392,7 @@ pub fn run_gentests (config: &ConfigFileParams) {
             let avg_test_elapsed = test_elapsed / test_num as f32;
             println!("Avg test time: {:.2}", avg_test_elapsed);
     
-            write_tests_to_file(test_path, tests);
+            write_tests_to_file(test_path, &tests);
         }
     }
     
@@ -407,7 +418,7 @@ pub fn read_tests_from_file(file: &File, path: PathBuf) -> Option<Vec<CpuTest>> 
     tests
 }
 
-pub fn write_tests_to_file(path: PathBuf, tests: Vec<CpuTest>) {
+pub fn write_tests_to_file(path: PathBuf, tests: &Vec<CpuTest>) {
 
     let mut file_opt: Option<File>;
 
