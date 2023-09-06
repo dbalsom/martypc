@@ -176,6 +176,10 @@ impl Cpu {
                 // RETN, RETF, INT[X], IRET
                 enable_segment_prefix = false;
             }
+            0xF5 | 0xF8..=0xFD => {
+                // Clear/set flags
+                enable_segment_prefix = false;
+            }
             _ => {}
         }
 
@@ -265,6 +269,27 @@ impl Cpu {
 
         instr.push_back(opcode);
 
+        let do_rep_prefix: u8 = get_rand!(self);
+
+        match (opcode, extension) {
+            (0xF6 | 0xF7, 0x07) => { 
+                // IDIV
+                // REP prefixes on IDIV invert quotient (undocumented)
+                match do_rep_prefix {
+                    0..=0x5 => {
+                        // Inject REP prefix at 5% probability
+                        instr.push_front(0xF2); // REPNZ
+                    }
+                    0x06..=0x10 => {
+                        // Inject REP prefix at 5% probability
+                        instr.push_front(0xF3);  // REPZ
+                    }
+                    _ => {}
+                }
+            }
+            _=> {}
+        }
+
         // Add a segment override prefix with 50% probability
         let do_segment_prefix: u8 = get_rand!(self);
 
@@ -278,6 +303,9 @@ impl Cpu {
                 _ => {}
             }
         }
+
+
+
 
         let mut modrm_valid = false;
         // Add a modrm
@@ -322,8 +350,6 @@ impl Cpu {
             modrm_valid = true;
         }
 
-
-
         // Finally push the modrm
         instr.push_back(modrm_byte);
 
@@ -336,6 +362,7 @@ impl Cpu {
 
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
+        log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus.copy_from(instr.make_contiguous(), addr as usize, 0, false).unwrap();
 
     }
