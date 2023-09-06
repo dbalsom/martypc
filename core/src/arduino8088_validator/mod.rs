@@ -327,7 +327,10 @@ impl ArduinoValidator {
             }
         }
 
-        if self.current_instr.emu_ops.len() != self.current_instr.cpu_ops.len() {
+        let ops_should_match = if flags & VAL_NO_READS == 0 && flags & VAL_NO_WRITES == 0 { true } else { false };
+
+
+        if ops_should_match && (self.current_instr.emu_ops.len() != self.current_instr.cpu_ops.len()) {
             trace_error!(
                 self, 
                 "Validator error: Memory op count mismatch. Emu: {} CPU: {}", 
@@ -338,7 +341,9 @@ impl ArduinoValidator {
             return false;
         }
 
-        for i in 0..self.current_instr.emu_ops.len() {
+        let min_op_n = std::cmp::min(self.current_instr.emu_ops.len(), self.current_instr.cpu_ops.len());
+
+        for i in 0..min_op_n {
 
             if self.current_instr.emu_ops[i].op_type != self.current_instr.cpu_ops[i].op_type {
                 trace_error!(
@@ -809,8 +814,7 @@ impl CpuValidator for ArduinoValidator {
             }
         }
 
-
-        if emu_states.len() > 0 {
+        if (flags & VAL_NO_CYCLES == 0) && (emu_states.len() > 0) {
             // Only validate CPU cycles if any were provided
 
             self.correct_queue_counts(&mut cpu_states);

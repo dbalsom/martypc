@@ -43,11 +43,12 @@ use serde::ser::{SerializeSeq};
 
 use crate::cpu_808x::QueueOp;
 
-pub const VAL_NO_READS: u8 = 0b0000_0001;
-pub const VAL_NO_WRITES: u8 = 0b0000_0010;
-pub const VAL_NO_REGS: u8 = 0b0000_0100;
-pub const VAL_NO_FLAGS: u8 = 0b0000_1000;
+pub const VAL_NO_READS: u8  = 0b0000_0001; // Don't validate read op data
+pub const VAL_NO_WRITES: u8 = 0b0000_0010; // Don't validate write op data
+pub const VAL_NO_REGS: u8   = 0b0000_0100; // Don't validate registers
+pub const VAL_NO_FLAGS: u8  = 0b0000_1000; // Don't validate flags
 pub const VAL_ALLOW_ONE: u8 = 0b0001_0000; // Allow a one-cycle variance in cycle states. 
+pub const VAL_NO_CYCLES: u8 = 0b0010_0000; // Don't validate cycle states.
 
 #[derive (PartialEq, Debug, Copy, Clone)]
 pub enum ValidatorMode {
