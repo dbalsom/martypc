@@ -33,6 +33,35 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Release executable 'martypc', GLaBIOS",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features",
+                    "devtools"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_glabios.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace,marty_core::devices::dma=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },        
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Release executable 'martypc' release candidate",
             "cargo": {
                 "args": [
