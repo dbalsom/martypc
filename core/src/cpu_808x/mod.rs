@@ -86,7 +86,6 @@ use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
 use crate::bytequeue::*;
 //use crate::interrupt::log_post_interrupt;
 
-use crate::cpu_validator::VAL_ALLOW_ONE;
 use crate::syntax_token::*;
 use crate::tracelogger::TraceLogger;
 
@@ -94,7 +93,7 @@ use crate::tracelogger::TraceLogger;
 use crate::cpu_validator::{
     CpuValidator, CycleState, ValidatorMode, ValidatorResult, 
     VRegisters, BusCycle, BusState, AccessType,
-    VAL_NO_WRITES, VAL_NO_FLAGS
+    VAL_NO_WRITES, VAL_NO_FLAGS, VAL_ALLOW_ONE, VAL_NO_CYCLES
 };
 
 #[cfg(feature = "arduino_validator")]
@@ -424,8 +423,10 @@ pub enum RepType {
     NoRep,
     Rep,
     Repne,
-    Repe
+    Repe,
+    MulDiv
 }
+
 impl Default for RepType {
     fn default() -> Self { RepType::NoRep }
 }
@@ -2172,10 +2173,13 @@ impl Cpu {
                     }
 
                     match self.i.mnemonic {
-                        Mnemonic::DIV | Mnemonic::IDIV => {
+                        Mnemonic::DIV => {
                             // There's a one cycle variance in my DIV instructions somewhere.
                             // I just want to get these tests out the door, so allow it.
                             v_flags |= VAL_ALLOW_ONE;
+                        }
+                        Mnemonic::IDIV => {
+                            v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_NO_CYCLES;
                         }
                         _=> {}
                     }
