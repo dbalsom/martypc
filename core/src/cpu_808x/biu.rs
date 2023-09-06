@@ -867,7 +867,6 @@ impl Cpu {
                 return 0
             }
             BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | BusStatus::IoWrite | BusStatus::CodeFetch => {
-        
                 
                 if target_state == TCycle::Tw {
                     // Interpret waiting for Tw as waiting for T3 or Last Tw
