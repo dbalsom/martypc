@@ -152,7 +152,7 @@ impl Cpu {
                 }
                 Mnemonic::MUL | Mnemonic::IMUL | Mnemonic::DIV | Mnemonic::IDIV => {
                     // REP prefix on MUL/DIV negates the product/quotient.
-                    self.rep_type = RepType::Rep;
+                    self.rep_type = RepType::MulDiv;
                 }
                 _=> {
                     invalid_rep = true;
@@ -1302,7 +1302,7 @@ impl Cpu {
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
                 self.biu_suspend_fetch(); // 0x07E
-                self.cycles_i(3, &[0x07f, MC_CORR, 0x080]);
+                self.cycles_i(4, &[0x07e, 0x07f, MC_CORR, 0x080]);
                 
                 // Calculate offset of next instruction
                 let cs = self.get_register16(Register16::CS);
@@ -1521,8 +1521,6 @@ impl Cpu {
                                 self.clear_flag(Flag::Overflow);
                                 
                                 self.ip = self.ip.wrapping_add(self.i.size as u16);
-
-                                //self.cycle_i(MC_JUMP);
                                 self.int0();
                                 
                                 //jump = true;    
@@ -1553,8 +1551,12 @@ impl Cpu {
                                 self.clear_flag(Flag::Carry);
                                 self.clear_flag(Flag::Overflow);
                                 self.clear_flag(Flag::Parity);
-                                self.ip = self.ip.wrapping_add(self.i.size as u16);
 
+                                // Don't include REP prefix as part of instruction size
+                                //let size_adj = if self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2) != 0 { 1 } else { 0 };
+
+                                self.ip = self.ip.wrapping_add((self.i.size) as u16);
+                                
                                 self.cycle_i(MC_JUMP);
                                 self.int0();
                                 
@@ -1648,6 +1650,17 @@ impl Cpu {
                                 self.set_register16(Register16::DX, remainder); // Remainder in DX
                             }
                             Err(_) => {
+
+                                self.set_szp_flags_from_result_u8(self.ah);
+                                //self.set_flag(Flag::Zero);
+                                //self.clear_flag(Flag::Sign);
+                                self.clear_flag(Flag::AuxCarry);
+                                self.clear_flag(Flag::Carry);
+                                self.clear_flag(Flag::Overflow);
+                                
+                                self.ip = self.ip.wrapping_add(self.i.size as u16);
+                                self.int0();
+
                                 exception = CpuException::DivideError;
                             }
                         }
@@ -1668,6 +1681,20 @@ impl Cpu {
                                 self.set_register16(Register16::DX, remainder); // Remainder in DX
                             }
                             Err(_) => {
+
+                                self.set_szp_flags_from_result_u8(self.ah);
+                                //self.set_flag(Flag::Zero);
+                                //self.clear_flag(Flag::Sign);
+                                self.clear_flag(Flag::AuxCarry);
+                                self.clear_flag(Flag::Carry);
+                                self.clear_flag(Flag::Overflow);
+                                
+                                // Don't include REP prefix as part of instruction size
+                                //let size_adj = if self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2) != 0 { 1 } else { 0 };
+
+                                self.ip = self.ip.wrapping_add((self.i.size) as u16);
+                                self.int0();
+
                                 exception = CpuException::DivideError;
                             }
                         }                        
@@ -2116,8 +2143,16 @@ impl Cpu {
             ExecutionResult::OkayJump
         }
         else if self.in_rep {
-            self.rep_init = true;
-            ExecutionResult::OkayRep
+
+            if let RepType::MulDiv = self.rep_type {
+                // Rep prefix on MUL/DIV just sets flags, do not rep
+                self.in_rep = false;
+                ExecutionResult::Okay
+            }
+            else {
+                self.rep_init = true;
+                ExecutionResult::OkayRep
+            }
         }
         else {
             match exception {
