@@ -464,6 +464,9 @@ pub struct CGACard {
 
     trace_logger: TraceLogger,
     debug_counter: u64,
+
+    lightpen_latch: bool,
+    lightpen_addr: usize
 }
 
 #[derive(Debug)]
@@ -658,7 +661,10 @@ impl Default for CGACard {
             debug_color: 0,
 
             trace_logger: TraceLogger::None,
-            debug_counter: 0
+            debug_counter: 0,
+
+            lightpen_latch: false,
+            lightpen_addr: 0
         }
     }
 }
@@ -774,6 +780,22 @@ impl CGACard {
     #[inline]
     fn calc_phase_offset(&mut self) -> u32 {
         ((!self.cycles + 1) & 0x0F) as u32
+    }
+    
+    fn set_lp_latch(&mut self) {
+
+        if self.lightpen_latch == false {
+            // Low to high transaition of light pen latch, set latch addr.
+            log::debug!("Updating lightpen latch address");
+            self.lightpen_addr = self.vma;
+        }
+
+        self.lightpen_latch = true;
+    }
+
+    fn clear_lp_latch(&mut self) {
+        log::debug!("clearing lightpen latch");
+        self.lightpen_latch = false;
     }
 
     fn get_cursor_span(&self) -> (u8, u8) {
@@ -985,7 +1007,7 @@ impl CGACard {
             }
             _ => {
                 trace!(self, "Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
-                log::debug!("CGA: Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
+                log::warn!("CGA: Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
             }
         }
     }
@@ -1001,6 +1023,16 @@ impl CGACard {
             CRTCRegister::CursorAddressL => {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
                 self.crtc_cursor_address_lo
+            }
+            CRTCRegister::LightPenPositionL => {
+                let byte = (self.lightpen_addr & 0xFF) as u8;
+                log::debug!("read LpL: {:02X}", byte);
+                byte
+            }
+            CRTCRegister::LightPenPositionH => {
+                let byte = ((self.lightpen_addr >> 8) & 0x3F) as u8;
+                log::debug!("read LpH: {:02X}", byte);
+                byte
             }
             _ => {
                 log::debug!("CGA: Read from unsupported CRTC register: {:?}", self.crtc_register_selected);
@@ -1168,7 +1200,7 @@ impl CGACard {
         
         // Addendum: The DE line is from the MC6845, and actually includes anything outside of the 
         // active display area. This gives a much wider window to hit for scanline wait loops.
-        let byte = if self.in_crtc_vblank {
+        let mut byte = if self.in_crtc_vblank {
             STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
         }
         else if !self.in_display_area {
@@ -1178,14 +1210,7 @@ impl CGACard {
             0
         };
 
-        trace_regs!(self);
-        trace!(
-            self,
-            "Status register read: byte: {:02X} in_display_area: {} vblank: {} ",
-            byte,
-            self.in_display_area, 
-            self.in_crtc_vblank
-        );
+
 
         if self.in_crtc_vblank {
             trace!(
@@ -1196,6 +1221,23 @@ impl CGACard {
         }
 
         self.status_reads += 1;
+
+        if self.lightpen_latch {
+            //log::debug!("returning status read with trigger set");
+            byte |= STATUS_LIGHTPEN_TRIGGER_SET;
+        }
+
+        // This bit is logically reversed, i.e., 0 is switch on
+        //byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+
+        trace_regs!(self);
+        trace!(
+            self,
+            "Status register read: byte: {:02X} in_display_area: {} vblank: {} ",
+            byte,
+            self.in_display_area, 
+            self.in_crtc_vblank
+        );
 
         byte
     }

@@ -49,7 +49,8 @@ pub const CRTC_REGISTER_MASK: u16           = 0x007;
 pub const CGA_MODE_CONTROL_REGISTER: u16    = 0x3D8;
 pub const CGA_COLOR_CONTROL_REGISTER: u16   = 0x3D9;
 pub const CGA_STATUS_REGISTER: u16          = 0x3DA;
-pub const CGA_LIGHTPEN_REGISTER: u16        = 0x3DB;
+pub const CGA_LIGHTPEN_LATCH_RESET: u16     = 0x3DB;
+pub const CGA_LIGHTPEN_LATCH_SET: u16       = 0x3DC;
 
 impl IoDevice for CGACard {
     fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
@@ -74,6 +75,14 @@ impl IoDevice for CGACard {
                 }            
                 CGA_STATUS_REGISTER => {
                     self.handle_status_register_read()
+                }
+                CGA_LIGHTPEN_LATCH_RESET => {
+                    self.clear_lp_latch();
+                    0
+                }
+                CGA_LIGHTPEN_LATCH_SET => {
+                    self.set_lp_latch();
+                    0
                 }
                 _ => {
                     0
@@ -104,6 +113,13 @@ impl IoDevice for CGACard {
                 CGA_COLOR_CONTROL_REGISTER => {
                     self.handle_cc_register_write(data);
                 }
+                CGA_LIGHTPEN_LATCH_RESET => {
+                    self.clear_lp_latch()
+                }
+                CGA_LIGHTPEN_LATCH_SET => {
+                    log::debug!("wrote latch set register");
+                    self.set_lp_latch()
+                }                
                 _ => {}
             }
         }
@@ -119,7 +135,8 @@ impl IoDevice for CGACard {
             CRTC_REGISTER2,
             CGA_MODE_CONTROL_REGISTER,
             CGA_COLOR_CONTROL_REGISTER,
-            CGA_LIGHTPEN_REGISTER,
+            CGA_LIGHTPEN_LATCH_RESET,
+            CGA_LIGHTPEN_LATCH_SET,
             CGA_STATUS_REGISTER,
         ]
     }
