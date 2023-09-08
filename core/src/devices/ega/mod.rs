@@ -1003,6 +1003,10 @@ impl VideoCard for EGACard {
         self.display_mode
     }
 
+    fn set_clocking_mode(&mut self, mode: ClockingMode) {
+        // not implemented
+    }
+
     fn get_display_size(&self) -> (u32, u32) {
 
         // EGA supports multiple fonts.

@@ -1305,6 +1305,10 @@ impl VideoCard for VGACard {
         self.display_mode
     }
 
+    fn set_clocking_mode(&mut self, mode: ClockingMode) {
+        // not implemented
+    }
+
     fn get_display_size(&self) -> (u32, u32) {
 
         // VGA supports multiple fonts.

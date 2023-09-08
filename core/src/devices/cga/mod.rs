@@ -292,11 +292,6 @@ const CGA_DEBUG_U64: [u64; 16] = [
     0xF0F0F0F0F0F0F0F0,
 ];
 
-#[derive (Copy, Clone, Debug, PartialEq)]
-pub enum ClockMode {
-    Pixel,
-    Character
-}
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -402,7 +397,7 @@ pub struct CGACard {
 
     cc_register: u8,
     clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
-    clock_mode: ClockMode,
+    clock_mode: ClockingMode,
     char_clock: u32,
     char_clock_mask: u64,
     char_clock_odd_mask: u64,
@@ -595,7 +590,7 @@ impl Default for CGACard {
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
             clock_divisor: DEFAULT_CLOCK_DIVISOR,
-            clock_mode: ClockMode::Pixel,
+            clock_mode: ClockingMode::Dynamic,
             char_clock: DEFAULT_CHAR_CLOCK,
             char_clock_mask: DEFAULT_CHAR_CLOCK_MASK,
             char_clock_odd_mask: DEFAULT_CHAR_CLOCK_ODD_MASK,
@@ -2411,6 +2406,7 @@ impl CGACard {
             if self.beam_y > 258 && self.beam_y < 262 {
                 // This is a "short" frame. Calculate delta.
                 let delta_y = 262 - self.beam_y;
+                
                 self.sink_cycles = delta_y * 912;
 
                 if self.cycles & self.char_clock_mask != 0 {

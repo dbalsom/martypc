@@ -106,7 +106,7 @@ use marty_core::{
     machine_manager::MACHINE_DESCS,
     vhd_manager::{VHDManager, VHDManagerError},
     vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode, VideoOption},
+    videocard::{RenderMode, VideoOption, ClockingMode},
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
@@ -436,7 +436,7 @@ pub fn run() {
     #[cfg(feature = "cpu_validator")]
     match config.tests.test_mode {
         Some(TestMode::Generate) => return run_gentests(&config),
-        Some(TestMode::Validate) => return run_runtests(&config),
+        Some(TestMode::Run) | Some(TestMode::Validate) => return run_runtests(config),
         Some(TestMode::None) | None => {}
     }
 
@@ -719,7 +719,7 @@ pub fn run() {
 
                 window.set_inner_size(winit::dpi::LogicalSize::new(window_resize_w, window_resize_h));
 
-                log::debug!("Reiszing render buffer to {}x{}", aper_x, aper_y);
+                log::debug!("Resizing render buffer to {}x{}", aper_x, aper_y);
 
                 render_src.resize((aper_x * aper_y * 4) as usize, 0);
                 render_src.fill(0);
@@ -1686,6 +1686,9 @@ pub fn run() {
                                         }
                                         DeviceSelection::VideoCard => {
                                             if let Some(video_card) = machine.videocard() {
+                                                // Playing around with the clock forces the adapter into 
+                                                // cycle mode, if supported.
+                                                video_card.set_clocking_mode(ClockingMode::Cycle);
                                                 video_card.debug_tick(ticks);
                                             }                                        
                                         }

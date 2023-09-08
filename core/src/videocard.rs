@@ -93,6 +93,19 @@ pub enum RenderMode {
     Indirect
 }
 
+// This enum determines the granularity by which the video card should clock itself
+// For CGA devices, this can be either Cycle, Character or Dynamic. 
+// Dynamic will switch between Cycle and Character clocking as needed to produce
+// cycle-accurate CRTC updates but otherwise clock by Character.
+// Certain debugging features may force Cycle clocking mode. 
+#[derive(Copy, Clone, Debug)]
+pub enum ClockingMode {
+    Cycle,
+    Character,
+    Scanline,
+    Dynamic
+}
+
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -213,6 +226,9 @@ pub trait VideoCard {
 
     /// Returns the currently configured DisplayMode
     fn get_display_mode(&self) -> DisplayMode;
+
+    /// Override the clocking mode for the adapter.
+    fn set_clocking_mode(&mut self, mode: ClockingMode);
 
     /// Returns a slice of u8 representing video memory
     //fn get_vram(&self) -> &[u8];
