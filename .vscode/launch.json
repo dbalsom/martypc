@@ -347,7 +347,36 @@
                 "RUST_BACKTRACE": "1"
             },
             //"postDebugTask": "runCondenseScript"
-        },                   
+        },    
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', quick-run JSON tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_runtests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "warn,marty_core=warn,martypc_pixels_desktop=warn",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },                        
         {
             "type": "lldb",
             "request": "launch",

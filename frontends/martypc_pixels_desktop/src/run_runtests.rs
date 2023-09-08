@@ -35,6 +35,8 @@ use std::{
     collections::{LinkedList, HashMap},
     io::{BufReader, BufWriter, Write, ErrorKind, Read, Seek, SeekFrom},
     path::PathBuf,
+    sync::{mpsc, Arc, Mutex},
+    thread,
     time::{Instant, Duration}
 };
 
@@ -47,7 +49,7 @@ use marty_core::{
         mnemonic::Mnemonic,
     },
     cpu_common::{CpuType, CpuOption},
-    config::{ConfigFileParams, TraceMode, ValidatorType},
+    config::{ConfigFileParams, TestMode, TraceMode, ValidatorType},
     devices::pic::Pic,
     cpu_validator::{CpuValidator, BusOp, BusOpType, CycleState, BusCycle, BusState, VRegisters},
     arduino8088_validator::{ArduinoValidator},
@@ -56,7 +58,13 @@ use marty_core::{
 
 use crate::cpu_test::{CpuTest, TestState};
 
+use flate2::read::GzDecoder;
 use serde::{Serialize, Deserialize};
+
+pub struct TestFileLoad {
+    path: PathBuf,
+    tests: LinkedList<CpuTest>
+}
 
 pub struct TestResults {
 
@@ -125,7 +133,7 @@ fn is_prefix_in_vec(path: &PathBuf, vec: &Vec<String>) -> bool {
         .map_or(false, |prefix| vec.contains(&prefix)) // Check if the prefix exists in the vec
 }
 
-pub fn run_runtests(config: &ConfigFileParams) {
+pub fn run_runtests(config: ConfigFileParams) {
 
     let mut test_path = "./tests".to_string();
     if let Some(test_dir) = &config.tests.test_dir {
@@ -150,25 +158,26 @@ pub fn run_runtests(config: &ConfigFileParams) {
 
     let metadata: Metadata = serde_json::from_str(&contents).expect("Failed to parse metadata JSON");
 
-    // Create 'validated' folder to receive validated tests
-
+    // Create 'validated' folder to receive validated tests, if in validate mode
+    
     let mut validated_dir_path = test_base_path.clone();
     validated_dir_path.push("validated");
-
-    match create_dir(validated_dir_path.clone()) {
-        Ok(_) => { log::debug!("Created output path for validated tests.")},
-        Err(e) => match e.kind() {
-            ErrorKind::AlreadyExists => {
-                log::debug!("Output path already exists.")
-            }
-            _ => {
-                log::error!("Failed to create output directory: {:?}", e);
-                panic!("Failed to create output directory!");
+    
+    if let Some(TestMode::Validate) = &config.tests.test_mode {
+        match create_dir(validated_dir_path.clone()) {
+            Ok(_) => { log::debug!("Created output path for validated tests.")},
+            Err(e) => match e.kind() {
+                ErrorKind::AlreadyExists => {
+                    log::debug!("Output path already exists.")
+                }
+                _ => {
+                    log::error!("Failed to create output directory: {:?}", e);
+                    panic!("Failed to create output directory!");
+                }
             }
         }
+        log::debug!("Using validated dir path: {:?}", validated_dir_path);
     }
-
-    log::debug!("Using validated dir path: {:?}", validated_dir_path);
 
     // Convert opcode ranges into strings
     let default_range = [0,0xFF].to_vec();
@@ -182,85 +191,112 @@ pub fn run_runtests(config: &ConfigFileParams) {
     let mut log_path = test_base_path.clone();
     log_path.push("validation.log");
 
-    let log = File::create(log_path).expect("Couldn't open logfile.");
-    let mut log_writer = BufWriter::new(log);
+    let (tx, rx) = mpsc::sync_channel::<TestFileLoad>(1);
 
-    match read_dir(test_base_path) {
-        Ok(entries) => {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    // Filter for JSON files
-                    if let Some(extension) = entry.path().extension() {
-                        if extension.to_ascii_lowercase() == "json" && is_prefix_in_vec(&entry.path(), &str_vec) {
-                            // Load the JSON file
-                            match read_tests_from_file(entry.path()) {
-                                Some(tests) => {
+    thread::spawn( move || {
 
-                                    _ = writeln!(&mut log_writer, "Running tests from file: {:?}", entry.path());
+        match read_dir(test_base_path) {
+            Ok(entries) => {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        // Filter for JSON files
+                        if let Some(extension) = entry.path().extension() {
+                            if ((extension.to_ascii_lowercase() == "json") || (extension.to_ascii_lowercase() == "gz")) && is_prefix_in_vec(&entry.path(), &str_vec) {
+                                // Load the JSON file
+                                match read_tests_from_file(entry.path()) {
+                                    Some(tests) => {
 
-                                    let opcode = opcode_from_path(&entry.path()).expect(&format!("Couldn't parse opcode from path: {:?}", entry.path()));
-                                    let extension_opt = opcode_extension_from_path(&entry.path());
+                                        // Send tests through channel.
 
-                                    let results = run_tests(&metadata, &tests, opcode, extension_opt, config, &mut log_writer);
-
-                                    if !results.pass {
-                                        _ = writeln!(&mut log_writer, "Test failed. Stopping execution");
-                                        _ = log_writer.flush();
-                                        eprintln!("Test failed. Stopping execution.");
-
-                                        return
-                                    }
-                                    else {
-                                        _ = writeln!(
-                                            &mut log_writer, 
-                                            "Test file completed. {} tests passed in {:.2} seconds.", 
-                                            results.tests_passed,
-                                            results.test_duration.as_secs_f32()
+                                        tx.send(
+                                            TestFileLoad {
+                                                path: entry.path().clone(),
+                                                tests
+                                            }
                                         );
-                                        println!(
-                                            "Test file completed. {} tests passed in {:.2} seconds.", 
-                                            results.tests_passed,
-                                            results.test_duration.as_secs_f32()
-                                        );
-                                        _ = log_writer.flush();
-
-                                        // Copy test file to validated directory.
-                                        let mut copy_output_path = validated_dir_path.clone();
-                                        copy_output_path.push(entry.path().file_name().unwrap());
-    
-                                        log::debug!("Using output path: {:?} from dir path: {:?}", copy_output_path, validated_dir_path);
-
-                                        copy(entry.path(), copy_output_path.clone())
-                                            .expect(
-                                                &format!(
-                                                    "Failed to copy file {:?} to output dir: {:?}!",
-                                                    entry.path(),
-                                                    copy_output_path
-                                                )
-                                            );
-
                                     }
-                                }
-                                None => {
-                                    eprintln!("Failed to parse json from file: {:?}. Skipping...", entry.path());
-                                    _ = writeln!(&mut log_writer, "Failed to parse json from file: {:?}. Skipping...", entry.path());
-                                    continue;
+                                    None => {
+                                        eprintln!("Failed to parse json from file: {:?}. Skipping...", entry.path());
+
+                                        //let mut writer_lock = thread_logger.lock().unwrap();
+                                        //_ = writeln!(&mut writer_lock, "Failed to parse json from file: {:?}. Skipping...", entry.path());
+                                        continue;
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+            Err(e) => {
+                eprintln!("Error reading directory: {}", e);
+                return
+            }
         }
-        Err(e) => {
-            eprintln!("Error reading directory: {}", e);
+    });
+
+    let log = File::create(log_path).expect("Couldn't open logfile.");
+    let mut log_writer = BufWriter::new(log);
+
+    // Read in tests from channel as they are loaded and process them.
+
+    while let Ok(test_load) = rx.recv() {
+        //_ = writeln!(&mut writer_lock, "Running tests from file: {:?}", test_load.path);
+
+        println!("Received file {:?} with {} tests from loading thread.", test_load.path, test_load.tests.len());
+
+        let opcode = opcode_from_path(&test_load.path).expect(&format!("Couldn't parse opcode from path: {:?}", test_load.path));
+        let extension_opt = opcode_extension_from_path(&test_load.path);
+
+        //let results = run_tests(&metadata, &test_load.tests, opcode, extension_opt, &config, &mut writer_lock);
+        let results = run_tests(&metadata, &test_load.tests, opcode, extension_opt, &config, &mut log_writer);
+
+        if !results.pass {
+            //_ = writeln!(&mut writer_lock, "Test failed. Stopping execution");
+            //_ = writer_lock.flush();
+            eprintln!("Test failed. Stopping execution.");
+
             return
+        }
+        else {
+            //_ = writeln!(
+            //    &mut writer_lock, 
+            //    "Test file completed. {} tests passed in {:.2} seconds.", 
+            //    results.tests_passed,
+            //    results.test_duration.as_secs_f32()
+            //);
+            println!(
+                "Test file completed. {} tests passed in {:.2} seconds.", 
+                results.tests_passed,
+                results.test_duration.as_secs_f32()
+            );
+            //_ = writer_lock.flush();
+
+            if let Some(TestMode::Validate) = &config.tests.test_mode {
+
+                // Copy test file to validated directory.
+                let mut copy_output_path = validated_dir_path.clone();
+
+                copy_output_path.push(test_load.path.file_name().unwrap());
+
+                log::debug!("Using output path: {:?} from dir path: {:?}", copy_output_path, validated_dir_path);
+
+                copy(test_load.path.clone(), copy_output_path.clone())
+                    .expect(
+                        &format!(
+                            "Failed to copy file {:?} to output dir: {:?}!",
+                            test_load.path,
+                            copy_output_path
+                        )
+                    );
+            }
         }
     }
 
     println!("All tests validated!");
-    _ = writeln!(&mut log_writer, "All tests validated!");
-    _ = log_writer.flush();
+    //let mut writer_lock = writer_arc.lock().unwrap();
+    //_ = writeln!(&mut writer_lock, "All tests validated!");
+    //_ = writer_lock.flush();
 
     // writer & file dropped here
     
@@ -296,7 +332,21 @@ pub fn read_tests_from_file(test_path: PathBuf) -> Option<LinkedList<CpuTest>> {
         let mut file = test_file_opt.unwrap();
         let mut file_string = String::new();
         
-        file.read_to_string(&mut file_string).expect("Error reading in JSON file to string!");
+        // Is file gzipped?
+        match test_path.extension().and_then(std::ffi::OsStr::to_str) {        
+            Some("gz") => {
+                let mut decoder = GzDecoder::new(BufReader::new(file));
+
+                decoder.read_to_string(&mut file_string).expect("Failed to decompress gzip archive.");
+            }        
+            Some("json") => {
+                file.read_to_string(&mut file_string).expect("Error reading in JSON file to string!");
+            },
+            _=> {
+                log::error!("Bad extension!");
+                return None
+            }
+        }
 
         /*
         // using BufReader & from_reader with serde-json is slow, see: 
@@ -504,6 +554,9 @@ fn run_tests(
                 } 
             }
         }
+
+        // Finalize instruction.
+        cpu.step_finish();
 
         // CPU is done with execution. Check final state.
         println!("CPU completed execution.");

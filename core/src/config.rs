@@ -180,6 +180,7 @@ impl FromStr for TraceMode {
 pub enum TestMode {
     None,
     Generate,
+    Run,
     Validate
 }
 
