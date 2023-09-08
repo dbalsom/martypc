@@ -922,7 +922,25 @@ impl Machine {
                 cpu_cycles = fake_cycles;
             }
 
-            self.run_devices(cpu_cycles, &mut kb_event_processed);
+            // Run devices for the number of cycles the instruction took.
+            // It may be more efficient to batch this to a certain granularity - is it critical to run
+            // devices for 3 cycles on NOP, for example? 
+            let (intr, _) = self.run_devices(cpu_cycles, &mut kb_event_processed);
+            self.cpu.set_intr(intr);
+
+            // Finish instruction after running devices (RNI)
+            match self.cpu.step_finish() {
+                Ok(step_result) => {
+
+                },
+                Err(err) => {
+                    self.error = true;
+                    self.error_str = Some(format!("{}", err));
+                    log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
+                    cpu_cycles = 0
+                }                 
+            }
+
 
             // If we returned a step over target address, execution is paused, and step over was requested, 
             // then consume as many instructions as needed to get to to the 'next' instruction. This will
@@ -1009,7 +1027,13 @@ impl Machine {
         instr_count
     }
 
-    pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) -> u32 {
+    /// Run the other devices in the machine for the specified number of cpu cycles.
+    /// CPU cycles drive the timing of the rest of the system; they will be converted into the
+    /// appropriate timing units for other devices as needed.
+    /// 
+    /// Returns the status of the INTR line if running a device generates an interrupt, and 
+    /// the number of system ticks elapsed
+    pub fn run_devices(&mut self, cpu_cycles: u32, kb_event_processed: &mut bool) -> (bool, u32) {
 
         // Convert cycles into elapsed microseconds
         let us = self.cpu_cycles_to_us(cpu_cycles);
@@ -1069,8 +1093,11 @@ impl Machine {
             self.pit_buf_to_sound_buf();
         }
 
+        // Query interrupt line after device processing.
+        let intr = self.cpu.bus_mut().pic_mut().as_ref().unwrap().query_interrupt_line();
+
         self.system_ticks += sys_ticks as u64;
-        sys_ticks
+        (intr, sys_ticks)
     }
 
     fn timer_ticks_to_cpu_cycles(&self, timer_ticks: u16) -> u32 {

@@ -429,6 +429,7 @@ impl Cpu {
         self.queue_op = QueueOp::Idle;
 
         self.instr_cycle += 1;
+        self.device_cycles += 1;
 
         self.cycle_num += 1;
         self.wait_states = self.wait_states.saturating_sub(1);
@@ -534,12 +535,13 @@ impl Cpu {
                 // The vector is read from the PIC directly before we even enter an INTA bus state, so there's
                 // nothing to do.
 
+                //log::debug!("in INTA transfer_n: {}", self.transfer_n);
                 // Deassert lock 
-                if self.transfer_n == 1 {
+                if self.transfer_n == 2 {
                     //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
                     self.lock = false;
                 }
-                self.transfer_n += 1;
+                //self.transfer_n += 1;
             }
             _=> {
                 trace_print!(self, "Unhandled bus state!");
