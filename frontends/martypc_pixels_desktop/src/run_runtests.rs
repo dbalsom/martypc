@@ -30,7 +30,7 @@
 
 
 use std::{
-    ffi::OsStr,
+    ffi::OsString,
     fs::{read_dir, create_dir, copy, read_to_string, File, OpenOptions},
     collections::{LinkedList, HashMap},
     io::{BufReader, BufWriter, Write, ErrorKind, Read, Seek, SeekFrom},
@@ -60,20 +60,38 @@ use crate::cpu_test::{CpuTest, TestState};
 
 use flate2::read::GzDecoder;
 use serde::{Serialize, Deserialize};
+use colored::*;
+
+pub enum FailType {
+    CycleMismatch,
+    MemMismatch,
+    RegMismatch
+}
 
 pub struct TestFileLoad {
     path: PathBuf,
     tests: LinkedList<CpuTest>
 }
 
-pub struct TestResults {
+pub struct TestFailItem {
+    num: u32,
+    name: String,
+    reason: FailType
+}
 
+pub struct TestResult {
     pass: bool,
-    tests_passed: u32,
-    tests_failed: u32,
-    first_failed_test: u32,
-    first_failed_test_str: String,
-    test_duration: Duration
+    duration: Duration,
+    passed: u32,
+    failed: u32,
+    cycle_mismatch: u32,
+    mem_mismatch: u32,
+    reg_mismatch: u32,
+    failed_tests: LinkedList<TestFailItem>
+}
+
+pub struct TestResultSummary {
+    results: HashMap<OsString, TestResult>
 }
 
 #[derive(Deserialize, Debug)]
@@ -191,6 +209,12 @@ pub fn run_runtests(config: ConfigFileParams) {
     let mut log_path = test_base_path.clone();
     log_path.push("validation.log");
 
+    let mut summary = TestResultSummary {
+        results: HashMap::new()
+    };
+
+    let test_suite_start = Instant::now();
+
     let (tx, rx) = mpsc::sync_channel::<TestFileLoad>(1);
 
     thread::spawn( move || {
@@ -208,7 +232,7 @@ pub fn run_runtests(config: ConfigFileParams) {
 
                                         // Send tests through channel.
 
-                                        tx.send(
+                                        _ = tx.send(
                                             TestFileLoad {
                                                 path: entry.path().clone(),
                                                 tests
@@ -240,6 +264,8 @@ pub fn run_runtests(config: ConfigFileParams) {
 
     // Read in tests from channel as they are loaded and process them.
 
+    let stop_on_failure = matches!(&config.tests.test_mode, Some(TestMode::Validate));
+
     while let Ok(test_load) = rx.recv() {
         //_ = writeln!(&mut writer_lock, "Running tests from file: {:?}", test_load.path);
 
@@ -249,51 +275,57 @@ pub fn run_runtests(config: ConfigFileParams) {
         let extension_opt = opcode_extension_from_path(&test_load.path);
 
         //let results = run_tests(&metadata, &test_load.tests, opcode, extension_opt, &config, &mut writer_lock);
-        let results = run_tests(&metadata, &test_load.tests, opcode, extension_opt, &config, &mut log_writer);
+        let results = run_tests(&metadata, &test_load.tests, opcode, extension_opt, &config, stop_on_failure, &mut log_writer);
 
-        if !results.pass {
-            //_ = writeln!(&mut writer_lock, "Test failed. Stopping execution");
-            //_ = writer_lock.flush();
-            eprintln!("Test failed. Stopping execution.");
+        println!(
+            "Test file completed. {}/{} tests passed in {:.2} seconds.", 
+            results.passed,
+            test_load.tests.len(),
+            results.duration.as_secs_f32()
+        );
 
-            return
+        if results.failed > 0 && stop_on_failure {
+            break;
         }
-        else {
-            //_ = writeln!(
-            //    &mut writer_lock, 
-            //    "Test file completed. {} tests passed in {:.2} seconds.", 
-            //    results.tests_passed,
-            //    results.test_duration.as_secs_f32()
-            //);
-            println!(
-                "Test file completed. {} tests passed in {:.2} seconds.", 
-                results.tests_passed,
-                results.test_duration.as_secs_f32()
-            );
-            //_ = writer_lock.flush();
 
-            if let Some(TestMode::Validate) = &config.tests.test_mode {
+        //_ = writer_lock.flush();
 
-                // Copy test file to validated directory.
-                let mut copy_output_path = validated_dir_path.clone();
+        // If we passed all tests, and are in Validate mode, copy the passing file to the validated directory.
+        if results.failed == 0 && matches!(&config.tests.test_mode, Some(TestMode::Validate)) {
 
-                copy_output_path.push(test_load.path.file_name().unwrap());
+            // Copy test file to validated directory.
+            let mut copy_output_path = validated_dir_path.clone();
 
-                log::debug!("Using output path: {:?} from dir path: {:?}", copy_output_path, validated_dir_path);
+            copy_output_path.push(test_load.path.file_name().unwrap());
 
-                copy(test_load.path.clone(), copy_output_path.clone())
-                    .expect(
-                        &format!(
-                            "Failed to copy file {:?} to output dir: {:?}!",
-                            test_load.path,
-                            copy_output_path
-                        )
-                    );
-            }
+            log::debug!("Using output path: {:?} from dir path: {:?}", copy_output_path, validated_dir_path);
+
+            copy(test_load.path.clone(), copy_output_path.clone())
+                .expect(
+                    &format!(
+                        "Failed to copy file {:?} to output dir: {:?}!",
+                        test_load.path,
+                        copy_output_path
+                    )
+                );
         }
+
+        summary.results.insert(test_load.path.file_name().unwrap().to_os_string(), results);
     }
 
-    println!("All tests validated!");
+    if matches!(&config.tests.test_mode, Some(TestMode::Validate)) {
+        println!("All tests validated!");
+
+        print_summary(&summary);
+        println!("Completed in: {} seconds", test_suite_start.elapsed().as_secs());
+    }
+    else {
+        println!("All tests run!");
+
+        print_summary(&summary);
+        println!("Completed in: {} seconds", test_suite_start.elapsed().as_secs());
+    }
+    
     //let mut writer_lock = writer_arc.lock().unwrap();
     //_ = writeln!(&mut writer_lock, "All tests validated!");
     //_ = writer_lock.flush();
@@ -301,6 +333,50 @@ pub fn run_runtests(config: ConfigFileParams) {
     // writer & file dropped here
     
 }
+
+pub fn print_summary(summary: &TestResultSummary) {
+
+    // Collect and sort keys
+    let mut keys: Vec<_> = summary.results.keys().collect();
+    keys.sort();
+
+    // Iterate using sorted keys
+    for key in keys {
+        if let Some(result) = summary.results.get(key) {
+            let filename = format!("{:?}", key);
+            println!(
+                "File: {:15} Passed: {:6} Failed: {:6} Reg: {:6} Cycle: {:6} Mem: {:6}", 
+                filename.bright_blue(), 
+                result.passed,
+                if result.failed > 0 {
+                    format!("{:6}", result.failed.to_string().red())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.reg_mismatch> 0 {
+                    format!("{:6}", result.reg_mismatch.to_string().red())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.cycle_mismatch> 0 {
+                    format!("{:6}", result.cycle_mismatch.to_string().red())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.mem_mismatch> 0 {
+                    format!("{:6}", result.mem_mismatch.to_string().red())
+                }
+                else {
+                    "0".to_string()
+                },
+            );
+        }
+    }
+}
+
 
 pub fn read_tests_from_file(test_path: PathBuf) -> Option<LinkedList<CpuTest>> {
 
@@ -390,8 +466,9 @@ fn run_tests(
     opcode: u8,
     extension_opt: Option<u8>,
     config: &ConfigFileParams, 
+    stop_on_failure: bool,
     log: &mut BufWriter<File>
-) -> TestResults {
+) -> TestResult {
 
     // Create the cpu trace file, if specified
     let mut cpu_trace = TraceLogger::None;
@@ -432,13 +509,15 @@ fn run_tests(
     _ = writeln!(log, "Have {} tests from file.", total_tests);
     println!("Have {} tests from file.", total_tests);
     
-    let mut results = TestResults {
+    let mut results = TestResult {
+        duration: Duration::new(0, 0),
         pass: false,
-        tests_passed: 0,
-        tests_failed: 0,
-        first_failed_test: 0,
-        first_failed_test_str: String::new(),
-        test_duration: Duration::new(0, 0)
+        passed: 0,
+        failed: 0,
+        cycle_mismatch: 0,
+        mem_mismatch: 0,
+        reg_mismatch: 0,
+        failed_tests: LinkedList::new()
     };
 
     let test_start = Instant::now();
@@ -447,8 +526,8 @@ fn run_tests(
     for (n, test) in tests.iter().enumerate() {
 
         // Set up CPU registers to initial state.
-        println!("Setting up initial register state...");
-        println!("{}",test.initial_state.regs);
+        //println!("Setting up initial register state...");
+        //println!("{}",test.initial_state.regs);
 
         // Set reset vector to our test instruction ip.
         let cs = test.initial_state.regs.cs;
@@ -472,7 +551,7 @@ fn run_tests(
         cpu.set_flags(test.initial_state.regs.flags);
 
         // Set up memory to initial state.
-        println!("Setting up initial memory state. {} memory states provided.", test.initial_state.ram.len());
+        //println!("Setting up initial memory state. {} memory states provided.", test.initial_state.ram.len());
         for mem_entry in &test.initial_state.ram {
             // Validate that mem_entry[1] fits in u8.
 
@@ -513,8 +592,14 @@ fn run_tests(
             _ = writeln!(log, "Test disassembly mismatch!");
         }
 
-        println!("Test {}: Running test for instruction: {} ({})", n, i, i.size);
-        
+        let mut opcode_string = format!("{:02X}", opcode);
+        if let Some(ext) = extension_opt {
+            opcode_string.push_str(&format!(".{:1X}", ext))
+        }
+
+        println!("{}| Test {:05}: Running test for instruction: {} ({})", opcode_string, n, i, i.size);
+        _ = writeln!(log, "{}| Test {:05}: Running test for instruction: {} ({})", opcode_string, n, i, i.size);
+
         // Set terminating address for CPU validator.
         let end_address = 
             Cpu::calc_linear_address(
@@ -522,9 +607,9 @@ fn run_tests(
                 cpu.get_register16(Register16::IP).wrapping_add(i.size as u16)
             );
 
+        //log::debug!("Setting end address: {:05X}", end_address);
         cpu.set_end_address(end_address as usize);
-        log::debug!("Setting end address: {:05X}", end_address);
-
+        
         match i.mnemonic {
             Mnemonic::MOVSB | Mnemonic::MOVSW | Mnemonic::CMPSB | Mnemonic::CMPSW | Mnemonic::STOSB | 
             Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::SCASB | Mnemonic::SCASW => {
@@ -540,7 +625,7 @@ fn run_tests(
         loop {
             match cpu.step(false) {
                 Ok((step_result, cycles)) => {
-                    println!("Instruction reported result {:?}, {} cycles", step_result, cycles);
+                    //println!("{}| Instruction reported result {:?}, {} cycles", opcode_string, step_result, cycles);
 
                     if rep & cpu.in_rep() {
                         continue
@@ -548,9 +633,9 @@ fn run_tests(
                     break;
                 },
                 Err(err) => {
-                    eprintln!("CPU Error: {}\n", err);
+                    eprintln!("{}| CPU Error: {}\n", opcode_string, err);
                     cpu.trace_flush();
-                    panic!("CPU Error: {}\n", err);
+                    panic!("{}| CPU Error: {}\n", opcode_string, err);
                 } 
             }
         }
@@ -559,7 +644,7 @@ fn run_tests(
         cpu.step_finish();
 
         // CPU is done with execution. Check final state.
-        println!("CPU completed execution.");
+        //println!("CPU completed execution.");
 
         // Get cycle states from CPU.
         let mut cpu_cycles = cpu.get_cycle_states().clone();
@@ -578,54 +663,105 @@ fn run_tests(
             &vregs, 
             log) 
         {
-            println!("Registers validated against final state.");
+            //println!("{}| Registers validated against final state.", opcode_string);
 
-            _ = writeln!(log, "Test {:05}: Test flags {:04X} matched CPU flags: {:04X}", n, test.final_state.regs.flags, vregs.flags);
+            _ = writeln!(
+                log, 
+                "{}| Test {:05}: Test flags {:04X} matched CPU flags: {:04X}", 
+                opcode_string,
+                n, 
+                test.final_state.regs.flags, 
+                vregs.flags
+            );
         }
         else {
 
-            _ = writeln!(log, "Register validation failed, test number: {}", n);
-
-            eprintln!("Register validation failed, test number: {}", n);
-            eprintln!("Test specified:");
-            eprintln!("{}", test.final_state.regs);
-            eprintln!("{}", Cpu::flags_string(test.final_state.regs.flags));
-            eprintln!("CPU reported:");
-            eprintln!("{}", vregs);
-            eprintln!("{}", Cpu::flags_string(cpu.get_flags()));
+            trace_error!(log, "{}| Test {:05} Register validation failed", opcode_string, n);
+            trace_error!(log, "Test specified:");
+            trace_error!(log, "{}", test.final_state.regs);
+            trace_error!(log, "{}", Cpu::flags_string(test.final_state.regs.flags));
+            trace_error!(log, "CPU reported:");
+            trace_error!(log, "{}", vregs);
+            trace_error!(log, "{}", Cpu::flags_string(cpu.get_flags()));
             
-            results.test_duration = test_start.elapsed();
-            results.first_failed_test = n as u32;
-            results.first_failed_test_str = test.name.clone();
-            results.tests_failed = 1;
-            results.tests_passed = n.saturating_sub(1) as u32;
-            results.pass = false;
+            let item = TestFailItem {
+                num: n as u32,
+                name: test.name.clone(),
+                reason: FailType::RegMismatch
+            };
 
-            return results
+            results.failed += 1;
+            results.reg_mismatch += 1;
+            results.failed_tests.push_back(item);
+
+            if stop_on_failure { 
+                break;
+            }
+            continue;
         }
 
         // Validate cycles
         if test.cycles.len() == cpu_cycles.len() {
-            _ = writeln!(log, "Test {:05}: Test cycles {} matches CPU cycles: {}", n, test.cycles.len(), cpu_cycles.len());
+            _ = writeln!(
+                log, 
+                "{}| Test {:05}: Test cycles {} matches CPU cycles: {}", 
+                opcode_string, 
+                n, 
+                test.cycles.len(), 
+                cpu_cycles.len()
+            );
         }
         else {
-            trace_error!(log, "Test {:05}: Test cycles {} DO NOT MATCH CPU cycles: {}", n, test.cycles.len(), cpu_cycles.len());
+            trace_error!(
+                log, 
+                "{}| Test {:05}: Test cycles {} DO NOT MATCH CPU cycles: {}", 
+                opcode_string, 
+                n, 
+                test.cycles.len(), 
+                cpu_cycles.len()
+            );
             
             print_cycle_diff(&test.cycles, &cpu_cycles);
-
             cpu.trace_flush();
-            panic!("Test validation failure!");
+
+            let item = TestFailItem {
+                num: n as u32,
+                name: test.name.clone(),
+                reason: FailType::CycleMismatch
+            };
+
+            results.failed += 1;
+            results.cycle_mismatch += 1;
+            results.failed_tests.push_back(item);
+
+            if stop_on_failure { 
+                break;
+            }
+            continue;
         }
 
         let (validate_result, _) = validate_cycles(&test.cycles, &cpu_cycles, log);
         if validate_result {
-            _ = writeln!(log, "Test {:05}: Test cycles validated!", n);
+            _ = writeln!(log, "{}| Test {:05}: Test cycles validated!", opcode_string, n);
         }
         else {
             print_cycle_diff(&test.cycles, &cpu_cycles);
-            
             cpu.trace_flush();
-            panic!("Test validation failure!");
+
+            let item = TestFailItem {
+                num: n as u32,
+                name: test.name.clone(),
+                reason: FailType::CycleMismatch
+            };
+
+            results.failed += 1;
+            results.cycle_mismatch += 1;
+            results.failed_tests.push_back(item);
+
+            if stop_on_failure { 
+                break;
+            }
+            continue;
         }
 
         // Validate final memory state.
@@ -633,32 +769,58 @@ fn run_tests(
             
             // Validate that mem_entry[0] < 0xFFFFF
             if mem_entry[0] > 0xFFFFF {
-                panic!("Test {}: Invalid memory address value: {:?}", n, mem_entry[0]);
+                panic!("{}| Test {}: Invalid memory address value: {:?}", opcode_string, n, mem_entry[0]);
             }
 
             let addr: usize = mem_entry[0] as usize;
 
             // Validate that mem_entry[1] fits in u8.
-            let byte: u8 = mem_entry[1].try_into().expect(&format!("Test {}: Invalid memory byte value: {:?}", n, mem_entry[1]));
+            let byte: u8 = mem_entry[1]
+                .try_into()
+                .expect(
+                    &format!(
+                            "{}| Test {}: Invalid memory byte value: {:?}", 
+                            opcode_string, 
+                            n, 
+                            mem_entry[1]
+                        )
+                    );
             
             let mem_byte = cpu.bus().peek_u8(addr).expect("Failed to read memory!");
 
             if byte != mem_byte {
-                eprintln!("Test {}: Memory validation error. Address: {:05X} Test value: {:02X} Actual value: {:02X}", n, addr, byte, mem_byte);
-                results.test_duration = test_start.elapsed();
-                results.first_failed_test = n as u32;
-                results.first_failed_test_str = test.name.clone();
-                results.tests_failed = 1;
-                results.tests_passed = (n - 1) as u32;
-                results.pass = false;
+                eprintln!(
+                    "{}| Test {}: Memory validation error. Address: {:05X} Test value: {:02X} Actual value: {:02X}", 
+                    opcode_string,
+                    n, 
+                    addr, 
+                    byte, 
+                    mem_byte
+                );
+                
+                let item = TestFailItem {
+                    num: n as u32,
+                    name: test.name.clone(),
+                    reason: FailType::CycleMismatch
+                };
+
+                results.failed += 1;
+                results.mem_mismatch += 1;
+                results.failed_tests.push_back(item);
+
+                if stop_on_failure { 
+                    break;
+                }
+                continue;
             }
         }
 
+        // If we got here, we passed!
+        results.passed += 1;
     }
 
-    results.tests_passed = tests.len() as u32;
-    results.test_duration = test_start.elapsed();
-    results.pass = true;
+    results.duration = test_start.elapsed();
+
     results
 }   
 
@@ -714,7 +876,7 @@ fn validate_registers(
 
     let opcode_key = format!("{:02X}", opcode);
 
-    let opcode_inner = metadata.get(&opcode_key).expect(&format!("No metadata for opcode: {:02X}", opcode));
+    let opcode_inner = metadata.get(&opcode_key).expect(&format!("{:02X}| No metadata for opcode", opcode));
     let opcode_final;
 
     if let Some(extension) = extension_opt {
@@ -722,7 +884,7 @@ fn validate_registers(
         let extension_key = format!("{:1X}", extension);
 
         if let Some(reg) = &opcode_inner.reg {
-            opcode_final = reg.get(&extension_key).expect(&format!("No metadata for opcode: {:02X} extension: {:1X}", opcode, extension));
+            opcode_final = reg.get(&extension_key).expect(&format!("{:02X}.{:1X}| No metadata for opcode extension", opcode, extension));
         }
         else {
             trace_error!(log, "no 'reg' entry for extension!");
@@ -745,7 +907,12 @@ fn validate_registers(
 
     if test_flags_masked != cpu_flags_masked {
 
-        trace_error!(log, "CPU flags mismatch! EMU: 0b{:08b} != CPU: 0b{:08b}", test_flags_masked, cpu_flags_masked);
+        trace_error!(
+            log, 
+            "CPU flags mismatch! EMU: 0b{:08b} != CPU: 0b{:08b}", 
+            test_flags_masked, 
+            cpu_flags_masked
+        );
         //trace_error!(self, "Unmasked: EMU: 0b{:08b} != CPU: 0b{:08b}", self.current_frame.regs[1].flags, regs.flags);            
         regs_validate = false;
 

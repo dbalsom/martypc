@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 marty_core = { path = "../../core/"}
 marty_render = { path = "../../frontend_libs/render"}
 bytemuck = "1.13.1"
+colored = "2.0.4"
 cpal = "0.13.5"
 #egui = "0.22"
 emath = "0.20"
