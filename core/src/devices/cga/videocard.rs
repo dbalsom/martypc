@@ -56,6 +56,10 @@ macro_rules! push_reg_str_enum {
 
 impl VideoCard for CGACard {
 
+    fn get_sync(&self) -> (bool, bool) {
+        (self.in_crtc_vblank, self.in_crtc_hblank)
+    }
+
     fn set_video_option(&mut self, opt: VideoOption) {
         
         match opt {
@@ -386,19 +390,19 @@ impl VideoCard for CGACard {
         }
         */
 
-        let mut pixel_clocks = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
+        let mut hdots = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
             ticks
         }
         else {
             panic!("CGA requires SystemTicks time unit.")
         };
 
-        if pixel_clocks == 0 {
+        if hdots == 0 {
             panic!("CGA run() with 0 ticks");
         }
 
-        if self.ticks_advanced > pixel_clocks {
-            panic!("Impossible condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, pixel_clocks);
+        if self.ticks_advanced > hdots {
+            panic!("Invalid condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, hdots);
         }
 
         let orig_cycles = self.cycles;
@@ -406,8 +410,8 @@ impl VideoCard for CGACard {
         let orig_clocks_accum = self.clocks_accum;
         let orig_clocks_owed = self.pixel_clocks_owed;
 
-        pixel_clocks -= self.ticks_advanced;
-        self.clocks_accum += pixel_clocks;
+        hdots -= self.ticks_advanced;
+        self.clocks_accum += hdots;
         self.ticks_advanced = 0;
 
         if let ClockingMode::Character | ClockingMode::Dynamic = self.clock_mode {
@@ -432,6 +436,8 @@ impl VideoCard for CGACard {
 
             if self.clocks_accum == 0 {
                 //log::warn!("exhausted accumulator trying to catch up to lclock");
+
+                self.slot_idx = 0;
                 return
             }
         }
@@ -499,7 +505,16 @@ impl VideoCard for CGACard {
                 }
             }
             ClockingMode::Cycle => {
+
                 while self.clocks_accum > 0 {
+
+                    // Handle blinking. TODO: Move blink handling into tick().
+                    self.blink_accum_clocks += 1;
+                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
+                        self.blink_state = !self.blink_state;
+                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
+                    }
+
                     self.tick();
                     self.clocks_accum = self.clocks_accum.saturating_sub(1);
                 }
@@ -509,6 +524,8 @@ impl VideoCard for CGACard {
             }
         }
 
+        // Reset rwop slots for next CPU step.
+        self.slot_idx = 0;
     }
 
     fn reset(&mut self) {

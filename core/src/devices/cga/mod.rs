@@ -52,9 +52,31 @@ mod videocard;
 use crate::devices::cga::tablegen::*;
 
 use crate::bus::{BusInterface, DeviceRunTimeUnit};
-use crate::config::VideoType;
+use crate::config::{VideoType, ClockingMode};
 use crate::tracelogger::TraceLogger;
 use crate::videocard::*;
+
+#[derive (Copy, Clone)]
+enum RwSlotType {
+    Mem,
+    Io
+}
+
+impl Default for RwSlotType {
+    fn default() -> Self { RwSlotType::Mem }
+}
+
+// A device can have a maximum of 4 operations to handle between calls to run().
+// Up to two IO operations (16-bit IO) or 4 memory operations (16-bit mov)
+// We maintain 4 slots of RwSlot structs to keep data about these operations.
+// The slot index is reset on call to run().
+#[derive (Copy, Clone, Default)]
+struct RwSlot {
+    t: RwSlotType,
+    data: u8,
+    addr: u32,
+    tick: u32
+}
 
 static DUMMY_PLANE: [u8; 1] = [0];
 static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
@@ -333,6 +355,10 @@ pub struct CGACard {
     sink_cycles: u32,
     catching_up: bool,
 
+    last_rw_tick: u32,
+    rw_slots: [RwSlot; 4],
+    slot_idx: usize,
+
     enable_snow: bool,
     dirty_snow: bool,
     snow_char: u8,
@@ -433,6 +459,7 @@ pub struct CGACard {
     vsc_c3h: u8,                    // Vertical sync counter - counts during vsync period
     hsc_c3l: u8,                    // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
+    in_vta: bool,
     effective_vta: u8,
     vma: usize,                     // VMA register - Video memory address
     vma_t: usize,                   // VMA' register - Video memory address temporary
@@ -523,6 +550,10 @@ impl Default for CGACard {
             cycles_per_vsync: 0,
             sink_cycles: 0,
             catching_up: false,
+
+            last_rw_tick: 0,
+            rw_slots: [Default::default(); 4],
+            slot_idx: 0,
 
             enable_snow: false,
             dirty_snow: true,
@@ -623,6 +654,7 @@ impl Default for CGACard {
             vsc_c3h: 0,
             hsc_c3l: 0,
             vtac_c5: 0,
+            in_vta: false,
             effective_vta: 0,
             vma: 0,
             vma_t: 0,
@@ -666,12 +698,17 @@ impl Default for CGACard {
 
 impl CGACard {
 
-    pub fn new(trace_logger: TraceLogger, video_frame_debug: bool) -> Self {
+    pub fn new(
+        trace_logger: TraceLogger, 
+        clock_mode: ClockingMode,
+        video_frame_debug: bool
+    ) -> Self {
 
         let mut cga = Self::default();
         
         cga.trace_logger = trace_logger;
         cga.debug = video_frame_debug;
+        cga.clock_mode = clock_mode;
 
         if video_frame_debug {
             cga.extents[0].aperture_w = CGA_XRES_MAX;
@@ -704,7 +741,22 @@ impl CGACard {
         }
     }
 
-    fn catch_up(&mut self, delta: DeviceRunTimeUnit) {
+    fn rw_op(&mut self, ticks: u32, data: u8, addr: u32, rwtype: RwSlotType) {
+
+        assert!(self.slot_idx < 4);
+
+        self.rw_slots[self.slot_idx] = RwSlot {
+            t: rwtype,
+            data,
+            addr,
+            tick: ticks - self.last_rw_tick
+        };
+
+        self.slot_idx += 1;
+        self.last_rw_tick = ticks;
+    }
+
+    fn catch_up(&mut self, delta: DeviceRunTimeUnit) -> u32 {
 
         /*
         if self.sink_cycles > 0 {
@@ -751,8 +803,13 @@ impl CGACard {
 
             self.ticks_advanced += ticks; // must be +=
             self.pixel_clocks_owed = self.calc_cycles_owed();
+
+            //assert!((self.cycles + self.pixel_clocks_owed as u64) & (CGA_LCHAR_CLOCK as u64) == 0);
             self.catching_up = false;
+
+            return ticks
         }
+        0
     }
 
     /// Update the number of pixel clocks we must execute before we can return to clocking the 
@@ -1171,6 +1228,7 @@ impl CGACard {
         
         if self.is_deferred_mode_change(mode_byte) {
             // Latch the mode change and mark it pending. We will change the mode on next hsync.
+            log::trace!("deferring mode change.");
             self.mode_pending = true;
             self.mode_byte = mode_byte;
         }
@@ -1195,6 +1253,7 @@ impl CGACard {
         
         // Addendum: The DE line is from the MC6845, and actually includes anything outside of the 
         // active display area. This gives a much wider window to hit for scanline wait loops.
+
         let mut byte = if self.in_crtc_vblank {
             STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
         }
@@ -2161,6 +2220,7 @@ impl CGACard {
                 log::error!("tick(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
             }            
             self.tick_crtc_char();
+            self.update_clock();
         }              
     }
 
@@ -2377,6 +2437,38 @@ impl CGACard {
                     self.set_char_addr();     
                 }
             }
+
+            /*
+            if self.vcc_c4 == self.crtc_vertical_total + 1 {
+                // We are at vertical total, start incrementing vertical total adjust counter.
+                self.in_vta = true;
+            }
+
+            if self.in_vta {
+                // We are in vertical total adjust.
+                self.vtac_c5 += 1;
+                
+                if self.vtac_c5 > self.crtc_vertical_total_adjust {
+                    // We have reached vertical total adjust. We are at the end of the top overscan.
+                    self.in_vta = false;
+                    self.vtac_c5 = 0;
+
+                    self.hcc_c0 = 0;
+                    self.vcc_c4 = 0;
+                    self.vlc_c9 = 0;
+                    self.char_col = 0;                            
+                    self.crtc_frame_address = self.crtc_start_address;
+                    self.vma = self.crtc_start_address;
+                    self.vma_t = self.vma;
+                    self.in_display_area = true;
+                    self.vborder = false;
+                    self.in_crtc_vblank = false;
+                    
+                    // Load first char + attr
+                    self.set_char_addr();     
+                }
+            }
+            */
         }   
     }
 

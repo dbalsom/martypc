@@ -326,9 +326,13 @@ impl Machine {
             video_trace = TraceLogger::from_filename(&trace_filename);
         }
 
+        let clock_mode = config.machine.clocking_mode.unwrap_or_default();
+        log::debug!("Using video clocking mode: {:?}", clock_mode);
+
         // Install devices
         cpu.bus_mut().install_devices(
             video_type, 
+            clock_mode,
             &machine_desc, 
             video_trace, 
             config.emulator.video_frame_debug
@@ -378,6 +382,7 @@ impl Machine {
             cpu_factor = machine_desc.cpu_factor;
         }
 
+        cpu.emit_header();
         cpu.reset();
 
         Machine {

@@ -108,6 +108,37 @@ impl FromStr for VideoType {
     }
 }
 
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)] 
+pub enum ClockingMode {
+    Cycle,
+    Character,
+    Scanline,
+    Dynamic
+}
+
+impl Default for ClockingMode {
+    fn default() -> Self { 
+        ClockingMode::Dynamic
+    }
+}
+
+
+impl FromStr for ClockingMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s {
+            "Cycle" => Ok(ClockingMode::Cycle),
+            "Character" => Ok(ClockingMode::Character),
+            "Scanline" => Ok(ClockingMode::Scanline),
+            "Dynamic" => Ok(ClockingMode::Dynamic),
+            _ => Err("Bad value for ClockingMode".to_string()),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
 pub enum HardDiskControllerType {
     None,
@@ -152,6 +183,7 @@ impl FromStr for ValidatorType {
 pub enum TraceMode {
     None,
     Cycle,
+    Sigrok,
     Instruction
 }
 
@@ -170,6 +202,7 @@ impl FromStr for TraceMode {
         match s.to_lowercase().as_str() {
             "none" => Ok(TraceMode::None),
             "cycle" => Ok(TraceMode::Cycle),
+            "sigrok" => Ok(TraceMode::Sigrok),
             "instruction" => Ok(TraceMode::Instruction),
             _ => Err("Bad value for tracemode".to_string()),
         }
@@ -318,6 +351,7 @@ pub struct Machine {
     pub raw_rom: bool,
     pub turbo: bool,
     pub video: VideoType,
+    pub clocking_mode: Option<ClockingMode>,
     pub composite: Option<bool>,
     pub cga_snow: Option<bool>,
     pub pit_phase: Option<u32>,

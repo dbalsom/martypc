@@ -106,7 +106,7 @@ use marty_core::{
     machine_manager::MACHINE_DESCS,
     vhd_manager::{VHDManager, VHDManagerError},
     vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode, VideoOption, ClockingMode},
+    videocard::{RenderMode, VideoOption},
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
