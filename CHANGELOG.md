@@ -1,6 +1,7 @@
 
 ## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-08-XX)
 
+* Fixed typo for 'bp+di+DISP' in both disassemblers (Thanks Tom Harte)
 * Added 8088 JSON CPU test generator and test validator
 * Fixed bugs / corrected output of string disassembler to match token disassembler output
 * Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
