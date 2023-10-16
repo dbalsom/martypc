@@ -134,6 +134,7 @@ impl Cpu {
                 0x36 => OPCODE_PREFIX_SS_OVERRIDE,
                 0x3E => OPCODE_PREFIX_DS_OVERRIDE,
                 0xF0 => OPCODE_PREFIX_LOCK,
+                0xF1 => OPCODE_PREFIX_LOCK,
                 0xF2 => OPCODE_PREFIX_REP1,
                 0xF3 => OPCODE_PREFIX_REP2,
                 _=> {
