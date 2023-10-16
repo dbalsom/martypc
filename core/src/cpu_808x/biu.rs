@@ -276,7 +276,7 @@ impl Cpu {
         self.fetch_state = FetchState::Idle;
 
         // SUSP waits for any current fetch to complete.
-        if self.bus_status == BusStatus::CodeFetch {
+        if self.bus_status_latch == BusStatus::CodeFetch {
             self.biu_bus_wait_finish();
             self.biu_change_state(BiuStateNew::Idle);
             //self.cycle();
@@ -330,7 +330,7 @@ impl Cpu {
 
         if ct == 0 {
             // Schedule count of 0 indicates fetch after bus transfer is complete, ie, ScheduleNext
-            if self.bus_status == BusStatus::CodeFetch 
+            if self.bus_status_latch == BusStatus::CodeFetch 
                 && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)) 
             {
                 self.fetch_state = FetchState::ScheduleNext;
@@ -343,7 +343,7 @@ impl Cpu {
         }
         else {
             
-            if self.bus_status == BusStatus::CodeFetch 
+            if self.bus_status_latch == BusStatus::CodeFetch 
                 && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)) 
             {
                 self.fetch_state = FetchState::Scheduled(ct);
@@ -365,7 +365,7 @@ impl Cpu {
 
         self.fetch_state = FetchState::Aborting(2);
         self.t_cycle = TCycle::T1;
-        self.bus_status = BusStatus::Passive;
+        self.bus_status_latch = BusStatus::Passive;
         self.i8288.ale = false;
         self.trace_comment("ABORT");
 
@@ -381,7 +381,7 @@ impl Cpu {
         // new bus logic: Enter idle state when we can't fetch.
         self.biu_change_state(BiuStateNew::Idle);
         self.fetch_state = FetchState::Idle;
-        self.bus_status = BusStatus::Passive;
+        self.bus_status_latch = BusStatus::Passive;
         self.trace_comment("BIU_IDLE");
     }
 
@@ -690,7 +690,7 @@ impl Cpu {
         self.biu_bus_begin(
             BusStatus::IoRead, 
             Segment::None, 
-            (addr + 1) as u32, 
+            addr.wrapping_add(1) as u32, 
             0, 
             TransferSize::Byte,
             OperandSize::Operand16,
@@ -817,7 +817,7 @@ impl Cpu {
     pub fn biu_bus_wait_finish(&mut self) -> u32 {
         let mut elapsed = 0;
 
-        if let BusStatus::Passive = self.bus_status {
+        if let BusStatus::Passive = self.bus_status_latch {
             0
         }
         else {
@@ -861,7 +861,7 @@ impl Cpu {
     /// terminating cycle and the beginning of execution will overlap with T4.
     pub fn biu_bus_wait_until(&mut self, target_state: TCycle) -> u32 {
         let mut bus_cycles_elapsed = 0;
-        match self.bus_status {
+        match self.bus_status_latch {
             BusStatus::Passive => {
                 // No active bus transfer
                 return 0
@@ -1050,9 +1050,11 @@ impl Cpu {
 
         // Finally, begin the new bus state.
         self.bus_status = new_bus_status;
+        self.bus_status_latch = new_bus_status;
         self.bus_segment = bus_segment;
         self.t_cycle = TCycle::Tinit;
         self.address_bus = address;
+        self.address_latch = address;
         self.i8288.ale = true;
         self.data_bus = data as u16;
         self.transfer_size = size;
