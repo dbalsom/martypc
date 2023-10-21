@@ -408,16 +408,6 @@ impl Displacement {
     }
 }
 
-impl fmt::Display for Displacement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => write!(f,"Invalid Displacement"),
-            Displacement::Disp8(i) => write!(f,"{:02X}h", i),
-            Displacement::Disp16(i) => write!(f,"{:04X}h", i),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum RepType {
     NoRep,
@@ -660,6 +650,7 @@ pub struct Cpu
 
     intr: bool,                     // State of INTR line
     intr_pending: bool,             // INTR line active and not processed
+    in_int: bool,
     int_count: u64,
     iret_count: u64,
     interrupt_inhibit: bool,
@@ -717,6 +708,7 @@ pub struct Cpu
     t_step_h: f64,
     instr_cycle: u32,
     device_cycles: u32,
+    int_elapsed: u32,
     instr_elapsed: u32,
     instruction_count: u64,
     i: Instruction,                 // Currently executing instruction 
@@ -1124,6 +1116,7 @@ impl Cpu {
         self.opcode0_counter = 0;
         self.interrupt_inhibit = false;
         self.intr_pending = false;
+        self.in_int = false;
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
@@ -1147,6 +1140,8 @@ impl Cpu {
         self.nx = false;
         self.rni = false;
 
+        self.halt_resume_delay = 4;
+
         // Reset takes 6 cycles before first fetch
         self.cycle();
         self.biu_suspend_fetch();
@@ -1164,7 +1159,7 @@ impl Cpu {
     }
 
     pub fn emit_header(&mut self) {
-        self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs")
+        self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs,den,brd")
     }
 
     #[allow(dead_code)]
@@ -1933,9 +1928,10 @@ impl Cpu {
     pub fn resume(&mut self) {
         if self.halted {
             //log::debug!("Resuming from halt");
-            // It takes 7 cycles after INTR to enter INTA. 
+            // It takes 6 or 7 cycles after INTR to enter INTA. 
             // 3 of these are resuming from suspend, so not accounted from here.
             self.trace_comment("INTR");
+            log::debug!("resuming from halt with {} cycles", self.halt_resume_delay);
             self.cycles(self.halt_resume_delay);
         }
         else {
@@ -1958,7 +1954,7 @@ impl Cpu {
     ) -> Result<(StepResult, u32), CpuError> {
 
         self.instr_cycle = 0;
-        //self.instr_elapsed = 0;
+        self.instr_elapsed = self.int_elapsed;
 
         // If tracing is enabled, clear the trace string vector that holds the trace from the last instruction.
         if self.trace_enabled {
@@ -2109,7 +2105,6 @@ impl Cpu {
                 self.i.address = instruction_address;
             }
             
-            
             // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait 
             // implementation, which fetches instruction bytes through the processor instruction queue.
             self.i = match Cpu::decode(self) {
@@ -2120,6 +2115,10 @@ impl Cpu {
                     return Err(CpuError::InstructionDecodeError(instruction_address))
                 }                
             };
+
+            if self.ip == 0x03B6 {
+                log::warn!("0x3B6 {} int_elapsed: {}", self.i, self.int_elapsed);
+            }
 
             // Begin the current instruction validation context.
             #[cfg(feature = "cpu_validator")]
@@ -2340,6 +2339,7 @@ impl Cpu {
         // This function is called after devices are run for the CPU period, so reset device cycles.
         // Device cycles will begin incrementing again with any terminating fetch.
         self.instr_elapsed = 0;
+        self.int_elapsed = 0;
         self.device_cycles = 0;
 
         // Fetch next instruction byte, if applicable.
@@ -2389,6 +2389,7 @@ impl Cpu {
                     self.set_breakpoint_flag();
                 }            
                 self.hw_interrupt(irq);
+                self.biu_fetch_next();
             }
         }
 
@@ -2818,98 +2819,58 @@ impl Cpu {
 
         let mut cycle_str;
 
-        match self.trace_mode {
-            
-
-            TraceMode::Cycle => {
-                if short {
-                    cycle_str = format!(
-                        "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
-                        self.instr_cycle,
-                        ale_str,
-                        self.address_bus,
-                        seg_str,
-                        ready_chr,
-                        rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
-                        dma_str,
-                        bus_str,
-                        t_str,
-                        xfer_str,
-                        biu_state_new_str,
-                        format!("{:?}", self.fetch_state),
-                        q_op_chr,
-                        self.last_queue_len,
-                        q_preload_char,
-                        self.queue.to_string(),
-                        q_read_str,
-                        microcode_line_str,
-                        instr_str
-                    ); 
-                }
-                else {
-                    cycle_str = format!(
-                        "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
-                        self.cycle_num,
-                        self.instr_cycle,
-                        ale_str,
-                        self.address_bus,
-                        seg_str,
-                        rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
-                        dma_str,
-                        bus_str,
-                        t_str,
-                        xfer_str,
-                        biu_state_new_str,
-                        format!("{:?}", self.fetch_state),
-                        q_op_chr,
-                        self.last_queue_len,
-                        q_preload_char,
-                        self.queue.to_string(),
-                        q_read_str,
-                        microcode_line_str,
-                        microcode_op_str,
-                        instr_str
-                    ); 
-                }
-               
-                for c in &self.trace_comment {
-                    cycle_str.push_str(&format!("; {}", c));
-                }
-            }
-            TraceMode::Sigrok => {
-
-                let q = self.last_queue_op as u8;
-                let s = self.bus_status_latch as u8;
-
-                let mut vs = 0;
-                let mut hs = 0;
-                if let Some(video) = self.bus().video() {
-                    let (vs_b, hs_b) = video.get_sync();
-                    vs = if vs_b { 1 } else { 0 };
-                    hs = if hs_b { 1 } else { 0 };
-                }
-
-                // "Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs"
-                // sigrok import string:
-                // t,x20,l,l,x2,x3,l,l,l,l,l,
-
-                cycle_str = format!(
-                    "{},{:05X},1,{},{},{},{},{},{},{},{}",
-                    self.t_stamp,
-                    self.address_bus,
-                    if self.ready { 1 } else { 0 },
-                    q,
-                    s,
-                    0,
-                    if self.intr { 1 } else { 0 },
-                    if matches!(self.dma_state, DmaState::Dreq) { 1 } else { 0 },
-                    vs,
-                    hs,
-                );        
-            }
-            _ => {
-                cycle_str = "".to_string();
-            }
+        if short {
+            cycle_str = format!(
+                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
+                self.instr_cycle,
+                ale_str,
+                self.address_bus,
+                seg_str,
+                ready_chr,
+                rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
+                dma_str,
+                bus_str,
+                t_str,
+                xfer_str,
+                biu_state_new_str,
+                format!("{:?}", self.fetch_state),
+                q_op_chr,
+                self.last_queue_len,
+                q_preload_char,
+                self.queue.to_string(),
+                q_read_str,
+                microcode_line_str,
+                instr_str
+            ); 
+        }
+        else {
+            cycle_str = format!(
+                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                self.cycle_num,
+                self.instr_cycle,
+                ale_str,
+                self.address_bus,
+                seg_str,
+                rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
+                dma_str,
+                bus_str,
+                t_str,
+                xfer_str,
+                biu_state_new_str,
+                format!("{:?}", self.fetch_state),
+                q_op_chr,
+                self.last_queue_len,
+                q_preload_char,
+                self.queue.to_string(),
+                q_read_str,
+                microcode_line_str,
+                microcode_op_str,
+                instr_str
+            ); 
+        }
+        
+        for c in &self.trace_comment {
+            cycle_str.push_str(&format!("; {}", c));
         }
 
         cycle_str
@@ -2921,37 +2882,32 @@ impl Cpu {
 
         let mut vs = 0;
         let mut hs = 0;
+        let mut den = 0;
+        let mut brd = 0;
         if let Some(video) = self.bus().video() {
-            let (vs_b, hs_b) = video.get_sync();
+            let (vs_b, hs_b, den_b, brd_b) = video.get_sync();
             vs = if vs_b { 1 } else { 0 };
             hs = if hs_b { 1 } else { 0 };
+            den = if den_b { 1 } else { 0 };
+            brd = if brd_b { 1 } else { 0 };
         }
 
         // Segment status bits are valid after ALE.
         if !self.i8288.ale {
             let seg_n = match self.bus_segment {
-                Segment::ES => {
-                    0
-                }
-                Segment::SS => {
-                    1
-                }
-                Segment::CS | Segment::None => {
-                    2
-                }
-                Segment::DS => {
-                    3
-                }                
+                Segment::ES => 0,
+                Segment::SS => 1,
+                Segment::CS | Segment::None => 2,
+                Segment::DS => 3             
             };
             self.address_bus = (self.address_bus & 0b1100_1111_1111_1111_1111) | (seg_n << 16);
         }
 
         // "Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs"
         // sigrok import string:
-        // t,x20,l,l,x2,x3,l,l,l,l,l
-
+        // t,x20,l,l,x2,x3,l,l,l,l,l,l
         self.trace_emit(&format!(
-            "{},{:05X},1,{},{},{},{},{},{},{},{}",
+            "{},{:05X},1,{},{},{},{},{},{},{},{},{},{}",
             self.t_stamp,
             self.address_bus,
             if self.ready { 1 } else { 0 },
@@ -2962,10 +2918,12 @@ impl Cpu {
             if matches!(self.dma_state, DmaState::Dreq) { 1 } else { 0 },
             vs,
             hs,
+            den,
+            brd
         ));
 
         self.trace_emit(&format!(
-            "{},{:05X},0,{},{},{},{},{},{},{},{}",
+            "{},{:05X},0,{},{},{},{},{},{},{},{},{},{}",
             self.t_stamp + self.t_step_h,
             self.address_bus,
             if self.ready { 1 } else { 0 },
@@ -2976,6 +2934,8 @@ impl Cpu {
             if matches!(self.dma_state, DmaState::Dreq) { 1 } else { 0 },
             vs,
             hs,
+            den,
+            brd
         ));
     }
 
