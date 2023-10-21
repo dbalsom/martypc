@@ -47,14 +47,15 @@ use std::{
 mod egui;
 mod input;
 
+mod cpu_test;
 #[cfg(feature = "arduino_validator")]
 mod run_fuzzer;
-#[cfg(feature = "arduino_validator")]
-mod cpu_test;
 #[cfg(feature = "arduino_validator")]
 mod run_gentests;
 #[cfg(feature = "arduino_validator")]
 mod run_runtests;
+
+mod run_processtests;
 
 mod run_headless;
 
@@ -93,6 +94,7 @@ use crate::run_gentests::run_gentests;
 #[cfg(feature = "arduino_validator")]
 use crate::run_runtests::run_runtests;
 
+use crate::run_processtests::run_processtests;
 
 use marty_core::{
     breakpoints::BreakPointType,
@@ -437,6 +439,7 @@ pub fn run() {
     match config.tests.test_mode {
         Some(TestMode::Generate) => return run_gentests(&config),
         Some(TestMode::Run) | Some(TestMode::Validate) => return run_runtests(config),
+        Some(TestMode::Process) => return run_processtests(config),
         Some(TestMode::None) | None => {}
     }
 

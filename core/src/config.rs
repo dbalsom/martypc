@@ -214,7 +214,8 @@ pub enum TestMode {
     None,
     Generate,
     Run,
-    Validate
+    Validate,
+    Process
 }
 
 impl Default for TestMode {
@@ -233,6 +234,7 @@ impl FromStr for TestMode {
             "none" => Ok(TestMode::None),
             "generate" => Ok(TestMode::Generate),
             "validate" => Ok(TestMode::Validate),
+            "process" => Ok(TestMode::Process),
             _ => Err("Bad value for testmode".to_string()),
         }
     }
