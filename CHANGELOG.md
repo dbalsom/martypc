@@ -1,25 +1,25 @@
 
 ## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-08-XX)
 
-* Fixed typo for 'bp+di+DISP' in both disassemblers (Thanks Tom Harte)
-* Added 8088 JSON CPU test generator and test validator
-* Fixed bugs / corrected output of string disassembler to match token disassembler output
-* Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
-* Added MMIO peek functions. Allows Memory debug viewer to peek into MMIO regions, if device supports.
-* Brand new, simplified BIU state logic
-* Fixed & Improved DMA refresh scheduling. (Fixes 8088MPH CPU test)
-* Fixed issue where Call Stack could grow uncontrollably with recursive code or interrupts
-* Fixed CS:IP reporting in Instruction trace mode logs
-* Fixed memory leak in Instruction trace mode (thanks Folkert)
-* Fixed CPU cycle timings for LES and LDS instructions
-* Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
-* Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
-* Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
-* Added basic CGA snow emulation. Not yet 100% accurate.
+* CPU: Updated disassembler to normalize output against iced-x86. Now resolves negative immediates and displacements.
+* CPU: Fixed typo for 'bp+di+DISP' in both disassemblers (Thanks Tom Harte)
+* Added 8088 JSON CPU test generator and validator
+* PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
+* BUS: Added MMIO peek functions. Allows Memory debug viewer to peek into MMIO regions, if device supports.
+* CPU: Brand new, simplified BIU state logic
+* CPU: Fixed & Improved DMA refresh scheduling. (Fixes 8088MPH CPU test)
+* CPU: Fixed issue where Call Stack could grow uncontrollably with recursive code or interrupts
+* CPU: Fixed CS:IP reporting in Instruction trace mode logs
+* CPU: Fixed memory leak in Instruction trace mode (thanks Folkert)
+* CPU: Fixed CPU cycle timings for LES and LDS instructions
+* CPU: Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
+* CPU: Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
+* CGA: Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
+* CGA: Added basic CGA snow emulation. Not yet 100% accurate.
 * Fixed screenshot function when aspect-correction is off
 * Fixed mouse capture hotkey (CTRL-F10)
-* Add debug_keyboard config flag - this will print keyboard event info to the console for support
-* Don't recalculate composite parameters if mode change was enable bit only
+* KEYBOARD: Add debug_keyboard config flag - this will print keyboard event info to the console for support
+* CGA: Don't recalculate composite parameters if mode change was enable bit only
 
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-07-06)
 
