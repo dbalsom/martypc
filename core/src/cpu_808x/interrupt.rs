@@ -293,6 +293,7 @@ impl Cpu {
     /// Perform a hardware interrupt
     pub fn hw_interrupt(&mut self, vector: u8) {
 
+        self.in_int = true;
         // Begin IRQ routine
         self.set_mc_pc(0x19a);
         self.biu_inta(vector);
@@ -302,6 +303,7 @@ impl Cpu {
         // Begin INTR routine
         self.intr_routine(vector, InterruptType::Hardware, false);
         self.int_count += 1;
+        self.in_int = false;
     }
 
     /// Perform INT0 (Divide By 0)
