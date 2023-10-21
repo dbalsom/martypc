@@ -99,7 +99,12 @@ impl Cpu {
             self.t_cycle = TCycle::T1;
         }
 
-        self.instr_elapsed += 1;
+        if self.in_int {
+            self.int_elapsed += 1;
+        }
+        else {
+            self.instr_elapsed += 1;
+        }
 
         // Operate current t-state
         match self.bus_status_latch {
