@@ -58,7 +58,7 @@ impl IoDevice for CGACard {
         // Catch up to CPU state.
         let ticks = self.catch_up(delta);
 
-        self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
+        //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Read is from CRTC register.
@@ -98,7 +98,7 @@ impl IoDevice for CGACard {
         // Catch up to CPU state.
         let ticks = self.catch_up(delta);
 
-        self.rw_op(ticks, data, port as u32, RwSlotType::Io);
+        //self.rw_op(ticks, data, port as u32, RwSlotType::Io);
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Write is to CRTC register.

@@ -987,8 +987,8 @@ impl EGACard {
 
 impl VideoCard for EGACard {
 
-    fn get_sync(&self) -> (bool, bool) {
-        (false, false)
+    fn get_sync(&self) -> (bool, bool, bool, bool) {
+        (false, false, false, false)
     }
 
     fn set_video_option(&mut self, opt: VideoOption) {

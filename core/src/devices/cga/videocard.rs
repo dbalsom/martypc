@@ -56,8 +56,8 @@ macro_rules! push_reg_str_enum {
 
 impl VideoCard for CGACard {
 
-    fn get_sync(&self) -> (bool, bool) {
-        (self.in_crtc_vblank, self.in_crtc_hblank)
+    fn get_sync(&self) -> (bool, bool, bool, bool) {
+        (self.in_crtc_vblank, self.in_crtc_hblank, self.in_display_area, self.hborder | self.vborder)
     }
 
     fn set_video_option(&mut self, opt: VideoOption) {
@@ -525,6 +525,7 @@ impl VideoCard for CGACard {
         }
 
         // Reset rwop slots for next CPU step.
+        self.last_rw_tick = 0;
         self.slot_idx = 0;
     }
 

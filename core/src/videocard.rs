@@ -249,7 +249,8 @@ pub trait VideoCard {
 
     fn get_clock_divisor(&self) -> u32;
 
-    fn get_sync(&self) -> (bool, bool);
+    /// Return the status of VSYNC, HSYNC, and DISPLAY ENABLE, if applicable.
+    fn get_sync(&self) -> (bool, bool, bool, bool);
 
     /// Get the position of the CRT beam (Direct rendering only)
     fn get_beam_pos(&self) -> Option<(u32, u32)>;

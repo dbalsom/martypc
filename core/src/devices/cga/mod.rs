@@ -265,6 +265,8 @@ const CGA_VBLANK_DEBUG_COLOR: u8 = 14;
 const CGA_DISABLE_COLOR: u8 = 0;
 const CGA_DISABLE_DEBUG_COLOR: u8 = 2;
 const CGA_OVERSCAN_COLOR: u8 = 5;
+
+const CGA_DEBUG2_COLOR: u8 = 12;
 /*
 const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
@@ -734,6 +736,7 @@ impl CGACard {
         // Save non-default values
         *self = Self {
             debug: self.debug,
+            clock_mode: self.clock_mode,
             enable_snow: self.enable_snow,
             frame_count: self.frame_count,  // Keep frame count as to not confuse frontend
             trace_logger,
@@ -1255,16 +1258,18 @@ impl CGACard {
         // active display area. This gives a much wider window to hit for scanline wait loops.
 
         let mut byte = if self.in_crtc_vblank {
-            STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
+            0xF0 | STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
         }
         else if !self.in_display_area {
-            STATUS_DISPLAY_ENABLE
+            0xF0 | STATUS_DISPLAY_ENABLE
         }
         else {
-            0
+
+            if self.vborder || self.hborder {
+                log::warn!("in border but returning 0");
+            }
+            0xF0
         };
-
-
 
         if self.in_crtc_vblank {
             trace!(
@@ -1574,8 +1579,6 @@ impl CGACard {
 
     /// Draw an entire character row in high resolution text mode (8 pixels)
     pub fn draw_text_mode_hchar(&mut self) {
-
-        //let draw_span = (8 * self.clock_divisor) as usize;
 
         // Do cursor if visible, enabled and defined
         if     self.vma == self.crtc_cursor_address
@@ -1965,7 +1968,11 @@ impl CGACard {
                 }
             }
             else {
+
+                self.draw_solid_hchar(CGA_DEBUG2_COLOR);
                 //log::warn!("invalid display state...");
+                //self.dump_status();
+                //panic!("invalid display state...");
             }
         }
 
@@ -2132,7 +2139,11 @@ impl CGACard {
         let saved_rba = self.rba;
 
         if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
-            if self.in_display_area {
+
+            if self.debug && self.catching_up {
+                self.draw_pixel(13);
+            }
+            else if self.in_display_area {
                 // Draw current pixel
                 if !self.mode_graphics {
                     self.draw_text_mode_pixel();
@@ -2163,7 +2174,8 @@ impl CGACard {
                 }
             }
             else {
-                //log::warn!("invalid display state...");
+                //log::warn!("tick(): invalid display state...");
+                self.draw_pixel(CGA_DEBUG2_COLOR);
             }
         }
 
@@ -2281,8 +2293,8 @@ impl CGACard {
                     self.mode_pending = false;
                 }
 
+                // END OF LOGICAL SCANLINE
                 if self.in_crtc_vblank {
-
                     // If we are in vblank, advance Vertical Sync Counter
                     self.vsc_c3h += 1;
                 
@@ -2303,8 +2315,8 @@ impl CGACard {
                         self.do_vsync();
                         return
                     }                        
-                }                    
-                
+                }
+
                 self.scanline += 1;
                 
                 // Reset beam to left of screen if we haven't already
@@ -2414,6 +2426,7 @@ impl CGACard {
                 self.vborder = true;
             }
             
+            /*
             if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
 
                 // We are at vertical total, start incrementing vertical total adjust counter.
@@ -2437,8 +2450,8 @@ impl CGACard {
                     self.set_char_addr();     
                 }
             }
+            */
 
-            /*
             if self.vcc_c4 == self.crtc_vertical_total + 1 {
                 // We are at vertical total, start incrementing vertical total adjust counter.
                 self.in_vta = true;
@@ -2468,7 +2481,6 @@ impl CGACard {
                     self.set_char_addr();     
                 }
             }
-            */
         }   
     }
 
@@ -2533,5 +2545,14 @@ impl CGACard {
         }
     }
 
+    pub fn dump_status(&self) {
+
+        println!("{}", self.hcc_c0);
+        println!("{}", self.vlc_c9);
+        println!("{}", self.vcc_c4);
+        println!("{}", self.vsc_c3h);
+        println!("{}", self.hsc_c3l);
+        println!("{}", self.vtac_c5);
+    }
 }
 

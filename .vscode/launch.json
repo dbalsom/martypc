@@ -25,7 +25,7 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace,marty_core::devices::dma=trace",
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace,marty_core::devices::cga=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
@@ -376,7 +376,36 @@
                 "RUST_BACKTRACE": "1"
             },
             //"postDebugTask": "runCondenseScript"
-        },                        
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', process JSON tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_processtests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },                     
         {
             "type": "lldb",
             "request": "launch",
