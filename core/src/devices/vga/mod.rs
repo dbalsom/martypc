@@ -46,7 +46,7 @@ use std::{
 
 use modular_bitfield::prelude::*;
 
-use crate::config::VideoType;
+use crate::config::{ClockingMode, VideoType};
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 use crate::tracelogger::TraceLogger;
 
@@ -1289,6 +1289,10 @@ macro_rules! push_reg_str_enum {
 
 impl VideoCard for VGACard {
 
+    fn get_sync(&self) -> (bool, bool, bool, bool) {
+        (false, false, false, false)
+    }
+
     fn set_video_option(&mut self, opt: VideoOption) {
         // No options implemented
     }
@@ -1303,6 +1307,10 @@ impl VideoCard for VGACard {
 
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
+    }
+
+    fn set_clocking_mode(&mut self, mode: ClockingMode) {
+        // not implemented
     }
 
     fn get_display_size(&self) -> (u32, u32) {

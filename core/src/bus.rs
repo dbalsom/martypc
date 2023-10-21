@@ -49,7 +49,7 @@ use crate::bytequeue::*;
 use crate::syntax_token::SyntaxToken;
 use crate::machine::KeybufferEntry;
 use crate::machine_manager::MachineDescriptor;
-use crate::config::{KeyboardType, VideoType};
+use crate::config::{ClockingMode, KeyboardType, VideoType};
 
 use crate::devices::{
     pit::Pit,
@@ -1302,6 +1302,7 @@ impl BusInterface {
     pub fn install_devices(
         &mut self, 
         video_type: VideoType, 
+        clock_mode: ClockingMode,
         machine_desc: &MachineDescriptor, 
         video_trace: TraceLogger,
         video_frame_debug: bool,
@@ -1385,7 +1386,7 @@ impl BusInterface {
         // Create video card depending on VideoType
         match video_type {
             VideoType::CGA => {
-                let cga = CGACard::new(video_trace, video_frame_debug);
+                let cga = CGACard::new(video_trace, clock_mode, video_frame_debug);
                 let port_list = cga.port_list();
                 self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Cga)));
 
@@ -1678,7 +1679,8 @@ impl BusInterface {
                                 pit_counting_element
                             );
                             
-                            cga.debug_tick(233472 - ticks_adj as u32);
+                            //cga.debug_tick(233472 - ticks_adj as u32);
+                            
                             //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
                         }
                         
@@ -1703,7 +1705,7 @@ impl BusInterface {
                                 pit_counting_element
                             );
                             
-                            cga.debug_tick(233472 - ticks_adj as u32);
+                            //cga.debug_tick(233472 - ticks_adj as u32);
                             
                             //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
                         }

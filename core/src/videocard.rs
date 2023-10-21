@@ -66,6 +66,8 @@ use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
 
+use crate::config::ClockingMode;
+
 // This enum holds variants that hold the various implementors of the VideoCard trait.
 // This is used for enum dispatch, to avoid overhead of dynamic dispatch when calling
 // video card methods.
@@ -92,6 +94,7 @@ pub enum RenderMode {
     Direct,
     Indirect
 }
+
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -214,6 +217,9 @@ pub trait VideoCard {
     /// Returns the currently configured DisplayMode
     fn get_display_mode(&self) -> DisplayMode;
 
+    /// Override the clocking mode for the adapter.
+    fn set_clocking_mode(&mut self, mode: ClockingMode);
+
     /// Returns a slice of u8 representing video memory
     //fn get_vram(&self) -> &[u8];
 
@@ -242,6 +248,9 @@ pub trait VideoCard {
     fn get_back_buf(&self) -> &[u8];
 
     fn get_clock_divisor(&self) -> u32;
+
+    /// Return the status of VSYNC, HSYNC, and DISPLAY ENABLE, if applicable.
+    fn get_sync(&self) -> (bool, bool, bool, bool);
 
     /// Get the position of the CRT beam (Direct rendering only)
     fn get_beam_pos(&self) -> Option<(u32, u32)>;

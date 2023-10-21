@@ -56,7 +56,9 @@ impl IoDevice for CGACard {
     fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
 
         // Catch up to CPU state.
-        self.catch_up(delta);
+        let ticks = self.catch_up(delta);
+
+        //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Read is from CRTC register.
@@ -94,7 +96,9 @@ impl IoDevice for CGACard {
     fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
 
         // Catch up to CPU state.
-        self.catch_up(delta);
+        let ticks = self.catch_up(delta);
+
+        //self.rw_op(ticks, data, port as u32, RwSlotType::Io);
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Write is to CRTC register.

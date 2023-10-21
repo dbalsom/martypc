@@ -724,7 +724,7 @@ impl Cpu {
                         self.decrement_register16(Register16::CX); // 131
 
                         // Check for interrupt
-                        if self.pending_interrupt {
+                        if self.intr_pending {
                             self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
                             self.rep_interrupt();
                             
@@ -786,7 +786,7 @@ impl Cpu {
                             
                             self.cycle_i(0x12a);
     
-                            if self.pending_interrupt {
+                            if self.intr_pending {
                                 self.cycle_i(MC_JUMP); // Jump to RPTI
                                 self.rep_interrupt();
                             }   
@@ -837,7 +837,7 @@ impl Cpu {
 
                         // Check for interrupt
                         self.cycle_i(0x11f);
-                        if self.pending_interrupt {
+                        if self.intr_pending {
                             self.cycle_i(MC_JUMP); // Jump to RPTI
                             self.rep_interrupt();
                         }
@@ -876,7 +876,7 @@ impl Cpu {
                         self.decrement_register16(Register16::CX); // 131
 
                         // Check for interrupt
-                        if self.pending_interrupt {
+                        if self.intr_pending {
                             self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
                             self.rep_interrupt();
                             

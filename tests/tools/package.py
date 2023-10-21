@@ -36,15 +36,18 @@ def find_and_gzip_json_files(path, start_hex, end_hex):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GZIP JSON files based on filename criteria.")
-    parser.add_argument('path', type=str, help="Path to the directory containing JSON files.")
-    parser.add_argument('start', type=str, help="Starting hexadecimal (00-FF).")
-    parser.add_argument('end', type=str, help="Ending hexadecimal (00-FF).")
+    parser.add_argument('--path', type=str, help="Path to the directory containing JSON files.")
+    parser.add_argument('--start', type=str, help="Starting hexadecimal (00-FF).")
+    parser.add_argument('--end', type=str, help="Ending hexadecimal (00-FF).")
 
     args = parser.parse_args()
-
+    
+    start_int = int(args.start, 16)
+    end_int = int(args.end, 16)
+    
     # Verify that provided hexadecimals are valid
     try:
-        if 0x00 <= int(args.start, 16) <= 0xFF and 0x00 <= int(args.end, 16) <= 0xFF and args.start <= args.end:
+        if 0x00 <= start_int <= 0xFF and 0x00 <= end_int <= 0xFF and start_int <= end_int:
             find_and_gzip_json_files(args.path, args.start.upper(), args.end.upper())
         else:
             print("Invalid start or end hexadecimal. Please provide hexadecimals in the range 00-FF and ensure start <= end.")

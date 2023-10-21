@@ -56,6 +56,10 @@ macro_rules! push_reg_str_enum {
 
 impl VideoCard for CGACard {
 
+    fn get_sync(&self) -> (bool, bool, bool, bool) {
+        (self.in_crtc_vblank, self.in_crtc_hblank, self.in_display_area, self.hborder | self.vborder)
+    }
+
     fn set_video_option(&mut self, opt: VideoOption) {
         
         match opt {
@@ -77,6 +81,17 @@ impl VideoCard for CGACard {
 
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
+    }
+
+    fn set_clocking_mode(&mut self, mode: ClockingMode) {
+        
+        // TODO: Switching from cycle clocking mode to character clocking mode
+        // must be deferred until character-clock boundaries.
+        // For now we only support falling back to cycle clocking mode and 
+        // staying there.
+        log::debug!("Clocking mode set to: {:?}", mode);
+        self.clock_mode = mode;
+
     }
 
     fn get_display_size(&self) -> (u32, u32) {
@@ -109,23 +124,34 @@ impl VideoCard for CGACard {
     /// Tick the CGA the specified number of video clock cycles.
     fn debug_tick(&mut self, ticks: u32) {
 
-        let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
-        let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
-
-        assert!(ticks == pixel_ticks + (lchar_ticks * 16));
-
-        for _ in 0..pixel_ticks {
-            self.tick();
-        }
-        for _ in 0..lchar_ticks {
-            if self.clock_divisor == 2 {
-                self.tick_lchar();
+        match self.clock_mode {
+            ClockingMode::Character | ClockingMode::Dynamic => {
+                let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
+                let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
+        
+                assert!(ticks == pixel_ticks + (lchar_ticks * 16));
+        
+                for _ in 0..pixel_ticks {
+                    self.tick();
+                }
+                for _ in 0..lchar_ticks {
+                    if self.clock_divisor == 2 {
+                        self.tick_lchar();
+                    }
+                    else {
+                        self.tick_hchar();
+                        self.tick_hchar();
+                    }
+                }
             }
-            else {
-                self.tick_hchar();
-                self.tick_hchar();
+            ClockingMode::Cycle => {
+                for _ in 0..ticks {
+                    self.tick();
+                }
             }
+            _ => {}
         }
+
         log::warn!("debug_tick(): new cur_screen_cycles: {} beam_x: {} beam_y: {}", self.cur_screen_cycles, self.beam_x, self.beam_y);
     }
 
@@ -364,19 +390,19 @@ impl VideoCard for CGACard {
         }
         */
 
-        let mut pixel_clocks = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
+        let mut hdots = if let DeviceRunTimeUnit::SystemTicks(ticks) = time {
             ticks
         }
         else {
             panic!("CGA requires SystemTicks time unit.")
         };
 
-        if pixel_clocks == 0 {
+        if hdots == 0 {
             panic!("CGA run() with 0 ticks");
         }
 
-        if self.ticks_advanced > pixel_clocks {
-            panic!("Impossible condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, pixel_clocks);
+        if self.ticks_advanced > hdots {
+            panic!("Invalid condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, hdots);
         }
 
         let orig_cycles = self.cycles;
@@ -384,17 +410,19 @@ impl VideoCard for CGACard {
         let orig_clocks_accum = self.clocks_accum;
         let orig_clocks_owed = self.pixel_clocks_owed;
 
-        pixel_clocks -= self.ticks_advanced;
-        self.clocks_accum += pixel_clocks;
+        hdots -= self.ticks_advanced;
+        self.clocks_accum += hdots;
         self.ticks_advanced = 0;
 
-        if (self.cycles + self.pixel_clocks_owed as u64) & self.char_clock_mask != 0 { 
-            log::error!(
-                "pixel_clocks_owed incorrect: does not put clock back in phase. cycles: {} owed: {} mask: {:X}", 
-                self.cycles, 
-                self.pixel_clocks_owed,
-                self.char_clock_mask
-            );
+        if let ClockingMode::Character | ClockingMode::Dynamic = self.clock_mode {
+            if (self.cycles + self.pixel_clocks_owed as u64) & self.char_clock_mask != 0 { 
+                log::error!(
+                    "pixel_clocks_owed incorrect: does not put clock back in phase. cycles: {} owed: {} mask: {:X}", 
+                    self.cycles, 
+                    self.pixel_clocks_owed,
+                    self.char_clock_mask
+                );
+            }
         }
 
         // Clock by pixel clock to catch up with character clock.
@@ -408,70 +436,97 @@ impl VideoCard for CGACard {
 
             if self.clocks_accum == 0 {
                 //log::warn!("exhausted accumulator trying to catch up to lclock");
+
+                self.slot_idx = 0;
                 return
             }
         }
 
-        /*
-        //assert!(self.cycles & self.char_clock_mask as u64 == 0);
-        */
+        // We should be back in phase with character clock now.
+        
+        match self.clock_mode {
+            ClockingMode::Character | ClockingMode::Dynamic => {
 
-        if self.cycles & self.char_clock_mask as u64 != 0 {
-            log::warn!(
-                "out of phase with char clock: {} mask: {:02X} cycles: {} out of phase: {} cycles: {} advanced: {} owed: {} accum: {} tick_ct: {}", 
+                if self.cycles & self.char_clock_mask as u64 != 0 {
+                    log::warn!(
+                        "out of phase with char clock: {} mask: {:02X} cycles: {} out of phase: {} cycles: {} advanced: {} owed: {} accum: {} tick_ct: {}", 
+        
+                        self.char_clock,
+                        self.char_clock_mask,
+                        self.cycles, 
+                        self.cycles % self.char_clock as u64,
+                        orig_cycles,
+                        orig_ticks_advanced,
+                        orig_clocks_owed,
+                        orig_clocks_accum,
+                        tick_count
+                    );
+                }
 
-                self.char_clock,
-                self.char_clock_mask,
-                self.cycles, 
-                self.cycles % self.char_clock as u64,
-                orig_cycles,
-                orig_ticks_advanced,
-                orig_clocks_owed,
-                orig_clocks_accum,
-                tick_count
-            );
+                // Drain accumulator and tick by character clock.
+                while self.clocks_accum > self.char_clock {
+                
+                    if self.clocks_accum > 10000 {
+                        log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
+                    }
+                
+                    /*
+                    if self.debug_counter >= 3638297 {
+                        log::error!("Break on me");
+                    }
+                    */
+                
+                    // Handle blinking. TODO: Move blink handling into tick().
+                    self.blink_accum_clocks += self.char_clock;
+                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
+                        self.blink_state = !self.blink_state;
+                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
+                    }
+                
+                    // Char clock may update after tick_char() with deferred mode change, so save the 
+                    // current clock.
+                    let old_char_clock = self.char_clock;
+                
+                    if self.clock_divisor == 2 {
+                        self.tick_lchar();
+                    }
+                    else {
+                        self.tick_hchar();
+                    }
+                
+                    /*
+                    if self.debug_counter >= 3638298 {
+                        log::error!("{} < {}", self.clocks_accum, self.char_clock);
+                    }
+                    self.debug_counter += 1;
+                    */
+                
+                    self.clocks_accum = self.clocks_accum.saturating_sub(old_char_clock);
+                }
+            }
+            ClockingMode::Cycle => {
+
+                while self.clocks_accum > 0 {
+
+                    // Handle blinking. TODO: Move blink handling into tick().
+                    self.blink_accum_clocks += 1;
+                    if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
+                        self.blink_state = !self.blink_state;
+                        self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
+                    }
+
+                    self.tick();
+                    self.clocks_accum = self.clocks_accum.saturating_sub(1);
+                }
+            },
+            _=> {
+                panic!("Unsupported ClockingMode: {:?}", self.clock_mode);
+            }
         }
 
-        // Drain accumulator and tick by character clock.
-        while self.clocks_accum > self.char_clock {
-
-            if self.clocks_accum > 10000 {
-                log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
-            }
-
-            /*
-            if self.debug_counter >= 3638297 {
-                log::error!("Break on me");
-            }
-            */
-
-            // Handle blinking. TODO: Move blink handling into tick().
-            self.blink_accum_clocks += self.char_clock;
-            if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
-                self.blink_state = !self.blink_state;
-                self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
-            }
-
-            // Char clock may update after tick_char() with deferred mode change, so save the 
-            // current clock.
-            let old_char_clock = self.char_clock;
-
-            if self.clock_divisor == 2 {
-                self.tick_lchar();
-            }
-            else {
-                self.tick_hchar();
-            }
-
-            /*
-            if self.debug_counter >= 3638298 {
-                log::error!("{} < {}", self.clocks_accum, self.char_clock);
-            }
-            self.debug_counter += 1;
-            */
-
-            self.clocks_accum = self.clocks_accum.saturating_sub(old_char_clock);
-        }
+        // Reset rwop slots for next CPU step.
+        self.last_rw_tick = 0;
+        self.slot_idx = 0;
     }
 
     fn reset(&mut self) {

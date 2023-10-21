@@ -49,7 +49,7 @@ use modular_bitfield::prelude::*;
 //#![allow(dead_code)]
 use log;
 
-use crate::config::VideoType;
+use crate::config::{ClockingMode, VideoType};
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 
 use crate::videocard::*;
@@ -987,6 +987,10 @@ impl EGACard {
 
 impl VideoCard for EGACard {
 
+    fn get_sync(&self) -> (bool, bool, bool, bool) {
+        (false, false, false, false)
+    }
+
     fn set_video_option(&mut self, opt: VideoOption) {
         // No options implemented
     }
@@ -1001,6 +1005,10 @@ impl VideoCard for EGACard {
 
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
+    }
+
+    fn set_clocking_mode(&mut self, mode: ClockingMode) {
+        // not implemented
     }
 
     fn get_display_size(&self) -> (u32, u32) {

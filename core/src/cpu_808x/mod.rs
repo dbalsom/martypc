@@ -408,16 +408,6 @@ impl Displacement {
     }
 }
 
-impl fmt::Display for Displacement {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => write!(f,"Invalid Displacement"),
-            Displacement::Disp8(i) => write!(f,"{:02X}h", i),
-            Displacement::Disp16(i) => write!(f,"{:04X}h", i),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum RepType {
     NoRep,
@@ -647,6 +637,7 @@ pub struct Cpu
     flags: u16,
 
     address_bus: u32,
+    address_latch: u32,
     data_bus: u16,
     last_ea: u16,                   // Last calculated effective address. Used by 0xFE instructions
     bus: BusInterface,              // CPU owns Bus
@@ -656,6 +647,13 @@ pub struct Cpu
     nx: bool,
     rni: bool,
     ea_opr: u16,                    // Operand loaded by EALOAD. Masked to 8 bits as appropriate.
+
+    intr: bool,                     // State of INTR line
+    intr_pending: bool,             // INTR line active and not processed
+    in_int: bool,
+    int_count: u64,
+    iret_count: u64,
+    interrupt_inhibit: bool,
 
     // Operand and result state
     /*
@@ -683,6 +681,7 @@ pub struct Cpu
     last_queue_len: usize,
     t_cycle: TCycle,
     bus_status: BusStatus,
+    bus_status_latch: BusStatus,
     bus_segment: Segment,
     transfer_size: TransferSize,    // Width of current bus transfer
     operand_size: OperandSize,      // Width of the operand being transferred
@@ -704,25 +703,25 @@ pub struct Cpu
     rep_type: RepType,
     
     cycle_num: u64,
+    t_stamp: f64,
+    t_step: f64,
+    t_step_h: f64,
     instr_cycle: u32,
+    device_cycles: u32,
+    int_elapsed: u32,
     instr_elapsed: u32,
     instruction_count: u64,
     i: Instruction,                 // Currently executing instruction 
+    instruction_address: u32,
     instruction_history_on: bool,
     instruction_history: VecDeque<HistoryEntry>,
     call_stack: VecDeque<CallStackEntry>,
+    exec_result: ExecutionResult,
 
     // Breakpoints
     breakpoints: Vec<BreakPointType>,
 
     step_over_target: Option<CpuAddress>,
-
-    // Interrupts
-    //int_stack: Vec<InterruptDescriptor>,
-    int_count: u64,
-    iret_count: u64,
-    interrupt_inhibit: bool,
-    pending_interrupt: bool,
 
     reset_vector: CpuAddress,
 
@@ -747,6 +746,10 @@ pub struct Cpu
     validator_state: CpuValidatorState,
     #[cfg(feature = "cpu_validator")]
     validator_end: usize,
+    #[cfg(feature = "cpu_validator")]
+    peek_fetch: u8,
+    #[cfg(feature = "cpu_validator")]
+    instr_slice: Vec<u8>,
 
     end_addr: usize,
 
@@ -879,6 +882,12 @@ pub enum ExecutionResult {
     ExecutionError(String),
     ExceptionError(CpuException),
     Halt
+}
+
+impl Default for ExecutionResult {
+    fn default() -> ExecutionResult {
+        ExecutionResult::Okay
+    }
 }
 
 #[derive (Copy, Clone, Debug, PartialEq)]
@@ -1088,8 +1097,9 @@ impl Cpu {
             panic!("Invalid CpuAddress for reset vector.");
         }
 
-        self.address_bus = 0;
+        self.address_latch = 0;
         self.bus_status = BusStatus::Passive;
+        self.bus_status_latch = BusStatus::Passive;
         self.t_cycle = TCycle::T1;
         
         self.instruction_count = 0; 
@@ -1097,12 +1107,16 @@ impl Cpu {
         self.iret_count = 0;
         self.instr_cycle = 0;
         self.cycle_num = 1;
-        
+        self.t_stamp = 0.0;
+        self.t_step = 0.00000021;
+        self.t_step_h = 0.000000105;
+        self.ready = true;
         self.in_rep = false;
         self.halted = false;
         self.opcode0_counter = 0;
         self.interrupt_inhibit = false;
-        self.pending_interrupt = false;
+        self.intr_pending = false;
+        self.in_int = false;
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
@@ -1126,6 +1140,8 @@ impl Cpu {
         self.nx = false;
         self.rni = false;
 
+        self.halt_resume_delay = 4;
+
         // Reset takes 6 cycles before first fetch
         self.cycle();
         self.biu_suspend_fetch();
@@ -1140,6 +1156,10 @@ impl Cpu {
         }
 
         trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip);
+    }
+
+    pub fn emit_header(&mut self) {
+        self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs,den,brd")
     }
 
     #[allow(dead_code)]
@@ -1268,7 +1288,7 @@ impl Cpu {
 
         CycleState {
             n: self.instr_cycle,
-            addr: self.address_bus,
+            addr: self.address_latch,
             t_state: match self.t_cycle {
                 TCycle::Tinit | TCycle::T1 => BusCycle::T1,
                 TCycle::Ti => BusCycle::T1,
@@ -1286,7 +1306,7 @@ impl Cpu {
             // TODO: Unify these enums?
             b_state: match self.t_cycle {
                 
-                TCycle::T1 | TCycle::T2 => match self.bus_status {
+                TCycle::T1 | TCycle::T2 => match self.bus_status_latch {
                         BusStatus::InterruptAck => BusState::INTA,
                         BusStatus::IoRead => BusState::IOR,
                         BusStatus::IoWrite => BusState::IOW,
@@ -1908,9 +1928,10 @@ impl Cpu {
     pub fn resume(&mut self) {
         if self.halted {
             //log::debug!("Resuming from halt");
-            // It takes 7 cycles after INTR to enter INTA. 
+            // It takes 6 or 7 cycles after INTR to enter INTA. 
             // 3 of these are resuming from suspend, so not accounted from here.
             self.trace_comment("INTR");
+            log::debug!("resuming from halt with {} cycles", self.halt_resume_delay);
             self.cycles(self.halt_resume_delay);
         }
         else {
@@ -1933,7 +1954,7 @@ impl Cpu {
     ) -> Result<(StepResult, u32), CpuError> {
 
         self.instr_cycle = 0;
-        self.instr_elapsed = 0;
+        self.instr_elapsed = self.int_elapsed;
 
         // If tracing is enabled, clear the trace string vector that holds the trace from the last instruction.
         if self.trace_enabled {
@@ -1950,6 +1971,8 @@ impl Cpu {
         // interrupts themselves in microcode. Therefore we want to model that behavior. This allows the 
         // microcode routine for RPTI to execute within the REP-prefixed instruction. The interrupt then
         // fires after.
+
+        /*
         self.pending_interrupt = false;
         let mut irq = 7;
 
@@ -2004,6 +2027,7 @@ impl Cpu {
                 }
             }
         }
+        */
 
         // Halt state can be expensive since if we only executing a single cycle. 
         // See if we can get away with executing 3 halt cycles at at time - demo effects may require more precision
@@ -2024,6 +2048,7 @@ impl Cpu {
         // It is more convenient for us to maintain IP as a separate register that always points to the current
         // instruction. Otherwise, when single-stepping in the debugger, the IP value will read ahead. 
         let instruction_address = Cpu::calc_linear_address(self.cs, self.ip);
+        self.instruction_address = instruction_address;
         //log::warn!("instruction address: {:05X}", instruction_address);
 
         if self.end_addr == (instruction_address as usize) { 
@@ -2080,7 +2105,6 @@ impl Cpu {
                 self.i.address = instruction_address;
             }
             
-            
             // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait 
             // implementation, which fetches instruction bytes through the processor instruction queue.
             self.i = match Cpu::decode(self) {
@@ -2091,6 +2115,10 @@ impl Cpu {
                     return Err(CpuError::InstructionDecodeError(instruction_address))
                 }                
             };
+
+            if self.ip == 0x03B6 {
+                log::warn!("0x3B6 {} int_elapsed: {}", self.i, self.int_elapsed);
+            }
 
             // Begin the current instruction validation context.
             #[cfg(feature = "cpu_validator")]
@@ -2140,129 +2168,15 @@ impl Cpu {
         self.load_operand();
 
         #[cfg(feature = "cpu_validator")]
-        let (peek_fetch, _) = self.bus.read_u8(self.pc as usize, 0).unwrap();
-        #[cfg(feature = "cpu_validator")]
-        let instr_slice = &self.bus.get_vec_at(instruction_address as usize, self.i.size as usize);
+        {
+            (self.peek_fetch, _) = self.bus.read_u8(self.pc as usize, 0).unwrap();
+            self.instr_slice = self.bus.get_vec_at(instruction_address as usize, self.i.size as usize);
+        }
     
         // Execute the current decoded instruction.
-        let exec_result = self.execute_instruction();
+        self.exec_result = self.execute_instruction();
 
-        // Finalize execution. This runs cycles until the next instruction byte has been fetched. This fetch period is technically
-        // part of the current instruction execution time.
-        if !self.halted {
-            // Do not finalize a HLT instruction
-            self.finalize();
-        }
-
-        // If a CPU validator is configured, validate the executed instruction.
-        #[cfg(feature = "cpu_validator")]
-        {
-            match exec_result {
-                ExecutionResult::Okay 
-                | ExecutionResult::OkayJump 
-                | ExecutionResult::ExceptionError(CpuException::DivideError) => {
-
-                    let mut v_flags = 0;
-        
-                    if let ExecutionResult::ExceptionError(CpuException::DivideError) = exec_result {
-                        // In the case of a divide exception, undefined flags get pushed to the stack.
-                        // So until we figure out the actual logic behind setting those undefined flags,
-                        // we can't validate writes. Also the cycle timing seems to vary a little when
-                        // executing int0, so allow a one cycle variance.
-                        v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_ALLOW_ONE;
-                    }
-
-                    match self.i.mnemonic {
-                        Mnemonic::DIV => {
-                            // There's a one cycle variance in my DIV instructions somewhere.
-                            // I just want to get these tests out the door, so allow it.
-                            v_flags |= VAL_ALLOW_ONE;
-                        }
-                        Mnemonic::IDIV => {
-                            v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_NO_CYCLES;
-                        }
-                        _=> {}
-                    }
-
-                    // End validation of current instruction
-                    let vregs = self.get_vregisters();
-                    
-                    if self.i.size == 0 {
-                        log::error!("Invalid length: [{:05X}] {}", instruction_address, self.i);
-                    }
-
-                    let cpu_address = self.get_linear_ip() as usize;
-                    
-                    if let Some(ref mut validator) = self.validator {
-
-                        // If validator unininitalized, set register state now and move into running state.
-                        if self.validator_state == CpuValidatorState::Uninitialized {
-                            // This resets the validator CPU
-                            log::debug!("Validator Uninitialized. Resetting validator and setting registers...");
-                            validator.set_regs();
-                            self.validator_state = CpuValidatorState::Running;
-                        }
-
-                        if self.validator_state == CpuValidatorState::Running {
-
-                            log::debug!("Validating opcode: {:02X}", self.i.opcode);
-                            match validator.validate_instruction(
-                                self.i.to_string(), 
-                                &instr_slice,
-                                v_flags,
-                                peek_fetch as u16,
-                                self.i.flags & I_HAS_MODRM != 0,
-                                0,
-                                &vregs,
-                                &self.cycle_states
-                            ) {
-    
-                                Ok(result) => {
-                                    match result {
-                                        ValidatorResult::Ok => {},
-                                        ValidatorResult::OkEnd => {
-    
-                                            if self.validator_end == cpu_address {
-
-                                                self.validator_state = CpuValidatorState::Ended;
-
-                                                // Validation has reached program end address
-                                                if let Err(e) = validator.validate_regs(&vregs) {
-                                                    log::warn!("Register validation failure: {} Halting execution.", e);
-                                                    self.is_running = false;
-                                                    self.is_error = true;
-                                                    return Err(CpuError::CpuHaltedError(instruction_address))
-                                                }
-                                                else {
-                                                    log::debug!("Registers validated. Validation ended successfully.");
-                                                    self.validator_state = CpuValidatorState::Ended;
-                                                    self.trace_flush();
-                                                }                                                
-                                            }
-                                        }
-                                        _=> {
-                                            log::warn!("Validation failure: Halting execution.");
-                                            self.is_running = false;
-                                            self.is_error = true;
-                                            return Err(CpuError::CpuHaltedError(instruction_address))
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    log::warn!("Validation failure: {} Halting execution.", e);
-                                    self.is_running = false;
-                                    self.is_error = true;
-                                    return Err(CpuError::CpuHaltedError(instruction_address))
-                                }
-                            }
-                        }
-                    }                    
-                }
-                _ => {}
-            }            
-        }
-
-       let mut step_result = match exec_result {
+        let mut step_result = match &self.exec_result {
 
             ExecutionResult::Okay => {
                 // Normal non-jump instruction updates CS:IP to next instruction during execute()
@@ -2288,7 +2202,7 @@ impl Cpu {
                     self.trace_print(&self.instruction_state_string(last_cs, last_ip));   
                 }                
 
-                Ok((StepResult::Normal, self.instr_cycle))
+                Ok((StepResult::Normal, self.device_cycles))
             }
             ExecutionResult::OkayJump => {
                 // A control flow instruction updated CS:IP.
@@ -2316,10 +2230,10 @@ impl Cpu {
    
                 // Only CALLS will set a step over target. 
                 if let Some(step_over_target) = self.step_over_target {
-                    Ok((StepResult::Call(step_over_target), self.instr_cycle))
+                    Ok((StepResult::Call(step_over_target), self.device_cycles))
                 }
                 else {
-                    Ok((StepResult::Normal, self.instr_cycle))
+                    Ok((StepResult::Normal, self.device_cycles))
                 }                
             }
             ExecutionResult::OkayRep => {
@@ -2346,7 +2260,7 @@ impl Cpu {
                 self.instruction_count += 1;
                 check_interrupts = true;
 
-                Ok((StepResult::Normal, self.instr_cycle))
+                Ok((StepResult::Normal, self.device_cycles))
             }                    
             /*
             ExecutionResult::UnsupportedOpcode(o) => {
@@ -2361,7 +2275,7 @@ impl Cpu {
                 // Something unexpected happened!
                 self.is_running = false;
                 self.is_error = true;
-                Err(CpuError::ExecutionError(instruction_address, e))
+                Err(CpuError::ExecutionError(instruction_address, e.to_string()))
             }
             ExecutionResult::Halt => {
                 // Specifically, this error condition is a halt with interrupts disabled -
@@ -2378,30 +2292,19 @@ impl Cpu {
                     CpuException::DivideError => {
                         // Moved int0 handling into aam/div instructions directly.
                         //self.handle_exception(0);
-                        Ok((StepResult::Normal, self.instr_cycle))
+                        Ok((StepResult::Normal, self.device_cycles))
                     }
                     _ => {
                         // Unhandled exception?
-                        Err(CpuError::ExceptionError(exception))
+                        Err(CpuError::ExceptionError(*exception))
                     }
                 }
             }
         };
 
-        // Handle pending interrupts now that execution has completed. This is to to allow execution of
-        // RPTI microcode routine.
-        if check_interrupts && self.pending_interrupt {
-
-            // We will be jumping into an ISR now. Set the step result to Call and return
-            // the address of the next instruction. (Step Over skips ISRs)
-            step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
-            
-            if self.int_flags[irq as usize] != 0 {
-                // This interrupt has a breakpoint
-                self.set_breakpoint_flag();
-            }            
-            self.hw_interrupt(irq);
-        }
+        // Reset interrupt pending flag - this flag is set on step_finish() and 
+        // only valid for a single instruction execution.
+        self.intr_pending = false;
 
         // Check registers and flags for internal consistency.
         #[cfg(debug_assertions)]        
@@ -2410,8 +2313,13 @@ impl Cpu {
         step_result
     }
 
+    /// Set the status of the CPU's INTR line.
+    #[inline]
+    pub fn set_intr(&mut self, status: bool) {
+        self.intr = status;
+    }
 
-    /// Finalize the current CPU instruction.
+    /// Finish the current CPU instruction.
     /// 
     /// This function is meant to be called after devices are run after an instruction. 
     /// 
@@ -2421,8 +2329,179 @@ impl Cpu {
     /// interrupt routine - *unless* we are in a REP, in which case we set a flag
     /// so that the interrupt execution can occur on the next call to step() to simulate
     /// the string instruction calling RPTI. 
-    pub fn step_finalize(&mut self) {
+    /// 
+    /// This function effectively simulates the RNI microcode routine.
+    pub fn step_finish(&mut self) -> Result<StepResult, CpuError> {
 
+        let mut step_result = StepResult::Normal;
+        let mut irq = 7;
+
+        // This function is called after devices are run for the CPU period, so reset device cycles.
+        // Device cycles will begin incrementing again with any terminating fetch.
+        self.instr_elapsed = 0;
+        self.int_elapsed = 0;
+        self.device_cycles = 0;
+
+        // Fetch next instruction byte, if applicable.
+        if (!self.intr || !self.interrupts_enabled()) && !self.halted {
+            // Do not fetch if there's an active interrupt (and interrupts are enabled)
+            // Do not fetch if we are halted.
+            self.biu_fetch_next();
+        }
+        else if self.intr && self.interrupts_enabled() {
+            // An interrupt needs to be processed.
+
+            if self.in_rep {
+                // We're in an REP prefixed-string instruction.
+                // Delay processing of the interrupt so that the string
+                // instruction can execute RPTI. At that point, the REP 
+                // will terminate and we can process the interrupt as normal.
+                self.intr_pending = true;
+            }
+            else {
+                // We are not in a REP prefixed string instruction, so we
+                // can process an interrupt normally.
+
+                if self.halted {
+                    // Resume from halt on interrupt
+                    self.resume();
+                }        
+
+                // Query the PIC to get the interrupt vector.
+                // This is a bit artificial as we don't actually read the IV during the 2nd 
+                // INTA cycle like the CPU does, instead we save the value now and simualate it later.
+                // TODO: Think about changing this to query during INTA
+                if let Some(pic) = self.bus.pic_mut().as_mut() {
+                    // Is INTR active? TODO: Could combine these calls (return Option<iv>) on query?
+                    if pic.query_interrupt_line() {
+                        if let Some(iv) = pic.get_interrupt_vector() {
+                            irq = iv;
+                        }
+                    }
+                }
+
+                // We will be jumping into an ISR now. Set the step result to Call and return
+                // the address of the next instruction. (Step Over skips ISRs)
+                step_result = StepResult::Call(CpuAddress::Segmented(self.cs, self.ip));
+            
+                if self.int_flags[irq as usize] != 0 {
+                    // This interrupt has a breakpoint
+                    self.set_breakpoint_flag();
+                }            
+                self.hw_interrupt(irq);
+                self.biu_fetch_next();
+            }
+        }
+
+        // If a CPU validator is configured, validate the executed instruction.
+        #[cfg(feature = "cpu_validator")]
+        {
+            match self.exec_result {
+                ExecutionResult::Okay 
+                | ExecutionResult::OkayJump 
+                | ExecutionResult::ExceptionError(CpuException::DivideError) => {
+
+                    let mut v_flags = 0;
+        
+                    if let ExecutionResult::ExceptionError(CpuException::DivideError) = self.exec_result {
+                        // In the case of a divide exception, undefined flags get pushed to the stack.
+                        // So until we figure out the actual logic behind setting those undefined flags,
+                        // we can't validate writes. Also the cycle timing seems to vary a little when
+                        // executing int0, so allow a one cycle variance.
+                        v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_ALLOW_ONE;
+                    }
+
+                    match self.i.mnemonic {
+                        Mnemonic::DIV => {
+                            // There's a one cycle variance in my DIV instructions somewhere.
+                            // I just want to get these tests out the door, so allow it.
+                            v_flags |= VAL_ALLOW_ONE;
+                        }
+                        Mnemonic::IDIV => {
+                            v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_NO_CYCLES;
+                        }
+                        _=> {}
+                    }
+
+                    // End validation of current instruction
+                    let vregs = self.get_vregisters();
+                    
+                    if self.i.size == 0 {
+                        log::error!("Invalid length: [{:05X}] {}", self.instruction_address, self.i);
+                    }
+
+                    let cpu_address = self.get_linear_ip() as usize;
+                    
+                    if let Some(ref mut validator) = self.validator {
+
+                        // If validator unininitalized, set register state now and move into running state.
+                        if self.validator_state == CpuValidatorState::Uninitialized {
+                            // This resets the validator CPU
+                            log::debug!("Validator Uninitialized. Resetting validator and setting registers...");
+                            validator.set_regs();
+                            self.validator_state = CpuValidatorState::Running;
+                        }
+
+                        if self.validator_state == CpuValidatorState::Running {
+
+                            log::debug!("Validating opcode: {:02X}", self.i.opcode);
+                            match validator.validate_instruction(
+                                self.i.to_string(), 
+                                &self.instr_slice,
+                                v_flags,
+                                self.peek_fetch as u16,
+                                self.i.flags & I_HAS_MODRM != 0,
+                                0,
+                                &vregs,
+                                &self.cycle_states
+                            ) {
+    
+                                Ok(result) => {
+                                    match result {
+                                        ValidatorResult::Ok => {},
+                                        ValidatorResult::OkEnd => {
+    
+                                            if self.validator_end == cpu_address {
+
+                                                self.validator_state = CpuValidatorState::Ended;
+
+                                                // Validation has reached program end address
+                                                if let Err(e) = validator.validate_regs(&vregs) {
+                                                    log::warn!("Register validation failure: {} Halting execution.", e);
+                                                    self.is_running = false;
+                                                    self.is_error = true;
+                                                    return Err(CpuError::CpuHaltedError(self.instruction_address))
+                                                }
+                                                else {
+                                                    log::debug!("Registers validated. Validation ended successfully.");
+                                                    self.validator_state = CpuValidatorState::Ended;
+                                                    self.trace_flush();
+                                                }                                                
+                                            }
+                                        }
+                                        _=> {
+                                            log::warn!("Validation failure: Halting execution.");
+                                            self.is_running = false;
+                                            self.is_error = true;
+                                            return Err(CpuError::CpuHaltedError(self.instruction_address))
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    log::warn!("Validation failure: {} Halting execution.", e);
+                                    self.is_running = false;
+                                    self.is_error = true;
+                                    return Err(CpuError::CpuHaltedError(self.instruction_address))
+                                }
+                            }
+                        }
+                    }                    
+                }
+                _ => {}
+            }            
+        }
+
+        Ok(step_result)
     }
 
     /// Set a terminating code address for the CPU. This is mostly used in conjunction with the 
@@ -2634,7 +2713,7 @@ impl Cpu {
             false => '.',
         };
 
-        let bus_str = match self.bus_status {
+        let bus_str = match self.bus_status_latch {
             BusStatus::InterruptAck => "IRQA",
             BusStatus::IoRead=> "IOR ",
             BusStatus::IoWrite => "IOW ",
@@ -2739,6 +2818,7 @@ impl Cpu {
         };
 
         let mut cycle_str;
+
         if short {
             cycle_str = format!(
                 "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
@@ -2788,12 +2868,75 @@ impl Cpu {
                 instr_str
             ); 
         }
-       
+        
         for c in &self.trace_comment {
             cycle_str.push_str(&format!("; {}", c));
         }
 
         cycle_str
+    }
+
+    pub fn trace_csv_line(&mut self) {
+        let q = self.last_queue_op as u8;
+        let s = self.bus_status as u8;
+
+        let mut vs = 0;
+        let mut hs = 0;
+        let mut den = 0;
+        let mut brd = 0;
+        if let Some(video) = self.bus().video() {
+            let (vs_b, hs_b, den_b, brd_b) = video.get_sync();
+            vs = if vs_b { 1 } else { 0 };
+            hs = if hs_b { 1 } else { 0 };
+            den = if den_b { 1 } else { 0 };
+            brd = if brd_b { 1 } else { 0 };
+        }
+
+        // Segment status bits are valid after ALE.
+        if !self.i8288.ale {
+            let seg_n = match self.bus_segment {
+                Segment::ES => 0,
+                Segment::SS => 1,
+                Segment::CS | Segment::None => 2,
+                Segment::DS => 3             
+            };
+            self.address_bus = (self.address_bus & 0b1100_1111_1111_1111_1111) | (seg_n << 16);
+        }
+
+        // "Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs"
+        // sigrok import string:
+        // t,x20,l,l,x2,x3,l,l,l,l,l,l
+        self.trace_emit(&format!(
+            "{},{:05X},1,{},{},{},{},{},{},{},{},{},{}",
+            self.t_stamp,
+            self.address_bus,
+            if self.ready { 1 } else { 0 },
+            q,
+            s,
+            0,
+            if self.intr { 1 } else { 0 },
+            if matches!(self.dma_state, DmaState::Dreq) { 1 } else { 0 },
+            vs,
+            hs,
+            den,
+            brd
+        ));
+
+        self.trace_emit(&format!(
+            "{},{:05X},0,{},{},{},{},{},{},{},{},{},{}",
+            self.t_stamp + self.t_step_h,
+            self.address_bus,
+            if self.ready { 1 } else { 0 },
+            q,
+            s,
+            0,
+            if self.intr { 1 } else { 0 },
+            if matches!(self.dma_state, DmaState::Dreq) { 1 } else { 0 },
+            vs,
+            hs,
+            den,
+            brd
+        ));
     }
 
     pub fn instruction_state_string(&self, last_cs: u16, last_ip: u16) -> String {
@@ -2814,6 +2957,13 @@ impl Cpu {
             self.trace_logger.println(trace_str);
         }
     }
+
+    #[inline]
+    pub fn trace_emit(&mut self, trace_str: &str) {
+        if self.trace_logger.is_some() {
+            self.trace_logger.println(trace_str);
+        }
+    }    
 
     pub fn trace_flush(&mut self) {
         if self.trace_logger.is_some() {
