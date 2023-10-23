@@ -47,7 +47,7 @@ impl Cpu {
     pub fn sw_interrupt(&mut self, interrupt: u8) {
 
         // Interrupt FC, emulator internal services.
-        if interrupt == 0xFC {
+        if self.enable_service_interrupt && interrupt == 0xFC {
             match self.ah {
                 0x01 => {
 
@@ -75,7 +75,6 @@ impl Cpu {
                 }
                 _ => {}
             }
-
             return
         }
 

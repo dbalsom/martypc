@@ -725,6 +725,7 @@ pub struct Cpu
 
     reset_vector: CpuAddress,
 
+    enable_service_interrupt: bool,
     trace_enabled: bool,
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
@@ -3069,7 +3070,7 @@ impl Cpu {
                 self.enable_wait_states = state;
             }   
             CpuOption::TraceLoggingEnabled(state) => {
-                log::debug!("Setting {:?} to: {:?}", opt, state);
+                log::debug!("Setting TraceLoggingEnabled to: {:?}", state);
                 self.trace_enabled = state;
 
                 // Flush the trace log file on stopping trace so that we can immediately
@@ -3077,7 +3078,11 @@ impl Cpu {
                 if state == false {
                     self.trace_flush();
                 }
-            }                       
+            }
+            CpuOption::EnableServiceInterrupt(state) => {
+                log::debug!("Setting EnableServiceInterrupt to: {:?}", state);
+                self.enable_service_interrupt = state;
+            }
         }
     }
 
@@ -3103,7 +3108,10 @@ impl Cpu {
             }   
             CpuOption::TraceLoggingEnabled(_) => {
                 self.trace_enabled
-            }                       
+            }
+            CpuOption::EnableServiceInterrupt(_) => {
+                self.enable_service_interrupt
+            }                        
         }        
     }
 

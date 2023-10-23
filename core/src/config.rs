@@ -368,9 +368,10 @@ pub struct Machine {
 
 #[derive(Debug, Deserialize)]
 pub struct Cpu {
-    pub wait_states_enabled: bool,
-    pub off_rails_detection: bool,
-    pub instruction_history: bool,
+    pub wait_states_enabled: Option<bool>,
+    pub off_rails_detection: Option<bool>,
+    pub instruction_history: Option<bool>,
+    pub service_interrupt_enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -487,7 +488,9 @@ impl ConfigFileParams {
 
         self.machine.turbo |= shell_args.turbo;
 
-        self.cpu.off_rails_detection |= shell_args.off_rails_detection;
+        if let Some(ref mut off_rails_detection) = self.cpu.off_rails_detection {
+            *off_rails_detection |= shell_args.off_rails_detection;
+        }
 
         self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
     }

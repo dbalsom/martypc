@@ -296,7 +296,6 @@ impl Machine {
         );
 
         cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
-        cpu.set_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection)); 
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;

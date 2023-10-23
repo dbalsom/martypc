@@ -598,19 +598,24 @@ pub fn run() {
     let debug_keyboard = config.emulator.debug_keyboard;
 
     // Do PIT phase offset option
-    machine.pit_adjust((config.machine.pit_phase.unwrap_or(0) & 0x03));
+    machine.pit_adjust(config.machine.pit_phase.unwrap_or(0) & 0x03);
 
     // Set options from config. We do this now so that we can set the same state for both GUI and machine
+
+    // TODO: Add GUI for these two options?
+    machine.set_cpu_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection.unwrap_or(false)));
+    machine.set_cpu_option(CpuOption::EnableServiceInterrupt(config.cpu.service_interrupt_enabled.unwrap_or(false)));
+
     framework.gui.set_option(GuiOption::EnableSnow, config.machine.cga_snow.unwrap_or(false));
     machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
 
     framework.gui.set_option(GuiOption::CorrectAspect, config.emulator.correct_aspect);
 
-    framework.gui.set_option(GuiOption::CpuEnableWaitStates, config.cpu.wait_states_enabled);
-    machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled));
+    framework.gui.set_option(GuiOption::CpuEnableWaitStates, config.cpu.wait_states_enabled.unwrap_or(true));
+    machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled.unwrap_or(true)));
 
-    framework.gui.set_option(GuiOption::CpuInstructionHistory, config.cpu.instruction_history);
-    machine.set_cpu_option(CpuOption::InstructionHistory(config.cpu.instruction_history));
+    framework.gui.set_option(GuiOption::CpuInstructionHistory, config.cpu.instruction_history.unwrap_or(false));
+    machine.set_cpu_option(CpuOption::InstructionHistory(config.cpu.instruction_history.unwrap_or(false)));
 
     framework.gui.set_option(GuiOption::CpuTraceLoggingEnabled, config.emulator.trace_on);
     machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));

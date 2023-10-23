@@ -51,7 +51,8 @@ pub enum CpuOption {
     HaltResumeDelay(u32),
     OffRailsDetection(bool),
     EnableWaitStates(bool),
-    TraceLoggingEnabled(bool)
+    TraceLoggingEnabled(bool),
+    EnableServiceInterrupt(bool),
 }
 
 use crate::cpu_808x::*;
