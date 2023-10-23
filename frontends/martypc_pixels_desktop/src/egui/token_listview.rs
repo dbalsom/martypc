@@ -353,13 +353,15 @@ impl TokenListView {
                                 used_rect = used_rect.union(text_rect);
                                 drawn = true;
                             }
+                            SyntaxToken::Formatter(fmt) => {
+                                drawn = true;
+                            }
                             _ => {
                                 drawn = false;
-                            }                      
+                            }
                         }
 
                         if !drawn { 
-                            
                             let (token_color, token_text, token_padding) = match token {
                                 SyntaxToken::MemoryAddressSeg16(_,_,s) => {
                                     (Color32::LIGHT_GRAY, s, 10.0) 
@@ -399,7 +401,7 @@ impl TokenListView {
                                 }
                                 SyntaxToken::ErrorString(s) => {
                                     (Color32::RED, s, 2.0) 
-                                }                                                                                                                                 
+                                }                                                                                             
                                 _ => (Color32::WHITE, &null, 2.0)
 
                             };
