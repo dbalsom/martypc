@@ -441,7 +441,7 @@ impl Pic {
 
             if have_request && !is_masked && !is_in_service {
                 // IRR bit is set and now unmasked; Set INTR line high after some delay.
-                self.schedule_intr(9); // TODO: Placeholder value. we should measure the actual delay with a scope.
+                self.schedule_intr(3); // TODO: Placeholder value. we should measure the actual delay with a scope.
                 self.interrupt_stats[interrupt as usize].serviced_count += 1;
             }
 
