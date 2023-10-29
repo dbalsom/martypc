@@ -2117,10 +2117,6 @@ impl Cpu {
                 }                
             };
 
-            if self.ip == 0x03B6 {
-                log::warn!("0x3B6 {} int_elapsed: {}", self.i, self.int_elapsed);
-            }
-
             // Begin the current instruction validation context.
             #[cfg(feature = "cpu_validator")]
             {
@@ -2791,6 +2787,11 @@ impl Cpu {
             false => '.'
         };
 
+        let tx_cycle = match self.is_last_wait() {
+            true => 'x',
+            false => '.'
+        };
+
         let ready_chr = if self.wait_states > 0 {
             '.'
         }
@@ -2822,12 +2823,13 @@ impl Cpu {
 
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
+                "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
                 self.address_bus,
                 seg_str,
                 ready_chr,
+                self.wait_states,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
                 bus_str,
@@ -2846,12 +2848,15 @@ impl Cpu {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}|  | {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
                 self.address_bus,
                 seg_str,
+                ready_chr,
+                self.wait_states,
+                tx_cycle,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
                 bus_str,
@@ -3050,15 +3055,11 @@ impl Cpu {
                 self.dram_refresh_cycle_num = cycles;
             }
             CpuOption::DramRefreshAdjust(adj) => {
-
                 log::debug!("Setting DramRefreshAdjust to: {}", adj);
-
                 self.dram_refresh_adjust = adj;
             }
             CpuOption::HaltResumeDelay(delay) => {
-
                 log::debug!("Setting HaltResumeDelay to: {}", delay);
-
                 self.halt_resume_delay = delay;
             }            
             CpuOption::OffRailsDetection(state) => {

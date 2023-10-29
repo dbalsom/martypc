@@ -631,7 +631,7 @@ impl Cpu {
         );
         match flag {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx()
         };
     }
 
@@ -664,7 +664,7 @@ impl Cpu {
         );
         match flag {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx()
         };
         
         //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
@@ -699,7 +699,7 @@ impl Cpu {
 
         match flag {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx()
         };
 
         word |= (self.data_bus & 0x00FF) << 8;
@@ -733,7 +733,7 @@ impl Cpu {
 
         match flag {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx()
         };
     }    
 
@@ -809,7 +809,7 @@ impl Cpu {
 
         match flag {
             ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until(TCycle::Tw)
+            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx()
         };
     }    
 
@@ -844,14 +844,22 @@ impl Cpu {
 
     /// If the BIU state is a transitional state, wait until it is not.
     pub fn biu_wait_for_transition(&mut self) {
-        self.trace_comment("TRANS_WAIT_START");
+        let mut trans = false;
         loop {
             match self.biu_state_new {
-                BiuStateNew::ToEu(_) | BiuStateNew::ToPrefetch(_) | BiuStateNew::ToIdle(_) => self.cycle(),
-                _ => break
+                BiuStateNew::ToEu(_) | BiuStateNew::ToPrefetch(_) | BiuStateNew::ToIdle(_) => {
+                    self.trace_comment("TRANS_WAIT_START");
+                    trans = true;
+                    self.cycle()
+                },
+                _ => {
+                    if trans {
+                        self.trace_comment("TRANS_WAIT_DONE");
+                    }
+                    break
+                }
             }
         }
-        self.trace_comment("TRANS_WAIT_DONE");
     }
 
     /// If in an active bus cycle, cycle the CPU until the target T-state is reached.
@@ -859,19 +867,21 @@ impl Cpu {
     /// This function is usually used on a terminal write to wait for T3-TwLast to 
     /// handle RNI in microcode. The next instruction byte will be fetched on this 
     /// terminating cycle and the beginning of execution will overlap with T4.
-    pub fn biu_bus_wait_until(&mut self, target_state: TCycle) -> u32 {
+    pub fn biu_bus_wait_until_tx(&mut self) -> u32 {
         let mut bus_cycles_elapsed = 0;
         match self.bus_status_latch {
-            BusStatus::Passive => {
-                // No active bus transfer
-                return 0
-            }
             BusStatus::MemRead | BusStatus::MemWrite | BusStatus::IoRead | BusStatus::IoWrite | BusStatus::CodeFetch => {
-                
+                self.trace_comment("WAIT_TX");
+                while !self.is_last_wait() {
+                    self.cycle();
+                    bus_cycles_elapsed += 1;
+                }
+                self.trace_comment("TX");
+                /*
                 if target_state == TCycle::Tw {
                     // Interpret waiting for Tw as waiting for T3 or Last Tw
                     loop {
-                        match (self.t_cycle, self.wait_states) {
+                        match (self.t_cycle, effective_wait_states) {
                             (TCycle::T3, 0) => {
                                 self.trace_comment(" >> wait match!");
                                 if self.bus_wait_states == 0 {
@@ -884,6 +894,7 @@ impl Cpu {
                                 }
                             }
                             (TCycle::T3, n) | (TCycle::Tw, n) => {
+                                log::trace!("waits: {}", n);
                                 for _ in 0..n {
                                     self.cycle();
                                     bus_cycles_elapsed += 1;
@@ -903,11 +914,12 @@ impl Cpu {
                         bus_cycles_elapsed += 1;
                     }
                 }
-                //self.cycle();
+                */
+
+                
                 return bus_cycles_elapsed
-            }
+            } 
             _ => {
-                // Handle other statuses
                 return 0
             }
         }

@@ -171,8 +171,6 @@ impl Cpu {
                         }
                     }
                     TCycle::T3 => {                
-                        self.wait_states += self.bus_wait_states;
-                        
                         if self.wait_states == 0 {
                             // Do bus transfer on T3 if no wait states.
                             self.do_bus_transfer();
@@ -355,21 +353,26 @@ impl Cpu {
                     }
                 }
             }
-            TCycle::T2 => TCycle::T3,
+            TCycle::T2 => {
+                self.wait_states += self.bus_wait_states;
+                TCycle::T3
+            }
             TCycle::T3 => {
                 // If no wait states have been reported, advance to T3, otherwise go to Tw
-                if self.wait_states == 0 && self.dma_wait_states == 0 {
-                    self.biu_bus_end();
-                    TCycle::T4
+                if self.wait_states > 0 || self.dma_wait_states > 0 {
+                    self.wait_states = self.wait_states.saturating_sub(1);
+                    TCycle::Tw
                 }
                 else {
-                    TCycle::Tw
+                    self.biu_bus_end();
+                    TCycle::T4  
                 }
             }
             TCycle::Tw => {
                 // If we are handling wait states, continue in Tw (decrement at end of cycle)
                 // If we have handled all wait states, transition to T4
                 if self.wait_states > 0 || self.dma_wait_states > 0 {
+                    self.wait_states = self.wait_states.saturating_sub(1);
                     //log::debug!("wait states: {}", self.wait_states);
                     TCycle::Tw
                 }
@@ -447,7 +450,6 @@ impl Cpu {
         self.device_cycles += 1;
 
         self.cycle_num += 1;
-        self.wait_states = self.wait_states.saturating_sub(1);
         self.dma_wait_states = self.dma_wait_states.saturating_sub(1);
 
         if self.wait_states == 0 && self.dma_wait_states == 0 {
@@ -564,6 +566,7 @@ impl Cpu {
                 if self.transfer_n == 2 {
                     //log::debug!("deasserting lock! transfer_n: {}", self.transfer_n);
                     self.lock = false;
+                    self.intr = false;
                 }
                 //self.transfer_n += 1;
             }
