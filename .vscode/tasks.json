@@ -14,6 +14,18 @@
 			"type": "cargo",
 			"command": "build",
 			"args": [
+				"--release",
+			],
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo build release "
+		},        
+		{
+			"type": "cargo",
+			"command": "build",
+			"args": [
 				"--features",
 				"cpu_validator,arduino_validator"
 			],
