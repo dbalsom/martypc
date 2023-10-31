@@ -740,6 +740,11 @@ impl CGACard {
             enable_snow: self.enable_snow,
             frame_count: self.frame_count,  // Keep frame count as to not confuse frontend
             trace_logger,
+            extents: self.extents,
+            vblank_color: self.vblank_color,
+            hblank_color: self.hblank_color,
+            disable_color: self.disable_color,
+
             ..Self::default()
         }
     }
@@ -759,7 +764,7 @@ impl CGACard {
         self.last_rw_tick = ticks;
     }
 
-    fn catch_up(&mut self, delta: DeviceRunTimeUnit) -> u32 {
+    fn catch_up(&mut self, delta: DeviceRunTimeUnit, debug: bool) -> u32 {
 
         /*
         if self.sink_cycles > 0 {
@@ -810,6 +815,10 @@ impl CGACard {
             //assert!((self.cycles + self.pixel_clocks_owed as u64) & (CGA_LCHAR_CLOCK as u64) == 0);
             self.catching_up = false;
 
+            if debug && self.rba < (CGA_MAX_CLOCK - 8) { 
+                log::debug!("crtc write!");
+                self.draw_solid_hchar(13);
+            }
             return ticks
         }
         0
@@ -955,6 +964,10 @@ impl CGACard {
             }
             CRTCRegister::HorizontalSyncPosition => {
                 // (R2) 8 bit write only
+
+                if byte == 2 {
+                    log::debug!("R2=2, HCC: {}", self.hcc_c0);
+                }
                 self.crtc_horizontal_sync_pos = byte;
             },
             CRTCRegister::SyncWidth => {
@@ -2139,11 +2152,7 @@ impl CGACard {
         let saved_rba = self.rba;
 
         if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
-
-            if self.debug && self.catching_up {
-                self.draw_pixel(13);
-            }
-            else if self.in_display_area {
+            if self.in_display_area {
                 // Draw current pixel
                 if !self.mode_graphics {
                     self.draw_text_mode_pixel();
@@ -2295,8 +2304,6 @@ impl CGACard {
 
                 // END OF LOGICAL SCANLINE
                 if self.in_crtc_vblank {
-                    // If we are in vblank, advance Vertical Sync Counter
-                    self.vsc_c3h += 1;
                 
                     //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
                     if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
@@ -2354,11 +2361,6 @@ impl CGACard {
 
         if self.hcc_c0 == self.crtc_horizontal_sync_pos {
             // We entered horizontal blank
-
-            // Save width of right overscan
-            if self.beam_x > self.overscan_right_start {
-                self.extents[self.front_buf].overscan_r = self.beam_x - self.overscan_right_start;
-            }
             self.in_crtc_hblank = true;
             self.hsc_c3l = 0;
         }
@@ -2372,6 +2374,11 @@ impl CGACard {
         if self.hcc_c0 == self.crtc_horizontal_total + 1 {
             // Leaving left overscan, finished scanning row
 
+            if self.in_crtc_vblank {
+                // If we are in vblank, advance Vertical Sync Counter
+                self.vsc_c3h += 1;
+            }
+
             if self.in_last_vblank_line {
                 self.in_last_vblank_line = false;
                 self.in_crtc_vblank = false;
@@ -2381,7 +2388,6 @@ impl CGACard {
             self.hcc_c0 = 0;
             self.hborder = false;
             self.vlc_c9 += 1;
-            self.extents[self.front_buf].overscan_l = self.beam_x;
             // Return video memory address to starting position for next character row
             self.vma = self.vma_t;
             
