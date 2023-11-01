@@ -816,7 +816,7 @@ impl CGACard {
             self.catching_up = false;
 
             if debug && self.rba < (CGA_MAX_CLOCK - 8) { 
-                log::debug!("crtc write!");
+                //log::debug!("crtc write!");
                 self.draw_solid_hchar(13);
             }
             return ticks
@@ -965,9 +965,9 @@ impl CGACard {
             CRTCRegister::HorizontalSyncPosition => {
                 // (R2) 8 bit write only
 
-                if byte == 2 {
-                    log::debug!("R2=2, HCC: {}", self.hcc_c0);
-                }
+                //if byte == 2 {
+                //    log::debug!("R2=2, HCC: {}", self.hcc_c0);
+                //}
                 self.crtc_horizontal_sync_pos = byte;
             },
             CRTCRegister::SyncWidth => {
@@ -2517,7 +2517,7 @@ impl CGACard {
                 // This is a "short" frame. Calculate delta.
                 let delta_y = 262 - self.beam_y;
                 
-                self.sink_cycles = delta_y * 912;
+                //self.sink_cycles = delta_y * 912;
 
                 if self.cycles & self.char_clock_mask != 0 {
                     log::error!("vsync out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
