@@ -287,23 +287,21 @@ impl Cpu {
         }
     }
 
-    /*
-    pub fn biu_suspend_fetch_i(&mut self, mc: u16) {
-        self.trace_comment("SUSP");
+    pub fn biu_halt_fetch(&mut self) {
+        self.trace_comment("HALT_FETCH");
         self.fetch_suspended = true;
-        self.fetch_state = FetchState::Idle;
-        self.biu_state = BiuState::Suspended;
-        // new state logic: transition to B_idle
-        self.biu_change_state(BiuStateNew::Idle);
-
-        // SUSP waits for any current fetch to complete.
-        if self.bus_status == BusStatus::CodeFetch {
-            self.biu_bus_wait_finish();
-            
-            //self.cycle_i(mc);
+        
+        match self.t_cycle {
+            TCycle::T1 | TCycle::T2 => {
+                // We have time to prevent a prefetch decision.
+                self.fetch_state = FetchState::Idle;
+            }
+            _ => {
+                // We halted too late - a prefetch will be attempted.
+            }
         }
     }
-    */    
+
 
     /// Schedule a prefetch. Depending on queue state, there may be Delay cycles scheduled
     /// that begin after the inital two Scheduled cycles are complete.
@@ -553,19 +551,20 @@ impl Cpu {
         }
     }
 
-    /// Issue a HALT.  HALT is a unique bus state, and must wait for a free bus cycle to 
-    /// begin.
+    /// Issue a HALT.  HALT is a unique bus status code, but not a real bus state. It is hacked 
+    /// in by miscellaneous logic for one cycle.
     pub fn biu_halt(&mut self) {
-
-        self.biu_bus_begin(
-            BusStatus::Halt,
-            Segment::None,
-            0,
-            0,
-            TransferSize::Byte,
-            OperandSize::Operand8,
-            true
-        );
+        self.fetch_state = FetchState::Idle;
+        self.bus_status = BusStatus::Halt;
+        self.bus_status_latch = BusStatus::Halt;
+        self.bus_segment = Segment::CS;
+        self.t_cycle = TCycle::T1;
+        self.i8288.ale = true;
+        self.data_bus = 0;
+        self.transfer_size = self.fetch_size;
+        self.operand_size = OperandSize::Operand8;
+        self.transfer_n = 1;
+        self.final_transfer = true;
 
         self.cycle();
     }
@@ -827,6 +826,17 @@ impl Cpu {
             }
             elapsed
         }
+    }
+
+    /// If in an active bus cycle, cycle the cpu until the bus cycle has reached at least T2.
+    pub fn biu_bus_wait_halt(&mut self) -> u32 {
+        if matches!(self.bus_status_latch, BusStatus::Passive) {
+            if self.t_cycle == TCycle::T1 {
+                self.cycle();
+                return 1
+            }
+        }
+        0
     }
 
     /// If the fetch state is Delayed(_), wait until it is not.

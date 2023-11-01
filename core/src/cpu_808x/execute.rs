@@ -1421,12 +1421,27 @@ impl Cpu {
             }
             0xF4 => {
                 // HLT - Halt
-                self.halted = true;
-                log::trace!("Halted at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
+                // HLT is non-microcoded, so cycles spent here aren't logged by mc.
+
+                self.biu_bus_wait_halt();       // wait until at least t2 of m-cycle
+                self.halt_not_hold = true;      // set internal halt signal
+                self.biu_halt_fetch();          // halt prefetcher
+                self.biu_bus_wait_finish();     // wait until end of m-cycle
+
+                if self.intr {
+                    // If an intr is pending now, execute it without actually halting.
+                    log::trace!("Halt overriden at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
+                    self.halt_not_hold = false;
+                }
+                else {
+                    // Actually halt
+                    log::trace!("Halt at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
+                    self.halted = true;
+                    self.biu_halt();
+                }
                 // HLT is non-microcoded, so these cycles have no pc
-                self.biu_suspend_fetch();
-                self.cycles(2);
-                self.biu_halt();
+                //self.biu_suspend_fetch();
+                //self.cycles(2);
             }
             0xF5 => {
                 // CMC - Complement (invert) Carry Flag

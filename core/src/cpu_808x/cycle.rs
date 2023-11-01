@@ -206,7 +206,6 @@ impl Cpu {
             }
             BusStatus::Halt => {
                 self.trace_comment("HALT");
-                self.halted = true;
             }
         };
 

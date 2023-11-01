@@ -691,8 +691,11 @@ pub struct Cpu
     wait_states: u32,
     lock: bool,                     // LOCK pin. Asserted during 2nd INTA bus cycle. 
 
-    // Bookkeeping
+    // Halt-related stuff
     halted: bool,
+    halt_not_hold: bool,            // Internal halt signal
+    wake_timer: u32,
+
     is_running: bool,
     is_error: bool,
     
@@ -1114,6 +1117,7 @@ impl Cpu {
         self.ready = true;
         self.in_rep = false;
         self.halted = false;
+        self.halt_not_hold = false;
         self.opcode0_counter = 0;
         self.interrupt_inhibit = false;
         self.intr_pending = false;
@@ -1614,7 +1618,6 @@ impl Cpu {
     /// operand but 16 bits of a register operand. We don't support 'hybrid' 8/16 bit 
     /// instruction templates so we have to convert.
     pub fn reg8to16(reg: Register8) -> Register16 {
-
         match reg {
             Register8::AH => Register16::AX,
             Register8::AL => Register16::AX,
