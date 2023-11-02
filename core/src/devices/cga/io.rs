@@ -25,7 +25,7 @@
 
     --------------------------------------------------------------------------
 
-    devices::cga::mmio.rs
+    devices::cga::io.rs
 
     Implementation of the IoDevice interface trait for the IBM CGA card.
 

@@ -50,6 +50,8 @@
       04  Gfx     320x200     CGA      4    b800
       05  Gfx     320x200     CGA     *4    b800 *alt CGA palette
       06  Gfx     640x200     CGA      2    b800
+     
+      07  Text    720x350     MDA      2    b800
 
       0D  Gfx     320x200     EGA     16    a000
       0E  Gfx     640x200     EGA     16    a000

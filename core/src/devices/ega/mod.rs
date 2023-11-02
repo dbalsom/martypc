@@ -51,23 +51,40 @@ use log;
 
 use crate::config::{ClockingMode, VideoType};
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
-
+use crate::tracelogger::TraceLogger;
 use crate::videocard::*;
 
 mod attribute_regs;
 mod crtc_regs;
 mod graphics_regs;
 mod sequencer_regs;
+mod tablegen;
+mod crtc;
+mod mmio;
+mod io;
+mod videocard;
 
 use attribute_regs::*;
+use crtc::*;
 use crtc_regs::*;
 use graphics_regs::*;
 use sequencer_regs::*;
+use tablegen::*;
 
 static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
 
-pub const CGA_ADDRESS: usize = 0xB8000;
-pub const EGA_GFX_ADDRESS: usize = 0xA0000;
+pub const EGA_CLOCK0: f64 = 14.13131318;
+pub const EGA_CLOCK1: f64 = 16.257;
+
+pub const CGA_MEM_ADDRESS: usize = 0xB8000;
+pub const CGA_MEM_WINDOW: usize = 0x08000;
+pub const CGA_MEM_END: usize = CGA_MEM_ADDRESS + CGA_MEM_WINDOW - 1;
+pub const EGA_MEM_ADDRESS: usize = 0xA0000;
+
+pub const EGA_MEM_WINDOW_64: usize = 0x10000;
+pub const EGA_MEM_WINDOW_128: usize = 0x20000;
+pub const EGA_MEM_END_64: usize = EGA_MEM_ADDRESS + EGA_MEM_WINDOW_64 - 1;
+pub const EGA_MEM_END_128: usize = EGA_MEM_ADDRESS + EGA_MEM_WINDOW_128 - 1;
 
 // pub const CGA_MEM_SIZE: usize = 16384;
 pub const EGA_TEXT_PLANE_SIZE: usize = 16384;
@@ -109,7 +126,18 @@ const EGA_VBLANK_START: u32 = 61928;
 const EGA_SCANLINE_CPU_TIME: u32 = 267;
 const EGA_HBLANK_START: u32 = 220;
 
+// EGA display field can be calculated via the maximum programmed value in 
+// H0 of 91. 91+2*8 = 744.  VertialTotal 364   744x364 = 270816 * 60Hz = 16,248,960
 
+const EGA_MAX_RASTER_X: u32 = 744;    // Maximum scanline width
+const EGA_MAX_RASTER_Y: u32 = 364;    // Maximum scanline height
+const EGA_APERTURE_EXTENT_X: u32 = 640;
+const EGA_APERTURE_EXTENT_Y: u32 = 350;
+const EGA_APERTURE_CROP_LEFT: u32 = 0;
+const EGA_APERTURE_CROP_TOP: u32 = 0;
+const EGA_MAX_CLOCK: usize = 270816; // Maximum frame clock for EGA (744x364)
+const EGA_MONITOR_VSYNC_MIN: u32 = 0;
+const EGA_HCHAR_CLOCK: u8 = 8;
 
 const CGA_HBLANK: f64 = 0.1785714;
 
@@ -199,21 +227,172 @@ pub struct EGAFont {
     data: &'static [u8]
 }
 
+const CGA_PALETTES: [[u8; 4]; 6] = [
+    [0, 2, 4, 6],       // Red / Green / Brown
+    [0, 10, 12, 14],    // Red / Green / Brown High Intensity
+    [0, 3, 5, 7],       // Cyan / Magenta / White
+    [0, 11, 13, 15],    // Cyan / Magenta / White High Intensity
+    [0, 3, 4, 7],       // Red / Cyan / White
+    [0, 11, 12, 15],    // Red / Cyan / White High Intensity
+];
+
+pub enum EgaDefaultColor {
+    Black = 0,
+    Blue = 1,
+    Green = 2,
+    Cyan = 3,
+    Red = 4,
+    Magenta = 5,
+    Brown = 6,
+    White = 7,
+    BlackBright = 8,
+    BlueBright = 9,
+    GreenBright = 10,
+    CyanBright = 11,
+    RedBright = 12,
+    MagentaBright = 13,
+    Yellow = 14,
+    WhiteBright = 15
+}
+
+const EGA_DEBUG_COLOR: u8 = EgaDefaultColor::Magenta as u8;
+const EGA_HBLANK_COLOR: u8 = 0;
+const EGA_HBLANK_DEBUG_COLOR: u8 = 1;
+const EGA_VBLANK_COLOR: u8 = 0;
+const EGA_VBLANK_DEBUG_COLOR: u8 = 14;
+const EGA_DISABLE_COLOR: u8 = 0;
+const EGA_DISABLE_DEBUG_COLOR: u8 = 2;
+const EGA_OVERSCAN_COLOR: u8 = 5;
+
+const EGA_PALETTE: [u32; 64] = [
+    0x000000, // 000 000
+    0x0000AA, // 000 001 
+    0x00AA00, // 000 010 
+    0x00AAAA, // 000 011 
+    0xAA0000, // 000 100 
+    0xAA00AA, // 000 101 
+    0xAAAA00, // 000 110 
+    0xAAAAAA, // 000 111 
+    0x000055, // 001 000 
+    0x0000FF, // 001 001 
+    0x00AA55, // 001 010 
+    0x00AAFF, // 001 011 
+    0xAA0055, // 001 100 
+    0xAA00FF, // 001 101 
+    0xAAAA55, // 001 110 
+    0xAAAAFF, // 001 111 
+    0x005500, // 010 000 
+    0x0055AA, // 010 001 
+    0x00FF00, // 010 010 
+    0x00FFAA, // 010 011 
+    0xAA5500, // 010 100 
+    0xAA55AA, // 010 101 
+    0xAAFF00, // 010 110 
+    0xAAFFAA, // 010 111 
+    0x005555, // 011 000 
+    0x0055FF, // 011 001 
+    0x00FF55, // 011 010 
+    0x00FFFF, // 011 011 
+    0xAA5555, // 011 100 
+    0xAA55FF, // 011 101 
+    0xAAFF55, // 011 110 
+    0xAAFFFF, // 011 111 
+    0x550000, // 100 000 
+    0x5500AA, // 100 001 
+    0x55AA00, // 100 010 
+    0x55AAAA, // 100 011 
+    0xFF0000, // 100 100 
+    0xFF00AA, // 100 101 
+    0xFFAA00, // 100 110 
+    0xFFAAAA, // 100 111 
+    0x550055, // 101 000 
+    0x5500FF, // 101 001 
+    0x55AA55, // 101 010 
+    0x55AAFF, // 101 011 
+    0xFF0055, // 101 100 
+    0xFF00FF, // 101 101 
+    0xFFAA55, // 101 110 
+    0xFFAAFF, // 101 111 
+    0x555500, // 110 000 
+    0x5555AA, // 110 001 
+    0x55FF00, // 110 010 
+    0x55FFAA, // 110 011 
+    0xFF5500, // 110 100 
+    0xFF55AA, // 110 101 
+    0xFFFF00, // 110 110 
+    0xFFFFAA, // 110 111 
+    0x555555, // 111 000 
+    0x5555FF, // 111 001 
+    0x55FF55, // 111 010 
+    0x55FFFF, // 111 011 
+    0xFF5555, // 111 100 
+    0xFF55FF, // 111 101 
+    0xFFFF55, // 111 110 
+    0xFFFFFF, // 111 111 
+];
+
+// Solid color spans of 8 pixels.
+// Used for drawing overscan fast with bytemuck
+const EGA_COLORS_U64: [u64; 16] = [
+    0x0000000000000000,
+    0x0101010101010101,
+    0x0202020202020202,
+    0x0303030303030303,
+    0x0404040404040404,
+    0x0505050505050505,
+    0x0606060606060606,
+    0x0707070707070707,
+    0x0808080808080808,
+    0x0909090909090909,
+    0x0A0A0A0A0A0A0A0A,
+    0x0B0B0B0B0B0B0B0B,
+    0x0C0C0C0C0C0C0C0C,
+    0x0D0D0D0D0D0D0D0D,
+    0x0E0E0E0E0E0E0E0E,
+    0x0F0F0F0F0F0F0F0F,
+];
+
+// Solid color spans of 8 pixels.
+// Used for drawing debug info into index buffer.
+const EGA_DEBUG_U64: [u64; 16] = [
+    0x0000000000000000,
+    0x1010101010101010,
+    0x2020202020202020,
+    0x3030303030303030,
+    0x4040404040404040,
+    0x5050505050505050,
+    0x6060606060606060,
+    0x7070707070707070,
+    0x8080808080808080,
+    0x9090909090909090,
+    0xA0A0A0A0A0A0A0A0,
+    0xB0B0B0B0B0B0B0B0,
+    0xC0C0C0C0C0C0C0C0,
+    0xD0D0D0D0D0D0D0D0,
+    0xE0E0E0E0E0E0E0E0,
+    0xF0F0F0F0F0F0F0F0,
+];
+
+const EGA_FONT_SPAN: usize = 256;
+
 static EGA_FONTS: [EGAFont; 2] = [
     EGAFont {
         w: 8,
         h: 8,
-        span: 256,
+        span: EGA_FONT_SPAN,
         data: include_bytes!("../../../../assets/ega_8by8.bin"),
         
     },
     EGAFont {
         w: 8,
         h: 14,
-        span: 256,
+        span: EGA_FONT_SPAN,
         data: include_bytes!("../../../../assets/ega_8by14.bin"),
     }
 ];
+
+const EGA_FONT8: &'static [u8] = include_bytes!("../../../../assets/ega_8by8.bin");
+const EGA_FONT14: &'static [u8] = include_bytes!("../../../../assets/ega_8by14.bin");
 
 #[derive (Clone)]
 pub struct DisplayPlane {
@@ -232,8 +411,15 @@ impl DisplayPlane {
 
 pub struct EGACard {
 
+    ticks_accum: f64,
+    char_clock: u32,
+    clock_mode: ClockingMode,
+    clock_divisor: u32,
+    cycles: u64,
+    debug: bool,
+    trace_logger: TraceLogger,
+
     timings: [VideoTimings; 2],
-    extents: DisplayExtents,
     io_adjust: u16,
     mode_byte: u8,
     display_mode: DisplayMode,
@@ -245,12 +431,34 @@ pub struct EGACard {
     mode_hires_txt: bool,
     mode_blinking: bool,
     scanline: u32,
+    frame: u64,
     scanline_cycles: f32,
     frame_cycles: f32,
     cursor_frames: u32,
-    in_hblank: bool,
-    in_vblank: bool,
-    
+
+    raster_x: u32,
+    raster_y: u32,
+
+    cur_char: u8,                   // Current character being drawn
+    cur_attr: u8,                   // Current attribute byte being drawn
+    cur_fg: u8,                     // Current glyph fg color
+    cur_bg: u8,                     // Current glyph bg color
+    cur_blink: bool,                // Current glyph blink attribute
+    cur_blink_state: bool,
+    char_col: u8,                   // Column of character glyph being drawn
+    hcc: u8,                     // Horizontal character counter (x pos of character)
+    vlc: u8,                     // Vertical line counter - row of character being drawn
+    vcc: u8,                     // Vertical character counter (y pos of character)
+    //vsc_c3h: u8,                    // Vertical sync counter - counts during vsync period
+    hslc: u16,
+    hsc_c3l: u8,                    // Horizontal sync counter - counts during hsync period
+    vtac_c5: u8,
+    in_vta: bool,
+    effective_vta: u8,
+    vma: usize,                     // VMA register - Video memory address
+    vma_t: usize,                   // VMA' register - Video memory address temporary
+    vmws: usize,                    // Video memory word size
+
     cursor_status: bool,
     cursor_slowblink: bool,
     cursor_blink_rate: f64,
@@ -280,6 +488,7 @@ pub struct EGACard {
     crtc_start_address_ho: u8,              // R(C)
     crtc_start_address_lo: u8,              // R(D)
     crtc_start_address: u16,                // Calculated from C&D
+    crtc_frame_address: usize,
     crtc_cursor_address_lo: u8,             // R(E)
     crtc_cursor_address_ho: u8,             // R(F)
     crtc_vertical_retrace_start: u16,       // R(10) Vertical Retrace Start (9-bit value)
@@ -289,9 +498,17 @@ pub struct EGACard {
     crtc_offset: u8,                        // R(13)
     crtc_underline_location: u8,            // R(14)
     crtc_start_vertical_blank: u16,         // R(15) Start Vertical Blank (9-bit value)
-    crtc_end_vertical_blank: u8,            // R(16)
+    crtc_end_vertical_blank: u16,           // R(16)
     crtc_mode_control: u8,                  // R(17)
     crtc_line_compare: u16,                 // R(18) Line Compare (9-bit value)
+
+    crtc_den: bool,
+    crtc_vblank: bool,
+    crtc_hblank: bool,
+    crtc_vborder: bool,
+    crtc_hborder: bool,
+    in_display_area: bool,
+    in_last_vblank_line: bool,
 
     sequencer_address_byte: u8,
     sequencer_register_selected: SequencerRegister,
@@ -332,9 +549,25 @@ pub struct EGACard {
     planes: [DisplayPlane; 4],
     pixel_buf: [u8; 8],
     pipeline_buf: [u8; 4],
-    write_buf: [u8; 4]
-}
+    write_buf: [u8; 4],
 
+    // Direct display buffer stuff
+    back_buf: usize,
+    front_buf: usize,
+    extents: DisplayExtents,
+    //buf: Vec<Vec<u8>>,
+    buf: [Box<[u8; EGA_MAX_CLOCK]>; 2],  
+    rba: usize,
+
+    // Debug colors
+    hblank_color: u8,
+    vblank_color: u8,
+    disable_color: u8,    
+
+    // Stat counters
+    hsync_ct: u64,
+    vsync_ct: u64,
+}
 
 #[bitfield]
 #[derive (Copy, Clone) ]
@@ -384,117 +617,17 @@ pub enum RetracePolarity {
     Negative
 }
 
-impl IoDevice for EGACard {
-    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
-        match port {
-            INPUT_STATUS_REGISTER_0 => {
-                self.read_input_status_register_0()
-            }
-            INPUT_STATUS_REGISTER_1 => {
-                // Don't answer this port if we are in MDA compatibility mode
-                match self.misc_output_register.io_address_select() {
-                    IoAddressSelect::CompatMonochrome => 0xFF, 
-                    IoAddressSelect::CompatCGA => self.read_input_status_register_1()
-                }
-            }            
-            INPUT_STATUS_REGISTER_1_MDA => {
-                // Don't respond on this port if we are in CGA compatibility mode
-                match self.misc_output_register.io_address_select() {
-                    IoAddressSelect::CompatMonochrome => self.read_input_status_register_1(), 
-                    IoAddressSelect::CompatCGA => 0xFF
-                }                
-            }       
-            //MODE_CONTROL_REGISTER => {
-            //    log::error!("Read from write-only mode control register");
-            //    0
-            //}            
-            CRTC_REGISTER => {
-                // Don't answer this port if we are in MDA compatibility mode
-                match self.misc_output_register.io_address_select() {
-                    IoAddressSelect::CompatMonochrome => 0xFF, 
-                    IoAddressSelect::CompatCGA => self.read_input_status_register_1()
-                }
-            }
-            CRTC_REGISTER_MDA => {
-                // Don't respond on this port if we are in CGA compatibility mode
-                match self.misc_output_register.io_address_select() {
-                    IoAddressSelect::CompatMonochrome => self.read_crtc_register(), 
-                    IoAddressSelect::CompatCGA => 0xFF
-                }                 
-            }
-            _ => {
-                0xFF // Open bus
-            }
-        }
-    }
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
-        match port {
-            MISC_OUTPUT_REGISTER => {
-                self.write_external_misc_output_register(data);
-            }
-            //MODE_CONTROL_REGISTER => {
-            //    self.handle_mode_register(data);
-            //}
-            CRTC_REGISTER_ADDRESS => {
-                self.write_crtc_register_address(data);
-            }
-            CRTC_REGISTER => {
-                self.write_crtc_register_data(data);
-            }
-            EGA_GRAPHICS_1_POSITION => {
-                self.write_graphics_position(1, data)
-            }
-            EGA_GRAPHICS_2_POSITION => {
-                self.write_graphics_position(2, data)
-            }            
-            EGA_GRAPHICS_ADDRESS => {
-                self.write_graphics_address(data)
-            }
-            EGA_GRAPHICS_DATA => {
-                self.write_graphics_data(data);
-            }
-            SEQUENCER_ADDRESS_REGISTER => {
-                self.write_sequencer_address(data)
-            }
-            SEQUENCER_DATA_REGISTER => {
-                self.write_sequencer_data(data)
-            }
-            ATTRIBUTE_REGISTER | ATTRIBUTE_REGISTER_ALT => {
-                self.write_attribute_register(data)
-            }
-            //COLOR_CONTROL_REGISTER => {
-            //    self.handle_cc_register_write(data);
-            //}
-            _ => {}
-        }
-    }
+impl Default for EGACard {
+    fn default() -> Self {
 
-    fn port_list(&self) -> Vec<u16> {
-        vec![
-            ATTRIBUTE_REGISTER,
-            ATTRIBUTE_REGISTER_ALT,
-            MISC_OUTPUT_REGISTER,
-            INPUT_STATUS_REGISTER_0,
-            INPUT_STATUS_REGISTER_1,
-            INPUT_STATUS_REGISTER_1_MDA,
-            SEQUENCER_ADDRESS_REGISTER,
-            SEQUENCER_DATA_REGISTER,
-            CRTC_REGISTER_ADDRESS,
-            CRTC_REGISTER,    
-            CRTC_REGISTER_ADDRESS_MDA,
-            CRTC_REGISTER_MDA,
-            EGA_GRAPHICS_1_POSITION,
-            EGA_GRAPHICS_2_POSITION,
-            EGA_GRAPHICS_ADDRESS,
-            EGA_GRAPHICS_DATA
-        ]
-    }
-}
-
-impl EGACard {
-
-    pub fn new() -> Self {
         Self {
+            ticks_accum: 0.0,
+            char_clock: 8,
+            clock_divisor: 1,
+            clock_mode: ClockingMode::Cycle,
+            cycles: 0,
+            debug: false,
+            trace_logger: TraceLogger::None,
 
             timings: [
                 VideoTimings {
@@ -510,7 +643,6 @@ impl EGACard {
                     hblank_start: EGA_HBLANK_START,
                 }
             ],
-            extents: Default::default(),
             io_adjust: 0,
             mode_byte: 0,
             display_mode: DisplayMode::Mode3TextCo80,
@@ -524,9 +656,31 @@ impl EGACard {
             frame_cycles: 0.0,
             cursor_frames: 0,
             scanline: 0,
+            frame: 0,
             scanline_cycles: 0.0,
-            in_hblank: false,
-            in_vblank: false,
+
+            raster_x: 0,
+            raster_y: 0,
+
+            cur_char: 0,                   // Current character being drawn
+            cur_attr: 0,                   // Current attribute byte being drawn
+            cur_fg: 0,                     // Current glyph fg color
+            cur_bg: 0,                     // Current glyph bg color
+            cur_blink: false,              // Current glyph blink attribute
+            cur_blink_state: false,
+            char_col: 0,                   // Column of character glyph being drawn
+            hcc: 0,                     // Horizontal character counter (x pos of character)
+            vlc: 0,                     // Vertical line counter - row of character being drawn
+            vcc: 0,                     // Vertical character counter (y pos of character)
+            //vsc_c3h: 0,                    // Vertical sync counter - counts during vsync period
+            hslc: 0,                       // EGA - horizontal scanline counter
+            hsc_c3l: 0,                    // Horizontal sync counter - counts during hsync period
+            vtac_c5: 0,
+            in_vta: false,
+            effective_vta: 0,
+            vma: 0,                     // VMA register - Video memory address
+            vma_t: 0,                   // VMA' register - Video memory address temporary
+            vmws: 1,
 
             cursor_status: false,
             cursor_slowblink: false,
@@ -557,6 +711,7 @@ impl EGACard {
             crtc_start_address: 0,
             crtc_start_address_ho: 0,
             crtc_start_address_lo: 0,
+            crtc_frame_address: 0,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
             crtc_vertical_retrace_start: 0,
@@ -569,7 +724,15 @@ impl EGACard {
             crtc_end_vertical_blank: 0,
             crtc_mode_control: 0,
             crtc_line_compare: 0,
-        
+            
+            crtc_den: false,
+            crtc_vblank: false,
+            crtc_hblank: false,
+            crtc_hborder: false,
+            crtc_vborder: false,
+            in_display_area: false,
+            in_last_vblank_line: false,
+
             sequencer_address_byte: 0,
             sequencer_register_selected: SequencerRegister::Reset,
             sequencer_reset: 0,
@@ -614,6 +777,74 @@ impl EGACard {
             pixel_buf: [0; 8],
             pipeline_buf: [0; 4],
             write_buf: [0; 4],
+
+            back_buf: 1,
+            front_buf: 0,
+            extents: EGACard::get_default_extents(),
+            //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
+            
+            // Theoretically, boxed arrays may have some performance advantages over 
+            // vectors due to having a fixed size known by the compiler.  However they 
+            // are a pain to initialize without overflowing the stack.
+            buf: [  
+                vec![0; EGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
+                vec![0; EGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap()
+            ],
+            rba: 0,    
+
+            hblank_color: 0,
+            vblank_color: 0,
+            disable_color: 0,           
+
+            hsync_ct: 0,
+            vsync_ct: 0,
+        }
+    }
+}
+
+impl EGACard {
+    pub fn new(
+        trace_logger: TraceLogger, 
+        clock_mode: ClockingMode,
+        video_frame_debug: bool
+    ) -> Self {
+    
+        let mut ega = Self::default();
+            
+        ega.trace_logger = trace_logger;
+        ega.debug = video_frame_debug;
+        ega.clock_mode = clock_mode;
+    
+        if video_frame_debug {
+            ega.extents.aperture_w = EGA_MAX_RASTER_X;
+            ega.extents.aperture_h = EGA_MAX_RASTER_Y;
+            ega.extents.aperture_x = 0;
+            ega.extents.aperture_y = 0;       
+            ega.vblank_color = EGA_VBLANK_DEBUG_COLOR;
+            ega.hblank_color = EGA_HBLANK_DEBUG_COLOR;
+            ega.disable_color = EGA_DISABLE_DEBUG_COLOR;
+        }
+
+        ega
+    }
+
+    fn get_default_extents() -> DisplayExtents {
+        DisplayExtents {
+            field_w: EGA_MAX_RASTER_X,
+            field_h: EGA_MAX_RASTER_Y,
+            aperture_w: EGA_APERTURE_EXTENT_X,
+            aperture_h: EGA_APERTURE_EXTENT_Y,
+            aperture_x: EGA_APERTURE_CROP_LEFT,
+            aperture_y: EGA_APERTURE_CROP_TOP,
+            visible_w: 0,
+            visible_h: 0,
+            overscan_l: 0,
+            overscan_r: 0,
+            overscan_t: 0,
+            overscan_b: 0,
+            row_stride: EGA_MAX_RASTER_X as usize,
+    
+            mode_byte: 0
         }
     }
 
@@ -631,8 +862,6 @@ impl EGACard {
         self.cursor_frames = 0;
         self.scanline = 0;
         self.scanline_cycles = 0.0;
-        self.in_hblank = false;
-        self.in_vblank = false;
 
         self.cursor_status = false;
         self.cursor_slowblink = false;
@@ -715,7 +944,7 @@ impl EGACard {
         byte |= switch_status << 4;
 
         // Set CRT interrupt bit. Bit is 0 when retrace is occurring.
-        byte |= match self.in_vblank {
+        byte |= match self.crtc_vblank {
             true => 0,
             false => 0x80
         };
@@ -736,11 +965,17 @@ impl EGACard {
         let mut byte = 0;
 
         // Display Enable NOT bit is set to 1 if display is in vsync or hsync period
-        // Note: IBM's documentation on this bit is wrong. 
-        if self.in_hblank || self.in_vblank {
+        // TODO: Some references specifically mention this as HBLANK or VBLANK,
+        // but on the CGA is is actually not in active display area, which is different.
+        // Which way is it really on the EGA?
+
+        // The IBM EGA bios sets up a very wide border area during its HBLANK count test.
+        // The implication there is that we can poll for !DEN not HBLANK.
+        //if self.crtc_hblank || self.crtc_vblank {
+        if !self.crtc_den {
             byte |= 0x01;
         }
-        if self.in_vblank {
+        if self.crtc_vblank {
             byte |= 0x08;
         }
 
@@ -751,9 +986,9 @@ impl EGACard {
         // The EGA BIOS performs a diagnostic that senses these line transitions after
         // drawing a line of high-intensity white characters to the screen. 
         // Currently, we just fake this whole affair by setting the bits to be on during 
-        // the first FONT_HEIGHT scanlines.
+        // the first few scanlines.
 
-        if self.scanline < EGA_FONTS[self.current_font].h {
+        if self.hslc < 9 as u16 {
             byte |= 0x30;
         }
         
@@ -819,24 +1054,33 @@ impl EGACard {
 
         match self.graphics_micellaneous.memory_map() {
             MemoryMap::A0000_128k => {
-                if address >= EGA_GFX_ADDRESS && address < EGA_GFX_ADDRESS + 128_000 {
-                    return Some(address - EGA_GFX_ADDRESS);
+                if let EGA_MEM_ADDRESS..=EGA_MEM_END_128 = address {
+                    // 128k aperture is usually used with chain odd/even mode.
+                    if self.graphics_micellaneous.chain_odd_even() == true {
+                        // Just return the shifted address. We'll use logic elsewhere to determine plane.
+                        return Some(((address - EGA_MEM_ADDRESS) >> 1) & 0xFFFF);
+                    }
+                    else {
+                        // Not sure what to do in this case if we're out of bounds of a 64k plane.
+                        // So just mask it to 64k for now.
+                        return Some((address - EGA_MEM_ADDRESS) & 0xFFFF);
+                    }
                 }
                 else {
                     return None;
                 }
             }
             MemoryMap::A0000_64K => {
-                if address >= EGA_GFX_ADDRESS && address < EGA_GFX_ADDRESS + 64_000 {
-                    return Some(address - EGA_GFX_ADDRESS);
+                if let EGA_MEM_ADDRESS..=EGA_MEM_END_64 = address {
+                    return Some(address - EGA_MEM_ADDRESS);
                 }
                 else {
                     return None;
                 }
             }
             MemoryMap::B8000_32K => {
-                if address >= CGA_ADDRESS && address < CGA_ADDRESS + 32_000 {
-                    return Some(address - CGA_ADDRESS)
+                if let CGA_MEM_ADDRESS..=CGA_MEM_END = address {
+                    return Some(address - CGA_MEM_ADDRESS)
                 }
                 else {
                     return None;
@@ -917,6 +1161,368 @@ impl EGACard {
         byte
     }   
 
+    fn tick(&mut self, ticks: f64) {
+
+        self.ticks_accum += ticks;
+
+        while self.ticks_accum > self.char_clock as f64 {
+            match self.sequencer_clocking_mode.dot_clock() {
+                DotClock::Native => self.tick_hchar(),
+                DotClock::HalfClock => self.tick_lchar(),
+            }
+            self.ticks_accum -= self.char_clock as f64;
+        }
+    }
+
+    fn tick_hchar(&mut self) {
+        assert_eq!(self.cycles & 0x07, 0);
+        assert_eq!(self.char_clock, 8);        
+
+        self.cycles += 8;
+
+        // Only draw if render buffer address is in bounds.
+        if self.rba < (EGA_MAX_CLOCK - 8) {
+            if self.in_display_area {
+                // Draw current character row
+                if !self.mode_graphics {
+                    //self.draw_solid_hchar(EgaDefaultColor::Red as u8);
+                    self.draw_text_mode_hchar14();
+                }
+                else {
+                    self.draw_solid_hchar(0);
+                }
+            }
+            else if self.crtc_hblank {
+                // Draw hblank in debug color
+                self.draw_solid_hchar(EgaDefaultColor::BlueBright as u8);
+            }
+            else if self.crtc_vblank {
+                // Draw vblank in debug color
+                self.draw_solid_hchar(EgaDefaultColor::Magenta as u8);
+            }
+            else if self.crtc_vborder | self.crtc_hborder {
+                // Draw overscan
+                if self.debug {
+                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    self.draw_solid_hchar(EgaDefaultColor::Green as u8);
+                }
+                else {
+                    self.draw_solid_hchar(0);
+                }
+            }
+            else {
+                //self.draw_solid_hchar(CGA_DEBUG2_COLOR);
+                //log::warn!("invalid display state...");
+                //self.dump_status();
+                //panic!("invalid display state...");
+            }
+        }
+
+        // Update position to next pixel and character column.
+        self.raster_x += 8 * self.clock_divisor as u32;
+        self.rba += 8 * self.clock_divisor as usize;
+
+        // If we have reached the right edge of the 'monitor', return the raster position
+        // to the left side of the screen.
+        if self.raster_x >= EGA_MAX_RASTER_X {
+            self.raster_x = 0;
+            self.raster_y += 1;
+            //self.in_monitor_hsync = false;
+            self.rba = (EGA_MAX_RASTER_X * self.raster_y) as usize;
+        }
+
+        /*
+        if self.cycles & self.char_clock_mask != 0 {
+            log::error!("tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+        } 
+        */ 
+        self.draw_debug_hchar_at((EGA_MAX_CLOCK / 2) - 8, EgaDefaultColor::Yellow as u8);
+        self.draw_debug_hchar_at(EGA_MAX_CLOCK - 8, EgaDefaultColor::MagentaBright as u8);
+        self.tick_crtc_char();
+        //self.update_clock();        
+    }
+
+    fn tick_lchar(&mut self) {
+        //assert_eq!(self.cycles & 0x0F, 0);
+        assert_eq!(self.char_clock, 16);        
+
+        self.cycles += 8;
+
+        // Only draw if render buffer address is in bounds.
+        if self.rba < (EGA_MAX_CLOCK - 8) {
+            if self.in_display_area {
+                // Draw current character row
+                if !self.mode_graphics {
+                    //self.draw_solid_hchar(EgaDefaultColor::Red as u8);
+                    self.draw_text_mode_lchar14();
+                }
+                else {
+                    self.draw_solid_lchar(0);
+                }
+            }
+            else if self.crtc_hblank {
+                // Draw hblank in debug color
+                self.draw_solid_lchar(EgaDefaultColor::BlueBright as u8);
+            }
+            else if self.crtc_vblank {
+                // Draw vblank in debug color
+                self.draw_solid_lchar(EgaDefaultColor::Magenta as u8);
+            }
+            else if self.crtc_vborder | self.crtc_hborder {
+                // Draw overscan
+                if self.debug {
+                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
+                    self.draw_solid_lchar(EgaDefaultColor::Green as u8);
+                }
+                else {
+                    self.draw_solid_lchar(0);
+                }
+            }
+            else {
+                //self.draw_solid_hchar(CGA_DEBUG2_COLOR);
+                //log::warn!("invalid display state...");
+                //self.dump_status();
+                //panic!("invalid display state...");
+            }
+        }
+
+        // Update position to next pixel and character column.
+        self.raster_x += 8 * self.clock_divisor as u32;
+        self.rba += 8 * self.clock_divisor as usize;
+
+        // If we have reached the right edge of the 'monitor', return the raster position
+        // to the left side of the screen.
+        if self.raster_x >= EGA_MAX_RASTER_X {
+            self.raster_x = 0;
+            self.raster_y += 1;
+            //self.in_monitor_hsync = false;
+            self.rba = (EGA_MAX_RASTER_X * self.raster_y) as usize;
+        }
+
+        /*
+        if self.cycles & self.char_clock_mask != 0 {
+            log::error!("tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+        } 
+        */ 
+        self.draw_debug_hchar_at((EGA_MAX_CLOCK / 2) - 8, EgaDefaultColor::Yellow as u8);
+        self.draw_debug_hchar_at(EGA_MAX_CLOCK - 8, EgaDefaultColor::MagentaBright as u8);
+        self.tick_crtc_char();
+        //self.update_clock();        
+    }
+
+
+    /// Draw a character in hires mode (8 pixels) using a single solid color.
+    /// Since all pixels are the same we can draw 64 bits at a time.
+    #[inline]
+    pub fn draw_solid_hchar(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[self.rba >> 3] = EGA_COLORS_U64[(color & 0x0F) as usize];
+    }
+
+    pub fn draw_debug_hchar_at(&mut self, addr: usize, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[addr >> 3] = EGA_COLORS_U64[(color & 0x0F) as usize];
+    }
+
+    /// Draw a character in lowres mode (16 pixels) using a single solid color.
+    /// Since all pixels are the same we can draw 64 bits at a time.
+    #[inline]
+    pub fn draw_solid_lchar(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[self.rba >> 3] = EGA_COLORS_U64[(color & 0x0F) as usize];
+        frame_u64[(self.rba >> 3) + 1] = EGA_COLORS_U64[(color & 0x0F) as usize];
+    }  
+
+    /// Draw an entire character row in high resolution text mode (8 pixels)
+    pub fn draw_text_mode_hchar14(&mut self) {
+
+        /* 
+        // Do cursor if visible, enabled and defined
+        if     self.vma == self.crtc_cursor_address
+            && self.cursor_status 
+            && self.blink_state
+            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize] 
+        {
+            self.draw_solid_hchar(self.cur_fg);
+        }
+        else 
+        */
+        
+        if self.mode_enable {
+
+            let glyph_row: u64;
+            // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
+            glyph_row = self.get_hchar_glyph14_row(self.cur_char as usize, self.vlc as usize);
+    
+            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+            frame_u64[self.rba >> 3] = glyph_row;
+        }
+        else {
+            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
+            self.draw_solid_hchar(EgaDefaultColor::Brown as u8);
+        }
+    }
+
+    /// Draw an entire character row in low resolution text mode (16 pixels)
+    pub fn draw_text_mode_lchar14(&mut self) {
+
+        //let draw_span = (8 * self.clock_divisor) as usize;
+
+        /*
+        // Do cursor if visible, enabled and defined
+        if     self.vma == self.crtc_cursor_address
+            && self.cursor_status 
+            && self.blink_state
+            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize] 
+        {
+            self.draw_solid_lchar(self.cur_fg);
+        }
+        else 
+        */
+        if self.mode_enable {
+            // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
+            let (glyph_row0, glyph_row1) = self.get_lchar_glyph14_rows(self.cur_char as usize, self.vlc as usize);
+    
+            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+            frame_u64[self.rba >> 3] = glyph_row0;
+            frame_u64[(self.rba >> 3) + 1] = glyph_row1;
+        }
+        else {
+            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
+            self.draw_solid_lchar(0);
+        }
+    }
+
+    /// Get the 64-bit value representing the specified row of the specified character 
+    /// glyph in high-resolution text mode.
+    #[inline]
+    pub fn get_hchar_glyph14_row(&self, glyph: usize, row: usize) -> u64 {
+
+        if self.cur_blink && !self.cur_blink_state {
+            EGA_COLORS_U64[self.cur_bg as usize]
+        }
+        else {
+            let glyph_row_base = EGA_HIRES_GLYPH14_TABLE[glyph & 0xFF][row];
+
+            // Combine glyph mask with foreground and background colors.
+            glyph_row_base & EGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base & EGA_COLORS_U64[self.cur_bg as usize]
+        }
+    }
+
+    /// Get a tuple of 64-bit values representing the specified row of the specified character
+    /// glyph in low-resolution (40-column) mode.
+    #[inline]
+    pub fn get_lchar_glyph14_rows(&self, glyph: usize, row: usize) -> (u64, u64) {
+
+        if self.cur_blink && !self.cur_blink_state {
+            let glyph = EGA_COLORS_U64[self.cur_bg as usize];
+            (glyph, glyph)
+        }
+        else {
+            let glyph_row_base_0 = EGA_LOWRES_GLYPH14_TABLE[glyph & 0xFF][0][row];
+            let glyph_row_base_1 = EGA_LOWRES_GLYPH14_TABLE[glyph & 0xFF][1][row];
+
+            // Combine glyph mask with foreground and background colors.
+            let glyph0 = glyph_row_base_0 & EGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base_0 & EGA_COLORS_U64[self.cur_bg as usize];
+            let glyph1 = glyph_row_base_1 & EGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base_1 & EGA_COLORS_U64[self.cur_bg as usize];
+
+            (glyph0, glyph1)
+        }
+    }
+
+    pub fn do_vsync(&mut self) {
+
+        /* 
+        self.cycles_per_vsync = self.cur_screen_cycles;
+        self.cur_screen_cycles = 0;
+        self.last_vsync_cycles = self.cycles;
+
+        if self.cycles_per_vsync > 300000 {
+            log::warn!(
+                "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}", 
+                self.char_clock,
+                self.cycles_per_vsync, 
+                self.beam_y
+            );
+        }
+        */
+
+        // Only do a vsync if we are past the minimum scanline #.
+        // A monitor will refuse to vsync too quickly.
+        if self.raster_y > EGA_MONITOR_VSYNC_MIN {
+
+            // vblank remains set through the entire last line, including the right overscan of the new screen.
+            // So we need to delay resetting vblank flag until then.
+            //self.in_crtc_vblank = false;
+            
+            /* 
+            if self.beam_y > 258 && self.beam_y < 262 {
+                // This is a "short" frame. Calculate delta.
+                let delta_y = 262 - self.beam_y;
+                
+                //self.sink_cycles = delta_y * 912;
+
+                if self.cycles & self.char_clock_mask != 0 {
+                    log::error!("vsync out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+                }
+                //log::trace!("sink_cycles: {}", self.sink_cycles);
+            }*/
+
+            self.vsync_ct += 1;
+            self.raster_x = 0;
+            self.raster_y = 0;
+            self.rba = 0;
+            // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
+
+            // Width is total characters * character width * clock_divisor.
+            // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
+            self.extents.visible_w = 
+                (self.crtc_horizontal_total + 2) as u32 * EGA_HCHAR_CLOCK as u32 * self.clock_divisor as u32;
+
+            //trace_regs!(self);
+            //trace!(self, "Leaving vsync and flipping buffers");
+
+            //self.hslc = 0;
+            self.scanline = 0;
+            self.frame += 1;
+
+            // Save the current mode byte, used for composite rendering. 
+            // The mode could have changed several times per frame, but I am not sure how the composite rendering should 
+            // really handle that...
+            self.extents.mode_byte = self.mode_byte;
+
+            // Swap the display buffers
+            self.swap();   
+        }
+    }
+
+    /// Swaps the front and back buffers by exchanging indices.
+    fn swap(&mut self) {
+
+        //std::mem::swap(&mut self.back_buf, &mut self.front_buf);
+        
+        if self.back_buf == 0 {
+            self.front_buf = 0;
+            self.back_buf = 1;
+        }
+        else {
+            self.front_buf = 1;
+            self.back_buf = 0;
+        }
+        
+        self.buf[self.back_buf].fill(0);
+    }   
+
+    fn ega_to_rgb(egacolor: u8) -> (u8, u8, u8) {
+        // EGA color components are 2 bits each
+        let i = egacolor as usize;
+        let r = (EGA_PALETTE[i] >> 16) as u8;
+        let g = (EGA_PALETTE[i] >> 8) as u8;
+        let b = EGA_PALETTE[i] as u8;
+
+        (r, g, b)
+    }
+
     /* 
     fn handle_mode_register(&mut self, mode_byte: u8) {
 
@@ -985,760 +1591,13 @@ impl EGACard {
 
 }
 
-impl VideoCard for EGACard {
-
-    fn get_sync(&self) -> (bool, bool, bool, bool) {
-        (false, false, false, false)
-    }
-
-    fn set_video_option(&mut self, opt: VideoOption) {
-        // No options implemented
-    }
-
-    fn get_video_type(&self) -> VideoType {
-        VideoType::EGA
-    }
-
-    fn get_render_mode(&self) -> RenderMode {
-        RenderMode::Indirect
-    }
-
-    fn get_display_mode(&self) -> DisplayMode {
-        self.display_mode
-    }
-
-    fn set_clocking_mode(&mut self, mode: ClockingMode) {
-        // not implemented
-    }
-
-    fn get_display_size(&self) -> (u32, u32) {
-
-        // EGA supports multiple fonts.
-
-        let font_w = EGA_FONTS[self.current_font].w;
-        let _font_h = EGA_FONTS[self.current_font].h;
-
-        // Clock divisor effectively doubles the CRTC register values
-        let _clock_divisor = match self.sequencer_clocking_mode.dot_clock() {
-            DotClock::Native => 1,
-            DotClock::HalfClock => 2
-        };
-
-        //let width = (self.crtc_horizontal_display_end as u32 + 1) * clock_divisor * font_w as u32;
-        let width = (self.crtc_horizontal_display_end as u32 + 1) * font_w as u32;
-        let height = self.crtc_vertical_display_end as u32 + 1;
-        (width, height)
-    }
-
-    /// Unimplemented for indirect rendering.
-    fn get_display_extents(&self) -> &DisplayExtents {
-        &self.extents
-    }
-
-    /// Unimplemented for indirect rendering.
-    fn get_beam_pos(&self) -> Option<(u32, u32)> {
-        None
-    }
-
-    /// Unimplemented
-    fn debug_tick(&mut self, ticks: u32) {
-    }
-
-    /// Get the current scanline being rendered.
-    fn get_scanline(&self) -> u32 {
-        0
-    }
-
-    /// Return whether to double scanlines produced by this adapter.
-    /// For EGA, this is false.
-    fn get_scanline_double(&self) -> bool {
-        false
-    }
-
-    /// Unimplemented for indirect rendering.
-    fn get_display_buf(&self) -> &[u8] {
-        &[0]
-    }
-
-    /// Unimplemented for indirect rendering.
-    fn get_back_buf(&self) -> &[u8] {
-        &[0]
-    }      
-    
-    /// Unimplemented for indirect rendering.
-    fn get_display_aperture(&self) -> (u32, u32) {
-        (0, 0)
-    }
-
-    fn get_overscan_color(&self) -> u8 {
-        0
-    }
-
-    /// Return the current refresh rate.
-    /// TODO: Handle VGA 70Hz modes.
-    fn get_refresh_rate(&self) -> u32 {
-        60
-    }
-
-    fn get_clock_divisor(&self) -> u32 {
-        match self.sequencer_clocking_mode.dot_clock() {
-            DotClock::Native => 1,
-            DotClock::HalfClock => 2
-        }
-    }
-
-    fn is_40_columns(&self) -> bool {
-        match self.display_mode {
-            DisplayMode::Mode0TextBw40 => true,
-            DisplayMode::Mode1TextCo40 => true,
-            DisplayMode::Mode4LowResGraphics => true,
-            DisplayMode::Mode5LowResAltPalette => true,
-            _=> false
-        }
-    }
-
-    fn is_graphics_mode(&self) -> bool {
-        self.mode_graphics
-    }
-
-    /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
-    fn get_start_address(&self) -> u16 {
-        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
-    }
-
-    fn get_cursor_info(&self) -> CursorInfo {
-        let addr = self.get_cursor_address();
-
-        match self.display_mode {
-            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
-                CursorInfo{
-                    addr: addr as usize,
-                    pos_x: addr % 40,
-                    pos_y: addr / 40,
-                    line_start: self.crtc_cursor_start,
-                    line_end: self.crtc_cursor_end,
-                    visible: self.get_cursor_status()
-                }
-            }
-            DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
-                CursorInfo{
-                    addr: addr as usize,
-                    pos_x: addr % 80,
-                    pos_y: addr / 80,
-                    line_start: self.crtc_cursor_start,
-                    line_end: self.crtc_cursor_end,
-                    visible: self.get_cursor_status()
-                }
-            }
-            _=> {
-                // Not a valid text mode
-                CursorInfo{
-                    addr: 0,
-                    pos_x: 0,
-                    pos_y: 0,
-                    line_start: 0,
-                    line_end: 0,
-                    visible: false
-                }
-            }
-        }
-    }    
-
-    fn get_current_font(&self) -> FontInfo {
-
-        let w = EGA_FONTS[self.current_font].w;
-        let h = EGA_FONTS[self.current_font].h;
-        let data = EGA_FONTS[self.current_font].data;
-
-        FontInfo {
-            w,
-            h,
-            font_data: data
-        }
-    }
-
-    fn get_character_height(&self) -> u8 {
-        self.crtc_maximum_scanline + 1
-    }    
-
-    /// Return the current palette number, intensity attribute bit, and alt color
-    fn get_cga_palette(&self) -> (CGAPalette, bool) {
-
-        let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
-        
-        // Get background color
-        let alt_color = match self.cc_register & 0x0F {
-            0b0000 => CGAColor::Black,
-            0b0001 => CGAColor::Blue,
-            0b0010 => CGAColor::Green,
-            0b0011 => CGAColor::Cyan,
-            0b0100 => CGAColor::Red,
-            0b0101 => CGAColor::Magenta,
-            0b0110 => CGAColor::Brown,
-            0b0111 => CGAColor::White,
-            0b1000 => CGAColor::BlackBright,
-            0b1001 => CGAColor::BlueBright,
-            0b1010 => CGAColor::GreenBright,
-            0b1011 => CGAColor::CyanBright,
-            0b1100 => CGAColor::RedBright,
-            0b1101 => CGAColor::MagentaBright,
-            0b1110 => CGAColor::Yellow,
-            _ => CGAColor::WhiteBright
-        };
-
-        // Are we in high res mode?
-        if self.mode_hires_gfx {
-            return (CGAPalette::Monochrome(alt_color), true); 
-        }
-
-        let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
-            true => CGAPalette::MagentaCyanWhite(alt_color),
-            false => CGAPalette::RedGreenYellow(alt_color)
-        };
-        
-        // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
-        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx { 
-            palette = CGAPalette::RedCyanWhite(alt_color);
-        }
-    
-        (palette, intensity)
-    }    
-
-    #[allow (dead_code)]
-    /// Returns a string representation of all the CRTC Registers.
-    fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
-
-        let mut map = HashMap::new();
-        /*
-        let mut general_vec = Vec::new();
-        general_vec.push((format!("Adapter Type:"), format!("{:?}", self.get_video_type())));
-        general_vec.push((format!("Display Mode:"), format!("{:?}", self.get_display_mode())));
-        map.insert("General".to_string(), general_vec);
-
-        let mut crtc_vec = Vec::new();
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalTotal), format!("{}", self.crtc_horizontal_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::HorizontalDisplayEnd), format!("{}", self.crtc_horizontal_display_end)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartHorizontalBlank), format!("{}", self.crtc_start_horizontal_blank)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::EndHorizontalBlank), 
-            format!("{}", self.crtc_end_horizontal_blank.end_horizontal_blank())));
-        crtc_vec.push((format!("{:?} [des]", CRTCRegister::EndHorizontalBlank), 
-            format!("{}", self.crtc_end_horizontal_blank.display_enable_skew())));            
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartHorizontalRetrace), format!("{}", self.crtc_start_horizontal_retrace)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::EndHorizontalRetrace),
-            format!("{}", self.crtc_end_horizontal_retrace.end_horizontal_retrace())));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalTotal), format!("{}", self.crtc_vertical_total)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::Overflow), format!("{}", self.crtc_overflow)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::PresetRowScan), format!("{}", self.crtc_preset_row_scan)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::MaximumScanLine), format!("{}", self.crtc_maximum_scanline)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorStartLine), format!("{}", self.crtc_cursor_start)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorEndLine), format!("{}", self.crtc_cursor_end)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressH), format!("{}", self.crtc_start_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartAddressL), format!("{}", self.crtc_start_address_lo)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressH), format!("{}", self.crtc_cursor_address_ho)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::CursorAddressL), format!("{}", self.crtc_cursor_address_lo)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalRetraceStart), format!("{}", self.crtc_vertical_retrace_start)));
-
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalRetraceEnd), 
-            format!("{}", self.crtc_vertical_retrace_end.vertical_retrace_end())));
-        crtc_vec.push((format!("{:?} [norm]", CRTCRegister::VerticalRetraceEnd), 
-            format!("{}", self.crtc_vertical_retrace_end_norm)));
-        
-        crtc_vec.push((format!("{:?}", CRTCRegister::VerticalDisplayEnd), format!("{}", self.crtc_vertical_display_end)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::Offset), format!("{}", self.crtc_offset)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::UnderlineLocation), format!("{}", self.crtc_underline_location)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::StartVerticalBlank), format!("{}", self.crtc_start_vertical_blank)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::EndVerticalBlank), format!("{}", self.crtc_end_vertical_blank)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::ModeControl), format!("{}", self.crtc_mode_control)));
-        crtc_vec.push((format!("{:?}", CRTCRegister::LineCompare), format!("{}", self.crtc_line_compare)));
-        map.insert("CRTC".to_string(), crtc_vec);
-
-        let mut external_vec = Vec::new();
-        external_vec.push((format!("Misc Output"), format!("{:08b}", self.misc_output_register.into_bytes()[0])));
-        external_vec.push((format!("Misc Output [ios]"), format!("{:?}", self.misc_output_register.io_address_select())));
-        external_vec.push((format!("Misc Output [er]"), format!("{:?}", self.misc_output_register.enable_ram())));
-        external_vec.push((format!("Misc Output [cs]"), format!("{:?}", self.misc_output_register.clock_select())));
-        external_vec.push((format!("Misc Output [div]"), format!("{:?}", self.misc_output_register.disable_internal_drivers())));
-        external_vec.push((format!("Misc Output [pb]"), format!("{:?}", self.misc_output_register.oddeven_page_select())));
-        external_vec.push((format!("Misc Output [hrp]"), format!("{:?}", self.misc_output_register.horizontal_retrace_polarity())));
-        external_vec.push((format!("Misc Output [vrp]"), format!("{:?}", self.misc_output_register.vertical_retrace_polarity())));
-        map.insert("External".to_string(), external_vec);
-
-        let mut sequencer_vec = Vec::new();
-        sequencer_vec.push((format!("{:?}", SequencerRegister::Reset), format!("{:02b}", self.sequencer_reset)));
-        sequencer_vec.push((format!("{:?}", SequencerRegister::ClockingMode), 
-            format!("{:08b}", self.sequencer_clocking_mode.into_bytes()[0])));           
-        sequencer_vec.push((format!("{:?} [cc]", SequencerRegister::ClockingMode), 
-            format!("{:?}", self.sequencer_clocking_mode.character_clock())));
-        sequencer_vec.push((format!("{:?} [bw]", SequencerRegister::ClockingMode), 
-            format!("{}", self.sequencer_clocking_mode.bandwidth())));
-        sequencer_vec.push((format!("{:?} [sl]", SequencerRegister::ClockingMode), 
-            format!("{}", self.sequencer_clocking_mode.shift_load())));
-        sequencer_vec.push((format!("{:?} [dc]", SequencerRegister::ClockingMode), 
-            format!("{:?}", self.sequencer_clocking_mode.dot_clock())));
-
-        sequencer_vec.push((format!("{:?}", SequencerRegister::MapMask), format!("{:04b}", self.sequencer_map_mask)));
-        sequencer_vec.push((format!("{:?}", SequencerRegister::CharacterMapSelect), format!("{}", self.sequencer_character_map_select)));
-        sequencer_vec.push((format!("{:?}", SequencerRegister::MemoryMode), format!("{}", self.sequencer_memory_mode)));
-        map.insert("Sequencer".to_string(), sequencer_vec);
-
-        let mut graphics_vec = Vec::new();
-        graphics_vec.push((format!("{:?}", GraphicsRegister::SetReset), format!("{:04b}", self.graphics_set_reset)));
-        graphics_vec.push((format!("{:?}", GraphicsRegister::EnableSetReset), format!("{:04b}", self.graphics_enable_set_reset)));
-        graphics_vec.push((format!("{:?}", GraphicsRegister::ColorCompare), format!("{:04b}", self.graphics_color_compare)));
-        graphics_vec.push((format!("{:?} [fn]", GraphicsRegister::DataRotate), 
-            format!("{:?}", self.graphics_data_rotate.function())));
-        graphics_vec.push((format!("{:?} [ct]", GraphicsRegister::DataRotate), 
-            format!("{:?}", self.graphics_data_rotate.count())));              
-        graphics_vec.push((format!("{:?}", GraphicsRegister::ReadMapSelect), format!("{:03b}", self.graphics_read_map_select)));
-
-        graphics_vec.push((format!("{:?} [sr]", GraphicsRegister::Mode), 
-            format!("{:?}", self.graphics_mode.shift_mode())));
-        graphics_vec.push((format!("{:?} [o/e]", GraphicsRegister::Mode), 
-            format!("{:?}", self.graphics_mode.odd_even())));
-        graphics_vec.push((format!("{:?} [rm]", GraphicsRegister::Mode), 
-            format!("{:?}",self.graphics_mode.read_mode())));
-        graphics_vec.push((format!("{:?} [tc]", GraphicsRegister::Mode), 
-            format!("{:?}", self.graphics_mode.test_condition())));
-        graphics_vec.push((format!("{:?} [wm]", GraphicsRegister::Mode), 
-            format!("{:?}", self.graphics_mode.write_mode())));
-
-        graphics_vec.push((format!("{:?} [gm]", GraphicsRegister::Miscellaneous), 
-            format!("{:?}", self.graphics_micellaneous.graphics_mode())));
-        graphics_vec.push((format!("{:?} [com]", GraphicsRegister::Miscellaneous), 
-            format!("{:?}", self.graphics_micellaneous.chain_odd_maps())));
-        graphics_vec.push((format!("{:?} [mm]", GraphicsRegister::Miscellaneous), 
-            format!("{:?}", self.graphics_micellaneous.memory_map())));            
-
-        graphics_vec.push((format!("{:?}", GraphicsRegister::ColorDontCare), format!("{:04b}", self.graphics_color_dont_care)));
-        graphics_vec.push((format!("{:?}", GraphicsRegister::BitMask), format!("{:08b}", self.graphics_bitmask)));
-        map.insert("Graphics".to_string(), graphics_vec);
-
-        let mut attribute_pal_vec = Vec::new();
-        for i in 0..16 {
-            attribute_pal_vec.push((format!("Palette register {}", i), 
-
-                format!("{:06b}", self.attribute_palette_registers[i])
-                /* 
-                format!("{:01b}{:01b}{:01b},{:01b}{:01b}{:01b}", 
-                    self.attribute_palette_registers[i].secondary_red(),
-                    self.attribute_palette_registers[i].secondary_green(),
-                    self.attribute_palette_registers[i].secondary_blue(),
-                    self.attribute_palette_registers[i].red(),
-                    self.attribute_palette_registers[i].green(),
-                    self.attribute_palette_registers[i].blue(),
-                )));
-                */
-            ));
-        }
-        map.insert("AttributePalette".to_string(), attribute_pal_vec);
-
-        let mut attribute_vec = Vec::new();
-        attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.mode())));
-        attribute_vec.push((format!("{:?} disp:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.display_type())));
-        attribute_vec.push((format!("{:?} elgc:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.enable_line_character_codes())));
-        attribute_vec.push((format!("{:?} attr:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.enable_blink_or_intensity())));            
-
-        attribute_vec.push((format!("{:?}", AttributeRegister::OverscanColor), 
-            format!("{:06b}", self.attribute_overscan_color.into_bytes()[0])));
-            
-        attribute_vec.push((format!("{:?} en:", AttributeRegister::ColorPlaneEnable), 
-            format!("{:04b}", self.attribute_color_plane_enable.enable_plane())));           
-        attribute_vec.push((format!("{:?} mux:", AttributeRegister::ColorPlaneEnable), 
-            format!("{:02b}", self.attribute_color_plane_enable.video_status_mux())));                
-        attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), 
-            format!("{}", self.attribute_pel_panning)));     
-        //attribute_overscan_color: AOverscanColor::new(),
-        //attribute_color_plane_enable: AColorPlaneEnable::new(),
-        map.insert("Attribute".to_string(), attribute_vec);
-        */
-        map
-    }
-
-    fn run(&mut self, time: DeviceRunTimeUnit) {
-
-    }
-
-    /*
-    fn run(&mut self, cpu_cycles: u32) {
-
-        self.frame_cycles += cpu_cycles as f32;
-        self.scanline_cycles += cpu_cycles as f32;
-
-        // Select the appropriate timings based on the current clocking mode
-        let ti = match self.misc_output_register.clock_select() {
-            ClockSelect::Clock14 => 0,
-            ClockSelect::Clock16 => 1,
-            _ => 0
-        };
-
-        if self.frame_cycles > self.timings[ti].cpu_frame as f32 {
-            self.frame_cycles -= self.timings[ti].cpu_frame as f32;
-            self.cursor_frames += 1;
-            // Blink the cursor
-            let cursor_cycle = CGA_DEFAULT_CURSOR_FRAME_CYCLE * (self.cursor_slowblink as u32 + 1);
-            if self.cursor_frames > cursor_cycle {
-                self.cursor_frames -= cursor_cycle;
-                self.cursor_status = !self.cursor_status;
-            }
-        }
-
-        // CyclesPerFrame / VerticalTotal = CyclesPerScanline
-        let cpu_scanline = self.timings[ti].cpu_frame as f32 / (self.crtc_vertical_total + 1 ) as f32;
-        
-        while self.scanline_cycles > cpu_scanline {
-            self.scanline_cycles -= cpu_scanline ;
-            if !self.in_vblank {
-                self.scanline += 1;
-            }
-        }
-
-        let hblank_start;
-        let vblank_start;
-
-        // Are we in HBLANK interval?
-        if self.crtc_start_horizontal_retrace > 0 && self.crtc_horizontal_total > 0 {
-            hblank_start = ((self.crtc_start_horizontal_retrace as f32 * 8.0) / (self.crtc_horizontal_total as f32 * 8.0) * cpu_scanline as f32) as u32;
-            self.in_hblank = self.scanline_cycles > hblank_start as f32;
-        }
-        // Are we in VBLANK interval?
-        if self.crtc_start_vertical_blank > 0 && self.crtc_vertical_total > 0 {
-            vblank_start = ((self.crtc_start_vertical_blank as f32 / (self.crtc_vertical_total + 1) as f32) * self.timings[ti].cpu_frame as f32) as u32;
-            self.in_vblank = self.frame_cycles > vblank_start as f32;
-
-            if self.in_vblank {
-                self.scanline = 0;
-            }
-        }
-        //self.in_hblank = self.scanline_cycles > self.timings[ti].hblank_start;
-        // Are we in VBLANK interval?
-        //self.in_vblank = self.frame_cycles > self.timings[ti].vblank_start;
-    }    
-    */
-
-    fn reset(&mut self) {
-        self.reset_private();
-    }
-
-    fn get_pixel(&self, _x: u32, _y: u32 ) -> &[u8] {
-        &DUMMY_PIXEL
-    }
-
-    fn get_pixel_raw(&self, x: u32, y:u32) -> u8 {
-        
-        let mut byte = 0;
-
-        let x_byte_offset = (x + self.attribute_pel_panning as u32) / 8;
-        let x_bit_offset = (x + self.attribute_pel_panning as u32) % 8;
-
-
-        // Get the current width of screen + offset
-        // let span = (self.crtc_horizontal_display_end + 1 + 64) as u32;
-        let span = self.crtc_offset as u32 * 2;
-
-        let y_offset = y * span;
-
-        // The line compare register resets the CRTC Start Address and line counter to 0 at the 
-        // specified scanline. 
-        // If we are above the value in Line Compare calculate the read offset as normal.
-        let read_offset;
-        if y >= self.crtc_line_compare as u32 {
-            read_offset = (((y - self.crtc_line_compare as u32) * span) + x_byte_offset) as usize;
-        }
-        else {
-            read_offset = (y_offset + x_byte_offset + self.crtc_start_address as u32 ) as usize;
-        }
-        
-        if read_offset < self.planes[0].buf.len() {
-
-            for i in 0..4 {
-            
-                let read_byte = self.planes[i].buf[read_offset];
-                let read_bit = match read_byte & (0x01 << (7-x_bit_offset)) != 0 {
-                    true => 1,
-                    false => 0
-                };
-    
-                //byte |= read_bit << (3 - i);
-                byte |= read_bit << i;
-            }
-            // return self.attribute_palette_registers[byte & 0x0F].into_bytes()[0];
-            return self.attribute_palette_registers[byte & 0x0F];
-        }
-        0
-    }
-
-    fn get_plane_slice(&self, plane: usize) -> &[u8] {
-
-        &self.planes[plane].buf
-    }
-
-    fn dump_mem(&self, path: &Path) {
-        
-        for i in 0..4 {
-
-            let mut filename = path.to_path_buf();
-            filename.push(format!("ega_plane{}.bin", i));
-            
-            match std::fs::write(filename.clone(), &self.planes[i].buf) {
-                Ok(_) => {
-                    log::debug!("Wrote memory dump: {}", &filename.display())
-                }
-                Err(e) => {
-                    log::error!("Failed to write memory dump '{}': {}", &filename.display(), e)
-                }
-            }
-        }
-    }
-
-    fn get_frame_count(&self) -> u64 {
-        0
-    }
-
-    fn write_trace_log(&mut self, msg: String) {
-        //self.trace_logger.print(msg);
-    }
-
-    fn trace_flush(&mut self) {
-        //self.trace_logger.print(msg);
-    }
-
-}
-
-impl MemoryMappedDevice for EGACard {
-
-    fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
-        0
-    }
-
-    fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
-        0
-    }
-
-    fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
-
-        // RAM Enable disables memory mapped IO
-        if !self.misc_output_register.enable_ram() {
-            return (0, 0);
-        }
-
-        // Validate address is within current memory map and get the offset
-        let offset = match self.plane_bounds_check(address) {
-            Some(offset) => offset,
-            None => {
-                return (0, 0);
-            }
-        };
-
-        // Load all the latches regardless of selected plane
-        for i in 0..4 {
-            self.planes[i].latch = self.planes[i].buf[offset];
-        }
-
-        // Reads are controlled by the Read Mode bit in the Mode register of the Graphics Controller.
-        match self.graphics_mode.read_mode() {
-            ReadMode::ReadSelectedPlane => {
-                // In Read Mode 0, the processor reads data from the memory plane selected 
-                // by the read map select register.
-                let plane = (self.graphics_read_map_select & 0x03) as usize;
-                let byte = self.planes[plane].buf[offset];
-                return (byte, 0);
-            }
-            ReadMode::ReadComparedPlanes => {
-                // In Read Mode 1, the processor reads the result of a comparison with the value in the 
-                // Color Compare register, from the set of enabled planes in the Color Dont Care register
-                self.get_pixels(offset);
-                let comparison = self.pixel_op_compare();
-                return (comparison, 0);
-            }
-        }
-    }
-
-    fn mmio_read_u16(&mut self, address: usize, cycles: u32) -> (u16, u32) {
-
-        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, cycles);
-        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, cycles);
-
-        //log::warn!("Unsupported 16 bit read from VRAM");
-        ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
-    }
-
-    fn mmio_peek_u8(&self, address: usize) -> u8 {
-        // RAM Enable disables memory mapped IO
-        if !self.misc_output_register.enable_ram() {
-            return 0;
-        }
-
-        // Validate address is within current memory map and get the offset into VRAM
-        let offset = match self.plane_bounds_check(address) {
-            Some(offset) => offset,
-            None => return 0
-        };
-
-        self.planes[0].buf[offset]
-    }
-
-    fn mmio_peek_u16(&self, address: usize) -> u16 {
-        // RAM Enable disables memory mapped IO
-        if !self.misc_output_register.enable_ram() {
-            return 0;
-        }
-
-        // Validate address is within current memory map and get the offset into VRAM
-        let offset = match self.plane_bounds_check(address) {
-            Some(offset) => offset,
-            None => return 0
-        };
-
-        (self.planes[0].buf[offset] as u16) << 8 | self.planes[0].buf[offset + 1] as u16
-    }        
-
-    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
-
-        // RAM Enable disables memory mapped IO
-        if !self.misc_output_register.enable_ram() {
-            return 0
-        }
-
-        // Validate address is within current memory map and get the offset
-        let offset = match self.plane_bounds_check(address) {
-            Some(offset) => offset,
-            None => {
-                return 0
-            }
-        };        
-
-        match self.graphics_mode.write_mode() {
-            WriteMode::Mode0 => {
-
-                // Write mode 0 performs a pipeline of operations:
-                // First, data is rotated as specified by the Rotate Count field of the Data Rotate Register.
-                let data_rot = EGACard::rotate_right_u8(byte, self.graphics_data_rotate.count());
-
-                // Second, data is is either passed through to the next stage or replaced by a value determined
-                // by the Set/Reset register. The bits in the Enable Set/Reset register controls whether this occurs.
-                for i in 0..4 {
-                    if self.graphics_enable_set_reset & (0x01 << i) != 0 {
-                        // If the Set/Reset Enable bit is set, use expansion of corresponding Set/Reset register bit
-                        self.pipeline_buf[i] = match self.graphics_set_reset & (0x01 << i) != 0 {
-                            true  => 0xFF,
-                            false => 0x00
-                        }                        
-                    }
-                    else {
-                        // Set/Reset Enable bit not set, use data from rotate step
-                        self.pipeline_buf[i] = data_rot
-                    }
-                }
-
-                // Third, the operation specified by the Logical Operation field of the Data Rotate register
-                // is perfomed on the data for each plane and the latch read register.
-                // A 1 bit in the Graphics Bit Mask register will use the bit result of the Logical Operation.
-                // A 0 bit in the Graphics Bit Mask register will use the bit unchanged from the Read Latch register.
-                for i in 0..4 {
-                    self.pipeline_buf[i] = match self.graphics_data_rotate.function() {
-                        RotateFunction::Unmodified => {
-                            // Clear masked bits from pipeline, set them with mask bits from latch
-                            (self.pipeline_buf[i] & self.graphics_bitmask) | (!self.graphics_bitmask & self.planes[i].latch)
-                        }
-                        RotateFunction::And => {
-                            (self.pipeline_buf[i] | !self.graphics_bitmask) & self.planes[i].latch
-                        }
-                        RotateFunction::Or => {
-                            (self.pipeline_buf[i] & self.graphics_bitmask) | self.planes[i].latch
-                        }
-                        RotateFunction::Xor => {
-                            (self.pipeline_buf[i] & self.graphics_bitmask) ^ self.planes[i].latch
-                        }
-                    }
-                }
-                // Fourth, the value of the Bit Mask register is used: A set bit in the Mask register will pass
-                // the bit from the data pipeline, a 0 bit will pass a bit from the read latch register.
-                //for i in 0..4 {
-//
-                //    self.write_buf[i] = 0;
-                //    
-                //    for k in 0..8 {
-                //        if self.graphics_bitmask & (0x01 << k) != 0 {
-                //            // If a bit is set in the mask register, pass the bit from the previous stage
-                //            self.write_buf[i] |= self.pipeline_buf[i] & (0x01 << k);
-                //        }
-                //        else {
-                //            // Otherwise, pass the corresponding bit from the read latch register
-                //            self.write_buf[i] |= self.planes[i].latch & (0x01 << k);
-                //        }
-                //    }
-                //}
-
-                // Finally, write data to the planes enabled in the Memory Plane Write Enable field of
-                // the Sequencer Map Mask register.
-                for i in 0..4 {
-                    if self.sequencer_map_mask & (0x01 << i) != 0 {
-                        self.planes[i].buf[offset] = self.pipeline_buf[i];
-                    }
-                }
-            }
-            WriteMode::Mode1 => {
-                // Write the contents of the platches to their corresponding planes. This assumes that the latches
-                // were loaded propery via a previous read operation.
-
-                for i in 0..4 {
-                    // Only write to planes enabled in the Sequencer Map Mask.
-                    if self.sequencer_map_mask & (0x01 << i) != 0 {
-                        self.planes[i].buf[offset] = self.planes[i].latch;
-                    }
-                }
-            }
-            WriteMode::Mode2 => {
-
-                for i in 0..4 {
-                    // Only write to planes enabled in the Sequencer Map Mask.
-                    if self.sequencer_map_mask & (0x01 << i) != 0 {
-
-                        // Extend the bit for this plane to 8 bits.
-                        let bit_span: u8 = match byte & (0x01 << i) != 0 {
-                            true => 0xFF,
-                            false => 0x00,
-                        };
-
-                        // Clear bits not masked
-                        self.planes[i].buf[offset] &= !self.graphics_bitmask;
-
-                        // Mask off bits not to set
-                        let set_bits = bit_span & self.graphics_bitmask;
-
-                        self.planes[i].buf[offset] |= set_bits;
-                    }
-                }
-
-                //log::warn!("Unimplemented write mode 2")
-            }
-            WriteMode::Invalid => {
-                log::warn!("Invalid write mode!");
-                return 0
-            }
-        }
-
-        0
-    }
-
-    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
-        log::warn!("Unsupported 16 bit write to VRAM");
-        0
-    }
-}
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_color_compare() {
-        let mut ega = EGACard::new();
+        let mut ega = EGACard::new(TraceLogger::None, ClockingMode::Character, false);
 
         ega.pixel_buf[0] = 0b1100;
         ega.pixel_buf[1] = 0b0101;

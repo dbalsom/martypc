@@ -54,10 +54,11 @@ pub struct SClockingModeRegister {
     unused: B4
 }
 
+// Ferraro has this bit flipped. 0 == 9 Dots. IBM docs are correct.
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
 pub enum CharacterClock {
-    EightDots,
-    NineDots
+    NineDots,
+    EightDots
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
@@ -103,6 +104,11 @@ impl EGACard {
             SequencerRegister::ClockingMode => {
                 self.sequencer_clocking_mode = SClockingModeRegister::from_bytes([byte]);
                 log::trace!("Write to Sequencer::ClockingMode register: {:02X}", byte);
+
+                (self.clock_divisor, self.char_clock) = match self.sequencer_clocking_mode.dot_clock() {
+                    DotClock::HalfClock => (2, 16),
+                    DotClock::Native => (1, 8)
+                }
             }
             SequencerRegister::MapMask => {
                 self.sequencer_map_mask = byte & 0x0F;

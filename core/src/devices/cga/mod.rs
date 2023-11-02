@@ -227,26 +227,24 @@ const CRTC_SCANLINE_MAX: u32 = 262;
 // text mode, and 0x4000 bytes in graphics modes.
 const CGA_TEXT_MODE_WRAP: usize = 0x1FFF;
 const CGA_GFX_MODE_WRAP: usize = 0x3FFF;
-
-/*
-pub enum CGAColor {
-    Black,
-    Blue,
-    Green,
-    Cyan,
-    Red,
-    Magenta,
-    Brown,
-    White,
-    BlackBright,
-    BlueBright,
-    GreenBright,
-    CyanBright,
-    RedBright,
-    MagentaBright,
-    Yellow,
-    WhiteBright
-} */
+pub enum CgaColor {
+    Black = 0,
+    Blue = 1,
+    Green = 2,
+    Cyan = 3,
+    Red = 4,
+    Magenta = 5,
+    Brown = 6,
+    White = 7,
+    BlackBright = 8,
+    BlueBright = 9,
+    GreenBright = 10,
+    CyanBright = 11,
+    RedBright = 12,
+    MagentaBright = 13,
+    Yellow = 14,
+    WhiteBright = 15
+}
 
 const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 2, 4, 6],       // Red / Green / Brown
@@ -257,16 +255,16 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 11, 12, 15],    // Red / Cyan / White High Intensity
 ];
 
-const CGA_DEBUG_COLOR: u8 = 5;
+const CGA_DEBUG_COLOR: u8 = CgaColor::Magenta as u8;
 const CGA_HBLANK_COLOR: u8 = 0;
-const CGA_HBLANK_DEBUG_COLOR: u8 = 1;
+const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::Blue as u8;
 const CGA_VBLANK_COLOR: u8 = 0;
-const CGA_VBLANK_DEBUG_COLOR: u8 = 14;
+const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
 const CGA_DISABLE_COLOR: u8 = 0;
-const CGA_DISABLE_DEBUG_COLOR: u8 = 2;
-const CGA_OVERSCAN_COLOR: u8 = 5;
+const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
+const CGA_OVERSCAN_COLOR: u8 = CgaColor::Magenta as u8;
 
-const CGA_DEBUG2_COLOR: u8 = 12;
+const CGA_DEBUG2_COLOR: u8 = CgaColor::RedBright as u8;
 /*
 const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;

@@ -741,7 +741,7 @@ impl VideoRenderer {
         }
     }
 
-    pub fn draw_horizontal_xor_line(
+    pub fn draw_horizontal_xor_line_2x(
         &mut self,
         frame: &mut [u8],
         w: u32,
@@ -772,7 +772,36 @@ impl VideoRenderer {
         }
     }
 
-    pub fn draw_vertical_xor_line(
+    pub fn draw_horizontal_xor_line(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        y: u32
+    ) {
+
+        if y > (h-1) {
+            return;
+        }
+
+        let frame_row0_offset = (y * (span * 4)) as usize;
+
+        for x in 0..w {
+
+            let fo0 = frame_row0_offset + (x * 4) as usize;
+
+            let r = frame[fo0];
+            let g = frame[fo0 + 1];
+            let b = frame[fo0 + 2];
+
+            frame[fo0] = r ^ XOR_COLOR;
+            frame[fo0 + 1] = g ^ XOR_COLOR;
+            frame[fo0 + 2] = b ^ XOR_COLOR;
+        }
+    }    
+
+    pub fn draw_vertical_xor_line_2x(
         &mut self,
         frame: &mut [u8],
         w: u32,
@@ -804,7 +833,36 @@ impl VideoRenderer {
             frame[fo1 + 2] = b ^ XOR_COLOR;
         }
 
-    }    
+    }
+
+    pub fn draw_vertical_xor_line(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        span: u32,
+        h: u32,
+        x: u32
+    ) {
+
+        if x > (w-1) {
+            return;
+        }
+
+        let frame_x0_offset = (x * 4) as usize;
+
+        for y in 0..h {
+            let fo0 = frame_x0_offset + (y * (span * 4)) as usize;
+
+            let r = frame[fo0];
+            let g = frame[fo0 + 1];
+            let b = frame[fo0 + 2];
+
+            frame[fo0] = r ^ XOR_COLOR;
+            frame[fo0 + 1] = g ^ XOR_COLOR;
+            frame[fo0 + 2] = b ^ XOR_COLOR;
+        }
+
+    }           
 
     /// Set the alpha component of each pixel in a the specified buffer.
     pub fn set_alpha(
@@ -958,8 +1016,8 @@ impl VideoRenderer {
 
         // Draw crosshairs for debugging crt beam pos
         if let Some(beam) = beam_pos {
-            self.draw_horizontal_xor_line(frame, w, max_x, max_y, beam.1);
-            self.draw_vertical_xor_line(frame, w, max_x, max_y, beam.0);
+            self.draw_horizontal_xor_line_2x(frame, w, max_x, max_y, beam.1);
+            self.draw_vertical_xor_line_2x(frame, w, max_x, max_y, beam.0);
         }
     }    
 
@@ -1143,6 +1201,77 @@ impl VideoRenderer {
         
         self.composite_params = *composite_params;
     }
+
+    /// Draw the EGA card in Direct Mode. 
+    /// The EGA in Direct mode generates its own indexed-color framebuffer, which is
+    /// converted to 32-bit RGBA for display based on the selected display aperture profile.
+    /// 
+    /// TODO: Implement the full EGA 64 color palette lookup.
+    pub fn draw_ega_direct_u32(
+        &mut self,
+        frame: &mut [u8],
+        w: u32,
+        h: u32,
+        dbuf: &[u8],
+        extents: &DisplayExtents,
+        doublescan: bool,
+        beam_pos: Option<(u32, u32)>,
+    ) {
+
+        let mut horiz_adjust = extents.aperture_x;
+        // Ignore aperture x adjustment if it pushes us outside of the field boundaries
+        if extents.aperture_x + extents.aperture_w >= extents.field_w {
+            horiz_adjust = 0;
+        }
+
+        let max_y = std::cmp::min(h, extents.aperture_h);
+        let max_x = std::cmp::min(w, extents.aperture_w);
+
+        //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
+
+        let frame_u32: &mut [u32] = bytemuck::cast_slice_mut(frame);
+
+        if doublescan {
+            for y in 0..max_y {
+
+                let dbuf_row_offset = y as usize * extents.row_stride;
+    
+                let frame_row0_offset = ((y * 2) * w) as usize;
+                let frame_row1_offset = (((y * 2) * w) + w) as usize;
+    
+                for x in 0..max_x {
+                    let fo0 = frame_row0_offset + x as usize;
+                    let fo1 = frame_row1_offset + x as usize;
+    
+                    let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+    
+                    // TODO: Would it be better for cache concurrency to do one line at a time?
+                    frame_u32[fo0] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                    frame_u32[fo1] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                }
+            }
+        }
+        else {
+            for y in 0..max_y {
+                let dbuf_row_offset = y as usize * extents.row_stride;
+                let frame_row_offset = (y * w) as usize;
+    
+                for x in 0..max_x {
+                    let fo = frame_row_offset + x as usize;
+                    let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+
+                    frame_u32[fo] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                }
+            }            
+        }
+
+        // Draw crosshairs for debugging crt beam pos
+        if let Some(beam) = beam_pos {
+            self.draw_horizontal_xor_line(frame, w, max_x, max_y, beam.1);
+            self.draw_vertical_xor_line(frame, w, max_x, max_y, beam.0);
+        }
+    }    
+
 
 }
 

@@ -865,12 +865,12 @@ impl Machine {
             // Match checkpoints
             if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
-                    log::trace!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
+                    log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
                 }
 
                 // Check for patching checkpoint & install patches
                 if self.rom_manager.is_patch_checkpoint(flat_address) {
-                    log::trace!("ROM PATCH CHECKPOINT: [{:05X}] Installing ROM patches...", flat_address);
+                    log::debug!("ROM PATCH CHECKPOINT: [{:05X}] Installing ROM patches...", flat_address);
                     self.rom_manager.install_patch(self.cpu.bus_mut(), flat_address);
                 }
             }
@@ -912,6 +912,8 @@ impl Machine {
                     cpu_cycles = 0
                 } 
             }
+
+            skip_breakpoint = false;
 
             if cpu_cycles > 200 {
                 log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);

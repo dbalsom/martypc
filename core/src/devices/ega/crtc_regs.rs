@@ -260,8 +260,8 @@ impl EGACard {
                 self.crtc_start_vertical_blank |= byte as u16;
             }
             CRTCRegister::EndVerticalBlank => {
-                // R(16) - Bits 0-4: End Vertical Blank
-                self.crtc_end_vertical_blank = byte & 0x1F;
+                // R(16) - Bits 0-3: End Vertical Blank
+                self.crtc_end_vertical_blank = (byte & 0x0F) as u16;
             }
             CRTCRegister::ModeControl => {
                 // (R17) Mode Control Register

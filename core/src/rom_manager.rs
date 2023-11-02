@@ -811,6 +811,7 @@ impl RomManager {
                         (0xC009B, "EGA DIP Switch Sense"),
                         (0xC0205, "EGA CD Presence Test"),
                         (0xC037C, "EGA VBlank Bit Test"),
+                        //(0xC039E, "EGA HBlank Count Test"),
                         (0xC0D20, "EGA Error Beep"),
                         (0xC03F6, "EGA Diagnostic Dot Test"),
                         (0xC0480, "EGA Mem Test"),
@@ -842,6 +843,7 @@ impl RomManager {
                         (0xC009B, "EGA DIP Switch Sense"),
                         (0xC0205, "EGA CD Presence Test"),
                         (0xC037C, "EGA VBlank Bit Test"),
+                        //(0xC039E, "EGA HBlank Count Test"),
                         (0xC0D20, "EGA Error Beep"),
                         (0xC03F6, "EGA Diagnostic Dot Test"),
                         (0xC0480, "EGA Mem Test"),
@@ -1728,6 +1730,7 @@ impl RomManager {
     /// for an address if this flag is set, for speed.
     pub fn install_checkpoints(&self,  bus: &mut BusInterface) {
         
+        log::debug!("Installing checkpoints...");
         if let Some(_) = self.rom_override {
             // Rom override in effect, no checkpoints to load.
             return;

@@ -1397,12 +1397,14 @@ impl BusInterface {
             }
             #[cfg(feature = "ega")]
             VideoType::EGA => {
-                let ega = EGACard::new();
+                let ega = EGACard::new(video_trace, clock_mode, video_frame_debug);
                 let port_list = ega.port_list();
                 self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ega)));
 
-                let mem_descriptor = MemRangeDescriptor::new(ega::EGA_GFX_ADDRESS, ega::EGA_GFX_PLANE_SIZE, false );
-                self.register_map(MmioDeviceType::Video, mem_descriptor);
+                let cga_mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false );
+                let ega_mem_descriptor = MemRangeDescriptor::new(ega::EGA_MEM_ADDRESS, ega::EGA_GFX_PLANE_SIZE, false );
+                self.register_map(MmioDeviceType::Video, cga_mem_descriptor);
+                self.register_map(MmioDeviceType::Video, ega_mem_descriptor);
 
                 self.video = VideoCardDispatch::Ega(ega)
             }

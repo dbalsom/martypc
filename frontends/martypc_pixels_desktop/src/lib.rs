@@ -689,8 +689,10 @@ pub fn run() {
             if let RenderMode::Direct = card.get_render_mode() {
 
                 let (aper_x, mut aper_y) = card.get_display_aperture();
+                assert!(aper_x != 0 && aper_y !=0 );
 
-                if card.get_scanline_double() {
+                let double_aperture = card.get_scanline_double();
+                if double_aperture {
                     aper_y *= 2;
                 }
 
@@ -708,10 +710,11 @@ pub fn run() {
                     let dip_scale = monitor.scale_factor();
 
                     log::debug!("Current monitor resolution: {}x{}", monitor_size.width, monitor_size.height);
-
+                    
                     // Take into account DPI scaling for window-fit.
                     let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
                     let scaled_height = ((aper_correct_y * 2) as f64 * dip_scale) as u32;
+                    log::debug!("Target resolution after aspect correction and DPI scaling: {}x{}", scaled_width, scaled_height);
 
                     if (scaled_width <= monitor_size.width) && (scaled_height <= monitor_size.height) {
                         // Monitor is large enough to double the display window
@@ -739,8 +742,10 @@ pub fn run() {
                     (aper_x, aper_y)
                 };
                 
-                log::debug!("Resizing pixel buffer to {}x{}", pixel_buf_w, pixel_buf_h);
-                pixels.resize_buffer(pixel_buf_w, pixel_buf_h).expect("Failed to resize Pixels buffer.");
+                if (pixel_buf_w > 0) && (pixel_buf_h > 0) {
+                    log::debug!("Resizing pixel buffer to {}x{}", pixel_buf_w, pixel_buf_h);
+                    pixels.resize_buffer(pixel_buf_w, pixel_buf_h).expect("Failed to resize Pixels buffer.");
+                }
 
                 VideoRenderer::set_alpha(pixels.frame_mut(), pixel_buf_w, pixel_buf_h, 255);
                 // Pixels will resize itself from window size event
@@ -760,7 +765,7 @@ pub fn run() {
                 video_data.aspect_h = aper_correct_y;
 
                 // Recalculate sampling parameters.
-                resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
+                //resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
 
                 // Update internal state and request a redraw
                 window.request_redraw();
@@ -1439,6 +1444,19 @@ pub fn run() {
                                         );
                                     }
                                 }
+                            }
+                            (VideoType::EGA, RenderMode::Direct) => {
+                                let extents = video_card.get_display_extents();
+                                
+                                video.draw_ega_direct_u32(
+                                    pixels.frame_mut(),
+                                    video_data.render_w, 
+                                    video_data.render_h,                                                                                         
+                                    video_buffer,
+                                    extents,
+                                    false,
+                                    beam_pos                                         
+                                );
                             }
                             (_, RenderMode::Indirect) => {
                                 // Draw VRAM in indirect mode

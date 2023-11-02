@@ -74,7 +74,7 @@ pub struct GModeRegister {
 #[bitfield]
 pub struct GMiscellaneousRegister {
     pub graphics_mode: bool,    
-    pub chain_odd_maps: bool,
+    pub chain_odd_even: bool,
     pub memory_map: MemoryMap,
     #[skip]
     pub unused: B4

@@ -108,6 +108,7 @@ impl Cpu {
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
 
+        // TODO: Call these functions instead of reimplementing
         // FARCALL2
         self.cycles_i(4, &[0x1a6, MC_JUMP, 0x06c, MC_CORR]);
         // Push return segment
@@ -123,46 +124,6 @@ impl Cpu {
         self.cycles_i(3, &[0x077, 0x078, 0x079]);
         // Finally, push return address
         self.push_u16(old_ip, ReadWriteFlag::RNI);
-
-        if interrupt == 0x13 {
-            // Disk interrupts
-            if self.dl & 0x80 != 0 {
-                // Hard disk request
-                match self.ah {
-                    0x03 => {
-                        log::trace!("Hard disk int13h: Write Sectors: Num: {} Drive: {:02X} C: {} H: {} S: {}",
-                            self.al,
-                            self.dl,
-                            self.ch,
-                            self.dh,
-                            self.cl)
-                    }
-                    _=> log::trace!("Hard disk requested in int13h. AH: {:02X}", self.ah)
-                }
-                
-            }
-        }
-
-        if interrupt == 0x10 && self.ah==0x00 {
-            log::trace!("CPU: int10h: Set Mode {:02X} Return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
-        }        
-
-        if interrupt == 0x21 {
-            //log::trace!("CPU: int21h: AH: {:02X} [{:04X}:{:04X}]", self.ah, self.cs, self.ip);
-            if self.ah == 0x4B {
-                log::trace!("int21,4B: EXEC/Load and Execute Program @ [{:04X}:{:04X}] es:bx: [{:04X}:{:04X}]", self.cs, self.ip, self.es, self.bx);
-            }
-            if self.ah == 0x55 {
-                log::trace!("int21,55:  @ [{:04X}]:[{:04X}]", self.cs, self.ip);
-            }            
-        }         
-
-        if interrupt == 0x16 {
-            if self.ah == 0x01 {
-                //log::trace!("int16,01: Poll keyboard @ [{:04X}]:[{:04X}]", self.cs, self.ip);
-            }
-        }
-
         self.int_count += 1;
     }
 
