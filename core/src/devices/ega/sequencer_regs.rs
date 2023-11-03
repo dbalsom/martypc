@@ -105,6 +105,7 @@ impl EGACard {
                 self.sequencer_clocking_mode = SClockingModeRegister::from_bytes([byte]);
                 log::trace!("Write to Sequencer::ClockingMode register: {:02X}", byte);
 
+                self.clock_change_pending = true;
                 (self.clock_divisor, self.char_clock) = match self.sequencer_clocking_mode.dot_clock() {
                     DotClock::HalfClock => (2, 16),
                     DotClock::Native => (1, 8)

@@ -533,7 +533,7 @@ impl Default for DisplayExtents {
             overscan_t: 0,
             overscan_b: 0,
             row_stride: CGA_XRES_MAX as usize,
-
+            double_scan: true,
             mode_byte: 0
         }
     }

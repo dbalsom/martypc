@@ -202,18 +202,20 @@ impl MemoryMappedDevice for EGACard {
                 // the Sequencer Map Mask register.
                 for i in 0..4 {
                     if self.sequencer_map_mask & (0x01 << i) != 0 {
-                        self.planes[i].buf[offset] = self.pipeline_buf[i];
+                        self.plane_set(i, offset, self.pipeline_buf[i]);
+                        //self.planes[i].buf[offset] = self.pipeline_buf[i];
                     }
                 }
             }
             WriteMode::Mode1 => {
-                // Write the contents of the platches to their corresponding planes. This assumes that the latches
+                // Write the contents of the latches to their corresponding planes. This assumes that the latches
                 // were loaded propery via a previous read operation.
 
                 for i in 0..4 {
                     // Only write to planes enabled in the Sequencer Map Mask.
                     if self.sequencer_map_mask & (0x01 << i) != 0 {
-                        self.planes[i].buf[offset] = self.planes[i].latch;
+                        self.plane_set(i, offset, self.planes[i].latch);
+                        //self.planes[i].buf[offset] = self.planes[i].latch;
                     }
                 }
             }
@@ -230,12 +232,14 @@ impl MemoryMappedDevice for EGACard {
                         };
 
                         // Clear bits not masked
-                        self.planes[i].buf[offset] &= !self.graphics_bitmask;
+                        self.plane_and(i, offset, !self.graphics_bitmask);
+                        //self.planes[i].buf[offset] &= !self.graphics_bitmask;
 
                         // Mask off bits not to set
                         let set_bits = bit_span & self.graphics_bitmask;
 
-                        self.planes[i].buf[offset] |= set_bits;
+                        self.plane_or(i, offset, set_bits);
+                        //self.planes[i].buf[offset] |= set_bits;
                     }
                 }
 

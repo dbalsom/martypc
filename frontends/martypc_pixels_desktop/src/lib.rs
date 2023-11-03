@@ -1298,11 +1298,6 @@ pub fn run() {
                         match video_card.get_render_mode() {
                             RenderMode::Direct => {
                                 (new_w, new_h) = video_card.get_display_aperture();
-
-                                // Set a sane maximum
-                                if new_h > 240 { 
-                                    new_h = 240;
-                                }
                             }
                             RenderMode::Indirect => {
                                 (new_w, new_h) = video_card.get_display_size();
@@ -1317,13 +1312,11 @@ pub fn run() {
                         
                         if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
 
-                            let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
+                            //let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
 
-                            // TODO: The vertical delta hack was used for area 8088mph for the old style of rendering.
-                            // Now that we render into a fixed frame, we should refactor this
-                            if (new_w != video_data.render_w) || ((new_h != video_data.render_h) && (vertical_delta <= 2)) {
+                            if (new_w != video_data.render_w) || (new_h != video_data.render_h) {
                                 // Resize buffers
-                                log::debug!("Setting internal resolution to ({},{})", new_w, new_h);
+                                log::debug!("Aperture changed. Setting internal resolution to ({},{})", new_w, new_h);
                                 video_card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
 
                                 // Calculate new aspect ratio (make this option)
@@ -1454,7 +1447,7 @@ pub fn run() {
                                     video_data.render_h,                                                                                         
                                     video_buffer,
                                     extents,
-                                    false,
+                                    extents.double_scan,
                                     beam_pos                                         
                                 );
                             }

@@ -527,7 +527,6 @@ impl VideoCard for EGACard {
         let x_byte_offset = (x + self.attribute_pel_panning as u32) / 8;
         let x_bit_offset = (x + self.attribute_pel_panning as u32) % 8;
 
-
         // Get the current width of screen + offset
         // let span = (self.crtc_horizontal_display_end + 1 + 64) as u32;
         let span = self.crtc_offset as u32 * 2;

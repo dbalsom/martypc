@@ -63,6 +63,7 @@ mod crtc;
 mod mmio;
 mod io;
 mod videocard;
+mod planes;
 
 use attribute_regs::*;
 use crtc::*;
@@ -129,13 +130,18 @@ const EGA_HBLANK_START: u32 = 220;
 // EGA display field can be calculated via the maximum programmed value in 
 // H0 of 91. 91+2*8 = 744.  VertialTotal 364   744x364 = 270816 * 60Hz = 16,248,960
 
-const EGA_MAX_RASTER_X: u32 = 744;    // Maximum scanline width
-const EGA_MAX_RASTER_Y: u32 = 364;    // Maximum scanline height
-const EGA_APERTURE_EXTENT_X: u32 = 640;
-const EGA_APERTURE_EXTENT_Y: u32 = 350;
+const EGA14_MAX_RASTER_X: u32 = 912;
+const EGA14_MAX_RASTER_Y: u32 = 262;
+const EGA16_MAX_RASTER_X: u32 = 744;    // Maximum scanline width
+const EGA16_MAX_RASTER_Y: u32 = 364;    // Maximum scanline height
+const EGA14_APERTURE_EXTENT_X: u32 = 640;
+const EGA14_APERTURE_EXTENT_Y: u32 = 200;
+const EGA16_APERTURE_EXTENT_X: u32 = 640;
+const EGA16_APERTURE_EXTENT_Y: u32 = 350;
 const EGA_APERTURE_CROP_LEFT: u32 = 0;
 const EGA_APERTURE_CROP_TOP: u32 = 0;
-const EGA_MAX_CLOCK: usize = 270816; // Maximum frame clock for EGA (744x364)
+const EGA_MAX_CLOCK14: usize = 912 * 262; // Maximum frame clock for EGA 14Mhz clock (912x262) same as CGA
+const EGA_MAX_CLOCK16: usize = 270816; // Maximum frame clock for EGA 16Mhz clock (744x364)
 const EGA_MONITOR_VSYNC_MIN: u32 = 0;
 const EGA_HCHAR_CLOCK: u8 = 8;
 
@@ -415,6 +421,7 @@ pub struct EGACard {
     char_clock: u32,
     clock_mode: ClockingMode,
     clock_divisor: u32,
+    clock_change_pending: bool,
     cycles: u64,
     debug: bool,
     trace_logger: TraceLogger,
@@ -456,6 +463,7 @@ pub struct EGACard {
     in_vta: bool,
     effective_vta: u8,
     vma: usize,                     // VMA register - Video memory address
+    vma_sl: usize,                  // VMA of start of scanline
     vma_t: usize,                   // VMA' register - Video memory address temporary
     vmws: usize,                    // Video memory word size
 
@@ -547,6 +555,7 @@ pub struct EGACard {
 
     // Display Planes
     planes: [DisplayPlane; 4],
+    chain_buf: Box<[u8; EGA_GFX_PLANE_SIZE * 8]>,
     pixel_buf: [u8; 8],
     pipeline_buf: [u8; 4],
     write_buf: [u8; 4],
@@ -556,7 +565,7 @@ pub struct EGACard {
     front_buf: usize,
     extents: DisplayExtents,
     //buf: Vec<Vec<u8>>,
-    buf: [Box<[u8; EGA_MAX_CLOCK]>; 2],  
+    buf: [Box<[u8; EGA_MAX_CLOCK16]>; 2],  
     rba: usize,
 
     // Debug colors
@@ -596,7 +605,7 @@ pub enum IoAddressSelect {
 
 /// Clock Select field of External Miscellaneous Register:
 /// Bits 2-3
-#[derive (Debug, BitfieldSpecifier)]
+#[derive (Debug, BitfieldSpecifier, PartialEq)]
 pub enum ClockSelect {
     Clock14,
     Clock16,
@@ -624,6 +633,7 @@ impl Default for EGACard {
             ticks_accum: 0.0,
             char_clock: 8,
             clock_divisor: 1,
+            clock_change_pending: false,
             clock_mode: ClockingMode::Cycle,
             cycles: 0,
             debug: false,
@@ -680,6 +690,7 @@ impl Default for EGACard {
             effective_vta: 0,
             vma: 0,                     // VMA register - Video memory address
             vma_t: 0,                   // VMA' register - Video memory address temporary
+            vma_sl: 0,
             vmws: 1,
 
             cursor_status: false,
@@ -773,7 +784,7 @@ impl Default for EGACard {
                 DisplayPlane::new(),
                 DisplayPlane::new()
             ],
-
+            chain_buf: Box::new([0; EGA_GFX_PLANE_SIZE * 8]),
             pixel_buf: [0; 8],
             pipeline_buf: [0; 4],
             write_buf: [0; 4],
@@ -787,8 +798,8 @@ impl Default for EGACard {
             // vectors due to having a fixed size known by the compiler.  However they 
             // are a pain to initialize without overflowing the stack.
             buf: [  
-                vec![0; EGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
-                vec![0; EGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap()
+                vec![0; EGA_MAX_CLOCK16].into_boxed_slice().try_into().unwrap(),
+                vec![0; EGA_MAX_CLOCK16].into_boxed_slice().try_into().unwrap()
             ],
             rba: 0,    
 
@@ -816,10 +827,13 @@ impl EGACard {
         ega.clock_mode = clock_mode;
     
         if video_frame_debug {
-            ega.extents.aperture_w = EGA_MAX_RASTER_X;
-            ega.extents.aperture_h = EGA_MAX_RASTER_Y;
+            ega.extents.field_w = EGA16_MAX_RASTER_X;
+            ega.extents.field_h = EGA16_MAX_RASTER_Y;
+            ega.extents.aperture_w = EGA16_MAX_RASTER_X;
+            ega.extents.aperture_h = EGA16_MAX_RASTER_Y;
             ega.extents.aperture_x = 0;
             ega.extents.aperture_y = 0;       
+            ega.extents.row_stride = EGA16_MAX_RASTER_X as usize;
             ega.vblank_color = EGA_VBLANK_DEBUG_COLOR;
             ega.hblank_color = EGA_HBLANK_DEBUG_COLOR;
             ega.disable_color = EGA_DISABLE_DEBUG_COLOR;
@@ -830,10 +844,10 @@ impl EGACard {
 
     fn get_default_extents() -> DisplayExtents {
         DisplayExtents {
-            field_w: EGA_MAX_RASTER_X,
-            field_h: EGA_MAX_RASTER_Y,
-            aperture_w: EGA_APERTURE_EXTENT_X,
-            aperture_h: EGA_APERTURE_EXTENT_Y,
+            field_w: EGA16_MAX_RASTER_X,
+            field_h: EGA16_MAX_RASTER_Y,
+            aperture_w: EGA16_APERTURE_EXTENT_X,
+            aperture_h: EGA16_APERTURE_EXTENT_Y,
             aperture_x: EGA_APERTURE_CROP_LEFT,
             aperture_y: EGA_APERTURE_CROP_TOP,
             visible_w: 0,
@@ -842,8 +856,8 @@ impl EGACard {
             overscan_r: 0,
             overscan_t: 0,
             overscan_b: 0,
-            row_stride: EGA_MAX_RASTER_X as usize,
-    
+            row_stride: EGA16_MAX_RASTER_X as usize,
+            double_scan: false,
             mode_byte: 0
         }
     }
@@ -905,7 +919,14 @@ impl EGACard {
     /// Handle a write to the External Miscellaneous Output Register, 0x3C2
     fn write_external_misc_output_register(&mut self, byte: u8) {
 
+        let clock_old = self.misc_output_register.clock_select();
         self.misc_output_register = EMiscellaneousOutputRegister::from_bytes([byte]);
+
+        if clock_old != self.misc_output_register.clock_select() {
+            // Clock updated.
+            self.clock_change_pending = true;
+            self.update_clock();
+        }
 
         log::trace!("Write to Misc Output Register: {:02X} Address Select: {:?} Clock Select: {:?}, Odd/Even Page bit: {:?}", 
             byte,
@@ -1181,15 +1202,16 @@ impl EGACard {
         self.cycles += 8;
 
         // Only draw if render buffer address is in bounds.
-        if self.rba < (EGA_MAX_CLOCK - 8) {
+        if self.rba < (EGA_MAX_CLOCK16 - 8) {
             if self.in_display_area {
                 // Draw current character row
-                if !self.mode_graphics {
-                    //self.draw_solid_hchar(EgaDefaultColor::Red as u8);
-                    self.draw_text_mode_hchar14();
-                }
-                else {
-                    self.draw_solid_hchar(0);
+                match self.attribute_mode_control.mode() {
+                    AttributeMode::Text => {
+                        self.draw_text_mode_hchar14();
+                    }
+                    AttributeMode::Graphics => {
+                        self.draw_solid_hchar(0);
+                    }
                 }
             }
             else if self.crtc_hblank {
@@ -1224,11 +1246,11 @@ impl EGACard {
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
-        if self.raster_x >= EGA_MAX_RASTER_X {
+        if self.raster_x >= self.extents.field_w {
             self.raster_x = 0;
             self.raster_y += 1;
             //self.in_monitor_hsync = false;
-            self.rba = (EGA_MAX_RASTER_X * self.raster_y) as usize;
+            self.rba = (self.extents.row_stride * self.raster_y as usize);
         }
 
         /*
@@ -1236,8 +1258,8 @@ impl EGACard {
             log::error!("tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
         } 
         */ 
-        self.draw_debug_hchar_at((EGA_MAX_CLOCK / 2) - 8, EgaDefaultColor::Yellow as u8);
-        self.draw_debug_hchar_at(EGA_MAX_CLOCK - 8, EgaDefaultColor::MagentaBright as u8);
+        //self.draw_debug_hchar_at((EGA_MAX_CLOCK16 / 2) - 8, EgaDefaultColor::Yellow as u8);
+        //self.draw_debug_hchar_at(EGA_MAX_CLOCK16 - 8, EgaDefaultColor::MagentaBright as u8);
         self.tick_crtc_char();
         //self.update_clock();        
     }
@@ -1249,16 +1271,18 @@ impl EGACard {
         self.cycles += 8;
 
         // Only draw if render buffer address is in bounds.
-        if self.rba < (EGA_MAX_CLOCK - 8) {
+        if self.rba < (EGA_MAX_CLOCK16 - 16) {
             if self.in_display_area {
-                // Draw current character row
-                if !self.mode_graphics {
-                    //self.draw_solid_hchar(EgaDefaultColor::Red as u8);
-                    self.draw_text_mode_lchar14();
-                }
-                else {
-                    self.draw_solid_lchar(0);
-                }
+                
+                match self.attribute_mode_control.mode() {
+                    AttributeMode::Text => {
+                        // Draw current character row
+                        self.draw_text_mode_hchar14();
+                    }
+                    AttributeMode::Graphics => {
+                        self.draw_gfx_mode_lchar();
+                    }
+                }                
             }
             else if self.crtc_hblank {
                 // Draw hblank in debug color
@@ -1292,11 +1316,12 @@ impl EGACard {
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
-        if self.raster_x >= EGA_MAX_RASTER_X {
+
+        if self.raster_x >= self.extents.field_w {
             self.raster_x = 0;
             self.raster_y += 1;
             //self.in_monitor_hsync = false;
-            self.rba = (EGA_MAX_RASTER_X * self.raster_y) as usize;
+            self.rba = (self.extents.row_stride * self.raster_y as usize);
         }
 
         /*
@@ -1304,8 +1329,8 @@ impl EGACard {
             log::error!("tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
         } 
         */ 
-        self.draw_debug_hchar_at((EGA_MAX_CLOCK / 2) - 8, EgaDefaultColor::Yellow as u8);
-        self.draw_debug_hchar_at(EGA_MAX_CLOCK - 8, EgaDefaultColor::MagentaBright as u8);
+        //self.draw_debug_hchar_at((EGA_MAX_CLOCK16 / 2) - 8, EgaDefaultColor::Yellow as u8);
+        //self.draw_debug_hchar_at(EGA_MAX_CLOCK16 - 8, EgaDefaultColor::MagentaBright as u8);
         self.tick_crtc_char();
         //self.update_clock();        
     }
@@ -1390,6 +1415,18 @@ impl EGACard {
         else {
             // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
             self.draw_solid_lchar(0);
+        }
+    }
+
+    pub fn draw_gfx_mode_lchar(&mut self) {
+        //let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        //let deplaned_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.chain_buf);
+        //frame_u64[self.rba >> 3] = deplaned_u64[(self.vma & 0xFFFFF) >> 3];
+
+        for i in 0..8 {
+            let buf_i = (i * 2) - (self.attribute_pel_panning * 2) as usize;
+            self.buf[self.back_buf][self.rba + buf_i] = self.chain_buf[(self.vma * 8 & 0xFFFFF) + i];
+            self.buf[self.back_buf][self.rba + buf_i + 1] = self.chain_buf[(self.vma * 8 & 0xFFFFF) + i];
         }
     }
 
@@ -1512,6 +1549,60 @@ impl EGACard {
         
         self.buf[self.back_buf].fill(0);
     }   
+
+    fn update_clock(&mut self) {
+
+        if self.clock_change_pending {
+            (self.clock_divisor, self.char_clock) = match self.sequencer_clocking_mode.dot_clock() {
+                DotClock::HalfClock => (2, 16),
+                DotClock::Native => (1, 8)
+            };
+
+            match (self.misc_output_register.clock_select(), self.debug) {
+                (ClockSelect::Clock14, false) => {
+                    self.extents.field_w = EGA14_MAX_RASTER_X;
+                    self.extents.field_h = EGA14_MAX_RASTER_Y;
+                    self.extents.aperture_w = EGA14_APERTURE_EXTENT_X;
+                    self.extents.aperture_h = EGA14_APERTURE_EXTENT_Y;
+                    self.extents.row_stride = EGA14_MAX_RASTER_X as usize;
+                    self.extents.double_scan = true;
+                }
+                (ClockSelect::Clock14, true) => {
+                    self.extents.field_w = EGA14_MAX_RASTER_X;
+                    self.extents.field_h = EGA14_MAX_RASTER_Y;
+                    self.extents.aperture_w = EGA14_MAX_RASTER_X;
+                    self.extents.aperture_h = EGA14_MAX_RASTER_Y;
+                    self.extents.aperture_x = 0;
+                    self.extents.aperture_y = 0;       
+                    self.extents.row_stride = EGA14_MAX_RASTER_X as usize;
+                    self.extents.double_scan = true;
+                }
+                (ClockSelect::Clock16, false) => {
+                    self.extents.field_w = EGA16_MAX_RASTER_X;
+                    self.extents.field_h = EGA16_MAX_RASTER_Y;
+                    self.extents.aperture_x = 0;
+                    self.extents.aperture_y = 0;                         
+                    self.extents.aperture_w = EGA16_APERTURE_EXTENT_X;
+                    self.extents.aperture_h = EGA16_APERTURE_EXTENT_Y;
+                    self.extents.row_stride = EGA16_MAX_RASTER_X as usize;
+                    self.extents.double_scan = false;
+                }
+                (ClockSelect::Clock16, true) => {
+                    self.extents.field_w = EGA16_MAX_RASTER_X;
+                    self.extents.field_h = EGA16_MAX_RASTER_Y;
+                    self.extents.aperture_x = 0;
+                    self.extents.aperture_y = 0;                         
+                    self.extents.aperture_w = EGA16_MAX_RASTER_X;
+                    self.extents.aperture_h = EGA16_MAX_RASTER_Y;
+                    self.extents.row_stride = EGA16_MAX_RASTER_X as usize;
+                    self.extents.double_scan = false;
+                }
+                _ => {
+                    // Unsupported
+                }
+            }
+        }
+    }
 
     fn ega_to_rgb(egacolor: u8) -> (u8, u8, u8) {
         // EGA color components are 2 bits each

@@ -32,7 +32,7 @@
 
 use crate::{devices::ega::EGACard, cpu_808x::QueueOp};
 
-use super::EGA_MAX_RASTER_X;
+use super::EGA16_MAX_RASTER_X;
 
 pub const EGA_VBLANK_MASK: u16 = 0x001F;
 pub const EGA_HBLANK_MASK: u8 = 0x001F;
@@ -46,6 +46,7 @@ impl EGACard {
         // Update horizontal character counter
         self.hcc = self.hcc.wrapping_add(1);
 
+        /*
         if self.hcc == 0 {
             self.crtc_hborder = false;
             if self.hslc == 0 {
@@ -58,6 +59,7 @@ impl EGACard {
             // We are at the first character of a CRTC frame. Update start address.
             self.vma = self.crtc_frame_address;
         }
+        */
 
         // Advance video memory address offset and grab the next character + attr
         self.vma += 1;
@@ -125,7 +127,7 @@ impl EGACard {
                 self.raster_x = 0;
                 self.char_col = 0;
 
-                let new_rba = (EGA_MAX_RASTER_X * self.raster_y) as usize;
+                let new_rba = self.extents.row_stride * self.raster_y as usize;
                 self.rba = new_rba;
             }
 
@@ -188,7 +190,7 @@ impl EGACard {
             self.crtc_hborder = false;
             self.vlc += 1;
             // Return video memory address to starting position for next character row
-            self.vma = self.vma_t;
+            self.vma = self.vma_sl;
             
             // Reset the current character glyph to start of row
             self.set_char_addr();
@@ -210,7 +212,9 @@ impl EGACard {
 
                 // Set vma to starting position for next character row
                 //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
-                self.vma = self.vma_t;
+                //self.vma = self.vma_t;
+                self.vma_sl = self.vma_sl + self.crtc_offset as usize * 2;
+                self.vma = self.vma_sl;
                 
                 // Load next char + attr
                 self.set_char_addr();
@@ -248,6 +252,7 @@ impl EGACard {
                 self.char_col = 0;                            
                 self.crtc_frame_address = self.crtc_start_address as usize;
                 self.vma = self.crtc_start_address as usize;
+                self.vma_sl = self.vma;
                 self.vma_t = self.vma;
                 self.in_display_area = true;
                 self.crtc_den = true;
