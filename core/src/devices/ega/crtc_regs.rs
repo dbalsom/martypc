@@ -148,21 +148,24 @@ impl EGACard {
             CRTCRegister::StartHorizontalBlank => {
                 // (R2) 8 bit write only
                 self.crtc_start_horizontal_blank = byte;
+                self.normalize_end_horizontal_blank();
             },
             CRTCRegister::EndHorizontalBlank => {
                 // (R3) 8 bit write only
                 // Bits 0-4: End Horizontal Blank
                 // Bits 5-6: Display Enable Skew
                 self.crtc_end_horizontal_blank = CEndHorizontalBlank::from_bytes([byte]);
+                self.normalize_end_horizontal_blank();
             },
             CRTCRegister::StartHorizontalRetrace => {
                 // (R4) 
                 self.crtc_start_horizontal_retrace = byte;
+                self.normalize_end_horizontal_retrace();
             },
             CRTCRegister::EndHorizontalRetrace => {
                 // (R5) 
                 self.crtc_end_horizontal_retrace = CEndHorizontalRetrace::from_bytes([byte]);
-                //self.normalize_end_horizontal_retrace();
+                self.normalize_end_horizontal_retrace();
             }
             CRTCRegister::VerticalTotal => {
                 // (R6) 9-bit - Vertical Total
@@ -231,6 +234,7 @@ impl EGACard {
                 // Bit 8 in overflow register. Set only lower 8 bits here.
                 self.crtc_vertical_retrace_start &= 0xFF00;
                 self.crtc_vertical_retrace_start |= byte as u16;
+                self.normalize_end_vertical_retrace();
             }
             CRTCRegister::VerticalRetraceEnd => {
                 // (R11) Vertical Retrace End
@@ -330,6 +334,11 @@ impl EGACard {
         if proposed_ehb <= self.crtc_start_horizontal_blank {
             proposed_ehb = (self.crtc_start_horizontal_blank + 0x20) & 0xE0 | ehb;
         }
+
+        if proposed_ehb > self.crtc_horizontal_total {
+            // Wrap at HT
+            proposed_ehb = ehb
+        }
         self.crtc_end_horizontal_blank_norm = proposed_ehb;
     }
 
@@ -348,6 +357,14 @@ impl EGACard {
             proposed_ehr = (self.crtc_start_horizontal_retrace + 0x20) & 0xE0 | ehr;
         }
 
+        if proposed_ehr > self.crtc_horizontal_total {
+            // Wrap at HT            
+            proposed_ehr = ehr;
+            self.crtc_retrace_width = self.crtc_horizontal_total - self.crtc_start_horizontal_retrace + ehr;
+        }
+        else {
+            self.crtc_retrace_width = proposed_ehr - self.crtc_start_horizontal_retrace;
+        }
         self.crtc_end_horizontal_retrace_norm = proposed_ehr;
     }
 
@@ -358,14 +375,17 @@ impl EGACard {
     /// counter to determine when the vertical retrace period is over. We convert this 
     /// into the actual scanline number. 
     fn normalize_end_vertical_retrace(&mut self) {
-
         let evr = self.crtc_vertical_retrace_end.vertical_retrace_end() as u16;
 
-        let mut proposed_evr = self.crtc_vertical_retrace_start & 0xE0 | evr;
+        let mut proposed_evr = self.crtc_vertical_retrace_start & 0xFFE0 | evr;
         if proposed_evr <= self.crtc_vertical_retrace_start {
-            proposed_evr = (self.crtc_vertical_retrace_start + 0x20) & 0xE0 | evr;
+            proposed_evr = (self.crtc_vertical_retrace_start + 0x20) & 0xFFE0 | evr;
         }
 
+        if proposed_evr > self.crtc_vertical_total {
+            // Wrap at VT            
+            proposed_evr = evr
+        }
         self.crtc_vertical_retrace_end_norm = proposed_evr;
     }     
 

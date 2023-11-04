@@ -36,7 +36,7 @@ use super::EGA16_MAX_RASTER_X;
 
 pub const EGA_VBLANK_MASK: u16 = 0x001F;
 pub const EGA_HBLANK_MASK: u8 = 0x001F;
-
+pub const EGA_HSYNC_MASK: u8 = 0x001F;
 pub const EGA_HSLC_MASK: u16 = 0x01FF;
 
 impl EGACard {
@@ -68,20 +68,18 @@ impl EGACard {
         // Glyph column reset to 0 for next char
         self.char_col = 0;
 
-        // Process horizontal blanking period
+        // Process horizontal sync period
         if self.crtc_hblank {
-
-            // Increment horizontal sync counter (wrapping)
-
-            /*
-            if ((self.hsc_c3l + 1) & 0x0F) != self.hsc_c3l.wrapping_add(1) {
-                log::warn!("hsc0: {} hsc1: {}", ((self.hsc_c3l + 1) & 0x0F), self.hsc_c3l.wrapping_add(1));
+            // End horizontal blank when we reach R3
+            if (self.hcc & EGA_HBLANK_MASK) == self.crtc_end_horizontal_blank.end_horizontal_blank() {
+                self.crtc_hblank = false;
             }
-            */
+        }
 
-            //self.hsc_c3l = (self.hsc_c3l + 1) & 0x0F;
-            self.hsc_c3l = (self.hsc_c3l + 1) & 0x0F;
-            //self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
+        // Process horizontal sync period
+        if self.crtc_hsync {
+            // Increment horizontal sync counter (wrapping)
+            self.hsc = self.hsc.wrapping_add(1);
 
             // Implement a fixed hsync width from the monitor's perspective - 
             // A wider programmed hsync width than these values shifts the displayed image to the right.
@@ -93,7 +91,7 @@ impl EGACard {
             };
 
             // Do a horizontal sync
-            if self.hsc_c3l == hsync_target {
+            if self.hsc == hsync_target {
                 // Update the video mode, if an update is pending.
                 // It is important not to change graphics mode while we are catching up during an IO instruction.
 
@@ -131,12 +129,12 @@ impl EGACard {
                 self.rba = new_rba;
             }
 
-            // End horizontal blank when we reach R3
-            if (self.hcc & EGA_HBLANK_MASK) == self.crtc_end_horizontal_blank.end_horizontal_blank() {
+            // End horizontal sync when we reach R3
+            if (self.hcc & EGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
                 self.hsync_ct += 1;
-                self.crtc_hblank = false;
-                self.hsc_c3l = 0;
-            }            
+                self.crtc_hsync = false;
+                self.hsc = 0;
+            }                        
         }
 
         if self.hcc == self.crtc_horizontal_display_end + 1 {
@@ -156,10 +154,18 @@ impl EGACard {
             self.crtc_hborder = true;
         }
 
-        if self.hcc == self.crtc_start_horizontal_retrace + 1 {
+        if self.hcc == self.crtc_start_horizontal_blank + 1 {
             // Leaving right overscan and entering horizontal blank
             self.crtc_hblank = true;
-            self.hsc_c3l = 0;
+            self.crtc_den = false;
+        }
+
+        if self.hcc == self.crtc_start_horizontal_retrace + 1 {
+            // Entering horizontal retrace
+            self.crtc_hblank = true;
+            self.crtc_hsync = true;
+            self.crtc_den = false;
+            self.hsc = 0;
         }
 
         if self.hcc == self.crtc_horizontal_total && self.in_last_vblank_line {

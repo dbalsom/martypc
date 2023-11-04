@@ -130,7 +130,21 @@ impl VideoCard for EGACard {
     
     /// Unimplemented for indirect rendering.
     fn get_display_aperture(&self) -> (u32, u32) {
-        (self.extents.aperture_w, self.extents.aperture_h)
+        (self.extents.aperture.w, self.extents.aperture.h)
+    }
+
+    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
+        EGA_APERTURE_DESCS.to_vec()
+    }
+
+    fn set_aperture(&mut self, aperture: u32) {
+        let new_aperture = aperture as usize;
+        if new_aperture < EGA_APERTURE_DESCS.len() {
+            self.aperture = new_aperture;
+        }
+
+        log::debug!("Setting aperture to {}", EGA_APERTURE_DESCS[new_aperture].name);
+        self.extents.aperture = EGA_APERTURES[(self.misc_output_register.clock_select() as usize) & 0x01][new_aperture];
     }
 
     fn get_overscan_color(&self) -> u8 {
@@ -284,10 +298,12 @@ impl VideoCard for EGACard {
         push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayEnd, "[R01]", self.crtc_horizontal_display_end);
         push_reg_str!(crtc_vec, CRTCRegister::StartHorizontalBlank, "[R02]", self.crtc_start_horizontal_blank);
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalBlank, "[R03]", self.crtc_end_horizontal_blank.end_horizontal_blank());
-        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalBlank, "[R03:norm]", self.crtc_end_horizontal_blank_norm);
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalBlank, "[R03:des]", self.crtc_end_horizontal_blank.display_enable_skew());
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalBlank, "[R03:norm]", self.crtc_end_horizontal_blank_norm);
         push_reg_str!(crtc_vec, CRTCRegister::StartHorizontalRetrace, "[R04]", self.crtc_start_horizontal_retrace);
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05]", self.crtc_end_horizontal_retrace.end_horizontal_retrace());
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05:hrd]", self.crtc_end_horizontal_retrace.horizontal_retrace_delay());
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05:norm]", self.crtc_end_horizontal_retrace_norm);
         push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R06]", self.crtc_vertical_total);
         push_reg_str!(crtc_vec, CRTCRegister::Overflow, "[R07]", self.crtc_overflow);
         push_reg_str!(crtc_vec, CRTCRegister::PresetRowScan, "[R08]", self.crtc_preset_row_scan);
@@ -379,41 +395,30 @@ impl VideoCard for EGACard {
         }
         map.insert("AttributePalette".to_string(), attribute_pal_vec);
 
-        /* 
         let mut attribute_vec = Vec::new();
-        attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.mode())));
-        attribute_vec.push((format!("{:?} disp:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.display_type())));
-        attribute_vec.push((format!("{:?} elgc:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.enable_line_character_codes())));
-        attribute_vec.push((format!("{:?} attr:", AttributeRegister::ModeControl), 
-            format!("{:?}", self.attribute_mode_control.enable_blink_or_intensity())));            
+        attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.mode()))));
+        attribute_vec.push((format!("{:?} disp:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.display_type()))));
+        attribute_vec.push((format!("{:?} elgc:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.enable_line_character_codes()))));
+        attribute_vec.push((format!("{:?} attr:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.enable_blink_or_intensity()))));            
 
-        attribute_vec.push((format!("{:?}", AttributeRegister::OverscanColor), 
-            format!("{:06b}", self.attribute_overscan_color.into_bytes()[0])));
+        let (r, g, b) = EGACard::ega_to_rgb( self.attribute_overscan_color.into_bytes()[0]);
+        attribute_vec.push((format!("{:?}", AttributeRegister::OverscanColor), VideoCardStateEntry::Color(format!("{:06b}", self.attribute_overscan_color.into_bytes()[0]), r, g, b)));
             
-        attribute_vec.push((format!("{:?} en:", AttributeRegister::ColorPlaneEnable), 
-            format!("{:04b}", self.attribute_color_plane_enable.enable_plane())));           
-        attribute_vec.push((format!("{:?} mux:", AttributeRegister::ColorPlaneEnable), 
-            format!("{:02b}", self.attribute_color_plane_enable.video_status_mux())));                
-        attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), 
-            format!("{}", self.attribute_pel_panning)));     
+        attribute_vec.push((format!("{:?} en:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:04b}", self.attribute_color_plane_enable.enable_plane()))));           
+        attribute_vec.push((format!("{:?} mux:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:02b}", self.attribute_color_plane_enable.video_status_mux()))));                
+        attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), VideoCardStateEntry::String(format!("{}", self.attribute_pel_panning))));     
         //attribute_overscan_color: AOverscanColor::new(),
         //attribute_color_plane_enable: AColorPlaneEnable::new(),
         map.insert("Attribute".to_string(), attribute_vec);
-        */
 
         let mut internal_vec = Vec::new();
 
-        internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc))));
-        internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc))));
-        internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc))));
+        internal_vec.push((format!("hcc:"), VideoCardStateEntry::String(format!("{}", self.hcc))));
+        internal_vec.push((format!("vlc:"), VideoCardStateEntry::String(format!("{}", self.vlc))));
+        internal_vec.push((format!("vcc:"), VideoCardStateEntry::String(format!("{}", self.vcc))));
         internal_vec.push((format!("hslc:"), VideoCardStateEntry::String(format!("{}", self.hslc))));
         internal_vec.push((format!("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
-        //internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
-        internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
-        internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
+        internal_vec.push((format!("hsc:"), VideoCardStateEntry::String(format!("{}", self.hsc))));
         internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
         internal_vec.push((format!("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
         internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
@@ -430,7 +435,6 @@ impl VideoCard for EGACard {
         //internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         //internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
         //internal_vec.push((format!("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
-        //internal_vec.push((format!("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
 
         internal_vec.push((format!("hsync_ct:"), VideoCardStateEntry::String(format!("{}", self.hsync_ct))));
         internal_vec.push((format!("vsync_ct:"), VideoCardStateEntry::String(format!("{}", self.vsync_ct))));

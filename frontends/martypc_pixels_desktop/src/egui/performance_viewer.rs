@@ -53,7 +53,7 @@ impl PerformanceViewerControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue ) {
       
         egui::Grid::new("perf")
         .striped(true)

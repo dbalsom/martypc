@@ -78,7 +78,7 @@ impl PitViewerControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue ) {
 
         for (i, channel) in self.pit_state.iter().enumerate() {
 

@@ -134,10 +134,16 @@ const EGA14_MAX_RASTER_X: u32 = 912;
 const EGA14_MAX_RASTER_Y: u32 = 262;
 const EGA16_MAX_RASTER_X: u32 = 744;    // Maximum scanline width
 const EGA16_MAX_RASTER_Y: u32 = 364;    // Maximum scanline height
-const EGA14_APERTURE_EXTENT_X: u32 = 640;
-const EGA14_APERTURE_EXTENT_Y: u32 = 200;
-const EGA16_APERTURE_EXTENT_X: u32 = 640;
-const EGA16_APERTURE_EXTENT_Y: u32 = 350;
+
+const EGA14_APERTURE_NORMAL_X: u32 = 640;
+const EGA14_APERTURE_NORMAL_Y: u32 = 200;
+const EGA14_APERTURE_FULL_X: u32 = 768;
+const EGA14_APERTURE_FULL_Y: u32 = 236;
+const EGA16_APERTURE_NORMAL_X: u32 = 640;
+const EGA16_APERTURE_NORMAL_Y: u32 = 350;
+const EGA16_APERTURE_FULL_X: u32 = 640;
+const EGA16_APERTURE_FULL_Y: u32 = 350;
+
 const EGA_APERTURE_CROP_LEFT: u32 = 0;
 const EGA_APERTURE_CROP_TOP: u32 = 0;
 const EGA_MAX_CLOCK14: usize = 912 * 262; // Maximum frame clock for EGA 14Mhz clock (912x262) same as CGA
@@ -400,6 +406,81 @@ static EGA_FONTS: [EGAFont; 2] = [
 const EGA_FONT8: &'static [u8] = include_bytes!("../../../../assets/ega_8by8.bin");
 const EGA_FONT14: &'static [u8] = include_bytes!("../../../../assets/ega_8by14.bin");
 
+// Display apertures for each EGA clock
+// In 14Mhz mode, EGA apertures are similar to CGA apertures.
+// In 16Mhz mode, there is no difference between NORMAL and FULL apertures.
+// Apertures are listed in order:
+// NORMAL, FULL, DEBUG
+const EGA_APERTURES: [[DisplayAperture; 3]; 2] = [
+    [
+        // 14Mhz NORMAL aperture
+        DisplayAperture {
+            w: EGA14_APERTURE_NORMAL_X,
+            h: EGA14_APERTURE_NORMAL_Y,
+            x: 0,
+            y: 0,
+            debug: false
+        },
+        // 14Mhz FULL aperture
+        DisplayAperture {
+            w: EGA14_APERTURE_NORMAL_X,
+            h: EGA14_APERTURE_NORMAL_Y,
+            x: 0,
+            y: 0,
+            debug: false
+        },
+        // 14Mhz DEBUG aperture
+        DisplayAperture {
+            w: EGA14_MAX_RASTER_X,
+            h: EGA14_MAX_RASTER_Y,
+            x: 0,
+            y: 0,
+            debug: true
+        }
+    ],
+    [
+        // 16Mhz NORMAL aperture
+        DisplayAperture {
+            w: EGA16_APERTURE_NORMAL_X,
+            h: EGA16_APERTURE_NORMAL_Y,
+            x: 0,
+            y: 0,
+            debug: false
+        },
+        // 16Mhz FULL aperture
+        DisplayAperture {
+            w: EGA16_APERTURE_FULL_X,
+            h: EGA16_APERTURE_FULL_Y,
+            x: 0,
+            y: 0,
+            debug: false
+        },
+        // 14Mhz DEBUG aperture
+        DisplayAperture {
+            w: EGA16_MAX_RASTER_X,
+            h: EGA16_MAX_RASTER_Y,
+            x: 0,
+            y: 0,
+            debug: true
+        }
+    ]
+];
+
+const EGA_APERTURE_DESCS: [DisplayApertureDesc; 3] = [
+    DisplayApertureDesc {
+        name: "Normal",
+        idx: 0
+    },
+    DisplayApertureDesc {
+        name: "Full",
+        idx: 1
+    },
+    DisplayApertureDesc {
+        name: "Debug",
+        idx: 2
+    }
+];
+
 #[derive (Clone)]
 pub struct DisplayPlane {
     latch: u8,
@@ -426,7 +507,6 @@ pub struct EGACard {
     debug: bool,
     trace_logger: TraceLogger,
 
-    timings: [VideoTimings; 2],
     io_adjust: u16,
     mode_byte: u8,
     display_mode: DisplayMode,
@@ -453,12 +533,11 @@ pub struct EGACard {
     cur_blink: bool,                // Current glyph blink attribute
     cur_blink_state: bool,
     char_col: u8,                   // Column of character glyph being drawn
-    hcc: u8,                     // Horizontal character counter (x pos of character)
-    vlc: u8,                     // Vertical line counter - row of character being drawn
-    vcc: u8,                     // Vertical character counter (y pos of character)
-    //vsc_c3h: u8,                    // Vertical sync counter - counts during vsync period
-    hslc: u16,
-    hsc_c3l: u8,                    // Horizontal sync counter - counts during hsync period
+    hcc: u8,                        // Horizontal character counter (x pos of character)
+    vlc: u8,                        // Vertical line counter - row of character being drawn
+    vcc: u8,                        // Vertical character counter (y pos of character)
+    hslc: u16,                      // Horizontal scanline counter - increments after reaching vertical total
+    hsc: u8,                        // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
     in_vta: bool,
     effective_vta: u8,
@@ -485,6 +564,7 @@ pub struct EGACard {
     crtc_start_horizontal_retrace: u8,      // R(4) Start Horizontal Retrace
     crtc_end_horizontal_retrace: CEndHorizontalRetrace,  // R(5) End Horizontal Retrace
     crtc_end_horizontal_retrace_norm: u8,   // End Horizontal Retrace value normalized to column number
+    crtc_retrace_width: u8,
     crtc_vertical_total: u16,               // R(6) Vertical Total (9-bit value)
     crtc_overflow: u8,                      // R(7) Overflow
     crtc_preset_row_scan: u8,               // R(8) Preset Row Scan
@@ -513,6 +593,7 @@ pub struct EGACard {
     crtc_den: bool,
     crtc_vblank: bool,
     crtc_hblank: bool,
+    crtc_hsync: bool,
     crtc_vborder: bool,
     crtc_hborder: bool,
     in_display_area: bool,
@@ -564,6 +645,7 @@ pub struct EGACard {
     back_buf: usize,
     front_buf: usize,
     extents: DisplayExtents,
+    aperture: usize,
     //buf: Vec<Vec<u8>>,
     buf: [Box<[u8; EGA_MAX_CLOCK16]>; 2],  
     rba: usize,
@@ -607,10 +689,10 @@ pub enum IoAddressSelect {
 /// Bits 2-3
 #[derive (Debug, BitfieldSpecifier, PartialEq)]
 pub enum ClockSelect {
-    Clock14,
-    Clock16,
-    ExternalClock,
-    Unused
+    Clock14 = 0,
+    Clock16 = 1,
+    ExternalClock = 2,
+    Unused = 3,
 }
 
 /// Odd/Even Page Select field of External Miscellaneous Register:
@@ -639,20 +721,6 @@ impl Default for EGACard {
             debug: false,
             trace_logger: TraceLogger::None,
 
-            timings: [
-                VideoTimings {
-                    cpu_frame: CGA_FRAME_CPU_TIME,
-                    vblank_start: CGA_VBLANK_START,
-                    cpu_scanline: CGA_SCANLINE_CPU_TIME,
-                    hblank_start: CGA_HBLANK_START
-                },
-                VideoTimings {
-                    cpu_frame: CGA_FRAME_CPU_TIME,
-                    vblank_start: EGA_VBLANK_START,
-                    cpu_scanline: EGA_SCANLINE_CPU_TIME,
-                    hblank_start: EGA_HBLANK_START,
-                }
-            ],
             io_adjust: 0,
             mode_byte: 0,
             display_mode: DisplayMode::Mode3TextCo80,
@@ -678,18 +746,17 @@ impl Default for EGACard {
             cur_bg: 0,                     // Current glyph bg color
             cur_blink: false,              // Current glyph blink attribute
             cur_blink_state: false,
-            char_col: 0,                   // Column of character glyph being drawn
-            hcc: 0,                     // Horizontal character counter (x pos of character)
-            vlc: 0,                     // Vertical line counter - row of character being drawn
-            vcc: 0,                     // Vertical character counter (y pos of character)
-            //vsc_c3h: 0,                    // Vertical sync counter - counts during vsync period
-            hslc: 0,                       // EGA - horizontal scanline counter
-            hsc_c3l: 0,                    // Horizontal sync counter - counts during hsync period
+            char_col: 0,
+            hcc: 0,
+            vlc: 0,
+            vcc: 0,
+            hslc: 0,
+            hsc: 0,
             vtac_c5: 0,
             in_vta: false,
             effective_vta: 0,
-            vma: 0,                     // VMA register - Video memory address
-            vma_t: 0,                   // VMA' register - Video memory address temporary
+            vma: 0,
+            vma_t: 0,
             vma_sl: 0,
             vmws: 1,
 
@@ -711,6 +778,7 @@ impl Default for EGACard {
             crtc_start_horizontal_retrace: 0,
             crtc_end_horizontal_retrace: CEndHorizontalRetrace::new(),
             crtc_end_horizontal_retrace_norm: 0,
+            crtc_retrace_width: 0,
             crtc_vertical_total: DEFAULT_VERTICAL_TOTAL,
             crtc_overflow: DEFAULT_OVERFLOW,
             crtc_preset_row_scan: DEFAULT_PRESET_ROW_SCAN,
@@ -739,6 +807,7 @@ impl Default for EGACard {
             crtc_den: false,
             crtc_vblank: false,
             crtc_hblank: false,
+            crtc_hsync: false,
             crtc_hborder: false,
             crtc_vborder: false,
             in_display_area: false,
@@ -792,6 +861,7 @@ impl Default for EGACard {
             back_buf: 1,
             front_buf: 0,
             extents: EGACard::get_default_extents(),
+            aperture: 0,            
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
             
             // Theoretically, boxed arrays may have some performance advantages over 
@@ -827,6 +897,9 @@ impl EGACard {
         ega.clock_mode = clock_mode;
     
         if video_frame_debug {
+            // move debugging flag to aperture selection. 
+
+            /*
             ega.extents.field_w = EGA16_MAX_RASTER_X;
             ega.extents.field_h = EGA16_MAX_RASTER_Y;
             ega.extents.aperture_w = EGA16_MAX_RASTER_X;
@@ -837,6 +910,7 @@ impl EGACard {
             ega.vblank_color = EGA_VBLANK_DEBUG_COLOR;
             ega.hblank_color = EGA_HBLANK_DEBUG_COLOR;
             ega.disable_color = EGA_DISABLE_DEBUG_COLOR;
+            */
         }
 
         ega
@@ -846,16 +920,9 @@ impl EGACard {
         DisplayExtents {
             field_w: EGA16_MAX_RASTER_X,
             field_h: EGA16_MAX_RASTER_Y,
-            aperture_w: EGA16_APERTURE_EXTENT_X,
-            aperture_h: EGA16_APERTURE_EXTENT_Y,
-            aperture_x: EGA_APERTURE_CROP_LEFT,
-            aperture_y: EGA_APERTURE_CROP_TOP,
+            aperture: EGA_APERTURES[1][0].clone(),
             visible_w: 0,
             visible_h: 0,
-            overscan_l: 0,
-            overscan_r: 0,
-            overscan_t: 0,
-            overscan_b: 0,
             row_stride: EGA16_MAX_RASTER_X as usize,
             double_scan: false,
             mode_byte: 0
@@ -1210,7 +1277,7 @@ impl EGACard {
                         self.draw_text_mode_hchar14();
                     }
                     AttributeMode::Graphics => {
-                        self.draw_solid_hchar(0);
+                        self.draw_gfx_mode_hchar();
                     }
                 }
             }
@@ -1418,6 +1485,17 @@ impl EGACard {
         }
     }
 
+    pub fn draw_gfx_mode_hchar(&mut self) {
+        //let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        //let deplaned_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.chain_buf);
+        //frame_u64[self.rba >> 3] = deplaned_u64[(self.vma & 0xFFFFF) >> 3];
+
+        for i in 0..8 {
+            let buf_i = i - self.attribute_pel_panning as usize;
+            self.buf[self.back_buf][self.rba + buf_i] = self.chain_buf[(self.vma * 8 & 0xFFFFF) + i];
+        }
+    }
+
     pub fn draw_gfx_mode_lchar(&mut self) {
         //let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         //let deplaned_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.chain_buf);
@@ -1558,44 +1636,13 @@ impl EGACard {
                 DotClock::Native => (1, 8)
             };
 
-            match (self.misc_output_register.clock_select(), self.debug) {
-                (ClockSelect::Clock14, false) => {
-                    self.extents.field_w = EGA14_MAX_RASTER_X;
-                    self.extents.field_h = EGA14_MAX_RASTER_Y;
-                    self.extents.aperture_w = EGA14_APERTURE_EXTENT_X;
-                    self.extents.aperture_h = EGA14_APERTURE_EXTENT_Y;
-                    self.extents.row_stride = EGA14_MAX_RASTER_X as usize;
-                    self.extents.double_scan = true;
+            // Update display aperture for new clock.
+            match self.misc_output_register.clock_select() {
+                ClockSelect::Clock14 => {
+                    self.extents.aperture = EGA_APERTURES[0][self.aperture].clone();
                 }
-                (ClockSelect::Clock14, true) => {
-                    self.extents.field_w = EGA14_MAX_RASTER_X;
-                    self.extents.field_h = EGA14_MAX_RASTER_Y;
-                    self.extents.aperture_w = EGA14_MAX_RASTER_X;
-                    self.extents.aperture_h = EGA14_MAX_RASTER_Y;
-                    self.extents.aperture_x = 0;
-                    self.extents.aperture_y = 0;       
-                    self.extents.row_stride = EGA14_MAX_RASTER_X as usize;
-                    self.extents.double_scan = true;
-                }
-                (ClockSelect::Clock16, false) => {
-                    self.extents.field_w = EGA16_MAX_RASTER_X;
-                    self.extents.field_h = EGA16_MAX_RASTER_Y;
-                    self.extents.aperture_x = 0;
-                    self.extents.aperture_y = 0;                         
-                    self.extents.aperture_w = EGA16_APERTURE_EXTENT_X;
-                    self.extents.aperture_h = EGA16_APERTURE_EXTENT_Y;
-                    self.extents.row_stride = EGA16_MAX_RASTER_X as usize;
-                    self.extents.double_scan = false;
-                }
-                (ClockSelect::Clock16, true) => {
-                    self.extents.field_w = EGA16_MAX_RASTER_X;
-                    self.extents.field_h = EGA16_MAX_RASTER_Y;
-                    self.extents.aperture_x = 0;
-                    self.extents.aperture_y = 0;                         
-                    self.extents.aperture_w = EGA16_MAX_RASTER_X;
-                    self.extents.aperture_h = EGA16_MAX_RASTER_Y;
-                    self.extents.row_stride = EGA16_MAX_RASTER_X as usize;
-                    self.extents.double_scan = false;
+                ClockSelect::Clock16 => {
+                    self.extents.aperture = EGA_APERTURES[1][self.aperture].clone();
                 }
                 _ => {
                     // Unsupported

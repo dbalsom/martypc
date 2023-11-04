@@ -50,7 +50,7 @@ impl CycleTraceViewerControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue ) {
         ui.horizontal(|ui| {
             ui.add_sized(ui.available_size(), 
                 egui::TextEdit::multiline(&mut self.content_str)

@@ -179,7 +179,7 @@ impl TokenListView {
         r
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent>, new_row: &mut usize) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue, new_row: &mut usize) {
 
         let font_id = egui::TextStyle::Monospace.resolve(ui.style());
         let mut row_height = 0.0;
@@ -222,7 +222,7 @@ impl TokenListView {
                     *new_row = self.row & !0x0F;
                     self.previous_row = self.row;
                     
-                    events.push_back(GuiEvent::MemoryUpdate);
+                    events.send(GuiEvent::MemoryUpdate);
                 }
                 
                 //let start_y = ui.min_rect().top() + (first_item as f32) * row_height;
@@ -287,7 +287,7 @@ impl TokenListView {
                                 .on_hover_text(format!("{}", self.hover_text))
                                 .hovered() {
                                     column_select = j;
-                                    events.push_back(GuiEvent::TokenHover(*addr as usize));
+                                    events.send(GuiEvent::TokenHover(*addr as usize));
                                 }
 
                                 if *cursor {

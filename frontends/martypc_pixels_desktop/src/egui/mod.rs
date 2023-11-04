@@ -32,6 +32,7 @@
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
+    hash::{Hash, Hasher},
     ffi::OsString,
     rc::Rc,
     time::{Duration, Instant},
@@ -113,7 +114,7 @@ use marty_core::{
         pic::PicStringState,
         ppi::PpiStringState, 
     },    
-    videocard::{VideoCardState, VideoCardStateEntry}
+    videocard::{VideoCardState, VideoCardStateEntry, DisplayApertureDesc}
 };
 
 use marty_render::CompositeParams;
@@ -144,8 +145,14 @@ pub(crate) enum GuiWindow {
     CycleTraceViewer,
 }
 
-#[derive(PartialEq, Eq, Hash)]
 pub enum GuiOption {
+    Bool(GuiBoolean, bool),
+    Enum(GuiEnum)
+}
+
+#[derive(PartialEq, Eq, Hash)]
+pub enum GuiBoolean {
+    // Boolean options
     CompositeDisplay,
     CorrectAspect,
     CpuEnableWaitStates,
@@ -153,7 +160,20 @@ pub enum GuiOption {
     CpuTraceLoggingEnabled,
     TurboButton,
     ShowBackBuffer,
-    EnableSnow
+    EnableSnow,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub enum GuiEnum {
+    DisplayAperture(u32)
+}
+
+// We implement Hash for GuiEnum based on the discriminant only; this allows
+// us to look up enums based on discriminant and then return the full enum
+impl Hash for GuiEnum {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+    }
 }
 
 #[allow(dead_code)]
@@ -170,7 +190,8 @@ pub enum GuiEvent {
     EditBreakpoint,
     MemoryUpdate,
     TokenHover(usize),
-    OptionChanged(GuiOption, bool),
+    OptionChanged(GuiOption),
+    EnumChanged(GuiEnum, bool),
     CompositeAdjust(CompositeParams),
     FlushLogs,
     DelayAdjust,
@@ -221,23 +242,45 @@ pub struct PerformanceStats {
     pub gui_time: Duration,
 }
 
+pub struct GuiEventQueue (VecDeque<GuiEvent>);
+
+impl GuiEventQueue {
+    fn new() -> Self {
+        GuiEventQueue(VecDeque::new())
+    }
+
+    // Send a GuiEvent to the queue
+    fn send(&mut self, event: GuiEvent) {
+        self.0.push_back(event);
+    }    
+
+    // Send a GuiEvent to the queue
+    fn pop(&mut self) -> Option<GuiEvent> {
+        self.0.pop_front()
+    }        
+}
+
 /// Example application state. A real application will need a lot more state than this.
 pub(crate) struct GuiState {
 
-    event_queue: VecDeque<GuiEvent>,
+    event_queue: GuiEventQueue,
 
     /// Only show the associated window when true.
     window_open_flags: HashMap::<GuiWindow, bool>,
     error_dialog_open: bool,
     warning_dialog_open: bool,
-    
-    option_flags: HashMap::<GuiOption, bool>,
+
+    option_flags: HashMap::<GuiBoolean, bool>,
+    option_enums: HashMap::<GuiEnum, GuiEnum>,
 
     machine_state: MachineState,
 
     video_mem: ColorImage,
     video_data: VideoData,
     perf_stats: PerformanceStats,
+
+    // Display stuff
+    display_apertures: Vec<DisplayApertureDesc>,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -475,31 +518,38 @@ impl GuiState {
             (GuiWindow::CycleTraceViewer, false),
         ].into();
 
-        let option_flags: HashMap<GuiOption, bool> = [
-            (GuiOption::CompositeDisplay, false),
-            (GuiOption::CorrectAspect, false),
-            (GuiOption::CpuEnableWaitStates, true),
-            (GuiOption::CpuInstructionHistory, false),
-            (GuiOption::CpuTraceLoggingEnabled, false),
-            (GuiOption::TurboButton, false),
-            (GuiOption::ShowBackBuffer, true),
-            (GuiOption::EnableSnow, true)
+        let option_flags: HashMap<GuiBoolean, bool> = [
+            (GuiBoolean::CompositeDisplay, false),
+            (GuiBoolean::CorrectAspect, false),
+            (GuiBoolean::CpuEnableWaitStates, true),
+            (GuiBoolean::CpuInstructionHistory, false),
+            (GuiBoolean::CpuTraceLoggingEnabled, false),
+            (GuiBoolean::TurboButton, false),
+            (GuiBoolean::ShowBackBuffer, true),
+            (GuiBoolean::EnableSnow, true)
+        ].into();
+
+        let option_enums: HashMap<GuiEnum, GuiEnum> = [
+            (GuiEnum::DisplayAperture(0), GuiEnum::DisplayAperture(0)),
         ].into();
 
         Self { 
-            event_queue: VecDeque::new(),
+            event_queue: GuiEventQueue::new(),
             window_open_flags,
             error_dialog_open: false,
             warning_dialog_open: false,
 
             option_flags,
+            option_enums,
 
             machine_state: MachineState::Off,
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
             video_data: Default::default(),
             perf_stats: Default::default(),
-        
+            
+            display_apertures: Default::default(),
+
             floppy_names: Vec::new(),
             floppy0_name: Option::None,
             floppy1_name: Option::None,
@@ -550,12 +600,7 @@ impl GuiState {
     }
 
     pub fn get_event(&mut self) -> Option<GuiEvent> {
-        self.event_queue.pop_front()
-    }
-
-    #[allow (dead_code)]
-    pub fn send_event(&mut self, event: GuiEvent) {
-        self.event_queue.push_back(event);
+        self.event_queue.pop()
     }
 
     pub fn window_flag(&mut self, window: GuiWindow) -> &mut bool {
@@ -577,19 +622,27 @@ impl GuiState {
         *self.window_open_flags.get_mut(&window).unwrap() = state;
     }    
 
-    pub fn set_option(&mut self, option: GuiOption, state: bool) {
+    pub fn set_option(&mut self, option: GuiBoolean, state: bool) {
         if let Some(opt) = self.option_flags.get_mut(&option) {
             *opt = state
         }
     }
 
-    pub fn get_option(&mut self, option: GuiOption) -> Option<bool> {
+    pub fn get_option(&mut self, option: GuiBoolean) -> Option<bool> {
         self.option_flags.get(&option).copied()
     }
 
-    pub fn get_option_mut(&mut self, option: GuiOption) -> &mut bool {
+    pub fn get_option_enum(&self, option: GuiEnum) -> GuiEnum {
+        *self.option_enums.get(&option).unwrap()
+    }    
+
+    pub fn get_option_mut(&mut self, option: GuiBoolean) -> &mut bool {
         self.option_flags.get_mut(&option).unwrap()
     }
+
+    pub fn get_option_enum_mut(&mut self, option: GuiEnum) -> &mut GuiEnum {
+        self.option_enums.get_mut(&option).unwrap()
+    }    
 
     pub fn show_error(&mut self, err_str: &String) {
         self.error_dialog_open = true;
@@ -621,6 +674,10 @@ impl GuiState {
 
     pub fn set_vhd_names(&mut self, names: Vec<OsString>) {
         self.vhd_names = names;
+    }
+
+    pub fn set_display_apertures(&mut self, apertures: Vec<DisplayApertureDesc>) {
+        self.display_apertures = apertures;
     }
 
     /// Retrieve a newly selected VHD image name for the specified device slot.
@@ -927,7 +984,7 @@ impl GuiState {
 
                     if ui.add_enabled(enabled, egui::Button::new("Create"))
                         .clicked() {
-                        self.event_queue.push_back(GuiEvent::CreateVHD(OsString::from(&self.new_vhd_filename), self.vhd_formats[self.selected_format_idx].clone()))
+                        self.event_queue.send(GuiEvent::CreateVHD(OsString::from(&self.new_vhd_filename), self.vhd_formats[self.selected_format_idx].clone()))
                     };                        
                 }
             });

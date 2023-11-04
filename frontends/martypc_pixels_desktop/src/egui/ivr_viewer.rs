@@ -53,7 +53,7 @@ impl IvrViewerControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
 
         let mut new_row = self.row;
         ui.horizontal(|ui| {

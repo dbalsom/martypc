@@ -902,11 +902,11 @@ impl VideoRenderer {
         }
 
         // Attempt to center the image by reducing right overscan 
-        //let overscan_total = extents.aperture_w.saturating_sub(extents.visible_w);
+        //let overscan_total = extents.aperture.w.saturating_sub(extents.visible_w);
         //let overscan_half = overscan_total / 2;
 
-        let mut horiz_adjust = extents.aperture_x;
-        if extents.aperture_x + extents.aperture_w >= extents.field_w {
+        let mut horiz_adjust = extents.aperture.x;
+        if extents.aperture.x + extents.aperture.w >= extents.field_w {
             horiz_adjust = 0;
         }
         /*
@@ -918,8 +918,8 @@ impl VideoRenderer {
 
         // Assume display buffer visible data starts at offset 0
 
-        let max_y = std::cmp::min(h / 2, extents.aperture_h);
-        let max_x = std::cmp::min(w, extents.aperture_w);
+        let max_y = std::cmp::min(h / 2, extents.aperture.h);
+        let max_x = std::cmp::min(w, extents.aperture.w);
 
         //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
 
@@ -982,14 +982,14 @@ impl VideoRenderer {
             return
         }
 
-        let mut horiz_adjust = extents.aperture_x;
+        let mut horiz_adjust = extents.aperture.x;
         // Ignore aperture x adjustment if it pushes us outside of the field boundaries
-        if extents.aperture_x + extents.aperture_w >= extents.field_w {
+        if extents.aperture.x + extents.aperture.w >= extents.field_w {
             horiz_adjust = 0;
         }
 
-        let max_y = std::cmp::min(h / 2, extents.aperture_h);
-        let max_x = std::cmp::min(w, extents.aperture_w);
+        let max_y = std::cmp::min(h / 2, extents.aperture.h);
+        let max_x = std::cmp::min(w, extents.aperture.w);
 
         //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
 
@@ -1033,18 +1033,18 @@ impl VideoRenderer {
     ) {
 
         if let Some(composite_buf) = &mut self.composite_buf {
-            let max_w = std::cmp::min(w, extents.aperture_w);
-            let max_h = std::cmp::min(h / 2, extents.aperture_h);
+            let max_w = std::cmp::min(w, extents.aperture.w);
+            let max_h = std::cmp::min(h / 2, extents.aperture.h);
             
             //log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
-            //log::debug!("composite: aperture.x: {}", extents.aperture_x);
+            //log::debug!("composite: aperture.x: {}", extents.aperture.x);
 
             process_cga_composite_int(
                 dbuf, 
-                extents.aperture_w, 
-                extents.aperture_h, 
-                extents.aperture_x,
-                extents.aperture_y,
+                extents.aperture.w, 
+                extents.aperture.h, 
+                extents.aperture.x,
+                extents.aperture.y,
                 extents.row_stride as u32, 
                 composite_buf);
 
@@ -1085,17 +1085,17 @@ impl VideoRenderer {
     ) {
 
         if let Some(composite_buf) = &mut self.composite_buf {
-            let max_w = std::cmp::min(w, extents.aperture_w);
-            let max_h = std::cmp::min(h / 2, extents.aperture_h);
+            let max_w = std::cmp::min(w, extents.aperture.w);
+            let max_h = std::cmp::min(h / 2, extents.aperture.h);
             
             //log::debug!("composite: w: {w} h: {h} max_w: {max_w}, max_h: {max_h}");
 
             process_cga_composite_int(
                 dbuf, 
-                extents.aperture_w, 
-                extents.aperture_h, 
-                extents.aperture_x,
-                extents.aperture_y,
+                extents.aperture.w, 
+                extents.aperture.h, 
+                extents.aperture.x,
+                extents.aperture.y,
                 extents.row_stride as u32, 
                 composite_buf);
 
@@ -1136,7 +1136,7 @@ impl VideoRenderer {
         extents: &DisplayExtents,
     ) {    
 
-        let phase_adjust = if extents.aperture_w < (extents.field_w - 4) {
+        let phase_adjust = if extents.aperture.w < (extents.field_w - 4) {
             // We have room to shift phase
             self.composite_params.phase
         }
@@ -1148,7 +1148,7 @@ impl VideoRenderer {
         // Convert to composite line by line
         for y in 0..(h / 2) {
             //let s_o (= ((y * w) ) as usize;
-            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture_x as usize) + phase_adjust;
+            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture.x as usize) + phase_adjust;
             let d_o = ((y * 2) as usize) * ((w as usize) * size_of::<u32>());
 
             let in_slice = &dbuf[s_o..(s_o + (w as usize))];
@@ -1218,14 +1218,14 @@ impl VideoRenderer {
         beam_pos: Option<(u32, u32)>,
     ) {
 
-        let mut horiz_adjust = extents.aperture_x;
+        let mut horiz_adjust = extents.aperture.x;
         // Ignore aperture x adjustment if it pushes us outside of the field boundaries
-        if extents.aperture_x + extents.aperture_w >= extents.field_w {
+        if extents.aperture.x + extents.aperture.w >= extents.field_w {
             horiz_adjust = 0;
         }
 
-        let max_y = std::cmp::min(h, extents.aperture_h);
-        let max_x = std::cmp::min(w, extents.aperture_w);
+        let max_y = std::cmp::min(h, extents.aperture.h);
+        let max_x = std::cmp::min(w, extents.aperture.w);
 
         //log::debug!("w: {w} h: {h} max_x: {max_x}, max_y: {max_y}");
 

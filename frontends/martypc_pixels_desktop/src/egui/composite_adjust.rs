@@ -49,7 +49,7 @@ impl CompositeAdjustControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
       
         egui::Grid::new("composite_adjust")
             .striped(false)
@@ -96,7 +96,7 @@ impl CompositeAdjustControl {
 
                 if update {
                     self.params.phase = (self.temp_phase / 90.0).round() as usize;
-                    events.push_back(GuiEvent::CompositeAdjust(self.params));
+                    events.send(GuiEvent::CompositeAdjust(self.params));
                 }
             }
         );

@@ -117,7 +117,7 @@ use marty_core::{
 };
 
 
-use crate::egui::{GuiEvent, GuiOption , GuiWindow, PerformanceStats};
+use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, PerformanceStats};
 use marty_render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
 
 const EGUI_MENU_BAR: u32 = 25;
@@ -606,22 +606,22 @@ pub fn run() {
     machine.set_cpu_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection.unwrap_or(false)));
     machine.set_cpu_option(CpuOption::EnableServiceInterrupt(config.cpu.service_interrupt_enabled.unwrap_or(false)));
 
-    framework.gui.set_option(GuiOption::EnableSnow, config.machine.cga_snow.unwrap_or(false));
+    framework.gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));
     machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
 
-    framework.gui.set_option(GuiOption::CorrectAspect, config.emulator.correct_aspect);
+    framework.gui.set_option(GuiBoolean::CorrectAspect, config.emulator.correct_aspect);
 
-    framework.gui.set_option(GuiOption::CpuEnableWaitStates, config.cpu.wait_states_enabled.unwrap_or(true));
+    framework.gui.set_option(GuiBoolean::CpuEnableWaitStates, config.cpu.wait_states_enabled.unwrap_or(true));
     machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled.unwrap_or(true)));
 
-    framework.gui.set_option(GuiOption::CpuInstructionHistory, config.cpu.instruction_history.unwrap_or(false));
+    framework.gui.set_option(GuiBoolean::CpuInstructionHistory, config.cpu.instruction_history.unwrap_or(false));
     machine.set_cpu_option(CpuOption::InstructionHistory(config.cpu.instruction_history.unwrap_or(false)));
 
-    framework.gui.set_option(GuiOption::CpuTraceLoggingEnabled, config.emulator.trace_on);
+    framework.gui.set_option(GuiBoolean::CpuTraceLoggingEnabled, config.emulator.trace_on);
     machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
 
-    framework.gui.set_option(GuiOption::TurboButton, config.machine.turbo);
-    framework.gui.set_option(GuiOption::CompositeDisplay, config.machine.composite.unwrap_or(false));
+    framework.gui.set_option(GuiBoolean::TurboButton, config.machine.turbo);
+    framework.gui.set_option(GuiBoolean::CompositeDisplay, config.machine.composite.unwrap_or(false));
 
     // Disable warpspeed feature if 'devtools' flag not on.
     #[cfg(not(feature = "devtools"))]
@@ -637,7 +637,7 @@ pub fn run() {
         framework.gui.set_window_open(GuiWindow::CpuStateViewer, true);
 
         // Override CpuInstructionHistory
-        framework.gui.set_option(GuiOption::CpuInstructionHistory, true);
+        framework.gui.set_option(GuiBoolean::CpuInstructionHistory, true);
         machine.set_cpu_option(CpuOption::InstructionHistory(true));
 
         // Disable autostart
@@ -1351,8 +1351,8 @@ pub fn run() {
                     }
 
                     // -- Draw video memory --
-                    let composite_enabled = framework.gui.get_option(GuiOption::CompositeDisplay).unwrap_or(false);
-                    let aspect_correct = framework.gui.get_option(GuiOption::CorrectAspect).unwrap_or(false);
+                    let composite_enabled = framework.gui.get_option(GuiBoolean::CompositeDisplay).unwrap_or(false);
+                    let aspect_correct = framework.gui.get_option(GuiBoolean::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
 
@@ -1360,6 +1360,9 @@ pub fn run() {
                     let bus = machine.bus_mut();
 
                     if let Some(video_card) = bus.video() {
+
+                        // Update display aperture options in GUI
+                        framework.gui.set_display_apertures(video_card.list_display_apertures());
 
                         if composite_enabled {
                             video_data.composite_params = framework.gui.composite_adjust.get_params().clone();
@@ -1373,7 +1376,7 @@ pub fn run() {
                         // TODO: buffer and extents may not match due to extents being for front buffer
                         match exec_control.borrow_mut().get_state() {
                             ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
-                                if framework.gui.get_option(GuiOption::ShowBackBuffer).unwrap_or(false) {
+                                if framework.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
                                     video_buffer = video_card.get_back_buf();
                                 }
                                 else {
@@ -1502,32 +1505,46 @@ pub fn run() {
                                     // User wants to crash the computer. Sure, why not.
                                     machine.set_nmi(state);
                                 }
-                                GuiEvent::OptionChanged(opt, val) => {
-                                    match (opt, val) {
-                                        (GuiOption::CorrectAspect, false) => {
-                                            // Aspect correction was turned off. We want to clear the render buffer as the 
-                                            // display buffer is shrinking vertically.
-                                            let surface = pixels.frame_mut();
-                                            surface.fill(0);
-                                            VideoRenderer::set_alpha(surface, video_data.aspect_w, video_data.aspect_h, 255);
+                                GuiEvent::OptionChanged(eopt) => {
+                                    match eopt {
+                                        GuiOption::Bool(op, val) => {
+                                            match (op, val) {
+                                                (GuiBoolean::CorrectAspect, false) => {
+                                                    // Aspect correction was turned off. We want to clear the render buffer as the 
+                                                    // display buffer is shrinking vertically.
+                                                    let surface = pixels.frame_mut();
+                                                    surface.fill(0);
+                                                    VideoRenderer::set_alpha(surface, video_data.aspect_w, video_data.aspect_h, 255);
+                                                }
+                                                (GuiBoolean::CpuEnableWaitStates, state) => {
+                                                    machine.set_cpu_option(CpuOption::EnableWaitStates(state));
+                                                }
+                                                (GuiBoolean::CpuInstructionHistory, state) => {
+                                                    machine.set_cpu_option(CpuOption::InstructionHistory(state));
+                                                }
+                                                (GuiBoolean::CpuTraceLoggingEnabled, state) => {
+                                                    machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
+                                                }
+                                                (GuiBoolean::TurboButton, state) => {
+                                                    machine.set_turbo_mode(state);
+                                                }
+                                                (GuiBoolean::EnableSnow, state) => {
+                                                    machine.set_video_option(VideoOption::EnableSnow(state));
+                                                }                                        
+                                                _ => {}
+                                            }
                                         }
-                                        (GuiOption::CpuEnableWaitStates, state) => {
-                                            machine.set_cpu_option(CpuOption::EnableWaitStates(state));
+                                        GuiOption::Enum(op) => {
+                                            match op {
+                                                GuiEnum::DisplayAperture(aperture_n) => {
+                                                    if let Some(video_card) = machine.videocard() {
+                                                        video_card.set_aperture(aperture_n)
+                                                    }
+                                                }
+                                            }
                                         }
-                                        (GuiOption::CpuInstructionHistory, state) => {
-                                            machine.set_cpu_option(CpuOption::InstructionHistory(state));
-                                        }
-                                        (GuiOption::CpuTraceLoggingEnabled, state) => {
-                                            machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
-                                        }
-                                        (GuiOption::TurboButton, state) => {
-                                            machine.set_turbo_mode(state);
-                                        }
-                                        (GuiOption::EnableSnow, state) => {
-                                            machine.set_video_option(VideoOption::EnableSnow(state));
-                                        }                                        
-                                        _ => {}
                                     }
+
                                 }
     
                                 GuiEvent::CreateVHD(filename, fmt) => {
@@ -1755,6 +1772,8 @@ pub fn run() {
 
                     // -- Update machine state
                     framework.gui.set_machine_state(machine.get_state());
+
+                    
 
                     // -- Update list of floppies
                     let name_vec = floppy_manager.get_floppy_names();

@@ -57,7 +57,7 @@ impl CpuControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, gui_options: &mut HashMap::<GuiOption, bool>, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, gui_options: &mut HashMap::<GuiBoolean, bool>, events: &mut GuiEventQueue ) {
 
         let mut exec_control = self.exec_control.borrow_mut();
 
@@ -110,38 +110,35 @@ impl CpuControl {
             };
 
             ui.menu_button(egui::RichText::new("⏷").font(egui::FontId::proportional(20.0)), |ui| {
-                if ui.checkbox(&mut gui_options.get_mut(&GuiOption::CpuEnableWaitStates).unwrap(), "Enable Wait States").clicked() {
+                if ui.checkbox(&mut gui_options.get_mut(&GuiBoolean::CpuEnableWaitStates).unwrap(), "Enable Wait States").clicked() {
 
-                    let new_opt = gui_options.get(&GuiOption::CpuEnableWaitStates).unwrap();
+                    let new_opt = gui_options.get(&GuiBoolean::CpuEnableWaitStates).unwrap();
 
-                    events.push_back(
+                    events.send(
                         GuiEvent::OptionChanged(
-                            GuiOption::CpuEnableWaitStates, 
-                            *new_opt 
+                            GuiOption::Bool(GuiBoolean::CpuEnableWaitStates, *new_opt)
                         )
                     );
                     ui.close_menu();
                 } 
-                if ui.checkbox(&mut gui_options.get_mut(&GuiOption::CpuInstructionHistory).unwrap(), "Instruction History").clicked() {
+                if ui.checkbox(&mut gui_options.get_mut(&GuiBoolean::CpuInstructionHistory).unwrap(), "Instruction History").clicked() {
 
-                    let new_opt = gui_options.get(&GuiOption::CpuInstructionHistory).unwrap();
+                    let new_opt = gui_options.get(&GuiBoolean::CpuInstructionHistory).unwrap();
 
-                    events.push_back(
+                    events.send(
                         GuiEvent::OptionChanged(
-                            GuiOption::CpuInstructionHistory, 
-                            *new_opt 
+                            GuiOption::Bool(GuiBoolean::CpuInstructionHistory, *new_opt)
                         )
                     );
                     ui.close_menu();
                 }   
-                if ui.checkbox(&mut gui_options.get_mut(&GuiOption::CpuTraceLoggingEnabled).unwrap(), "Trace Logging Enabled").clicked() {
+                if ui.checkbox(&mut gui_options.get_mut(&GuiBoolean::CpuTraceLoggingEnabled).unwrap(), "Trace Logging Enabled").clicked() {
 
-                    let new_opt = gui_options.get(&GuiOption::CpuTraceLoggingEnabled).unwrap();
+                    let new_opt = gui_options.get(&GuiBoolean::CpuTraceLoggingEnabled).unwrap();
 
-                    events.push_back(
+                    events.send(
                         GuiEvent::OptionChanged(
-                            GuiOption::CpuTraceLoggingEnabled, 
-                            *new_opt 
+                            GuiOption::Bool(GuiBoolean::CpuTraceLoggingEnabled, *new_opt)
                         )
                     );
                     ui.close_menu();
@@ -159,21 +156,21 @@ impl CpuControl {
         ui.horizontal(|ui|{
             ui.label("Exec Breakpoint: ");
             if ui.text_edit_singleline(&mut self.breakpoint).changed() {
-                events.push_back(GuiEvent::EditBreakpoint);
+                events.send(GuiEvent::EditBreakpoint);
             };
         });
         ui.separator();
         ui.horizontal(|ui|{
             ui.label("Mem Breakpoint: ");
             if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
-                events.push_back(GuiEvent::EditBreakpoint);
+                events.send(GuiEvent::EditBreakpoint);
             }
         });
         ui.separator();
         ui.horizontal(|ui|{
             ui.label("Int Breakpoint: ");
             if ui.text_edit_singleline(&mut self.int_breakpoint).changed() {
-                events.push_back(GuiEvent::EditBreakpoint);
+                events.send(GuiEvent::EditBreakpoint);
             }
         });                
     }

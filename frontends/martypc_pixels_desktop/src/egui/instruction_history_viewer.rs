@@ -56,7 +56,7 @@ impl InstructionHistoryControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
 
         self.tlv.set_capacity(32);
         self.tlv.set_visible(32);

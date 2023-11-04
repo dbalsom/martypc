@@ -30,7 +30,7 @@
 
 */
 
-use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption};
+use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption, GuiBoolean, GuiEnum};
 
 use marty_core::machine::MachineState;
 
@@ -51,7 +51,7 @@ impl GuiState {
                 }
                 ui.separator();
                 if ui.button("🚫 Quit").clicked() {
-                    self.event_queue.push_back(GuiEvent::Exit);
+                    self.event_queue.send(GuiEvent::Exit);
                     ui.close_menu();
                 }
             });
@@ -66,55 +66,50 @@ impl GuiState {
                 
                 ui.add_enabled_ui(!is_on, |ui| {
                     if ui.button("⚡ Power on").clicked() {
-                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::On));
+                        self.event_queue.send(GuiEvent::MachineStateChange(MachineState::On));
                         ui.close_menu();
                     } 
                 });
 
-                if ui.checkbox(&mut self.get_option_mut(GuiOption::TurboButton), "Turbo Button").clicked() {
+                if ui.checkbox(&mut self.get_option_mut(GuiBoolean::TurboButton), "Turbo Button").clicked() {
 
-                    let new_opt = self.get_option(GuiOption::TurboButton).unwrap();
+                    let new_opt = self.get_option(GuiBoolean::TurboButton).unwrap();
 
-                    self.event_queue.push_back(
-                        GuiEvent::OptionChanged(
-                            GuiOption::TurboButton, 
-                            new_opt 
-                        )
-                    );
+                    self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(GuiBoolean::TurboButton, new_opt)));
                     ui.close_menu();
                 }
 
                 ui.add_enabled_ui(is_on && !is_paused, |ui| {
                     if ui.button("⏸ Pause").clicked() {
-                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Paused));
+                        self.event_queue.send(GuiEvent::MachineStateChange(MachineState::Paused));
                         ui.close_menu();
                     }
                 });
 
                 ui.add_enabled_ui(is_on && is_paused, |ui| {
                     if ui.button("▶ Resume").clicked() {
-                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Resuming));
+                        self.event_queue.send(GuiEvent::MachineStateChange(MachineState::Resuming));
                         ui.close_menu();
                     }   
                 });
 
                 ui.add_enabled_ui(is_on, |ui| {             
                     if ui.button("⟲ Reboot").clicked() {
-                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Rebooting));
+                        self.event_queue.send(GuiEvent::MachineStateChange(MachineState::Rebooting));
                         ui.close_menu();
                     }  
                 });
 
                 ui.add_enabled_ui(is_on, |ui| {             
                     if ui.button("⟲ CTRL-ALT-DEL").clicked() {
-                        self.event_queue.push_back(GuiEvent::CtrlAltDel);
+                        self.event_queue.send(GuiEvent::CtrlAltDel);
                         ui.close_menu();
                     }  
                 });
 
                 ui.add_enabled_ui(is_on, |ui| {
                     if ui.button("🔌 Power off").clicked() {
-                        self.event_queue.push_back(GuiEvent::MachineStateChange(MachineState::Off));
+                        self.event_queue.send(GuiEvent::MachineStateChange(MachineState::Off));
                         ui.close_menu();
                     }  
                 });                                  
@@ -142,7 +137,7 @@ impl GuiState {
                             log::debug!("Selected floppy filename: {:?}", name);
                             
                             self.floppy0_name = Some(name.clone());
-                            self.event_queue.push_back(GuiEvent::LoadFloppy(0, name.clone()));
+                            self.event_queue.send(GuiEvent::LoadFloppy(0, name.clone()));
                             ui.close_menu();
                         }
                     }
@@ -158,7 +153,7 @@ impl GuiState {
                             log::debug!("Selected floppy filename: {:?}", name);
                             
                             self.floppy1_name = Some(name.clone());
-                            self.event_queue.push_back(GuiEvent::LoadFloppy(1, name.clone()));
+                            self.event_queue.send(GuiEvent::LoadFloppy(1, name.clone()));
                             ui.close_menu();
                         }
                     }
@@ -170,7 +165,7 @@ impl GuiState {
                         log::debug!("Saving floppy filename: {:?}", self.floppy0_name);
                         
                         if let Some(name) = &self.floppy0_name {
-                            self.event_queue.push_back(GuiEvent::SaveFloppy(0, name.clone()));
+                            self.event_queue.send(GuiEvent::SaveFloppy(0, name.clone()));
                         }
                         ui.close_menu();
                     }
@@ -182,20 +177,20 @@ impl GuiState {
                         log::debug!("Saving floppy filename: {:?}", self.floppy1_name);
                         
                         if let Some(name) = &self.floppy1_name {
-                            self.event_queue.push_back(GuiEvent::SaveFloppy(1, name.clone()));
+                            self.event_queue.send(GuiEvent::SaveFloppy(1, name.clone()));
                         }
                         ui.close_menu();
                     }
                 });                
                 
                 if ui.button("⏏ Eject Floppy in Drive A:").clicked() {
-                    self.event_queue.push_back(GuiEvent::EjectFloppy(0));
+                    self.event_queue.send(GuiEvent::EjectFloppy(0));
                     self.floppy0_name = None;
                     ui.close_menu();
                 };       
                 
                 if ui.button("⏏ Eject Floppy in Drive B:").clicked() {
-                    self.event_queue.push_back(GuiEvent::EjectFloppy(1));
+                    self.event_queue.send(GuiEvent::EjectFloppy(1));
                     self.floppy1_name = None;
                     ui.close_menu();
                 };                              
@@ -209,7 +204,7 @@ impl GuiState {
 
                                 log::debug!("Selected VHD filename: {:?}", name);
 
-                                self.event_queue.push_back(GuiEvent::LoadVHD(0, name.clone()));
+                                self.event_queue.send(GuiEvent::LoadVHD(0, name.clone()));
                                 self.new_vhd_name0 = Some(name.clone());
                                 ui.close_menu();
                             }
@@ -223,7 +218,7 @@ impl GuiState {
 
                                 log::debug!("Selected VHD filename: {:?}", name);
 
-                                self.event_queue.push_back(GuiEvent::LoadVHD(0, name.clone()));
+                                self.event_queue.send(GuiEvent::LoadVHD(0, name.clone()));
                                 self.new_vhd_name1 = Some(name.clone());
                                 ui.close_menu();
                             }
@@ -239,28 +234,80 @@ impl GuiState {
                 ui.separator();
 
                 if ui.button("🖼 Take Screenshot...").clicked() {
-                    self.event_queue.push_back(GuiEvent::TakeScreenshot);
+                    self.event_queue.send(GuiEvent::TakeScreenshot);
                     ui.close_menu();
                 }; 
                 
             });
 
             if media_response.response.clicked() {
-                self.event_queue.push_back(GuiEvent::RescanMediaFolders);
+                self.event_queue.send(GuiEvent::RescanMediaFolders);
             }
+
+            ui.menu_button("Display", |ui| {
+
+                ui.menu_button("Aperture", |ui| {
+
+                    for (idx, aperture) in self.display_apertures.clone().iter().enumerate() {
+                        /*
+                        ui.radio_value(
+                            &mut self.get_option_enum_mut(GuiEnum::DisplayAperture(0)), 
+                            GuiEnum::DisplayAperture(index as u32),
+                            aperture.name.clone()
+                        );
+                        */
+
+                        let enum_mut = self.get_option_enum_mut(GuiEnum::DisplayAperture(0));
+
+                        let checked = *enum_mut == GuiEnum::DisplayAperture(idx as u32);
+
+                        if ui.add(egui::RadioButton::new(checked, aperture.name)).clicked() {
+                            *enum_mut = GuiEnum::DisplayAperture(idx as u32);
+                            self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Enum( GuiEnum::DisplayAperture(idx as u32))));
+                        }
+                    }
+                });
+
+                if ui.checkbox(&mut self.get_option_mut(GuiBoolean::CorrectAspect), "Correct Aspect Ratio").clicked() {
+
+                    let new_opt = self.get_option(GuiBoolean::CorrectAspect).unwrap();
+
+                    self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(GuiBoolean::CorrectAspect, new_opt)));
+
+                    ui.close_menu();
+                }
+                if ui.checkbox(&mut self.get_option_mut(GuiBoolean::CompositeDisplay), "Composite Monitor").clicked() {
+                    ui.close_menu();
+                }
+
+                if ui.checkbox(&mut self.get_option_mut(GuiBoolean::EnableSnow), "Enable Snow").clicked() {
+
+                    let new_opt = self.get_option(GuiBoolean::EnableSnow).unwrap();
+
+                    self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(GuiBoolean::EnableSnow, new_opt)));
+
+                    ui.close_menu();
+                }
+
+                if ui.button("Composite Adjustments...").clicked() {
+                    *self.window_flag(GuiWindow::CompositeAdjust) = true;
+                    ui.close_menu();
+                }
+
+            });  
 
             ui.menu_button("Debug", |ui| {
                 ui.menu_button("Dump Memory", |ui| {
                     if ui.button("Video Memory").clicked() {
-                        self.event_queue.push_back(GuiEvent::DumpVRAM);
+                        self.event_queue.send(GuiEvent::DumpVRAM);
                         ui.close_menu();
                     }
                     if ui.button("Code Segment").clicked() {
-                        self.event_queue.push_back(GuiEvent::DumpCS);
+                        self.event_queue.send(GuiEvent::DumpCS);
                         ui.close_menu();
                     }
                     if ui.button("All Memory").clicked() {
-                        self.event_queue.push_back(GuiEvent::DumpAllMem);
+                        self.event_queue.send(GuiEvent::DumpAllMem);
                         ui.close_menu();
                     }                    
                 });
@@ -274,38 +321,44 @@ impl GuiState {
                 }
                 ui.menu_button("CPU Debug Options", |ui| {
 
-                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuEnableWaitStates), "Enable Wait States").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiBoolean::CpuEnableWaitStates), "Enable Wait States").clicked() {
 
-                        let new_opt = self.get_option(GuiOption::CpuEnableWaitStates).unwrap();
+                        let new_opt = self.get_option(GuiBoolean::CpuEnableWaitStates).unwrap();
     
-                        self.event_queue.push_back(
+                        self.event_queue.send(
                             GuiEvent::OptionChanged(
-                                GuiOption::CpuEnableWaitStates, 
-                                new_opt 
+                                    GuiOption::Bool(
+                                        GuiBoolean::CpuEnableWaitStates, 
+                                        new_opt 
+                                    )
                             )
                         );
                         ui.close_menu();
                     }
-                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuInstructionHistory), "Instruction History").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiBoolean::CpuInstructionHistory), "Instruction History").clicked() {
 
-                        let new_opt = self.get_option(GuiOption::CpuInstructionHistory).unwrap();
+                        let new_opt = self.get_option(GuiBoolean::CpuInstructionHistory).unwrap();
     
-                        self.event_queue.push_back(
+                        self.event_queue.send(
                             GuiEvent::OptionChanged(
-                                GuiOption::CpuInstructionHistory, 
-                                new_opt 
+                                    GuiOption::Bool(
+                                        GuiBoolean::CpuInstructionHistory, 
+                                        new_opt 
+                                    )
                             )
                         );
                         ui.close_menu();
                     }
-                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CpuTraceLoggingEnabled), "Trace Logging Enabled").clicked() {
+                    if ui.checkbox(&mut self.get_option_mut(GuiBoolean::CpuTraceLoggingEnabled), "Trace Logging Enabled").clicked() {
 
-                        let new_opt = self.get_option(GuiOption::CpuTraceLoggingEnabled).unwrap();
+                        let new_opt = self.get_option(GuiBoolean::CpuTraceLoggingEnabled).unwrap();
     
-                        self.event_queue.push_back(
+                        self.event_queue.send(
                             GuiEvent::OptionChanged(
-                                GuiOption::CpuTraceLoggingEnabled, 
-                                new_opt 
+                                    GuiOption::Bool(
+                                        GuiBoolean::CpuTraceLoggingEnabled, 
+                                        new_opt         
+                                    )
                             )
                         );
                         ui.close_menu();
@@ -317,12 +370,12 @@ impl GuiState {
                     }
 
                     if ui.button("Trigger NMI").clicked() {
-                        self.event_queue.push_back(GuiEvent::SetNMI(true));
+                        self.event_queue.send(GuiEvent::SetNMI(true));
                         ui.close_menu();
                     }
 
                     if ui.button("Clear NMI").clicked() {
-                        self.event_queue.push_back(GuiEvent::SetNMI(false));
+                        self.event_queue.send(GuiEvent::SetNMI(false));
                         ui.close_menu();
                     }                    
 
@@ -376,69 +429,33 @@ impl GuiState {
                     *self.window_flag(GuiWindow::VideoCardViewer) = true;
                     ui.close_menu();
                 }
-                if ui.checkbox(&mut self.get_option_mut(GuiOption::ShowBackBuffer), "Debug back buffer").clicked() {
+                if ui.checkbox(&mut self.get_option_mut(GuiBoolean::ShowBackBuffer), "Debug back buffer").clicked() {
 
-                    let new_opt = self.get_option(GuiOption::ShowBackBuffer).unwrap();
+                    let new_opt = self.get_option(GuiBoolean::ShowBackBuffer).unwrap();
 
-                    self.event_queue.push_back(
-                        GuiEvent::OptionChanged(
-                            GuiOption::ShowBackBuffer, 
-                            new_opt 
+                    self.event_queue.send(
+                        GuiEvent::OptionChanged(GuiOption::Bool(
+                                GuiBoolean::ShowBackBuffer, 
+                                new_opt 
+                            )
                         )
                     );
                     ui.close_menu();
                 }
                 
                 if ui.button("Flush Trace Logs").clicked() {
-                    self.event_queue.push_back(GuiEvent::FlushLogs);
+                    self.event_queue.send(GuiEvent::FlushLogs);
                     ui.close_menu();
                 }
             });
-            ui.menu_button("Options", |ui| {
-
-                ui.menu_button("Display", |ui| {
-                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CorrectAspect), "Correct Aspect Ratio").clicked() {
-
-                        let new_opt = self.get_option(GuiOption::CorrectAspect).unwrap();
-    
-                        self.event_queue.push_back(
-                            GuiEvent::OptionChanged(
-                                GuiOption::CorrectAspect, 
-                                new_opt 
-                            )
-                        );
-                        ui.close_menu();
-                    }
-                    if ui.checkbox(&mut self.get_option_mut(GuiOption::CompositeDisplay), "Composite Monitor").clicked() {
-                        ui.close_menu();
-                    }
-
-                    if ui.checkbox(&mut self.get_option_mut(GuiOption::EnableSnow), "Enable Snow").clicked() {
-
-                        let new_opt = self.get_option(GuiOption::EnableSnow).unwrap();
-
-                        self.event_queue.push_back(
-                            GuiEvent::OptionChanged(
-                                GuiOption::EnableSnow, 
-                                new_opt 
-                            )
-                        );
-                        ui.close_menu();
-                    }
-
-                    if ui.button("Composite Adjustments...").clicked() {
-                        *self.window_flag(GuiWindow::CompositeAdjust) = true;
-                        ui.close_menu();
-                    }
-
-                });                
+            ui.menu_button("Options", |ui| {              
 
                 ui.menu_button("Attach COM2: ...", |ui| {
                     for port in &self.serial_ports {
 
                         if ui.radio_value(&mut self.serial_port_name, port.port_name.clone(), port.port_name.clone()).clicked() {
 
-                            self.event_queue.push_back(GuiEvent::BridgeSerialPort(self.serial_port_name.clone()));
+                            self.event_queue.send(GuiEvent::BridgeSerialPort(self.serial_port_name.clone()));
                             ui.close_menu();
                         }
                     }

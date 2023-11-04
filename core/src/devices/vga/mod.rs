@@ -1342,6 +1342,14 @@ impl VideoCard for VGACard {
         (0, 0)
     }
 
+    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
+        Vec::new()
+    }    
+
+    fn set_aperture(&mut self, aperture: u32) {
+        
+    }
+
     /// Unimplemented for indirect rendering.
     fn get_beam_pos(&self) -> Option<(u32, u32)> {
         None

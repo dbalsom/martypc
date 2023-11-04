@@ -45,17 +45,17 @@ impl DeviceControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
         ui.horizontal(|ui|{
             ui.vertical(|ui|{
                 ui.label("Tick:");
                 ui.group(|ui| {
 
                         if ui.button(egui::RichText::new("Timer 0").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::Timer(0), 1))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::Timer(0), 1))
                         };
                         if ui.button(egui::RichText::new("Video + 8").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard, 8))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard, 8))
                         };                    
                 });
             });
@@ -65,10 +65,10 @@ impl DeviceControl {
                 ui.group(|ui| {
 
                         if ui.button(egui::RichText::new("Timer 0").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::Timer(0), 100))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::Timer(0), 100))
                         };
                         if ui.button(egui::RichText::new("Video +104").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard, 104))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard, 104))
                         };                    
                 });
             });
@@ -78,22 +78,22 @@ impl DeviceControl {
                 ui.group(|ui| {
 
                         if ui.button(egui::RichText::new("Tick CGA -1").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard, 238943))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard, 238943))
                         };           
                         if ui.button(egui::RichText::new("Tick CGA -100").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard, 238844))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard, 238844))
                         };       
                         if ui.button(egui::RichText::new("Tick CGA +912").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard,  912))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard,  912))
                         };                                   
                         if ui.button(egui::RichText::new("Tick CGA -8 (no vadj)").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard, 233464))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard, 233464))
                         };           
                         if ui.button(egui::RichText::new("Tick CGA -104 (no vadj)").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard,  233638))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard,  233638))
                         };     
                         if ui.button(egui::RichText::new("Tick CGA -912 (no vadj").font(egui::FontId::proportional(20.0))).clicked() {
-                            events.push_back(GuiEvent::TickDevice(DeviceSelection::VideoCard,  232560))
+                            events.send(GuiEvent::TickDevice(DeviceSelection::VideoCard,  232560))
                         };                               
 
                                                                   

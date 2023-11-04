@@ -46,7 +46,7 @@ impl DelayAdjustControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
       
         egui::Grid::new("composite_adjust")
             .striped(false)
@@ -56,13 +56,13 @@ impl DelayAdjustControl {
 
                 ui.label(egui::RichText::new("DRAM refresh delay:").text_style(egui::TextStyle::Monospace));
                 if ui.add(egui::Slider::new(&mut self.params.dram_delay, 0..=100)).changed() {
-                    events.push_back(GuiEvent::DelayAdjust);
+                    events.send(GuiEvent::DelayAdjust);
                 }
                 ui.end_row();
                     
                 ui.label(egui::RichText::new("HALT resume delay cycles:").text_style(egui::TextStyle::Monospace));
                 if ui.add(egui::Slider::new(&mut self.params.halt_resume_delay, 0..=256)).changed() {
-                    events.push_back(GuiEvent::DelayAdjust);
+                    events.send(GuiEvent::DelayAdjust);
                 }
                 ui.end_row();                    
             }

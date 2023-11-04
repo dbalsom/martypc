@@ -478,7 +478,7 @@ pub struct CGACard {
 
     back_buf: usize,
     front_buf: usize,
-    extents: [DisplayExtents; 2],
+    extents: DisplayExtents,
     //buf: Vec<Vec<u8>>,
     buf: [Box<[u8; CGA_MAX_CLOCK]>; 2],
 
@@ -522,16 +522,15 @@ impl Default for DisplayExtents {
         Self {
             field_w: CGA_XRES_MAX,
             field_h: CGA_YRES_MAX,
-            aperture_w: CGA_APERTURE_EXTENT_X,
-            aperture_h: CGA_APERTURE_EXTENT_Y,
-            aperture_x: CGA_APERTURE_CROP_LEFT,
-            aperture_y: CGA_APERTURE_CROP_TOP,
+            aperture: DisplayAperture {
+                x: CGA_APERTURE_CROP_LEFT,
+                y: CGA_APERTURE_CROP_TOP,
+                w: CGA_APERTURE_EXTENT_X,
+                h: CGA_APERTURE_EXTENT_Y,
+                debug: false
+            },
             visible_w: 0,
             visible_h: 0,
-            overscan_l: 0,
-            overscan_r: 0,
-            overscan_t: 0,
-            overscan_b: 0,
             row_stride: CGA_XRES_MAX as usize,
             double_scan: true,
             mode_byte: 0
@@ -674,7 +673,7 @@ impl Default for CGACard {
 
             back_buf: 1,
             front_buf: 0,
-            extents: [Default::default(); 2],
+            extents: Default::default(),
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
 
             // Theoretically, boxed arrays may have some performance advantages over 
@@ -711,14 +710,10 @@ impl CGACard {
         cga.clock_mode = clock_mode;
 
         if video_frame_debug {
-            cga.extents[0].aperture_w = CGA_XRES_MAX;
-            cga.extents[1].aperture_w = CGA_XRES_MAX;
-            cga.extents[0].aperture_h = CGA_YRES_MAX;
-            cga.extents[1].aperture_h = CGA_YRES_MAX;
-            cga.extents[0].aperture_x = 0;
-            cga.extents[1].aperture_x = 0;
-            cga.extents[0].aperture_y = 0;
-            cga.extents[1].aperture_y = 0;            
+            cga.extents.aperture.w = CGA_XRES_MAX;
+            cga.extents.aperture.h = CGA_YRES_MAX;
+            cga.extents.aperture.x = 0;
+            cga.extents.aperture.y = 0;
             cga.vblank_color = CGA_VBLANK_DEBUG_COLOR;
             cga.hblank_color = CGA_HBLANK_DEBUG_COLOR;
             cga.disable_color = CGA_DISABLE_DEBUG_COLOR;
@@ -2425,7 +2420,7 @@ impl CGACard {
             if self.vcc_c4 == self.crtc_vertical_displayed {
                 // Enter lower overscan area.
                 // This represents reaching the lowest visible scanline, so save the scanline in extents.
-                self.extents[self.front_buf].visible_h = self.scanline;
+                self.extents.visible_h = self.scanline;
                 self.in_display_area = false;
                 self.vborder = true;
             }
@@ -2530,7 +2525,7 @@ impl CGACard {
 
             // Width is total characters * character width * clock_divisor.
             // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
-            self.extents[self.front_buf].visible_w = 
+            self.extents.visible_w = 
                 self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32 * self.clock_divisor as u32;
 
             trace_regs!(self);
@@ -2542,7 +2537,7 @@ impl CGACard {
             // Save the current mode byte, used for composite rendering. 
             // The mode could have changed several times per frame, but I am not sure how the composite rendering should 
             // really handle that...
-            self.extents[self.front_buf].mode_byte = self.mode_byte;
+            self.extents.mode_byte = self.mode_byte;
 
             // Swap the display buffers
             self.swap();   

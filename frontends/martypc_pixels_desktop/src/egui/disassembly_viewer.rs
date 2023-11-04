@@ -57,12 +57,12 @@ impl DisassemblyControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut VecDeque<GuiEvent> ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
 
         ui.horizontal(|ui| {
             ui.label("Address: ");
             if ui.text_edit_singleline(&mut self.address).changed() {
-                events.push_back(GuiEvent::MemoryUpdate);
+                events.send(GuiEvent::MemoryUpdate);
             }
         });
         ui.separator();
