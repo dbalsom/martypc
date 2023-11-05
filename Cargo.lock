@@ -1795,6 +1795,7 @@ dependencies = [
  "marty_core",
  "marty_render",
  "pixels",
+ "pixels_stretch_renderer",
  "rand",
  "regex",
  "resize",
