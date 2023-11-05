@@ -133,8 +133,8 @@ impl VideoCard for EGACard {
         (self.extents.aperture.w, self.extents.aperture.h)
     }
 
-    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
-        EGA_APERTURE_DESCS.to_vec()
+    fn list_display_apertures(&self) -> (Vec<DisplayApertureDesc>, usize) {
+        (EGA_APERTURE_DESCS.to_vec(), 0)
     }
 
     fn set_aperture(&mut self, aperture: u32) {

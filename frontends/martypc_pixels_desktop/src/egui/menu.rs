@@ -30,6 +30,8 @@
 
 */
 
+use std::default;
+
 use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption, GuiBoolean, GuiEnum};
 
 use marty_core::machine::MachineState;
@@ -230,13 +232,6 @@ impl GuiState {
                     *self.window_flag(GuiWindow::VHDCreator) = true;
                     ui.close_menu();
                 };
-
-                ui.separator();
-
-                if ui.button("🖼 Take Screenshot...").clicked() {
-                    self.event_queue.send(GuiEvent::TakeScreenshot);
-                    ui.close_menu();
-                }; 
                 
             });
 
@@ -246,7 +241,29 @@ impl GuiState {
 
             ui.menu_button("Display", |ui| {
 
-                ui.menu_button("Aperture", |ui| {
+                ui.menu_button("Display Scaling", |ui| {
+
+                    for (idx, mode) in self.scaling_modes.clone().iter().enumerate() {
+                        /*
+                        ui.radio_value(
+                            &mut self.get_option_enum_mut(GuiEnum::DisplayAperture(0)), 
+                            GuiEnum::DisplayAperture(index as u32),
+                            aperture.name.clone()
+                        );
+                        */
+
+                        let enum_mut = self.get_option_enum_mut(GuiEnum::DisplayScalingMode(Default::default()));
+
+                        let checked = *enum_mut == GuiEnum::DisplayAperture(idx as u32);
+
+                        if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
+                            *enum_mut = GuiEnum::DisplayAperture(idx as u32);
+                            self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Enum( GuiEnum::DisplayAperture(idx as u32))));
+                        }
+                    }
+                });
+
+                ui.menu_button("Monitor Aperture", |ui| {
 
                     for (idx, aperture) in self.display_apertures.clone().iter().enumerate() {
                         /*
@@ -293,6 +310,13 @@ impl GuiState {
                     *self.window_flag(GuiWindow::CompositeAdjust) = true;
                     ui.close_menu();
                 }
+
+                ui.separator();
+
+                if ui.button("🖼 Take Screenshot").clicked() {
+                    self.event_queue.send(GuiEvent::TakeScreenshot);
+                    ui.close_menu();
+                };                 
 
             });  
 

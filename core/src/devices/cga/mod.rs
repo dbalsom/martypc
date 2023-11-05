@@ -151,16 +151,6 @@ const CGA_MONITOR_VSYNC_POS: u32 = 246;
 // Minimum scanline value after which we can perform a vsync. A vsync before this scanline will be ignored.
 const CGA_MONITOR_VSYNC_MIN: u32 = 0; 
 
-// Display aperature. This is an attempt to represent the maximum visible display extents,
-// including overscan. Anything more is likely to be hidden by the monitor bezel or not 
-// shown for some other reason. This is mostly calculated based off Area5150's highest
-// resolution modes.
-const CGA_APERTURE_EXTENT_X: u32 = 768;
-const CGA_APERTURE_EXTENT_Y: u32 = 236;
-
-const CGA_APERTURE_CROP_LEFT: u32 = 48;
-const CGA_APERTURE_CROP_TOP: u32 = 0;
-
 // For derivision of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
 // We run the CGA card independent of the CPU frequency.
 // Timings in 4.77Mhz CPU cycles are provided for reference.
@@ -256,15 +246,13 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
 ];
 
 const CGA_DEBUG_COLOR: u8 = CgaColor::Magenta as u8;
-const CGA_HBLANK_COLOR: u8 = 0;
-const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::Blue as u8;
-const CGA_VBLANK_COLOR: u8 = 0;
-const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
-const CGA_DISABLE_COLOR: u8 = 0;
-const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
-const CGA_OVERSCAN_COLOR: u8 = CgaColor::Magenta as u8;
-
 const CGA_DEBUG2_COLOR: u8 = CgaColor::RedBright as u8;
+const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::Blue as u8;
+const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
+const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
+const CGA_OVERSCAN_DEBUG_COLOR: u8 = CgaColor::Green as u8;
+
+
 /*
 const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
@@ -314,6 +302,88 @@ const CGA_DEBUG_U64: [u64; 16] = [
     0xF0F0F0F0F0F0F0F0,
 ];
 
+// Display aperatures. 
+// CROPPED will show the display area only - no overscan will be visible.
+// NORMAL is an attempt to represent the maximum visible display extents, including overscan. 
+// Anything more is likely to be hidden by the monitor bezel or not shown for some other reason. 
+// FULL will show the entire overscan area - this is nice for Area 5150 to see the entire extent 
+// of each effect, although it will display more than a monitor would.
+// DEBUG will show the entire display field and will enable coloring of hblank and vblank
+// periods.
+const CGA_APERTURE_CROPPED_W: u32 = 640;
+const CGA_APERTURE_CROPPED_H: u32 = 200;
+const CGA_APERTURE_CROPPED_X: u32 = 112;
+const CGA_APERTURE_CROPPED_Y: u32 = 22; // 44px when double-scanned
+
+const CGA_APERTURE_NORMAL_W: u32 = 704;
+const CGA_APERTURE_NORMAL_H: u32 = 224;
+const CGA_APERTURE_NORMAL_X: u32 = 80;
+const CGA_APERTURE_NORMAL_Y: u32 = 10;
+
+const CGA_APERTURE_FULL_W: u32 = 768;
+const CGA_APERTURE_FULL_H: u32 = 236;
+const CGA_APERTURE_FULL_X: u32 = 48;
+const CGA_APERTURE_FULL_Y: u32 = 0;
+
+const CGA_APERTURE_DEBUG_W: u32 = 912;
+const CGA_APERTURE_DEBUG_H: u32 = 262;
+const CGA_APERTURE_DEBUG_X: u32 = 0;
+const CGA_APERTURE_DEBUG_Y: u32 = 0;
+
+const CGA_APERTURES: [DisplayAperture; 4] = [
+    DisplayAperture {
+        w: CGA_APERTURE_CROPPED_W,
+        h: CGA_APERTURE_CROPPED_H,
+        x: CGA_APERTURE_CROPPED_X,
+        y: CGA_APERTURE_CROPPED_Y,
+        debug: false,
+    },
+    // 14Mhz NORMAL aperture
+    DisplayAperture {
+        w: CGA_APERTURE_NORMAL_W,
+        h: CGA_APERTURE_NORMAL_H,
+        x: CGA_APERTURE_NORMAL_X,
+        y: CGA_APERTURE_NORMAL_Y,
+        debug: false,
+    },
+    // 14Mhz FULL aperture
+    DisplayAperture {
+        w: CGA_APERTURE_FULL_W,
+        h: CGA_APERTURE_FULL_H,
+        x: CGA_APERTURE_FULL_X,
+        y: CGA_APERTURE_FULL_Y,
+        debug: false,
+    },
+    // 14Mhz DEBUG aperture
+    DisplayAperture {
+        w: CGA_APERTURE_DEBUG_W,
+        h: CGA_APERTURE_DEBUG_H,
+        x: CGA_APERTURE_FULL_X,
+        y: CGA_APERTURE_FULL_Y,
+        debug: true,
+    },
+];
+
+const CGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
+    DisplayApertureDesc {
+        name: "Cropped",
+        idx: 0,
+    },
+    DisplayApertureDesc {
+        name: "Monitor Accurate",
+        idx: 1,
+    },
+    DisplayApertureDesc {
+        name: "Full",
+        idx: 2,
+    },
+    DisplayApertureDesc {
+        name: "Debug",
+        idx: 3,
+    },
+];
+
+const CGA_DEFAULT_APERTURE: usize = 1;
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -437,10 +507,6 @@ pub struct CGACard {
     scanline: u32,
     missed_hsyncs: u32,
 
-    hblank_color: u8,
-    vblank_color: u8,
-    disable_color: u8,
-
     overscan_left: u32,
     overscan_right_start: u32,
     overscan_right: u32,
@@ -479,6 +545,7 @@ pub struct CGACard {
     back_buf: usize,
     front_buf: usize,
     extents: DisplayExtents,
+    aperture: usize,
     //buf: Vec<Vec<u8>>,
     buf: [Box<[u8; CGA_MAX_CLOCK]>; 2],
 
@@ -522,13 +589,7 @@ impl Default for DisplayExtents {
         Self {
             field_w: CGA_XRES_MAX,
             field_h: CGA_YRES_MAX,
-            aperture: DisplayAperture {
-                x: CGA_APERTURE_CROP_LEFT,
-                y: CGA_APERTURE_CROP_TOP,
-                w: CGA_APERTURE_EXTENT_X,
-                h: CGA_APERTURE_EXTENT_Y,
-                debug: false
-            },
+            aperture: CGA_APERTURES[CGA_DEFAULT_APERTURE],
             visible_w: 0,
             visible_h: 0,
             row_stride: CGA_XRES_MAX as usize,
@@ -632,10 +693,6 @@ impl Default for CGACard {
             scanline: 0,
             missed_hsyncs: 0,
 
-            hblank_color: CGA_HBLANK_COLOR,
-            vblank_color: CGA_VBLANK_COLOR,
-            disable_color: CGA_DISABLE_COLOR,
-
             overscan_left: 0,
             overscan_right_start: 0,
             overscan_right: 0,
@@ -674,6 +731,7 @@ impl Default for CGACard {
             back_buf: 1,
             front_buf: 0,
             extents: Default::default(),
+            aperture: CGA_DEFAULT_APERTURE,
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
 
             // Theoretically, boxed arrays may have some performance advantages over 
@@ -709,15 +767,6 @@ impl CGACard {
         cga.debug = video_frame_debug;
         cga.clock_mode = clock_mode;
 
-        if video_frame_debug {
-            cga.extents.aperture.w = CGA_XRES_MAX;
-            cga.extents.aperture.h = CGA_YRES_MAX;
-            cga.extents.aperture.x = 0;
-            cga.extents.aperture.y = 0;
-            cga.vblank_color = CGA_VBLANK_DEBUG_COLOR;
-            cga.hblank_color = CGA_HBLANK_DEBUG_COLOR;
-            cga.disable_color = CGA_DISABLE_DEBUG_COLOR;
-        }
         cga
     }
 
@@ -734,9 +783,6 @@ impl CGACard {
             frame_count: self.frame_count,  // Keep frame count as to not confuse frontend
             trace_logger,
             extents: self.extents,
-            vblank_color: self.vblank_color,
-            hblank_color: self.hblank_color,
-            disable_color: self.disable_color,
 
             ..Self::default()
         }
@@ -1725,8 +1771,8 @@ impl CGACard {
             }
         }
         else {
-            self.buf[self.back_buf][self.rba] = self.disable_color;
-            self.buf[self.back_buf][self.rba + 1] = self.disable_color;
+            self.buf[self.back_buf][self.rba] = 0;
+            self.buf[self.back_buf][self.rba + 1] = 0;
         }
     }    
 
@@ -1957,17 +2003,21 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                self.draw_solid_hchar(self.hblank_color);
+                if self.extents.aperture.debug {
+                    self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
+                }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                self.draw_solid_hchar(self.vblank_color);
+                if self.extents.aperture.debug {
+                    self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
+                }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.debug {
+                if self.extents.aperture.debug {
                     //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
-                    self.draw_solid_hchar(self.cc_overscan_color);
+                    self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
                 }
                 else {
                     self.draw_solid_hchar(self.cc_overscan_color);
@@ -2044,17 +2094,21 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                self.draw_solid_lchar(self.hblank_color);
+                if self.extents.aperture.debug {
+                    self.draw_solid_lchar(CGA_HBLANK_DEBUG_COLOR);
+                }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                self.draw_solid_lchar(self.vblank_color);
+                if self.extents.aperture.debug {
+                    self.draw_solid_lchar(CGA_VBLANK_DEBUG_COLOR);
+                }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.debug {
+                if self.extents.aperture.debug {
                     //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
-                    self.draw_solid_hchar(self.cc_overscan_color);
+                    self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
                 }
                 else {                
                     self.draw_solid_lchar(self.cc_overscan_color);
@@ -2159,17 +2213,21 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                self.buf[self.back_buf][self.rba] = self.hblank_color;
+                if self.extents.aperture.debug {
+                    self.buf[self.back_buf][self.rba] = CGA_HBLANK_DEBUG_COLOR;
+                }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                self.buf[self.back_buf][self.rba] = self.vblank_color;
+                if self.extents.aperture.debug {
+                    self.buf[self.back_buf][self.rba] = CGA_VBLANK_DEBUG_COLOR;
+                }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.debug {
+                if self.extents.aperture.debug {
                     //self.draw_pixel(CGA_OVERSCAN_COLOR);
-                    self.draw_overscan_pixel();
+                    self.draw_pixel(CGA_OVERSCAN_DEBUG_COLOR);
                 }
                 else {
                     self.draw_overscan_pixel();

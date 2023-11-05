@@ -36,6 +36,7 @@ use std::{
     ffi::OsString,
     rc::Rc,
     time::{Duration, Instant},
+    mem::{discriminant, Discriminant},
 };
 
 use egui::{
@@ -52,8 +53,6 @@ use egui::{
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use winit::{window::Window, event_loop::EventLoopWindowTarget};
-
-use marty_render::VideoData;
 
 use serialport::SerialPortInfo;
 use regex::Regex;
@@ -117,7 +116,7 @@ use marty_core::{
     videocard::{VideoCardState, VideoCardStateEntry, DisplayApertureDesc}
 };
 
-use marty_render::CompositeParams;
+use marty_render::{CompositeParams, ScalingMode};
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
@@ -163,17 +162,10 @@ pub enum GuiBoolean {
     EnableSnow,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GuiEnum {
-    DisplayAperture(u32)
-}
-
-// We implement Hash for GuiEnum based on the discriminant only; this allows
-// us to look up enums based on discriminant and then return the full enum
-impl Hash for GuiEnum {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        std::mem::discriminant(self).hash(state);
-    }
+    DisplayAperture(u32),
+    DisplayScalingMode(ScalingMode)
 }
 
 #[allow(dead_code)]
@@ -271,16 +263,16 @@ pub(crate) struct GuiState {
     warning_dialog_open: bool,
 
     option_flags: HashMap::<GuiBoolean, bool>,
-    option_enums: HashMap::<GuiEnum, GuiEnum>,
+    option_enums: HashMap::<Discriminant<GuiEnum>, GuiEnum>,
 
     machine_state: MachineState,
 
     video_mem: ColorImage,
-    video_data: VideoData,
     perf_stats: PerformanceStats,
 
     // Display stuff
     display_apertures: Vec<DisplayApertureDesc>,
+    scaling_modes: Vec<ScalingMode>,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -529,8 +521,8 @@ impl GuiState {
             (GuiBoolean::EnableSnow, true)
         ].into();
 
-        let option_enums: HashMap<GuiEnum, GuiEnum> = [
-            (GuiEnum::DisplayAperture(0), GuiEnum::DisplayAperture(0)),
+        let option_enums: HashMap<Discriminant<GuiEnum>, GuiEnum> = [
+            (discriminant(&GuiEnum::DisplayAperture(0)), GuiEnum::DisplayAperture(0)),
         ].into();
 
         Self { 
@@ -545,10 +537,10 @@ impl GuiState {
             machine_state: MachineState::Off,
             video_mem: ColorImage::new([320,200], egui::Color32::BLACK),
 
-            video_data: Default::default(),
             perf_stats: Default::default(),
             
             display_apertures: Default::default(),
+            scaling_modes: Default::default(),
 
             floppy_names: Vec::new(),
             floppy0_name: Option::None,
@@ -628,12 +620,22 @@ impl GuiState {
         }
     }
 
+    pub fn set_option_enum(&mut self, option: GuiEnum) {
+        if let Some(opt) = self.option_enums.get_mut(&discriminant(&option)) {
+            log::debug!("Setting GuiEnum: {:?}", option);
+            *opt = option
+        }
+        else {
+            log::warn!("Failed to set GuiEnum: {:?}", option);
+        }
+    }
+
     pub fn get_option(&mut self, option: GuiBoolean) -> Option<bool> {
         self.option_flags.get(&option).copied()
     }
 
     pub fn get_option_enum(&self, option: GuiEnum) -> GuiEnum {
-        *self.option_enums.get(&option).unwrap()
+        *self.option_enums.get(&discriminant(&option)).unwrap()
     }    
 
     pub fn get_option_mut(&mut self, option: GuiBoolean) -> &mut bool {
@@ -641,7 +643,7 @@ impl GuiState {
     }
 
     pub fn get_option_enum_mut(&mut self, option: GuiEnum) -> &mut GuiEnum {
-        self.option_enums.get_mut(&option).unwrap()
+        self.option_enums.get_mut(&discriminant(&option)).unwrap()
     }    
 
     pub fn show_error(&mut self, err_str: &String) {
@@ -676,8 +678,18 @@ impl GuiState {
         self.vhd_names = names;
     }
 
-    pub fn set_display_apertures(&mut self, apertures: Vec<DisplayApertureDesc>) {
-        self.display_apertures = apertures;
+    /// Set display apertures and the default aperture to show as selected.
+    pub fn set_display_apertures(&mut self, apertures: (Vec<DisplayApertureDesc>, usize)) {
+        self.display_apertures = apertures.0;
+        //log::warn!("set_display_apertures: Setting selection to: {}", self.display_apertures[apertures.1].name);
+        self.set_option_enum(GuiEnum::DisplayAperture(apertures.1 as u32));
+    }
+
+    /// Set list of available scaling modes and the default scaling mode to show as selected 
+    pub fn set_scaling_modes(&mut self, modes: (Vec<ScalingMode>, ScalingMode)) {
+        self.scaling_modes = modes.0;
+
+        self.set_option_enum(GuiEnum::DisplayScalingMode(modes.1));
     }
 
     /// Retrieve a newly selected VHD image name for the specified device slot.

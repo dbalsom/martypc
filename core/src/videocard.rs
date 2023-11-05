@@ -243,8 +243,8 @@ pub trait VideoCard {
     /// For CGA, this will be a fixed value. For EGA & VGA it may vary.
     fn get_display_aperture(&self) -> (u32, u32);
 
-    /// Return a list of available display aperture modes
-    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc>;
+    /// Return a list of available display aperture modes, and the default aperture
+    fn list_display_apertures(&self) -> (Vec<DisplayApertureDesc>, usize);
 
     /// Set the desired display aperture. The aperture number should be in the range of the vec
     /// returend from list_display_apertures().

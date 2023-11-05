@@ -37,10 +37,11 @@
 use std::collections::VecDeque;
 
 use crate::egui::*;
+use marty_render::VideoParams;
 
 pub struct PerformanceViewerControl {
     stats: PerformanceStats,
-    video_data: VideoData,
+    video_data: VideoParams,
 }
 
 
@@ -121,7 +122,7 @@ impl PerformanceViewerControl {
         });          
     }
 
-    pub fn update_video_data(&mut self, video_data: VideoData ) {
+    pub fn update_video_data(&mut self, video_data: VideoParams ) {
         self.video_data = video_data;
     }
 

@@ -1342,8 +1342,8 @@ impl VideoCard for VGACard {
         (0, 0)
     }
 
-    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
-        Vec::new()
+    fn list_display_apertures(&self) -> (Vec<DisplayApertureDesc>, usize) {
+        (Vec::new(), 0)
     }    
 
     fn set_aperture(&mut self, aperture: u32) {

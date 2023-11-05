@@ -83,6 +83,8 @@ use winit::{
 
 };
 
+use pixels_stretch_renderer::{StretchingRenderer, SurfaceSize};
+
 //use winit_input_helper::WinitInputHelper;
 
 #[cfg(feature = "arduino_validator")]
@@ -118,7 +120,13 @@ use marty_core::{
 
 
 use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, PerformanceStats};
-use marty_render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
+use marty_render::{
+    AspectRatio, 
+    VideoParams, 
+    ScalingMode, 
+    SCALING_MODES,
+    VideoRenderer, 
+};
 
 const EGUI_MENU_BAR: u32 = 25;
 
@@ -127,9 +135,6 @@ const WINDOW_MIN_HEIGHT: u32 = 480;
 
 const WINDOW_WIDTH: u32 = WINDOW_MIN_WIDTH;
 const WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT + EGUI_MENU_BAR * 2;
-
-const DEFAULT_RENDER_WIDTH: u32 = 640;
-const DEFAULT_RENDER_HEIGHT: u32 = 400;
 
 const MIN_RENDER_WIDTH: u32 = 160;
 const MIN_RENDER_HEIGHT: u32 = 200;
@@ -454,9 +459,6 @@ pub fn run() {
         return run_headless::run_headless(&config, rom_manager, floppy_manager);
     }
 
-    // Create the video renderer
-    let mut video = VideoRenderer::new(config.machine.video);
-
     // Init graphics & GUI 
     let event_loop = EventLoop::new();
     
@@ -498,27 +500,17 @@ pub fn run() {
         exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
 
-    // Create render buf
-    let mut render_src = vec![0; (DEFAULT_RENDER_WIDTH * DEFAULT_RENDER_HEIGHT * 4) as usize];
-    let mut video_data = VideoData {
-        render_w: DEFAULT_RENDER_WIDTH,
-        render_h: DEFAULT_RENDER_HEIGHT,
-        aspect_w: 640,
-        aspect_h: 480,
-        aspect_correction_enabled: false,
-        composite_params: Default::default(),
-        last_mode_byte: 0,
-    };
 
-    // Create resampling context
-    let mut resample_context = ResampleContext::new();
-
+    // Create pixels & egui backend
     let (mut pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
+        //let (pixels_w, pixels_h) = {
+        //    (video.params().aspect_w, video.params().aspect_h)
+        //};    
         let pixels = 
-            Pixels::new(video_data.aspect_w, video_data.aspect_h, surface_texture).unwrap();
+            Pixels::new(640, 480, surface_texture).unwrap();
         let framework =
             Framework::new(
                 &event_loop,
@@ -538,6 +530,38 @@ pub fn run() {
     let adapter_name_str =  format!("{}", adapter_info.name);
     log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
     
+    // Create the video renderer
+    let mut video = VideoRenderer::new(config.machine.video, ScalingMode::Integer, pixels);
+
+    let pixels_arc = video.get_backend();
+
+    video.set_on_resize(|pixels, w, h| {
+        if w > 0 && h > 0 {
+            log::debug!("Resizing pixels buffer...");
+            pixels.resize_buffer(w, h).expect("Failed to resize Pixels buffer.");
+        }
+        else {
+            log::debug!("Ignoring invalid buffer resize request (window minimized?)");
+        }
+    });
+
+    video.set_on_resize_surface(|pixels, w, h| {
+        
+        if w > 0 && h > 0 {
+            log::debug!("Resizing pixels surface to {}x{}", w, h);
+            pixels.resize_surface(w, h).expect("Failed to resize Pixels surface.");
+        }
+        else {
+            log::debug!("Ignoring invalid surface resize request (window minimized?)");
+        }
+    });    
+
+    video.set_with_buffer(move|action| {
+        if let Ok(mut pixels) = pixels_arc.lock() {
+            action(pixels.frame_mut())
+        }
+    });
+
     // Set list of serial ports
     framework.gui.update_serial_ports(serial_ports);
 
@@ -623,6 +647,13 @@ pub fn run() {
     framework.gui.set_option(GuiBoolean::TurboButton, config.machine.turbo);
     framework.gui.set_option(GuiBoolean::CompositeDisplay, config.machine.composite.unwrap_or(false));
 
+    if let Some(video_card) = machine.videocard() {
+        // Update display aperture options in GUI
+        framework.gui.set_display_apertures(video_card.list_display_apertures());
+    }
+
+    framework.gui.set_scaling_modes((SCALING_MODES.to_vec(), Default::default()));
+
     // Disable warpspeed feature if 'devtools' flag not on.
     #[cfg(not(feature = "devtools"))]
     {
@@ -688,20 +719,28 @@ pub fn run() {
         if let Some(card) = machine.videocard() {
             if let RenderMode::Direct = card.get_render_mode() {
 
+                let extents = card.get_display_extents();
                 let (aper_x, mut aper_y) = card.get_display_aperture();
                 assert!(aper_x != 0 && aper_y !=0 );
 
-                let double_aperture = card.get_scanline_double();
-                if double_aperture {
+                if extents.double_scan {
                     aper_y *= 2;
                 }
 
-                let (aper_correct_x, aper_correct_y) = 
-                    VideoRenderer::get_aspect_corrected_res(
-                        (aper_x, aper_y),
-                        marty_render::AspectRatio{ h: 4, v: 3 }
-                    );
+                let aspect_ratio = if config.emulator.correct_aspect {
+                    Some(marty_render::AspectRatio{ h: 4, v: 3 })
+                }
+                else {
+                    None
+                };
 
+                video.set_aspect_ratio(aspect_ratio);
+
+                let (aper_correct_x, aper_correct_y) = {
+                    let dim = video.get_display_dimensions();
+                    (dim.w, dim.h)
+                };
+  
                 let mut double_res = false;
 
                 // Get the current monitor resolution. 
@@ -732,37 +771,18 @@ pub fn run() {
 
                 log::debug!("Resizing render buffer to {}x{}", aper_x, aper_y);
 
-                render_src.resize((aper_x * aper_y * 4) as usize, 0);
-                render_src.fill(0);
+                video.resize((aper_x, aper_y).into());
 
-                let (pixel_buf_w, pixel_buf_h) = if config.emulator.correct_aspect {
-                    (aper_x, aper_correct_y)
-                }
-                else {
-                    (aper_x, aper_y)
-                };
-                
-                if (pixel_buf_w > 0) && (pixel_buf_h > 0) {
-                    log::debug!("Resizing pixel buffer to {}x{}", pixel_buf_w, pixel_buf_h);
-                    pixels.resize_buffer(pixel_buf_w, pixel_buf_h).expect("Failed to resize Pixels buffer.");
-                }
-
-                VideoRenderer::set_alpha(pixels.frame_mut(), pixel_buf_w, pixel_buf_h, 255);
-                // Pixels will resize itself from window size event
                 /*
-                if pixels.resize_surface(aper_correct_x, aper_correct_y).is_err() {
-                    // Some error occured but not much we can do about it.
-                    // Errors get thrown when the window minimizes.
-                    log::error!("Unable to resize pixels surface!");
+                let pixel_res = video.get_display_dimensions();
+                
+                if (pixel_res.w > 0) && (pixel_res.h > 0) {
+                    log::debug!("Resizing pixel buffer to {}x{}", pixel_res.w, pixel_res.h);
+                    pixels.resize_buffer(pixel_res.w, pixel_res.h).expect("Failed to resize Pixels buffer.");
                 }
-
-                framework.resize(window_resize_w, window_resize_h);
                 */
 
-                video_data.render_w = aper_x;
-                video_data.render_h = aper_y;
-                video_data.aspect_w = aper_correct_x;
-                video_data.aspect_h = aper_correct_y;
+                //VideoRenderer::set_alpha(pixels.frame_mut(), pixel_res.w, pixel_res.h, 255);
 
                 // Recalculate sampling parameters.
                 //resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
@@ -840,9 +860,10 @@ pub fn run() {
 
     // Start buffer playback
     machine.play_sound_buffer();
-    
+
     // Run the winit event loop
     event_loop.run(move |event, _, control_flow| {
+
 
         //*control_flow = ControlFlow::Poll;
     
@@ -950,11 +971,14 @@ pub fn run() {
                         framework.scale_factor(scale_factor);
                     }     
                     WindowEvent::Resized(size) => {
+
+                        video.backend_resize_surface((size.width, size.height).into());
+                        /*
                         log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
                         if pixels.resize_surface(size.width, size.height).is_err() {
                             // Some error occured but not much we can do about it.
                             // Errors get thrown when the window minimizes.
-                        }
+                        }*/
                         framework.resize(size.width, size.height);
                     }
                     WindowEvent::CloseRequested => {
@@ -1311,41 +1335,22 @@ pub fn run() {
                         }
                         
                         if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
-
-                            //let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
-
-                            if (new_w != video_data.render_w) || (new_h != video_data.render_h) {
-                                // Resize buffers
-                                log::debug!("Aperture changed. Setting internal resolution to ({},{})", new_w, new_h);
+                            if video.would_resize((new_w, new_h).into()) {
+                                // Resize renderer & pixels
                                 video_card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
-
-                                // Calculate new aspect ratio (make this option)
-                                video_data.render_w = new_w;
-                                video_data.render_h = new_h;
-                                render_src.resize((new_w * new_h * 4) as usize, 0);                                
-                                render_src.fill(0);
-    
-                                video_data.aspect_w = video_data.render_w;
-                                let aspect_corrected_h = f32::floor(video_data.render_w as f32 * RENDER_ASPECT) as u32;
-                                // Don't make height smaller
-                                let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
-                                video_data.aspect_h = new_height;
+                                video.resize((new_w, new_h).into());
                                 
-                                // Recalculate sampling factors
-                                resample_context.precalc(
-                                    video_data.render_w, 
-                                    video_data.render_h, 
-                                    video_data.aspect_w,
-                                    video_data.aspect_h
-                                );
-
-                                pixels.frame_mut().fill(0);
-
-                                if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
+                                let new_buf_size = video.get_display_dimensions();
+                                log::debug!("Aperture changed. Setting front buffer resolution to ({},{})", new_buf_size.w, new_buf_size.h);
+                                
+                                /*
+                                if let Err(e) = pixels.resize_buffer(new_buf_size.w, new_buf_size.h) {
                                     log::error!("Failed to resize pixel pixel buffer: {}", e);
                                 }
+                                pixels.frame_mut().fill(0);
+                                */
 
-                                VideoRenderer::set_alpha(pixels.frame_mut(), video_data.aspect_w, video_data.aspect_h, 255);
+                                //VideoRenderer::set_alpha(pixels.frame_mut(), new_buf_size.w, new_buf_size.h, 255);
                             }
                         }
                     }
@@ -1361,15 +1366,16 @@ pub fn run() {
 
                     if let Some(video_card) = bus.video() {
 
-                        // Update display aperture options in GUI
-                        framework.gui.set_display_apertures(video_card.list_display_apertures());
 
+
+                        /*
                         if composite_enabled {
                             video_data.composite_params = framework.gui.composite_adjust.get_params().clone();
                         }
+                        */
 
                         let beam_pos;
-                        let video_buffer;
+                        let videocard_buffer;
                         // Get the appropriate buffer depending on run mode. If execution is paused 
                         // (debugging) show the back buffer instead of front buffer. 
                         // TODO: Discriminate between paused in debug mode vs user paused state
@@ -1377,33 +1383,45 @@ pub fn run() {
                         match exec_control.borrow_mut().get_state() {
                             ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
                                 if framework.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
-                                    video_buffer = video_card.get_back_buf();
+                                    videocard_buffer = video_card.get_back_buf();
                                 }
                                 else {
-                                    video_buffer = video_card.get_display_buf();
+                                    videocard_buffer = video_card.get_display_buf();
                                 }
                                 beam_pos = video_card.get_beam_pos();
                             }
                             _ => {
-                                video_buffer = video_card.get_display_buf();
+                                videocard_buffer = video_card.get_display_buf();
                                 beam_pos = None;
                             }
                         }
 
+
+                        let extents = video_card.get_display_extents();
+
+                        if video.get_mode_byte() != extents.mode_byte {
+                            // Mode byte has changed, recalculate composite parameters
+                            video.cga_direct_mode_update(extents.mode_byte);
+                            video.set_mode_byte(extents.mode_byte);
+                        }
+
+                        //video.draw(videocard_buffer, pixels.frame_mut(), &extents, composite_enabled, beam_pos);
+                        video.draw_with_backend(videocard_buffer, &extents, composite_enabled, beam_pos);
+
+                        /* 
                         // Get the render mode from the device and render appropriately
                         match (video_card.get_video_type(), video_card.get_render_mode()) {
-
                             (VideoType::CGA, RenderMode::Direct) => {
                                 // Draw device's front buffer in direct mode (CGA only for now)
 
                                 let extents = video_card.get_display_extents();
 
-                                if video_data.last_mode_byte != extents.mode_byte {
+                                if video.get_mode_byte() != extents.mode_byte {
                                     // Mode byte has changed, recalculate composite parameters
                                     video.cga_direct_mode_update(extents.mode_byte);
-                                    video_data.last_mode_byte = extents.mode_byte;
+                                    video.set_mode_byte(extents.mode_byte);
                                 }
-
+                                
                                 match aspect_correct {
                                     true => {
                                         video.draw_cga_direct_u32(
@@ -1475,7 +1493,9 @@ pub fn run() {
                                 }                                
                             }
                             _ => panic!("Invalid combination of VideoType and RenderMode")
+
                         }
+                        */
                     }
                     stat_counter.render_time = Instant::now() - render_start;
 
@@ -1512,10 +1532,18 @@ pub fn run() {
                                                 (GuiBoolean::CorrectAspect, false) => {
                                                     // Aspect correction was turned off. We want to clear the render buffer as the 
                                                     // display buffer is shrinking vertically.
-                                                    let surface = pixels.frame_mut();
-                                                    surface.fill(0);
-                                                    VideoRenderer::set_alpha(surface, video_data.aspect_w, video_data.aspect_h, 255);
+                                                    
+                                                    //let surface = pixels.frame_mut();
+                                                    //surface.fill(0);
+                                                    
+                                                    video.set_aspect_ratio(Default::default());
+                                                    //let dimensions = video.get_display_dimensions();
+                                                    //VideoRenderer::set_alpha(surface, dimensions.w, dimensions.h, 255);
                                                 }
+                                                (GuiBoolean::CorrectAspect, true) => {
+                                                    // Aspect correction was turned on. 
+                                                    video.set_aspect_ratio(Some(AspectRatio{h: 4, v: 3}));
+                                                }                                                
                                                 (GuiBoolean::CpuEnableWaitStates, state) => {
                                                     machine.set_cpu_option(CpuOption::EnableWaitStates(state));
                                                 }
@@ -1540,6 +1568,9 @@ pub fn run() {
                                                     if let Some(video_card) = machine.videocard() {
                                                         video_card.set_aperture(aperture_n)
                                                     }
+                                                }
+                                                GuiEnum::DisplayScalingMode(new_mode) => {
+                                                    video.set_scaling_mode(new_mode);
                                                 }
                                             }
                                         }
@@ -1735,7 +1766,7 @@ pub fn run() {
                                     match state {
                                         MachineState::Off | MachineState::Rebooting => {
                                             // Clear the screen if rebooting or turning off
-                                            render_src.fill(0);
+                                            video.clear();
                                         }
                                         _ => {}
                                     }
@@ -1746,20 +1777,14 @@ pub fn run() {
                                     screenshot_path.push(config.emulator.basedir.clone());
                                     screenshot_path.push("screenshots");
 
-                                    video.screenshot(
-                                        &pixels.frame()[0..(video_data.render_w as usize * video_data.render_h as usize * std::mem::size_of::<u32>())],
-                                        video_data.render_w, 
-                                        video_data.render_h, 
-                                        &screenshot_path
-                                    );
+                                    video.screenshot_with_backend(&screenshot_path);
 
                                 }
                                 GuiEvent::CtrlAltDel => {
                                     machine.ctrl_alt_del();
                                 }
                                 GuiEvent::CompositeAdjust(params) => {
-                                    //log::warn!("got composite params: {:?}", params);
-                                    video_data.composite_params = params;
+                                    //log::warn!("got composite params: {:?}", params);f
                                     video.cga_direct_param_update(&params);
                                 }
                                 _ => {}
@@ -1836,7 +1861,7 @@ pub fn run() {
 
                     // Update performance viewer
                     if framework.gui.is_window_open(egui::GuiWindow::PerfViewer) {
-                        framework.gui.perf_viewer.update_video_data(video_data);
+                        framework.gui.perf_viewer.update_video_data(*video.params());
                         framework.gui.perf_viewer.update_stats(
                             &PerformanceStats {
                                 adapter: adapter_name_str.clone(),
@@ -2025,25 +2050,26 @@ pub fn run() {
                     framework.prepare(&window);
 
                     // Render everything together
-                    let render_result = pixels.render_with(|encoder, render_target, context| {
+                    video.with_backend(|pixels| {
+                        let render_result = pixels.render_with(|encoder, render_target, context| {
 
-                        // Render the world texture
-                        context.scaling_renderer.render(encoder, render_target);
-
-                        // Render egui
-                        #[cfg(not(feature = "pi_validator"))]
-                        framework.render(encoder, render_target, context);
-
-                        Ok(())
+                            context.scaling_renderer.render(encoder, render_target);
+    
+                            // Render egui
+                            framework.render(encoder, render_target, context);
+    
+                            Ok(())
+                        });
+    
+                        // Basic error handling
+                        if render_result
+                            .map_err(|e| error!("pixels.render() failed: {}", e))
+                            .is_err()
+                        {
+                            *control_flow = ControlFlow::Exit;
+                        }  
                     });
-
-                    // Basic error handling
-                    if render_result
-                        .map_err(|e| error!("pixels.render() failed: {}", e))
-                        .is_err()
-                    {
-                        *control_flow = ControlFlow::Exit;
-                    }   
+ 
                 }
             }
             
