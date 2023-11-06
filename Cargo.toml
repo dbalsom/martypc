@@ -2,7 +2,7 @@
 members = [
     "core",
     "frontend_libs/render",
-    "frontend_libs/pixels_stretch_renderer",
+    "frontend_libs/marty_pixels_scaler",
     "frontends/martypc_pixels_wasm32",
     "frontends/martypc_pixels_desktop"
 ]

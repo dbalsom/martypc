@@ -1,16 +1,14 @@
 [package]
-name = "pixels_stretch_renderer"
+name = "display_scaler"
 version = "0.1.4"
 edition = "2021"
 license = "MIT"
 
 [lib]
-name = "pixels_stretch_renderer"
+name = "display_scaler"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-bytemuck = "1.13.1"
-pixels = "0.13"
-ultraviolet = "0.9"
 wgpu = "0.16"
+pixels = "0.13"

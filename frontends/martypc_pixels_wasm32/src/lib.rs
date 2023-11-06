@@ -47,7 +47,7 @@ use marty_core::{
 };
 
 use marty_render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
-use pixels_stretch_renderer::{StretchingRenderer, SurfaceSize};
+//use pixels_stretch_renderer::{StretchingRenderer, SurfaceSize};
 
 const DEFAULT_RENDER_WIDTH: u32 = 768;
 const DEFAULT_RENDER_HEIGHT: u32 = 524;

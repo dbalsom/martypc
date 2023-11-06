@@ -71,6 +71,8 @@ use marty_core::{
     file_util
 };
 
+pub use display_scaler::ScalerMode;
+
 use image;
 use log;
 
@@ -81,6 +83,7 @@ pub enum ScalingMode {
     Stretch = 2
 }
 
+/*
 impl Default for ScalingMode {
     fn default() -> Self {
         ScalingMode::Integer
@@ -91,6 +94,14 @@ pub const SCALING_MODES: [ScalingMode; 3] = [
     ScalingMode::Integer,
     ScalingMode::Scale,
     ScalingMode::Stretch,
+];
+*/
+
+pub const SCALING_MODES: [ScalerMode; 4] = [
+    ScalerMode::None,
+    ScalerMode::Integer,
+    ScalerMode::Fit,
+    ScalerMode::Stretch,
 ];
 
 #[derive (Copy, Clone, Default)]
@@ -111,6 +122,8 @@ pub struct VideoParams {
     pub render_h: u32,
     pub aspect_w: u32,
     pub aspect_h: u32,
+    pub surface_w: u32,
+    pub surface_h: u32,
     pub aspect_correction_enabled: bool,
     pub composite_params: CompositeParams,
 }
@@ -122,6 +135,8 @@ impl Default for VideoParams {
             render_h: DEFAULT_RENDER_HEIGHT,
             aspect_w: 640,
             aspect_h: 480,
+            surface_w: 640,
+            surface_h: 480,
             aspect_correction_enabled: false,
             composite_params: Default::default(),
         }
@@ -184,9 +199,9 @@ pub struct DebugRenderParams {
     pub draw_scanline_color: Option<RenderColor>
 }
 
-pub struct VideoRenderer<T> {
+pub struct VideoRenderer<T,U> {
     video_type: VideoType,
-    scaling_mode: ScalingMode,
+    scaler_mode: ScalerMode,
     mode: DisplayMode,
     params: VideoParams,
 
@@ -213,14 +228,23 @@ pub struct VideoRenderer<T> {
     // Callback closures
     on_resize: Option<Box<dyn FnMut(&mut T, u32, u32) + Send>>,
     on_resize_surface: Option<Box<dyn FnMut(&mut T, u32, u32) + Send>>,
+    on_resize_scaler: Option<Box<dyn FnMut(&mut T, &mut U, u32, u32, u32, u32) + Send>>,
+    on_margin: Option<Box<dyn FnMut(&mut U, u32, u32, u32, u32) + Send>>,
+    on_scalermode: Option<Box<dyn FnMut(&mut T, &mut U, ScalerMode) + Send>>,
     on_get_buffer: Option<Box<dyn FnMut(&mut T) -> &mut [u8]>>,
     on_with_buffer: Option<Box<dyn FnMut(&mut dyn FnMut(&mut [u8])) + Send>>,
     backend: Arc<Mutex<T>>,
+    scaler: Arc<Mutex<U>>,
 }
 
-impl<T> VideoRenderer<T> {
+impl<T,U> VideoRenderer<T,U> {
 
-    pub fn new(video_type: VideoType, scaling_mode: ScalingMode, backend: T) -> Self {
+    pub fn new(
+        video_type: VideoType, 
+        scaler_mode: ScalerMode,
+        backend: T,
+        scaler: U,
+    ) -> Self {
 
         // Create a buffer to hold composite conversion of CGA graphics.
         // This buffer will need to be twice as large as the largest possible
@@ -237,7 +261,7 @@ impl<T> VideoRenderer<T> {
 
         Self {
             video_type,
-            scaling_mode,
+            scaler_mode,
             mode: DisplayMode::Mode3TextCo80,
             params: Default::default(),
             
@@ -262,18 +286,28 @@ impl<T> VideoRenderer<T> {
 
             on_resize: None,
             on_resize_surface: None,
+            on_resize_scaler: None,
+            on_margin: None,
+            on_scalermode: None,
             on_get_buffer: None,
             on_with_buffer: None,
             backend: Arc::new(Mutex::new(backend)),
+            scaler: Arc::new(Mutex::new(scaler)),
         }
     }
 
-    pub fn set_scaling_mode(&mut self, new_mode: ScalingMode) {
-        self.scaling_mode = new_mode;
+    pub fn set_scaler_mode(&mut self, new_mode: ScalerMode) {
+        self.scaler_mode = new_mode;
+
+        if let Some(ref mut scaler_callback) = self.on_scalermode {
+            let mut backend = self.backend.lock().expect("Failed to lock backend");
+            let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
+            scaler_callback(&mut *backend, &mut *scaler, new_mode)
+        }
     }
 
-    pub fn get_scaling_mode(&mut self) -> ScalingMode {
-        self.scaling_mode
+    pub fn get_scaler_mode(&mut self) -> ScalerMode {
+        self.scaler_mode
     }
 
     /// Return a mutable reference to the render buffer
@@ -291,6 +325,27 @@ impl<T> VideoRenderer<T> {
         F: 'static + FnMut(&mut T, u32, u32) + Send,
     {
         self.on_resize = Some(Box::new(resize_closure));
+    }    
+
+    pub fn set_on_resize_scaler<F>(&mut self, resize_closure: F)
+    where
+        F: 'static + FnMut(&mut T, &mut U, u32, u32, u32, u32) + Send,
+    {
+        self.on_resize_scaler = Some(Box::new(resize_closure));
+    }
+
+    pub fn set_on_margin<F>(&mut self, scaler_closure: F)
+    where
+        F: 'static + FnMut(&mut U, u32, u32, u32, u32) + Send,
+    {
+        self.on_margin = Some(Box::new(scaler_closure));
+    }
+
+    pub fn set_on_scalemode<F>(&mut self, scaler_closure: F)
+    where
+        F: 'static + FnMut(&mut T, &mut U, ScalerMode) + Send,
+    {
+        self.on_scalermode = Some(Box::new(scaler_closure));
     }
 
     pub fn set_on_resize_surface<F>(&mut self, resize_closure: F)
@@ -316,10 +371,11 @@ impl<T> VideoRenderer<T> {
 
     pub fn with_backend<F, R>(&self, f: F) -> R
     where
-        F: FnOnce(&mut T) -> R,
+        F: FnOnce(&mut T, &mut U) -> R,
     {
         let mut backend = self.backend.lock().expect("Failed to lock backend");
-        f(&mut *backend)
+        let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
+        f(&mut *backend, &mut *scaler)
     }
 
     pub fn backend_resize(&mut self) {
@@ -335,7 +391,31 @@ impl<T> VideoRenderer<T> {
             // Lock the backend and pass the mutable reference to the closure
             let mut backend = self.backend.lock().expect("Failed to lock backend");
             resize_callback(&mut *backend, new.w, new.h);
+        }
+
+        self.params.surface_w = new.w;
+        self.params.surface_h = new.h;
+
+        self.backend_resize_scaler((self.params.aspect_w, self.params.aspect_h).into(), (new.w, new.h).into());
+    }
+
+    pub fn backend_resize_scaler(&mut self, buf: VideoDimensions, screen: VideoDimensions) {
+        
+        self.params.surface_w = screen.w;
+        self.params.surface_h = screen.h;
+
+        if let Some(ref mut resize_callback) = self.on_resize_scaler {
+            let mut backend = self.backend.lock().expect("Failed to lock backend");
+            let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
+            resize_callback(&mut *backend, &mut *scaler, buf.w, buf.h, screen.w, screen.h);
         }        
+    }
+
+    pub fn set_scaler_margin(&mut self, l: u32, r: u32, t: u32, b: u32) {
+        if let Some(ref mut margin_callback) = self.on_margin {
+            let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
+            margin_callback(&mut *scaler, l, r, t, b);
+        }     
     }
 
     /*
@@ -370,8 +450,8 @@ impl<T> VideoRenderer<T> {
         self.params.render_w = new.w;
         self.params.render_h = new.h;
 
-        if let Some(ratio) = self.aspect_ratio {
-            let new_aspect = VideoRenderer::<T>::get_aspect_corrected_res(new, self.aspect_ratio);
+        if let Some(_) = self.aspect_ratio {
+            let new_aspect = VideoRenderer::<T,U>::get_aspect_corrected_res(new, self.aspect_ratio);
 
             self.params.aspect_w = new_aspect.w;
             self.params.aspect_h = new_aspect.h;
@@ -389,7 +469,21 @@ impl<T> VideoRenderer<T> {
             // Lock the backend and pass the mutable reference to the closure
             let mut backend = self.backend.lock().expect("Failed to lock backend");
             resize_callback(&mut *backend, self.params.aspect_w, self.params.aspect_h);
-        }        
+
+            // Resize scaler via closure
+            if let Some(ref mut resize_scaler_callback) = self.on_resize_scaler {
+                let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
+
+                resize_scaler_callback(
+                    &mut *backend, 
+                    &mut *scaler, 
+                    self.params.aspect_w, 
+                    self.params.aspect_h, 
+                    self.params.surface_w, 
+                    self.params.surface_h
+                );           
+            }            
+        }
     }
 
     // Given the new specified dimensions, returns a bool if the dimensions require resizing
@@ -397,7 +491,7 @@ impl<T> VideoRenderer<T> {
     pub fn would_resize(&self, new: VideoDimensions) -> bool {
 
         if self.software_aspect {
-            let new_aspect = VideoRenderer::<T>::get_aspect_corrected_res(new, self.aspect_ratio);
+            let new_aspect = VideoRenderer::<T,U>::get_aspect_corrected_res(new, self.aspect_ratio);
             if self.params.aspect_w != new_aspect.w || self.params.aspect_h != new_aspect.h {
                 return true
             }
@@ -455,6 +549,12 @@ impl<T> VideoRenderer<T> {
             let mut backend = self.backend.lock().expect("Failed to lock backend");
             resize_callback(&mut *backend, self.params.aspect_w, self.params.aspect_h);
         }               
+
+        // Resize scaler
+        self.backend_resize_scaler(
+            (self.params.aspect_w, self.params.aspect_h).into(), 
+            (self.params.surface_w, self.params.surface_h).into()
+        );
     }
 
 

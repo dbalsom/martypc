@@ -5,7 +5,7 @@
 
     ---------------------------------------------------------------------------
 
-    pixels_stretch_renderer::shaders::scale.wgsl
+    pixels_stretch_renderer::shaders::stretch.wgsl
     
     Implement a stretching renderer for Pixels when we want to fill the entire 
     window without maintaining square pixels.

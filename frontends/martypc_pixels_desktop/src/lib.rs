@@ -83,8 +83,6 @@ use winit::{
 
 };
 
-use pixels_stretch_renderer::{StretchingRenderer, SurfaceSize};
-
 //use winit_input_helper::WinitInputHelper;
 
 #[cfg(feature = "arduino_validator")]
@@ -118,15 +116,16 @@ use marty_core::{
     keys
 };
 
-
 use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, PerformanceStats};
 use marty_render::{
     AspectRatio, 
     VideoParams, 
-    ScalingMode, 
     SCALING_MODES,
     VideoRenderer, 
 };
+
+use display_scaler::{DisplayScaler, ScalerMode, Color};
+use marty_pixels_scaler::MartyScaler;
 
 const EGUI_MENU_BAR: u32 = 25;
 
@@ -279,6 +278,9 @@ impl KeyboardData {
         }
     }
 }
+
+
+
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
@@ -525,15 +527,49 @@ pub fn run() {
         (pixels, framework)
     };
 
+    let fill_color = Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0}; // Dark grey.
+
+    let mut marty_scaler = MartyScaler::new(
+        ScalerMode::Integer,
+        &pixels,
+        640,
+        480,
+        640,
+        480,
+        24, // margin_y == egui menu height
+        true,
+        fill_color
+    );
+
     let adapter_info = pixels.adapter().get_info();
     let backend_str = format!("{:?}", adapter_info.backend);
     let adapter_name_str =  format!("{}", adapter_info.name);
     log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
     
     // Create the video renderer
-    let mut video = VideoRenderer::new(config.machine.video, ScalingMode::Integer, pixels);
+    let mut video = 
+        VideoRenderer::new(
+            config.machine.video, 
+            ScalerMode::Integer, 
+            pixels,
+            marty_scaler,
+        );
 
     let pixels_arc = video.get_backend();
+
+    video.set_on_resize_scaler(|pixels, scaler, w, h, sw, sh| {
+        if w > 0 && h > 0 && sw > 0 && sh > 0 {
+            log::debug!(
+                "Resizing scaler to texture {}x{}, surface: {}x{}...",
+                w, h,
+                sw, sh,
+            );
+            scaler.resize(&pixels, w, h, sw, sh);
+        }
+        else {
+            log::debug!("Ignoring invalid scaler resize request (window minimized?)");
+        }
+    });
 
     video.set_on_resize(|pixels, w, h| {
         if w > 0 && h > 0 {
@@ -543,6 +579,15 @@ pub fn run() {
         else {
             log::debug!("Ignoring invalid buffer resize request (window minimized?)");
         }
+    });
+
+    video.set_on_margin(|scaler,l,r,t,b| {
+        scaler.set_margins(l,r,t,b);
+    });
+
+    video.set_on_scalemode(|pixels, scaler, m| {
+        log::debug!("Setting scaler mode to {:?}", m);
+        scaler.set_mode(pixels, m);
     });
 
     video.set_on_resize_surface(|pixels, w, h| {
@@ -652,7 +697,7 @@ pub fn run() {
         framework.gui.set_display_apertures(video_card.list_display_apertures());
     }
 
-    framework.gui.set_scaling_modes((SCALING_MODES.to_vec(), Default::default()));
+    framework.gui.set_scaler_modes((SCALING_MODES.to_vec(), Default::default()));
 
     // Disable warpspeed feature if 'devtools' flag not on.
     #[cfg(not(feature = "devtools"))]
@@ -1569,8 +1614,8 @@ pub fn run() {
                                                         video_card.set_aperture(aperture_n)
                                                     }
                                                 }
-                                                GuiEnum::DisplayScalingMode(new_mode) => {
-                                                    video.set_scaling_mode(new_mode);
+                                                GuiEnum::DisplayScalerMode(new_mode) => {
+                                                    video.set_scaler_mode(new_mode);
                                                 }
                                             }
                                         }
@@ -2048,27 +2093,70 @@ pub fn run() {
 
                     // Prepare egui
                     framework.prepare(&window);
-
+                    
                     // Render everything together
-                    video.with_backend(|pixels| {
+                    video.with_backend(|pixels, scaler| {
                         let render_result = pixels.render_with(|encoder, render_target, context| {
-
-                            context.scaling_renderer.render(encoder, render_target);
-    
-                            // Render egui
+                            scaler.render(encoder, render_target, true);
                             framework.render(encoder, render_target, context);
-    
-                            Ok(())
+                            Ok(())                            
                         });
-    
-                        // Basic error handling
-                        if render_result
-                            .map_err(|e| error!("pixels.render() failed: {}", e))
-                            .is_err()
-                        {
-                            *control_flow = ControlFlow::Exit;
-                        }  
                     });
+
+                    /*
+                    match video.get_scaling_mode() {
+                        ScalingMode::Integer => {
+                            video.with_backend(|pixels, _scaler| {
+                                let render_result = pixels.render_with(|encoder, render_target, context| {
+        
+                                    context.scaling_renderer.render(encoder, render_target);
+            
+                                    // Render egui
+                                    framework.render(encoder, render_target, context);
+            
+                                    Ok(())
+                                });
+            
+                                // Basic error handling
+                                if render_result
+                                    .map_err(|e| error!("pixels.render() failed: {}", e))
+                                    .is_err()
+                                {
+                                    *control_flow = ControlFlow::Exit;
+                                }  
+                            });
+                        }
+                        ScalingMode::Scale | ScalingMode::Stretch => {
+                        
+                            video.with_backend(|pixels, scaler| {
+                                let render_result = pixels.render_with(|encoder, render_target, context| {
+                                    
+                                    match scaler {
+                                        Some(ScalerDispatch::Scale(s)) => {
+                                            s.render(encoder, render_target, true);
+                                        }
+                                        Some(ScalerDispatch::Stretch(s)) => {
+                                            s.render(encoder, render_target, true);
+                                        }
+                                        _=>{}
+                                    }
+                                    
+                                    framework.render(encoder, render_target, context);
+                                    Ok(())
+                                });
+
+                                // Basic error handling
+                                if render_result
+                                    .map_err(|e| error!("pixels.render() failed: {}", e))
+                                    .is_err()
+                                {
+                                    *control_flow = ControlFlow::Exit;
+                                }  
+                            });
+                        }                            
+                    }
+                    */
+
  
                 }
             }

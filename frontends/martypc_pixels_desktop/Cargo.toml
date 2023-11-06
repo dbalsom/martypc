@@ -12,7 +12,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 marty_core = { path = "../../core/"}
 marty_render = { path = "../../frontend_libs/render"}
-pixels_stretch_renderer = { path = "../../frontend_libs/pixels_stretch_renderer" }
+display_scaler = { path = "../../frontend_libs/display_scaler" }
+marty_pixels_scaler = { path = "../../frontend_libs/marty_pixels_scaler" }
 bytemuck = "1.13.1"
 colored = "2.0.4"
 cpal = "0.13.5"

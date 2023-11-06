@@ -33,7 +33,7 @@ use super::*;
 use crate::consts::*;
 use crate::resize::*;
 
-impl<T> VideoRenderer<T> {
+impl<T,U> VideoRenderer<T,U> {
 
     pub fn clear(&mut self) {
         self.buf.fill(0);
@@ -92,7 +92,7 @@ impl<T> VideoRenderer<T> {
         match self.video_type {
             VideoType::CGA => {
                 if composite_enabled {
-                    VideoRenderer::<T>::draw_cga_direct_composite_reenigne(
+                    VideoRenderer::<T,U>::draw_cga_direct_composite_reenigne(
                         first_pass_buf,
                         self.params.render_w,
                         self.params.render_h,     
@@ -104,7 +104,7 @@ impl<T> VideoRenderer<T> {
                     );
                 }
                 else {
-                    VideoRenderer::<T>::draw_cga_direct_u32(
+                    VideoRenderer::<T,U>::draw_cga_direct_u32(
                         first_pass_buf,
                         self.params.render_w,
                         self.params.render_h,
@@ -114,7 +114,7 @@ impl<T> VideoRenderer<T> {
                 }
             }
             VideoType::EGA => {
-                VideoRenderer::<T>::draw_ega_direct_u32(
+                VideoRenderer::<T,U>::draw_ega_direct_u32(
                     first_pass_buf,
                     self.params.render_w,
                     self.params.render_h,
@@ -129,14 +129,14 @@ impl<T> VideoRenderer<T> {
 
         // Draw raster beam if specified.
         if let Some(beam) = beam_pos {
-            VideoRenderer::<T>::draw_horizontal_xor_line(
+            VideoRenderer::<T,U>::draw_horizontal_xor_line(
                 first_pass_buf, 
                 self.params.render_w,                     
                 self.params.render_w,
                 self.params.render_h, 
                 beam.1
             );
-            VideoRenderer::<T>::draw_vertical_xor_line(
+            VideoRenderer::<T,U>::draw_vertical_xor_line(
                 first_pass_buf, 
                 self.params.render_w,                
                 self.params.render_w,

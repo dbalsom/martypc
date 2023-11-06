@@ -243,7 +243,7 @@ impl GuiState {
 
                 ui.menu_button("Display Scaling", |ui| {
 
-                    for (idx, mode) in self.scaling_modes.clone().iter().enumerate() {
+                    for (idx, mode) in self.scaler_modes.clone().iter().enumerate() {
                         /*
                         ui.radio_value(
                             &mut self.get_option_enum_mut(GuiEnum::DisplayAperture(0)), 
@@ -252,13 +252,13 @@ impl GuiState {
                         );
                         */
 
-                        let enum_mut = self.get_option_enum_mut(GuiEnum::DisplayScalingMode(Default::default()));
+                        let enum_mut = self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()));
 
                         let checked = *enum_mut == GuiEnum::DisplayAperture(idx as u32);
 
                         if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
                             *enum_mut = GuiEnum::DisplayAperture(idx as u32);
-                            self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Enum( GuiEnum::DisplayAperture(idx as u32))));
+                            self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Enum( GuiEnum::DisplayScalerMode(*mode))));
                         }
                     }
                 });

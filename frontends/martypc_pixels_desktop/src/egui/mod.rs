@@ -116,7 +116,7 @@ use marty_core::{
     videocard::{VideoCardState, VideoCardStateEntry, DisplayApertureDesc}
 };
 
-use marty_render::{CompositeParams, ScalingMode};
+use marty_render::{CompositeParams, ScalerMode};
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
@@ -165,7 +165,7 @@ pub enum GuiBoolean {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GuiEnum {
     DisplayAperture(u32),
-    DisplayScalingMode(ScalingMode)
+    DisplayScalerMode(ScalerMode)
 }
 
 #[allow(dead_code)]
@@ -272,7 +272,7 @@ pub(crate) struct GuiState {
 
     // Display stuff
     display_apertures: Vec<DisplayApertureDesc>,
-    scaling_modes: Vec<ScalingMode>,
+    scaler_modes: Vec<ScalerMode>,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -523,6 +523,7 @@ impl GuiState {
 
         let option_enums: HashMap<Discriminant<GuiEnum>, GuiEnum> = [
             (discriminant(&GuiEnum::DisplayAperture(0)), GuiEnum::DisplayAperture(0)),
+            (discriminant(&GuiEnum::DisplayScalerMode(ScalerMode::Integer)), GuiEnum::DisplayScalerMode(ScalerMode::Integer)),
         ].into();
 
         Self { 
@@ -540,7 +541,7 @@ impl GuiState {
             perf_stats: Default::default(),
             
             display_apertures: Default::default(),
-            scaling_modes: Default::default(),
+            scaler_modes: Vec::new(),
 
             floppy_names: Vec::new(),
             floppy0_name: Option::None,
@@ -686,10 +687,10 @@ impl GuiState {
     }
 
     /// Set list of available scaling modes and the default scaling mode to show as selected 
-    pub fn set_scaling_modes(&mut self, modes: (Vec<ScalingMode>, ScalingMode)) {
-        self.scaling_modes = modes.0;
+    pub fn set_scaler_modes(&mut self, modes: (Vec<ScalerMode>, ScalerMode)) {
+        self.scaler_modes = modes.0;
 
-        self.set_option_enum(GuiEnum::DisplayScalingMode(modes.1));
+        self.set_option_enum(GuiEnum::DisplayScalerMode(modes.1));
     }
 
     /// Retrieve a newly selected VHD image name for the specified device slot.
