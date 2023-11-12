@@ -75,6 +75,7 @@ pub use display_scaler::ScalerMode;
 
 use image;
 use log;
+use display_scaler::{ScalerEffect, ScalerOption, ScanlineMode};
 
 #[derive (Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ScalingMode {
@@ -187,6 +188,27 @@ impl Default for CompositeParams {
     }
 }
 
+#[derive (Copy, Clone, Debug)]
+pub struct ScalerParams {
+    pub crt_effect: bool,
+    pub crt_hcurvature: f32,
+    pub crt_vcurvature: f32,
+    pub crt_cornerradius: f32,
+    pub crt_scanlines: bool,
+}
+
+impl Default for ScalerParams {
+    fn default() -> Self {
+        Self {
+            crt_effect: false,
+            crt_hcurvature: 0.0,
+            crt_vcurvature: 0.0,
+            crt_cornerradius: 0.0,
+            crt_scanlines: false,
+        }
+    }
+}
+
 #[derive (Copy, Clone)]
 pub enum RenderColor {
     CgaIndex(u8),
@@ -231,6 +253,7 @@ pub struct VideoRenderer<T,U> {
     on_resize_scaler: Option<Box<dyn FnMut(&mut T, &mut U, u32, u32, u32, u32) + Send>>,
     on_margin: Option<Box<dyn FnMut(&mut U, u32, u32, u32, u32) + Send>>,
     on_scalermode: Option<Box<dyn FnMut(&mut T, &mut U, ScalerMode) + Send>>,
+    on_scaler_options: Option<Box<dyn FnMut(&mut T, &mut U, Vec<ScalerOption>) + Send>>,
     on_get_buffer: Option<Box<dyn FnMut(&mut T) -> &mut [u8]>>,
     on_with_buffer: Option<Box<dyn FnMut(&mut dyn FnMut(&mut [u8])) + Send>>,
     backend: Arc<Mutex<T>>,
@@ -289,6 +312,7 @@ impl<T,U> VideoRenderer<T,U> {
             on_resize_scaler: None,
             on_margin: None,
             on_scalermode: None,
+            on_scaler_options: None,
             on_get_buffer: None,
             on_with_buffer: None,
             backend: Arc::new(Mutex::new(backend)),
@@ -305,6 +329,8 @@ impl<T,U> VideoRenderer<T,U> {
             scaler_callback(&mut *backend, &mut *scaler, new_mode)
         }
     }
+
+
 
     pub fn get_scaler_mode(&mut self) -> ScalerMode {
         self.scaler_mode
@@ -346,6 +372,13 @@ impl<T,U> VideoRenderer<T,U> {
         F: 'static + FnMut(&mut T, &mut U, ScalerMode) + Send,
     {
         self.on_scalermode = Some(Box::new(scaler_closure));
+    }
+
+    pub fn set_on_scaler_options<F>(&mut self, scaler_closure: F)
+        where
+            F: 'static + FnMut(&mut T, &mut U, Vec<ScalerOption>) + Send,
+    {
+        self.on_scaler_options = Some(Box::new(scaler_closure));
     }
 
     pub fn set_on_resize_surface<F>(&mut self, resize_closure: F)
@@ -557,6 +590,38 @@ impl<T,U> VideoRenderer<T,U> {
         );
     }
 
+    pub fn set_scaler_params(&mut self, params: &ScalerParams) {
+        /*
+        pub enum ScalerOption {
+            Mode(ScalerMode),
+            Margins { l: u32, r: u32, t: u32, b: u32 },
+            Filtering(ScalerFilter),
+            FillColor { r: u8, g: u8, b: u8, a: u8 },
+            Effect(ScalerEffect),
+        }*/
+
+
+
+        let mut scaler_update = Vec::new();
+
+        if params.crt_effect {
+            scaler_update.push(
+                ScalerOption::Effect(
+                    ScalerEffect::Crt {
+                        h_curvature: params.crt_hcurvature,
+                        v_curvature: params.crt_vcurvature,
+                        corner_radius: params.crt_cornerradius,
+                        option: ScanlineMode::Square,
+                    }));
+        }
+
+        if let Some(ref mut scaler_callback) = self.on_scaler_options {
+            let mut backend = self.backend.lock().expect("Failed to lock backend");
+            let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
+            log::debug!("Sending scaler params to callback...");
+            scaler_callback(&mut *backend, &mut *scaler, scaler_update);
+        }
+    }
 
     /// Given the specified resolution and desired aspect ratio, return an aspect corrected resolution
     /// by adjusting the vertical resolution (Horizontal resolution will never be changed)

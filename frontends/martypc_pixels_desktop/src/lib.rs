@@ -571,6 +571,10 @@ pub fn run() {
         }
     });
 
+    video.set_on_scaler_options(|pixels, scaler, opts| {
+        scaler.set_options(pixels, opts);
+    });
+
     video.set_on_resize(|pixels, w, h| {
         if w > 0 && h > 0 {
             log::debug!("Resizing pixels buffer...");
@@ -1444,6 +1448,8 @@ pub fn run() {
 
                         let extents = video_card.get_display_extents();
 
+                        //log::debug!("extents: {}x{}", extents.field_w, extents.field_h);
+
                         if video.get_mode_byte() != extents.mode_byte {
                             // Mode byte has changed, recalculate composite parameters
                             video.cga_direct_mode_update(extents.mode_byte);
@@ -1831,6 +1837,10 @@ pub fn run() {
                                 GuiEvent::CompositeAdjust(params) => {
                                     //log::warn!("got composite params: {:?}", params);f
                                     video.cga_direct_param_update(&params);
+                                }
+                                GuiEvent::ScalerAdjust(params) => {
+                                    log::warn!("Received ScalerAdjust event: {:?}", params);
+                                    video.set_scaler_params(&params);
                                 }
                                 _ => {}
                             }

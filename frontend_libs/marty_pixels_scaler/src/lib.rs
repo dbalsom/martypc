@@ -1,5 +1,5 @@
 /*
-    MartyPC Emulator 
+    MartyPC Emulator
     (C)2023 Daniel Balsom
     https://github.com/dbalsom/martypc
 
@@ -35,6 +35,16 @@
 
 */
 
+use std::mem::discriminant;
+use bytemuck::{Pod, Zeroable};
+
+struct MartyColor(wgpu::Color);
+
+impl From<MartyColor> for [f32; 4] {
+    fn from(color: MartyColor) -> Self {
+        [color.0.r as f32, color.0.g as f32, color.0.b as f32, color.0.a as f32]
+    }
+}
 
 /// A logical texture size for a window surface.
 #[derive(Debug)]
@@ -49,7 +59,42 @@ use wgpu::{
     util::DeviceExt
 };
 
-use display_scaler::{DisplayScaler, ScalerMode};
+use display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption};
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+struct CrtParamUniform {
+    h_curvature: f32,
+    v_curvature: f32,
+    corner_radius: f32,
+    scanlines: u32
+}
+
+impl Default for CrtParamUniform {
+    fn default() -> Self {
+        Self {
+            h_curvature: 0.0,
+            v_curvature: 0.0,
+            corner_radius: 0.0,
+            scanlines: 0
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+struct ScalingMatrix {
+    transform: Mat4,
+}
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+struct ScalerOptionsUniform {
+    mode: u32,
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
+    crt_params: CrtParamUniform,
+    fill_color: [f32; 4],
+}
 
 fn create_texture_view(pixels: &pixels::Pixels, width: u32, height: u32) -> wgpu::TextureView {
     let device = pixels.device();
@@ -78,7 +123,8 @@ fn create_bind_group(
     bind_group_layout: &wgpu::BindGroupLayout,
     texture_view: &wgpu::TextureView,
     sampler: &wgpu::Sampler,
-    time_buffer: &wgpu::Buffer,
+    matrix_buffer: &wgpu::Buffer,
+    param_buffer: &wgpu::Buffer,
 ) -> pixels::wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: None,
@@ -94,14 +140,17 @@ fn create_bind_group(
             },
             wgpu::BindGroupEntry {
                 binding: 2,
-                resource: time_buffer.as_entire_binding(),
+                resource: matrix_buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: param_buffer.as_entire_binding(),
             },
         ],
     })
 }
 
 /// The default renderer that scales your frame to the screen size.
-#[derive(Debug)]
 pub struct MartyScaler {
     mode: ScalerMode,
     texture_view: wgpu::TextureView,
@@ -111,7 +160,8 @@ pub struct MartyScaler {
     nearest_bind_group: wgpu::BindGroup,
     bilinear_bind_group: wgpu::BindGroup,
     render_pipeline: wgpu::RenderPipeline,
-    uniform_buffer: wgpu::Buffer,
+    transform_uniform_buffer: wgpu::Buffer,
+    params_uniform_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
     texture_width: u32,
     texture_height: u32,
@@ -123,7 +173,9 @@ pub struct MartyScaler {
     margin_l: u32,
     margin_r: u32,
     margin_t: u32,
-    margin_b: u32
+    margin_b: u32,
+    effect: ScalerEffect,
+    crt_params: CrtParamUniform
 }
 
 impl MartyScaler {
@@ -184,8 +236,8 @@ impl MartyScaler {
 
         // Create vertex buffer; array-of-array of position and texture coordinates
             // One full-screen triangle
-            // See: https://github.com/parasyte/pixels/issues/180        
-        /* 
+            // See: https://github.com/parasyte/pixels/issues/180
+        /*
         let vertex_data: [[f32; 2]; 3] = [
             [-1.0, -1.0],
             [3.0, -1.0],
@@ -198,7 +250,7 @@ impl MartyScaler {
             [-1.0, -1.0], // Bottom left
             [ 1.0, -1.0], // Bottom right
             [-1.0,  1.0], // Top left
-        
+
             // Second triangle
             [ 1.0, -1.0], // Bottom right
             [-1.0,  1.0], // Top left
@@ -207,7 +259,7 @@ impl MartyScaler {
 
         let vertex_data_slice = bytemuck::cast_slice(&vertex_data);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("pixels_stretching_renderer_vertex_buffer"),
+            label: Some("marty_renderer_vertex_buffer"),
             contents: vertex_data_slice,
             usage: wgpu::BufferUsages::VERTEX,
         });
@@ -221,7 +273,7 @@ impl MartyScaler {
             }],
         };
 
-        // Create uniform buffer
+        // Create uniform buffer for vertex shader
         let matrix = ScalingMatrix::new(
             mode,
             (texture_width as f32, texture_height as f32),
@@ -229,15 +281,27 @@ impl MartyScaler {
             screen_margin_y as f32
         );
         let transform_bytes = matrix.as_bytes();
-        let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("pixels_stretching_renderer_matrix_uniform_buffer"),
+        let transform_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("marty_renderer_matrix_uniform_buffer"),
             contents: transform_bytes,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
+
+
+        // Create uniform buffer for fragment shader params
+        let scaler_param_bytes = MartyScaler::get_default_param_uniform();
+        let params_uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("marty_renderer_params_uniform_buffer"),
+            contents: &scaler_param_bytes,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        println!(">>>>>>>> len of scaler_params: {:?}", scaler_param_bytes.len());
+        println!(">>>>>>>> size of scaler_params buffer uniform: {:?}", std::mem::size_of::<ScalerOptionsUniform>() as usize);
         // Create bind group
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("pixels_stretching_renderer_bind_group_layout"),
+            label: Some("marty_renderer_bind_group_layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
                     binding: 0,
@@ -265,6 +329,16 @@ impl MartyScaler {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: wgpu::BufferSize::new((std::mem::size_of::<ScalerOptionsUniform>()) as u64),
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -273,7 +347,8 @@ impl MartyScaler {
             &bind_group_layout,
             &texture_view,
             &nearest_sampler,
-            &uniform_buffer,
+            &transform_uniform_buffer,
+            &params_uniform_buffer
         );
 
         let bilinear_bind_group = create_bind_group(
@@ -281,17 +356,18 @@ impl MartyScaler {
             &bind_group_layout,
             &texture_view,
             &bilinear_sampler,
-            &uniform_buffer,
-        );        
+            &transform_uniform_buffer,
+            &params_uniform_buffer
+        );
 
         // Create pipeline
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("pixels_stretching_renderer_pipeline_layout"),
+            label: Some("marty_renderer_pipeline_layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("pixels_stretching_renderer_pipeline"),
+            label: Some("marty_renderer_pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &scale_module,
@@ -308,7 +384,7 @@ impl MartyScaler {
                     format: pixels.render_texture_format(),
                     blend: Some(wgpu::BlendState {
                         color: wgpu::BlendComponent::REPLACE,
-                        alpha: wgpu::BlendComponent::REPLACE,
+                        alpha: wgpu::BlendComponent::OVER,
                     }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
@@ -325,7 +401,8 @@ impl MartyScaler {
             nearest_bind_group,
             bilinear_bind_group,
             render_pipeline,
-            uniform_buffer,
+            transform_uniform_buffer,
+            params_uniform_buffer,
             vertex_buffer,
             texture_width,
             texture_height,
@@ -337,7 +414,9 @@ impl MartyScaler {
             margin_l: 0,
             margin_r: 0,
             margin_t: 0,
-            margin_b: 0
+            margin_b: 0,
+            effect: ScalerEffect::None,
+            crt_params: Default::default()
         }
     }
 
@@ -352,7 +431,78 @@ impl MartyScaler {
 
         pixels
             .queue()
-            .write_buffer(&self.uniform_buffer, 0, transform_bytes);
+            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+    }
+
+    fn get_default_param_uniform() -> Vec<u8> {
+        let crt_params = Default::default();
+
+        let uniform_struct = ScalerOptionsUniform {
+            mode: 0,
+            pad0: 0,
+            pad1: 0,
+            pad2: 0,
+            crt_params,
+            fill_color: MartyColor(wgpu::Color{r: 0.0, g: 0.0, b: 0.0, a: 0.0}).into(),
+
+        };
+
+        bytemuck::bytes_of(&uniform_struct).to_vec()
+    }
+    fn get_param_uniform_bytes(&mut self) -> Vec<u8> {
+        // Build CRT shader params or default
+        let crt_params = match &self.effect {
+            ScalerEffect::None => {
+                println!("getting default crt parameter uniform (effect disabled)");
+                Default::default()
+            },
+            ScalerEffect::Crt{h_curvature, v_curvature, corner_radius, option } => {
+                println!("getting crt parameter uniform. corner_radius: {}", *corner_radius);
+                CrtParamUniform {
+                    h_curvature: *h_curvature,
+                    v_curvature: *v_curvature,
+                    corner_radius: *corner_radius,
+                    scanlines: self.screen_height
+                }
+            }
+        };
+
+        let uniform_struct = ScalerOptionsUniform {
+
+            mode: self.mode as u32,
+            pad0: 0,
+            pad1: 0,
+            pad2: 0,
+            crt_params,
+            fill_color: MartyColor(self.fill_color).into(),
+        };
+
+        bytemuck::bytes_of(&uniform_struct).to_vec()
+    }
+    fn update_uniforms(&mut self, pixels: &pixels::Pixels) {
+
+        println!("Updating uniform data...");
+        // Calculate current scaling matrix.
+        let matrix = ScalingMatrix::new(
+            self.mode,
+            (self.texture_width as f32, self.texture_height as f32),
+            (self.screen_width as f32, self.screen_height as f32),
+            self.screen_margin_y as f32
+        );
+
+        let transform_bytes = matrix.as_bytes();
+
+        let queue = pixels.queue();
+        //queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+
+        // Calculate shader parameters
+        let mut uniform_vec = self.get_param_uniform_bytes();
+
+        queue.write_buffer(
+            &self.params_uniform_buffer,
+            0,
+            &uniform_vec,
+        );
     }
 }
 
@@ -372,7 +522,7 @@ impl DisplayScaler for MartyScaler {
         self.margin_r = r;
         self.margin_t = t;
         self.margin_b = b;
-    }    
+    }
 
     fn set_bilinear(&mut self, bilinear: bool) {
         self.bilinear = bilinear
@@ -380,6 +530,43 @@ impl DisplayScaler for MartyScaler {
 
     fn set_fill_color(&mut self, fill: wgpu::Color) {
         self.fill_color = fill;
+    }
+
+    fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption) {
+
+        println!("Setting scaler option...");
+        match opt {
+            ScalerOption::Mode(new_mode) => {
+                self.set_mode(pixels, new_mode);
+            }
+            ScalerOption::Filtering(filter) => {
+                let bilinear;
+                match filter {
+                    ScalerFilter::Nearest => bilinear = false,
+                    ScalerFilter::Linear => bilinear = true,
+                }
+                self.set_bilinear(bilinear);
+            }
+            ScalerOption::FillColor{r, g, b, a} => {
+                self.set_fill_color(wgpu::Color{r: r as f64, g: g as f64, b: b as f64, a: a as f64});
+            }
+            ScalerOption::Effect(effect) => {
+                self.effect = effect;
+                self.update_uniforms(pixels);
+            }
+            ScalerOption::Margins{l, r, t, b} => {
+                self.set_margins(l, r, t, b);
+            }
+        }
+
+        self.update_uniforms(pixels);
+    }
+    fn set_options(&mut self, pixels: &pixels::Pixels, opts: Vec<ScalerOption>) {
+        println!("Got opts of len : {}", opts.len());
+
+        for opt in opts {
+            self.set_option(pixels, opt);
+        }
     }
 
     /// Draw the pixel buffer to the render target.
@@ -402,17 +589,17 @@ impl DisplayScaler for MartyScaler {
             depth_stencil_attachment: None,
         });
         rpass.set_pipeline(&self.render_pipeline);
-        
+
         if bilinear {
             rpass.set_bind_group(0, &self.bilinear_bind_group, &[]);
         }
         else {
             rpass.set_bind_group(0, &self.nearest_bind_group, &[]);
         }
-        
+
         rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
-        /* 
+        /*
         rpass.set_scissor_rect(
             0,
             0,
@@ -420,8 +607,8 @@ impl DisplayScaler for MartyScaler {
             1
         );
         */
-        
-        
+
+
         //rpass.draw(0..3, 0..1);
         rpass.draw(0..6, 0..1);
     }
@@ -442,7 +629,8 @@ impl DisplayScaler for MartyScaler {
             &self.bind_group_layout,
             &self.texture_view,
             &self.nearest_sampler,
-            &self.uniform_buffer,
+            &self.transform_uniform_buffer,
+            &self.params_uniform_buffer,
         );
 
         self.bilinear_bind_group = create_bind_group(
@@ -450,8 +638,9 @@ impl DisplayScaler for MartyScaler {
             &self.bind_group_layout,
             &self.texture_view,
             &self.bilinear_sampler,
-            &self.uniform_buffer,
-        );        
+            &self.transform_uniform_buffer,
+            &self.params_uniform_buffer
+        );
 
         let matrix = ScalingMatrix::new(
             self.mode,
@@ -468,7 +657,7 @@ impl DisplayScaler for MartyScaler {
 
         pixels
             .queue()
-            .write_buffer(&self.uniform_buffer, 0, transform_bytes);
+            .write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
     }
 
     /*
@@ -501,7 +690,7 @@ impl DisplayScaler for MartyScaler {
             .queue()
             .write_buffer(&self.uniform_buffer, 0, transform_bytes);
     }
-    
+
 
     fn resize_screen(
         &mut self,
@@ -531,15 +720,11 @@ impl DisplayScaler for MartyScaler {
         pixels
             .queue()
             .write_buffer(&self.uniform_buffer, 0, transform_bytes);
-    }    
+    }
     */
 }
 
-#[derive(Debug)]
 
-struct ScalingMatrix {
-    transform: Mat4,
-}
 
 impl ScalingMatrix {
     // texture_size is the dimensions of the drawing texture
@@ -557,7 +742,7 @@ impl ScalingMatrix {
     fn none_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
 
         let margin_y = margin_y / 2.0;
-        
+
         let (texture_width, texture_height) = texture_size;
         let (screen_width, screen_height) = screen_size;
 
@@ -647,14 +832,14 @@ impl ScalingMatrix {
         }
     }
 
-    fn stretch_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self { 
+    fn stretch_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
 
         let (_texture_width, _texture_height) = texture_size;
         let (_screen_width, screen_height) = screen_size;
-    
+
         //let w_scale = screen_width / texture_width;
         let h_scale = screen_height / (screen_height - margin_y);
-    
+
         // Calculate the scaled dimensions
         //let scaled_width = texture_width * w_scale;
         //let scaled_height = texture_height * h_scale;
@@ -673,7 +858,7 @@ impl ScalingMatrix {
             0.0,  0.0,  1.0,  0.0,
             0.0,  -ty,  0.0,  1.0,
         ];
-    
+
         Self {
             transform: Mat4::from(transform),
         }
@@ -698,10 +883,10 @@ impl ScalingMatrix {
         // Create a transformation matrix
         let sw = scaled_width / screen_width;
         let sh = (scaled_height - margin_y) / (screen_height - margin_y);
-        
+
         let tx = 0.0; // Centered on the x-axis, no need for fract() because we're not translating the x-axis
         let ty = (margin_y / screen_height) * 2.0; // Convert margin to NDC and account for the origin at the top left
-        
+
         #[rustfmt::skip]
         let transform: [f32; 16] = [
             sw,  0.0,  0.0,  0.0,
@@ -723,7 +908,7 @@ impl ScalingMatrix {
         Self {
             transform: Mat4::from(transform),
         }
-    }    
+    }
 
     fn as_bytes(&self) -> &[u8] {
         self.transform.as_byte_slice()

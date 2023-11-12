@@ -40,6 +40,28 @@ pub enum ScalerMode {
     Stretch
 }
 
+pub enum ScalerFilter {
+    Nearest,
+    Linear
+}
+
+pub enum ScanlineMode {
+    Square,
+    Sin
+}
+
+pub enum ScalerEffect {
+    None,
+    Crt{h_curvature: f32, v_curvature: f32, corner_radius: f32, option: ScanlineMode},
+}
+pub enum ScalerOption {
+    Mode(ScalerMode),
+    Margins{l: u32, r: u32, t: u32, b: u32},
+    Filtering(ScalerFilter),
+    FillColor{r: u8, g: u8, b: u8, a: u8},
+    Effect(ScalerEffect),
+}
+
 impl Default for ScalerMode {
     fn default() -> Self {
         ScalerMode::Integer
@@ -66,4 +88,6 @@ pub trait DisplayScaler: Send + Sync {
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32);
     fn set_bilinear(&mut self, bilinear: bool);
     fn set_fill_color(&mut self, fill: wgpu::Color);
+    fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption);
+    fn set_options(&mut self, pixels: &pixels::Pixels, opts: Vec<ScalerOption>);
 }
