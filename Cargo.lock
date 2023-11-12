@@ -1783,7 +1783,7 @@ dependencies = [
 
 [[package]]
 name = "martypc"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "marty_core",
  "marty_render",
@@ -1793,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "martypc_pixels_desktop"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "colored",
