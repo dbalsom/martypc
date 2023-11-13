@@ -1,7 +1,7 @@
 
 [package]
 name = "marty_core"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
@@ -29,6 +29,17 @@ strum = "0.25"
 strum_macros = "0.25"
 toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"]}
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "cga_bench"
+harness = false
+
+[[bench]]
+name = "cpu_bench"
+harness = false
 
 [features]
 arduino_validator = []

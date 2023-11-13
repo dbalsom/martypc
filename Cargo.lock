@@ -1708,12 +1708,13 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arraydeque",
  "bytemuck",
  "cpal",
+ "criterion",
  "lazy_static",
  "log",
  "md5",
@@ -1783,6 +1784,7 @@ version = "0.1.4"
 dependencies = [
  "bytemuck",
  "cgmath",
+ "criterion",
  "display_scaler",
  "fast_image_resize",
  "glam",

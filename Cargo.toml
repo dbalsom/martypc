@@ -36,15 +36,3 @@ vga = ["marty_core/vga"]
 
 [build-dependencies]
 winres = "0.1"
-
-[[bench]]
-name = "cga_bench"
-harness = false
-
-[[bench]]
-name = "render_bench"
-harness= false
-
-[[bench]]
-name = "cpu_bench"
-harness = false

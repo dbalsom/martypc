@@ -41,8 +41,7 @@ use marty_render::{
 };
 
 use marty_core::{
-    config::VideoType,
-    videocard::DisplayExtents
+    videocard::{VideoType, DisplayExtents}
 };
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -52,6 +51,7 @@ pub fn render_cga_direct_bench(c: &mut Criterion) {
     // One-time setup code goes here
 
     let mut renderer = VideoRenderer::new(VideoType::CGA);
+
     let extents = DisplayExtents {
         field_w: 912,
         field_h: 262,

@@ -40,12 +40,11 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 use marty_core::{
     cpu_808x::{Cpu, Segment, ReadWriteFlag},
-    cpu_common::CpuType,
+    cpu_common::{CpuType, TraceMode},
     bytequeue::ByteQueue,
-    config::{MachineType, TraceMode},
-    machine_manager::{MACHINE_DESCS},
+    machine_manager::{MachineType, MACHINE_DESCS},
     tracelogger::TraceLogger,
-    config::VideoType
+    videocard::{VideoType, ClockingMode}
 };
 
 pub fn cpu_decode_bench<'a>(c: &mut Criterion) {
@@ -127,7 +126,8 @@ pub fn cpu_bus_write_bench<'a>(c: &mut Criterion) {
 
     // Install devices
     cpu.bus_mut().install_devices(
-        VideoType::CGA, 
+        VideoType::CGA,
+        ClockingMode::Dynamic,
         &machine_desc, 
         TraceLogger::None, 
         false
@@ -162,7 +162,8 @@ pub fn cpu_bus_read_cga_bench<'a>(c: &mut Criterion) {
 
     // Install devices
     cpu.bus_mut().install_devices(
-        VideoType::CGA, 
+        VideoType::CGA,
+        ClockingMode::Dynamic,
         &machine_desc, 
         TraceLogger::None, 
         false
@@ -199,7 +200,8 @@ pub fn cpu_bus_write_cga_bench<'a>(c: &mut Criterion) {
 
     // Install devices
     cpu.bus_mut().install_devices(
-        VideoType::CGA, 
+        VideoType::CGA,
+        ClockingMode::Dynamic,
         &machine_desc, 
         TraceLogger::None, 
         false
