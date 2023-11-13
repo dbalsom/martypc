@@ -97,18 +97,21 @@ use crate::run_runtests::run_runtests;
 use crate::run_processtests::run_processtests;
 
 use marty_core::{
+    coreconfig::CoreConfig,
     breakpoints::BreakPointType,
-    config::{self, *},
     machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
     cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
-    devices::keyboard::KeyboardModifiers,
+    devices::{
+        keyboard::KeyboardModifiers,
+        hdc::HardDiskControllerType,
+    },
     rom_manager::{RomManager, RomError, RomFeature},
     floppy_manager::{FloppyManager, FloppyError},
     machine_manager::MACHINE_DESCS,
     vhd_manager::{VHDManager, VHDManagerError},
     vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode, VideoOption},
+    videocard::{VideoType, ClockingMode, RenderMode, VideoOption},
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
@@ -117,6 +120,7 @@ use marty_core::{
 };
 
 use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, PerformanceStats};
+
 use marty_render::{
     AspectRatio, 
     VideoParams, 
@@ -124,6 +128,7 @@ use marty_render::{
     VideoRenderer, 
 };
 
+use bpaf_toml_config::ConfigFileParams;
 use display_scaler::{DisplayScaler, ScalerMode, Color};
 use marty_pixels_scaler::MartyScaler;
 
@@ -295,7 +300,7 @@ pub fn run() {
     let mut features = Vec::new();
 
     // Read config file
-    let mut config = match config::get_config("./martypc.toml"){
+    let mut config = match bpaf_toml_config::get_config("./martypc.toml"){
         Ok(config) => config,
         Err(e) => {
             match e.downcast_ref::<std::io::Error>() {
@@ -319,11 +324,11 @@ pub fn run() {
 
     // Determine required ROM features from configuration options
     match config.machine.video {
-        VideoType::EGA => {
+        Some(VideoType::EGA) => {
             // an EGA BIOS ROM is required for EGA
             features.push(RomFeature::EGA);
         },
-        VideoType::VGA => {
+        Some(VideoType::VGA) => {
             // a VGA BIOS ROM is required for VGA
             features.push(RomFeature::VGA);
         },
@@ -331,7 +336,7 @@ pub fn run() {
     }
 
     match config.machine.hdc {
-        HardDiskControllerType::Xebec => {
+        Some(HardDiskControllerType::Xebec) => {
             // The Xebec controller ROM is required for Xebec HDC
             features.push(RomFeature::XebecHDC);
         }
@@ -549,7 +554,7 @@ pub fn run() {
     // Create the video renderer
     let mut video = 
         VideoRenderer::new(
-            config.machine.video, 
+            config.machine.video.unwrap_or_default(),
             ScalerMode::Integer, 
             pixels,
             marty_scaler,
@@ -654,8 +659,8 @@ pub fn run() {
         &config,
         config.machine.model,
         *machine_desc_opt.unwrap(),
-        config.emulator.trace_mode,
-        config.machine.video, 
+        config.emulator.trace_mode.unwrap_or_default(),
+        config.machine.video.unwrap_or_default(),
         sp, 
         rom_manager
     );

@@ -49,7 +49,8 @@ use crate::bytequeue::*;
 use crate::syntax_token::SyntaxToken;
 use crate::machine::KeybufferEntry;
 use crate::machine_manager::MachineDescriptor;
-use crate::config::{ClockingMode, KeyboardType, VideoType};
+use crate::videocard::{ClockingMode, VideoType};
+use crate::devices::keyboard::KeyboardType;
 
 use crate::devices::{
     pit::Pit,
@@ -1569,7 +1570,7 @@ impl BusInterface {
 
             log::debug!("pit dirty and counting! count register: {} counting element: {} ", dma_count_register, dma_counting_element);
             
-            if (dma_counting_element <= dma_count_register) {
+            if dma_counting_element <= dma_count_register {
                 // DRAM refresh DMA counter has changed. If the counting element is in range,
                 // update the CPU's DRAM refresh simulation.
                 log::debug!("DRAM refresh DMA counter updated: {}, {}, +{}", dma_count_register, dma_counting_element, dma_add_ticks);

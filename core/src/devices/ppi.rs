@@ -36,9 +36,10 @@
 
 use std::cell::Cell;
 
-use crate::config::{MachineType, VideoType};
 use crate::bus::{BusInterface, IoDevice, NO_IO_BYTE, DeviceRunTimeUnit};
 use crate::devices::pic;
+use crate::machine_manager::MachineType;
+use crate::videocard::VideoType;
 
 pub const PPI_PORT_A: u16 = 0x60;
 pub const PPI_PORT_B: u16 = 0x61;
@@ -196,6 +197,7 @@ impl Ppi {
         };
 
         let sw1_video_bits = match video_type {
+            VideoType::None => SW1_HAVE_MDA,
             VideoType::MDA => SW1_HAVE_MDA,
             VideoType::CGA => SW1_HAVE_CGA_HIRES,
             VideoType::EGA | VideoType::VGA => SW1_HAVE_EXPANSION

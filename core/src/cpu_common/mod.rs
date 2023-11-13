@@ -32,11 +32,42 @@
 
 #![allow(dead_code)]
 
+use std::str::FromStr;
+use serde::Deserialize;
 
 #[derive (Copy, Clone, Debug)]
 pub enum CpuType {
     Intel8088,
     Intel8086,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum TraceMode {
+    None,
+    Cycle,
+    Sigrok,
+    Instruction
+}
+
+impl FromStr for TraceMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(TraceMode::None),
+            "cycle" => Ok(TraceMode::Cycle),
+            "sigrok" => Ok(TraceMode::Sigrok),
+            "instruction" => Ok(TraceMode::Instruction),
+            _ => Err("Bad value for tracemode".to_string()),
+        }
+    }
+}
+impl Default for TraceMode {
+    fn default() -> Self {
+        TraceMode::None
+    }
 }
 
 impl Default for CpuType {

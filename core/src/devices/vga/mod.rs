@@ -46,7 +46,7 @@ use std::{
 
 use modular_bitfield::prelude::*;
 
-use crate::config::{ClockingMode, VideoType};
+use crate::lib::{ClockingMode, VideoType};
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 use crate::tracelogger::TraceLogger;
 

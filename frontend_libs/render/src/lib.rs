@@ -64,8 +64,7 @@ pub use self::consts::*;
 use composite_new::{ReCompositeContext, ReCompositeBuffers};
 
 use marty_core::{
-    config::VideoType,
-    videocard::{VideoCard, CGAColor, CGAPalette, CursorInfo, DisplayExtents, DisplayMode, FontInfo},
+    videocard::{VideoType, VideoCard, CGAColor, CGAPalette, CursorInfo, DisplayExtents, DisplayMode, FontInfo},
     devices::cga,
     bus::BusInterface,
     file_util

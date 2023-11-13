@@ -41,18 +41,20 @@ use std::{
 };
 
 use marty_core::{
-    
+
     bytequeue::ByteQueue,
     cpu_808x::{
         *,
         Cpu,
         mnemonic::Mnemonic,
     },
-    cpu_common::{CpuType, CpuOption},
-    config::{ConfigFileParams, TestMode, TraceMode, ValidatorType},
+    cpu_common::{CpuType, CpuOption, TraceMode},
+    cpu_validator::ValidatorType,
     cpu_validator::{CpuValidator, BusOp, BusOpType, CycleState, BusCycle, BusState, VRegisters},
     tracelogger::TraceLogger
 };
+
+use bpaf_toml_config::{ConfigFileParams, TestMode};
 
 use crate::cpu_test::{CpuTest, TestState};
 
@@ -290,7 +292,7 @@ fn process_tests(
     
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
-        config.emulator.trace_mode,
+        config.emulator.trace_mode.unwrap_or_default(),
         TraceLogger::None,
         #[cfg(feature = "cpu_validator")]
         ValidatorType::None,

@@ -31,18 +31,44 @@
 */
 
 use std::collections::HashMap;
+use std::str::FromStr;
 use lazy_static::lazy_static;
 
 use crate::devices::pit::PitType;
-use crate::config::{MachineType, VideoType, KeyboardType};
+use crate::videocard::VideoType;
+use crate::devices::keyboard::KeyboardType;
 use crate::cpu_common::CpuType;
 use crate::bus::ClockFactor;
 use crate::tracelogger::TraceLogger;
+
+use serde_derive::{Deserialize};
 
 // Clock derivision from reenigne
 // See https://www.vogons.org/viewtopic.php?t=55049
 pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5/11.0;
 pub const PIT_DIVISOR: u32 = 12;
+
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
+pub enum MachineType {
+    FUZZER_8088,
+    IBM_PC_5150,
+    IBM_XT_5160
+}
+
+impl FromStr for MachineType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s {
+            "IBM_PC_5150" => Ok(MachineType::IBM_PC_5150),
+            "IBM_XT_5160" => Ok(MachineType::IBM_XT_5160),
+            _ => Err("Bad value for model".to_string()),
+        }
+    }
+}
 
 /// This enum is intended to represent any specific add-on device type
 /// that the bus needs to know about.

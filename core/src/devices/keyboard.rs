@@ -43,9 +43,28 @@ use toml;
 use serde_derive::Deserialize;
 
 use crate::machine::KeybufferEntry;
-use crate::config::KeyboardType;
 use crate::keys::MartyKey;
 
+// Define the various types of keyboard we can emulate.
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum KeyboardType {
+    ModelF,
+    ModelM
+}
+
+impl FromStr for KeyboardType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s {
+            "ModelF" => Ok(KeyboardType::ModelF),
+            "ModelM" => Ok(KeyboardType::ModelM),
+            _ => Err("Bad value for keyboard_type".to_string()),
+        }
+    }
+}
 #[derive (Copy, Clone, Debug, PartialEq, Eq)]
 pub struct KeyboardModifiers {
     pub control: bool,

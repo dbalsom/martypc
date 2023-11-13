@@ -24,190 +24,38 @@
 
     --------------------------------------------------------------------------
 
-    config.rs
+    bpaf_toml_cnofig::lib.rs
 
     Routines to parse configuration file and command line arguments.
+
+    This library implements CoreConfig for BPAF & TOML parsing.
 
 */
 
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
+use marty_core::{
+    machine_manager::MachineType,
+    videocard::{VideoType, ClockingMode},
+    cpu_common::TraceMode,
+    cpu_validator::ValidatorType,
+    devices::{
+        keyboard::KeyboardType,
+        hdc::HardDiskControllerType,
+    },
+    rom_manager::RomOverride,
+};
+
 use bpaf::{Bpaf};
+use serde;
 use serde_derive::{Deserialize};
+
 
 const fn _default_true() -> bool { true }
 const fn _default_false() -> bool { true }
 
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, Hash, Eq, PartialEq)] 
-pub enum MachineType {
-    FUZZER_8088,
-    IBM_PC_5150,
-    IBM_XT_5160
-}
-
-impl FromStr for MachineType {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s {
-            "IBM_PC_5150" => Ok(MachineType::IBM_PC_5150),
-            "IBM_XT_5160" => Ok(MachineType::IBM_XT_5160),
-            _ => Err("Bad value for model".to_string()),
-        }
-    }
-}
-
-// Define the various types of keyboard we can emulate.
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
-pub enum KeyboardType {
-    ModelF,
-    ModelM
-}
-
-impl FromStr for KeyboardType {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s {
-            "ModelF" => Ok(KeyboardType::ModelF),
-            "ModelM" => Ok(KeyboardType::ModelM),
-            _ => Err("Bad value for keyboard_type".to_string()),
-        }
-    }
-}
-
-#[allow (dead_code)]
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
-pub enum VideoType {
-    MDA,
-    CGA,
-    EGA,
-    VGA
-}
-
-impl FromStr for VideoType {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s {
-            "MDA" => Ok(VideoType::MDA),
-            "CGA" => Ok(VideoType::CGA),
-            "EGA" => Ok(VideoType::EGA),
-            "VGA" => Ok(VideoType::VGA),
-            _ => Err("Bad value for videotype".to_string()),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)] 
-pub enum ClockingMode {
-    Cycle,
-    Character,
-    Scanline,
-    Dynamic
-}
-
-impl Default for ClockingMode {
-    fn default() -> Self { 
-        ClockingMode::Dynamic
-    }
-}
-
-
-impl FromStr for ClockingMode {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s {
-            "Cycle" => Ok(ClockingMode::Cycle),
-            "Character" => Ok(ClockingMode::Character),
-            "Scanline" => Ok(ClockingMode::Scanline),
-            "Dynamic" => Ok(ClockingMode::Dynamic),
-            _ => Err("Bad value for ClockingMode".to_string()),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
-pub enum HardDiskControllerType {
-    None,
-    Xebec
-}
-
-impl FromStr for HardDiskControllerType {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s.to_lowercase().as_str() {
-            "xebec" => Ok(HardDiskControllerType::Xebec),
-            _ => Err("Bad value for videotype".to_string()),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
-pub enum ValidatorType {
-    None,
-    Pi8088,
-    Arduino8088
-}
-
-impl FromStr for ValidatorType {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s.to_lowercase().as_str() {
-            "pi8088" => Ok(ValidatorType::Pi8088),
-            "arduino8088" => Ok(ValidatorType::Arduino8088),
-            _ => Err("Bad value for validatortype".to_string()),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
-pub enum TraceMode {
-    None,
-    Cycle,
-    Sigrok,
-    Instruction
-}
-
-impl Default for TraceMode {
-    fn default() -> Self { 
-        TraceMode::None
-    }
-}
-
-impl FromStr for TraceMode {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s.to_lowercase().as_str() {
-            "none" => Ok(TraceMode::None),
-            "cycle" => Ok(TraceMode::Cycle),
-            "sigrok" => Ok(TraceMode::Sigrok),
-            "instruction" => Ok(TraceMode::Instruction),
-            _ => Err("Bad value for tracemode".to_string()),
-        }
-    }
-}
+mod coreconfig;
 
 #[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
 pub enum TestMode {
@@ -240,27 +88,7 @@ impl FromStr for TestMode {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct RomOverride {
-    pub path: PathBuf,
-    pub address: u32,
-    pub offset: u32,
-    pub org: RomFileOrganization
-}
 
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)] 
-pub enum RomFileOrganization {
-    Normal,
-    Reversed,
-    InterleavedEven,
-    InterleavedOdd
-}
-
-impl Default for RomFileOrganization {
-    fn default() -> Self { 
-        RomFileOrganization::Normal
-    }
-}
 
 #[derive(Debug, Deserialize)]
 pub struct Emulator {
@@ -294,25 +122,22 @@ pub struct Emulator {
     #[serde(default = "_default_false")]
     pub debug_keyboard: bool,
 
-    #[serde(default)]
-    pub no_bios: bool,
-
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
     pub run_bin_ofs: Option<u16>,
 
     #[serde(default)]
     pub trace_on: bool,
-    pub trace_mode: TraceMode,
-    pub trace_file: Option<String>,
+    pub trace_mode: Option<TraceMode>,
+    pub trace_file: Option<PathBuf>,
 
     #[serde(default)]
-    pub video_trace_file: Option<String>,
+    pub video_trace_file: Option<PathBuf>,
 
     pub video_frame_debug: bool,
 
     #[serde(default)]
-    pub pit_output_file: Option<String>,
+    pub pit_output_file: Option<PathBuf>,
     #[serde(default = "_default_false")]
     pub pit_output_int_trigger: bool
 
@@ -330,7 +155,7 @@ pub struct Validator {
     #[serde(rename = "type")]
     pub vtype: Option<ValidatorType>,
     pub trigger_address: Option<u32>,
-    pub trace_file: Option<String>,
+    pub trace_file: Option<PathBuf>,
     pub baud_rate: Option<u32>,
 }
 
@@ -349,17 +174,19 @@ pub struct Tests {
 #[derive(Debug, Deserialize)]
 pub struct Machine {
     pub model: MachineType,
+    #[serde(default)]
+    pub no_bios: bool,
     pub rom_override: Option<Vec<RomOverride>>,
     pub raw_rom: bool,
     pub turbo: bool,
-    pub video: VideoType,
+    pub video: Option<VideoType>,
     pub clocking_mode: Option<ClockingMode>,
     pub composite: Option<bool>,
     pub cga_snow: Option<bool>,
     pub pit_phase: Option<u32>,
-    pub keyboard_type: KeyboardType,
+    pub keyboard_type: Option<KeyboardType>,
     pub keyboard_layout: Option<String>,
-    pub hdc: HardDiskControllerType,
+    pub hdc: Option<HardDiskControllerType>,
     pub drive0: Option<String>,
     pub drive1: Option<String>,
     pub floppy0: Option<String>,
@@ -440,6 +267,9 @@ pub struct CmdLineArgs {
     #[bpaf(long, switch)]
     pub no_bios: bool,
 
+    #[bpaf(long)]
+    pub video_type: Option<VideoType>,
+
     #[bpaf(long, switch)]
     pub video_frame_debug: bool,
 
@@ -470,9 +300,13 @@ impl ConfigFileParams {
         self.emulator.warpspeed |= shell_args.warpspeed;
         self.emulator.correct_aspect |= shell_args.correct_aspect;
         self.emulator.debug_mode |= shell_args.debug_mode;
-        self.emulator.no_bios |= shell_args.no_bios;
         self.emulator.video_frame_debug |= shell_args.video_frame_debug;
         self.emulator.debug_keyboard |= shell_args.debug_keyboard;
+        self.machine.no_bios |= shell_args.no_bios;
+
+        if let Some(video) = shell_args.video_type {
+            self.machine.video = Some(video);
+        }
 
         if let Some(run_bin) = shell_args.run_bin {
             self.emulator.run_bin = Some(run_bin);

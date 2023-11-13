@@ -57,10 +57,34 @@ use std::{
 
 use core::fmt::Display;
 
-use crate::config::{MachineType, RomOverride, RomFileOrganization};
+use crate::machine_manager::MachineType;
 use crate::bus::{BusInterface, MEM_CP_BIT};
 
+use serde::Deserialize;
+
 pub const BIOS_READ_CYCLE_COST: u32 = 4;
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct RomOverride {
+    pub path: PathBuf,
+    pub address: u32,
+    pub offset: u32,
+    pub org: RomFileOrganization
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum RomFileOrganization {
+    Normal,
+    Reversed,
+    InterleavedEven,
+    InterleavedOdd
+}
+
+impl Default for RomFileOrganization {
+    fn default() -> Self {
+        RomFileOrganization::Normal
+    }
+}
 
 #[derive (Copy, Clone, Debug)]
 pub struct RawRomDescriptor {

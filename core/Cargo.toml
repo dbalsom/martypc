@@ -12,7 +12,6 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 anyhow = "1.0.58"
 arraydeque = "0.4.5"
-bpaf = { version = "0.7.7", features = ["derive"] }
 bytemuck = "1.13.1"
 cpal = "0.13.5"
 lazy_static = "1.4.0"

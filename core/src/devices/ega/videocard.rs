@@ -31,7 +31,6 @@
 */
 
 use crate::devices::ega::EGACard;
-use crate::config::{ClockingMode, VideoType};
 use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
 
 use crate::videocard::*;
@@ -118,17 +117,14 @@ impl VideoCard for EGACard {
         false
     }
 
-    /// Unimplemented for indirect rendering.
     fn get_display_buf(&self) -> &[u8] {
         &self.buf[self.front_buf][..]
     }
 
-    /// Unimplemented for indirect rendering.
     fn get_back_buf(&self) -> &[u8] {
         &self.buf[self.back_buf][..]
     }      
     
-    /// Unimplemented for indirect rendering.
     fn get_display_aperture(&self) -> (u32, u32) {
         (self.extents.aperture.w, self.extents.aperture.h)
     }
@@ -290,7 +286,28 @@ impl VideoCard for EGACard {
         let mut general_vec = Vec::new();
         general_vec.push(("Adapter Type:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
         general_vec.push(("Display Mode:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
+        general_vec.push(("Pixel Clock:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.clock_select()))));
         general_vec.push(("Clock Divisor:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.clock_divisor))));
+        general_vec.push((
+            "Field:".to_string(), 
+            VideoCardStateEntry::String(
+                format!(
+                    "{}x{}", 
+                    self.extents.field_w,
+                    self.extents.field_h
+                )
+            )
+        ));
+        general_vec.push((
+            "Aperture:".to_string(), 
+            VideoCardStateEntry::String(
+                format!(
+                    "{}x{}", 
+                    self.extents.aperture.w,
+                    self.extents.aperture.h
+                )
+            )
+        ));
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();

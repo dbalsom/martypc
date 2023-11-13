@@ -44,7 +44,8 @@ use std::{
 };
 
 use crate::{
-    config::{ConfigFileParams, MachineType, VideoType, TraceMode},
+    coreconfig::CoreConfig,
+    machine_manager::MachineType,
     breakpoints::BreakPointType,
     bus::{BusInterface, ClockFactor, DeviceEvent, MEM_CP_BIT},
     devices::{
@@ -58,12 +59,12 @@ use crate::{
         keyboard::KeyboardModifiers
     },
     cpu_808x::{Cpu, CpuError, CpuAddress, StepResult, ServiceEvent },
-    cpu_common::{CpuType, CpuOption},
+    cpu_common::{CpuType, CpuOption, TraceMode},
     machine_manager::{MachineDescriptor},
-    rom_manager::{RomManager, RawRomDescriptor},
+    rom_manager::RomManager,
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
-    videocard::{VideoCard, VideoCardState, VideoOption},
+    videocard::{VideoType, VideoCard, VideoCardState, VideoOption},
     keys::MartyKey
 };
 
@@ -226,7 +227,7 @@ pub struct Machine
 
 impl Machine {
     pub fn new(
-        config: &ConfigFileParams,
+        config: &dyn CoreConfig,
         machine_type: MachineType,
         machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
@@ -242,21 +243,25 @@ impl Machine {
 
         let mut trace_logger = TraceLogger::None;
 
-        if config.emulator.trace_mode != TraceMode::None {
-            // Open the trace file if specified
-            if let Some(filename) = &config.emulator.trace_file {
+        match config.get_cpu_trace_mode() {
+            Some(TraceMode::None) => {
+                // Open the trace file if specified
+                if let Some(filename) = &config.get_cpu_trace_file() {
+                    trace_logger = TraceLogger::from_filename(filename);
 
-                trace_logger = TraceLogger::from_filename(filename);
-
-                if !trace_logger.is_some() {
-                    log::error!("Couldn't create specified CPU tracelog file: {}", filename);
-                    eprintln!("Couldn't create specified CPU tracelog file: {}", filename);
+                    if !trace_logger.is_some() {
+                        log::error!("Couldn't create specified CPU tracelog file: {:?}", filename);
+                        eprintln!("Couldn't create specified CPU tracelog file: {:?}", filename);
+                    }
                 }
             }
+            _ => {},
         }
+
 
         // Create PIT output log file if specified
         let mut pit_output_file_option = None;
+        /*
         if let Some(filename) = &config.emulator.pit_output_file {
             match File::create(filename) {
                 Ok(file) => {
@@ -267,13 +272,14 @@ impl Machine {
                 }
             }
         }
+        */
 
         // Create the validator trace file, if specified
         #[cfg(feature = "cpu_validator")]
         let mut validator_trace = TraceLogger::None;
         #[cfg(feature = "cpu_validator")]
         {
-            if let Some(trace_filename) = &config.validator.trace_file {
+            if let Some(trace_filename) = &config.get_cpu_trace_file() {
                 validator_trace = TraceLogger::from_filename(&trace_filename);
             }
         }            
@@ -286,7 +292,7 @@ impl Machine {
             trace_mode,
             trace_logger,
             #[cfg(feature = "cpu_validator")]
-            config.validator.vtype.unwrap(),
+            config.get_validator_type().unwrap_or_default(),
             #[cfg(feature = "cpu_validator")]
             validator_trace,
             #[cfg(feature = "cpu_validator")]
@@ -295,7 +301,7 @@ impl Machine {
             config.validator.baud_rate.unwrap_or(1_000_000)
         );
 
-        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+        cpu.set_option(CpuOption::TraceLoggingEnabled(config.get_cpu_trace_on()));
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
@@ -321,11 +327,13 @@ impl Machine {
 
         // Create the video trace file, if specified
         let mut video_trace = TraceLogger::None;
-        if let Some(trace_filename) = &config.emulator.video_trace_file {
+        /*
+        if let Some(trace_filename) = &config.get_video_trace_file() {
             video_trace = TraceLogger::from_filename(&trace_filename);
         }
+        */
 
-        let clock_mode = config.machine.clocking_mode.unwrap_or_default();
+        let clock_mode = config.get_video_clockingmode().unwrap_or_default();
         log::debug!("Using video clocking mode: {:?}", clock_mode);
 
         // Install devices
@@ -334,14 +342,14 @@ impl Machine {
             clock_mode,
             &machine_desc, 
             video_trace, 
-            config.emulator.video_frame_debug
+            config.get_video_debug(),
         );
 
         // Load keyboard translation file if specified.
 
-        if let Some(kb_string) = &config.machine.keyboard_layout {
+        if let Some(kb_string) = &config.get_keyboard_layout() {
             let mut kb_translation_path = PathBuf::new();
-            kb_translation_path.push(config.emulator.basedir.clone());
+            kb_translation_path.push(config.get_base_dir().clone());
             kb_translation_path.push("keyboard");
             kb_translation_path.push(format!("keyboard_{}.toml", kb_string));
 
@@ -356,10 +364,10 @@ impl Machine {
         }
 
         // Set keyboard debug flag.
-        cpu.bus_mut().keyboard_mut().set_debug(config.emulator.debug_keyboard);
+        cpu.bus_mut().keyboard_mut().set_debug(config.get_keyboard_debug());
 
         // Load BIOS ROM images unless config option suppressed rom loading
-        if !config.emulator.no_bios {
+        if !config.get_machine_nobios() {
 
             rom_manager.copy_into_memory(cpu.bus_mut());
 
@@ -374,7 +382,7 @@ impl Machine {
 
         // Set CPU clock divisor/multiplier
         let cpu_factor;
-        if config.machine.turbo { 
+        if config.get_machine_turbo() {
             cpu_factor = machine_desc.cpu_turbo_factor;
         }
         else {
@@ -391,7 +399,7 @@ impl Machine {
             video_type,
             sound_player,
             rom_manager,
-            load_bios: !config.emulator.no_bios,
+            load_bios: !config.get_machine_nobios(),
             cpu,
             speaker_buf_producer,
             pit_data,

@@ -361,6 +361,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bpaf_toml_config"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bpaf",
+ "log",
+ "marty_core",
+ "serde",
+ "serde_derive",
+ "toml",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1699,7 +1712,6 @@ version = "0.1.4"
 dependencies = [
  "anyhow",
  "arraydeque",
- "bpaf",
  "bytemuck",
  "cpal",
  "lazy_static",
@@ -1795,6 +1807,7 @@ dependencies = [
 name = "martypc_pixels_desktop"
 version = "0.2.0"
 dependencies = [
+ "bpaf_toml_config",
  "bytemuck",
  "colored",
  "console_error_panic_hook",

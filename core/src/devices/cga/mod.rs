@@ -52,7 +52,6 @@ mod videocard;
 use crate::devices::cga::tablegen::*;
 
 use crate::bus::{BusInterface, DeviceRunTimeUnit};
-use crate::config::{VideoType, ClockingMode};
 use crate::tracelogger::TraceLogger;
 use crate::videocard::*;
 

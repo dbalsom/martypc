@@ -30,7 +30,6 @@
 
 use marty_core::{
     breakpoints::BreakPointType,
-    config::{self, *},
     machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
     cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
@@ -47,6 +46,8 @@ use marty_core::{
     util,
     keys
 };
+
+use bpaf_toml_config::ConfigFileParams;
 
 pub fn run_headless(
     config: &ConfigFileParams,
@@ -86,8 +87,8 @@ pub fn run_headless(
         config,
         config.machine.model,
         *machine_desc_opt.unwrap(),
-        config.emulator.trace_mode,
-        config.machine.video, 
+        config.emulator.trace_mode.unwrap_or_default(),
+        config.machine.video.unwrap_or_default(),
         sp, 
         rom_manager, 
     );
