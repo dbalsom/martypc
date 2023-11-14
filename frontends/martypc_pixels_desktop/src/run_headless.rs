@@ -29,22 +29,11 @@
 */
 
 use marty_core::{
-    breakpoints::BreakPointType,
-    machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
-    cpu_808x::{Cpu, CpuAddress},
-    cpu_common::CpuOption,
-    devices::keyboard::KeyboardModifiers,
-    rom_manager::{RomManager, RomError, RomFeature},
-    floppy_manager::{FloppyManager, FloppyError},
+    machine::{Machine, ExecutionControl, ExecutionState},
+    rom_manager::RomManager,
+    floppy_manager::FloppyManager,
     machine_manager::MACHINE_DESCS,
-    vhd_manager::{VHDManager, VHDManagerError},
-    vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode, VideoOption},
-    bytequeue::ByteQueue,
     sound::SoundPlayer,
-    syntax_token::SyntaxToken,
-    util,
-    keys
 };
 
 use bpaf_toml_config::ConfigFileParams;

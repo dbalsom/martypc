@@ -428,7 +428,7 @@ impl BusInterface {
 
         // Add entry to mmio_map_fast
 
-        assert!(mem_descriptor.size % MMIO_MAP_SIZE == 0);
+        assert_eq!(mem_descriptor.size % MMIO_MAP_SIZE, 0);
         let map_segs = mem_descriptor.size / MMIO_MAP_SIZE;
 
         for i in 0..map_segs {
@@ -441,7 +441,7 @@ impl BusInterface {
     pub fn copy_from(&mut self, src: &[u8], location: usize, cycle_cost: u32, read_only: bool) -> Result<(), bool> {
         
         let src_size = src.len();
-        if location as usize + src_size > self.memory.len() {
+        if location + src_size > self.memory.len() {
             // copy request goes out of bounds
             log::error!("copy out of range: {} len: {}", location, src_size);
             return Err(false)
@@ -467,8 +467,8 @@ impl BusInterface {
             MemRangeDescriptor {
                 address: location,
                 size: src_size,
-                cycle_cost: cycle_cost,
-                read_only: read_only
+                cycle_cost,
+                read_only
             }
         });
 
@@ -480,7 +480,7 @@ impl BusInterface {
     /// Does not obey memory mapping
     pub fn patch_from(&mut self, src_vec: &Vec<u8>, location: usize) -> Result<(), bool> {
         let src_size = src_vec.len();
-        if location as usize + src_size > self.memory.len() {
+        if location + src_size > self.memory.len() {
             // copy request goes out of bounds
             return Err(false)
         }
@@ -506,9 +506,9 @@ impl BusInterface {
         self.desc_vec.push({
             MemRangeDescriptor {
                 address: start,
-                size: size,
-                cycle_cost: cycle_cost,
-                read_only: read_only
+                size,
+                cycle_cost,
+                read_only
             }
         });        
     }
@@ -682,12 +682,12 @@ impl BusInterface {
                                     }
                                     #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
-                                        let (data, syswait) = MemoryMappedDevice::mmio_read_u8(ega, address, system_ticks);
+                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u8(ega, address, system_ticks);
                                         return Ok((data, 0));
                                     }
                                     #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
-                                        let (data, syswait) = MemoryMappedDevice::mmio_read_u8(vga, address, system_ticks);
+                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u8(vga, address, system_ticks);
                                         return Ok((data, 0));
                                     }
                                     _ => {}
@@ -776,12 +776,12 @@ impl BusInterface {
                                     }
                                     #[cfg(feature = "ega")]
                                     VideoCardDispatch::Ega(ega) => {
-                                        let (data, syswait) = MemoryMappedDevice::mmio_read_u16(ega, address, system_ticks);
+                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u16(ega, address, system_ticks);
                                         return Ok((data, 0));
                                     }
                                     #[cfg(feature = "vga")]
                                     VideoCardDispatch::Vga(vga) => {
-                                        let (data, syswait) = MemoryMappedDevice::mmio_read_u16(vga, address, system_ticks);
+                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u16(vga, address, system_ticks);
                                         return Ok((data, 0));
                                     }
                                     _ => {}
@@ -851,7 +851,7 @@ impl BusInterface {
 
                         match &mut self.video {
                             VideoCardDispatch::Cga(cga) => {
-                                let syswait = cga.mmio_write_u8(address, data, system_ticks);
+                                let _syswait = cga.mmio_write_u8(address, data, system_ticks);
                                 //return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value. 
                                 return Ok(0);
                             }

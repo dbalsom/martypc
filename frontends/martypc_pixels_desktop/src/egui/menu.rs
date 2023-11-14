@@ -30,8 +30,6 @@
 
 */
 
-use std::default;
-
 use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption, GuiBoolean, GuiEnum};
 
 use marty_core::machine::MachineState;

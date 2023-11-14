@@ -32,7 +32,7 @@
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
-    hash::{Hash, Hasher},
+    hash::Hash,
     ffi::OsString,
     rc::Rc,
     time::{Duration, Instant},
@@ -328,8 +328,6 @@ pub(crate) struct GuiState {
     pub device_control: DeviceControl,
 
     call_stack_string: String,
-
-    composite: bool
 }
 
 impl Framework {
@@ -593,9 +591,6 @@ impl GuiState {
             ivr_viewer: IvrViewerControl::new(),
             device_control: DeviceControl::new(),
             call_stack_string: String::new(),
-
-            // Options menu items
-            composite: false
         }
     }
 
@@ -642,6 +637,7 @@ impl GuiState {
         self.option_flags.get(&option).copied()
     }
 
+    #[allow(dead_code)]
     pub fn get_option_enum(&self, option: GuiEnum) -> GuiEnum {
         *self.option_enums.get(&discriminant(&option)).unwrap()
     }    
@@ -664,11 +660,13 @@ impl GuiState {
         self.error_string = String::new();
     }
 
+    #[allow(dead_code)]
     pub fn show_warning(&mut self, warn_str: &String) {
         self.warning_dialog_open = true;
         self.warning_string = warn_str.clone();
     }
 
+    #[allow(dead_code)]
     pub fn clear_warning(&mut self) {
         self.warning_dialog_open = false;
         self.warning_string = String::new();

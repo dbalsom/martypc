@@ -62,7 +62,6 @@ mod run_headless;
 use input::TranslateKey;
 use crate::egui::{Framework, DeviceSelection};
 
-use log::error;
 use pixels::{Pixels, SurfaceTexture};
 
 use winit::{
@@ -78,7 +77,7 @@ use winit::{
         ControlFlow,
         EventLoop
     },
-    keyboard::{KeyCode, ModifiersKeyState},
+    keyboard::KeyCode,
     window::WindowBuilder,
 
 };
@@ -97,7 +96,6 @@ use crate::run_runtests::run_runtests;
 use crate::run_processtests::run_processtests;
 
 use marty_core::{
-    coreconfig::CoreConfig,
     breakpoints::BreakPointType,
     machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
     cpu_808x::{Cpu, CpuAddress},
@@ -116,19 +114,16 @@ use marty_core::{
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
     util,
-    keys
 };
 
 use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, PerformanceStats};
 
 use marty_render::{
-    AspectRatio, 
-    VideoParams, 
+    AspectRatio,
     SCALING_MODES,
     VideoRenderer, 
 };
 
-use bpaf_toml_config::ConfigFileParams;
 use display_scaler::{DisplayScaler, ScalerMode, Color};
 use marty_pixels_scaler::MartyScaler;
 
@@ -142,7 +137,7 @@ const WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT + EGUI_MENU_BAR * 2;
 
 const MIN_RENDER_WIDTH: u32 = 160;
 const MIN_RENDER_HEIGHT: u32 = 200;
-const RENDER_ASPECT: f32 = 0.75;
+//const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
@@ -221,6 +216,8 @@ impl Counter {
         }
     }
 }
+
+#[allow(dead_code)]
 struct MouseData {
     reverse_buttons: bool,
     l_button_id: u32,
@@ -509,7 +506,7 @@ pub fn run() {
 
 
     // Create pixels & egui backend
-    let (mut pixels, mut framework) = {
+    let (pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
@@ -534,7 +531,7 @@ pub fn run() {
 
     let fill_color = Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0}; // Dark grey.
 
-    let mut marty_scaler = MartyScaler::new(
+    let marty_scaler = MartyScaler::new(
         ScalerMode::Integer,
         &pixels,
         640,
@@ -1411,7 +1408,8 @@ pub fn run() {
 
                     // -- Draw video memory --
                     let composite_enabled = framework.gui.get_option(GuiBoolean::CompositeDisplay).unwrap_or(false);
-                    let aspect_correct = framework.gui.get_option(GuiBoolean::CorrectAspect).unwrap_or(false);
+                    let
+                        _aspect_correct = framework.gui.get_option(GuiBoolean::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
 
@@ -2111,7 +2109,7 @@ pub fn run() {
                     
                     // Render everything together
                     video.with_backend(|pixels, scaler| {
-                        let render_result = pixels.render_with(|encoder, render_target, context| {
+                        let _render_result = pixels.render_with(|encoder, render_target, context| {
                             scaler.render(encoder, render_target, true);
                             framework.render(encoder, render_target, context);
                             Ok(())                            

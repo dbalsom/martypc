@@ -32,7 +32,6 @@
 
 use anyhow::{bail, Result};
 use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
 use std::collections::{HashMap, VecDeque};
 use std::vec::Vec;
 use std::fs::read_to_string;
@@ -669,7 +668,7 @@ pub struct KeybufferEntry {
         match kb_type {
             KeyboardType::ModelF => {
                 // ModelF has no keyboard buffer, therefore, translations should only have one keycode.
-                assert!(translation.len() == 1);
+                assert_eq!(translation.len(), 1);
 
                 if self.debug {
                     log::debug!("translate_keyup(): sending key_up: {:02X} for keydown translation: {:02X}", translation[0] | 0x80, translation[0]);

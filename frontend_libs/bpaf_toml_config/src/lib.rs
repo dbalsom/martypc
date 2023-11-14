@@ -48,7 +48,6 @@ use marty_core::{
 };
 
 use bpaf::{Bpaf};
-use serde;
 use serde_derive::{Deserialize};
 
 
@@ -358,7 +357,7 @@ where
 
 pub fn get_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::Error>
 {
-    let mut toml_args: ConfigFileParams;
+    let toml_args: ConfigFileParams;
 
     toml_args = toml::from_str(toml_text)?;
     

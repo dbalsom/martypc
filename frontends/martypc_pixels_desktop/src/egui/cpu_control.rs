@@ -32,7 +32,7 @@
 */
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     rc::Rc,
 };
 use crate::egui::*;
@@ -57,7 +57,7 @@ impl CpuControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, gui_options: &mut HashMap::<GuiBoolean, bool>, events: &mut GuiEventQueue ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, gui_options: &mut HashMap<GuiBoolean, bool>, events: &mut GuiEventQueue ) {
 
         let mut exec_control = self.exec_control.borrow_mut();
 

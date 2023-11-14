@@ -180,6 +180,8 @@ pub struct Channel {
     ticked: bool,                    // Has the counting element been ticked at least once?
 
 }
+
+#[allow(dead_code)]
 pub struct ProgrammableIntervalTimer {
     ptype: PitType,
     _crystal: f64,
@@ -215,7 +217,7 @@ pub struct PitStringState {
 }
 
 impl IoDevice for ProgrammableIntervalTimer {
-    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
 
         // Catch up to CPU state.
         //self.catch_up(delta);
@@ -973,7 +975,7 @@ impl ProgrammableIntervalTimer {
     pub fn ticks_from_time(&mut self, run_unit: DeviceRunTimeUnit, advance: DeviceRunTimeUnit) -> u32 {
         let mut do_ticks = 0;
         match (run_unit, advance) {
-            (DeviceRunTimeUnit::Microseconds(us), DeviceRunTimeUnit::Microseconds(warp_us)) => {
+            (DeviceRunTimeUnit::Microseconds(us), DeviceRunTimeUnit::Microseconds(_warp_us)) => {
                 let pit_cycles = Pit::get_pit_cycles(us);
                 //log::debug!("Got {:?} pit cycles", pit_cycles);
         

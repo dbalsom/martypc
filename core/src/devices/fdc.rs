@@ -773,7 +773,7 @@ impl FloppyController {
     }
     
     /// Returns whether the CHS address is valid for the specified drive
-    pub fn is_id_valid(&mut self, drive_select: usize, c: u8, h: u8, s:u8 ) -> bool {
+    pub fn is_id_valid(&self, drive_select: usize, c: u8, h: u8, s:u8 ) -> bool {
 
         if !self.drives[drive_select].have_disk {
             return false;
@@ -1303,14 +1303,14 @@ impl FloppyController {
     }
 
     fn operation_read_sector(
-        &mut self, 
-        dma: &mut dma::DMAController, 
+        &mut self,
+        dma: &mut dma::DMAController,
         bus: &mut BusInterface,
-        cylinder: u8, 
+        cylinder: u8,
         head: u8,
-        sector: u8, 
-        sector_size: u8, 
-        track_len: u8 ) {
+        sector: u8,
+        sector_size: u8,
+        _track_len: u8) {
 
         if !self.in_dma {
             log::error!("FDC in invalid state: ReadSector operation without DMA! Aborting.");

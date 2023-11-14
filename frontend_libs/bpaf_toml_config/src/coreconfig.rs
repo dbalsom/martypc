@@ -46,7 +46,6 @@ use marty_core::{
         keyboard::KeyboardType,
         hdc::HardDiskControllerType,
     },
-    rom_manager::RomOverride,
 };
 
 /*

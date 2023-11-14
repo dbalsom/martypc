@@ -46,7 +46,7 @@ use std::{collections::HashMap, path::Path};
 //#![allow(dead_code)]
 use log;
 
-use crate::bus::{BusInterface, DeviceRunTimeUnit, IoDevice, MemoryMappedDevice};
+use crate::bus::{BusInterface, DeviceRunTimeUnit};
 use crate::tracelogger::TraceLogger;
 use crate::videocard::*;
 
@@ -62,7 +62,7 @@ mod tablegen;
 mod videocard;
 
 use attribute_regs::*;
-use crtc::*;
+
 use crtc_regs::*;
 use graphics_regs::*;
 use sequencer_regs::*;
@@ -1322,7 +1322,7 @@ impl EGACard {
             self.raster_x = 0;
             self.raster_y += 1;
             //self.in_monitor_hsync = false;
-            self.rba = (self.extents.row_stride * self.raster_y as usize);
+            self.rba = self.extents.row_stride * self.raster_y as usize;
         }
 
         /*

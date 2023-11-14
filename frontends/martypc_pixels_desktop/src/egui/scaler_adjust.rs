@@ -94,6 +94,7 @@ impl ScalerAdjustControl {
         self.params = params;
     }
 
+    #[allow(dead_code)]
     pub fn get_params(&self) -> &ScalerParams {
         &self.params
     }

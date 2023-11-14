@@ -35,7 +35,6 @@
 
 */
 
-use std::mem::discriminant;
 use bytemuck::{Pod, Zeroable};
 
 struct MartyColor(wgpu::Color);
@@ -96,6 +95,7 @@ struct ScalerOptionsUniform {
     fill_color: [f32; 4],
 }
 
+#[allow(dead_code)]
 fn create_texture_view(pixels: &pixels::Pixels, width: u32, height: u32) -> wgpu::TextureView {
     let device = pixels.device();
     let texture_descriptor = TextureDescriptor {
@@ -175,6 +175,7 @@ pub struct MartyScaler {
     margin_t: u32,
     margin_b: u32,
     effect: ScalerEffect,
+    #[allow(dead_code)]
     crt_params: CrtParamUniform
 }
 
@@ -446,9 +447,9 @@ impl MartyScaler {
             fill_color: MartyColor(wgpu::Color{r: 0.0, g: 0.0, b: 0.0, a: 0.0}).into(),
 
         };
-
         bytemuck::bytes_of(&uniform_struct).to_vec()
     }
+
     fn get_param_uniform_bytes(&mut self) -> Vec<u8> {
         // Build CRT shader params or default
         let crt_params = match &self.effect {
@@ -456,7 +457,7 @@ impl MartyScaler {
                 println!("getting default crt parameter uniform (effect disabled)");
                 Default::default()
             },
-            ScalerEffect::Crt{h_curvature, v_curvature, corner_radius, option } => {
+            ScalerEffect::Crt{h_curvature, v_curvature, corner_radius, .. } => {
                 println!("getting crt parameter uniform. corner_radius: {}", *corner_radius);
                 CrtParamUniform {
                     h_curvature: *h_curvature,
@@ -493,10 +494,10 @@ impl MartyScaler {
         let transform_bytes = matrix.as_bytes();
 
         let queue = pixels.queue();
-        //queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
+        queue.write_buffer(&self.transform_uniform_buffer, 0, transform_bytes);
 
         // Calculate shader parameters
-        let mut uniform_vec = self.get_param_uniform_bytes();
+        let uniform_vec = self.get_param_uniform_bytes();
 
         queue.write_buffer(
             &self.params_uniform_buffer,
@@ -513,7 +514,6 @@ impl DisplayScaler for MartyScaler {
 
     fn set_mode(&mut self, pixels: &pixels::Pixels, new_mode: ScalerMode) {
         self.mode = new_mode;
-
         self.update_matrix(pixels);
     }
 
@@ -741,7 +741,7 @@ impl ScalingMatrix {
 
     fn none_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
 
-        let margin_y = margin_y / 2.0;
+        let _margin_y = margin_y / 2.0;
 
         let (texture_width, texture_height) = texture_size;
         let (screen_width, screen_height) = screen_size;
@@ -789,7 +789,7 @@ impl ScalingMatrix {
 
     fn integer_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
 
-        let margin_y = margin_y / 2.0;
+        let _margin_y = margin_y / 2.0;
 
         let (texture_width, texture_height) = texture_size;
         let (screen_width, screen_height) = screen_size;
@@ -817,7 +817,7 @@ impl ScalingMatrix {
         ];
 
         // Create a clipping rectangle
-        let clip_rect = {
+        let _clip_rect = {
             let scaled_width = scaled_width.min(screen_width);
             let scaled_height = scaled_height.min(screen_height);
             let x = ((screen_width - scaled_width) / 2.0) as u32;
@@ -896,7 +896,7 @@ impl ScalingMatrix {
         ];
 
         // Create a clipping rectangle
-        let clip_rect = {
+        let _clip_rect = {
             let scaled_width = scaled_width.min(screen_width);
             let scaled_height = scaled_height.min(screen_height);
             let x = ((screen_width - scaled_width) / 2.0) as u32;

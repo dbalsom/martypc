@@ -26,7 +26,7 @@ use winit::{
 use winit_input_helper::WinitInputHelper;
 
 use marty_core::{
-    config::{self, *},
+    lib::{self, *},
     machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
     cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
@@ -327,7 +327,7 @@ pub async fn run(cfg: &str) {
         let toml_text = JsFuture::from(resp.text().unwrap()).await.unwrap();
 
         // Read config file from toml text
-        let mut config = match config::get_config_from_str(&toml_text.as_string().unwrap()){
+        let mut config = match lib::get_config_from_str(&toml_text.as_string().unwrap()){
             Ok(config) => config,
             Err(e) => {
                 match e.downcast_ref::<std::io::Error>() {

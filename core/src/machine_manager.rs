@@ -77,11 +77,15 @@ pub enum DeviceType {
     VideoCard(VideoType),
 }
 
+// placeholder for future feature
+#[allow(dead_code)]
 pub struct MmioSpec {
     base_addr: u32,
     size: u32
 }
 
+// placeholder for future feature
+#[allow(dead_code)]
 pub struct DeviceSpec {
     dtype: DeviceType,          // Type of device.
     debug: bool,                // Whether or not device should enable debug functionality. 

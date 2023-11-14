@@ -37,7 +37,6 @@ use std::{
     collections::VecDeque,
     error::Error,
     fmt,
-    io::Write,
     path::Path
 };
 
@@ -71,15 +70,13 @@ use crate::cpu_808x::mnemonic::Mnemonic;
 use crate::cpu_808x::microcode::*;
 use crate::cpu_808x::addressing::AddressingMode;
 use crate::cpu_808x::queue::InstructionQueue;
-use crate::cpu_808x::biu::*;
 // Make ReadWriteFlag available to benchmarks
 pub use crate::cpu_808x::biu::ReadWriteFlag;
 
-use crate::cpu_common::{CpuType, CpuOption};
+use crate::cpu_common::{CpuType, CpuOption, TraceMode};
 
-use crate::config::TraceMode;
 #[cfg(feature = "cpu_validator")]
-use crate::config::ValidatorType;
+use crate::cpu_validator::ValidatorType;
 
 use crate::breakpoints::BreakPointType;
 use crate::bus::{BusInterface, MEM_RET_BIT, MEM_BPA_BIT, MEM_BPE_BIT};
@@ -2152,8 +2149,6 @@ impl Cpu {
         // Since Cpu::decode doesn't know anything about the current IP, it can't set it, so we do that now.
         self.i.address = instruction_address;
 
-        let mut check_interrupts = false;
-
         //let (opcode, _cost) = self.bus.read_u8(instruction_address as usize, 0).expect("mem err");
         //trace_print!(self, "Fetched instruction: {} op:{:02X} at [{:05X}]", self.i, opcode, self.i.address);
         //trace_print!(self, "Executing instruction:  [{:04X}:{:04X}] {} ({})", self.cs, self.ip, self.i, self.i.size);
@@ -2176,7 +2171,7 @@ impl Cpu {
         // Execute the current decoded instruction.
         self.exec_result = self.execute_instruction();
 
-        let mut step_result = match &self.exec_result {
+        let step_result = match &self.exec_result {
 
             ExecutionResult::Okay => {
                 // Normal non-jump instruction updates CS:IP to next instruction during execute()
@@ -2194,8 +2189,6 @@ impl Cpu {
                     );
                     self.instruction_count += 1;
                 }
-
-                check_interrupts = true;
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
@@ -2220,8 +2213,6 @@ impl Cpu {
                     );
                     self.instruction_count += 1;
                 }
-
-                check_interrupts = true;
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
@@ -2258,7 +2249,6 @@ impl Cpu {
                     );
                 }
                 self.instruction_count += 1;
-                check_interrupts = true;
 
                 Ok((StepResult::Normal, self.device_cycles))
             }                    
@@ -2589,9 +2579,11 @@ impl Cpu {
         let mut disassembly_string = String::new();
 
         for i in &self.instruction_history {
-            if let HistoryEntry::Entry {cs, ip, cycles: _, i} = i {      
-                let i_string = format!("{:05X} [{:04X}:{:04X}] {}\n", i.address, *cs, *ip, i);
-                disassembly_string.push_str(&i_string);
+            match i {
+                HistoryEntry::Entry { cs, ip, cycles: _, i } => {
+                    let i_string = format!("{:05X} [{:04X}:{:04X}] {}\n", i.address, *cs, *ip, i);
+                    disassembly_string.push_str(&i_string);
+                }
             }
         }
         disassembly_string
@@ -2603,11 +2595,13 @@ impl Cpu {
 
         for i in &self.instruction_history {
             let mut i_token_vec = Vec::new();
-            if let HistoryEntry::Entry {cs, ip, cycles, i} = i {
-                i_token_vec.push(SyntaxToken::MemoryAddressFlat(i.address, format!("{:05X}", i.address)));
-                i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, format!("{:04X}:{:04X}", cs, ip)));
-                i_token_vec.push(SyntaxToken::Text(format!("{}", cycles)));
-                i_token_vec.extend(i.tokenize());
+            match i {
+                HistoryEntry::Entry {cs, ip, cycles, i} => {
+                    i_token_vec.push(SyntaxToken::MemoryAddressFlat(i.address, format!("{:05X}", i.address)));
+                    i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, format!("{:04X}:{:04X}", cs, ip)));
+                    i_token_vec.push(SyntaxToken::Text(format!("{}", *cycles)));
+                    i_token_vec.extend(i.tokenize());
+                }
             }
             history_vec.push(i_token_vec);
         }
@@ -2785,7 +2779,7 @@ impl Cpu {
             _ => MICROCODE_NUL.to_string()
         };
 
-        let dma_dreq_chr = match self.dma_aen {
+        let _dma_dreq_chr = match self.dma_aen {
             true => 'R',
             false => '.'
         };

@@ -260,7 +260,7 @@ impl Machine {
 
 
         // Create PIT output log file if specified
-        let mut pit_output_file_option = None;
+        let pit_output_file_option = None;
         /*
         if let Some(filename) = &config.emulator.pit_output_file {
             match File::create(filename) {
@@ -298,7 +298,7 @@ impl Machine {
             #[cfg(feature = "cpu_validator")]
             ValidatorMode::Cycle,
             #[cfg(feature = "cpu_validator")]
-            config.validator.baud_rate.unwrap_or(1_000_000)
+            config.get_validator_baud().unwrap_or(1_000_000)
         );
 
         cpu.set_option(CpuOption::TraceLoggingEnabled(config.get_cpu_trace_on()));
@@ -326,7 +326,7 @@ impl Machine {
         log::trace!("Sample rate: {} pit_ticks_per_sample: {}", sample_rate, pit_ticks_per_sample);
 
         // Create the video trace file, if specified
-        let mut video_trace = TraceLogger::None;
+        let video_trace = TraceLogger::None;
         /*
         if let Some(trace_filename) = &config.get_video_trace_file() {
             video_trace = TraceLogger::from_filename(&trace_filename);
@@ -735,6 +735,7 @@ impl Machine {
         }
     }
 
+    #[allow(dead_code)]
     #[inline]
     /// Convert a count of system clock ticks to CPU cycles based on the current CPU
     /// clock divisor.
@@ -943,18 +944,11 @@ impl Machine {
             self.cpu.set_intr(intr);
 
             // Finish instruction after running devices (RNI)
-            match self.cpu.step_finish() {
-                Ok(step_result) => {
-
-                },
-                Err(err) => {
-                    self.error = true;
-                    self.error_str = Some(format!("{}", err));
-                    log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
-                    cpu_cycles = 0
-                }                 
+            if let Err(err) = self.cpu.step_finish() {
+                self.error = true;
+                self.error_str = Some(format!("{}", err));
+                log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
             }
-
 
             // If we returned a step over target address, execution is paused, and step over was requested, 
             // then consume as many instructions as needed to get to to the 'next' instruction. This will
@@ -1084,7 +1078,7 @@ impl Machine {
         if let Some(event) = device_event {
 
             match event {
-                DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val, dma_tick_adjust) => {
+                DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val, _dma_tick_adjust) => {
                     self.cpu.set_option(
                         CpuOption::SimulateDramRefresh(
                             true, 

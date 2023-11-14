@@ -353,7 +353,7 @@ impl TokenListView {
                                 used_rect = used_rect.union(text_rect);
                                 drawn = true;
                             }
-                            SyntaxToken::Formatter(fmt) => {
+                            SyntaxToken::Formatter(_fmt) => {
                                 drawn = true;
                             }
                             _ => {

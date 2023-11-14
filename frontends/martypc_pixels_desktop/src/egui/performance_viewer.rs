@@ -34,8 +34,6 @@
 
 */
 
-use std::collections::VecDeque;
-
 use crate::egui::*;
 use marty_render::VideoParams;
 

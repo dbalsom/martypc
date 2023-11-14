@@ -31,7 +31,7 @@
 */
 
 use crate::devices::ega::EGACard;
-use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
+use crate::bus::DeviceRunTimeUnit;
 
 use crate::videocard::*;
 use crate::devices::ega::*;
@@ -53,7 +53,7 @@ impl VideoCard for EGACard {
         (false, false, false, false)
     }
 
-    fn set_video_option(&mut self, opt: VideoOption) {
+    fn set_video_option(&mut self, _opt: VideoOption) {
         // No options implemented
     }
 
@@ -69,7 +69,7 @@ impl VideoCard for EGACard {
         self.display_mode
     }
 
-    fn set_clocking_mode(&mut self, mode: ClockingMode) {
+    fn set_clocking_mode(&mut self, _mode: ClockingMode) {
         // not implemented
     }
 
@@ -103,7 +103,7 @@ impl VideoCard for EGACard {
     }
 
     /// Unimplemented
-    fn debug_tick(&mut self, ticks: u32) {
+    fn debug_tick(&mut self, _ticks: u32) {
     }
 
     /// Get the current scanline being rendered.
@@ -611,7 +611,7 @@ impl VideoCard for EGACard {
         self.frame
     }
 
-    fn write_trace_log(&mut self, msg: String) {
+    fn write_trace_log(&mut self, _msg: String) {
         //self.trace_logger.print(msg);
     }
 

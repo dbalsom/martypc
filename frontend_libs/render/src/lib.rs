@@ -42,10 +42,6 @@
 use std::path::Path;
 use std::mem::size_of;
 use std::sync::{Arc, Mutex};
-use std::sync::MutexGuard;
-
-use bytemuck::*;
-use marty_core::devices::serial::SERIAL2_RX_TX_BUFFER;
 
 pub mod consts;
 pub mod color;
@@ -64,9 +60,8 @@ pub use self::consts::*;
 use composite_new::{ReCompositeContext, ReCompositeBuffers};
 
 use marty_core::{
-    videocard::{VideoType, VideoCard, CGAColor, CGAPalette, CursorInfo, DisplayExtents, DisplayMode, FontInfo},
+    videocard::{VideoType, CGAColor, CGAPalette, DisplayExtents, DisplayMode},
     devices::cga,
-    bus::BusInterface,
     file_util
 };
 
