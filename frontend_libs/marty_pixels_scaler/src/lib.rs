@@ -66,7 +66,12 @@ struct CrtParamUniform {
     h_curvature: f32,
     v_curvature: f32,
     corner_radius: f32,
-    scanlines: u32
+    scanlines: u32,
+    gamma: f32,
+    brightness: f32,
+    contrast: f32,
+    mono: u32,
+    mono_color: [f32; 4],
 }
 
 impl Default for CrtParamUniform {
@@ -75,7 +80,12 @@ impl Default for CrtParamUniform {
             h_curvature: 0.0,
             v_curvature: 0.0,
             corner_radius: 0.0,
-            scanlines: 0
+            scanlines: 0,
+            gamma: 1.0,
+            brightness: 1.0,
+            contrast: 1.0,
+            mono: 0,
+            mono_color: [1.0, 1.0, 1.0, 1.0],
         }
     }
 }
@@ -88,8 +98,8 @@ struct ScalingMatrix {
 #[derive(Copy, Clone, Debug, Pod, Zeroable)]
 struct ScalerOptionsUniform {
     mode: u32,
-    pad0: u32,
-    pad1: u32,
+    hres: u32,
+    vres: u32,
     pad2: u32,
     crt_params: CrtParamUniform,
     fill_color: [f32; 4],
@@ -174,6 +184,17 @@ pub struct MartyScaler {
     margin_r: u32,
     margin_t: u32,
     margin_b: u32,
+
+    brightness: f32,
+    contrast: f32,
+    gamma: f32,
+
+    do_scanlines: bool,
+    h_curvature: f32,
+    v_curvature: f32,
+    corner_radius: f32,
+    mono: bool,
+    mono_color: wgpu::Color,
     effect: ScalerEffect,
     #[allow(dead_code)]
     crt_params: CrtParamUniform
@@ -416,7 +437,19 @@ impl MartyScaler {
             margin_r: 0,
             margin_t: 0,
             margin_b: 0,
+
+            brightness: 1.0,
+            contrast: 1.0,
+            gamma: 1.0,
+
             effect: ScalerEffect::None,
+
+            do_scanlines: false,
+            h_curvature: 0.0,
+            v_curvature: 0.0,
+            corner_radius: 0.0,
+            mono: false,
+            mono_color: wgpu::Color{r: 1.0, g: 1.0, b: 1.0, a: 1.0},
             crt_params: Default::default()
         }
     }
@@ -440,8 +473,8 @@ impl MartyScaler {
 
         let uniform_struct = ScalerOptionsUniform {
             mode: 0,
-            pad0: 0,
-            pad1: 0,
+            hres: 0,
+            vres: 0,
             pad2: 0,
             crt_params,
             fill_color: MartyColor(wgpu::Color{r: 0.0, g: 0.0, b: 0.0, a: 0.0}).into(),
@@ -452,6 +485,7 @@ impl MartyScaler {
 
     fn get_param_uniform_bytes(&mut self) -> Vec<u8> {
         // Build CRT shader params or default
+        /*
         let crt_params = match &self.effect {
             ScalerEffect::None => {
                 println!("getting default crt parameter uniform (effect disabled)");
@@ -463,16 +497,34 @@ impl MartyScaler {
                     h_curvature: *h_curvature,
                     v_curvature: *v_curvature,
                     corner_radius: *corner_radius,
-                    scanlines: self.screen_height
+                    scanlines: self.screen_height,
+
+                    gamma: 1.0,
+                    brightness: 1.0,
+                    contrast: 1.0,
+                    mono: self.mono as u32,
+                    mono_color: MartyColor(self.mono_color).into(),
                 }
             }
+        };*/
+
+        let crt_params = CrtParamUniform {
+            h_curvature: self.h_curvature,
+            v_curvature: self.v_curvature,
+            corner_radius: self.corner_radius,
+            scanlines: self.do_scanlines as u32,
+
+            gamma: self.gamma,
+            brightness: self.brightness,
+            contrast: self.contrast,
+            mono: self.mono as u32,
+            mono_color: MartyColor(self.mono_color).into(),
         };
 
         let uniform_struct = ScalerOptionsUniform {
-
             mode: self.mode as u32,
-            pad0: 0,
-            pad1: 0,
+            hres: self.screen_width,
+            vres: self.texture_height,
             pad2: 0,
             crt_params,
             fill_color: MartyColor(self.fill_color).into(),
@@ -534,10 +586,18 @@ impl DisplayScaler for MartyScaler {
 
     fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption) {
 
+        let mut update_uniform = false;
+
         println!("Setting scaler option...");
         match opt {
             ScalerOption::Mode(new_mode) => {
                 self.set_mode(pixels, new_mode);
+            }
+            ScalerOption::Adjustment { h: _h, s: _s, b, c, g } => {
+                self.brightness = b;
+                self.gamma = g;
+                self.contrast = c;
+                update_uniform = true;
             }
             ScalerOption::Filtering(filter) => {
                 let bilinear;
@@ -549,21 +609,32 @@ impl DisplayScaler for MartyScaler {
             }
             ScalerOption::FillColor{r, g, b, a} => {
                 self.set_fill_color(wgpu::Color{r: r as f64, g: g as f64, b: b as f64, a: a as f64});
+                update_uniform = true;
             }
-            ScalerOption::Effect(effect) => {
-                self.effect = effect;
-                self.update_uniforms(pixels);
+            ScalerOption::Geometry { h_curvature, v_curvature, corner_radius} => {
+                self.h_curvature = h_curvature;
+                self.v_curvature = v_curvature;
+                self.corner_radius = corner_radius;
+                update_uniform = true;
+            }
+            ScalerOption::Mono { enabled, r, g, b, a } => {
+                self.mono = enabled;
+                self.mono_color = wgpu::Color{ r: r as f64, g: g as f64, b: b as f64, a: a as f64};
+                update_uniform = true;
             }
             ScalerOption::Margins{l, r, t, b} => {
                 self.set_margins(l, r, t, b);
             }
+            ScalerOption::Scanlines {enabled, intensity} => {
+                println!("Setting scanline option to: {}", enabled);
+                self.do_scanlines = enabled;
+            }
+            ScalerOption::Effect(_) => {}
         }
 
         self.update_uniforms(pixels);
     }
     fn set_options(&mut self, pixels: &pixels::Pixels, opts: Vec<ScalerOption>) {
-        println!("Got opts of len : {}", opts.len());
-
         for opt in opts {
             self.set_option(pixels, opt);
         }
@@ -642,6 +713,7 @@ impl DisplayScaler for MartyScaler {
             &self.params_uniform_buffer
         );
 
+        //println!("screen_margin_y: {}", self.screen_margin_y);
         let matrix = ScalingMatrix::new(
             self.mode,
             (texture_width as f32, texture_height as f32),

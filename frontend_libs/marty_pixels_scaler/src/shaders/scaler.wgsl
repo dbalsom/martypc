@@ -51,12 +51,17 @@ struct CrtParamUniform {
     v_curvature: f32,
     corner_radius: f32,
     scanlines: u32,
+    gamma: f32,
+    brightness: f32,
+    contrast: f32,
+    mono: u32,
+    mono_color: vec4<f32>,
 };
 
 struct ScalerOptionsUniform {
     mode: u32,
-    pad0: u32,
-    pad1: u32,
+    hres: u32,
+    vres: u32,
     pad2: u32,
     crt_params: CrtParamUniform,
     fill_color: vec4<f32>,
@@ -132,6 +137,34 @@ fn is_inside_corner_radius(uv: vec2<f32>, corner_radius: f32) -> bool {
     return true;
 }
 
+fn do_monochrome(color: vec4<f32>, gamma: f32) -> vec4<f32> {
+    let brightness = brightness(color);
+    let baseColor = scaler_opts.crt_params.mono_color;
+    let modulatedColor = baseColor * pow(brightness, gamma);
+    return modulatedColor;
+}
+
+fn do_scanlines(color: vec4<f32>, y_coord: f32, intensity: f32) -> vec4<f32> {
+
+    var newColor: vec4<f32>;
+    let factor = 1.0 - intensity;
+
+    // Determine what scanline we're on.
+    let s_line = floor(y_coord * (f32(scaler_opts.vres) * 2.0));
+
+    // Determine if we are on an 'even' or 'odd' line for the scanline effect
+    let isEvenLine = (s_line % 2.0) == 0.0;
+
+    let scanlineEffect = select(1.0, factor, isEvenLine);
+
+    // Apply the scanline effect
+    newColor.r = color.r * scanlineEffect;
+    newColor.g = color.g * scanlineEffect;
+    newColor.b = color.b * scanlineEffect;
+
+    return newColor;
+}
+
 // Fragment shader bindings
 @group(0) @binding(0) var r_tex_color: texture_2d<f32>;
 @group(0) @binding(1) var r_tex_sampler: sampler;
@@ -141,38 +174,27 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
     let curved_tex_coord = apply_crt_curvature(tex_coord);
 
     let is_outside = any(curved_tex_coord < vec2<f32>(0.0, 0.0)) || any(curved_tex_coord > vec2<f32>(1.0, 1.0));
+    let is_inside_corner = is_inside_corner_radius(curved_tex_coord, scaler_opts.crt_params.corner_radius * 0.1);
 
     //var bg = textureSample(r_tex_color, r_tex_sampler, tex_coord);
     var color = textureSample(r_tex_color, r_tex_sampler, curved_tex_coord);
-    if (is_outside) {
-        //return vec4<f32>(scaler_opts.crt_params.corner_radius, scaler_opts.crt_params.h_curvature, scaler_opts.crt_params.v_curvature, 1.0); // Red color with full alpha
+
+    if (is_outside || !is_inside_corner) {
         discard;
     } else {
 
-        if (!is_inside_corner_radius(curved_tex_coord, scaler_opts.crt_params.corner_radius * 0.05)) {
-            discard;
+        let gamma = scaler_opts.crt_params.gamma;
+        let scanlines = scaler_opts.crt_params.scanlines;
+        let mono = scaler_opts.crt_params.mono;
+
+        if (scanlines != 0u) {
+            color = do_scanlines(color, curved_tex_coord.y, 0.3);
         }
 
-        // Otherwise, sample the texture color as usual
-        let crtResolution: f32 = 224.0;
-        let s_line = floor(curved_tex_coord.y * (crtResolution * 2.0));
+        if (mono != 0u) {
+            color = do_monochrome(color, gamma);
+        }
 
-        // Determine if we are on an 'even' or 'odd' line for the scanline effect
-        let isEvenLine = (s_line % 2.0) == 0.0;
-        
-        // Calculate scanline effect as a factor, 0.7 for darkened lines, 1.0 for normal lines
-        let scanlineEffect = select(1.0, 0.7, isEvenLine);
-        
-        // Apply the scanline effect
-        color.r = color.r * scanlineEffect;
-        color.g = color.g * scanlineEffect;
-        color.b = color.b * scanlineEffect;
-
-        let baseColor = vec4<f32>(0.0, 1.0, 0.0, 1.0);
-        let gamma = 0.8;
-        let brightness = brightness(color);
-        let modulatedColor = baseColor * pow(brightness, gamma);
-
-        return modulatedColor;
+        return color;
     }
 }

@@ -189,6 +189,8 @@ pub struct ScalerParams {
     pub crt_vcurvature: f32,
     pub crt_cornerradius: f32,
     pub crt_scanlines: bool,
+    pub crt_phosphor_type: PhosphorType,
+    pub gamma: f32,
 }
 
 impl Default for ScalerParams {
@@ -199,8 +201,18 @@ impl Default for ScalerParams {
             crt_vcurvature: 0.0,
             crt_cornerradius: 0.0,
             crt_scanlines: false,
+            crt_phosphor_type: PhosphorType::Color,
+            gamma: 1.0,
         }
     }
+}
+
+#[derive (Copy, Clone, Debug, PartialEq)]
+pub enum PhosphorType {
+    Color,
+    White,
+    Green,
+    Amber,
 }
 
 #[derive (Copy, Clone)]
@@ -427,9 +439,6 @@ impl<T,U> VideoRenderer<T,U> {
     }
 
     pub fn backend_resize_scaler(&mut self, buf: VideoDimensions, screen: VideoDimensions) {
-        
-        self.params.surface_w = screen.w;
-        self.params.surface_h = screen.h;
 
         if let Some(ref mut resize_callback) = self.on_resize_scaler {
             let mut backend = self.backend.lock().expect("Failed to lock backend");
@@ -594,19 +603,73 @@ impl<T,U> VideoRenderer<T,U> {
             Effect(ScalerEffect),
         }*/
 
-
-
         let mut scaler_update = Vec::new();
+        scaler_update.push(
+            ScalerOption::Geometry{
+                h_curvature: params.crt_hcurvature,
+                v_curvature: params.crt_vcurvature,
+                corner_radius: params.crt_cornerradius,
+            }
+        );
 
-        if params.crt_effect {
-            scaler_update.push(
-                ScalerOption::Effect(
-                    ScalerEffect::Crt {
-                        h_curvature: params.crt_hcurvature,
-                        v_curvature: params.crt_vcurvature,
-                        corner_radius: params.crt_cornerradius,
-                        option: ScanlineMode::Square,
-                    }));
+        scaler_update.push(
+            ScalerOption::Adjustment {
+                h: 1.0,
+                s: 1.0,
+                c: 1.0,
+                b: 1.0,
+                g: params.gamma
+            }
+        );
+
+        scaler_update.push(
+            ScalerOption::Scanlines {
+                enabled: params.crt_scanlines,
+                intensity: 0.3,
+            }
+        );
+        
+        match params.crt_phosphor_type {
+            PhosphorType::Color => {
+                scaler_update.push(
+                    ScalerOption::Mono {
+                        enabled: false,
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    })
+            },
+            PhosphorType::White => {
+                scaler_update.push(
+                ScalerOption::Mono {
+                    enabled: true,
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                })
+            }
+            PhosphorType::Green => {
+                scaler_update.push(
+                ScalerOption::Mono {
+                    enabled: true,
+                    r: 0.0,
+                    g: 1.0,
+                    b: 0.0,
+                    a: 1.0,
+                })
+            }
+            PhosphorType::Amber => {
+                scaler_update.push(
+                    ScalerOption::Mono {
+                        enabled: true,
+                        r: 1.0,
+                        g: 0.75,
+                        b: 0.0,
+                        a: 1.0,
+                    })
+            }
         }
 
         if let Some(ref mut scaler_callback) = self.on_scaler_options {

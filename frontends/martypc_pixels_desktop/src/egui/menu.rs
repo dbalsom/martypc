@@ -283,7 +283,7 @@ impl GuiState {
                     }
                 });
 
-                if ui.button("Shader Adjustments...").clicked() {
+                if ui.button("Scaler Adjustments...").clicked() {
                     *self.window_flag(GuiWindow::ScalerAdjust) = true;
                     ui.close_menu();
                 }

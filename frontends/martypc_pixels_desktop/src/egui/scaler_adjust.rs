@@ -51,8 +51,35 @@ impl ScalerAdjustControl {
             .show(ui, |ui| {
                 let mut update = false;
 
+                /*
                 ui.label(egui::RichText::new("CRT Effect:").text_style(egui::TextStyle::Monospace));
                 if ui.checkbox(&mut self.params.crt_effect, "Enable").changed() {
+                    update = true;
+                }
+                ui.end_row();
+                */
+                ui.label(egui::RichText::new("Phosphor Type:").text_style(egui::TextStyle::Monospace));
+
+                let mut previous_selection = self.params.crt_phosphor_type.clone();
+
+                let innerresponse = egui::ComboBox::from_id_source("scaler_mono_select")
+                    .selected_text(format!("{:?}", self.params.crt_phosphor_type))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.params.crt_phosphor_type, PhosphorType::Color, "Color");
+                        ui.selectable_value(&mut self.params.crt_phosphor_type, PhosphorType::White, "White");
+                        ui.selectable_value(&mut self.params.crt_phosphor_type, PhosphorType::Green, "Green");
+                        ui.selectable_value(&mut self.params.crt_phosphor_type, PhosphorType::Amber, "Amber");
+                    });
+
+                if self.params.crt_phosphor_type != previous_selection {
+                    log::debug!("phosphor type changed!");
+                    update = true;
+                }
+
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Gamma:").text_style(egui::TextStyle::Monospace));
+                if ui.add(egui::Slider::new(&mut self.params.gamma, 0.0..=2.0)).changed() {
                     update = true;
                 }
                 ui.end_row();

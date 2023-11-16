@@ -54,11 +54,16 @@ pub enum ScalerEffect {
     None,
     Crt{h_curvature: f32, v_curvature: f32, corner_radius: f32, option: ScanlineMode},
 }
+
 pub enum ScalerOption {
     Mode(ScalerMode),
-    Margins{l: u32, r: u32, t: u32, b: u32},
+    Adjustment { h: f32, s: f32, b: f32, c: f32, g: f32 },
+    Margins { l: u32, r: u32, t: u32, b: u32 },
     Filtering(ScalerFilter),
-    FillColor{r: u8, g: u8, b: u8, a: u8},
+    FillColor { r: u8, g: u8, b: u8, a: u8 },
+    Mono { enabled: bool, r: f32, g: f32, b: f32, a: f32 },
+    Geometry { h_curvature: f32, v_curvature: f32, corner_radius: f32 },
+    Scanlines { enabled: bool, intensity: f32 },
     Effect(ScalerEffect),
 }
 

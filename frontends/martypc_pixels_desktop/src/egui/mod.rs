@@ -118,7 +118,7 @@ use marty_core::{
     videocard::{VideoCardState, VideoCardStateEntry, DisplayApertureDesc}
 };
 
-use marty_render::{CompositeParams, ScalerParams, ScalerMode};
+use marty_render::{CompositeParams, ScalerParams, PhosphorType, ScalerMode};
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
