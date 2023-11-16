@@ -58,6 +58,11 @@ pub enum ValidatorType {
     Arduino8088
 }
 
+impl Default for ValidatorType {
+    fn default() -> Self {
+        ValidatorType::None
+    }
+}
 impl FromStr for ValidatorType {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String>
@@ -253,7 +258,7 @@ impl Serialize for CycleState {
     where
         S: Serializer,
     {
-        let mut q_byte;
+        let q_byte;
 
         let fields_as_strings = [
             format!("{}", if self.ale == true { "A"} else {"-"}),
