@@ -63,7 +63,7 @@ pub enum ScalerOption {
     FillColor { r: u8, g: u8, b: u8, a: u8 },
     Mono { enabled: bool, r: f32, g: f32, b: f32, a: f32 },
     Geometry { h_curvature: f32, v_curvature: f32, corner_radius: f32 },
-    Scanlines { enabled: bool, intensity: f32 },
+    Scanlines { enabled: bool, lines: u32, intensity: f32 },
     Effect(ScalerEffect),
 }
 

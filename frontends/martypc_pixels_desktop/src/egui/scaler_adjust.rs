@@ -60,9 +60,9 @@ impl ScalerAdjustControl {
                 */
                 ui.label(egui::RichText::new("Phosphor Type:").text_style(egui::TextStyle::Monospace));
 
-                let mut previous_selection = self.params.crt_phosphor_type.clone();
+                let previous_selection = self.params.crt_phosphor_type.clone();
 
-                let innerresponse = egui::ComboBox::from_id_source("scaler_mono_select")
+                let _innerresponse = egui::ComboBox::from_id_source("scaler_mono_select")
                     .selected_text(format!("{:?}", self.params.crt_phosphor_type))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.params.crt_phosphor_type, PhosphorType::Color, "Color");

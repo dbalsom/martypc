@@ -189,6 +189,7 @@ pub struct MartyScaler {
     contrast: f32,
     gamma: f32,
 
+    scanlines: u32,
     do_scanlines: bool,
     h_curvature: f32,
     v_curvature: f32,
@@ -444,6 +445,7 @@ impl MartyScaler {
 
             effect: ScalerEffect::None,
 
+            scanlines: 0,
             do_scanlines: false,
             h_curvature: 0.0,
             v_curvature: 0.0,
@@ -512,7 +514,7 @@ impl MartyScaler {
             h_curvature: self.h_curvature,
             v_curvature: self.v_curvature,
             corner_radius: self.corner_radius,
-            scanlines: self.do_scanlines as u32,
+            scanlines: if self.do_scanlines { self.scanlines as u32 } else { 0 },
 
             gamma: self.gamma,
             brightness: self.brightness,
@@ -625,8 +627,9 @@ impl DisplayScaler for MartyScaler {
             ScalerOption::Margins{l, r, t, b} => {
                 self.set_margins(l, r, t, b);
             }
-            ScalerOption::Scanlines {enabled, intensity} => {
-                println!("Setting scanline option to: {}", enabled);
+            ScalerOption::Scanlines {enabled, lines, intensity: _i} => {
+                println!("Setting scanline option to: {}, lines: {}", enabled, lines);
+                self.scanlines = lines;
                 self.do_scanlines = enabled;
             }
             ScalerOption::Effect(_) => {}

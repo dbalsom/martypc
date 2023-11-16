@@ -69,7 +69,7 @@ pub use display_scaler::ScalerMode;
 
 use image;
 use log;
-use display_scaler::{ScalerEffect, ScalerOption, ScanlineMode};
+use display_scaler::{ScalerOption};
 
 #[derive (Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ScalingMode {
@@ -119,6 +119,7 @@ pub struct VideoParams {
     pub aspect_h: u32,
     pub surface_w: u32,
     pub surface_h: u32,
+    pub double_scan: bool,
     pub aspect_correction_enabled: bool,
     pub composite_params: CompositeParams,
 }
@@ -132,6 +133,7 @@ impl Default for VideoParams {
             aspect_h: 480,
             surface_w: 640,
             surface_h: 480,
+            double_scan: false,
             aspect_correction_enabled: false,
             composite_params: Default::default(),
         }
@@ -335,8 +337,9 @@ impl<T,U> VideoRenderer<T,U> {
             scaler_callback(&mut *backend, &mut *scaler, new_mode)
         }
     }
-
-
+    pub fn set_double_scan(&mut self, double_scan: bool ) {
+        self.params.double_scan = double_scan;
+    }
 
     pub fn get_scaler_mode(&mut self) -> ScalerMode {
         self.scaler_mode
@@ -625,6 +628,7 @@ impl<T,U> VideoRenderer<T,U> {
         scaler_update.push(
             ScalerOption::Scanlines {
                 enabled: params.crt_scanlines,
+                lines: if self.params.double_scan { self.params.render_h / 2 } else { self.params.render_h },
                 intensity: 0.3,
             }
         );

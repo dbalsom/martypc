@@ -775,7 +775,11 @@ pub fn run() {
                 assert!(aper_x != 0 && aper_y !=0 );
 
                 if extents.double_scan {
+                    video.set_double_scan(true);
                     aper_y *= 2;
+                }
+                else {
+                    video.set_double_scan(false);
                 }
 
                 let aspect_ratio = if config.emulator.correct_aspect {

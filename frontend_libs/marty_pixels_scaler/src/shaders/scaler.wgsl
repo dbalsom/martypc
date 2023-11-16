@@ -144,13 +144,13 @@ fn do_monochrome(color: vec4<f32>, gamma: f32) -> vec4<f32> {
     return modulatedColor;
 }
 
-fn do_scanlines(color: vec4<f32>, y_coord: f32, intensity: f32) -> vec4<f32> {
+fn do_scanlines(color: vec4<f32>, y_coord: f32, lines: u32, intensity: f32) -> vec4<f32> {
 
     var newColor: vec4<f32>;
     let factor = 1.0 - intensity;
 
     // Determine what scanline we're on.
-    let s_line = floor(y_coord * (f32(scaler_opts.vres) * 2.0));
+    let s_line = floor(y_coord * (f32(lines) * 2.0));
 
     // Determine if we are on an 'even' or 'odd' line for the scanline effect
     let isEvenLine = (s_line % 2.0) == 0.0;
@@ -187,8 +187,8 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
         let scanlines = scaler_opts.crt_params.scanlines;
         let mono = scaler_opts.crt_params.mono;
 
-        if (scanlines != 0u) {
-            color = do_scanlines(color, curved_tex_coord.y, 0.3);
+        if (scanlines > 0u) {
+            color = do_scanlines(color, curved_tex_coord.y, scanlines, 0.3);
         }
 
         if (mono != 0u) {
