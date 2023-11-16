@@ -46,3 +46,6 @@ icon.png
 
 # Assembly stuff
 /asm
+
+# Utilities
+/flopgen/
