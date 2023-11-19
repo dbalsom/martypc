@@ -31,9 +31,6 @@
     may be interesting, but a bit complex for how niche this feature is.
 
 */
-
-use std::collections::VecDeque;
-
 use crate::egui::*;
 
 pub struct CycleTraceViewerControl {

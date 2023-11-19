@@ -5,7 +5,7 @@
 
     ---------------------------------------------------------------------------
 
-    pixels_stretch_renderer::shaders::scale.wgsl
+    pixels_scale_renderer::shaders::scale.wgsl
     
     Implement a stretching renderer for Pixels when we want to fill the entire 
     window without maintaining square pixels.
@@ -45,7 +45,6 @@ struct VertexOutput {
 struct Locals {
     transform: mat4x4<f32>,
 }
-
 @group(0) @binding(2) var<uniform> r_locals: Locals;
 
 @vertex
@@ -66,4 +65,5 @@ fn vs_main(
 @fragment
 fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
     return textureSample(r_tex_color, r_tex_sampler, tex_coord);
+    //return vec4<f32>(1.0, 0.0, 0.0, 1.0);
 }

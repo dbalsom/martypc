@@ -38,6 +38,7 @@ use std::{
 };
 
 use core::fmt::Display;
+use std::str::FromStr;
 
 use crate::bus::{BusInterface, DeviceRunTimeUnit};
 use crate::devices::{
@@ -46,6 +47,8 @@ use crate::devices::{
 //use crate::fdc::Operation;
 use crate::bus::IoDevice;
 use crate::vhd::VirtualHardDisk;
+
+use serde::Deserialize;
 
 // Public consts
 pub const HDC_IRQ: u8 = 0x05;
@@ -83,6 +86,25 @@ const ERR_SECTOR_NOT_FOUND: u8  = 0b01_0100;
 const ERR_SEEK_ERROR: u8        = 0b01_0101;
 const ERR_INVALID_COMMAND: u8   = 0b10_0000;
 const ERR_ILLEGAL_ACCESS: u8    = 0b10_0001;
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum HardDiskControllerType {
+    None,
+    Xebec
+}
+
+impl FromStr for HardDiskControllerType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "xebec" => Ok(HardDiskControllerType::Xebec),
+            _ => Err("Bad value for videotype".to_string()),
+        }
+    }
+}
 
 #[allow (dead_code)]
 #[derive (Copy, Clone, Debug)]

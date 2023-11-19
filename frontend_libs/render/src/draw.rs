@@ -33,7 +33,7 @@ use super::*;
 use crate::consts::*;
 use crate::resize::*;
 
-impl<T> VideoRenderer<T> {
+impl<T,U> VideoRenderer<T,U> {
 
     pub fn clear(&mut self) {
         self.buf.fill(0);
@@ -71,15 +71,16 @@ impl<T> VideoRenderer<T> {
         extents: &DisplayExtents,
         composite_enabled: bool, 
         beam_pos: Option<(u32, u32)>
-    ) 
+    )
     {
-        let do_software_aspect = if let Some(_aspect) = self.aspect_ratio {
-            true && self.software_aspect
+
+        let do_software_aspect = if let AspectCorrectionMode::Software = self.params.aspect_correction {
+            true
         }
         else {
             false
         };
-        
+
         let (first_pass_buf, second_pass_buf) = if do_software_aspect {
             // We are doing software aspect correction. First render to internal buffer.
             (&mut self.buf[..], Some(output_buf))
@@ -92,10 +93,10 @@ impl<T> VideoRenderer<T> {
         match self.video_type {
             VideoType::CGA => {
                 if composite_enabled {
-                    VideoRenderer::<T>::draw_cga_direct_composite_reenigne(
+                    VideoRenderer::<T,U>::draw_cga_direct_composite_reenigne(
                         first_pass_buf,
-                        self.params.render_w,
-                        self.params.render_h,     
+                        self.params.render.w,
+                        self.params.render.h,
                         input_buf,
                         &mut self.composite_bufs,
                         &mut self.composite_ctx,
@@ -104,20 +105,20 @@ impl<T> VideoRenderer<T> {
                     );
                 }
                 else {
-                    VideoRenderer::<T>::draw_cga_direct_u32(
+                    VideoRenderer::<T,U>::draw_cga_direct_u32(
                         first_pass_buf,
-                        self.params.render_w,
-                        self.params.render_h,
+                        self.params.render.w,
+                        self.params.render.h,
                         input_buf,
                         extents,
                     )
                 }
             }
             VideoType::EGA => {
-                VideoRenderer::<T>::draw_ega_direct_u32(
+                VideoRenderer::<T,U>::draw_ega_direct_u32(
                     first_pass_buf,
-                    self.params.render_w,
-                    self.params.render_h,
+                    self.params.render.w,
+                    self.params.render.h,
                     input_buf,
                     extents,
                 )
@@ -129,18 +130,18 @@ impl<T> VideoRenderer<T> {
 
         // Draw raster beam if specified.
         if let Some(beam) = beam_pos {
-            VideoRenderer::<T>::draw_horizontal_xor_line(
+            VideoRenderer::<T,U>::draw_horizontal_xor_line(
                 first_pass_buf, 
-                self.params.render_w,                     
-                self.params.render_w,
-                self.params.render_h, 
+                self.params.render.w,
+                self.params.render.w,
+                self.params.render.h,
                 beam.1
             );
-            VideoRenderer::<T>::draw_vertical_xor_line(
+            VideoRenderer::<T,U>::draw_vertical_xor_line(
                 first_pass_buf, 
-                self.params.render_w,                
-                self.params.render_w,
-                self.params.render_h,  
+                self.params.render.w,
+                self.params.render.w,
+                self.params.render.h,
                 beam.0
             );
         }
@@ -154,11 +155,11 @@ impl<T> VideoRenderer<T> {
                 //log::debug!("Performing aspect correction...");
                 resize_linear_fast(
                     first_pass_buf, 
-                    self.params.render_w, 
-                    self.params.render_h,
+                    self.params.render.w,
+                    self.params.render.h,
                     second_pass, 
-                    self.params.aspect_w, 
-                    self.params.aspect_h,
+                    self.params.aspect_corrected.w,
+                    self.params.aspect_corrected.h,
                     &mut self.resample_context
                 );   
             }
@@ -480,7 +481,7 @@ impl<T> VideoRenderer<T> {
         // Convert to composite line by line
         for y in 0..(h / 2) {
             //let s_o (= ((y * w) ) as usize;
-            let s_o = ((y as usize) * extents.row_stride) + (extents.aperture.x as usize) + phase_adjust;
+            let s_o = ((y + extents.aperture.y) as usize * extents.row_stride) + (extents.aperture.x as usize) + phase_adjust;
             let d_o = ((y * 2) as usize) * ((w as usize) * size_of::<u32>());
 
             let in_slice = &dbuf[s_o..(s_o + (w as usize))];
@@ -557,6 +558,11 @@ impl<T> VideoRenderer<T> {
             vert_adjust = 0;
         }
 
+        if h as usize * extents.row_stride > dbuf.len() {
+            log::warn!("draw_ega_direct_u32(): extents {}x{} greater than buffer!", w, h);
+            return
+        }
+
         let max_y = std::cmp::min(h, extents.aperture.h + extents.aperture.x);
         let max_x = std::cmp::min(w, extents.aperture.w + extents.aperture.y);
 
@@ -585,8 +591,8 @@ impl<T> VideoRenderer<T> {
             }
         }
         else {
-            for y in extents.aperture.y..max_y {
-                let dbuf_row_offset = y as usize * extents.row_stride;
+            for y in 0..max_y {
+                let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
                 let frame_row_offset = (y * w) as usize;
 
                 for x in 0..max_x {

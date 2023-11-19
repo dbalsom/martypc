@@ -29,24 +29,14 @@
 */
 
 use marty_core::{
-    breakpoints::BreakPointType,
-    config::{self, *},
-    machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
-    cpu_808x::{Cpu, CpuAddress},
-    cpu_common::CpuOption,
-    devices::keyboard::KeyboardModifiers,
-    rom_manager::{RomManager, RomError, RomFeature},
-    floppy_manager::{FloppyManager, FloppyError},
+    machine::{Machine, ExecutionControl, ExecutionState},
+    rom_manager::RomManager,
+    floppy_manager::FloppyManager,
     machine_manager::MACHINE_DESCS,
-    vhd_manager::{VHDManager, VHDManagerError},
-    vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode, VideoOption},
-    bytequeue::ByteQueue,
     sound::SoundPlayer,
-    syntax_token::SyntaxToken,
-    util,
-    keys
 };
+
+use bpaf_toml_config::ConfigFileParams;
 
 pub fn run_headless(
     config: &ConfigFileParams,
@@ -86,8 +76,8 @@ pub fn run_headless(
         config,
         config.machine.model,
         *machine_desc_opt.unwrap(),
-        config.emulator.trace_mode,
-        config.machine.video, 
+        config.emulator.trace_mode.unwrap_or_default(),
+        config.machine.video.unwrap_or_default(),
         sp, 
         rom_manager, 
     );

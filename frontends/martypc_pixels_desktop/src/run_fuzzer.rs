@@ -35,16 +35,17 @@ use std::{
     rc::Rc,
 };
 
+use bpaf_toml_config::ConfigFileParams;
+
 use marty_core::{
-    
+
     bytequeue::ByteQueue,
     cpu_808x::{
         *,
         Cpu,
         mnemonic::Mnemonic,
     },
-    cpu_common::{CpuType, CpuOption},
-    config::{ConfigFileParams, TraceMode},
+    cpu_common::{CpuType, CpuOption, TraceMode},
     rom_manager::{RomManager},
     floppy_manager::{FloppyManager},
     tracelogger::{TraceLogger},

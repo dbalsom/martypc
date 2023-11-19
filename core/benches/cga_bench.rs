@@ -36,13 +36,14 @@ use marty_core::{
 };
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use marty_core::videocard::ClockingMode;
 
 pub fn cga_tick_bench(c: &mut Criterion) {
     // One-time setup code goes here
 
     c.bench_function("cga_bench_tick", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
-        let mut cga = CGACard::new(TraceLogger::None, false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
 
         b.iter(|| {
             // Measured code goes here
@@ -53,7 +54,7 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     c.bench_function("cga_bench_tick_char", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
-        let mut cga = CGACard::new(TraceLogger::None, false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
 
         b.iter(|| {
             // Measured code goes here
@@ -64,7 +65,7 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     c.bench_function("cga_bench_frame_by_pixel_ticks", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
-        let mut cga = CGACard::new(TraceLogger::None, false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic, false);
 
         b.iter(|| {
             // Measured code goes here
@@ -77,7 +78,7 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     c.bench_function("cga_bench_frame_by_char_ticks", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
-        let mut cga = CGACard::new(TraceLogger::None, false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
 
         b.iter(|| {
             // Measured code goes here
@@ -90,7 +91,7 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     c.bench_function("cga_bench_draw_textmode_char", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
-        let mut cga = CGACard::new(TraceLogger::None, false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
 
         b.iter(|| {
             // Measured code goes here

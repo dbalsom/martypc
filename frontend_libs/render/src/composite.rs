@@ -41,7 +41,7 @@
 */
 
 //use cgmath::{Matrix3, Vector3};
-use glam::{Mat3, Mat3A, Vec3, Vec3A};
+use glam::{Mat3, Mat3A, Vec3A};
 
 // Composite stufff
 pub const EDGE_RESPONSE: f32 = 0.80;
@@ -76,8 +76,8 @@ pub const COLOR_GEN_EDGES_HALF: [[bool; 8]; 8] = [
 pub const CCYCLE: i32 = 8;
 const CCYCLE_HALF: i32 = CCYCLE / 2;
 
-const PI: f32 = 3.1415926;
-const TAU: f32 = 6.2831853;
+const PI: f32 = std::f32::consts::PI;
+const TAU: f32 = std::f32::consts::TAU;
 
 /*
 #[rustfmt::skip]
@@ -108,6 +108,7 @@ pub fn get_cycle_hdot(x: i32) -> usize {
 /// The output image should be a slice of u8 values to receive the grayscale composite signal.
 /// 
 /// Uses integer math.
+#[allow(unused_assignments)]
 pub fn process_cga_composite_int(
     cga_buf: &[u8], 
     img_w: u32, 
@@ -119,9 +120,6 @@ pub fn process_cga_composite_int(
 ) {
 
     //bench_t = Instant::now();
-
-    let mut dst_o = 0;
-
     for y in 0..img_h {
         for x in x_offset..(img_w - x_offset) {
             //get_sample_slice_cga(&cga_buf, img_w, img_h, x, y, &mut sample_slice);
@@ -146,6 +144,7 @@ pub fn process_cga_composite_int(
 
             for h in 0..2usize {
 
+                #[allow(unused_variables)]
                 let mut attenuate = false;
                 
                 let mut hhdot_value = COLOR_GEN_HALF_INT[base_color as usize][(hdot * 2 + h) as usize];
@@ -287,7 +286,7 @@ pub fn artifact_colors_fast_u32(
             for n in -CCYCLE_HALF..CCYCLE_HALF {
                 let signal = sample_gy_xy(img_in, img_in_w, img_in_h, (x * 2) as i32 + n, y as i32);
 
-                let sti = ((x * 2) as i32 + n as i32 + CCYCLE_HALF) as usize;
+                let sti = ((x * 2) as i32 + n + CCYCLE_HALF) as usize;
                 let signal_i = signal * sync_table[sti].1;
                 let signal_q = signal * sync_table[sti].2;
 

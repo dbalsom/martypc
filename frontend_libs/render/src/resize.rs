@@ -33,7 +33,7 @@
 use std::num::NonZeroU32;
 
 use fast_image_resize as fr;
-use fr::{Resizer, ResizeAlg, FilterType, DynamicImageView, Image, PixelType};
+use fr::{Resizer, ResizeAlg, FilterType, Image, PixelType};
 
 pub struct ResampleParam {
     w: u8,
@@ -54,7 +54,7 @@ pub struct ResampleContext {
 impl ResampleContext {
     pub fn new() -> Self {
 
-        let mut resizer = Resizer::new(ResizeAlg::SuperSampling(FilterType::Bilinear, 4));
+        let resizer = Resizer::new(ResizeAlg::SuperSampling(FilterType::Bilinear, 4));
 
         /*
         unsafe {

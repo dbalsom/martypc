@@ -606,7 +606,25 @@ impl Pic {
         if self.intr_scheduled {
             self.intr_timer = self.intr_timer.saturating_sub(sys_ticks);
             if self.intr_timer == 0 {
+                self.intr = true;
                 self.intr_scheduled = false;
+            }
+        }
+
+        // If INTR is low and not pending, check for unmasked bits in the IRR and raise it again if found.
+        if !self.intr && !self.intr_scheduled {
+            let mut ir_bit: u8 = 0x01;
+            for _irq in 0..8 {
+    
+                let have_request = ir_bit & self.irr != 0;
+                let is_not_masked = ir_bit & self.imr == 0;
+                let is_not_in_service = ir_bit & self.isr == 0;
+
+                if have_request && is_not_masked && is_not_in_service {
+                    self.schedule_intr(1);
+                }
+
+                ir_bit <<= 1;
             }
         }
     }

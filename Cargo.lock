@@ -361,6 +361,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bpaf_toml_config"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bpaf",
+ "log",
+ "marty_core",
+ "serde",
+ "serde_derive",
+ "toml",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -885,6 +898,14 @@ name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
+
+[[package]]
+name = "display_scaler"
+version = "0.2.0"
+dependencies = [
+ "pixels",
+ "wgpu",
+]
 
 [[package]]
 name = "dlib"
@@ -1687,13 +1708,13 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arraydeque",
- "bpaf",
  "bytemuck",
  "cpal",
+ "criterion",
  "lazy_static",
  "log",
  "md5",
@@ -1709,6 +1730,17 @@ dependencies = [
  "strum_macros",
  "toml",
  "uuid",
+]
+
+[[package]]
+name = "marty_pixels_scaler"
+version = "0.2.0"
+dependencies = [
+ "bytemuck",
+ "display_scaler",
+ "pixels",
+ "ultraviolet",
+ "wgpu",
 ]
 
 [[package]]
@@ -1730,9 +1762,9 @@ dependencies = [
  "js-sys",
  "log",
  "marty_core",
+ "marty_pixels_scaler",
  "marty_render",
  "pixels",
- "pixels_stretch_renderer",
  "rand",
  "regex",
  "resize",
@@ -1748,21 +1780,24 @@ dependencies = [
 
 [[package]]
 name = "marty_render"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "cgmath",
+ "criterion",
+ "display_scaler",
  "fast_image_resize",
  "glam",
  "image",
  "log",
  "marty_core",
+ "marty_pixels_scaler",
  "rand",
 ]
 
 [[package]]
 name = "martypc"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "marty_core",
  "marty_render",
@@ -1772,14 +1807,16 @@ dependencies = [
 
 [[package]]
 name = "martypc_pixels_desktop"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
+ "bpaf_toml_config",
  "bytemuck",
  "colored",
  "console_error_panic_hook",
  "console_log",
  "cpal",
  "criterion",
+ "display_scaler",
  "egui 0.22.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=winit_0_29)",
  "egui-wgpu 0.22.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=winit_0_29)",
  "egui-winit 0.22.0 (git+https://github.com/dbalsom/egui_martypc.git?branch=winit_0_29)",
@@ -1793,9 +1830,9 @@ dependencies = [
  "js-sys",
  "log",
  "marty_core",
+ "marty_pixels_scaler",
  "marty_render",
  "pixels",
- "pixels_stretch_renderer",
  "rand",
  "regex",
  "resize",
@@ -2378,16 +2415,6 @@ dependencies = [
  "pollster",
  "raw-window-handle",
  "thiserror",
- "ultraviolet",
- "wgpu",
-]
-
-[[package]]
-name = "pixels_stretch_renderer"
-version = "0.1.4"
-dependencies = [
- "bytemuck",
- "pixels",
  "ultraviolet",
  "wgpu",
 ]

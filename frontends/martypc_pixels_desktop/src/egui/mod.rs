@@ -32,7 +32,7 @@
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
-    hash::{Hash, Hasher},
+    hash::Hash,
     ffi::OsString,
     rc::Rc,
     time::{Duration, Instant},
@@ -81,6 +81,7 @@ mod pit_viewer;
 mod theme;
 mod token_listview;
 mod videocard_viewer;
+mod scaler_adjust;
 
 use crate::{
 
@@ -89,6 +90,7 @@ use crate::{
     // Use custom windows
     egui::about::AboutDialog,
     egui::composite_adjust::CompositeAdjustControl,
+    egui::scaler_adjust::ScalerAdjustControl,
     egui::cpu_control::CpuControl,
     egui::cpu_state_viewer::CpuViewerControl,
     egui::cycle_trace_viewer::CycleTraceViewerControl,
@@ -116,7 +118,7 @@ use marty_core::{
     videocard::{VideoCardState, VideoCardStateEntry, DisplayApertureDesc}
 };
 
-use marty_render::{CompositeParams, ScalingMode};
+use marty_render::{CompositeParams, ScalerParams, PhosphorType, ScalerMode};
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
@@ -127,6 +129,7 @@ pub(crate) enum GuiWindow {
     PerfViewer,
     MemoryViewer,
     CompositeAdjust,
+    ScalerAdjust,
     CpuStateViewer,
     HistoryViewer,
     IvrViewer,
@@ -165,7 +168,7 @@ pub enum GuiBoolean {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GuiEnum {
     DisplayAperture(u32),
-    DisplayScalingMode(ScalingMode)
+    DisplayScalerMode(ScalerMode)
 }
 
 #[allow(dead_code)]
@@ -185,6 +188,7 @@ pub enum GuiEvent {
     OptionChanged(GuiOption),
     EnumChanged(GuiEnum, bool),
     CompositeAdjust(CompositeParams),
+    ScalerAdjust(ScalerParams),
     FlushLogs,
     DelayAdjust,
     TickDevice(DeviceSelection, u32),
@@ -272,7 +276,7 @@ pub(crate) struct GuiState {
 
     // Display stuff
     display_apertures: Vec<DisplayApertureDesc>,
-    scaling_modes: Vec<ScalingMode>,
+    scaler_modes: Vec<ScalerMode>,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -319,12 +323,11 @@ pub(crate) struct GuiState {
     pub dma_viewer: DmaViewerControl,
     pub trace_viewer: InstructionHistoryControl,
     pub composite_adjust: CompositeAdjustControl,
+    pub scaler_adjust: ScalerAdjustControl,
     pub ivr_viewer: IvrViewerControl,
     pub device_control: DeviceControl,
 
     call_stack_string: String,
-
-    composite: bool
 }
 
 impl Framework {
@@ -493,6 +496,7 @@ impl GuiState {
             (GuiWindow::PerfViewer, false),
             (GuiWindow::MemoryViewer, false),
             (GuiWindow::CompositeAdjust, false),
+            (GuiWindow::ScalerAdjust, false),
             (GuiWindow::CpuStateViewer, false),
             (GuiWindow::HistoryViewer, false),
             (GuiWindow::IvrViewer, false),
@@ -523,6 +527,7 @@ impl GuiState {
 
         let option_enums: HashMap<Discriminant<GuiEnum>, GuiEnum> = [
             (discriminant(&GuiEnum::DisplayAperture(0)), GuiEnum::DisplayAperture(0)),
+            (discriminant(&GuiEnum::DisplayScalerMode(ScalerMode::Integer)), GuiEnum::DisplayScalerMode(ScalerMode::Integer)),
         ].into();
 
         Self { 
@@ -540,7 +545,7 @@ impl GuiState {
             perf_stats: Default::default(),
             
             display_apertures: Default::default(),
-            scaling_modes: Default::default(),
+            scaler_modes: Vec::new(),
 
             floppy_names: Vec::new(),
             floppy0_name: Option::None,
@@ -582,12 +587,10 @@ impl GuiState {
             dma_viewer: DmaViewerControl::new(),
             trace_viewer: InstructionHistoryControl::new(),
             composite_adjust: CompositeAdjustControl::new(),
+            scaler_adjust: ScalerAdjustControl::new(),
             ivr_viewer: IvrViewerControl::new(),
             device_control: DeviceControl::new(),
             call_stack_string: String::new(),
-
-            // Options menu items
-            composite: false
         }
     }
 
@@ -634,6 +637,7 @@ impl GuiState {
         self.option_flags.get(&option).copied()
     }
 
+    #[allow(dead_code)]
     pub fn get_option_enum(&self, option: GuiEnum) -> GuiEnum {
         *self.option_enums.get(&discriminant(&option)).unwrap()
     }    
@@ -656,11 +660,13 @@ impl GuiState {
         self.error_string = String::new();
     }
 
+    #[allow(dead_code)]
     pub fn show_warning(&mut self, warn_str: &String) {
         self.warning_dialog_open = true;
         self.warning_string = warn_str.clone();
     }
 
+    #[allow(dead_code)]
     pub fn clear_warning(&mut self) {
         self.warning_dialog_open = false;
         self.warning_string = String::new();
@@ -686,10 +692,10 @@ impl GuiState {
     }
 
     /// Set list of available scaling modes and the default scaling mode to show as selected 
-    pub fn set_scaling_modes(&mut self, modes: (Vec<ScalingMode>, ScalingMode)) {
-        self.scaling_modes = modes.0;
+    pub fn set_scaler_modes(&mut self, modes: (Vec<ScalerMode>, ScalerMode)) {
+        self.scaler_modes = modes.0;
 
-        self.set_option_enum(GuiEnum::DisplayScalingMode(modes.1));
+        self.set_option_enum(GuiEnum::DisplayScalerMode(modes.1));
     }
 
     /// Retrieve a newly selected VHD image name for the specified device slot.
@@ -1007,7 +1013,16 @@ impl GuiState {
             .default_width(300.0)
             .show(ctx, |ui| {
                 self.composite_adjust.draw(ui, &mut self.event_queue);
-            });     
+            });
+
+        egui::Window::new("Scaler Adjustment")
+            .open(self.window_open_flags.get_mut(&GuiWindow::ScalerAdjust).unwrap())
+            .resizable(false)
+            .default_width(300.0)
+            .show(ctx, |ui| {
+                self.scaler_adjust.draw(ui, &mut self.event_queue);
+            });
+
 
     }
 }

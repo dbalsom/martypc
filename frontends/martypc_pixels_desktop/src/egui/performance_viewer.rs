@@ -34,8 +34,6 @@
 
 */
 
-use std::collections::VecDeque;
-
 use crate::egui::*;
 use marty_render::VideoParams;
 
@@ -78,14 +76,14 @@ impl PerformanceViewerControl {
 
             ui.label("Internal resolution: ");
             ui.label(egui::RichText::new(format!("{}, {}", 
-                self.video_data.render_w, 
-                self.video_data.render_h))
+                self.video_data.render.w,
+                self.video_data.render.h))
                 );
             ui.end_row();
-            ui.label("Display buffer resolution: ");
+            ui.label("Target resolution: ");
             ui.label(egui::RichText::new(format!("{}, {}", 
-                self.video_data.aspect_w, 
-                self.video_data.aspect_h))
+                self.video_data.aspect_corrected.w,
+                self.video_data.aspect_corrected.h))
                 );
             ui.end_row();
 

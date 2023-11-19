@@ -1,0 +1,19 @@
+[package]
+name = "bpaf_toml_config"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "bpaf_toml_config"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+log = "0.4"
+anyhow = "1.0.58"
+marty_core = { path = "../../core" }
+bpaf = { version = "0.7.7", features = ["derive"] }
+toml = "0.5.10"
+serde = { version = "1.0.107", features = ["derive"] }
+serde_derive = "1.0.107"

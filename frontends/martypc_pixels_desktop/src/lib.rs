@@ -62,7 +62,6 @@ mod run_headless;
 use input::TranslateKey;
 use crate::egui::{Framework, DeviceSelection};
 
-use log::error;
 use pixels::{Pixels, SurfaceTexture};
 
 use winit::{
@@ -78,12 +77,10 @@ use winit::{
         ControlFlow,
         EventLoop
     },
-    keyboard::{KeyCode, ModifiersKeyState},
+    keyboard::KeyCode,
     window::WindowBuilder,
 
 };
-
-use pixels_stretch_renderer::{StretchingRenderer, SurfaceSize};
 
 //use winit_input_helper::WinitInputHelper;
 
@@ -100,33 +97,36 @@ use crate::run_processtests::run_processtests;
 
 use marty_core::{
     breakpoints::BreakPointType,
-    config::{self, *},
     machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
     cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
-    devices::keyboard::KeyboardModifiers,
+    devices::{
+        keyboard::KeyboardModifiers,
+        hdc::HardDiskControllerType,
+    },
     rom_manager::{RomManager, RomError, RomFeature},
     floppy_manager::{FloppyManager, FloppyError},
     machine_manager::MACHINE_DESCS,
     vhd_manager::{VHDManager, VHDManagerError},
     vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode, VideoOption},
+    videocard::{VideoType, ClockingMode, RenderMode, VideoOption},
     bytequeue::ByteQueue,
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
     util,
-    keys
 };
-
 
 use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, PerformanceStats};
+
 use marty_render::{
-    AspectRatio, 
-    VideoParams, 
-    ScalingMode, 
+    AspectRatio,
     SCALING_MODES,
-    VideoRenderer, 
+    VideoRenderer,
+    AspectCorrectionMode,
 };
+
+use display_scaler::{DisplayScaler, ScalerMode, Color};
+use marty_pixels_scaler::MartyScaler;
 
 const EGUI_MENU_BAR: u32 = 25;
 
@@ -138,7 +138,7 @@ const WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT + EGUI_MENU_BAR * 2;
 
 const MIN_RENDER_WIDTH: u32 = 160;
 const MIN_RENDER_HEIGHT: u32 = 200;
-const RENDER_ASPECT: f32 = 0.75;
+//const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
@@ -217,6 +217,8 @@ impl Counter {
         }
     }
 }
+
+#[allow(dead_code)]
 struct MouseData {
     reverse_buttons: bool,
     l_button_id: u32,
@@ -280,6 +282,9 @@ impl KeyboardData {
     }
 }
 
+
+
+
 #[cfg(target_arch = "wasm32")]
 fn main() {
     // Dummy main for wasm32 target
@@ -293,7 +298,7 @@ pub fn run() {
     let mut features = Vec::new();
 
     // Read config file
-    let mut config = match config::get_config("./martypc.toml"){
+    let mut config = match bpaf_toml_config::get_config("./martypc.toml"){
         Ok(config) => config,
         Err(e) => {
             match e.downcast_ref::<std::io::Error>() {
@@ -317,11 +322,11 @@ pub fn run() {
 
     // Determine required ROM features from configuration options
     match config.machine.video {
-        VideoType::EGA => {
+        Some(VideoType::EGA) => {
             // an EGA BIOS ROM is required for EGA
             features.push(RomFeature::EGA);
         },
-        VideoType::VGA => {
+        Some(VideoType::VGA) => {
             // a VGA BIOS ROM is required for VGA
             features.push(RomFeature::VGA);
         },
@@ -329,7 +334,7 @@ pub fn run() {
     }
 
     match config.machine.hdc {
-        HardDiskControllerType::Xebec => {
+        Some(HardDiskControllerType::Xebec) => {
             // The Xebec controller ROM is required for Xebec HDC
             features.push(RomFeature::XebecHDC);
         }
@@ -502,7 +507,7 @@ pub fn run() {
 
 
     // Create pixels & egui backend
-    let (mut pixels, mut framework) = {
+    let (pixels, mut framework) = {
         let window_size = window.inner_size();
         let scale_factor = window.scale_factor() as f32;
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
@@ -525,31 +530,82 @@ pub fn run() {
         (pixels, framework)
     };
 
+    let mut render_egui = true;
+
+    let fill_color = Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0}; // Dark grey.
+
+    let marty_scaler = MartyScaler::new(
+        ScalerMode::Integer,
+        &pixels,
+        640,480,
+        640, 480,
+        640, 480,
+        24, // margin_y == egui menu height
+        true,
+        fill_color
+    );
+
     let adapter_info = pixels.adapter().get_info();
     let backend_str = format!("{:?}", adapter_info.backend);
     let adapter_name_str =  format!("{}", adapter_info.name);
     log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
     
     // Create the video renderer
-    let mut video = VideoRenderer::new(config.machine.video, ScalingMode::Integer, pixels);
+    let mut video = 
+        VideoRenderer::new(
+            config.machine.video.unwrap_or_default(),
+            ScalerMode::Integer, 
+            pixels,
+            marty_scaler,
+        );
 
     let pixels_arc = video.get_backend();
 
-    video.set_on_resize(|pixels, w, h| {
-        if w > 0 && h > 0 {
+    video.set_on_resize_scaler(|pixels, scaler, buf, target, surface| {
+
+        if buf.has_some_size() && surface.has_some_size() {
+            log::debug!(
+                "Resizing scaler to texture {}x{}, target: {}x{}, surface: {}x{}...",
+                buf.w, buf.h,
+                target.w, target.h,
+                surface.w, surface.h,
+            );
+            scaler.resize(&pixels, buf.w, buf.h, target.w, target.h, surface.w, surface.h);
+        }
+        else {
+            log::debug!("Ignoring invalid scaler resize request (window minimized?)");
+        }
+
+    });
+
+    video.set_on_scaler_options(|pixels, scaler, opts| {
+        scaler.set_options(pixels, opts);
+    });
+
+    video.set_on_resize_backend(|pixels, backend| {
+        if backend.has_some_size() {
             log::debug!("Resizing pixels buffer...");
-            pixels.resize_buffer(w, h).expect("Failed to resize Pixels buffer.");
+            pixels.resize_buffer(backend.w, backend.h).expect("Failed to resize Pixels buffer.");
         }
         else {
             log::debug!("Ignoring invalid buffer resize request (window minimized?)");
         }
     });
 
-    video.set_on_resize_surface(|pixels, w, h| {
+    video.set_on_margin(|scaler,l,r,t,b| {
+        scaler.set_margins(l,r,t,b);
+    });
+
+    video.set_on_scalemode(|pixels, scaler, m| {
+        log::debug!("Setting scaler mode to {:?}", m);
+        scaler.set_mode(pixels, m);
+    });
+
+    video.set_on_resize_surface(|pixels, surface| {
         
-        if w > 0 && h > 0 {
-            log::debug!("Resizing pixels surface to {}x{}", w, h);
-            pixels.resize_surface(w, h).expect("Failed to resize Pixels surface.");
+        if surface.has_some_size() {
+            log::debug!("Resizing pixels surface to {}x{}", surface.w, surface.h);
+            pixels.resize_surface(surface.w, surface.h).expect("Failed to resize Pixels surface.");
         }
         else {
             log::debug!("Ignoring invalid surface resize request (window minimized?)");
@@ -605,8 +661,8 @@ pub fn run() {
         &config,
         config.machine.model,
         *machine_desc_opt.unwrap(),
-        config.emulator.trace_mode,
-        config.machine.video, 
+        config.emulator.trace_mode.unwrap_or_default(),
+        config.machine.video.unwrap_or_default(),
         sp, 
         rom_manager
     );
@@ -634,6 +690,10 @@ pub fn run() {
     machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
 
     framework.gui.set_option(GuiBoolean::CorrectAspect, config.emulator.correct_aspect);
+    if config.emulator.correct_aspect {
+        // Default to hardware aspect correction.
+        video.set_aspect_mode(AspectCorrectionMode::Hardware);
+    }
 
     framework.gui.set_option(GuiBoolean::CpuEnableWaitStates, config.cpu.wait_states_enabled.unwrap_or(true));
     machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled.unwrap_or(true)));
@@ -652,7 +712,7 @@ pub fn run() {
         framework.gui.set_display_apertures(video_card.list_display_apertures());
     }
 
-    framework.gui.set_scaling_modes((SCALING_MODES.to_vec(), Default::default()));
+    framework.gui.set_scaler_modes((SCALING_MODES.to_vec(), Default::default()));
 
     // Disable warpspeed feature if 'devtools' flag not on.
     #[cfg(not(feature = "devtools"))]
@@ -704,12 +764,12 @@ pub fn run() {
                 };
             }
             else {
-                eprintln!("Must specifiy program load offset.");
+                eprintln!("Must specify program load offset.");
                 std::process::exit(1);
             }
         }
         else {
-            eprintln!("Must specifiy program load segment.");
+            eprintln!("Must specify program load segment.");
             std::process::exit(1);  
         }
     }
@@ -724,7 +784,11 @@ pub fn run() {
                 assert!(aper_x != 0 && aper_y !=0 );
 
                 if extents.double_scan {
+                    video.set_double_scan(true);
                     aper_y *= 2;
+                }
+                else {
+                    video.set_double_scan(false);
                 }
 
                 let aspect_ratio = if config.emulator.correct_aspect {
@@ -748,7 +812,7 @@ pub fn run() {
                     let monitor_size = monitor.size();
                     let dip_scale = monitor.scale_factor();
 
-                    log::debug!("Current monitor resolution: {}x{}", monitor_size.width, monitor_size.height);
+                    log::debug!("Current monitor resolution: {}x{} scale factor: {}", monitor_size.width, monitor_size.height, dip_scale);
                     
                     // Take into account DPI scaling for window-fit.
                     let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
@@ -972,6 +1036,8 @@ pub fn run() {
                     }     
                     WindowEvent::Resized(size) => {
 
+                        log::warn!("resize event");
+                        //video.resize((size.width, size.height).into());
                         video.backend_resize_surface((size.width, size.height).into());
                         /*
                         log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
@@ -1015,6 +1081,12 @@ pub fn run() {
 
                         // Match global hotkeys regardless of egui focus
                         match (state, keycode) {
+                            (winit::event::ElementState::Pressed, KeyCode::F1 ) => {
+                                if kb_data.ctrl_pressed {
+                                    log::info!("Control F1 pressed. Toggling egui state.");
+                                    render_egui = !render_egui;
+                                }
+                            },
                             (winit::event::ElementState::Pressed, KeyCode::F10 ) => {
                                 if kb_data.ctrl_pressed {
                                     // Ctrl-F10 pressed. Toggle mouse capture.
@@ -1314,7 +1386,7 @@ pub fn run() {
                     machine.frame_update();
 
                     // Check if there was a resolution change, if a video card is present
-                    if let Some(video_card) = machine.videocard() {
+                    if let Some(mut video_card) = machine.videocard() {
 
                         let new_w;
                         let mut new_h;
@@ -1357,7 +1429,8 @@ pub fn run() {
 
                     // -- Draw video memory --
                     let composite_enabled = framework.gui.get_option(GuiBoolean::CompositeDisplay).unwrap_or(false);
-                    let aspect_correct = framework.gui.get_option(GuiBoolean::CorrectAspect).unwrap_or(false);
+                    let
+                        _aspect_correct = framework.gui.get_option(GuiBoolean::CorrectAspect).unwrap_or(false);
 
                     let render_start = Instant::now();
 
@@ -1398,6 +1471,8 @@ pub fn run() {
 
 
                         let extents = video_card.get_display_extents();
+
+                        //log::debug!("extents: {}x{}", extents.field_w, extents.field_h);
 
                         if video.get_mode_byte() != extents.mode_byte {
                             // Mode byte has changed, recalculate composite parameters
@@ -1536,7 +1611,7 @@ pub fn run() {
                                                     //let surface = pixels.frame_mut();
                                                     //surface.fill(0);
                                                     
-                                                    video.set_aspect_ratio(Default::default());
+                                                    video.set_aspect_ratio(None);
                                                     //let dimensions = video.get_display_dimensions();
                                                     //VideoRenderer::set_alpha(surface, dimensions.w, dimensions.h, 255);
                                                 }
@@ -1569,8 +1644,8 @@ pub fn run() {
                                                         video_card.set_aperture(aperture_n)
                                                     }
                                                 }
-                                                GuiEnum::DisplayScalingMode(new_mode) => {
-                                                    video.set_scaling_mode(new_mode);
+                                                GuiEnum::DisplayScalerMode(new_mode) => {
+                                                    video.set_scaler_mode(new_mode);
                                                 }
                                             }
                                         }
@@ -1786,6 +1861,10 @@ pub fn run() {
                                 GuiEvent::CompositeAdjust(params) => {
                                     //log::warn!("got composite params: {:?}", params);f
                                     video.cga_direct_param_update(&params);
+                                }
+                                GuiEvent::ScalerAdjust(params) => {
+                                    log::warn!("Received ScalerAdjust event: {:?}", params);
+                                    video.set_scaler_params(&params);
                                 }
                                 _ => {}
                             }
@@ -2042,33 +2121,80 @@ pub fn run() {
                             }
                         }
 
-                        //framework.gui.update_dissassembly_view(disassembly_string);
+                        //framework.gui.update_disassembly_view(disassembly_string);
                         framework.gui.disassembly_viewer.set_content(listview_vec);
                     }
 
                     // Prepare egui
                     framework.prepare(&window);
-
+                    
                     // Render everything together
-                    video.with_backend(|pixels| {
-                        let render_result = pixels.render_with(|encoder, render_target, context| {
+                    video.with_backend(|pixels, scaler| {
+                        let _render_result = pixels.render_with(|encoder, render_target, context| {
+                            scaler.render(encoder, render_target);
 
-                            context.scaling_renderer.render(encoder, render_target);
-    
-                            // Render egui
-                            framework.render(encoder, render_target, context);
-    
-                            Ok(())
+                            if render_egui {
+                                framework.render(encoder, render_target, context);
+                            }
+
+                            Ok(())                            
                         });
-    
-                        // Basic error handling
-                        if render_result
-                            .map_err(|e| error!("pixels.render() failed: {}", e))
-                            .is_err()
-                        {
-                            *control_flow = ControlFlow::Exit;
-                        }  
                     });
+
+                    /*
+                    match video.get_scaling_mode() {
+                        ScalingMode::Integer => {
+                            video.with_backend(|pixels, _scaler| {
+                                let render_result = pixels.render_with(|encoder, render_target, context| {
+        
+                                    context.scaling_renderer.render(encoder, render_target);
+            
+                                    // Render egui
+                                    framework.render(encoder, render_target, context);
+            
+                                    Ok(())
+                                });
+            
+                                // Basic error handling
+                                if render_result
+                                    .map_err(|e| error!("pixels.render() failed: {}", e))
+                                    .is_err()
+                                {
+                                    *control_flow = ControlFlow::Exit;
+                                }  
+                            });
+                        }
+                        ScalingMode::Scale | ScalingMode::Stretch => {
+                        
+                            video.with_backend(|pixels, scaler| {
+                                let render_result = pixels.render_with(|encoder, render_target, context| {
+                                    
+                                    match scaler {
+                                        Some(ScalerDispatch::Scale(s)) => {
+                                            s.render(encoder, render_target, true);
+                                        }
+                                        Some(ScalerDispatch::Stretch(s)) => {
+                                            s.render(encoder, render_target, true);
+                                        }
+                                        _=>{}
+                                    }
+                                    
+                                    framework.render(encoder, render_target, context);
+                                    Ok(())
+                                });
+
+                                // Basic error handling
+                                if render_result
+                                    .map_err(|e| error!("pixels.render() failed: {}", e))
+                                    .is_err()
+                                {
+                                    *control_flow = ControlFlow::Exit;
+                                }  
+                            });
+                        }                            
+                    }
+                    */
+
  
                 }
             }

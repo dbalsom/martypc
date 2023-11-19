@@ -2,14 +2,15 @@
 members = [
     "core",
     "frontend_libs/render",
-    "frontend_libs/pixels_stretch_renderer",
+    "frontend_libs/marty_pixels_scaler",
+    "frontend_libs/bpaf_toml_config",
     "frontends/martypc_pixels_wasm32",
     "frontends/martypc_pixels_desktop"
 ]
 
 [package]
 name = "martypc"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 
@@ -33,18 +34,5 @@ cpu_validator = ["marty_core/cpu_validator", "martypc_pixels_desktop/cpu_validat
 ega = ["marty_core/ega"]
 vga = ["marty_core/vga"]
 
-
 [build-dependencies]
 winres = "0.1"
-
-[[bench]]
-name = "cga_bench"
-harness = false
-
-[[bench]]
-name = "render_bench"
-harness= false
-
-[[bench]]
-name = "cpu_bench"
-harness = false

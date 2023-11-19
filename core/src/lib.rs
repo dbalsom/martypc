@@ -36,7 +36,7 @@ pub mod breakpoints;
 pub mod bus;
 pub mod bytebuf;
 pub mod bytequeue;
-pub mod config;
+pub mod coreconfig;
 pub mod cpu_common;
 pub mod cpu_808x;
 pub mod floppy_manager;

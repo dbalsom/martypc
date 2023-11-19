@@ -5,7 +5,7 @@
 
     ---------------------------------------------------------------------------
 
-    pixels_stretch_renderer::lib.rs
+    pixels_scale_renderer::lib.rs
     Implement a stretching renderer for Pixels when we want to fill the entire 
     window without maintaining square pixels.
 
@@ -49,6 +49,7 @@ use wgpu::{
     util::DeviceExt
 };
 
+use display_scaler::DisplayScaler;
 
 fn create_texture_view(pixels: &pixels::Pixels, width: u32, height: u32) -> wgpu::TextureView {
     let device = pixels.device();
@@ -101,11 +102,13 @@ fn create_bind_group(
 
 /// The default renderer that scales your frame to the screen size.
 #[derive(Debug)]
-pub struct StretchingRenderer {
+pub struct ScalingRenderer {
     texture_view: wgpu::TextureView,
-    sampler: wgpu::Sampler,
+    nearest_sampler: wgpu::Sampler,
+    bilinear_sampler: wgpu::Sampler,
     bind_group_layout: wgpu::BindGroupLayout,
-    bind_group: wgpu::BindGroup,
+    nearest_bind_group: wgpu::BindGroup,
+    bilinear_bind_group: wgpu::BindGroup,
     render_pipeline: wgpu::RenderPipeline,
     uniform_buffer: wgpu::Buffer,
     vertex_buffer: wgpu::Buffer,
@@ -113,10 +116,10 @@ pub struct StretchingRenderer {
     texture_height: u32,
     screen_width: u32,
     screen_height: u32,
-
+    bilinear: bool,
 }
 
-impl StretchingRenderer {
+impl ScalingRenderer {
     pub fn new(
         pixels: &pixels::Pixels,
         texture_width: u32,
@@ -133,7 +136,7 @@ impl StretchingRenderer {
         let texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create a texture sampler with nearest neighbor
-        let sampler = device.create_sampler(
+        let nearest_sampler = device.create_sampler(
             &wgpu::SamplerDescriptor {
                 label: Some("pixels_stretching_renderer_sampler"),
                 address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -150,14 +153,47 @@ impl StretchingRenderer {
             }
         );
 
+        // Create a texture sampler with bilinear filtering
+        let bilinear_sampler = device.create_sampler(
+            &wgpu::SamplerDescriptor {
+                label: Some("pixels_stretching_renderer_sampler"),
+                address_mode_u: wgpu::AddressMode::ClampToEdge,
+                address_mode_v: wgpu::AddressMode::ClampToEdge,
+                address_mode_w: wgpu::AddressMode::ClampToEdge,
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
+                mipmap_filter: wgpu::FilterMode::Linear,
+                lod_min_clamp: 0.0,
+                lod_max_clamp: 1.0,
+                compare: None,
+                anisotropy_clamp: 16,
+                border_color: None,
+            }
+        );
+
         // Create vertex buffer; array-of-array of position and texture coordinates
             // One full-screen triangle
             // See: https://github.com/parasyte/pixels/issues/180        
+        /* 
         let vertex_data: [[f32; 2]; 3] = [
             [-1.0, -1.0],
             [3.0, -1.0],
             [-1.0, 3.0],
         ];
+        */
+
+        let vertex_data: [[f32; 2]; 6] = [
+            // First triangle
+            [-1.0, -1.0], // Bottom left
+            [ 1.0, -1.0], // Bottom right
+            [-1.0,  1.0], // Top left
+        
+            // Second triangle
+            [ 1.0, -1.0], // Bottom right
+            [-1.0,  1.0], // Top left
+            [ 1.0,  1.0], // Top right
+        ];
+
         let vertex_data_slice = bytemuck::cast_slice(&vertex_data);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("pixels_stretching_renderer_vertex_buffer"),
@@ -219,13 +255,21 @@ impl StretchingRenderer {
             ],
         });
 
-        let bind_group = create_bind_group(
+        let nearest_bind_group = create_bind_group(
             device,
             &bind_group_layout,
             &texture_view,
-            &sampler,
+            &nearest_sampler,
             &uniform_buffer,
         );
+
+        let bilinear_bind_group = create_bind_group(
+            device,
+            &bind_group_layout,
+            &texture_view,
+            &bilinear_sampler,
+            &uniform_buffer,
+        );        
 
         // Create pipeline
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -261,28 +305,34 @@ impl StretchingRenderer {
 
         Self {
             texture_view,
-            sampler,
+            nearest_sampler,
+            bilinear_sampler,
             bind_group_layout,
-            bind_group,
+            nearest_bind_group,
+            bilinear_bind_group,
             render_pipeline,
             uniform_buffer,
             vertex_buffer,
             texture_width,
             texture_height,
             screen_width,
-            screen_height
+            screen_height,
+            bilinear: true
         }
     }
+}
 
-    pub fn get_texture_view(&self) -> &wgpu::TextureView {
+impl DisplayScaler for ScalingRenderer {
+    fn get_texture_view(&self) -> &wgpu::TextureView {
         &self.texture_view
     }
 
     /// Draw the pixel buffer to the render target.
-    pub fn render(
+    fn render(
         &self,
         encoder: &mut wgpu::CommandEncoder,
         render_target: &wgpu::TextureView,
+        bilinear: bool
     ) {
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("StretchRenderer render pass"),
@@ -290,17 +340,24 @@ impl StretchingRenderer {
                 view: render_target,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0 }),
                     store: true,
                 },
             })],
             depth_stencil_attachment: None,
         });
         rpass.set_pipeline(&self.render_pipeline);
-        rpass.set_bind_group(0, &self.bind_group, &[]);
+        
+        if bilinear {
+            rpass.set_bind_group(0, &self.bilinear_bind_group, &[]);
+        }
+        else {
+            rpass.set_bind_group(0, &self.nearest_bind_group, &[]);
+        }
+        
         rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
 
-        /*
+        /* 
         rpass.set_scissor_rect(
             0,
             0,
@@ -309,10 +366,12 @@ impl StretchingRenderer {
         );
         */
         
-        rpass.draw(0..3, 0..1);
+        
+        //rpass.draw(0..3, 0..1);
+        rpass.draw(0..6, 0..1);
     }
 
-    pub fn resize(
+    fn resize(
         &mut self,
         pixels: &pixels::Pixels,
         texture_width: u32,
@@ -320,7 +379,50 @@ impl StretchingRenderer {
         screen_width: u32,
         screen_height: u32,
     ) {
-        self.texture_view = create_texture_view(pixels, screen_width, screen_height);
+
+        //self.texture_view = create_texture_view(pixels, self.texture_width, self.texture_height);
+        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
+        self.nearest_bind_group = create_bind_group(
+            pixels.device(),
+            &self.bind_group_layout,
+            &self.texture_view,
+            &self.nearest_sampler,
+            &self.uniform_buffer,
+        );
+
+        self.bilinear_bind_group = create_bind_group(
+            pixels.device(),
+            &self.bind_group_layout,
+            &self.texture_view,
+            &self.bilinear_sampler,
+            &self.uniform_buffer,
+        );        
+
+        let matrix = ScalingMatrix::new(
+            (texture_width as f32, texture_height as f32),
+            (screen_width as f32, screen_height as f32),
+        );
+        let transform_bytes = matrix.as_bytes();
+
+        self.texture_width = texture_width;
+        self.texture_height = texture_height;
+        self.screen_width = screen_width;
+        self.screen_height = screen_height;
+
+        pixels
+            .queue()
+            .write_buffer(&self.uniform_buffer, 0, transform_bytes);
+    }
+
+    /*
+    fn resize_texture(
+        &mut self,
+        pixels: &pixels::Pixels,
+        texture_width: u32,
+        texture_height: u32,
+    ) {
+
+        //self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
         self.bind_group = create_bind_group(
             pixels.device(),
             &self.bind_group_layout,
@@ -331,13 +433,49 @@ impl StretchingRenderer {
 
         let matrix = ScalingMatrix::new(
             (texture_width as f32, texture_height as f32),
-            (screen_width as f32, screen_height as f32),
+            (self.screen_width as f32, self.screen_height as f32),
         );
         let transform_bytes = matrix.as_bytes();
+
+        self.texture_width = texture_width;
+        self.texture_height = texture_height;
+
         pixels
             .queue()
             .write_buffer(&self.uniform_buffer, 0, transform_bytes);
     }
+    
+
+    fn resize_screen(
+        &mut self,
+        pixels: &pixels::Pixels,
+        screen_width: u32,
+        screen_height: u32,
+    ) {
+
+        self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
+        self.bind_group = create_bind_group(
+            pixels.device(),
+            &self.bind_group_layout,
+            &self.texture_view,
+            &self.sampler,
+            &self.uniform_buffer,
+        );
+
+        let matrix = ScalingMatrix::new(
+            (self.texture_width as f32, self.texture_height as f32),
+            (self.screen_width as f32, self.screen_height as f32),
+        );
+        let transform_bytes = matrix.as_bytes();
+
+        self.screen_width = screen_width;
+        self.screen_height = screen_height;
+
+        pixels
+            .queue()
+            .write_buffer(&self.uniform_buffer, 0, transform_bytes);
+    }    
+    */
 }
 
 #[derive(Debug)]
@@ -349,42 +487,95 @@ struct ScalingMatrix {
 impl ScalingMatrix {
     // texture_size is the dimensions of the drawing texture
     // screen_size is the dimensions of the surface being drawn to
+
+    /*
     fn new(texture_size: (f32, f32), screen_size: (f32, f32)) -> Self {
-        let (texture_width, texture_height) = texture_size;
-        let (screen_width, screen_height) = screen_size;
+        let (texture_w, texture_h) = texture_size;
+        let (screen_w, screen_h) = screen_size;
 
-        // Get smallest scale size
-        let scale = (screen_width / texture_width)
-            .min(screen_height / texture_height)
-            .max(1.0);
+        let ratio_w = screen_w / texture_w;
+        let ratio_h = screen_h / texture_h;
 
-        let vert_scale = screen_height / texture_height;
+        let mut scale_w = 1.0;
+        let mut scale_h = 1.0;
 
-        let scaled_width = texture_width * scale;
-        //let scaled_height = texture_height * vert_scale;
+        if ratio_w > ratio_h {
+            scale_w = 1.0 / ratio_h;
+        }
+        else {
+            scale_h = 1.0 / ratio_w;
+        }
 
-        // Create a transformation matrix
-        let sw = scaled_width / texture_width;
-        let sh = vert_scale;
         //let tx = (texture_width / 2.0).fract() / texture_width;
         //let ty = (screen_height / 2.0).fract() / screen_height;
 
-        let ty = -(screen_height - texture_height) / screen_height;
+        let ty = -(screen_h - texture_h) / screen_h;
         //log::warn!("using ty of: {}", ty);
         let tx = 0.0;
     
         #[rustfmt::skip]
         let transform: [f32; 16] = [
-            sw,  0.0, 0.0, 0.0,
-            0.0, sh,  0.0, 0.0,
+            scale_w, 0.0, 0.0, 0.0,
+            0.0, scale_h, 0.0, 0.0,
             0.0, 0.0, 1.0, 0.0,
-            0.0, ty,  0.0, 1.0,
+            0.0, 0.0, 0.0, 1.0,
         ];
 
         Self {
             transform: Mat4::from(transform),
         }
     }
+    */
+
+    pub(crate) fn new(texture_size: (f32, f32), screen_size: (f32, f32)) -> Self {
+
+        let margin_y = 24.0 / 2.0;
+
+        let (texture_width, texture_height) = texture_size;
+        let (screen_width, screen_height) = screen_size;
+
+        let width_ratio = (screen_width / texture_width).max(1.0);
+        let height_ratio = ((screen_height - margin_y) / texture_height).max(1.0);
+
+        // Get smallest scale size. (Removed floor() call from integer scaler)
+        let scale = width_ratio.clamp(1.0, height_ratio);
+
+        let scaled_width = texture_width * scale;
+        let scaled_height = texture_height * scale;
+
+        // Create a transformation matrix
+        let sw = scaled_width / screen_width;
+        let sh = (scaled_height - margin_y) / (screen_height - margin_y);
+        
+        //let tx = (screen_width / 2.0).fract() / screen_width;
+        //let ty = ((screen_height - scaled_height) / 2.0 - margin_y) / screen_height;
+        let tx = 0.0; // Centered on the x-axis, no need for fract() because we're not translating the x-axis
+        let ty = (margin_y / screen_height) * 2.0; // Convert margin to NDC and account for the origin at the top left
+        
+
+        #[rustfmt::skip]
+        let transform: [f32; 16] = [
+            sw,  0.0, 0.0, 0.0,
+            0.0, sh,  0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            tx,  -ty,  0.0, 1.0,
+        ];
+
+        // Create a clipping rectangle
+        let clip_rect = {
+            let scaled_width = scaled_width.min(screen_width);
+            let scaled_height = scaled_height.min(screen_height);
+            let x = ((screen_width - scaled_width) / 2.0) as u32;
+            let y = ((screen_height - scaled_height) / 2.0) as u32;
+
+            (x, y, scaled_width as u32, scaled_height as u32)
+        };
+
+        Self {
+            transform: Mat4::from(transform),
+        }
+    }
+
 
     fn as_bytes(&self) -> &[u8] {
         self.transform.as_byte_slice()

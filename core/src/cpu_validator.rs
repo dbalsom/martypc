@@ -36,6 +36,7 @@ use std::{
     error::Error,
     fmt::{self, Display},
 };
+use std::str::FromStr;
 
 use serde::{Serialize, Serializer, Deserialize};
 use serde::de::{self, SeqAccess, Visitor, Deserializer};
@@ -49,6 +50,33 @@ pub const VAL_NO_REGS: u8   = 0b0000_0100; // Don't validate registers
 pub const VAL_NO_FLAGS: u8  = 0b0000_1000; // Don't validate flags
 pub const VAL_ALLOW_ONE: u8 = 0b0001_0000; // Allow a one-cycle variance in cycle states. 
 pub const VAL_NO_CYCLES: u8 = 0b0010_0000; // Don't validate cycle states.
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum ValidatorType {
+    None,
+    Pi8088,
+    Arduino8088
+}
+
+impl Default for ValidatorType {
+    fn default() -> Self {
+        ValidatorType::None
+    }
+}
+impl FromStr for ValidatorType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "pi8088" => Ok(ValidatorType::Pi8088),
+            "arduino8088" => Ok(ValidatorType::Arduino8088),
+            _ => Err("Bad value for validatortype".to_string()),
+        }
+    }
+}
+
 
 #[derive (PartialEq, Debug, Copy, Clone)]
 pub enum ValidatorMode {
@@ -230,7 +258,7 @@ impl Serialize for CycleState {
     where
         S: Serializer,
     {
-        let mut q_byte;
+        let q_byte;
 
         let fields_as_strings = [
             format!("{}", if self.ale == true { "A"} else {"-"}),
