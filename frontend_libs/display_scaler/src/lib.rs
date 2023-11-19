@@ -84,10 +84,12 @@ pub trait DisplayScaler: Send + Sync {
     fn resize(
         &mut self,
         pixels: &pixels::Pixels,
-        texture_width: u32,
-        texture_height: u32,
-        screen_width: u32,
-        screen_height: u32,
+        texture_width: u32,         // Actual width, in pixels, of source texture
+        texture_height: u32,        // Actual height, in pixels, of source texture
+        target_width: u32,          // Width, in pixels, of destination texture (stretch to fit)
+        target_height: u32,         // Height, in pixels, of destination texture (stretch to fit)
+        screen_width: u32,          // Width, in pixels, of destination surface
+        screen_height: u32,         // Height, in pixels, of destination surface
     );
     fn set_mode(&mut self, pixels: &pixels::Pixels, new_mode: ScalerMode);
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32);

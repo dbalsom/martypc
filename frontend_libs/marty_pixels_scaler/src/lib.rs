@@ -175,6 +175,8 @@ pub struct MartyScaler {
     vertex_buffer: wgpu::Buffer,
     texture_width: u32,
     texture_height: u32,
+    target_width: u32,
+    target_height: u32,
     screen_width: u32,
     screen_height: u32,
     screen_margin_y: u32,
@@ -207,6 +209,8 @@ impl MartyScaler {
         pixels: &pixels::Pixels,
         texture_width: u32,
         texture_height: u32,
+        target_width: u32,
+        target_height: u32,
         screen_width: u32,
         screen_height: u32,
         screen_margin_y: u32,
@@ -300,6 +304,7 @@ impl MartyScaler {
         let matrix = ScalingMatrix::new(
             mode,
             (texture_width as f32, texture_height as f32),
+            (target_width as f32, target_height as f32),
             (screen_width as f32, screen_height as f32),
             screen_margin_y as f32
         );
@@ -429,6 +434,8 @@ impl MartyScaler {
             vertex_buffer,
             texture_width,
             texture_height,
+            target_width,
+            target_height,
             screen_width,
             screen_height,
             screen_margin_y,
@@ -460,6 +467,7 @@ impl MartyScaler {
         let matrix = ScalingMatrix::new(
             self.mode,
             (self.texture_width as f32, self.texture_height as f32),
+            (self.target_width as f32, self.target_height as f32),
             (self.screen_width as f32, self.screen_height as f32),
             self.screen_margin_y as f32
         );
@@ -541,6 +549,7 @@ impl MartyScaler {
         let matrix = ScalingMatrix::new(
             self.mode,
             (self.texture_width as f32, self.texture_height as f32),
+            (self.target_width as f32, self.target_height as f32),
             (self.screen_width as f32, self.screen_height as f32),
             self.screen_margin_y as f32
         );
@@ -692,6 +701,8 @@ impl DisplayScaler for MartyScaler {
         pixels: &pixels::Pixels,
         texture_width: u32,
         texture_height: u32,
+        target_width: u32,
+        target_height: u32,
         screen_width: u32,
         screen_height: u32,
     ) {
@@ -720,6 +731,7 @@ impl DisplayScaler for MartyScaler {
         let matrix = ScalingMatrix::new(
             self.mode,
             (texture_width as f32, texture_height as f32),
+            (target_width as f32, target_height as f32),
             (screen_width as f32, screen_height as f32),
             self.screen_margin_y as f32
         );
@@ -727,6 +739,8 @@ impl DisplayScaler for MartyScaler {
 
         self.texture_width = texture_width;
         self.texture_height = texture_height;
+        self.target_width = target_width;
+        self.target_height = target_height;
         self.screen_width = screen_width;
         self.screen_height = screen_height;
 
@@ -804,17 +818,23 @@ impl DisplayScaler for MartyScaler {
 impl ScalingMatrix {
     // texture_size is the dimensions of the drawing texture
     // screen_size is the dimensions of the surface being drawn to
-    fn new(mode: ScalerMode, texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
+    fn new(
+        mode: ScalerMode,
+        texture_size: (f32, f32),
+        target_width: (f32, f32),
+        screen_size: (f32, f32),
+        margin_y: f32
+    ) -> Self {
 
         match mode {
-            ScalerMode::None => ScalingMatrix::none_matrix(texture_size, screen_size, margin_y),
-            ScalerMode::Integer => ScalingMatrix::integer_matrix(texture_size, screen_size, margin_y),
-            ScalerMode::Fit => ScalingMatrix::fit_matrix(texture_size, screen_size, margin_y),
-            ScalerMode::Stretch => ScalingMatrix::stretch_matrix(texture_size, screen_size, margin_y),
+            ScalerMode::None => ScalingMatrix::none_matrix(texture_size, target_width, screen_size, margin_y),
+            ScalerMode::Integer => ScalingMatrix::integer_matrix(texture_size, target_width,screen_size, margin_y),
+            ScalerMode::Fit => ScalingMatrix::fit_matrix(texture_size, target_width,screen_size, margin_y),
+            ScalerMode::Stretch => ScalingMatrix::stretch_matrix(texture_size, target_width,screen_size, margin_y),
         }
     }
 
-    fn none_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
+    fn none_matrix(texture_size: (f32, f32), target_width: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
 
         let _margin_y = margin_y / 2.0;
 
@@ -836,6 +856,7 @@ impl ScalingMatrix {
         let sh = texture_height / screen_height;
         let tx = (screen_width / 2.0).fract() / screen_width;
         let ty = (screen_height / 2.0).fract() / screen_height;
+
         #[rustfmt::skip]
         let transform: [f32; 16] = [
             sw,  0.0, 0.0, 0.0,
@@ -862,27 +883,41 @@ impl ScalingMatrix {
         }
     }
 
-    fn integer_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
+    fn integer_matrix(
+        texture_size: (f32, f32),
+        target_size: (f32, f32),
+        screen_size: (f32, f32),
+        margin_y: f32
+    ) -> Self {
 
-        let _margin_y = margin_y / 2.0;
+        let margin_ndc = margin_y / (screen_size.1 / 2.0);
 
         let (texture_width, texture_height) = texture_size;
+        let target_height = target_size.1;
         let (screen_width, screen_height) = screen_size;
 
+        let max_height_factor = ((screen_height - margin_y) / screen_height).max(1.0);
+        let adjusted_screen_h = screen_height - margin_y;
+
         let width_ratio = (screen_width / texture_width).max(1.0);
-        let height_ratio = (screen_height / texture_height).max(1.0);
+        let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
 
         // Get smallest scale size
         let scale = width_ratio.clamp(1.0, height_ratio).floor();
 
         let scaled_width = texture_width * scale;
-        let scaled_height = texture_height * scale;
+        let scaled_height = target_height * scale;
 
         // Create a transformation matrix
         let sw = scaled_width / screen_width;
         let sh = scaled_height / screen_height;
-        let tx = (screen_width / 2.0).fract() / screen_width;
-        let ty = (screen_height / 2.0).fract() / screen_height;
+
+        let tx_nudge = (screen_width / 2.0).fract() / screen_width;
+        let ty_nudge = (screen_height / 2.0).fract() / screen_height;
+
+        let tx = tx_nudge;
+        let ty = ty_nudge - margin_ndc / 2.0;
+
         #[rustfmt::skip]
         let transform: [f32; 16] = [
             sw,  0.0, 0.0, 0.0,
@@ -907,31 +942,28 @@ impl ScalingMatrix {
         }
     }
 
-    fn stretch_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
-
-        let (_texture_width, _texture_height) = texture_size;
-        let (_screen_width, screen_height) = screen_size;
-
-        //let w_scale = screen_width / texture_width;
-        let h_scale = screen_height / (screen_height - margin_y);
-
-        // Calculate the scaled dimensions
-        //let scaled_width = texture_width * w_scale;
-        //let scaled_height = texture_height * h_scale;
-
-        //let sw = scaled_width / texture_width;
-        //let sh = scaled_height / texture_height;
+    /// Create a transformation matrix that stretches the texture across the entire surface,
+    /// ignoring aspect ratio.
+    fn stretch_matrix(
+        _texture_size: (f32, f32),
+        _target_size: (f32, f32),
+        screen_size: (f32, f32),
+        margin_y: f32
+    ) -> Self {
+        let screen_height = screen_size.1;
+        let margin_ndc = margin_y / (screen_height / 2.0);
 
         let sw = 1.0;
-        let sh = h_scale;
-        let ty = (margin_y / screen_height) * 2.0; // Convert margin to NDC and account for the origin at the top left
+        let sh = (screen_height - margin_y) / screen_size.1;
+
+        let ty = -margin_ndc / 2.0;
 
         #[rustfmt::skip]
         let transform: [f32; 16] = [
             sw,   0.0,  0.0,  0.0,
             0.0,   sh,  0.0,  0.0,
             0.0,  0.0,  1.0,  0.0,
-            0.0,  -ty,  0.0,  1.0,
+            0.0,   ty,  0.0,  1.0,
         ];
 
         Self {
@@ -939,35 +971,50 @@ impl ScalingMatrix {
         }
     }
 
-    fn fit_matrix(texture_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
+    /// Create a transformation matrix that fits the texture by scaling it proportionally to the
+    /// largest size that will fit the surface, proportionally
+    fn fit_matrix(
+        texture_size: (f32, f32),
+        target_size: (f32, f32),
+        screen_size: (f32, f32),
+        margin_y: f32
+    ) -> Self {
 
-        let margin_y = margin_y / 2.0;
+        //let margin_y = margin_y / 2.0;
+        let offset = 0.0;
+        let margin_ndc = (margin_y + offset) / (screen_size.1 / 2.0);
 
         let (texture_width, texture_height) = texture_size;
+        let target_height = target_size.1;
         let (screen_width, screen_height) = screen_size;
+        let adjusted_screen_h = screen_height - margin_y;
 
+        let max_height_factor = ((screen_height - margin_y) / screen_height).max(1.0);
         let width_ratio = (screen_width / texture_width).max(1.0);
-        let height_ratio = ((screen_height - margin_y) / texture_height).max(1.0);
+        let height_ratio = (adjusted_screen_h / target_height).max(max_height_factor);
 
         // Get smallest scale size. (Removed floor() call from integer scaler)
         let scale = width_ratio.clamp(1.0, height_ratio);
 
         let scaled_width = texture_width * scale;
-        let scaled_height = texture_height * scale;
+        let scaled_height = target_height * scale;
 
         // Create a transformation matrix
         let sw = scaled_width / screen_width;
-        let sh = (scaled_height - margin_y) / (screen_height - margin_y);
+        let sh = scaled_height / screen_height;
 
-        let tx = 0.0; // Centered on the x-axis, no need for fract() because we're not translating the x-axis
-        let ty = (margin_y / screen_height) * 2.0; // Convert margin to NDC and account for the origin at the top left
+        let tx_nudge = (screen_width / 2.0).fract() / screen_width;
+        let ty_nudge = (screen_height / 2.0).fract() / screen_height;
+
+        let tx = tx_nudge;
+        let ty = -margin_ndc / 2.0 + ty_nudge;
 
         #[rustfmt::skip]
         let transform: [f32; 16] = [
             sw,  0.0,  0.0,  0.0,
             0.0,  sh,  0.0,  0.0,
             0.0, 0.0,  1.0,  0.0,
-            tx,  -ty,  0.0,  1.0,
+            tx,   ty,  0.0,  1.0,
         ];
 
         // Create a clipping rectangle

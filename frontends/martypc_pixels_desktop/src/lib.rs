@@ -121,7 +121,8 @@ use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, Performan
 use marty_render::{
     AspectRatio,
     SCALING_MODES,
-    VideoRenderer, 
+    VideoRenderer,
+    AspectCorrectionMode,
 };
 
 use display_scaler::{DisplayScaler, ScalerMode, Color};
@@ -529,15 +530,16 @@ pub fn run() {
         (pixels, framework)
     };
 
+    let mut render_egui = true;
+
     let fill_color = Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0}; // Dark grey.
 
     let marty_scaler = MartyScaler::new(
         ScalerMode::Integer,
         &pixels,
-        640,
-        480,
-        640,
-        480,
+        640,480,
+        640, 480,
+        640, 480,
         24, // margin_y == egui menu height
         true,
         fill_color
@@ -559,28 +561,31 @@ pub fn run() {
 
     let pixels_arc = video.get_backend();
 
-    video.set_on_resize_scaler(|pixels, scaler, w, h, sw, sh| {
-        if w > 0 && h > 0 && sw > 0 && sh > 0 {
+    video.set_on_resize_scaler(|pixels, scaler, buf, target, surface| {
+
+        if buf.has_some_size() && surface.has_some_size() {
             log::debug!(
-                "Resizing scaler to texture {}x{}, surface: {}x{}...",
-                w, h,
-                sw, sh,
+                "Resizing scaler to texture {}x{}, target: {}x{}, surface: {}x{}...",
+                buf.w, buf.h,
+                target.w, target.h,
+                surface.w, surface.h,
             );
-            scaler.resize(&pixels, w, h, sw, sh);
+            scaler.resize(&pixels, buf.w, buf.h, target.w, target.h, surface.w, surface.h);
         }
         else {
             log::debug!("Ignoring invalid scaler resize request (window minimized?)");
         }
+
     });
 
     video.set_on_scaler_options(|pixels, scaler, opts| {
         scaler.set_options(pixels, opts);
     });
 
-    video.set_on_resize(|pixels, w, h| {
-        if w > 0 && h > 0 {
+    video.set_on_resize_backend(|pixels, backend| {
+        if backend.has_some_size() {
             log::debug!("Resizing pixels buffer...");
-            pixels.resize_buffer(w, h).expect("Failed to resize Pixels buffer.");
+            pixels.resize_buffer(backend.w, backend.h).expect("Failed to resize Pixels buffer.");
         }
         else {
             log::debug!("Ignoring invalid buffer resize request (window minimized?)");
@@ -596,11 +601,11 @@ pub fn run() {
         scaler.set_mode(pixels, m);
     });
 
-    video.set_on_resize_surface(|pixels, w, h| {
+    video.set_on_resize_surface(|pixels, surface| {
         
-        if w > 0 && h > 0 {
-            log::debug!("Resizing pixels surface to {}x{}", w, h);
-            pixels.resize_surface(w, h).expect("Failed to resize Pixels surface.");
+        if surface.has_some_size() {
+            log::debug!("Resizing pixels surface to {}x{}", surface.w, surface.h);
+            pixels.resize_surface(surface.w, surface.h).expect("Failed to resize Pixels surface.");
         }
         else {
             log::debug!("Ignoring invalid surface resize request (window minimized?)");
@@ -685,6 +690,10 @@ pub fn run() {
     machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
 
     framework.gui.set_option(GuiBoolean::CorrectAspect, config.emulator.correct_aspect);
+    if config.emulator.correct_aspect {
+        // Default to hardware aspect correction.
+        video.set_aspect_mode(AspectCorrectionMode::Hardware);
+    }
 
     framework.gui.set_option(GuiBoolean::CpuEnableWaitStates, config.cpu.wait_states_enabled.unwrap_or(true));
     machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled.unwrap_or(true)));
@@ -755,12 +764,12 @@ pub fn run() {
                 };
             }
             else {
-                eprintln!("Must specifiy program load offset.");
+                eprintln!("Must specify program load offset.");
                 std::process::exit(1);
             }
         }
         else {
-            eprintln!("Must specifiy program load segment.");
+            eprintln!("Must specify program load segment.");
             std::process::exit(1);  
         }
     }
@@ -803,7 +812,7 @@ pub fn run() {
                     let monitor_size = monitor.size();
                     let dip_scale = monitor.scale_factor();
 
-                    log::debug!("Current monitor resolution: {}x{}", monitor_size.width, monitor_size.height);
+                    log::debug!("Current monitor resolution: {}x{} scale factor: {}", monitor_size.width, monitor_size.height, dip_scale);
                     
                     // Take into account DPI scaling for window-fit.
                     let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
@@ -1027,6 +1036,8 @@ pub fn run() {
                     }     
                     WindowEvent::Resized(size) => {
 
+                        log::warn!("resize event");
+                        //video.resize((size.width, size.height).into());
                         video.backend_resize_surface((size.width, size.height).into());
                         /*
                         log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
@@ -1070,6 +1081,12 @@ pub fn run() {
 
                         // Match global hotkeys regardless of egui focus
                         match (state, keycode) {
+                            (winit::event::ElementState::Pressed, KeyCode::F1 ) => {
+                                if kb_data.ctrl_pressed {
+                                    log::info!("Control F1 pressed. Toggling egui state.");
+                                    render_egui = !render_egui;
+                                }
+                            },
                             (winit::event::ElementState::Pressed, KeyCode::F10 ) => {
                                 if kb_data.ctrl_pressed {
                                     // Ctrl-F10 pressed. Toggle mouse capture.
@@ -1369,7 +1386,7 @@ pub fn run() {
                     machine.frame_update();
 
                     // Check if there was a resolution change, if a video card is present
-                    if let Some(video_card) = machine.videocard() {
+                    if let Some(mut video_card) = machine.videocard() {
 
                         let new_w;
                         let mut new_h;
@@ -1594,7 +1611,7 @@ pub fn run() {
                                                     //let surface = pixels.frame_mut();
                                                     //surface.fill(0);
                                                     
-                                                    video.set_aspect_ratio(Default::default());
+                                                    video.set_aspect_ratio(None);
                                                     //let dimensions = video.get_display_dimensions();
                                                     //VideoRenderer::set_alpha(surface, dimensions.w, dimensions.h, 255);
                                                 }
@@ -2104,7 +2121,7 @@ pub fn run() {
                             }
                         }
 
-                        //framework.gui.update_dissassembly_view(disassembly_string);
+                        //framework.gui.update_disassembly_view(disassembly_string);
                         framework.gui.disassembly_viewer.set_content(listview_vec);
                     }
 
@@ -2115,7 +2132,11 @@ pub fn run() {
                     video.with_backend(|pixels, scaler| {
                         let _render_result = pixels.render_with(|encoder, render_target, context| {
                             scaler.render(encoder, render_target, true);
-                            framework.render(encoder, render_target, context);
+
+                            if render_egui {
+                                framework.render(encoder, render_target, context);
+                            }
+
                             Ok(())                            
                         });
                     });
