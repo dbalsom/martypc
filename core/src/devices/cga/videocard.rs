@@ -67,7 +67,6 @@ impl VideoCard for CGACard {
                 log::debug!("VideoOption::EnableSnow set to: {}", state);
                 self.enable_snow = state;
             }
-            _=> {}
         }
     }
 

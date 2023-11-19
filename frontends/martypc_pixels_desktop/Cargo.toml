@@ -1,6 +1,6 @@
 [package]
 name = "martypc_pixels_desktop"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 
@@ -10,8 +10,9 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-marty_core = { path = "../../core/"}
+marty_core = { path = "../../core"}
 marty_render = { path = "../../frontend_libs/render"}
+bpaf_toml_config = { path = "../../frontend_libs/bpaf_toml_config"}
 display_scaler = { path = "../../frontend_libs/display_scaler" }
 marty_pixels_scaler = { path = "../../frontend_libs/marty_pixels_scaler" }
 bytemuck = "1.13.1"

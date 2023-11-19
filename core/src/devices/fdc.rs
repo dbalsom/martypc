@@ -324,7 +324,10 @@ pub struct FloppyController {
 
     in_dma: bool,
     dma_byte_count: usize,
-    dma_bytes_left: usize
+    dma_bytes_left: usize,
+    xfer_size_sectors: u32,
+    xfer_size_bytes: usize,
+    xfer_completed_sectors: u32
 }
 
 /// IO Port handlers for the FDC
@@ -412,6 +415,9 @@ impl FloppyController {
             in_dma: false,
             dma_byte_count: 0,
             dma_bytes_left: 0,
+            xfer_size_sectors: 0,
+            xfer_size_bytes: 0,
+            xfer_completed_sectors: 0
         }
     }
 
@@ -767,7 +773,7 @@ impl FloppyController {
     }
     
     /// Returns whether the CHS address is valid for the specified drive
-    pub fn is_id_valid(&mut self, drive_select: usize, c: u8, h: u8, s:u8 ) -> bool {
+    pub fn is_id_valid(&self, drive_select: usize, c: u8, h: u8, s:u8 ) -> bool {
 
         if !self.drives[drive_select].have_disk {
             return false;
@@ -934,6 +940,7 @@ impl FloppyController {
             if self.pending_interrupt {
 
                 let seek_flag = match self.last_command {
+                    Command::CalibrateDrive => true,
                     Command::SeekParkHead => true,
                     _ => false,
                 };
@@ -1231,9 +1238,22 @@ impl FloppyController {
         lba * SECTOR_SIZE
     }
 
+    pub fn get_chs_sector_offset(&self, drive_select: usize, sector_offset: u32, cylinder: u8, head: u8, sector: u8) -> (u8, u8, u8) {
+
+        let mut c = cylinder;
+        let mut h = head;
+        let mut s = sector;
+
+        for _ in 0..sector_offset {
+            (c, h, s) = self.get_next_sector(drive_select, c, h, s);
+        }
+
+        (c, h, s)
+    }
+
     pub fn get_next_sector(&self, drive_select: usize, cylinder: u8, head: u8, sector: u8) -> (u8, u8, u8) {
 
-        if sector < self.drives[drive_select].max_sectors - 1 {
+        if sector < self.drives[drive_select].max_sectors {
             // Not at last sector, just return next sector
             (cylinder, head, sector + 1)
         }
@@ -1250,7 +1270,8 @@ impl FloppyController {
             (self.drives[drive_select].max_cylinders, 0, 1)
         }
     }
-    
+
+
     fn send_results_phase(
         &mut self, 
         result: InterruptCode, 
@@ -1282,14 +1303,14 @@ impl FloppyController {
     }
 
     fn operation_read_sector(
-        &mut self, 
-        dma: &mut dma::DMAController, 
+        &mut self,
+        dma: &mut dma::DMAController,
         bus: &mut BusInterface,
-        cylinder: u8, 
+        cylinder: u8,
         head: u8,
-        sector: u8, 
-        sector_size: u8, 
-        _track_len: u8 ) {
+        sector: u8,
+        sector_size: u8,
+        _track_len: u8) {
 
         if !self.in_dma {
             log::error!("FDC in invalid state: ReadSector operation without DMA! Aborting.");
@@ -1313,12 +1334,23 @@ impl FloppyController {
             let dst_address = dma.get_dma_transfer_address(FDC_DMA);
             log::trace!("DMA destination address: {:05X}", dst_address);
 
+            self.xfer_size_sectors = xfer_sectors as u32;
+            self.xfer_completed_sectors = 0;
+            self.xfer_size_bytes = xfer_sectors * SECTOR_SIZE;
             self.dma_bytes_left = xfer_sectors * SECTOR_SIZE;
             self.operation_init = true;
         }
 
         if self.dma_bytes_left > 0 {
             // Bytes left to transfer
+
+            // Calculate how many sectors we've done
+            if (self.dma_bytes_left < self.xfer_size_bytes) && (self.dma_bytes_left % SECTOR_SIZE == 0) {
+                // Completed one sector
+                
+                self.xfer_completed_sectors += 1;
+                log::trace!("operation_read_sector: Transferred {} sectors.", self.xfer_completed_sectors);
+            }
 
             // Check if DMA is ready
             if dma.check_dma_ready(FDC_DMA) {
@@ -1358,7 +1390,13 @@ impl FloppyController {
             self.dma_byte_count = 0;
             self.dma_bytes_left = 0;
 
-            let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
+            let (new_c, new_h, new_s) = 
+                self.get_chs_sector_offset(
+                    self.drive_select, 
+                    self.xfer_completed_sectors + 1, 
+                    cylinder, head, sector, 
+                );
+            //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
 
             // Terminate normally by sending results registers
             self.send_results_phase(InterruptCode::NormalTermination, self.drive_select, new_c, new_h, new_s, sector_size);
@@ -1367,8 +1405,10 @@ impl FloppyController {
             self.drives[self.drive_select].cylinder = new_c;
             self.drives[self.drive_select].head = new_h;
             self.drives[self.drive_select].sector = new_s;
-        
+            
+            log::trace!("operation_read_sector completed: new cylinder: {} head: {} sector: {}", new_c, new_h, new_s);
             // Finalize operation
+            
             self.operation = Operation::NoOperation;
             self.send_interrupt = true;
         }

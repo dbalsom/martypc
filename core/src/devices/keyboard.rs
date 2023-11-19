@@ -32,7 +32,6 @@
 
 use anyhow::{bail, Result};
 use strum::IntoEnumIterator;
-use strum_macros::EnumIter;
 use std::collections::{HashMap, VecDeque};
 use std::vec::Vec;
 use std::fs::read_to_string;
@@ -43,9 +42,28 @@ use toml;
 use serde_derive::Deserialize;
 
 use crate::machine::KeybufferEntry;
-use crate::config::KeyboardType;
 use crate::keys::MartyKey;
 
+// Define the various types of keyboard we can emulate.
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum KeyboardType {
+    ModelF,
+    ModelM
+}
+
+impl FromStr for KeyboardType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s {
+            "ModelF" => Ok(KeyboardType::ModelF),
+            "ModelM" => Ok(KeyboardType::ModelM),
+            _ => Err("Bad value for keyboard_type".to_string()),
+        }
+    }
+}
 #[derive (Copy, Clone, Debug, PartialEq, Eq)]
 pub struct KeyboardModifiers {
     pub control: bool,
@@ -650,7 +668,7 @@ pub struct KeybufferEntry {
         match kb_type {
             KeyboardType::ModelF => {
                 // ModelF has no keyboard buffer, therefore, translations should only have one keycode.
-                assert!(translation.len() == 1);
+                assert_eq!(translation.len(), 1);
 
                 if self.debug {
                     log::debug!("translate_keyup(): sending key_up: {:02X} for keydown translation: {:02X}", translation[0] | 0x80, translation[0]);

@@ -60,6 +60,10 @@
       12  Gfx     640x480     VGA     16    a000
 */
 
+use std::collections::HashMap;
+use std::path::Path;
+use std::str::FromStr;
+
 use crate::bus::DeviceRunTimeUnit;
 
 use crate::devices::cga::CGACard;
@@ -68,7 +72,68 @@ use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
 
-use crate::config::ClockingMode;
+use serde::Deserialize;
+#[allow (dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum VideoType {
+    None,
+    MDA,
+    CGA,
+    EGA,
+    VGA
+}
+
+impl Default for VideoType {
+    fn default() -> Self {
+        VideoType::None
+    }
+}
+
+impl FromStr for VideoType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s {
+            "None" => Ok(VideoType::None),
+            "MDA" => Ok(VideoType::MDA),
+            "CGA" => Ok(VideoType::CGA),
+            "EGA" => Ok(VideoType::EGA),
+            "VGA" => Ok(VideoType::VGA),
+            _ => Err("Bad value for videotype".to_string()),
+        }
+    }
+}
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum ClockingMode {
+    Cycle,
+    Character,
+    Scanline,
+    Dynamic
+}
+impl Default for ClockingMode {
+    fn default() -> Self {
+        ClockingMode::Dynamic
+    }
+}
+
+impl FromStr for ClockingMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+        where
+            Self: Sized,
+    {
+        match s {
+            "Cycle" => Ok(ClockingMode::Cycle),
+            "Character" => Ok(ClockingMode::Character),
+            "Scanline" => Ok(ClockingMode::Scanline),
+            "Dynamic" => Ok(ClockingMode::Dynamic),
+            _ => Err("Bad value for ClockingMode".to_string()),
+        }
+    }
+}
 
 // This enum holds variants that hold the various implementors of the VideoCard trait.
 // This is used for enum dispatch, to avoid overhead of dynamic dispatch when calling
@@ -97,13 +162,7 @@ pub enum RenderMode {
     Indirect
 }
 
-
-use std::collections::HashMap;
-use std::path::Path;
-
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
-
-use crate::config::VideoType;
 
 #[allow(dead_code)]
 pub enum VideoCardStateEntry {

@@ -52,7 +52,6 @@ mod videocard;
 use crate::devices::cga::tablegen::*;
 
 use crate::bus::{BusInterface, DeviceRunTimeUnit};
-use crate::config::{VideoType, ClockingMode};
 use crate::tracelogger::TraceLogger;
 use crate::videocard::*;
 
@@ -2566,7 +2565,7 @@ impl CGACard {
             
             if self.beam_y > 258 && self.beam_y < 262 {
                 // This is a "short" frame. Calculate delta.
-                let delta_y = 262 - self.beam_y;
+                let _delta_y = 262 - self.beam_y;
                 
                 //self.sink_cycles = delta_y * 912;
 

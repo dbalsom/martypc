@@ -30,9 +30,7 @@
 
 */
 
-use crate::{devices::ega::EGACard, cpu_808x::QueueOp};
-
-use super::EGA16_MAX_RASTER_X;
+use crate::devices::ega::EGACard;
 
 pub const EGA_VBLANK_MASK: u16 = 0x001F;
 pub const EGA_HBLANK_MASK: u8 = 0x001F;
@@ -77,7 +75,7 @@ impl EGACard {
         }
 
         // Process horizontal sync period
-        if self.crtc_hsync {
+        if self.monitor_hsync {
             // Increment horizontal sync counter (wrapping)
             self.hsc = self.hsc.wrapping_add(1);
 
@@ -87,7 +85,7 @@ impl EGACard {
                 std::cmp::min(5, 5)
             }
             else {
-                3
+                std::cmp::min(2, 2)
             };
 
             // Do a horizontal sync
@@ -110,6 +108,7 @@ impl EGACard {
                         self.in_last_vblank_line = true;
                         // We are leaving vblank period. Generate a frame.                      
                         self.do_vsync();
+                        self.monitor_hsync = false;
                         return
                     }                        
                 }
@@ -127,14 +126,21 @@ impl EGACard {
 
                 let new_rba = self.extents.row_stride * self.raster_y as usize;
                 self.rba = new_rba;
-            }
 
+                // CRTC may still be in hsync at this point (if the programmed CRTC hsync width is larger
+                // than our fixed hsync value)
+                self.monitor_hsync = false;
+            }                     
+        }
+
+        if self.crtc_hsync {
             // End horizontal sync when we reach R3
             if (self.hcc & EGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
                 self.hsync_ct += 1;
+                // Only end CRTC hsync. Monitor can still be in hsync until fixed target elapses.
                 self.crtc_hsync = false;
                 self.hsc = 0;
-            }                        
+            }   
         }
 
         if self.hcc == self.crtc_horizontal_display_end + 1 {
@@ -163,7 +169,9 @@ impl EGACard {
         if self.hcc == self.crtc_start_horizontal_retrace + 1 {
             // Entering horizontal retrace
             self.crtc_hblank = true;
+            // Both monitor and CRTC will enter hsync at the same time. Monitor may leave hsync first.
             self.crtc_hsync = true;
+            self.monitor_hsync = true;
             self.crtc_den = false;
             self.hsc = 0;
         }

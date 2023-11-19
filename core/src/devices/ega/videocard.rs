@@ -31,8 +31,7 @@
 */
 
 use crate::devices::ega::EGACard;
-use crate::config::{ClockingMode, VideoType};
-use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
+use crate::bus::DeviceRunTimeUnit;
 
 use crate::videocard::*;
 use crate::devices::ega::*;
@@ -54,7 +53,7 @@ impl VideoCard for EGACard {
         (false, false, false, false)
     }
 
-    fn set_video_option(&mut self, opt: VideoOption) {
+    fn set_video_option(&mut self, _opt: VideoOption) {
         // No options implemented
     }
 
@@ -70,7 +69,7 @@ impl VideoCard for EGACard {
         self.display_mode
     }
 
-    fn set_clocking_mode(&mut self, mode: ClockingMode) {
+    fn set_clocking_mode(&mut self, _mode: ClockingMode) {
         // not implemented
     }
 
@@ -104,7 +103,7 @@ impl VideoCard for EGACard {
     }
 
     /// Unimplemented
-    fn debug_tick(&mut self, ticks: u32) {
+    fn debug_tick(&mut self, _ticks: u32) {
     }
 
     /// Get the current scanline being rendered.
@@ -118,17 +117,14 @@ impl VideoCard for EGACard {
         false
     }
 
-    /// Unimplemented for indirect rendering.
     fn get_display_buf(&self) -> &[u8] {
         &self.buf[self.front_buf][..]
     }
 
-    /// Unimplemented for indirect rendering.
     fn get_back_buf(&self) -> &[u8] {
         &self.buf[self.back_buf][..]
     }      
     
-    /// Unimplemented for indirect rendering.
     fn get_display_aperture(&self) -> (u32, u32) {
         (self.extents.aperture.w, self.extents.aperture.h)
     }
@@ -290,7 +286,28 @@ impl VideoCard for EGACard {
         let mut general_vec = Vec::new();
         general_vec.push(("Adapter Type:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
         general_vec.push(("Display Mode:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
+        general_vec.push(("Pixel Clock:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.clock_select()))));
         general_vec.push(("Clock Divisor:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.clock_divisor))));
+        general_vec.push((
+            "Field:".to_string(), 
+            VideoCardStateEntry::String(
+                format!(
+                    "{}x{}", 
+                    self.extents.field_w,
+                    self.extents.field_h
+                )
+            )
+        ));
+        general_vec.push((
+            "Aperture:".to_string(), 
+            VideoCardStateEntry::String(
+                format!(
+                    "{}x{}", 
+                    self.extents.aperture.w,
+                    self.extents.aperture.h
+                )
+            )
+        ));
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();
@@ -594,7 +611,7 @@ impl VideoCard for EGACard {
         self.frame
     }
 
-    fn write_trace_log(&mut self, msg: String) {
+    fn write_trace_log(&mut self, _msg: String) {
         //self.trace_logger.print(msg);
     }
 

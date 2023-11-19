@@ -379,13 +379,13 @@ impl Cpu {
         match operand {
             OperandType::AddressingMode(mode) => {
                 let offset = self.ea_opr;
-                let (segment_val, segment, ea_offset) = self.calc_effective_address(mode, seg_override);
+                let (_segment_val, segment, ea_offset) = self.calc_effective_address(mode, seg_override);
                 let segment = self.biu_read_u16(segment, ea_offset + 2, flag);
                 Some((segment, offset))
             },
             OperandType::Register16(_) => {
                 // Illegal form of LES/LDS reg reg uses the last calculated EA.
-                let (segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
+                let (_segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
                     SegmentOverride::None => (self.ds, Segment::DS),
                     SegmentOverride::ES  => (self.es, Segment::ES),
                     SegmentOverride::CS  => (self.cs, Segment::CS),
@@ -405,7 +405,7 @@ impl Cpu {
 
         match operand {
             OperandType::AddressingMode(mode) => {
-                let (segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
+                let (_segment_val, segment, offset) = self.calc_effective_address(mode, seg_override);
 
                 match ptr {
                     FarPtr::Offset => Some(self.biu_read_u16(segment, offset, flag)),
@@ -414,7 +414,7 @@ impl Cpu {
             },
             OperandType::Register16(_) => {
                 // Illegal form of LES/LDS reg reg uses the last calculated EA.
-                let (segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
+                let (_segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
                     SegmentOverride::None => (self.ds, Segment::DS),
                     SegmentOverride::ES  => (self.es, Segment::ES),
                     SegmentOverride::CS  => (self.cs, Segment::CS),

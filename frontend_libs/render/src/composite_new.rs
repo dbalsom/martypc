@@ -281,7 +281,7 @@ impl ReCompositeContext {
 
         let mut o_index = 0;
         let mut rgbi_index = 0;
-        let mut b = &self.composite_table[(border as usize) * 68..];
+        let b = &self.composite_table[(border as usize) * 68..];
 
         for x in 0..4 {
             buffers.temp[o_index] = b[((x + 3) & 3) as usize];
@@ -305,7 +305,7 @@ impl ReCompositeContext {
             o_index += 1;
         }
     
-        if false && (self.cgamode & 4) != 0 {
+        if (self.cgamode & 4) != 0 {
             // B&W mode (no colorburst)
 
             let mut i_index = 5;

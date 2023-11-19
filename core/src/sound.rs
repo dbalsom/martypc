@@ -72,9 +72,13 @@ impl SoundPlayer {
             .default_output_device()
             .expect("Failed to get default output audio device.");        
 
-        audio_device.default_output_config()
-            .expect("Failed to get default sample format.")
-            .sample_format()
+        //log::debug!("Default audio device: {}", audio_device.name().expect("Failed to get device name"));
+        println!("Using default audio device: {}", audio_device.name().expect("Failed to get device name"));
+
+        let config = audio_device.default_output_config().expect("Failed to get default sample format.");
+
+        log::debug!("Default audio config: {:?}", config);
+        config.sample_format()
     }
 
     pub fn new<T>() -> Self

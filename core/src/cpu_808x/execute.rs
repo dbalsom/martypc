@@ -1183,7 +1183,7 @@ impl Cpu {
 
                 let value = self.biu_read_u8(segment, disp16);
                 
-                self.set_register8(Register8::AL, value as u8);
+                self.set_register8(Register8::AL, value);
             }
             0xD8..=0xDF => {
                 // ESC - FPU instructions. 
@@ -1267,7 +1267,7 @@ impl Cpu {
                 self.cycles_i(2, &[0x0ad, 0x0ae]);
 
                 let in_word = self.biu_io_read_u16(op2_value as u16, ReadWriteFlag::Normal);
-                self.set_register16(Register16::AX, in_word as u16);
+                self.set_register16(Register16::AX, in_word);
             }
             0xE6 => {
                 // OUT imm8, al
@@ -1375,7 +1375,7 @@ impl Cpu {
                 // IN ax, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 let in_word = self.biu_io_read_u16(op2_value, ReadWriteFlag::Normal);
-                self.set_register16(Register16::AX, in_word as u16);
+                self.set_register16(Register16::AX, in_word);
             }
             0xEE => {
                 // OUT dx, al
@@ -1383,7 +1383,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
                 self.cycle_i(0x0b8);
 
-                self.biu_io_write_u8(op1_value as u16, op2_value, ReadWriteFlag::RNI);  
+                self.biu_io_write_u8(op1_value, op2_value, ReadWriteFlag::RNI);
             }
             0xEF => {
                 // OUT dx, ax
@@ -1397,7 +1397,7 @@ impl Cpu {
                 }
 
                 // Write to consecutive ports
-                self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
+                self.biu_io_write_u16(op1_value, op2_value, ReadWriteFlag::RNI);
 
                 /*
                 // Write first 8 bits to first port
@@ -1803,7 +1803,7 @@ impl Cpu {
                     // Call Far
                     Mnemonic::CALLF => {
                         if let OperandType::AddressingMode(mode) = self.i.operand1_type {
-                            let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+                            let (_ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
 
                             // Read one byte of offset and one byte of segment
                             let offset = self.biu_read_u8(ea_segment, ea_offset);
@@ -1871,7 +1871,7 @@ impl Cpu {
                     // Jump Far
                     Mnemonic::JMPF => {
                         if let OperandType::AddressingMode(mode) = self.i.operand1_type {
-                            let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+                            let (_ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
 
                             // Read one byte of offset and one byte of segment
                             let offset = self.biu_read_u8(ea_segment, ea_offset);

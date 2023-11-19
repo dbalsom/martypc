@@ -30,8 +30,6 @@
 
 */
 
-use std::default;
-
 use crate::egui::{GuiState, GuiWindow, GuiEvent, GuiOption, GuiBoolean, GuiEnum};
 
 use marty_core::machine::MachineState;
@@ -284,6 +282,11 @@ impl GuiState {
                         }
                     }
                 });
+
+                if ui.button("Scaler Adjustments...").clicked() {
+                    *self.window_flag(GuiWindow::ScalerAdjust) = true;
+                    ui.close_menu();
+                }
 
                 if ui.checkbox(&mut self.get_option_mut(GuiBoolean::CorrectAspect), "Correct Aspect Ratio").clicked() {
 

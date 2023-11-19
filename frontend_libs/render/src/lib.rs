@@ -42,10 +42,6 @@
 use std::path::Path;
 use std::mem::size_of;
 use std::sync::{Arc, Mutex};
-use std::sync::MutexGuard;
-
-use bytemuck::*;
-use marty_core::devices::serial::SERIAL2_RX_TX_BUFFER;
 
 pub mod consts;
 pub mod color;
@@ -64,10 +60,8 @@ pub use self::consts::*;
 use composite_new::{ReCompositeContext, ReCompositeBuffers};
 
 use marty_core::{
-    config::VideoType,
-    videocard::{VideoCard, CGAColor, CGAPalette, CursorInfo, DisplayExtents, DisplayMode, FontInfo},
+    videocard::{VideoType, CGAColor, CGAPalette, DisplayExtents, DisplayMode},
     devices::cga,
-    bus::BusInterface,
     file_util
 };
 
@@ -75,6 +69,7 @@ pub use display_scaler::ScalerMode;
 
 use image;
 use log;
+use display_scaler::{ScalerOption, ScalerFilter};
 
 #[derive (Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ScalingMode {
@@ -104,7 +99,7 @@ pub const SCALING_MODES: [ScalerMode; 4] = [
     ScalerMode::Stretch,
 ];
 
-#[derive (Copy, Clone, Default)]
+#[derive (Copy, Clone, Default, PartialEq)]
 pub struct VideoDimensions {
     pub w: u32,
     pub h: u32
@@ -116,28 +111,43 @@ impl From<(u32, u32)> for VideoDimensions {
     }
 }
 
+impl VideoDimensions {
+    pub fn has_some_size(&self) -> bool {
+        self.w > 0 && self.h > 0
+    }
+}
+
+
+
+#[derive (Copy, Clone, Default)]
+#[derive(PartialEq)]
+pub enum AspectCorrectionMode {
+    #[default]
+    None,
+    Software,
+    Hardware
+}
+
 #[derive (Copy, Clone)]
 pub struct VideoParams {
-    pub render_w: u32,
-    pub render_h: u32,
-    pub aspect_w: u32,
-    pub aspect_h: u32,
-    pub surface_w: u32,
-    pub surface_h: u32,
-    pub aspect_correction_enabled: bool,
-    pub composite_params: CompositeParams,
+    pub render: VideoDimensions,                    // The size of the internal render buffer before aspect correction.
+    pub aspect_corrected: VideoDimensions,          // The size of the internal render buffer after aspect correction.
+    pub backend: VideoDimensions,                   // The size of the backend buffer.
+    pub surface: VideoDimensions,                   // The size of the backend surface (window client area)
+    pub double_scan: bool,                          // Whether to double rows when rendering into the internal buffer.
+    pub aspect_correction: AspectCorrectionMode,    // Determines how to handle aspect correction.
+    pub composite_params: CompositeParams,          // Parameters used for composite emulation.
 }
 
 impl Default for VideoParams {
     fn default() -> VideoParams {
         VideoParams {
-            render_w: DEFAULT_RENDER_WIDTH,
-            render_h: DEFAULT_RENDER_HEIGHT,
-            aspect_w: 640,
-            aspect_h: 480,
-            surface_w: 640,
-            surface_h: 480,
-            aspect_correction_enabled: false,
+            render: (DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT).into(),
+            aspect_corrected: (640, 480).into(),
+            backend: (640, 480).into(),
+            surface: (640, 480).into(),
+            double_scan: false,
+            aspect_correction: AspectCorrectionMode::None,
             composite_params: Default::default(),
         }
     }
@@ -187,6 +197,42 @@ impl Default for CompositeParams {
     }
 }
 
+#[derive (Copy, Clone, Debug)]
+pub struct ScalerParams {
+    pub filter: ScalerFilter,
+    pub crt_effect: bool,
+    pub crt_hcurvature: f32,
+    pub crt_vcurvature: f32,
+    pub crt_cornerradius: f32,
+    pub crt_scanlines: bool,
+    pub crt_phosphor_type: PhosphorType,
+    pub gamma: f32,
+}
+
+impl Default for ScalerParams {
+    fn default() -> Self {
+        Self {
+            filter: ScalerFilter::Linear,
+            crt_effect: false,
+            crt_hcurvature: 0.0,
+            crt_vcurvature: 0.0,
+            crt_cornerradius: 0.0,
+            crt_scanlines: false,
+            crt_phosphor_type: PhosphorType::Color,
+            gamma: 1.0,
+        }
+    }
+}
+
+#[derive (Copy, Clone, Debug, Default, PartialEq)]
+pub enum PhosphorType {
+    #[default]
+    Color,
+    White,
+    Green,
+    Amber,
+}
+
 #[derive (Copy, Clone)]
 pub enum RenderColor {
     CgaIndex(u8),
@@ -207,7 +253,6 @@ pub struct VideoRenderer<T,U> {
 
     buf: Vec<u8>,
     aspect_ratio: Option<AspectRatio>,
-    software_aspect: bool,
 
     mode_byte: u8,
 
@@ -226,11 +271,12 @@ pub struct VideoRenderer<T,U> {
     resample_context: ResampleContext,
 
     // Callback closures
-    on_resize: Option<Box<dyn FnMut(&mut T, u32, u32) + Send>>,
-    on_resize_surface: Option<Box<dyn FnMut(&mut T, u32, u32) + Send>>,
-    on_resize_scaler: Option<Box<dyn FnMut(&mut T, &mut U, u32, u32, u32, u32) + Send>>,
+    on_resize: Option<Box<dyn FnMut(&mut T, VideoDimensions) + Send>>,
+    on_resize_surface: Option<Box<dyn FnMut(&mut T, VideoDimensions) + Send>>,
+    on_resize_scaler: Option<Box<dyn FnMut(&mut T, &mut U, VideoDimensions, VideoDimensions, VideoDimensions) + Send>>,
     on_margin: Option<Box<dyn FnMut(&mut U, u32, u32, u32, u32) + Send>>,
-    on_scalermode: Option<Box<dyn FnMut(&mut T, &mut U, ScalerMode) + Send>>,
+    on_scaler_mode: Option<Box<dyn FnMut(&mut T, &mut U, ScalerMode) + Send>>,
+    on_scaler_options: Option<Box<dyn FnMut(&mut T, &mut U, Vec<ScalerOption>) + Send>>,
     on_get_buffer: Option<Box<dyn FnMut(&mut T) -> &mut [u8]>>,
     on_with_buffer: Option<Box<dyn FnMut(&mut dyn FnMut(&mut [u8])) + Send>>,
     backend: Arc<Mutex<T>>,
@@ -267,7 +313,6 @@ impl<T,U> VideoRenderer<T,U> {
             
             buf: vec![0; (DEFAULT_RENDER_WIDTH * DEFAULT_RENDER_HEIGHT * 4) as usize],
             aspect_ratio: None,
-            software_aspect: true,
 
             mode_byte: 0,
 
@@ -288,7 +333,8 @@ impl<T,U> VideoRenderer<T,U> {
             on_resize_surface: None,
             on_resize_scaler: None,
             on_margin: None,
-            on_scalermode: None,
+            on_scaler_mode: None,
+            on_scaler_options: None,
             on_get_buffer: None,
             on_with_buffer: None,
             backend: Arc::new(Mutex::new(backend)),
@@ -299,11 +345,25 @@ impl<T,U> VideoRenderer<T,U> {
     pub fn set_scaler_mode(&mut self, new_mode: ScalerMode) {
         self.scaler_mode = new_mode;
 
-        if let Some(ref mut scaler_callback) = self.on_scalermode {
+        if let Some(ref mut scaler_callback) = self.on_scaler_mode {
             let mut backend = self.backend.lock().expect("Failed to lock backend");
             let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
             scaler_callback(&mut *backend, &mut *scaler, new_mode)
         }
+    }
+
+    /// Set the aspect correction mode. May resize buffer, backend and scaler as needed.
+    pub fn set_aspect_mode(&mut self, new_mode: AspectCorrectionMode) {
+        if self.params.aspect_correction != new_mode {
+            // Allow resize to recalculate buffer, backend and scaler parameters if needed
+            // on aspect change.
+            self.params.aspect_correction = new_mode;
+            self.resize(self.params.render);
+        }
+    }
+
+    pub fn set_double_scan(&mut self, double_scan: bool ) {
+        self.params.double_scan = double_scan;
     }
 
     pub fn get_scaler_mode(&mut self) -> ScalerMode {
@@ -315,21 +375,21 @@ impl<T,U> VideoRenderer<T,U> {
         &mut self.buf
     }
 
-    /// Return a reference to the video paramters
+    /// Return a reference to the video parameters
     pub fn params(&self) -> &VideoParams {
         &self.params
     }
 
-    pub fn set_on_resize<F>(&mut self, resize_closure: F)
+    pub fn set_on_resize_backend<F>(&mut self, resize_closure: F)
     where
-        F: 'static + FnMut(&mut T, u32, u32) + Send,
+        F: 'static + FnMut(&mut T, VideoDimensions) + Send,
     {
         self.on_resize = Some(Box::new(resize_closure));
-    }    
+    }
 
     pub fn set_on_resize_scaler<F>(&mut self, resize_closure: F)
     where
-        F: 'static + FnMut(&mut T, &mut U, u32, u32, u32, u32) + Send,
+        F: 'static + FnMut(&mut T, &mut U, VideoDimensions, VideoDimensions, VideoDimensions) + Send,
     {
         self.on_resize_scaler = Some(Box::new(resize_closure));
     }
@@ -345,12 +405,19 @@ impl<T,U> VideoRenderer<T,U> {
     where
         F: 'static + FnMut(&mut T, &mut U, ScalerMode) + Send,
     {
-        self.on_scalermode = Some(Box::new(scaler_closure));
+        self.on_scaler_mode = Some(Box::new(scaler_closure));
+    }
+
+    pub fn set_on_scaler_options<F>(&mut self, scaler_closure: F)
+        where
+            F: 'static + FnMut(&mut T, &mut U, Vec<ScalerOption>) + Send,
+    {
+        self.on_scaler_options = Some(Box::new(scaler_closure));
     }
 
     pub fn set_on_resize_surface<F>(&mut self, resize_closure: F)
     where
-        F: 'static + FnMut(&mut T, u32, u32) + Send,
+        F: 'static + FnMut(&mut T, VideoDimensions) + Send,
     {
         self.on_resize_surface = Some(Box::new(resize_closure));
     }
@@ -382,7 +449,7 @@ impl<T,U> VideoRenderer<T,U> {
         if let Some(ref mut resize_callback) = self.on_resize {
             // Lock the backend and pass the mutable reference to the closure
             let mut backend = self.backend.lock().expect("Failed to lock backend");
-            resize_callback(&mut *backend, self.params.aspect_w, self.params.aspect_h);
+            resize_callback(&mut *backend, self.params.aspect_corrected);
         }
     }
 
@@ -390,25 +457,35 @@ impl<T,U> VideoRenderer<T,U> {
         if let Some(ref mut resize_callback) = self.on_resize_surface {
             // Lock the backend and pass the mutable reference to the closure
             let mut backend = self.backend.lock().expect("Failed to lock backend");
-            resize_callback(&mut *backend, new.w, new.h);
+            resize_callback(&mut *backend, new);
         }
 
-        self.params.surface_w = new.w;
-        self.params.surface_h = new.h;
+        self.params.surface = new;
 
-        self.backend_resize_scaler((self.params.aspect_w, self.params.aspect_h).into(), (new.w, new.h).into());
+        self.backend_resize_scaler(
+            self.params.render,
+            self.params.aspect_corrected,
+            self.params.surface,
+        );
     }
 
-    pub fn backend_resize_scaler(&mut self, buf: VideoDimensions, screen: VideoDimensions) {
-        
-        self.params.surface_w = screen.w;
-        self.params.surface_h = screen.h;
+    pub fn backend_resize_scaler(
+        &mut self,
+        buf: VideoDimensions,
+        aspect: VideoDimensions,
+        screen: VideoDimensions) {
 
         if let Some(ref mut resize_callback) = self.on_resize_scaler {
             let mut backend = self.backend.lock().expect("Failed to lock backend");
             let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
-            resize_callback(&mut *backend, &mut *scaler, buf.w, buf.h, screen.w, screen.h);
-        }        
+            resize_callback(
+                &mut *backend,
+                &mut *scaler,
+                buf,
+                aspect,
+                screen
+            );
+        }
     }
 
     pub fn set_scaler_margin(&mut self, l: u32, r: u32, t: u32, b: u32) {
@@ -445,30 +522,47 @@ impl<T,U> VideoRenderer<T,U> {
         }
     }
 
+    /// Resizes the internal render buffer to the specified dimensions, before aspect correction.
     pub fn resize(&mut self, new: VideoDimensions ) {
 
-        self.params.render_w = new.w;
-        self.params.render_h = new.h;
+        self.params.render = new;
 
+        let mut new_aspect = self.params.render;
         if let Some(_) = self.aspect_ratio {
-            let new_aspect = VideoRenderer::<T,U>::get_aspect_corrected_res(new, self.aspect_ratio);
-
-            self.params.aspect_w = new_aspect.w;
-            self.params.aspect_h = new_aspect.h;
-        }
-        else {
-            self.params.aspect_w = self.params.render_w;
-            self.params.aspect_h = self.params.render_h;
+            new_aspect = VideoRenderer::<T, U>::get_aspect_corrected_res(new, self.aspect_ratio);
         }
 
-        self.buf.resize((new.w * new.h * 4) as usize, 0);
-        self.buf.fill(0);
+        match self.params.aspect_correction {
+            AspectCorrectionMode::None => {
+                self.params.aspect_corrected = self.params.render;
+                self.params.backend = self.params.render;
+            }
+            AspectCorrectionMode::Software => {
+                // For software aspect correction, we must ensure the backend buffer is large enough
+                // to receive the aspect-corrected image.
+                self.params.aspect_corrected = new_aspect;
+                self.params.backend = new_aspect;
+            }
+            AspectCorrectionMode::Hardware => {
+                // For hardware aspect correction, the backend dimensions remain the same as native
+                // render resolution and the aspect corrected dimensions are used as a target for
+                // the vertex shader only.
+                self.params.aspect_corrected = new_aspect;
+                self.params.backend = self.params.render;
+            }
+        }
+
+        // Resize the internal render buffer if size has changed.
+        if self.params.render != new {
+            self.buf.resize((new.w * new.h * 4) as usize, 0);
+            self.buf.fill(0);
+        }
 
         // Resize backend via closure
         if let Some(ref mut resize_callback) = self.on_resize {
             // Lock the backend and pass the mutable reference to the closure
             let mut backend = self.backend.lock().expect("Failed to lock backend");
-            resize_callback(&mut *backend, self.params.aspect_w, self.params.aspect_h);
+            resize_callback(&mut *backend, self.params.backend);
 
             // Resize scaler via closure
             if let Some(ref mut resize_scaler_callback) = self.on_resize_scaler {
@@ -477,10 +571,9 @@ impl<T,U> VideoRenderer<T,U> {
                 resize_scaler_callback(
                     &mut *backend, 
                     &mut *scaler, 
-                    self.params.aspect_w, 
-                    self.params.aspect_h, 
-                    self.params.surface_w, 
-                    self.params.surface_h
+                    self.params.render,
+                    self.params.aspect_corrected,
+                    self.params.surface,
                 );           
             }            
         }
@@ -490,30 +583,35 @@ impl<T,U> VideoRenderer<T,U> {
     // the internal buffer.
     pub fn would_resize(&self, new: VideoDimensions) -> bool {
 
-        if self.software_aspect {
-            let new_aspect = VideoRenderer::<T,U>::get_aspect_corrected_res(new, self.aspect_ratio);
-            if self.params.aspect_w != new_aspect.w || self.params.aspect_h != new_aspect.h {
-                return true
+        match self.params.aspect_correction {
+            AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
+                if self.params.render != new {
+                    return true
+                }
             }
-        }   
-        else {
-            if self.params.render_w != new.w || self.params.render_h != new.h {
-                return true
+            AspectCorrectionMode::Software => {
+                let new_aspect = VideoRenderer::<T,U>::get_aspect_corrected_res(new, self.aspect_ratio);
+                if self.params.aspect_corrected != new_aspect {
+                    return true
+                }
             }
-        }     
+        }
+
         false
     }
     
     pub fn get_buf_dimensions(&mut self) -> VideoDimensions {
-        (self.params.render_w, self.params.render_h).into()
+        self.params.render
     }
 
     pub fn get_display_dimensions(&mut self) -> VideoDimensions {
-        if self.software_aspect {
-            (self.params.aspect_w, self.params.aspect_h).into()
-        }
-        else {
-            (self.params.render_w, self.params.render_h).into()
+        match self.params.aspect_correction {
+            AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
+                self.params.render
+            }
+            AspectCorrectionMode::Software => {
+                self.params.aspect_corrected
+            }
         }
     }
 
@@ -522,41 +620,150 @@ impl<T,U> VideoRenderer<T,U> {
         if let Some(aspect) = new_aspect {
             if self.aspect_ratio != new_aspect {
                 // Aspect ratio is changing.
-    
+                log::debug!("set_aspect_ratio(): Updating aspect ratio.");
                 let desired_ratio: f64 = aspect.h as f64 / aspect.v as f64;
-                let adjusted_h = (self.params.render_w as f64 / desired_ratio) as u32;
+                let adjusted_h = (self.params.render.w as f64 / desired_ratio) as u32;
     
-                self.params.aspect_h = adjusted_h;
-                log::debug!(
-                    "VideoRenderer: Adjusting backend dimensions due to aspect ratio change. New dimensions: {}x{}",
-                    self.params.aspect_w,
-                    self.params.aspect_h
-                );
-                
+                self.params.aspect_corrected.h = adjusted_h;
                 self.aspect_ratio = Some(aspect);
             }
         }
         else {
             // Disable aspect correction
-            self.params.aspect_w = self.params.render_w;
-            self.params.aspect_h = self.params.render_h;
+            self.params.aspect_corrected = self.params.render;
             self.aspect_ratio = None;
         }
 
-        // Resize backend via closure
-        if let Some(ref mut resize_callback) = self.on_resize {
-            // Lock the backend and pass the mutable reference to the closure
-            let mut backend = self.backend.lock().expect("Failed to lock backend");
-            resize_callback(&mut *backend, self.params.aspect_w, self.params.aspect_h);
-        }               
+        let new_backend;
+
+        match self.params.aspect_correction {
+            AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
+                new_backend = self.params.render;
+            }
+            AspectCorrectionMode::Software => {
+                new_backend = self.params.aspect_corrected;
+            }
+        }
+
+        // Are backend dimensions changing due to aspect change? If so, resize the backend.
+        if self.params.backend != new_backend {
+            self.params.backend = new_backend;
+
+            log::debug!(
+                    "VideoRenderer: Resizing backend due to aspect ratio change. New dimensions: {}x{}",
+                    self.params.backend.w,
+                    self.params.backend.h,
+                );
+
+            // Resize backend via closure
+            if let Some(ref mut resize_callback) = self.on_resize {
+                // Lock the backend and pass the mutable reference to the closure
+                let mut backend = self.backend.lock().expect("Failed to lock backend");
+                resize_callback(&mut *backend, self.params.backend);
+            }
+        }
 
         // Resize scaler
         self.backend_resize_scaler(
-            (self.params.aspect_w, self.params.aspect_h).into(), 
-            (self.params.surface_w, self.params.surface_h).into()
+            self.params.render,
+            self.params.aspect_corrected,
+            self.params.surface
         );
     }
 
+    pub fn set_scaler_params(&mut self, params: &ScalerParams) {
+        /*
+        pub enum ScalerOption {
+            Mode(ScalerMode),
+            Margins { l: u32, r: u32, t: u32, b: u32 },
+            Filtering(ScalerFilter),
+            FillColor { r: u8, g: u8, b: u8, a: u8 },
+            Effect(ScalerEffect),
+        }*/
+
+        let mut scaler_update = Vec::new();
+        scaler_update.push(
+            ScalerOption::Geometry{
+                h_curvature: params.crt_hcurvature,
+                v_curvature: params.crt_vcurvature,
+                corner_radius: params.crt_cornerradius,
+            }
+        );
+
+        scaler_update.push(
+            ScalerOption::Adjustment {
+                h: 1.0,
+                s: 1.0,
+                c: 1.0,
+                b: 1.0,
+                g: params.gamma
+            }
+        );
+
+        scaler_update.push(
+            ScalerOption::Filtering(
+                params.filter
+            )
+        );
+
+        scaler_update.push(
+            ScalerOption::Scanlines {
+                enabled: params.crt_scanlines,
+                lines: if self.params.double_scan { self.params.render.h / 2 } else { self.params.render.h },
+                intensity: 0.3,
+            }
+        );
+        
+        match params.crt_phosphor_type {
+            PhosphorType::Color => {
+                scaler_update.push(
+                    ScalerOption::Mono {
+                        enabled: false,
+                        r: 1.0,
+                        g: 1.0,
+                        b: 1.0,
+                        a: 1.0,
+                    })
+            },
+            PhosphorType::White => {
+                scaler_update.push(
+                ScalerOption::Mono {
+                    enabled: true,
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                })
+            }
+            PhosphorType::Green => {
+                scaler_update.push(
+                ScalerOption::Mono {
+                    enabled: true,
+                    r: 0.0,
+                    g: 1.0,
+                    b: 0.0,
+                    a: 1.0,
+                })
+            }
+            PhosphorType::Amber => {
+                scaler_update.push(
+                    ScalerOption::Mono {
+                        enabled: true,
+                        r: 1.0,
+                        g: 0.75,
+                        b: 0.0,
+                        a: 1.0,
+                    })
+            }
+        }
+
+        if let Some(ref mut scaler_callback) = self.on_scaler_options {
+            let mut backend = self.backend.lock().expect("Failed to lock backend");
+            let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
+            log::debug!("Sending scaler params to callback...");
+            scaler_callback(&mut *backend, &mut *scaler, scaler_update);
+        }
+    }
 
     /// Given the specified resolution and desired aspect ratio, return an aspect corrected resolution
     /// by adjusting the vertical resolution (Horizontal resolution will never be changed)
@@ -589,12 +796,12 @@ impl<T,U> VideoRenderer<T,U> {
         if let Some(mut with_buffer) = self.on_with_buffer.take() {
             //let mut backend = self.backend.lock().expect("Failed to lock backend");
             with_buffer(&mut |buffer: &mut [u8]| {
-                let frame_slice = &buffer[0..(self.params.aspect_w as usize * self.params.aspect_h as usize * std::mem::size_of::<u32>())];
+                let frame_slice = &buffer[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
                 match image::save_buffer(
                     filename.clone(),
                     frame_slice,
-                    self.params.aspect_w,
-                    self.params.aspect_h, 
+                    self.params.backend.w,
+                    self.params.backend.h,
                     image::ColorType::Rgba8) 
                 {
                     Ok(_) => println!("Saved screenshot: {}", filename.display()),
@@ -617,13 +824,13 @@ impl<T,U> VideoRenderer<T,U> {
         // Find first unique filename in screenshot dir
         let filename = file_util::find_unique_filename(path, "screenshot", ".png");
 
-        let frame_slice = &frame[0..(self.params.aspect_w as usize * self.params.aspect_h as usize * std::mem::size_of::<u32>())];
+        let frame_slice = &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
 
         match image::save_buffer(
             filename.clone(),
             frame_slice,
-            self.params.aspect_w,
-            self.params.aspect_h, 
+            self.params.backend.w,
+            self.params.backend.h,
             image::ColorType::Rgba8) 
         {
             Ok(_) => println!("Saved screenshot: {}", filename.display()),

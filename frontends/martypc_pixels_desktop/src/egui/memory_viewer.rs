@@ -34,8 +34,6 @@
 
 */
 
-use std::collections::VecDeque;
-
 use crate::egui::*;
 use crate::egui::token_listview::*;
 use marty_core::syntax_token::*;

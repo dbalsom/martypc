@@ -107,6 +107,7 @@ impl CompositeAdjustControl {
         self.params = params;
     }
 
+    #[allow(dead_code)]
     pub fn get_params(&self) -> &CompositeParams {
         &self.params
     }

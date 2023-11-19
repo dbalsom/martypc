@@ -40,16 +40,18 @@ use std::{
     time::{Instant, Duration}
 };
 
+use bpaf_toml_config::ConfigFileParams;
+
 use marty_core::{
-    
+
     bytequeue::ByteQueue,
     cpu_808x::{
         *,
         Cpu,
         mnemonic::Mnemonic,
     },
-    cpu_common::{CpuType, CpuOption},
-    config::{ConfigFileParams, TestMode, TraceMode, ValidatorType},
+    cpu_common::{CpuType, CpuOption, TraceMode},
+    cpu_validator::ValidatorType,
     cpu_validator::{CycleState, BusCycle, BusState, VRegisters},
     tracelogger::TraceLogger
 };

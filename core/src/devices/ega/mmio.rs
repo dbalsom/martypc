@@ -30,7 +30,7 @@
 
 */
 
-use crate::bus::{BusInterface, IoDevice, MemoryMappedDevice, DeviceRunTimeUnit};
+use crate::bus::MemoryMappedDevice;
 use crate::devices::ega::*;
 
 impl MemoryMappedDevice for EGACard {

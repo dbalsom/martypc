@@ -361,6 +361,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bpaf_toml_config"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "bpaf",
+ "log",
+ "marty_core",
+ "serde",
+ "serde_derive",
+ "toml",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -888,7 +901,7 @@ checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 
 [[package]]
 name = "display_scaler"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "pixels",
  "wgpu",
@@ -1695,13 +1708,13 @@ dependencies = [
 
 [[package]]
 name = "marty_core"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "arraydeque",
- "bpaf",
  "bytemuck",
  "cpal",
+ "criterion",
  "lazy_static",
  "log",
  "md5",
@@ -1721,7 +1734,7 @@ dependencies = [
 
 [[package]]
 name = "marty_pixels_scaler"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "display_scaler",
@@ -1767,10 +1780,11 @@ dependencies = [
 
 [[package]]
 name = "marty_render"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "cgmath",
+ "criterion",
  "display_scaler",
  "fast_image_resize",
  "glam",
@@ -1783,7 +1797,7 @@ dependencies = [
 
 [[package]]
 name = "martypc"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "marty_core",
  "marty_render",
@@ -1793,8 +1807,9 @@ dependencies = [
 
 [[package]]
 name = "martypc_pixels_desktop"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
+ "bpaf_toml_config",
  "bytemuck",
  "colored",
  "console_error_panic_hook",

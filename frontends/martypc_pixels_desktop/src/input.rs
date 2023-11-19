@@ -35,7 +35,7 @@
 
 use std::env::consts::OS;
 
-use winit::keyboard::{KeyCode, ModifiersKeyState};
+use winit::keyboard::KeyCode;
 
 use marty_core::keys::MartyKey;
 

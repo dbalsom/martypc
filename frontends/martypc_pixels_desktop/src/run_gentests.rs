@@ -39,16 +39,17 @@ use std::{
     time::Instant
 };
 
+use bpaf_toml_config::ConfigFileParams;
+
 use marty_core::{
-    
+
     bytequeue::ByteQueue,
     cpu_808x::{
         *,
         Cpu,
         mnemonic::Mnemonic,
     },
-    cpu_common::{CpuType, CpuOption},
-    config::{ConfigFileParams, TraceMode},
+    cpu_common::{CpuType, CpuOption, TraceMode},
     devices::pic::Pic,
     cpu_validator::{CpuValidator, BusOp, BusOpType, CycleState, BusCycle, BusState},
     arduino8088_validator::ArduinoValidator,
