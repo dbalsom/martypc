@@ -2131,7 +2131,7 @@ pub fn run() {
                     // Render everything together
                     video.with_backend(|pixels, scaler| {
                         let _render_result = pixels.render_with(|encoder, render_target, context| {
-                            scaler.render(encoder, render_target, true);
+                            scaler.render(encoder, render_target);
 
                             if render_egui {
                                 framework.render(encoder, render_target, context);

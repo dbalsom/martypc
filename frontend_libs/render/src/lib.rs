@@ -69,7 +69,7 @@ pub use display_scaler::ScalerMode;
 
 use image;
 use log;
-use display_scaler::{ScalerOption};
+use display_scaler::{ScalerOption, ScalerFilter};
 
 #[derive (Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ScalingMode {
@@ -127,7 +127,6 @@ pub enum AspectCorrectionMode {
     Software,
     Hardware
 }
-
 
 #[derive (Copy, Clone)]
 pub struct VideoParams {
@@ -200,6 +199,7 @@ impl Default for CompositeParams {
 
 #[derive (Copy, Clone, Debug)]
 pub struct ScalerParams {
+    pub filter: ScalerFilter,
     pub crt_effect: bool,
     pub crt_hcurvature: f32,
     pub crt_vcurvature: f32,
@@ -212,6 +212,7 @@ pub struct ScalerParams {
 impl Default for ScalerParams {
     fn default() -> Self {
         Self {
+            filter: ScalerFilter::Linear,
             crt_effect: false,
             crt_hcurvature: 0.0,
             crt_vcurvature: 0.0,
@@ -223,8 +224,9 @@ impl Default for ScalerParams {
     }
 }
 
-#[derive (Copy, Clone, Debug, PartialEq)]
+#[derive (Copy, Clone, Debug, Default, PartialEq)]
 pub enum PhosphorType {
+    #[default]
     Color,
     White,
     Green,
@@ -696,6 +698,12 @@ impl<T,U> VideoRenderer<T,U> {
                 b: 1.0,
                 g: params.gamma
             }
+        );
+
+        scaler_update.push(
+            ScalerOption::Filtering(
+                params.filter
+            )
         );
 
         scaler_update.push(

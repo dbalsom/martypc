@@ -32,6 +32,7 @@
 
 
 use crate::egui::*;
+use display_scaler::ScalerFilter;
 
 pub struct ScalerAdjustControl {
     params: ScalerParams
@@ -58,11 +59,27 @@ impl ScalerAdjustControl {
                 }
                 ui.end_row();
                 */
+
+                ui.label(egui::RichText::new("Filtering Mode:").text_style(egui::TextStyle::Monospace));
+                let previous_filter_selection = self.params.filter.clone();
+
+                egui::ComboBox::from_id_source("filter_select")
+                    .selected_text(format!("{:?}", self.params.filter))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.params.filter, ScalerFilter::Nearest, "Nearest");
+                        ui.selectable_value(&mut self.params.filter, ScalerFilter::Linear, "Linear");
+                    });
+
+                if self.params.filter != previous_filter_selection {
+                    update = true;
+                }
+                ui.end_row();
+
                 ui.label(egui::RichText::new("Phosphor Type:").text_style(egui::TextStyle::Monospace));
 
-                let previous_selection = self.params.crt_phosphor_type.clone();
+                let previous_phosphor_selection = self.params.crt_phosphor_type.clone();
 
-                let _innerresponse = egui::ComboBox::from_id_source("scaler_mono_select")
+                egui::ComboBox::from_id_source("scaler_mono_select")
                     .selected_text(format!("{:?}", self.params.crt_phosphor_type))
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut self.params.crt_phosphor_type, PhosphorType::Color, "Color");
@@ -71,11 +88,9 @@ impl ScalerAdjustControl {
                         ui.selectable_value(&mut self.params.crt_phosphor_type, PhosphorType::Amber, "Amber");
                     });
 
-                if self.params.crt_phosphor_type != previous_selection {
-                    log::debug!("phosphor type changed!");
+                if self.params.crt_phosphor_type != previous_phosphor_selection {
                     update = true;
                 }
-
                 ui.end_row();
 
                 ui.label(egui::RichText::new("Gamma:").text_style(egui::TextStyle::Monospace));
@@ -90,17 +105,19 @@ impl ScalerAdjustControl {
                 }
                 ui.end_row();
 
-                ui.label(egui::RichText::new("Horizontal Curvature:").text_style(egui::TextStyle::Monospace));
+                ui.label(egui::RichText::new("Barrel Distortion:").text_style(egui::TextStyle::Monospace));
                 if ui.add(egui::Slider::new(&mut self.params.crt_hcurvature, 0.0..=1.0)).changed() {
                     update = true;
                 }
                 ui.end_row();
 
+                /*
                 ui.label(egui::RichText::new("Vertical Curvature:").text_style(egui::TextStyle::Monospace));
                 if ui.add(egui::Slider::new(&mut self.params.crt_vcurvature, 0.0..=1.0)).changed() {
                     update = true;
                 }
                 ui.end_row();
+                */
 
                 ui.label(egui::RichText::new("Corner Radius:").text_style(egui::TextStyle::Monospace));
                 if ui.add(egui::Slider::new(&mut self.params.crt_cornerradius, 0.0..=1.0)).changed() {

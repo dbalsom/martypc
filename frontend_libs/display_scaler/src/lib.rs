@@ -40,11 +40,14 @@ pub enum ScalerMode {
     Stretch
 }
 
+#[derive (Copy, Clone, Debug, Eq, PartialEq)]
+
 pub enum ScalerFilter {
     Nearest,
     Linear
 }
 
+#[derive (Copy, Clone, Debug, Eq, PartialEq)]
 pub enum ScanlineMode {
     Square,
     Sin
@@ -79,7 +82,6 @@ pub trait DisplayScaler: Send + Sync {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         render_target: &wgpu::TextureView,
-        bilinear: bool
     );
     fn resize(
         &mut self,
@@ -95,6 +97,6 @@ pub trait DisplayScaler: Send + Sync {
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32);
     fn set_bilinear(&mut self, bilinear: bool);
     fn set_fill_color(&mut self, fill: wgpu::Color);
-    fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption);
+    fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption, update: bool) -> bool;
     fn set_options(&mut self, pixels: &pixels::Pixels, opts: Vec<ScalerOption>);
 }

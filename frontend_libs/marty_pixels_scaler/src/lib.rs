@@ -595,7 +595,10 @@ impl DisplayScaler for MartyScaler {
         self.fill_color = fill;
     }
 
-    fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption) {
+    /// Apply a ScalerOption. Update of uniform buffers is controlled by the 'update' boolean. If
+    /// it is true we will perform an immediate uniform update; if false it will be delayed and
+    /// set_option() will return true to indicate that the caller should perform an update.
+    fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption, update: bool) -> bool {
 
         let mut update_uniform = false;
 
@@ -640,15 +643,34 @@ impl DisplayScaler for MartyScaler {
                 println!("Setting scanline option to: {}, lines: {}", enabled, lines);
                 self.scanlines = lines;
                 self.do_scanlines = enabled;
+                update_uniform = true;
             }
             ScalerOption::Effect(_) => {}
         }
 
-        self.update_uniforms(pixels);
+        if update && update_uniform {
+            self.update_uniforms(pixels);
+        }
+        else if update_uniform {
+            return true;
+        }
+        return false;
     }
+
+    /// Iterate though a vector of ScalerOptions and apply them all. We can defer uniform update
+    /// until all options have been processed.
     fn set_options(&mut self, pixels: &pixels::Pixels, opts: Vec<ScalerOption>) {
+
+        let mut update_uniform = false;
         for opt in opts {
-            self.set_option(pixels, opt);
+            let update_flag = self.set_option(pixels, opt, false);
+            if update_flag {
+                update_uniform = true;
+            }
+        }
+
+        if update_uniform {
+            self.update_uniforms(pixels);
         }
     }
 
@@ -657,10 +679,9 @@ impl DisplayScaler for MartyScaler {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         render_target: &wgpu::TextureView,
-        bilinear: bool
     ) {
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("StretchRenderer render pass"),
+            label: Some("marty_renderer render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: render_target,
                 resolve_target: None,
@@ -673,7 +694,7 @@ impl DisplayScaler for MartyScaler {
         });
         rpass.set_pipeline(&self.render_pipeline);
 
-        if bilinear {
+        if self.bilinear {
             rpass.set_bind_group(0, &self.bilinear_bind_group, &[]);
         }
         else {
@@ -821,24 +842,25 @@ impl ScalingMatrix {
     fn new(
         mode: ScalerMode,
         texture_size: (f32, f32),
-        target_width: (f32, f32),
+        target_size: (f32, f32),
         screen_size: (f32, f32),
         margin_y: f32
     ) -> Self {
 
         match mode {
-            ScalerMode::None => ScalingMatrix::none_matrix(texture_size, target_width, screen_size, margin_y),
-            ScalerMode::Integer => ScalingMatrix::integer_matrix(texture_size, target_width,screen_size, margin_y),
-            ScalerMode::Fit => ScalingMatrix::fit_matrix(texture_size, target_width,screen_size, margin_y),
-            ScalerMode::Stretch => ScalingMatrix::stretch_matrix(texture_size, target_width,screen_size, margin_y),
+            ScalerMode::None => ScalingMatrix::none_matrix(texture_size, target_size, screen_size, margin_y),
+            ScalerMode::Integer => ScalingMatrix::integer_matrix(texture_size, target_size,screen_size, margin_y),
+            ScalerMode::Fit => ScalingMatrix::fit_matrix(texture_size, target_size,screen_size, margin_y),
+            ScalerMode::Stretch => ScalingMatrix::stretch_matrix(texture_size, target_size,screen_size, margin_y),
         }
     }
 
-    fn none_matrix(texture_size: (f32, f32), target_width: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
+    fn none_matrix(texture_size: (f32, f32), target_size: (f32, f32), screen_size: (f32, f32), margin_y: f32) -> Self {
 
-        let _margin_y = margin_y / 2.0;
+        let margin_ndc = margin_y / (screen_size.1 / 2.0);
 
         let (texture_width, texture_height) = texture_size;
+        let target_height = target_size.1;
         let (screen_width, screen_height) = screen_size;
 
         // Do not scale
@@ -853,9 +875,13 @@ impl ScalingMatrix {
 
         // Create a transformation matrix
         let sw = texture_width / screen_width;
-        let sh = texture_height / screen_height;
-        let tx = (screen_width / 2.0).fract() / screen_width;
-        let ty = (screen_height / 2.0).fract() / screen_height;
+        let sh = target_height / screen_height;
+
+        let tx_nudge = (screen_width / 2.0).fract() / screen_width;
+        let ty_nudge = (screen_height / 2.0).fract() / screen_height;
+
+        let tx= tx_nudge;
+        let ty= ty_nudge - margin_ndc / 2.0;
 
         #[rustfmt::skip]
         let transform: [f32; 16] = [
