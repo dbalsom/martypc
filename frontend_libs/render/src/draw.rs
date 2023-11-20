@@ -121,6 +121,7 @@ impl<T,U> VideoRenderer<T,U> {
                     self.params.render.h,
                     input_buf,
                     extents,
+                    RenderBpp::Six,
                 )
             }
             _=> {
@@ -543,9 +544,10 @@ impl<T,U> VideoRenderer<T,U> {
     pub fn draw_ega_direct_u32(
         frame: &mut [u8],
         w: u32,
-        h: u32,
+        mut h: u32,
         dbuf: &[u8],
         extents: &DisplayExtents,
+        bpp: RenderBpp,
     ) {
 
         let mut horiz_adjust = extents.aperture.x;
@@ -556,6 +558,10 @@ impl<T,U> VideoRenderer<T,U> {
         }
         if extents.aperture.y + extents.aperture.h >= extents.field_h {
             vert_adjust = 0;
+        }
+
+        if extents.double_scan {
+            h = h / 2;
         }
 
         if h as usize * extents.row_stride > dbuf.len() {
@@ -570,39 +576,80 @@ impl<T,U> VideoRenderer<T,U> {
 
         let frame_u32: &mut [u32] = bytemuck::cast_slice_mut(frame);
 
-        if extents.double_scan {
-            for y in 0..max_y {
+        match bpp {
+            RenderBpp::Four => {
+                if extents.double_scan {
+                    for y in 0..max_y {
 
-                let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
+                        let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
 
-                let frame_row0_offset = ((y * 2) * w) as usize;
-                let frame_row1_offset = (((y * 2) * w) + w) as usize;
+                        let frame_row0_offset = ((y * 2) * w) as usize;
+                        let frame_row1_offset = (((y * 2) * w) + w) as usize;
 
-                for x in 0..max_x {
-                    let fo0 = frame_row0_offset + x as usize;
-                    let fo1 = frame_row1_offset + x as usize;
+                        for x in 0..max_x {
+                            let fo0 = frame_row0_offset + x as usize;
+                            let fo1 = frame_row1_offset + x as usize;
 
-                    let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+                            let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
 
-                    // TODO: Would it be better for cache concurrency to do one line at a time?
-                    frame_u32[fo0] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
-                    frame_u32[fo1] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                            // TODO: Would it be better for cache concurrency to do one line at a time?
+                            frame_u32[fo0] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                            frame_u32[fo1] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                        }
+                    }
+                }
+                else {
+                    for y in 0..max_y {
+                        let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
+                        let frame_row_offset = (y * w) as usize;
+
+                        for x in 0..max_x {
+                            let fo = frame_row_offset + x as usize;
+                            let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+
+                            frame_u32[fo] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                        }
+                    }
                 }
             }
-        }
-        else {
-            for y in 0..max_y {
-                let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
-                let frame_row_offset = (y * w) as usize;
+            RenderBpp::Six => {
+                if extents.double_scan {
+                    for y in 0..max_y {
 
-                for x in 0..max_x {
-                    let fo = frame_row_offset + x as usize;
-                    let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+                        let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
 
-                    frame_u32[fo] = CGA_RGBA_COLORS_U32[0][(dbuf[dbo] & 0x0F) as usize];
+                        let frame_row0_offset = ((y * 2) * w) as usize;
+                        let frame_row1_offset = (((y * 2) * w) + w) as usize;
+
+                        for x in 0..max_x {
+                            let fo0 = frame_row0_offset + x as usize;
+                            let fo1 = frame_row1_offset + x as usize;
+
+                            let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+
+                            // TODO: Would it be better for cache concurrency to do one line at a time?
+                            frame_u32[fo0] = EGA_RGBA_COLORS_U32[(dbuf[dbo] & 0x3F) as usize];
+                            frame_u32[fo1] = EGA_RGBA_COLORS_U32[(dbuf[dbo] & 0x3F) as usize];
+                        }
+                    }
                 }
-            }            
-        }
+                else {
+                    for y in 0..max_y {
+                        let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
+                        let frame_row_offset = (y * w) as usize;
 
+                        for x in 0..max_x {
+                            let fo = frame_row_offset + x as usize;
+                            let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+
+                            frame_u32[fo] = EGA_RGBA_COLORS_U32[(dbuf[dbo] & 0x3F) as usize];
+                        }
+                    }
+                }
+            }
+            _ => {
+                unreachable!("EGA: Unimplemented BPP mode!");
+            }
+        }
     }    
 }

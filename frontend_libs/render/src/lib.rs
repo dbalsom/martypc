@@ -43,6 +43,8 @@ use std::path::Path;
 use std::mem::size_of;
 use std::sync::{Arc, Mutex};
 
+use marty_core::videocard::RenderBpp;
+
 pub mod consts;
 pub mod color;
 pub mod resize;
@@ -137,6 +139,7 @@ pub struct VideoParams {
     pub double_scan: bool,                          // Whether to double rows when rendering into the internal buffer.
     pub aspect_correction: AspectCorrectionMode,    // Determines how to handle aspect correction.
     pub composite_params: CompositeParams,          // Parameters used for composite emulation.
+    pub bpp: RenderBpp,
 }
 
 impl Default for VideoParams {
@@ -149,6 +152,7 @@ impl Default for VideoParams {
             double_scan: false,
             aspect_correction: AspectCorrectionMode::None,
             composite_params: Default::default(),
+            bpp: Default::default(),
         }
     }
 }

@@ -78,6 +78,8 @@ impl VideoCard for CGACard {
         RenderMode::Direct
     }
 
+    fn get_render_depth(&self) -> RenderBpp { RenderBpp::Four }
+
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
     }

@@ -65,6 +65,8 @@ impl VideoCard for EGACard {
         RenderMode::Direct
     }
 
+    fn get_render_depth(&self) -> RenderBpp { RenderBpp::Six }
+
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
     }
@@ -112,9 +114,9 @@ impl VideoCard for EGACard {
     }
 
     /// Return whether to double scanlines produced by this adapter.
-    /// For EGA, this is false.
+    /// For EGA, this is false in 16Mhz modes and true in 14Mhz modes
     fn get_scanline_double(&self) -> bool {
-        false
+        self.extents.double_scan
     }
 
     fn get_display_buf(&self) -> &[u8] {
@@ -404,10 +406,17 @@ impl VideoCard for EGACard {
         let mut attribute_pal_vec = Vec::new();
         for i in 0..16 {
 
-            let (r, g, b) = EGACard::ega_to_rgb(self.attribute_palette_registers[i]);
+            // Attribute palette entries are interpreted differently depending on the current clock speed
+            // Low resolution modes use 4BPP palette entries, high resolution modes use 6bpp.
+            let pal_resolved = match self.misc_output_register.clock_select() {
+                ClockSelect::Clock14 => self.attribute_palette_registers[i].four_to_six,
+                _ => self.attribute_palette_registers[i].six,
+            };
+
+            let (r, g, b) = EGACard::ega_to_rgb(pal_resolved);
             attribute_pal_vec.push((
                 format!("{}", i), 
-                VideoCardStateEntry::Color(format!("{:06b}", self.attribute_palette_registers[i]), r, g, b)
+                VideoCardStateEntry::Color(format!("{:06b}", self.attribute_palette_registers[i].six), r, g, b)
             ));
         }
         map.insert("AttributePalette".to_string(), attribute_pal_vec);
@@ -451,7 +460,7 @@ impl VideoCard for EGACard {
         //internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
         //internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         //internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-        //internal_vec.push((format!("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
+        internal_vec.push((format!("blink state:"), VideoCardStateEntry::String(format!("{}", self.blink_state))));
 
         internal_vec.push((format!("hsync_ct:"), VideoCardStateEntry::String(format!("{}", self.hsync_ct))));
         internal_vec.push((format!("vsync_ct:"), VideoCardStateEntry::String(format!("{}", self.vsync_ct))));
@@ -579,7 +588,7 @@ impl VideoCard for EGACard {
                 byte |= read_bit << i;
             }
             // return self.attribute_palette_registers[byte & 0x0F].into_bytes()[0];
-            return self.attribute_palette_registers[byte & 0x0F];
+            return self.attribute_palette_registers[byte & 0x0F].six;
         }
         0
     }

@@ -1410,10 +1410,8 @@ pub fn run() {
                             if video.would_resize((new_w, new_h).into()) {
                                 // Resize renderer & pixels
                                 video_card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
+                                log::debug!("Aperture changed. Setting front buffer resolution to ({},{})", new_w, new_h);
                                 video.resize((new_w, new_h).into());
-                                
-                                let new_buf_size = video.get_display_dimensions();
-                                log::debug!("Aperture changed. Setting front buffer resolution to ({},{})", new_buf_size.w, new_buf_size.h);
                                 
                                 /*
                                 if let Err(e) = pixels.resize_buffer(new_buf_size.w, new_buf_size.h) {

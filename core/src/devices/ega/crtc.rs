@@ -30,7 +30,7 @@
 
 */
 
-use crate::devices::ega::EGACard;
+use crate::devices::ega::*;
 
 pub const EGA_VBLANK_MASK: u16 = 0x001F;
 pub const EGA_HBLANK_MASK: u8 = 0x001F;
@@ -272,7 +272,12 @@ impl EGACard {
                 self.crtc_den = true;
                 self.crtc_vborder = false;
                 self.crtc_vblank = false;
-                
+
+                // Toggle blink state. This is toggled every 8 frames by default.
+                if (self.frame % EGA_CURSOR_BLINK_RATE as u64) == 0 {
+                    self.blink_state = !self.blink_state;
+                }
+
                 // Load first char + attr
                 self.set_char_addr();     
             }

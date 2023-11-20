@@ -162,6 +162,15 @@ pub enum RenderMode {
     Indirect
 }
 
+#[derive (Copy, Clone, Default)]
+#[derive(PartialEq)]
+pub enum RenderBpp {
+    #[default]
+    Four,
+    Six,
+    Eight,
+}
+
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
 
 #[allow(dead_code)]
@@ -282,6 +291,9 @@ pub trait VideoCard {
 
     /// Returns the rendering mode of the adapter.
     fn get_render_mode(&self) -> RenderMode;
+
+    /// Returns the bit depth of the internal buffer for direct mode
+    fn get_render_depth(&self) -> RenderBpp;
 
     /// Returns the currently configured DisplayMode
     fn get_display_mode(&self) -> DisplayMode;

@@ -197,8 +197,12 @@ impl EGACard {
                 // R(A)
                 // Bits 0-4: Cursor Start Line
                 // Bit 5: Cursor Enable (This field only valid in VGA)
-                self.crtc_cursor_start = byte & CURSOR_LINE_MASK;
+                // I suppose the only way to disable the cursor on IBM EGA is to position it off
+                // the screen.
                 //self.crtc_cursor_enabled = byte >> 5 & 0x01 != 0;
+
+                self.crtc_cursor_start = byte & CURSOR_LINE_MASK;
+                self.update_cursor_data();
             }
             CRTCRegister::CursorEndLine => {
                 // R(B)
@@ -206,6 +210,7 @@ impl EGACard {
                 // Bits 5-6: Cursor Skew        
                 self.crtc_cursor_end = byte & CURSOR_LINE_MASK;
                 self.crtc_cursor_skew = byte >> 5 & 0x03;
+                self.update_cursor_data();
             }
             CRTCRegister::StartAddressH => {
                 // (RC) - 8 bits. High byte of Cursor Address register.
@@ -223,11 +228,15 @@ impl EGACard {
             }            
             CRTCRegister::CursorAddressH => {
                 // (RE) - 8 bits.  High byte of Cursor Address register
-                self.crtc_cursor_address_ho = byte
+                self.crtc_cursor_address_ho = byte;
+                self.crtc_cursor_address &= 0x00FF;
+                self.crtc_cursor_address |= (byte as u16) << 8;
             }
             CRTCRegister::CursorAddressL => {
                 // (RF) - 8 bits. Low byte of Cursor Address register.
-                self.crtc_cursor_address_lo = byte
+                self.crtc_cursor_address_lo = byte;
+                self.crtc_cursor_address &= 0xFF00;
+                self.crtc_cursor_address |= byte as u16;
             }
             CRTCRegister::VerticalRetraceStart => {
                 // (R10) 9 bits - Vertical Retrace Start
