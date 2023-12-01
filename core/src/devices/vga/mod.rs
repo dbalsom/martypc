@@ -2072,7 +2072,7 @@ impl MemoryMappedDevice for VGACard {
                     }
 
                     // Third, the operation specified by the Logical Operation field of the Data Rotate register
-                    // is perfomed on the data for each plane and the latch read register.
+                    // is performed on the data for each plane and the latch read register.
                     // Only the bits set in the Bit Mask register will be affected by the Logical Operation. 
 
                     let rotate_function = self.graphics_data_rotate.function();

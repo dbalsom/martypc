@@ -520,7 +520,7 @@ const EGA14_APERTURE_FULL_Y: u32 = 0;
 
 const EGA16_APERTURE_CROPPED_W: u32 = 640;
 const EGA16_APERTURE_CROPPED_H: u32 = 350;
-const EGA16_APERTURE_CROPPED_X: u32 = 48;
+const EGA16_APERTURE_CROPPED_X: u32 = 40;
 const EGA16_APERTURE_CROPPED_Y: u32 = 2;
 const EGA16_APERTURE_FULL_W: u32 = 640 + 16 + 16;
 const EGA16_APERTURE_FULL_H: u32 = 350;
@@ -714,7 +714,7 @@ pub struct EGACard {
     crtc_start_address_ho: u8, // R(C)
     crtc_start_address_lo: u8, // R(D)
     crtc_start_address: u16,   // Calculated from C&D
-    crtc_frame_address: usize,
+    start_address_latch: usize,
     crtc_cursor_address_lo: u8,                     // R(E)
     crtc_cursor_address_ho: u8,                     // R(F)
     crtc_cursor_address: u16,
@@ -769,6 +769,7 @@ pub struct EGACard {
     attribute_overscan_color: AOverscanColor,
     attribute_color_plane_enable: AColorPlaneEnable,
     attribute_pel_panning: u8,
+    pel_pan_latch: u8,
 
     current_font: usize,
 
@@ -931,7 +932,7 @@ impl Default for EGACard {
             crtc_start_address: 0,
             crtc_start_address_ho: 0,
             crtc_start_address_lo: 0,
-            crtc_frame_address: 0,
+            start_address_latch: 0,
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
             crtc_cursor_address: 0,
@@ -986,6 +987,7 @@ impl Default for EGACard {
             attribute_overscan_color: AOverscanColor::new(),
             attribute_color_plane_enable: AColorPlaneEnable::new(),
             attribute_pel_panning: 0,
+            pel_pan_latch: 0,
 
             current_font: 0,
             misc_output_register: EMiscellaneousOutputRegister::new(),
@@ -1396,7 +1398,7 @@ impl EGACard {
 
         self.cycles += 8;
 
-        // Only draw if render buffer address is in bounds.
+        // Only draw if marty_render buffer address is in bounds.
         if self.rba < (EGA_MAX_CLOCK16 - 8) {
             if self.in_display_area {
                 // Draw current character row
@@ -1411,7 +1413,9 @@ impl EGACard {
             } else if self.crtc_hblank {
                 if self.extents.aperture.debug {
                     // Draw hblank in debug color
-                    if self.crtc_hsync {
+                    if self.monitor_hsync{
+                        self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Cyan as u8);
+                    } else if self.crtc_hsync {
                         self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::BlueBright as u8);
                     } else {
                         self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Blue as u8);
@@ -1467,7 +1471,7 @@ impl EGACard {
 
         self.cycles += 8;
 
-        // Only draw if render buffer address is in bounds.
+        // Only draw if marty_render buffer address is in bounds.
         if self.rba < (EGA_MAX_CLOCK16 - 16) {
             if self.in_display_area {
                 match self.attribute_mode_control.mode() {
@@ -1628,14 +1632,9 @@ impl EGACard {
     fn swap(&mut self) {
         //std::mem::swap(&mut self.back_buf, &mut self.front_buf);
 
-        if self.back_buf == 0 {
-            self.front_buf = 0;
-            self.back_buf = 1;
-        } else {
-            self.front_buf = 1;
-            self.back_buf = 0;
-        }
-
+        let tmp = self.back_buf;
+        self.back_buf = self.front_buf;
+        self.front_buf = tmp;
         self.buf[self.back_buf].fill(0);
     }
 
@@ -1654,7 +1653,7 @@ impl EGACard {
         }
         else {
             // "Split" cursor.
-            for i in 0..=self.crtc_cursor_end {
+            for i in 0..self.crtc_cursor_end {
                 // First part of cursor is 0->end_line
                 self.cursor_data[i as usize] = true;
             }

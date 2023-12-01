@@ -527,7 +527,7 @@ pub async fn run(cfg: &str) {
                     |encoder, render_target, context| {
                         let fill_texture = stretching_renderer.get_texture_view();
 
-                        //context.scaling_renderer.render(encoder, fill_texture);
+                        //context.scaling_renderer.marty_render(encoder, fill_texture);
                     
                         stretching_renderer.render(encoder, render_target);
                         Ok(())
@@ -537,8 +537,8 @@ pub async fn run(cfg: &str) {
                 };
 
                 /*
-                if let Err(err) = pixels.render() {
-                    log_error("pixels.render", err);
+                if let Err(err) = pixels.marty_render() {
+                    log_error("pixels.marty_render", err);
                     *control_flow = ControlFlow::Exit;
                     return;
                 }
@@ -626,7 +626,7 @@ pub async fn run(cfg: &str) {
                             let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
 
                             // TODO: The vertical delta hack was used for area 8088mph for the old style of rendering.
-                            // Now that we render into a fixed frame, we should refactor this
+                            // Now that we marty_render into a fixed frame, we should refactor this
                             if (new_w != video_data.render_w) || ((new_h != video_data.render_h) && (vertical_delta <= 2)) {
                                 // Resize buffers
                                 log::debug!("Setting internal resolution to ({},{})", new_w, new_h);
@@ -679,7 +679,7 @@ pub async fn run(cfg: &str) {
                         video_buffer = video_card.get_display_buf();
                         beam_pos = None;
 
-                        // Get the render mode from the device and render appropriately
+                        // Get the marty_render mode from the device and marty_render appropriately
                         match (video_card.get_video_type(), video_card.get_render_mode()) {
 
                             (VideoType::CGA, RenderMode::Direct) => {

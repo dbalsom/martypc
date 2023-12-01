@@ -4,15 +4,23 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/core/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontend_libs/display_scaler/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontend_libs/marty_pixels_scaler/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontend_libs/render/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/frontends/martypc_pixels_desktop/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/frontends/martypc_pixels_wasm32/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/core/benches" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/frontend_libs/bpaf_toml_config/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/frontend_libs/render/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/backend/display_backend_pixels/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/backend/display_backend_trait/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/config_toml_bpaf/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_manager_trait/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_manager_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_scaler_trait/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_color/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_egui/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_pixels_scaler/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_render/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_render/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/videocard_renderer/benches" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/videocard_renderer/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

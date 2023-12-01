@@ -73,9 +73,11 @@ use crate::devices::ega::EGACard;
 use crate::devices::vga::VGACard;
 
 use serde::Deserialize;
+use serde_derive::Serialize;
+
 #[allow (dead_code)]
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
 pub enum VideoType {
     None,
     MDA,
@@ -145,6 +147,20 @@ pub enum VideoCardDispatch {
     Ega(EGACard),
     #[cfg(feature = "vga")]
     Vga(VGACard),
+}
+
+// This struct provides an identifier for a VideoCard, encapuslating a unique numeric id ('idx')
+// and the card's type. Hashable to store look
+#[derive (Copy, Clone, Debug, Hash, Eq, PartialEq)]
+pub struct VideoCardId {
+    pub idx: usize,
+    pub vtype: VideoType,
+}
+
+// This struct provides access to a VideoCard and its unique identifier.
+pub struct VideoCardInterface<'a> {
+    pub card: Box<&'a mut dyn VideoCard>,
+    pub id: VideoCardId,
 }
 
 // Video options that can be sent to a VideoCard device. Not all adapters will support
@@ -254,6 +270,20 @@ pub enum CGAColor {
     WhiteBright
 }
 
+#[derive (Copy, Clone, Debug, Serialize)]
+pub enum DisplayApertureType {
+    Cropped,
+    MonitorAccurate,
+    Full,
+    Debug
+}
+
+#[derive (Copy, Clone, Debug)]
+pub enum BufferSelect {
+    Front,
+    Back
+}
+
 #[derive (Clone)]
 pub struct DisplayApertureDesc {
     pub name: &'static str,
@@ -280,6 +310,8 @@ pub struct DisplayExtents {
     pub double_scan: bool,          // Whether the display should be double-scanned when RGBA converted
     pub mode_byte: u8               // Mode byte. Used by CGA modes only.
 }
+
+
 
 pub trait VideoCard {
 

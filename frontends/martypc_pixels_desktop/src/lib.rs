@@ -36,6 +36,7 @@
 #![allow(clippy::too_many_arguments)]
 #![forbid(unsafe_code)]
 
+use display_backend_pixels::PixelsBackend;
 use std::{
     time::{Duration, Instant},
     cell::RefCell,
@@ -44,9 +45,8 @@ use std::{
     path::PathBuf
 };
 
-mod egui;
+mod event_loop;
 mod input;
-
 mod cpu_test;
 #[cfg(feature = "arduino_validator")]
 mod run_fuzzer;
@@ -56,33 +56,11 @@ mod run_gentests;
 mod run_runtests;
 
 mod run_processtests;
-
 mod run_headless;
 
 use input::TranslateKey;
-use crate::egui::{Framework, DeviceSelection};
-
-use pixels::{Pixels, SurfaceTexture};
-
-use winit::{
-    dpi::LogicalSize,
-    event::{
-        Event, 
-        WindowEvent, 
-        DeviceEvent, 
-        ElementState, 
-        StartCause, 
-    },
-    event_loop::{
-        ControlFlow,
-        EventLoop
-    },
-    keyboard::KeyCode,
-    window::WindowBuilder,
-
-};
-
-//use winit_input_helper::WinitInputHelper;
+use marty_egui::GuiState;
+use config_toml_bpaf::ConfigFileParams;
 
 #[cfg(feature = "arduino_validator")]
 use crate::run_fuzzer::run_fuzzer;
@@ -96,9 +74,7 @@ use crate::run_runtests::run_runtests;
 use crate::run_processtests::run_processtests;
 
 use marty_core::{
-    breakpoints::BreakPointType,
     machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
-    cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
     devices::{
         keyboard::KeyboardModifiers,
@@ -109,24 +85,31 @@ use marty_core::{
     machine_manager::MACHINE_DESCS,
     vhd_manager::{VHDManager, VHDManagerError},
     vhd::{self, VirtualHardDisk},
-    videocard::{VideoType, ClockingMode, RenderMode, VideoOption},
+    videocard::{VideoType, ClockingMode},
     bytequeue::ByteQueue,
     sound::SoundPlayer,
-    syntax_token::SyntaxToken,
-    util,
 };
 
-use crate::egui::{GuiEvent, GuiOption, GuiBoolean, GuiEnum, GuiWindow, PerformanceStats};
+use marty_egui::{GuiBoolean, GuiWindow};
+use display_manager_wgpu::{
+    DisplayBackend,
+    DisplayManager,
+    WgpuDisplayManager,
+    WgpuDisplayManagerBuilder,
+    DisplayManagerGuiOptions,
+};
+use marty_core::coreconfig::CoreConfig;
 
-use marty_render::{
+use videocard_renderer::{
     AspectRatio,
     SCALING_MODES,
     VideoRenderer,
     AspectCorrectionMode,
 };
 
-use display_scaler::{DisplayScaler, ScalerMode, Color};
-use marty_pixels_scaler::MartyScaler;
+use marty_pixels_scaler::DisplayScaler;
+
+use crate::event_loop::handle_event;
 
 const EGUI_MENU_BAR: u32 = 25;
 
@@ -146,6 +129,31 @@ const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 // Remove static frequency references
 //const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
+/// Define the main Emulator struct for this frontend.
+/// All the items that the winit event loop closure needs should be set here so that
+/// we can call an event handler in a different file.
+pub struct Emulator {
+    dm: WgpuDisplayManager,
+    config: ConfigFileParams,
+    machine: Machine,
+    exec_control: Rc<RefCell<ExecutionControl>>,
+    mouse_data: MouseData,
+    kb_data: KeyboardData,
+    stat_counter: Counter,
+    gui: GuiState,
+    //context: &'a mut GuiRenderContext,
+    floppy_manager: FloppyManager,
+    vhd_manager: VHDManager,
+    hdd_path: PathBuf,
+    floppy_path: PathBuf,
+    flags: EmuFlags
+}
+
+/// Define flags to be used by emulator.
+pub struct EmuFlags {
+    render_gui: bool,
+    debug_keyboard: bool,
+}
 
 // Rendering Stats
 struct Counter {
@@ -298,7 +306,7 @@ pub fn run() {
     let mut features = Vec::new();
 
     // Read config file
-    let mut config = match bpaf_toml_config::get_config("./martypc.toml"){
+    let mut config = match config_toml_bpaf::get_config("./martypc.toml"){
         Ok(config) => config,
         Err(e) => {
             match e.downcast_ref::<std::io::Error>() {
@@ -320,8 +328,25 @@ pub fn run() {
         }
     };
 
+    let (video_type, clock_mode, video_debug) = {
+        let mut video_type: Option<VideoType> = None;
+        let mut clock_mode: Option<ClockingMode> = None;
+        let mut video_debug = false;
+        let video_cards = config.get_video_cards();
+        if video_cards.len() > 0 {
+            clock_mode = video_cards[0].clocking_mode;
+            video_type = Some(video_cards[0].video_type); // Videotype is not optional
+            video_debug = video_cards[0].debug.unwrap_or(false);
+        }
+        (
+            video_type,
+            clock_mode.unwrap_or_default(),
+            video_debug
+        )
+    };
+
     // Determine required ROM features from configuration options
-    match config.machine.video {
+    match video_type {
         Some(VideoType::EGA) => {
             // an EGA BIOS ROM is required for EGA
             features.push(RomFeature::EGA);
@@ -464,12 +489,14 @@ pub fn run() {
         return run_headless::run_headless(&config, rom_manager, floppy_manager);
     }
 
-    // Init graphics & GUI 
-    let event_loop = EventLoop::new();
-    
-    //let mut input = WinitInputHelper::new();
-    
-    let window = {
+    // Init graphics & GUI
+    // let event_loop = EventLoop::new();
+
+
+
+
+    /*
+    let render_window = {
         let size = LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
         WindowBuilder::new()
             .with_title(format!("MartyPC {}", env!("CARGO_PKG_VERSION")))
@@ -478,24 +505,8 @@ pub fn run() {
             .build(&event_loop)
             .unwrap()
     };
-    
-    // Load icon file.
-    let mut icon_path = PathBuf::new();
-    icon_path.push(config.emulator.basedir.clone());
-    icon_path.push("icon.png");
+    */
 
-    if let Ok(image) = image::open(icon_path.clone()) {
-
-        let rgba8 = image.into_rgba8();
-        let (width, height) = rgba8.dimensions();
-        let icon_raw = rgba8.into_raw();
-        
-        let icon = winit::window::Icon::from_rgba(icon_raw, width, height).unwrap();
-        window.set_window_icon(Some(icon));
-    }
-    else {
-        log::error!("Couldn't load icon: {}", icon_path.display());
-    }
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
@@ -505,34 +516,63 @@ pub fn run() {
         exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
 
+    // Create the logical GUI.
+    let gui = GuiState::new(exec_control.clone());
 
-    // Create pixels & egui backend
-    let (pixels, mut framework) = {
-        let window_size = window.inner_size();
-        let scale_factor = window.scale_factor() as f32;
-        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
-        //let (pixels_w, pixels_h) = {
-        //    (video.params().aspect_w, video.params().aspect_h)
-        //};    
-        let pixels = 
-            Pixels::new(640, 480, surface_texture).unwrap();
-        let framework =
-            Framework::new(
-                &event_loop,
-                window_size.width, 
-                window_size.height, 
-                scale_factor, 
-                &pixels, 
-                exec_control.clone(),
-                config.gui.theme_color
-            );
-
-        (pixels, framework)
+    /*
+    let primary_video = if let Some(video) = config.machine.primary_video {
+        video
+    }
+    else {
+        panic!("No primary video type specified.")
     };
 
-    let mut render_egui = true;
+     */
 
-    let fill_color = Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0}; // Dark grey.
+    /*
+    // Create pixels & egui backend
+    let (pixels, mut framework) = {
+
+        let render_window_opt = window_manager.get_render_window(primary_video);
+
+        if let Some(mw_render) = render_window_opt {
+            let window_size = mw_render.window.inner_size();
+            let scale_factor = mw_render.window.scale_factor() as f32;
+            let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &mw_render.window);
+            //let (pixels_w, pixels_h) = {
+            //    (video.params().aspect_w, video.params().aspect_h)
+            //};
+            let pixels =
+                Pixels::new(
+                    window::WINDOW_MIN_WIDTH,
+
+                    window::WINDOW_MIN_HEIGHT,
+                    surface_texture).unwrap();
+            let framework =
+                Framework::new(
+
+                    &window_manager.get_event_loop().unwrap(),
+                    window_size.width,
+                    window_size.height,
+                    scale_factor,
+                    &pixels,
+                    exec_control.clone(),
+                    config.gui.theme_color
+                );
+
+            (pixels, framework)
+        }
+        else {
+            panic!("Couldn't get marty_render window target.");
+        }
+    };
+
+     */
+
+
+
+    /*
+    let fill_color = Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0 }; // Dark grey.
 
     let marty_scaler = MartyScaler::new(
         ScalerMode::Integer,
@@ -544,82 +584,27 @@ pub fn run() {
         true,
         fill_color
     );
+    */
 
-    let adapter_info = pixels.adapter().get_info();
-    let backend_str = format!("{:?}", adapter_info.backend);
-    let adapter_name_str =  format!("{}", adapter_info.name);
-    log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
-    
+    //let adapter_info = pixels.adapter().get_info();
+
+
+    /*
     // Create the video renderer
     let mut video = 
         VideoRenderer::new(
-            config.machine.video.unwrap_or_default(),
+            config.machine.primary_video.unwrap_or_default(),
             ScalerMode::Integer, 
             pixels,
             marty_scaler,
         );
+    */
 
-    let pixels_arc = video.get_backend();
+    //let pixels_arc = video.get_backend();
 
-    video.set_on_resize_scaler(|pixels, scaler, buf, target, surface| {
 
-        if buf.has_some_size() && surface.has_some_size() {
-            log::debug!(
-                "Resizing scaler to texture {}x{}, target: {}x{}, surface: {}x{}...",
-                buf.w, buf.h,
-                target.w, target.h,
-                surface.w, surface.h,
-            );
-            scaler.resize(&pixels, buf.w, buf.h, target.w, target.h, surface.w, surface.h);
-        }
-        else {
-            log::debug!("Ignoring invalid scaler resize request (window minimized?)");
-        }
 
-    });
 
-    video.set_on_scaler_options(|pixels, scaler, opts| {
-        scaler.set_options(pixels, opts);
-    });
-
-    video.set_on_resize_backend(|pixels, backend| {
-        if backend.has_some_size() {
-            log::debug!("Resizing pixels buffer...");
-            pixels.resize_buffer(backend.w, backend.h).expect("Failed to resize Pixels buffer.");
-        }
-        else {
-            log::debug!("Ignoring invalid buffer resize request (window minimized?)");
-        }
-    });
-
-    video.set_on_margin(|scaler,l,r,t,b| {
-        scaler.set_margins(l,r,t,b);
-    });
-
-    video.set_on_scalemode(|pixels, scaler, m| {
-        log::debug!("Setting scaler mode to {:?}", m);
-        scaler.set_mode(pixels, m);
-    });
-
-    video.set_on_resize_surface(|pixels, surface| {
-        
-        if surface.has_some_size() {
-            log::debug!("Resizing pixels surface to {}x{}", surface.w, surface.h);
-            pixels.resize_surface(surface.w, surface.h).expect("Failed to resize Pixels surface.");
-        }
-        else {
-            log::debug!("Ignoring invalid surface resize request (window minimized?)");
-        }
-    });    
-
-    video.set_with_buffer(move|action| {
-        if let Ok(mut pixels) = pixels_arc.lock() {
-            action(pixels.frame_mut())
-        }
-    });
-
-    // Set list of serial ports
-    framework.gui.update_serial_ports(serial_ports);
 
     let mut stat_counter = Counter::new();
 
@@ -662,10 +647,67 @@ pub fn run() {
         config.machine.model,
         *machine_desc_opt.unwrap(),
         config.emulator.trace_mode.unwrap_or_default(),
-        config.machine.video.unwrap_or_default(),
+        video_type.unwrap_or_default(),
         sp, 
         rom_manager
     );
+
+    // Get a list of video devices from machine.
+    let cardlist = machine.enumerate_video_cards();
+
+    // Calculate icon path for window manager.
+    let mut icon_path = PathBuf::new();
+    icon_path.push(config.emulator.basedir.clone());
+    icon_path.push("icon.png");
+
+    let gui_options = DisplayManagerGuiOptions{
+        theme_color: config.gui.theme_color,
+        theme_dark: config.gui.theme_dark
+    };
+
+    // Create displays.
+    let mut display_manager =
+        WgpuDisplayManagerBuilder::build(
+            &config,
+            cardlist,
+            icon_path,
+            &gui_options,
+        )
+            .unwrap_or_else(|e| {
+                log::error!("Failed to create displays: {:?}", e);
+                std::process::exit(1);
+            });
+
+    let mut render_egui = true;
+    let mut gui = GuiState::new(exec_control.clone());
+
+    // Set list of serial ports
+    gui.update_serial_ports(serial_ports);
+
+    let adapter_info =
+        display_manager
+            .get_main_backend()
+            .and_then(|backend| {
+                backend.get_adapter_info()
+            });
+
+    let (backend_str, adapter_name_str) = {
+        let backend_str;
+        let adapter_name_str;
+
+        if let Some(adapter_info) = adapter_info {
+            backend_str = format!("{:?}", adapter_info.backend);
+            adapter_name_str =  format!("{}", adapter_info.name);
+            (backend_str, adapter_name_str)
+        }
+        else {
+            log::error!("Failed to get adapter info from backend.");
+            std::process::exit(1);
+        }
+    };
+
+    log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
+
 
     // Set the inital power-on state.
     if config.emulator.auto_poweron {
@@ -686,33 +728,40 @@ pub fn run() {
     machine.set_cpu_option(CpuOption::OffRailsDetection(config.cpu.off_rails_detection.unwrap_or(false)));
     machine.set_cpu_option(CpuOption::EnableServiceInterrupt(config.cpu.service_interrupt_enabled.unwrap_or(false)));
 
-    framework.gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));
-    machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
+    // TODO: Reenable these
+    //gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));
+    //machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
+    //gui.set_option(GuiBoolean::CorrectAspect, config.emulator.scaler_aspect_correction);
 
-    framework.gui.set_option(GuiBoolean::CorrectAspect, config.emulator.correct_aspect);
-    if config.emulator.correct_aspect {
+
+    //if config.emulator.scaler_aspect_correction {
         // Default to hardware aspect correction.
-        video.set_aspect_mode(AspectCorrectionMode::Hardware);
-    }
+       //video.set_aspect_mode(AspectCorrectionMode::Hardware);
+        display_manager.for_each_target(|dt| {
+            dt.set_aspect_mode(AspectCorrectionMode::Hardware);
+        });
+    //}
 
-    framework.gui.set_option(GuiBoolean::CpuEnableWaitStates, config.cpu.wait_states_enabled.unwrap_or(true));
+    gui.set_option(GuiBoolean::CpuEnableWaitStates, config.cpu.wait_states_enabled.unwrap_or(true));
     machine.set_cpu_option(CpuOption::EnableWaitStates(config.cpu.wait_states_enabled.unwrap_or(true)));
 
-    framework.gui.set_option(GuiBoolean::CpuInstructionHistory, config.cpu.instruction_history.unwrap_or(false));
+    gui.set_option(GuiBoolean::CpuInstructionHistory, config.cpu.instruction_history.unwrap_or(false));
     machine.set_cpu_option(CpuOption::InstructionHistory(config.cpu.instruction_history.unwrap_or(false)));
 
-    framework.gui.set_option(GuiBoolean::CpuTraceLoggingEnabled, config.emulator.trace_on);
+    gui.set_option(GuiBoolean::CpuTraceLoggingEnabled, config.emulator.trace_on);
     machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
 
-    framework.gui.set_option(GuiBoolean::TurboButton, config.machine.turbo);
-    framework.gui.set_option(GuiBoolean::CompositeDisplay, config.machine.composite.unwrap_or(false));
+    gui.set_option(GuiBoolean::TurboButton, config.machine.turbo);
 
-    if let Some(video_card) = machine.videocard() {
+    //TODO: renable these.
+    //gui.set_option(GuiBoolean::CompositeDisplay, config.machine.composite.unwrap_or(false));
+
+    if let Some(video_card) = machine.primary_videocard() {
         // Update display aperture options in GUI
-        framework.gui.set_display_apertures(video_card.list_display_apertures());
+        gui.set_display_apertures(video_card.list_display_apertures());
     }
 
-    framework.gui.set_scaler_modes((SCALING_MODES.to_vec(), Default::default()));
+    gui.set_scaler_modes((SCALING_MODES.to_vec(), Default::default()));
 
     // Disable warpspeed feature if 'devtools' flag not on.
     #[cfg(not(feature = "devtools"))]
@@ -723,12 +772,12 @@ pub fn run() {
     // Debug mode on? 
     if config.emulator.debug_mode {
         // Open default debug windows
-        framework.gui.set_window_open(GuiWindow::CpuControl, true);
-        framework.gui.set_window_open(GuiWindow::DisassemblyViewer, true);
-        framework.gui.set_window_open(GuiWindow::CpuStateViewer, true);
+        gui.set_window_open(GuiWindow::CpuControl, true);
+        gui.set_window_open(GuiWindow::DisassemblyViewer, true);
+        gui.set_window_open(GuiWindow::CpuStateViewer, true);
 
         // Override CpuInstructionHistory
-        framework.gui.set_option(GuiBoolean::CpuInstructionHistory, true);
+        gui.set_option(GuiBoolean::CpuInstructionHistory, true);
         machine.set_cpu_option(CpuOption::InstructionHistory(true));
 
         // Disable autostart
@@ -738,7 +787,7 @@ pub fn run() {
     #[cfg(debug_assertions)]
     if config.emulator.debug_warn {
         // User compiled MartyPC in debug mode, let them know...
-        framework.gui.show_warning(
+        gui.show_warning(
             &"MartyPC has been compiled in debug mode and will be extremely slow.\n \
                     To compile in release mode, use 'cargo build -r'\n \
                     To disable this error, set debug_warn=false in martypc.toml.".to_string()
@@ -746,7 +795,7 @@ pub fn run() {
     }
 
     // Load program binary if one was specified in config options
-    if let Some(prog_bin) = config.emulator.run_bin {
+    if let Some(prog_bin) = config.emulator.run_bin.clone() {
 
         if let Some(prog_seg) = config.emulator.run_bin_seg {
             if let Some(prog_ofs) = config.emulator.run_bin_ofs {
@@ -774,93 +823,104 @@ pub fn run() {
         }
     }
 
-    // Resize window if video card is in Direct mode and specifies a display aperature
+    /*
+    // Resize window if video card is in Direct mode and specifies a display aperture
     {
         if let Some(card) = machine.videocard() {
             if let RenderMode::Direct = card.get_render_mode() {
+                if let Some(render_window) = window_manager.get_render_window(card.get_video_type()) {
+                    let extents = card.get_display_extents();
+                    let (aper_x, mut aper_y) = card.get_display_aperture();
+                    assert!(aper_x != 0 && aper_y !=0 );
 
-                let extents = card.get_display_extents();
-                let (aper_x, mut aper_y) = card.get_display_aperture();
-                assert!(aper_x != 0 && aper_y !=0 );
-
-                if extents.double_scan {
-                    video.set_double_scan(true);
-                    aper_y *= 2;
-                }
-                else {
-                    video.set_double_scan(false);
-                }
-
-                let aspect_ratio = if config.emulator.correct_aspect {
-                    Some(marty_render::AspectRatio{ h: 4, v: 3 })
-                }
-                else {
-                    None
-                };
-
-                video.set_aspect_ratio(aspect_ratio);
-
-                let (aper_correct_x, aper_correct_y) = {
-                    let dim = video.get_display_dimensions();
-                    (dim.w, dim.h)
-                };
-  
-                let mut double_res = false;
-
-                // Get the current monitor resolution. 
-                if let Some(monitor) = window.current_monitor() {
-                    let monitor_size = monitor.size();
-                    let dip_scale = monitor.scale_factor();
-
-                    log::debug!("Current monitor resolution: {}x{} scale factor: {}", monitor_size.width, monitor_size.height, dip_scale);
-                    
-                    // Take into account DPI scaling for window-fit.
-                    let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
-                    let scaled_height = ((aper_correct_y * 2) as f64 * dip_scale) as u32;
-                    log::debug!("Target resolution after aspect correction and DPI scaling: {}x{}", scaled_width, scaled_height);
-
-                    if (scaled_width <= monitor_size.width) && (scaled_height <= monitor_size.height) {
-                        // Monitor is large enough to double the display window
-                        double_res = true;
+                    if extents.double_scan {
+                        video.set_double_scan(true);
+                        aper_y *= 2;
                     }
+                    else {
+                        video.set_double_scan(false);
+                    }
+
+                    let aspect_ratio = if config.emulator.scaler_aspect_correction {
+                        Some(marty_render::AspectRatio{ h: 4, v: 3 })
+                    }
+                    else {
+                        None
+                    };
+
+                    video.set_aspect_ratio(aspect_ratio);
+
+                    let (aper_correct_x, aper_correct_y) = {
+                        let dim = video.get_display_dimensions();
+                        (dim.w, dim.h)
+                    };
+
+                    let mut double_res = false;
+
+
+                    // Get the current monitor resolution.
+                    if let Some(monitor) = render_window.window.current_monitor() {
+                        let monitor_size = monitor.size();
+                        let dip_scale = monitor.scale_factor();
+
+                        log::debug!("Current monitor resolution: {}x{} scale factor: {}", monitor_size.width, monitor_size.height, dip_scale);
+
+                        // Take into account DPI scaling for window-fit.
+                        let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
+                        let scaled_height = ((aper_correct_y * 2) as f64 * dip_scale) as u32;
+                        log::debug!("Target resolution after aspect correction and DPI scaling: {}x{}", scaled_width, scaled_height);
+
+                        if (scaled_width <= monitor_size.width) && (scaled_height <= monitor_size.height) {
+                            // Monitor is large enough to double the display window
+                            double_res = true;
+                        }
+                    }
+
+                    let window_resize_w = if double_res { aper_correct_x * 2 } else { aper_correct_x };
+                    let window_resize_h = if double_res { aper_correct_y * 2 } else { aper_correct_y };
+
+                    log::debug!("Resizing window to {}x{}", window_resize_w, window_resize_h);
+                    //resize_h = if card.get_scanline_double() { resize_h * 2 } else { resize_h };
+
+                    render_window.window.set_inner_size(winit::dpi::LogicalSize::new(window_resize_w, window_resize_h));
+
+                    log::debug!("Resizing marty_render buffer to {}x{}", aper_x, aper_y);
+
+                    video.resize((aper_x, aper_y).into());
+
+                    /*
+                    let pixel_res = video.get_display_dimensions();
+
+                    if (pixel_res.w > 0) && (pixel_res.h > 0) {
+                        log::debug!("Resizing pixel buffer to {}x{}", pixel_res.w, pixel_res.h);
+                        pixels.resize_buffer(pixel_res.w, pixel_res.h).expect("Failed to resize Pixels buffer.");
+                    }
+                    */
+
+                    //VideoRenderer::set_alpha(pixels.frame_mut(), pixel_res.w, pixel_res.h, 255);
+
+                    // Recalculate sampling parameters.
+                    //resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
+
+                    // Update internal state and request a redraw
+                    render_window.window.request_redraw();
                 }
 
-                let window_resize_w = if double_res { aper_correct_x * 2 } else { aper_correct_x };
-                let window_resize_h = if double_res { aper_correct_y * 2 } else { aper_correct_y };
-
-                log::debug!("Resizing window to {}x{}", window_resize_w, window_resize_h);
-                //resize_h = if card.get_scanline_double() { resize_h * 2 } else { resize_h };
-
-                window.set_inner_size(winit::dpi::LogicalSize::new(window_resize_w, window_resize_h));
-
-                log::debug!("Resizing render buffer to {}x{}", aper_x, aper_y);
-
-                video.resize((aper_x, aper_y).into());
-
-                /*
-                let pixel_res = video.get_display_dimensions();
-                
-                if (pixel_res.w > 0) && (pixel_res.h > 0) {
-                    log::debug!("Resizing pixel buffer to {}x{}", pixel_res.w, pixel_res.h);
-                    pixels.resize_buffer(pixel_res.w, pixel_res.h).expect("Failed to resize Pixels buffer.");
-                }
-                */
-
-                //VideoRenderer::set_alpha(pixels.frame_mut(), pixel_res.w, pixel_res.h, 255);
-
-                // Recalculate sampling parameters.
-                //resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
-
-                // Update internal state and request a redraw
-                window.request_redraw();
             }
         }
     }
-        
-    // Try to load default vhd for drive0: 
-    if let Some(vhd_name) = config.machine.drive0 {
+
+     */
+
+    let mut vhd_names: Vec<Option<String>> = Vec::new();
+
+    vhd_names.push(config.machine.drive0.clone());
+    vhd_names.push(config.machine.drive1.clone());
+
+    let mut vhd_idx: usize = 0;
+    for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
         let vhd_os_name: OsString = vhd_name.into();
-        match vhd_manager.load_vhd_file(0, &vhd_os_name) {
+        match vhd_manager.load_vhd_file(vhd_idx, &vhd_os_name) {
             Ok(vhd_file) => {
                 match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
@@ -885,1323 +945,43 @@ pub fn run() {
             }
             Err(err) => {
                 log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
-            }                                
-        }    
-    }
-
-    // Try to load default vhd for drive1: 
-    // TODO: refactor this to func or put in vhd_manager
-    if let Some(vhd_name) = config.machine.drive1 {
-        let vhd_os_name: OsString = vhd_name.into();
-        match vhd_manager.load_vhd_file(1, &vhd_os_name) {
-            Ok(vhd_file) => {
-                match VirtualHardDisk::from_file(vhd_file) {
-                    Ok(vhd) => {
-                        if let Some(hdc) = machine.hdc() {
-                            match hdc.set_vhd(1_usize, vhd) {
-                                Ok(_) => {
-                                    log::info!("VHD image {:?} successfully loaded into virtual drive: {}", vhd_os_name, 1);
-                                }
-                                Err(err) => {
-                                    log::error!("Error mounting VHD: {}", err);
-                                }
-                            }
-                        }
-                        else {
-                            log::error!("Couldn't load VHD: No Hard Disk Controller present!");
-                        }
-                    },
-                    Err(err) => {
-                        log::error!("Error loading VHD: {}", err);
-                    }
-                }
             }
-            Err(err) => {
-                log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
-            }                                
-        }    
-    }       
+        }
+        vhd_idx += 1;
+    }
 
     // Start buffer playback
     machine.play_sound_buffer();
 
+    let gui_ctx =
+        display_manager
+            .get_main_gui_mut()
+            .expect("Couldn't get main gui context!");
+
+    // Put everything we want to handle in event loop into an Emulator struct
+    let mut emulator = Emulator {
+        dm: display_manager,
+        config,
+        machine,
+        exec_control,
+        mouse_data,
+        kb_data,
+        stat_counter,
+        gui,
+        floppy_manager,
+        vhd_manager,
+        hdd_path,
+        floppy_path,
+        flags: EmuFlags {
+            render_gui: render_egui,
+            debug_keyboard
+        }
+    };
+
+    let event_loop = emulator.dm.take_event_loop();
+
     // Run the winit event loop
-    event_loop.run(move |event, _, control_flow| {
-
-
-        //*control_flow = ControlFlow::Poll;
-    
-        // winit_input_helper
-        /*
-        if input.update(&event) {
-            // Close events
-            
-            if input.quit() {
-                *control_flow = ControlFlow::Exit;
-                return;
-            }
-
-            // Update the scale factor
-            if let Some(scale_factor) = input.scale_factor() {
-                framework.scale_factor(scale_factor);
-            }
-
-            // Resize the window
-            if let Some(size) = input.window_resized() {
-                log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
-                if pixels.resize_surface(size.width, size.height).is_err() {
-                    // Some error occured but not much we can do about it.
-                    // Errors get thrown when the window minimizes.
-                }
-                framework.resize(size.width, size.height);
-            }
-
-            // Update internal state and request a redraw
-            window.request_redraw();
-        }
-        */
-
-        match event {
-
-            Event::NewEvents(StartCause::Init) => {
-                // Initialization stuff here?
-                stat_counter.last_second = Instant::now();
-            }
-
-            Event::DeviceEvent{ event, .. } => {
-                match event {
-                    DeviceEvent::MouseMotion {
-                        delta: (x, y)
-                    } => {
-                        // We can get a lot more mouse updates than we want to send to the virtual mouse,
-                        // so add up all deltas between each mouse polling period
-                        mouse_data.have_update = true;
-                        mouse_data.frame_delta_x += x;
-                        mouse_data.frame_delta_y += y;
-                    },
-                    DeviceEvent::Button { 
-                        button,
-                        state 
-                    } => {
-                        // Button ID is a raw u32. It appears that the id's for relative buttons are not consistent
-                        // accross platforms. 1 == left button on windows, 3 == left button on macos. So we resolve
-                        // button ids to button enums based on platform. There is a config option to override button 
-                        // order.
-
-                        // Resolve the winit button id to a button enum based on platform and reverse flag.
-                        let mbutton = input::button_from_id(button, mouse_data.reverse_buttons);
-
-                        // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse 
-                        // clicks are 'sticky', if a button was pressed during the last update period it will be sent as
-                        // pressed during virtual mouse update.
-
-                        use input::MouseButton;
-
-                        match (mbutton, state) {
-                            (MouseButton::Left, ElementState::Pressed) => {
-                                mouse_data.l_button_was_pressed = true;
-                                mouse_data.l_button_is_pressed = true;
-                                mouse_data.have_update = true;
-                            },
-                            (MouseButton::Left, ElementState::Released) => {
-                                mouse_data.l_button_is_pressed = false;
-                                mouse_data.l_button_was_released = true;
-                                mouse_data.have_update = true;
-                            },
-                            (MouseButton::Right, ElementState::Pressed) => {
-                                mouse_data.r_button_was_pressed = true;
-                                mouse_data.r_button_is_pressed = true;
-                                mouse_data.have_update = true;
-                            },
-                            (MouseButton::Right, ElementState::Released) => {
-                                mouse_data.r_button_is_pressed = false;
-                                mouse_data.r_button_was_released = true;
-                                mouse_data.have_update = true;
-                            }                              
-                            _=> {}
-                        }
-                        //log::debug!("Mouse button: {:?} state: {:?}", button, state);
-                    }
-                    _ => {
-
-                    }
-                }
-            }
-            Event::WindowEvent{ event, .. } => {
-                match event {
-
-                    // Handle events previous handled by winit_input_helper...
-                    WindowEvent::ScaleFactorChanged{ scale_factor, .. } => {
-                        framework.scale_factor(scale_factor);
-                    }     
-                    WindowEvent::Resized(size) => {
-
-                        log::warn!("resize event");
-                        //video.resize((size.width, size.height).into());
-                        video.backend_resize_surface((size.width, size.height).into());
-                        /*
-                        log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
-                        if pixels.resize_surface(size.width, size.height).is_err() {
-                            // Some error occured but not much we can do about it.
-                            // Errors get thrown when the window minimizes.
-                        }*/
-                        framework.resize(size.width, size.height);
-                    }
-                    WindowEvent::CloseRequested => {
-                        *control_flow = ControlFlow::Exit;
-                        return;
-                    }
-
-                    // Handle all other events
-                    WindowEvent::ModifiersChanged(modifiers) => {
-
-                        let state = modifiers.state();
-
-                        kb_data.ctrl_pressed = state.control_key();
-                        kb_data.modifiers.control = state.control_key();
-                        kb_data.modifiers.alt = state.alt_key();
-                        kb_data.modifiers.shift = state.shift_key();
-                        kb_data.modifiers.meta = state.super_key();
-                        framework.handle_event(&event);
-                    }
-                    WindowEvent::KeyboardInput {
-
-                        event: winit::event::KeyEvent {
-                            physical_key: keycode,
-                            state,
-                            repeat,
-                            ..
-                        },
-                        ..
-                    } => {
-
-                        if !repeat && debug_keyboard { 
-                            println!("{:?}", event);
-                        }
-
-                        // Match global hotkeys regardless of egui focus
-                        match (state, keycode) {
-                            (winit::event::ElementState::Pressed, KeyCode::F1 ) => {
-                                if kb_data.ctrl_pressed {
-                                    log::info!("Control F1 pressed. Toggling egui state.");
-                                    render_egui = !render_egui;
-                                }
-                            },
-                            (winit::event::ElementState::Pressed, KeyCode::F10 ) => {
-                                if kb_data.ctrl_pressed {
-                                    // Ctrl-F10 pressed. Toggle mouse capture.
-                                    log::info!("Control F10 pressed. Capturing mouse cursor.");
-                                    if !mouse_data.is_captured {
-                                        let mut grab_success = false;
-                                        match window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
-                                            Ok(_) => {
-                                                mouse_data.is_captured = true;
-                                                grab_success = true;
-                                            }
-                                            Err(_) => {
-                                                // Try alternate grab mode (Windows/Mac require opposite modes)
-                                                match window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
-                                                    Ok(_) => {
-                                                        mouse_data.is_captured = true;
-                                                        grab_success = true;
-                                                    } 
-                                                    Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
-                                                }
-                                            }
-                                        }
-                                        // Hide mouse cursor if grab successful
-                                        if grab_success {
-                                            window.set_cursor_visible(false);
-                                        }
-                                    }
-                                    else {
-                                        // Cursor is grabbed, ungrab
-                                        match window.set_cursor_grab(winit::window::CursorGrabMode::None) {
-                                            Ok(_) => mouse_data.is_captured = false,
-                                            Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
-                                        }
-                                        window.set_cursor_visible(true);
-                                    }
-                                    
-                                }
-                            }
-                            _=>{}
-                        }
-
-                        if !framework.has_focus() {
-                            // An egui widget doesn't have focus, so send an event to the emulated machine
-                            // TODO: widget seems to lose focus before 'enter' is processed in a text entry, passing that 
-                            // enter to the emulator
-
-                            // ignore host typematic repeat
-                            if !repeat {
-                                match state {
-                                    winit::event::ElementState::Pressed => {
-                                        machine.key_press(keycode.to_internal(), kb_data.modifiers);
-                                        if debug_keyboard { 
-                                            println!("Key pressed: {:?}", keycode);
-                                            //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
-                                        }
-                                    },
-                                    winit::event::ElementState::Released => {
-                                        machine.key_release(keycode.to_internal());
-                                    }
-                                }
-                            }
-                        }
-                        else {
-                            // Egui widget has focus, so send keyboard event to egui
-
-                            if debug_keyboard { 
-                                println!("Keyboard event sent to framework.");
-                            }
-                            framework.handle_event(&event);
-                        }
-                    },
-                    _ => {       
-                        framework.handle_event(&event);
-                    }
-                }
-            },
-
-            // Draw the current frame
-            Event::MainEventsCleared => {
-
-                stat_counter.current_ups += 1;
-
-                // Calculate FPS
-                let elapsed_ms = stat_counter.last_second.elapsed().as_millis();
-                if elapsed_ms > 1000 {
-                    // One second elapsed, calculate FPS/CPS
-                    let pit_ticks = machine.pit_cycles();
-                    let cpu_cycles = machine.cpu_cycles();
-                    let system_ticks = machine.system_ticks();
-
-                    stat_counter.current_cpu_cps = cpu_cycles - stat_counter.last_cpu_cycles;
-                    stat_counter.last_cpu_cycles = cpu_cycles;
-
-                    stat_counter.current_pit_tps = pit_ticks - stat_counter.last_pit_ticks;
-                    stat_counter.last_pit_ticks = pit_ticks;
-
-                    stat_counter.current_sys_tps = system_ticks - stat_counter.last_system_ticks;
-                    stat_counter.last_system_ticks = system_ticks;
-
-                    //println!("fps: {} | cps: {} | pit tps: {}", 
-                    //    stat_counter.current_fps,
-                    //    stat_counter.current_cpu_cps, 
-                    //    stat_counter.current_pit_tps);
-
-                    stat_counter.ups = stat_counter.current_ups;
-                    stat_counter.current_ups = 0;
-                    stat_counter.fps = stat_counter.current_fps;
-                    stat_counter.current_fps = 0;
-
-                    // Update IPS and reset instruction count for next second
-
-                    stat_counter.current_cps = stat_counter.cycle_count;
-                    stat_counter.cycle_count = 0;
-
-                    stat_counter.emulated_fps = stat_counter.current_emulated_frames as u32;
-                    stat_counter.current_emulated_frames = 0;
-
-                    stat_counter.current_ips = stat_counter.instr_count;
-                    stat_counter.instr_count = 0;
-                    stat_counter.last_second = Instant::now();
-                } 
-
-                // Decide whether to draw a frame
-                let elapsed_us = stat_counter.last_frame.elapsed().as_micros();
-                stat_counter.last_frame = Instant::now();
-
-                stat_counter.accumulated_us += elapsed_us;
-
-                while stat_counter.accumulated_us > MICROS_PER_FRAME as u128 {
-
-                    stat_counter.accumulated_us -= MICROS_PER_FRAME as u128;
-                    stat_counter.last_frame = Instant::now();
-                    stat_counter.frame_count += 1;
-                    stat_counter.current_fps += 1;
-                    //println!("frame: {} elapsed: {}", world.current_fps, elapsed_us);
-
-                    // Get single step flag from GUI and either step or run CPU
-                    // TODO: This logic is messy, figure out a better way to control CPU state 
-                    //       via gui
-
-                    //if framework.gui.get_cpu_single_step() {
-                    //    if framework.gui.get_cpu_step_flag() {
-                    //        machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), 0);
-                    //    }
-                    //}
-                    //else {
-                    //    machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), bp_addr);
-                    //    // Check for breakpoint
-                    //    if machine.cpu().get_flat_address() == bp_addr && bp_addr != 0 {
-                    //        log::debug!("Breakpoint hit at {:06X}", bp_addr);
-                    //        framework.gui.set_cpu_single_step();
-                    //    }
-                    //}
-
-                    if let Some(mouse) = machine.mouse_mut() {
-                        // Send any pending mouse update to machine if mouse is captured
-                        if mouse_data.is_captured && mouse_data.have_update {
-                            mouse.update(
-                                mouse_data.l_button_was_pressed,
-                                mouse_data.r_button_was_pressed,
-                                mouse_data.frame_delta_x,
-                                mouse_data.frame_delta_y
-                            );
-
-                            // Handle release event
-                            let l_release_state = 
-                                if mouse_data.l_button_was_released {
-                                    false
-                                }
-                                else {
-                                    mouse_data.l_button_was_pressed
-                                };
-                            
-                            let r_release_state = 
-                                if mouse_data.r_button_was_released {
-                                    false
-                                }
-                                else {
-                                    mouse_data.r_button_was_pressed
-                                };
-
-                            if mouse_data.l_button_was_released || mouse_data.r_button_was_released {
-                                // Send release event
-                                mouse.update(
-                                    l_release_state,
-                                    r_release_state,
-                                    0.0,
-                                    0.0
-                                );                            
-                            }
-
-                            // Reset mouse for next frame
-                            mouse_data.reset();
-                        }
-                    }
-
-                    // Emulate a frame worth of instructions
-                    // ---------------------------------------------------------------------------
-
-                    // Recalculate cycle target based on current CPU speed if it has changed (or uninitialized)
-                    let mhz = machine.get_cpu_mhz();
-                    if mhz != stat_counter.cpu_mhz {
-                        stat_counter.cycles_per_frame = (machine.get_cpu_mhz() * 1000000.0 / FPS_TARGET) as u32;
-                        stat_counter.cycle_target = stat_counter.cycles_per_frame;
-                        log::info!("CPU clock has changed to {}Mhz; new cycle target: {}", mhz, stat_counter.cycle_target);
-                        stat_counter.cpu_mhz = mhz;
-                    }
-                    
-                    let emulation_start = Instant::now();
-                    stat_counter.instr_count += machine.run(stat_counter.cycle_target, &mut exec_control.borrow_mut());
-                    stat_counter.emulation_time = Instant::now() - emulation_start;
-
-                    // Add instructions to IPS counter
-                    stat_counter.cycle_count += stat_counter.cycle_target as u64;
-
-                    // Add emulated frames from video card device to emulated frame counter
-                    let mut frame_count = 0;
-                    if let Some(video_card) = machine.videocard() {
-                        // We have a video card to query
-                        frame_count = video_card.get_frame_count()
-                    }
-                    let elapsed_frames = frame_count - stat_counter.emulated_frames;
-                    stat_counter.emulated_frames += elapsed_frames;
-                    stat_counter.current_emulated_frames += elapsed_frames;
-
-                    // Emulation time budget is 16ms - render time in ms - fudge factor
-                    let render_time = stat_counter.render_time.as_micros();
-                    let emulation_time = stat_counter.emulation_time.as_micros();
-
-                    let mut emulation_time_allowed_us = 15667;
-                    if render_time < 15667 {
-                        // Rendering time has left us some emulation headroom
-                        emulation_time_allowed_us = 15667_u128.saturating_sub(render_time);
-                    }
-                    else {
-                        // Rendering is too long to run at 60fps. Just ignore render time for now.
-                    }                    
-
-                    // If emulation time took too long, reduce CYCLE_TARGET
-                    if emulation_time > emulation_time_allowed_us {
-                        // Emulation running slower than 60fps
-                        let factor: f64 = (stat_counter.emulation_time.as_micros() as f64) / emulation_time_allowed_us as f64;
-                        // Decrease speed by half of scaling factor
-
-                        let old_target = stat_counter.cycle_target;
-                        let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
-                        stat_counter.cycle_target -= (old_target - new_target) / 2;
-
-                        /*
-                        log::trace!("Emulation speed slow: ({}ms > {}ms). Reducing cycle target: {}->{}", 
-                            emulation_time,
-                            emulation_time_allowed_ms,
-                            old_target,
-                            stat_counter.cycle_target
-                        );
-                        */
-                    }
-                    else if (emulation_time > 0) && (emulation_time < emulation_time_allowed_us) {
-                        // Emulation could run faster
-                            
-                        // Increase speed by half of scaling factor
-                        let factor: f64 = (stat_counter.emulation_time.as_micros() as f64) / emulation_time_allowed_us as f64;
-
-                        let old_target = stat_counter.cycle_target;
-                        let new_target = (stat_counter.cycle_target as f64 / factor) as u32;
-                        stat_counter.cycle_target += (new_target - old_target) / 2;
-
-                        if stat_counter.cycle_target > stat_counter.cycles_per_frame {
-                            // Warpspeed runs entire emulator as fast as possible 
-                            // TODO: Limit cycle target based on render/gui time to maintain 60fps GUI updates
-                            if !config.emulator.warpspeed {
-                                stat_counter.cycle_target = stat_counter.cycles_per_frame;
-                            }
-                        }
-                        else {
-                            /*
-                            log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
-                                emulation_time,
-                                emulation_time_allowed_ms,
-                                old_target,
-                                stat_counter.cycle_target
-                            );
-                            */
-                        }
-                    }
-
-                    /*
-                    log::debug!(
-                        "Cycle target: {} emulation time: {} allowed_ms: {}", 
-                        stat_counter.cycle_target, 
-                        emulation_time,
-                        emulation_time_allowed_ms
-                    );
-                    */
-
-                    // Do per-frame updates (Serial port emulation)
-                    machine.frame_update();
-
-                    // Check if there was a resolution change, if a video card is present
-                    if let Some(mut video_card) = machine.videocard() {
-
-                        let new_w;
-                        let mut new_h;
-
-                        match video_card.get_render_mode() {
-                            RenderMode::Direct => {
-                                (new_w, new_h) = video_card.get_display_aperture();
-                            }
-                            RenderMode::Indirect => {
-                                (new_w, new_h) = video_card.get_display_size();
-                            }
-                        }
-
-                        // If CGA, we will double scanlines later in the renderer, so make our buffer twice
-                        // as high.
-                        if video_card.get_scanline_double() {
-                            new_h = new_h * 2;
-                        }
-                        
-                        if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
-                            if video.would_resize((new_w, new_h).into()) {
-                                // Resize renderer & pixels
-                                video_card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
-                                log::debug!("Aperture changed. Setting front buffer resolution to ({},{})", new_w, new_h);
-                                video.resize((new_w, new_h).into());
-                                
-                                /*
-                                if let Err(e) = pixels.resize_buffer(new_buf_size.w, new_buf_size.h) {
-                                    log::error!("Failed to resize pixel pixel buffer: {}", e);
-                                }
-                                pixels.frame_mut().fill(0);
-                                */
-
-                                //VideoRenderer::set_alpha(pixels.frame_mut(), new_buf_size.w, new_buf_size.h, 255);
-                            }
-                        }
-                    }
-
-                    // -- Draw video memory --
-                    let composite_enabled = framework.gui.get_option(GuiBoolean::CompositeDisplay).unwrap_or(false);
-                    let
-                        _aspect_correct = framework.gui.get_option(GuiBoolean::CorrectAspect).unwrap_or(false);
-
-                    let render_start = Instant::now();
-
-                    // Draw video if there is a video card present
-                    let bus = machine.bus_mut();
-
-                    if let Some(video_card) = bus.video() {
-
-
-
-                        /*
-                        if composite_enabled {
-                            video_data.composite_params = framework.gui.composite_adjust.get_params().clone();
-                        }
-                        */
-
-                        let beam_pos;
-                        let videocard_buffer;
-                        // Get the appropriate buffer depending on run mode. If execution is paused 
-                        // (debugging) show the back buffer instead of front buffer. 
-                        // TODO: Discriminate between paused in debug mode vs user paused state
-                        // TODO: buffer and extents may not match due to extents being for front buffer
-                        match exec_control.borrow_mut().get_state() {
-                            ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
-                                if framework.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
-                                    videocard_buffer = video_card.get_back_buf();
-                                }
-                                else {
-                                    videocard_buffer = video_card.get_display_buf();
-                                }
-                                beam_pos = video_card.get_beam_pos();
-                            }
-                            _ => {
-                                videocard_buffer = video_card.get_display_buf();
-                                beam_pos = None;
-                            }
-                        }
-
-
-                        let extents = video_card.get_display_extents();
-
-                        //log::debug!("extents: {}x{}", extents.field_w, extents.field_h);
-
-                        if video.get_mode_byte() != extents.mode_byte {
-                            // Mode byte has changed, recalculate composite parameters
-                            video.cga_direct_mode_update(extents.mode_byte);
-                            video.set_mode_byte(extents.mode_byte);
-                        }
-
-                        //video.draw(videocard_buffer, pixels.frame_mut(), &extents, composite_enabled, beam_pos);
-                        video.draw_with_backend(videocard_buffer, &extents, composite_enabled, beam_pos);
-
-                        /* 
-                        // Get the render mode from the device and render appropriately
-                        match (video_card.get_video_type(), video_card.get_render_mode()) {
-                            (VideoType::CGA, RenderMode::Direct) => {
-                                // Draw device's front buffer in direct mode (CGA only for now)
-
-                                let extents = video_card.get_display_extents();
-
-                                if video.get_mode_byte() != extents.mode_byte {
-                                    // Mode byte has changed, recalculate composite parameters
-                                    video.cga_direct_mode_update(extents.mode_byte);
-                                    video.set_mode_byte(extents.mode_byte);
-                                }
-                                
-                                match aspect_correct {
-                                    true => {
-                                        video.draw_cga_direct_u32(
-                                            &mut render_src,
-                                            video_data.render_w, 
-                                            video_data.render_h,                                             
-                                            video_buffer,
-                                            extents,
-                                            composite_enabled,
-                                            &video_data.composite_params,
-                                            beam_pos
-                                        );
-
-                                        marty_render::resize_linear_fast(
-                                            &mut render_src, 
-                                            video_data.render_w, 
-                                            video_data.render_h, 
-                                            pixels.frame_mut(), 
-                                            video_data.aspect_w, 
-                                            video_data.aspect_h,
-                                            &mut resample_context
-                                        );
-                                    }
-                                    false => {
-                                        video.draw_cga_direct_u32(
-                                            pixels.frame_mut(),
-                                            video_data.render_w, 
-                                            video_data.render_h,                                                                                         
-                                            video_buffer,
-                                            extents,
-                                            composite_enabled,
-                                            &video_data.composite_params,
-                                            beam_pos                                         
-                                        );
-                                    }
-                                }
-                            }
-                            (VideoType::EGA, RenderMode::Direct) => {
-                                let extents = video_card.get_display_extents();
-                                
-                                video.draw_ega_direct_u32(
-                                    pixels.frame_mut(),
-                                    video_data.render_w, 
-                                    video_data.render_h,                                                                                         
-                                    video_buffer,
-                                    extents,
-                                    extents.double_scan,
-                                    beam_pos                                         
-                                );
-                            }
-                            (_, RenderMode::Indirect) => {
-                                // Draw VRAM in indirect mode
-                                match aspect_correct {
-                                    true => {
-                                        video.draw(&mut render_src, video_card, bus, composite_enabled);
-                                        marty_render::resize_linear(
-                                            &render_src, 
-                                            video_data.render_w, 
-                                            video_data.render_h, 
-                                            pixels.frame_mut(), 
-                                            video_data.aspect_w, 
-                                            video_data.aspect_h,
-                                            &resample_context
-                                        );                            
-                                    }
-                                    false => {
-                                        video.draw(pixels.frame_mut(), video_card, bus, composite_enabled);
-                                    }
-                                }                                
-                            }
-                            _ => panic!("Invalid combination of VideoType and RenderMode")
-
-                        }
-                        */
-                    }
-                    stat_counter.render_time = Instant::now() - render_start;
-
-                    // Update egui data
-
-                    // Is the machine in an error state? If so, display an error dialog.
-                    if let Some(err) = machine.get_error_str() {
-                        framework.gui.show_error(err);
-                        framework.gui.show_window(GuiWindow::DisassemblyViewer);
-                    }
-                    else {
-                        // No error? Make sure we close the error dialog.
-                        framework.gui.clear_error();
-                    }
-
-                    // Handle custom events received from our GUI
-                    loop {
-                        if let Some(gui_event) = framework.gui.get_event() {
-                            match gui_event {
-                                GuiEvent::Exit => {
-                                    // User chose exit option from menu. Shut down.
-                                    // TODO: Add a timeout from last VHD write for safety?
-                                    println!("Thank you for using MartyPC!");
-                                    *control_flow = ControlFlow::Exit;
-                                }
-                                GuiEvent::SetNMI(state) => {
-                                    // User wants to crash the computer. Sure, why not.
-                                    machine.set_nmi(state);
-                                }
-                                GuiEvent::OptionChanged(eopt) => {
-                                    match eopt {
-                                        GuiOption::Bool(op, val) => {
-                                            match (op, val) {
-                                                (GuiBoolean::CorrectAspect, false) => {
-                                                    // Aspect correction was turned off. We want to clear the render buffer as the 
-                                                    // display buffer is shrinking vertically.
-                                                    
-                                                    //let surface = pixels.frame_mut();
-                                                    //surface.fill(0);
-                                                    
-                                                    video.set_aspect_ratio(None);
-                                                    //let dimensions = video.get_display_dimensions();
-                                                    //VideoRenderer::set_alpha(surface, dimensions.w, dimensions.h, 255);
-                                                }
-                                                (GuiBoolean::CorrectAspect, true) => {
-                                                    // Aspect correction was turned on. 
-                                                    video.set_aspect_ratio(Some(AspectRatio{h: 4, v: 3}));
-                                                }                                                
-                                                (GuiBoolean::CpuEnableWaitStates, state) => {
-                                                    machine.set_cpu_option(CpuOption::EnableWaitStates(state));
-                                                }
-                                                (GuiBoolean::CpuInstructionHistory, state) => {
-                                                    machine.set_cpu_option(CpuOption::InstructionHistory(state));
-                                                }
-                                                (GuiBoolean::CpuTraceLoggingEnabled, state) => {
-                                                    machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
-                                                }
-                                                (GuiBoolean::TurboButton, state) => {
-                                                    machine.set_turbo_mode(state);
-                                                }
-                                                (GuiBoolean::EnableSnow, state) => {
-                                                    machine.set_video_option(VideoOption::EnableSnow(state));
-                                                }                                        
-                                                _ => {}
-                                            }
-                                        }
-                                        GuiOption::Enum(op) => {
-                                            match op {
-                                                GuiEnum::DisplayAperture(aperture_n) => {
-                                                    if let Some(video_card) = machine.videocard() {
-                                                        video_card.set_aperture(aperture_n)
-                                                    }
-                                                }
-                                                GuiEnum::DisplayScalerMode(new_mode) => {
-                                                    video.set_scaler_mode(new_mode);
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                }
-    
-                                GuiEvent::CreateVHD(filename, fmt) => {
-                                    log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
-    
-                                    let vhd_path = hdd_path.join(filename);
-    
-                                    match vhd::create_vhd(
-                                        vhd_path.into_os_string(), 
-                                        fmt.max_cylinders, 
-                                        fmt.max_heads, 
-                                        fmt.max_sectors) {
-    
-                                        Ok(_) => {
-                                            // We don't actually do anything with the newly created file
-    
-                                            // Rescan dir to show new file in list
-                                            if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
-                                                log::error!("Error scanning hdd directory: {}", e);
-                                            };
-                                        }
-                                        Err(err) => {
-                                            log::error!("Error creating VHD: {}", err);
-                                        }
-                                    }
-                                }
-                                GuiEvent::RescanMediaFolders => {
-                                    if let Err(e) = floppy_manager.scan_dir(&floppy_path) {
-                                        log::error!("Error scanning floppy directory: {}", e);
-                                    }
-                                    if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
-                                        log::error!("Error scanning hdd directory: {}", e);
-                                    };
-                                }
-                                GuiEvent::LoadFloppy(drive_select, filename) => {
-                                    log::debug!("Load floppy image: {:?} into drive: {}", filename, drive_select);
-    
-                                    match floppy_manager.load_floppy_data(&filename) {
-                                        Ok(vec) => {
-                                            
-                                            if let Some(fdc) = machine.fdc() {
-                                                match fdc.load_image_from(drive_select, vec) {
-                                                    Ok(()) => {
-                                                        log::info!("Floppy image successfully loaded into virtual drive.");
-                                                    }
-                                                    Err(err) => {
-                                                        log::warn!("Floppy image failed to load: {}", err);
-                                                    }
-                                                }
-                                            }
-                                        } 
-                                        Err(e) => {
-                                            log::error!("Failed to load floppy image: {:?} Error: {}", filename, e);
-                                            // TODO: Some sort of GUI indication of failure
-                                            eprintln!("Failed to read floppy image file: {:?} Error: {}", filename, e);
-                                        }
-                                    }                                
-                                }
-                                GuiEvent::SaveFloppy(drive_select, filename) => {
-                                    log::debug!("Save floppy image: {:?} into drive: {}", filename, drive_select);
-
-                                    if let Some(fdc) = machine.fdc() {
-                                        
-                                        let floppy = fdc.get_image_data(drive_select);
-                                        if let Some(floppy_image) = floppy {
-                                            match floppy_manager.save_floppy_data(floppy_image,&filename) {
-                                                Ok(()) => {
-                                                    log::info!("Floppy image successfully saved: {:?}", filename);
-                                                }
-                                                Err(err) => {
-                                                    log::warn!("Floppy image failed to save: {}", err);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                GuiEvent::EjectFloppy(drive_select) => {
-                                    log::info!("Ejecting floppy in drive: {}", drive_select);
-                                    if let Some(fdc) = machine.fdc() {
-                                        fdc.unload_image(drive_select);
-                                    }
-                                }
-                                GuiEvent::BridgeSerialPort(port_name) => {
-    
-                                    log::info!("Bridging serial port: {}", port_name);
-                                    machine.bridge_serial_port(1, port_name);
-                                }
-                               GuiEvent::DumpVRAM => {
-                                    if let Some(video_card) = machine.videocard() {
-                                        let mut dump_path = PathBuf::new();
-                                        dump_path.push(config.emulator.basedir.clone());
-                                        dump_path.push("dumps");
-                                        video_card.dump_mem(&dump_path);
-                                    }
-                                }
-                                GuiEvent::DumpCS => {
-                                    let mut dump_path = PathBuf::new();
-                                    dump_path.push(config.emulator.basedir.clone());
-                                    dump_path.push("dumps");
-                                                                    
-                                    machine.cpu().dump_cs(&dump_path);
-                                }
-                                GuiEvent::DumpAllMem => {
-                                    let mut dump_path = PathBuf::new();
-                                    dump_path.push(config.emulator.basedir.clone());
-                                    dump_path.push("dumps");
-                                                                                                    
-                                    machine.bus().dump_mem(&dump_path);
-                                }
-                                GuiEvent::EditBreakpoint => {
-                                    // Get breakpoints from GUI
-                                    let (bp_str, bp_mem_str, bp_int_str) = framework.gui.get_breakpoints();
-    
-                                    let mut breakpoints = Vec::new();
-    
-                                    // Push exec breakpoint to list if valid expression
-                                    if let Some(addr) = machine.cpu().eval_address(&bp_str) {
-                                        let flat_addr = u32::from(addr);
-                                        if flat_addr > 0 && flat_addr < 0x100000 {
-                                            breakpoints.push(BreakPointType::ExecuteFlat(flat_addr));
-                                        }
-                                    };
-                                
-                                    // Push mem breakpoint to list if valid expression
-                                    if let Some(addr) = machine.cpu().eval_address(&bp_mem_str) {
-                                        let flat_addr = u32::from(addr);
-                                        if flat_addr > 0 && flat_addr < 0x100000 {
-                                            breakpoints.push(BreakPointType::MemAccessFlat(flat_addr));
-                                        }
-                                    }
-                                
-                                    // Push int breakpoint to list 
-                                    if let Ok(iv) = u32::from_str_radix(bp_int_str, 10) {
-                                        if iv < 256 {
-                                            breakpoints.push(BreakPointType::Interrupt(iv as u8));
-                                        }
-                                    }
-
-                                    machine.set_breakpoints(breakpoints);
-                                }
-                                GuiEvent::MemoryUpdate => {
-                                    // The address bar for the memory viewer was updated. We need to 
-                                    // evaluate the expression and set a new row value for the control.
-                                    // The memory contents will be updated in the normal frame update.
-                                    let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
-                                    // Show address 0 if expression evail fails
-                                    let mem_dump_addr: u32 = match machine.cpu().eval_address(&mem_dump_addr_str) {
-                                        Some(i) => {
-                                            let addr: u32 = i.into();
-                                            addr & !0x0F
-                                        }
-                                        None => 0
-                                    };
-                                    framework.gui.memory_viewer.set_row(mem_dump_addr as usize);                                    
-                                }
-                                GuiEvent::TokenHover(addr) => {
-                                    // Hovered over a token in a TokenListView.
-                                    let debug = machine.bus_mut().get_memory_debug(addr);
-                                    framework.gui.memory_viewer.set_hover_text(format!("{}", debug));
-                                }
-                                GuiEvent::FlushLogs => {
-                                    // Request to flush trace logs.
-                                    machine.flush_trace_logs();
-                                }
-                                GuiEvent::DelayAdjust => {
-                                    let delay_params = framework.gui.delay_adjust.get_params();
-    
-                                    machine.set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
-                                    machine.set_cpu_option(CpuOption::HaltResumeDelay(delay_params.halt_resume_delay));
-                                }
-                                GuiEvent::TickDevice(dev, ticks) => {
-                                    match dev {
-                                        DeviceSelection::Timer(_t) => {
-    
-                                        }
-                                        DeviceSelection::VideoCard => {
-                                            if let Some(video_card) = machine.videocard() {
-                                                // Playing around with the clock forces the adapter into 
-                                                // cycle mode, if supported.
-                                                video_card.set_clocking_mode(ClockingMode::Cycle);
-                                                video_card.debug_tick(ticks);
-                                            }                                        
-                                        }
-                                    }
-                                }
-                                GuiEvent::MachineStateChange(state) => {
-    
-                                    match state {
-                                        MachineState::Off | MachineState::Rebooting => {
-                                            // Clear the screen if rebooting or turning off
-                                            video.clear();
-                                        }
-                                        _ => {}
-                                    }
-                                    machine.change_state(state);
-                                }
-                                GuiEvent::TakeScreenshot => {
-                                    let mut screenshot_path = PathBuf::new();
-                                    screenshot_path.push(config.emulator.basedir.clone());
-                                    screenshot_path.push("screenshots");
-
-                                    video.screenshot_with_backend(&screenshot_path);
-
-                                }
-                                GuiEvent::CtrlAltDel => {
-                                    machine.ctrl_alt_del();
-                                }
-                                GuiEvent::CompositeAdjust(params) => {
-                                    //log::warn!("got composite params: {:?}", params);f
-                                    video.cga_direct_param_update(&params);
-                                }
-                                GuiEvent::ScalerAdjust(params) => {
-                                    log::warn!("Received ScalerAdjust event: {:?}", params);
-                                    video.set_scaler_params(&params);
-                                }
-                                _ => {}
-                            }
-                        }
-                        else {
-                            break;
-                        }
-                    }
-
-                    // -- Update machine state
-                    framework.gui.set_machine_state(machine.get_state());
-
-                    
-
-                    // -- Update list of floppies
-                    let name_vec = floppy_manager.get_floppy_names();
-                    framework.gui.set_floppy_names(name_vec);
-
-                    // -- Update VHD Creator window
-                    if framework.gui.is_window_open(egui::GuiWindow::VHDCreator) {
-                        if let Some(hdc) = machine.hdc() {
-                            framework.gui.update_vhd_formats(hdc.get_supported_formats());
-                        }
-                        else {
-                            log::error!("Couldn't query available formats: No Hard Disk Controller present!");
-                        }
-                    }
-
-                    // -- Update list of VHD images
-                    let name_vec = vhd_manager.get_vhd_names();
-                    framework.gui.set_vhd_names(name_vec);
-
-                    // -- Do we have a new VHD image to load?
-                    for i in 0..machine::NUM_HDDS {
-                        if let Some(new_vhd_name) = framework.gui.get_new_vhd_name(i) {
-
-                            log::debug!("Releasing VHD slot: {}", i);
-                            vhd_manager.release_vhd(i as usize);
-
-                            log::debug!("Load new VHD image: {:?} in device: {}", new_vhd_name, i);
-
-                            match vhd_manager.load_vhd_file(i as usize, &new_vhd_name) {
-                                Ok(vhd_file) => {
-
-                                    match VirtualHardDisk::from_file(vhd_file) {
-                                        Ok(vhd) => {
-
-                                            if let Some(hdc) = machine.hdc() {
-                                                match hdc.set_vhd(i as usize, vhd) {
-                                                    Ok(_) => {
-                                                        log::info!("VHD image {:?} successfully loaded into virtual drive: {}", new_vhd_name, i);
-                                                    }
-                                                    Err(err) => {
-                                                        log::error!("Error mounting VHD: {}", err);
-                                                    }
-                                                }
-                                            }
-                                            else {
-                                                log::error!("No Hard Disk Controller present!");
-                                            }
-                                        },
-                                        Err(err) => {
-                                            log::error!("Error loading VHD: {}", err);
-                                        }
-                                    }
-                                }
-                                Err(err) => {
-                                    log::error!("Failed to load VHD image {:?}: {}", new_vhd_name, err);
-                                }                                
-                            }
-                        }
-                    }
-
-                    // Update performance viewer
-                    if framework.gui.is_window_open(egui::GuiWindow::PerfViewer) {
-                        framework.gui.perf_viewer.update_video_data(*video.params());
-                        framework.gui.perf_viewer.update_stats(
-                            &PerformanceStats {
-                                adapter: adapter_name_str.clone(),
-                                backend: backend_str.clone(),
-                                current_ups: stat_counter.ups,
-                                current_fps: stat_counter.fps,
-                                emulated_fps: stat_counter.emulated_fps,
-                                cycle_target: stat_counter.cycle_target,
-                                current_cps: stat_counter.current_cps,
-                                current_tps: stat_counter.current_sys_tps,
-                                current_ips: stat_counter.current_ips,
-                                emulation_time: stat_counter.emulation_time,
-                                render_time: stat_counter.render_time,
-                                gui_time: Default::default()
-                            }
-                        )
-                    }
-
-                    // -- Update memory viewer window if open
-                    if framework.gui.is_window_open(egui::GuiWindow::MemoryViewer) {
-                        let mem_dump_addr_str = framework.gui.memory_viewer.get_address();
-                        // Show address 0 if expression evail fails
-                        let (addr, mem_dump_addr) = match machine.cpu().eval_address(&mem_dump_addr_str) {
-                            Some(i) => {
-                                let addr: u32 = i.into();
-                                // Dump at 16 byte block boundaries
-                                (addr, addr & !0x0F)
-                            }
-                            None => (0,0)
-                        };
-
-                        let mem_dump_vec = machine.bus().dump_flat_tokens_ex(mem_dump_addr as usize, addr as usize, 256);
-                    
-                        //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
-                        framework.gui.memory_viewer.set_memory(mem_dump_vec);
-                    }   
-
-                    // -- Update IVR viewer window if open
-                    if framework.gui.is_window_open(egui::GuiWindow::IvrViewer) {
-                        let vec = machine.bus_mut().dump_ivr_tokens();
-                        framework.gui.ivr_viewer.set_content(vec);
-                    }                     
-
-                    // -- Update register viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::CpuStateViewer) {
-                        let cpu_state = machine.cpu().get_string_state();
-                        framework.gui.cpu_viewer.update_state(cpu_state);
-                    }
-
-                    // -- Update PIT viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::PitViewer) {
-                        let pit_state = machine.pit_state();
-                        framework.gui.update_pit_state(&pit_state);
-
-                        let pit_data = machine.get_pit_buf();
-                        framework.gui.pit_viewer.update_channel_data(2, &pit_data);
-                    }
-
-                    // -- Update PIC viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::PicViewer) {
-                        let pic_state = machine.pic_state();
-                        framework.gui.pic_viewer.update_state(&pic_state);
-                    }
-
-                    // -- Update PPI viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::PpiViewer) {
-                        let ppi_state_opt = machine.ppi_state();
-                        if let Some(ppi_state) = ppi_state_opt {
-                            framework.gui.update_ppi_state(ppi_state);  
-                            // TODO: If no PPI, disable debug window
-                        }
-                    }
-
-                    // -- Update DMA viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::DmaViewer) {
-                        let dma_state = machine.dma_state();
-                        framework.gui.dma_viewer.update_state(dma_state);
-                    }
-                    
-                    // -- Update VideoCard Viewer (Replace CRTC Viewer)
-                    if framework.gui.is_window_open(egui::GuiWindow::VideoCardViewer) {
-                        // Only have an update if we have a videocard to update.
-                        if let Some(videocard_state) = machine.videocard_state() {
-                            framework.gui.update_videocard_state(videocard_state);
-                        }
-                    }
-
-                    // -- Update Instruction Trace window
-                    if framework.gui.is_window_open(egui::GuiWindow::HistoryViewer) {
-                        let trace = machine.cpu().dump_instruction_history_tokens();
-                        framework.gui.trace_viewer.set_content(trace);
-                    }
-
-                    // -- Update Call Stack window
-                    if framework.gui.is_window_open(egui::GuiWindow::CallStack) {
-                        let stack = machine.cpu().dump_call_stack();
-                        framework.gui.update_call_stack_state(stack);
-                    }
-
-                    // -- Update cycle trace viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::CycleTraceViewer) {
-
-                        if machine.get_cpu_option(CpuOption::TraceLoggingEnabled(true)) {
-                            let trace_vec = machine.cpu().get_cycle_trace();
-                            framework.gui.cycle_trace_viewer.update(trace_vec);
-                        }
-                    }
-
-                    // -- Update disassembly viewer window
-                    if framework.gui.is_window_open(egui::GuiWindow::DisassemblyViewer) {
-                        let start_addr_str = framework.gui.disassembly_viewer.get_address();
-
-                        // The expression evaluation could result in a segment:offset address or a flat address.
-                        // The behavior of the viewer will differ slightly depending on whether we have segment:offset 
-                        // information. Wrapping of segments can't be detected if the expression evaluates to a flat
-                        // address.
-                        let start_addr = machine.cpu().eval_address(&start_addr_str);
-                        let start_addr_flat: u32 = match start_addr {
-                            Some(i) => i.into(),
-                            None => 0
-                        };
-
-                        let bus = machine.bus_mut();
-                        
-                        let mut listview_vec = Vec::new();
-
-                        //let mut disassembly_string = String::new();
-                        let mut disassembly_addr_flat = start_addr_flat as usize;
-                        let mut disassembly_addr_seg = start_addr;
-
-                        for _ in 0..24 {
-
-                            if disassembly_addr_flat < machine::MAX_MEMORY_ADDRESS {
-
-                                bus.seek(disassembly_addr_flat);
-
-                                let mut decode_vec = Vec::new();
-
-                                match Cpu::decode(bus) {
-                                    Ok(i) => {
-                                    
-                                        let instr_slice = bus.get_slice_at(disassembly_addr_flat, i.size as usize);
-                                        let instr_bytes_str = util::fmt_byte_array(instr_slice);
-                                        
-                                        decode_vec.push(SyntaxToken::MemoryAddressFlat(disassembly_addr_flat as u32, format!("{:05X}", disassembly_addr_flat)));
-
-                                        let mut instr_vec = Cpu::tokenize_instruction(&i);
-
-                                        //let decode_str = format!("{:05X} {:012} {}\n", disassembly_addr, instr_bytes_str, i);
-                                        
-                                        disassembly_addr_flat += i.size as usize;
-
-                                        // If we have cs:ip, advance the offset. Wrapping of segment may provide different results 
-                                        // from advancing flat address, so if a wrap is detected, adjust the flat address.
-                                        if let Some(CpuAddress::Segmented(segment, offset)) = disassembly_addr_seg {
-
-                                            decode_vec.push(SyntaxToken::MemoryAddressSeg16(segment, offset, format!("{:04X}:{:04X}", segment, offset)));
-
-                                            let new_offset = offset.wrapping_add(i.size as u16);
-                                            if new_offset < offset {
-                                                // A wrap of the code segment occurred. Update the linear address to match.
-                                                disassembly_addr_flat = Cpu::calc_linear_address(segment, new_offset) as usize;
-                                            }
-
-                                            disassembly_addr_seg = Some(CpuAddress::Segmented(segment, new_offset));
-                                            //*offset = new_offset;
-                                        }
-                                        decode_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", instr_bytes_str)));
-                                        decode_vec.append(&mut instr_vec);
-                                    }
-                                    Err(_) => {
-                                        decode_vec.push(SyntaxToken::ErrorString("INVALID".to_string()));
-                                    }
-                                };
-
-                                //disassembly_string.push_str(&decode_str);
-                                listview_vec.push(decode_vec);
-                            }
-                        }
-
-                        //framework.gui.update_disassembly_view(disassembly_string);
-                        framework.gui.disassembly_viewer.set_content(listview_vec);
-                    }
-
-                    // Prepare egui
-                    framework.prepare(&window);
-                    
-                    // Render everything together
-                    video.with_backend(|pixels, scaler| {
-                        let _render_result = pixels.render_with(|encoder, render_target, context| {
-                            scaler.render(encoder, render_target);
-
-                            if render_egui {
-                                framework.render(encoder, render_target, context);
-                            }
-
-                            Ok(())                            
-                        });
-                    });
-
-                    /*
-                    match video.get_scaling_mode() {
-                        ScalingMode::Integer => {
-                            video.with_backend(|pixels, _scaler| {
-                                let render_result = pixels.render_with(|encoder, render_target, context| {
-        
-                                    context.scaling_renderer.render(encoder, render_target);
-            
-                                    // Render egui
-                                    framework.render(encoder, render_target, context);
-            
-                                    Ok(())
-                                });
-            
-                                // Basic error handling
-                                if render_result
-                                    .map_err(|e| error!("pixels.render() failed: {}", e))
-                                    .is_err()
-                                {
-                                    *control_flow = ControlFlow::Exit;
-                                }  
-                            });
-                        }
-                        ScalingMode::Scale | ScalingMode::Stretch => {
-                        
-                            video.with_backend(|pixels, scaler| {
-                                let render_result = pixels.render_with(|encoder, render_target, context| {
-                                    
-                                    match scaler {
-                                        Some(ScalerDispatch::Scale(s)) => {
-                                            s.render(encoder, render_target, true);
-                                        }
-                                        Some(ScalerDispatch::Stretch(s)) => {
-                                            s.render(encoder, render_target, true);
-                                        }
-                                        _=>{}
-                                    }
-                                    
-                                    framework.render(encoder, render_target, context);
-                                    Ok(())
-                                });
-
-                                // Basic error handling
-                                if render_result
-                                    .map_err(|e| error!("pixels.render() failed: {}", e))
-                                    .is_err()
-                                {
-                                    *control_flow = ControlFlow::Exit;
-                                }  
-                            });
-                        }                            
-                    }
-                    */
-
- 
-                }
-            }
-            
-            Event::RedrawRequested(_) => {
-
-
-            }
-            _ => (),
-        }
+    event_loop.run(move |event, elwt| {
+        handle_event(&mut emulator, event, elwt);
     });
 }

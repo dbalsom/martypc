@@ -1,0 +1,45 @@
+[package]
+name = "marty_egui"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+name = "marty_egui"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+marty_core = { path = "../../../core" }
+videocard_renderer = { path = "../videocard_renderer" }
+display_scaler_trait = { path = "../display_scaler_trait" }
+display_manager_trait = { path = "../display_manager_trait" }
+winit.workspace = true
+pixels.workspace = true
+#egui = "0.24"
+#egui-wgpu = "0.24"
+#egui-winit = { version = "0.24", default-features = false, features = ["links"] }
+#egui_extras = { version = "*", features = ["all_loaders"] }
+image = { version = "0.24", features = ["png"] }
+wgpu = {  workspace = true, optional = true }
+serialport = "4.2"
+regex = "1.10"
+log = "0.4"
+
+[dependencies.egui]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_winit_0_29"
+
+[dependencies.egui-wgpu]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_winit_0_29"
+
+[dependencies.egui-winit]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_winit_0_29"
+features = ["links"]
+
+[dependencies.egui_extras]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_winit_0_29"
+features = ["all_loaders"]
+

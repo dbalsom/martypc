@@ -46,6 +46,17 @@ use crate::{
     },
 };
 
+use serde::Deserialize;
+
+#[derive(Copy, Clone, Debug, Deserialize)]
+pub struct VideoCardDefinition {
+    pub video_type: VideoType,
+    pub composite: Option<bool>,
+    pub snow: Option<bool>,
+    pub clocking_mode: Option<ClockingMode>,
+    pub debug: Option<bool>,
+}
+
 pub trait CoreConfig {
 
     fn get_base_dir(&self) -> PathBuf;
@@ -55,9 +66,10 @@ pub trait CoreConfig {
     fn get_keyboard_type(&self) -> Option<KeyboardType>;
     fn get_keyboard_layout(&self) -> Option<String>;
     fn get_keyboard_debug(&self) -> bool;
-    fn get_video_type(&self) -> Option<VideoType>;
-    fn get_video_clockingmode(&self) -> Option<ClockingMode>;
-    fn get_video_debug(&self) -> bool;
+    fn get_video_cards(&self) -> Vec<VideoCardDefinition>;
+    //fn get_video_type(&self) -> Option<VideoType>;
+    //fn get_video_clockingmode(&self) -> Option<ClockingMode>;
+    //fn get_video_debug(&self) -> bool;
     fn get_hdc_type(&self) -> Option<HardDiskControllerType>;
     fn get_validator_type(&self) -> Option<ValidatorType>;
     fn get_validator_trace_file(&self) -> Option<PathBuf>;

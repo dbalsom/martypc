@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run martypc [RELEASE] [CGA]" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="run -r --features devtools,ega -- --video-type=CGA" />
+    <option name="command" value="run -r --features devtools,ega --" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$" />
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />

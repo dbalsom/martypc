@@ -1,0 +1,14 @@
+[package]
+name = "display_backend_trait"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+name = "display_backend_trait"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+display_scaler_trait = { path = "../../frontend/display_scaler_trait" }
+thiserror = "1.0"
+anyhow = "1.0"

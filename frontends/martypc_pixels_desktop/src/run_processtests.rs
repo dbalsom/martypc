@@ -55,7 +55,7 @@ use marty_core::{
     tracelogger::TraceLogger
 };
 
-use bpaf_toml_config::{ConfigFileParams, TestMode};
+use config_toml_bpaf::{ConfigFileParams, TestMode};
 
 use crate::cpu_test::{CpuTest, TestState};
 

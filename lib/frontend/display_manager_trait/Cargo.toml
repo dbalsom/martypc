@@ -1,0 +1,19 @@
+[package]
+name = "display_manager_trait"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "display_manager_trait"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+display_backend_trait = { path = "../../backend/display_backend_trait" }
+display_scaler_trait = { path = "../display_scaler_trait" }
+videocard_renderer = { path = "../videocard_renderer" }
+marty_color = { path = "../marty_color" }
+marty_core = { path = "../../../core" }
+anyhow.workspace = true

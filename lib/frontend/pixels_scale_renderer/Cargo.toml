@@ -1,0 +1,17 @@
+[package]
+name = "pixels_scale_renderer"
+version = "0.1.4"
+edition = "2021"
+license = "MIT"
+
+[lib]
+name = "pixels_scale_renderer"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+display_scaler = { path = "../display_scaler_trait" }
+bytemuck = "1.13.1"
+pixels = "0.13"
+ultraviolet = "0.9"
+wgpu = "0.16"

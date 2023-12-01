@@ -187,7 +187,7 @@ impl EGACard {
                     AttributeRegister::PaletteC | AttributeRegister::PaletteD | AttributeRegister::PaletteE |
                     AttributeRegister::PaletteF => {
                         //self.attribute_palette_registers[self.attribute_palette_index] = APaletteRegister::from_bytes([byte]);
-                        log::debug!("set palette index {} to {:08b}", self.attribute_palette_index, byte );
+                        //log::debug!("set palette index {} to {:08b}", self.attribute_palette_index, byte );
                         self.attribute_palette_registers[self.attribute_palette_index].set(byte);
                     }
                     AttributeRegister::ModeControl => {

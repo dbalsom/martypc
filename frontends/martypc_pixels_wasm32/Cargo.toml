@@ -11,8 +11,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 marty_core = { path = "../../core/"}
-marty_render = { path = "../../frontend_libs/render"}
-marty_pixels_scaler = { path = "../../frontend_libs/marty_pixels_scaler" }
+videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
+marty_pixels_scaler = { path = "../../lib/frontend/marty_pixels_scaler" }
 
 bytemuck = "1.13.1"
 cpal = "0.13.5"
@@ -30,7 +30,7 @@ regex = "1.5.5"
 resize = "0.7.4"
 rgb = "0.8.33"
 serialport = "4.2.0"
-winit = "0.28"
+winit = "0.29.4"
 winit_input_helper = "0.14"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -45,9 +45,6 @@ wasm-bindgen-futures = "0.4"
 web-sys = { version = "0.3", features = ["GpuTextureFormat", "Request", "RequestInit", "Response", "Headers", "Blob", "FileReader", "ProgressEvent"] }
 instant = "0.1.12"
 cpal = { version = "0.13.5", features = ["wasm-bindgen"]}
-
-[target.wasm32-unknown-unknown]
-runner = "wasm-server-runner"
 
 [features]
 devtools=[]

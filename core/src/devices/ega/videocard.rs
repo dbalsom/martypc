@@ -322,6 +322,7 @@ impl VideoCard for EGACard {
         push_reg_str!(crtc_vec, CRTCRegister::StartHorizontalRetrace, "[R04]", self.crtc_start_horizontal_retrace);
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05]", self.crtc_end_horizontal_retrace.end_horizontal_retrace());
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05:hrd]", self.crtc_end_horizontal_retrace.horizontal_retrace_delay());
+        push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05:som]", self.crtc_end_horizontal_retrace.start_odd());
         push_reg_str!(crtc_vec, CRTCRegister::EndHorizontalRetrace, "[R05:norm]", self.crtc_end_horizontal_retrace_norm);
         push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R06]", self.crtc_vertical_total);
         push_reg_str!(crtc_vec, CRTCRegister::Overflow, "[R07]", self.crtc_overflow);
@@ -356,7 +357,6 @@ impl VideoCard for EGACard {
         external_vec.push(("Misc Output [vrp]".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.vertical_retrace_polarity()))));
         map.insert("External".to_string(), external_vec);
 
-        
         let mut sequencer_vec = Vec::new();
         
         sequencer_vec.push((format!("{:?}", SequencerRegister::Reset), VideoCardStateEntry::String(format!("{:02b}", self.sequencer_reset))));
@@ -386,7 +386,7 @@ impl VideoCard for EGACard {
         graphics_vec.push((format!("{:?} [wm]", GraphicsRegister::Mode), VideoCardStateEntry::String(format!("{:?}", self.graphics_mode.write_mode()))));
 
         graphics_vec.push((format!("{:?} [gm]", GraphicsRegister::Miscellaneous), VideoCardStateEntry::String(format!("{:?}", self.graphics_micellaneous.graphics_mode()))));
-        graphics_vec.push((format!("{:?} [com]", GraphicsRegister::Miscellaneous), VideoCardStateEntry::String(format!("{:?}", self.graphics_micellaneous.chain_odd_even()))));
+        graphics_vec.push((format!("{:?} [coe]", GraphicsRegister::Miscellaneous), VideoCardStateEntry::String(format!("{:?}", self.graphics_micellaneous.chain_odd_even()))));
         graphics_vec.push((format!("{:?} [mm]", GraphicsRegister::Miscellaneous), VideoCardStateEntry::String(format!("{:?}", self.graphics_micellaneous.memory_map()))));            
 
         graphics_vec.push((format!("{:?}", GraphicsRegister::ColorDontCare), VideoCardStateEntry::String(format!("{:04b}", self.graphics_color_dont_care))));

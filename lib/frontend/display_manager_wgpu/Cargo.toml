@@ -1,0 +1,27 @@
+[package]
+name = "display_manager_wgpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "display_manager_wgpu"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+display_manager_trait = { path = "../display_manager_trait" }
+#display_backend_trait = { path = "../../backend/display_backend_trait" }
+display_backend_pixels = { path = "../../backend/display_backend_pixels" }
+#display_scaler_trait = { path = "../display_scaler_trait" }
+marty_pixels_scaler = { path = "../marty_pixels_scaler" }
+videocard_renderer = { path = "../videocard_renderer" }
+
+marty_core = { path = "../../../core" }
+config_toml_bpaf = { path = "../config_toml_bpaf" }
+winit.workspace = true
+marty_egui = { path = "../marty_egui" }
+anyhow.workspace = true
+image.workspace = true
+log.workspace = true

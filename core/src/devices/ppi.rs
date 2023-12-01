@@ -186,7 +186,11 @@ pub struct PpiStringState {
 
 impl Ppi {
 
-    pub fn new(machine_type: MachineType, video_type: VideoType, num_floppies: u32 ) -> Self {
+    pub fn new(
+        machine_type: MachineType,
+        video_types: Vec<VideoType>,
+        num_floppies: u32
+    ) -> Self {
 
         let sw1_floppy_bits = match num_floppies {
             1 => SW1_ONE_FLOPPY,
@@ -196,12 +200,19 @@ impl Ppi {
             _ => 0,
         };
 
-        let sw1_video_bits = match video_type {
-            VideoType::None => SW1_HAVE_MDA,
-            VideoType::MDA => SW1_HAVE_MDA,
-            VideoType::CGA => SW1_HAVE_CGA_HIRES,
-            VideoType::EGA | VideoType::VGA => SW1_HAVE_EXPANSION
-        };
+        let sw1_video_bits =
+            if video_types.contains(&VideoType::VGA) || video_types.contains(&VideoType::EGA) {
+                // We have a card that requires an expansion BIOs.
+                SW1_HAVE_EXPANSION
+            }
+            else if video_types.contains(&VideoType::CGA) {
+                // We have a CGA card.
+                SW1_HAVE_CGA_HIRES
+            }
+            else {
+                // MDA or no card.
+                SW1_HAVE_MDA
+            };
 
         Self {
             machine_type,

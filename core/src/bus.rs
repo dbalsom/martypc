@@ -45,11 +45,12 @@ use ringbuf::{Producer};
 
 use crate::cpu_808x::*;
 use crate::bytequeue::*;
+use crate::coreconfig::VideoCardDefinition;
 
 use crate::syntax_token::SyntaxToken;
 use crate::machine::KeybufferEntry;
 use crate::machine_manager::MachineDescriptor;
-use crate::videocard::{ClockingMode, VideoType};
+use crate::videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType};
 use crate::devices::keyboard::KeyboardType;
 
 use crate::devices::{
@@ -164,9 +165,7 @@ pub enum IoDeviceType {
     FloppyController,
     HardDiskController,
     Mouse,
-    Cga,
-    Ega,
-    Vga,
+    Video(VideoCardId),
 }
 
 
@@ -199,7 +198,7 @@ impl MmioData {
 pub enum MmioDeviceType {
     None,
     Memory,
-    Video,
+    Video(VideoCardId),
     Cga,
     Ega,
     Vga,
@@ -240,7 +239,9 @@ pub struct BusInterface {
     fdc: Option<FloppyController>,
     hdc: Option<HardDiskController>,
     mouse: Option<Mouse>,
-    video: VideoCardDispatch,
+
+    videocards: HashMap<VideoCardId, VideoCardDispatch>,
+    videocard_ids: Vec<VideoCardId>,
 
     cycles_to_ticks: [u32; 256],    // TODO: Benchmarks don't show any faster than raw multiplication. It's not slower either though.
     pit_ticks_advance: u32,         // We can schedule extra PIT ticks to add when run() occurs. This is generally used for PIT phase offset adjustment.
@@ -374,7 +375,8 @@ impl Default for BusInterface {
             fdc: None,
             hdc: None,
             mouse: None,
-            video: VideoCardDispatch::None,
+            videocards: HashMap::new(),
+            videocard_ids: Vec::new(),
 
             cycles_to_ticks: [0; 256],
             pit_ticks_advance: 0,
@@ -568,88 +570,81 @@ impl BusInterface {
 
     pub fn get_read_wait(&mut self, address: usize, cycles: u32) -> Result<u32, MemError> {
         if address < self.memory.len() {
-            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
                 // Address is not mapped.
                 return Ok(DEFAULT_WAIT_STATES)
             }
             else {
                 // Handle memory-mapped devices
-                for map_entry in &self.mmio_map {
-                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
+                let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
 
-                        // Convert cpu cycles to system ticks
-                        let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                        match map_entry.1 {
-                            MmioDeviceType::Video => {
-                                match &mut self.video {
-                                    VideoCardDispatch::Cga(cga) => {
-                                        let syswait = cga.get_read_wait(address, system_ticks);
-                                        return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    }
-                                    #[cfg(feature = "ega")]
-                                    VideoCardDispatch::Ega(ega) => {
-                                        let syswait = ega.get_read_wait(address, system_ticks);
-                                        return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    }
-                                    #[cfg(feature = "vga")]
-                                    VideoCardDispatch::Vga(vga) => {
-                                        let syswait = vga.get_read_wait(address, system_ticks);
-                                        return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    }
-                                    _ => {}
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                    MmioDeviceType::Video(vid) => {
+                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
+                            match card_dispatch {
+                                VideoCardDispatch::Cga(cga) => {
+                                    let syswait = cga.get_read_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
                                 }
+                                #[cfg(feature = "ega")]
+                                VideoCardDispatch::Ega(ega) => {
+                                    let syswait = ega.get_read_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
+                                }
+                                #[cfg(feature = "vga")]
+                                VideoCardDispatch::Vga(vga) => {
+                                    let syswait = vga.get_read_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
+                                }
+                                _ => {}
                             }
-                            _=> {}
+
                         }
-                        return Err(MemError::MmioError)
+
                     }
+                    _=> {}
                 }
                 // We didn't match any mmio devices, return raw memory
                 return Ok(DEFAULT_WAIT_STATES)
             }
         }
-        Err(MemError::ReadOutOfBoundsError)        
+        Err(MemError::ReadOutOfBoundsError)
     }
 
     pub fn get_write_wait(&mut self, address: usize, cycles: u32) -> Result<u32, MemError> {
         if address < self.memory.len() {
-            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
                 // Address is not mapped.
                 return Ok(DEFAULT_WAIT_STATES)
             }
             else {
                 // Handle memory-mapped devices
-                for map_entry in &self.mmio_map {
-                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
+                let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
 
-                        // Convert cpu cycles to system ticks
-                        let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                        match map_entry.1 {
-                            MmioDeviceType::Video => {
-                                match &mut self.video {
-                                    VideoCardDispatch::Cga(cga) => {
-                                        let syswait = cga.get_write_wait(address, system_ticks);
-                                        return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    }
-                                    #[cfg(feature = "ega")]
-                                    VideoCardDispatch::Ega(ega) => {
-                                        let syswait = ega.get_write_wait(address, system_ticks);
-                                        return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    }
-                                    #[cfg(feature = "vga")]
-                                    VideoCardDispatch::Vga(vga) => {
-                                        let syswait = vga.get_write_wait(address, system_ticks);
-                                        return Ok(self.system_ticks_to_cpu_cycles(syswait));
-                                    }
-                                    _ => {}
+                // Handle memory-mapped devices
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                    MmioDeviceType::Video(vid) => {
+                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
+                            match card_dispatch {
+                                VideoCardDispatch::Cga(cga) => {
+                                    let syswait = cga.get_write_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
                                 }
+                                #[cfg(feature = "ega")]
+                                VideoCardDispatch::Ega(ega) => {
+                                    let syswait = ega.get_write_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
+                                }
+                                #[cfg(feature = "vga")]
+                                VideoCardDispatch::Vga(vga) => {
+                                    let syswait = vga.get_write_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
+                                }
+                                _ => {}
                             }
-                            _=> {}
                         }
-                        return Err(MemError::MmioError)
                     }
+                    _ => {}
                 }
                 // We didn't match any mmio devices, return raw memory
                 return Ok(DEFAULT_WAIT_STATES)
@@ -660,47 +655,40 @@ impl BusInterface {
 
     pub fn read_u8(&mut self, address: usize, cycles: u32) -> Result<(u8, u32), MemError> {
         if address < self.memory.len() {
-            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
                 // Address is not mapped.
-                let b: u8 = self.memory[address];
-                return Ok((b, DEFAULT_WAIT_STATES))
+                let data: u8 = self.memory[address];
+                return Ok((data, 0))
             }
             else {
                 // Handle memory-mapped devices
-                for map_entry in &self.mmio_map {
-                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
+                let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
 
-                        // Convert cpu cycles to system ticks
-                        let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                        match map_entry.1 {
-                            MmioDeviceType::Video => {
-                                match &mut self.video {
-                                    VideoCardDispatch::Cga(cga) => {
-                                        let (data, syswait) = MemoryMappedDevice::mmio_read_u8(cga, address, system_ticks);
-                                        return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
-                                    }
-                                    #[cfg(feature = "ega")]
-                                    VideoCardDispatch::Ega(ega) => {
-                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u8(ega, address, system_ticks);
-                                        return Ok((data, 0));
-                                    }
-                                    #[cfg(feature = "vga")]
-                                    VideoCardDispatch::Vga(vga) => {
-                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u8(vga, address, system_ticks);
-                                        return Ok((data, 0));
-                                    }
-                                    _ => {}
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                    MmioDeviceType::Video(vid) => {
+                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
+                            match card_dispatch {
+                                VideoCardDispatch::Cga(cga) => {
+                                    let (data, _waits) = MemoryMappedDevice::mmio_read_u8(cga, address, system_ticks);
+                                    return Ok((data, 0));
                                 }
+                                #[cfg(feature = "ega")]
+                                VideoCardDispatch::Ega(ega) => {
+                                    let (data, _waits) = MemoryMappedDevice::mmio_read_u8(ega, address, system_ticks);
+                                    return Ok((data, 0));
+                                }
+                                #[cfg(feature = "vga")]
+                                VideoCardDispatch::Vga(vga) => {
+                                    let (data, _waits) = MemoryMappedDevice::mmio_read_u8(vga, address, system_ticks);
+                                    return Ok((data, 0));
+                                }
+                                _ => {}
                             }
-                            _=> {}
                         }
-                        return Err(MemError::MmioError)
                     }
+                    _=> {}
                 }
-                // We didn't match any mmio devices, return raw memory
-                let b: u8 = self.memory[address];
-                return Ok((b, DEFAULT_WAIT_STATES))
+                return Err(MemError::MmioError)
             }
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -708,44 +696,38 @@ impl BusInterface {
 
     pub fn peek_u8(&self, address: usize) -> Result<u8, MemError> {
         if address < self.memory.len() {
-            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
                 // Address is not mapped.
                 let b: u8 = self.memory[address];
                 return Ok(b)
             }
             else {
                 // Handle memory-mapped devices
-                for map_entry in &self.mmio_map {
-                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
-
-                        match map_entry.1 {
-                            MmioDeviceType::Video => {
-                                match &self.video {
-                                    VideoCardDispatch::Cga(cga) => {
-                                        let data = MemoryMappedDevice::mmio_peek_u8(cga, address);
-                                        return Ok(data);
-                                    }
-                                    #[cfg(feature = "ega")]
-                                    VideoCardDispatch::Ega(ega) => {
-                                        let data = MemoryMappedDevice::mmio_peek_u8(ega, address);
-                                        return Ok(data);
-                                    }
-                                    #[cfg(feature = "vga")]
-                                    VideoCardDispatch::Vga(vga) => {
-                                        let data = MemoryMappedDevice::mmio_peek_u8(vga, address);
-                                        return Ok(data);
-                                    }
-                                    _ => {}
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                    MmioDeviceType::Video(vid) => {
+                        if let Some(card_dispatch) = self.videocards.get(&vid) {
+                            match card_dispatch {
+                                VideoCardDispatch::Cga(cga) => {
+                                    let data = MemoryMappedDevice::mmio_peek_u8(cga, address);
+                                    return Ok(data);
                                 }
+                                #[cfg(feature = "ega")]
+                                VideoCardDispatch::Ega(ega) => {
+                                    let data = MemoryMappedDevice::mmio_peek_u8(ega, address);
+                                    return Ok(data);
+                                }
+                                #[cfg(feature = "vga")]
+                                VideoCardDispatch::Vga(vga) => {
+                                    let data = MemoryMappedDevice::mmio_peek_u8(vga, address);
+                                    return Ok(data);
+                                }
+                                _ => {}
                             }
-                            _=> {}
                         }
-                        return Err(MemError::MmioError)
                     }
+                    _=> {}
                 }
-                // We didn't match any mmio devices, return raw memory
-                let b: u8 = self.memory[address];
-                return Ok(b)
+                return Err(MemError::MmioError)
             }
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -753,48 +735,40 @@ impl BusInterface {
 
     pub fn read_u16(&mut self, address: usize, cycles: u32) -> Result<(u16, u32), MemError> {
         if address < self.memory.len() - 1 {
-            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+            if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
                 // Address is not mapped.
                 let w: u16 = self.memory[address] as u16 | (self.memory[address + 1] as u16) << 8;
                 return Ok((w, DEFAULT_WAIT_STATES))
             }
             else {
                 // Handle memory-mapped devices
-                for map_entry in &self.mmio_map {
-                    if address >= map_entry.0.address && address < (map_entry.0.address + map_entry.0.size - 1) {
-
-                        // Convert cpu cycles to system ticks
-                        let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                        match map_entry.1 {
-                            MmioDeviceType::Cga | MmioDeviceType::Ega | MmioDeviceType::Vga => {
-                                match &mut self.video {
-                                    VideoCardDispatch::Cga(cga) => {
-                                        //let (data, syswait) = MemoryMappedDevice::read_u16(cga, address, system_ticks);
-                                        let (data, syswait) = cga.mmio_read_u16(address, system_ticks);
-                                        return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
-                                    }
-                                    #[cfg(feature = "ega")]
-                                    VideoCardDispatch::Ega(ega) => {
-                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u16(ega, address, system_ticks);
-                                        return Ok((data, 0));
-                                    }
-                                    #[cfg(feature = "vga")]
-                                    VideoCardDispatch::Vga(vga) => {
-                                        let (data, _syswait) = MemoryMappedDevice::mmio_read_u16(vga, address, system_ticks);
-                                        return Ok((data, 0));
-                                    }
-                                    _ => {}
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                    MmioDeviceType::Video(vid) => {
+                        if let Some(mut card_dispatch) = self.videocards.get_mut(&vid) {
+                            let system_ticks = self.cycles_to_ticks[cycles as usize];
+                            match card_dispatch {
+                                VideoCardDispatch::Cga(cga) => {
+                                    //let (data, syswait) = MemoryMappedDevice::read_u16(cga, address, system_ticks);
+                                    let (data, syswait) = cga.mmio_read_u16(address, system_ticks);
+                                    return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
                                 }
+                                #[cfg(feature = "ega")]
+                                VideoCardDispatch::Ega(ega) => {
+                                    let (data, _syswait) = MemoryMappedDevice::mmio_read_u16(ega, address, system_ticks);
+                                    return Ok((data, 0));
+                                }
+                                #[cfg(feature = "vga")]
+                                VideoCardDispatch::Vga(vga) => {
+                                    let (data, _syswait) = MemoryMappedDevice::mmio_read_u16(vga, address, system_ticks);
+                                    return Ok((data, 0));
+                                }
+                                _ => {}
                             }
-                            _=> {}
                         }
-                        return Err(MemError::MmioError)
                     }
+                    _ => {}
                 }
-                // We didn't match any mmio devices, return raw memory
-                let w: u16 = self.memory[address] as u16 | (self.memory[address + 1] as u16) << 8;
-                return Ok((w, DEFAULT_WAIT_STATES))            
+                return Err(MemError::MmioError)
             }
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -808,69 +782,30 @@ impl BusInterface {
                 return Ok(DEFAULT_WAIT_STATES);
             }
             else {
-                /*
-                // Handle memory-mapped devices
-                for map_entry in &self.mmio_map {
-                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size {
-
-                        // Convert cpu cycles to system ticks
-                        let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-                        //let system_ticks = self.cycles_to_ticks[cycles as usize];
-
-                        match map_entry.1 {
-                            MmioDeviceType::Cga | MmioDeviceType::Ega | MmioDeviceType::Vga => {
-                                match &mut self.video {
-                                    VideoCardDispatch::Cga(cga) => {
-                                        let syswait = MemoryMappedDevice::mmio_write_u8(cga, address, data, system_ticks);
-                                        //return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value. 
-                                        return Ok(0);
-                                    }
-                                    #[cfg(feature = "ega")]
-                                    VideoCardDispatch::Ega(ega) => {
-                                        MemoryMappedDevice::mmio_write_u8( ega, address, data, system_ticks);
-                                    }
-                                    #[cfg(feature = "vga")]
-                                    VideoCardDispatch::Vga(vga) => {
-                                        MemoryMappedDevice::mmio_write_u8(vga, address, data, system_ticks);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            _=> {}
-                        }                        
-                        return Ok(map_entry.0.cycle_cost);
-                    }
-                }
-                return Ok(DEFAULT_WAIT_STATES);
-                */
-                
+                // Handle memory-mapped devices.
                 match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
-                    MmioDeviceType::Video => {
-                        
-                        let system_ticks = self.cycles_to_ticks[cycles as usize];
-
-                        match &mut self.video {
-                            VideoCardDispatch::Cga(cga) => {
-                                let _syswait = cga.mmio_write_u8(address, data, system_ticks);
-                                //return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value. 
-                                return Ok(0);
+                    MmioDeviceType::Video(vid) => {
+                        if let Some(mut card_dispatch) = self.videocards.get_mut(&vid) {
+                            let system_ticks = self.cycles_to_ticks[cycles as usize];
+                            match card_dispatch {
+                                VideoCardDispatch::Cga(cga) => {
+                                    let _syswait = cga.mmio_write_u8(address, data, system_ticks);
+                                    //return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value.
+                                    return Ok(0);
+                                }
+                                #[cfg(feature = "ega")]
+                                VideoCardDispatch::Ega(ega) => {
+                                    MemoryMappedDevice::mmio_write_u8( ega, address, data, system_ticks);
+                                }
+                                #[cfg(feature = "vga")]
+                                VideoCardDispatch::Vga(vga) => {
+                                    MemoryMappedDevice::mmio_write_u8(vga, address, data, system_ticks);
+                                }
+                                _ => {}
                             }
-                            #[cfg(feature = "ega")]
-                            VideoCardDispatch::Ega(ega) => {
-                                MemoryMappedDevice::mmio_write_u8( ega, address, data, system_ticks);
-                            }
-                            #[cfg(feature = "vga")]
-                            VideoCardDispatch::Vga(vga) => {
-                                MemoryMappedDevice::mmio_write_u8(vga, address, data, system_ticks);
-                            }
-                            _ => {}
                         }
                     },
-                    _ => {
-                        if self.memory_mask[address] & MEM_ROM_BIT == 0 {
-                            self.memory[address] = data;                
-                        }
-                    }
+                    _ => {}
                 }
                 return Ok(DEFAULT_WAIT_STATES);
             }
@@ -880,7 +815,7 @@ impl BusInterface {
 
     pub fn write_u16(&mut self, address: usize, data: u16, cycles: u32) -> Result<u32, MemError> {
         if address < self.memory.len() - 1 {
-            if address < self.mmio_data.first_map || address > self.mmio_data.last_map {
+            if self.memory_mask[address] & (MEM_MMIO_BIT | MEM_ROM_BIT) == 0 {
                 // Address is not mapped.
 
                 // Little Endian is LO byte first
@@ -892,46 +827,36 @@ impl BusInterface {
             }
             else {
                 // Handle memory-mapped devices
-                for map_entry in &self.mmio_map {
-                    if address >= map_entry.0.address && address < map_entry.0.address + map_entry.0.size - 1 {
+                match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
+                    MmioDeviceType::Video(vid) => {
+                        if let Some(mut card_dispatch) = self.videocards.get_mut(&vid) {
+                            let system_ticks = self.cycles_to_ticks[cycles as usize];
 
-                        // Convert cpu cycles to system ticks
-                        let system_ticks = self.cpu_cycles_to_system_ticks(cycles);
-
-                        match map_entry.1 {
-                            MmioDeviceType::Cga | MmioDeviceType::Ega | MmioDeviceType::Vga => {
-                                match &mut self.video {
-                                    VideoCardDispatch::Cga(cga) => {
-                                        let mut syswait;
-                                        syswait = MemoryMappedDevice::mmio_write_u8(cga, address, (data & 0xFF) as u8, system_ticks);
-                                        syswait += MemoryMappedDevice::mmio_write_u8(cga, address + 1, (data >> 8) as u8, 0);
-                                        return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value. 
-                                    }
-                                    #[cfg(feature = "ega")]
-                                    VideoCardDispatch::Ega(ega) => {
-                                        MemoryMappedDevice::mmio_write_u8(ega, address, (data & 0xFF) as u8, system_ticks);
-                                        MemoryMappedDevice::mmio_write_u8(ega, address + 1, (data >> 8) as u8, 0);
-                                    }
-                                    #[cfg(feature = "vga")]
-                                    VideoCardDispatch::Vga(vga) => {
-                                        MemoryMappedDevice::mmio_write_u8(vga, address, (data & 0xFF) as u8, system_ticks);
-                                        MemoryMappedDevice::mmio_write_u8(vga, address + 1, (data >> 8) as u8, 0);
-                                    }
-                                    _ => {}
+                            match card_dispatch {
+                                VideoCardDispatch::Cga(cga) => {
+                                    let mut syswait;
+                                    syswait = MemoryMappedDevice::mmio_write_u8(cga, address, (data & 0xFF) as u8, system_ticks);
+                                    syswait += MemoryMappedDevice::mmio_write_u8(cga, address + 1, (data >> 8) as u8, 0);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait)); // temporary wait state value.
                                 }
+                                #[cfg(feature = "ega")]
+                                VideoCardDispatch::Ega(ega) => {
+                                    MemoryMappedDevice::mmio_write_u8(ega, address, (data & 0xFF) as u8, system_ticks);
+                                    MemoryMappedDevice::mmio_write_u8(ega, address + 1, (data >> 8) as u8, 0);
+                                }
+                                #[cfg(feature = "vga")]
+                                VideoCardDispatch::Vga(vga) => {
+                                    MemoryMappedDevice::mmio_write_u8(vga, address, (data & 0xFF) as u8, system_ticks);
+                                    MemoryMappedDevice::mmio_write_u8(vga, address + 1, (data >> 8) as u8, 0);
+                                }
+                                _ => {}
                             }
-                            _=> {}
                         }                             
-                        return Ok(map_entry.0.cycle_cost);
-                    }
-                }
 
-                // We didn't match any mmio devices, write to memory.
-                if self.memory_mask[address] & MEM_ROM_BIT == 0 {
-                    self.memory[address] = (data & 0xFF) as u8;
-                    self.memory[address+1] = (data >> 8) as u8;              
+                    }
+                    _ => {}
                 }
-                return Ok(DEFAULT_WAIT_STATES);
+                return Ok(0);
             }
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -1302,17 +1227,23 @@ impl BusInterface {
     
     pub fn install_devices(
         &mut self, 
-        video_type: VideoType, 
+        videocards: Vec<VideoCardDefinition>,
         clock_mode: ClockingMode,
         machine_desc: &MachineDescriptor, 
         video_trace: TraceLogger,
         video_frame_debug: bool,
     ) 
     {
-
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
-            self.ppi = Some(Ppi::new(machine_desc.machine_type, video_type, machine_desc.num_floppies));
+            self.ppi =
+                Some(
+                    Ppi::new(
+                        machine_desc.machine_type,
+                        videocards.iter().map(|vcd| vcd.video_type).collect(),
+                        machine_desc.num_floppies,
+                    )
+                );
             // Add PPI ports to io_map
             let port_list = self.ppi.as_mut().unwrap().port_list();
             self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ppi)));
@@ -1384,50 +1315,62 @@ impl BusInterface {
         let mouse = Mouse::new();
         self.mouse = Some(mouse);
 
-        // Create video card depending on VideoType
-        match video_type {
-            VideoType::CGA => {
-                let cga = CGACard::new(video_trace, clock_mode, video_frame_debug);
-                let port_list = cga.port_list();
-                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Cga)));
+        // Create video cards
+        for (i, card) in videocards.iter().enumerate() {
 
-                let mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false );
-                self.register_map(MmioDeviceType::Video, mem_descriptor);
+            let video_dispatch;
+            let video_id = VideoCardId {
+                idx: i,
+                vtype: card.video_type,
+            };
 
-                self.video = VideoCardDispatch::Cga(cga)
+            match card.video_type {
+                VideoType::CGA => {
+                    let cga = CGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
+                    let port_list = cga.port_list();
+                    self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
+
+                    let mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false );
+                    self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
+
+                    video_dispatch = VideoCardDispatch::Cga(cga)
+                }
+                #[cfg(feature = "ega")]
+                VideoType::EGA => {
+                    let ega = EGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
+                    let port_list = ega.port_list();
+                    self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
+
+                    let cga_mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false );
+                    let ega_mem_descriptor = MemRangeDescriptor::new(ega::EGA_MEM_ADDRESS, ega::EGA_GFX_PLANE_SIZE, false );
+                    self.register_map(MmioDeviceType::Video(video_id), cga_mem_descriptor);
+                    self.register_map(MmioDeviceType::Video(video_id), ega_mem_descriptor);
+
+                    video_dispatch = VideoCardDispatch::Ega(ega)
+                }
+                #[cfg(feature = "vga")]
+                VideoType::VGA => {
+                    let vga = VGACard::new(TraceLogger::None);
+                    let port_list = vga.port_list();
+                    self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
+
+                    let cga_mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false );
+                    let mem_descriptor = MemRangeDescriptor::new(vga::VGA_GFX_ADDRESS, vga::VGA_GFX_PLANE_SIZE, false );
+                    self.register_map(MmioDeviceType::Video(video_id), cga_mem_descriptor);
+                    self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
+
+                    video_dispatch = VideoCardDispatch::Vga(vga)
+                }
+                _=> {
+                    // MDA not implemented
+                    todo!("MDA not implemented");
+                }
             }
-            #[cfg(feature = "ega")]
-            VideoType::EGA => {
-                let ega = EGACard::new(video_trace, clock_mode, video_frame_debug);
-                let port_list = ega.port_list();
-                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ega)));
 
-                let cga_mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false );
-                let ega_mem_descriptor = MemRangeDescriptor::new(ega::EGA_MEM_ADDRESS, ega::EGA_GFX_PLANE_SIZE, false );
-                self.register_map(MmioDeviceType::Video, cga_mem_descriptor);
-                self.register_map(MmioDeviceType::Video, ega_mem_descriptor);
-
-                self.video = VideoCardDispatch::Ega(ega)
-            }
-            #[cfg(feature = "vga")]
-            VideoType::VGA => {
-                let vga = VGACard::new(video_trace);
-                let port_list = vga.port_list();
-                self.io_map.extend(port_list.into_iter().map(|p| (p, IoDeviceType::Vga)));
-
-                //let mem_descriptor = MemRangeDescriptor::new(0xB8000, vga::VGA_TEXT_PLANE_SIZE, false );
-                //cpu.bus_mut().register_map(IoDeviceType::Vga, mem_descriptor);
-
-                let mem_descriptor = MemRangeDescriptor::new(vga::VGA_GFX_ADDRESS, vga::VGA_GFX_PLANE_SIZE, false );
-                self.register_map(MmioDeviceType::Video, mem_descriptor);
-
-                self.video = VideoCardDispatch::Vga(vga)
-            }
-            _=> {
-                // MDA not implemented
-                todo!("MDA not implemented");
-            }
+            self.videocards.insert(video_id, video_dispatch);
+            self.videocard_ids.push(video_id);
         }
+
     
         self.machine_desc = Some(machine_desc.clone());
     }
@@ -1652,81 +1595,84 @@ impl BusInterface {
             }            
         }
 
-        // Run the video device.
-        match &mut self.video {
-            VideoCardDispatch::Cga(cga) => {
+        // Run all video cards
+        for (vid, video_dispatch) in self.videocards.iter_mut() {
+            match video_dispatch {
+                VideoCardDispatch::Cga(cga) => {
 
-                self.cga_tick_accum += sys_ticks;
-                
-                if self.cga_tick_accum > 8 {
-                    cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum));
-                    self.cga_tick_accum = 0;
+                    self.cga_tick_accum += sys_ticks;
 
-                    if self.timer_trigger1_armed && pit_reload_value == 19912 {
-                        // Do hack for Area5150. TODO: Figure out why this is necessary.
-                        
-                        // With VerticalTotalAdjust == 0, ticks per frame are 233472.
-                        let screen_tick_pos = cga.get_screen_ticks();
-    
-                        //let screen_target = 17256
-                        //let screen_target = 16344;
-                        let screen_target = 15432 + 40;
-                        // Only adjust if we are late
-                        if screen_tick_pos > screen_target {
-                            let ticks_adj = screen_tick_pos - screen_target;
-                            log::warn!(
-                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})", 
-                                screen_target, 
-                                screen_tick_pos, 
+                    if self.cga_tick_accum > 8 {
+                        cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum));
+                        self.cga_tick_accum = 0;
+
+                        if self.timer_trigger1_armed && pit_reload_value == 19912 {
+                            // Do hack for Area5150. TODO: Figure out why this is necessary.
+
+                            // With VerticalTotalAdjust == 0, ticks per frame are 233472.
+                            let screen_tick_pos = cga.get_screen_ticks();
+
+                            //let screen_target = 17256
+                            //let screen_target = 16344;
+                            let screen_target = 15432 + 40;
+                            // Only adjust if we are late
+                            if screen_tick_pos > screen_target {
+                                let ticks_adj = screen_tick_pos - screen_target;
+                                log::warn!(
+                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})",
+                                screen_target,
+                                screen_tick_pos,
                                 ticks_adj,
                                 pit_counting_element
                             );
-                            
-                            //cga.debug_tick(233472 - ticks_adj as u32);
-                            
-                            //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+
+                                //cga.debug_tick(233472 - ticks_adj as u32);
+
+                                //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+                            }
+
+                            self.timer_trigger1_armed = false;
                         }
-                        
-                        self.timer_trigger1_armed = false;
+                        else if self.timer_trigger2_armed && pit_reload_value == 19912 {
+                            // Do hack for Area5150. TODO: Figure out why this is necessary.
+
+                            // With VerticalTotalAdjust == 0, ticks per frame are 233472.
+                            let screen_tick_pos = cga.get_screen_ticks();
+
+                            //let screen_target = 17256;
+                            let screen_target = 16344 + 40;
+                            // Only adjust if we are late
+                            if screen_tick_pos > screen_target {
+                                let ticks_adj = screen_tick_pos - screen_target;
+                                log::warn!(
+                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})",
+                                screen_target,
+                                screen_tick_pos,
+                                ticks_adj,
+                                pit_counting_element
+                            );
+
+                                //cga.debug_tick(233472 - ticks_adj as u32);
+
+                                //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
+                            }
+
+                            self.timer_trigger2_armed = false;
+                        }
                     }
-                    else if self.timer_trigger2_armed && pit_reload_value == 19912 {
-                        // Do hack for Area5150. TODO: Figure out why this is necessary.
-                        
-                        // With VerticalTotalAdjust == 0, ticks per frame are 233472.
-                        let screen_tick_pos = cga.get_screen_ticks();
-    
-                        //let screen_target = 17256;
-                        let screen_target = 16344 + 40;
-                        // Only adjust if we are late
-                        if screen_tick_pos > screen_target {
-                            let ticks_adj = screen_tick_pos - screen_target;
-                            log::warn!(
-                                "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})", 
-                                screen_target, 
-                                screen_tick_pos, 
-                                ticks_adj,
-                                pit_counting_element
-                            );
-                            
-                            //cga.debug_tick(233472 - ticks_adj as u32);
-                            
-                            //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
-                        }
-                        
-                        self.timer_trigger2_armed = false;
-                    }         
+                },
+                #[cfg(feature = "ega")]
+                VideoCardDispatch::Ega(ega) => {
+                    ega.run(DeviceRunTimeUnit::Microseconds(us));
                 }
-            },
-            #[cfg(feature = "ega")]
-            VideoCardDispatch::Ega(ega) => {
-                ega.run(DeviceRunTimeUnit::Microseconds(us));
+                #[cfg(feature = "vga")]
+                VideoCardDispatch::Vga(vga) => {
+                    vga.run(DeviceRunTimeUnit::Microseconds(us));
+                }
+                VideoCardDispatch::None => {}
             }
-            #[cfg(feature = "vga")]
-            VideoCardDispatch::Vga(vga) => {
-                vga.run(DeviceRunTimeUnit::Microseconds(us));
-            }
-            VideoCardDispatch::None => {}
         }
+
 
         event
     }
@@ -1749,9 +1695,10 @@ impl BusInterface {
             dma1.reset();
         }
 
-        // Reset video card
-        if let Some(video) = self.video_mut() {
-            video.reset();
+        // Reset video cards
+        let vids: Vec<_> = self.videocards.keys().cloned().collect();
+        for vid in vids {
+            self.video_mut(&vid).map(|mut video| video.reset());
         }
     }
 
@@ -1858,20 +1805,25 @@ impl BusInterface {
                     }
                 }
                        
-                IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
-                    match &mut self.video {
-                        VideoCardDispatch::Cga(cga) => {
-                            IoDevice::read_u8(cga, port, DeviceRunTimeUnit::SystemTicks(sys_ticks))
-                        },
-                        #[cfg(feature = "ega")]
-                        VideoCardDispatch::Ega(ega) => {
-                            IoDevice::read_u8(ega, port, nul_delta)
+                IoDeviceType::Video(vid) => {
+                    if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
+                        match video_dispatch {
+                            VideoCardDispatch::Cga(cga) => {
+                                IoDevice::read_u8(cga, port, DeviceRunTimeUnit::SystemTicks(sys_ticks))
+                            },
+                            #[cfg(feature = "ega")]
+                            VideoCardDispatch::Ega(ega) => {
+                                IoDevice::read_u8(ega, port, nul_delta)
+                            }
+                            #[cfg(feature = "vga")]
+                            VideoCardDispatch::Vga(vga) => {
+                                IoDevice::read_u8(vga, port, nul_delta)
+                            }
+                            VideoCardDispatch::None => NO_IO_BYTE
                         }
-                        #[cfg(feature = "vga")]
-                        VideoCardDispatch::Vga(vga) => {
-                            IoDevice::read_u8(vga, port, nul_delta)
-                        }
-                        VideoCardDispatch::None => NO_IO_BYTE
+                    }
+                    else {
+                        NO_IO_BYTE
                     }
                 }
                 _ => {
@@ -1966,20 +1918,22 @@ impl BusInterface {
                         serial.write_u8(port, data, None, nul_delta);
                     }
                 }
-                IoDeviceType::Cga | IoDeviceType::Ega | IoDeviceType::Vga => {
-                    match &mut self.video {
-                        VideoCardDispatch::Cga(cga) => {
-                            IoDevice::write_u8(cga, port, data, None, DeviceRunTimeUnit::SystemTicks(sys_ticks))
-                        },
-                        #[cfg(feature = "ega")]
-                        VideoCardDispatch::Ega(ega) => {
-                            IoDevice::write_u8(ega, port, data, None, nul_delta)
+                IoDeviceType::Video(vid) => {
+                    if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
+                        match video_dispatch {
+                            VideoCardDispatch::Cga(cga) => {
+                                IoDevice::write_u8(cga, port, data, None, DeviceRunTimeUnit::SystemTicks(sys_ticks))
+                            },
+                            #[cfg(feature = "ega")]
+                            VideoCardDispatch::Ega(ega) => {
+                                IoDevice::write_u8(ega, port, data, None, nul_delta)
+                            }
+                            #[cfg(feature = "vga")]
+                            VideoCardDispatch::Vga(vga) => {
+                                IoDevice::write_u8(vga, port, data, None, nul_delta)
+                            }
+                            VideoCardDispatch::None => {}
                         }
-                        #[cfg(feature = "vga")]
-                        VideoCardDispatch::Vga(vga) => {
-                            IoDevice::write_u8(vga, port, data, None, nul_delta)
-                        }
-                        VideoCardDispatch::None => {}
                     }
                 }
                 _ => {}
@@ -2025,43 +1979,104 @@ impl BusInterface {
         &mut self.mouse
     }
 
-    pub fn video(&self) -> Option<Box<&dyn VideoCard>> {
+    pub fn primary_video(&self) -> Option<Box<&dyn VideoCard>> {
 
-        match &self.video {
-            VideoCardDispatch::Cga(cga) => {
-                Some(Box::new(cga as &dyn VideoCard))
-            }
-            #[cfg(feature = "ega")]
-            VideoCardDispatch::Ega(ega) => {
-                Some(Box::new(ega as &dyn VideoCard))
-            }
-            #[cfg(feature = "vga")]
-            VideoCardDispatch::Vga(vga) => {
-                Some(Box::new(vga as &dyn VideoCard))
-            }
-            VideoCardDispatch::None => {
-                None
-            }
+        if self.videocard_ids.len() > 0 {
+            self.video(&self.videocard_ids[0])
+        }
+        else {
+            None
         }
     }
 
-    pub fn video_mut(&mut self) -> Option<Box<&mut dyn VideoCard>> {
+    pub fn primary_video_mut(&mut self) -> Option<Box<&mut dyn VideoCard>> {
+        if self.videocard_ids.len() > 0 {
+            let vid = self.videocard_ids[0];
+            self.video_mut(&vid)
+        }
+        else {
+            None
+        }
+    }
 
-        match &mut self.video {
-            VideoCardDispatch::Cga(cga) => {
-                Some(Box::new(cga as &mut dyn VideoCard))
+    pub fn video(&self, vid: &VideoCardId) -> Option<Box<&dyn VideoCard>> {
+        if let Some(video_dispatch) = self.videocards.get(vid) {
+            match video_dispatch {
+                VideoCardDispatch::Cga(cga) => {
+                    Some(Box::new(cga as &dyn VideoCard))
+                }
+                #[cfg(feature = "ega")]
+                VideoCardDispatch::Ega(ega) => {
+                    Some(Box::new(ega as &dyn VideoCard))
+                }
+                #[cfg(feature = "vga")]
+                VideoCardDispatch::Vga(vga) => {
+                    Some(Box::new(vga as &dyn VideoCard))
+                }
+                VideoCardDispatch::None => {
+                    None
+                }
             }
-            #[cfg(feature = "ega")]
-            VideoCardDispatch::Ega(ega) => {
-                Some(Box::new(ega as &mut dyn VideoCard))
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn video_mut(&mut self, vid: &VideoCardId) -> Option<Box<&mut dyn VideoCard>> {
+        if let Some(video_dispatch) = self.videocards.get_mut(vid) {
+            match video_dispatch {
+                VideoCardDispatch::Cga(cga) => {
+                    Some(Box::new(cga as &mut dyn VideoCard))
+                }
+                #[cfg(feature = "ega")]
+                VideoCardDispatch::Ega(ega) => {
+                    Some(Box::new(ega as &mut dyn VideoCard))
+                }
+                #[cfg(feature = "vga")]
+                VideoCardDispatch::Vga(vga) => {
+                    Some(Box::new(vga as &mut dyn VideoCard))
+                }
+                VideoCardDispatch::None => {
+                    None
+                }
             }
-            #[cfg(feature = "vga")]
-            VideoCardDispatch::Vga(vga) => {
-                Some(Box::new(vga as &mut dyn VideoCard))
-            }
-            VideoCardDispatch::None => {
-                None
-            }
+        }
+        else {
+            None
+        }
+    }
+
+    /// Call the provided closure in sequence with every video card defined on the bus.
+    pub fn for_each_videocard<F>(&mut self, mut f: F)
+        where
+            F: FnMut(VideoCardInterface),
+    {
+        // For the moment we only support a primary video card.
+        for (_vid, video_dispatch) in self.videocards.iter_mut() {
+            match video_dispatch {
+                VideoCardDispatch::Cga(cga) => {
+                    f(VideoCardInterface {
+                        card: Box::new(cga as &mut dyn VideoCard),
+                        id: VideoCardId{ idx: 0, vtype: VideoType::CGA },
+                    })
+                }
+                #[cfg(feature = "ega")]
+                VideoCardDispatch::Ega(ega) => {
+                    f(VideoCardInterface {
+                        card: Box::new( ega as &mut dyn VideoCard),
+                        id: VideoCardId{ idx: 0, vtype: VideoType::EGA },
+                    })
+                }
+                #[cfg(feature = "vga")]
+                VideoCardDispatch::Vga(vga) => {
+                    f(VideoCardInterface {
+                        card: Box::new(vga as &mut dyn VideoCard),
+                        id: VideoCardId{ idx: 0, vtype: VideoType::VGA },
+                    })
+                }
+                _ => {}
+            };
         }
     }
 

@@ -384,10 +384,10 @@ impl Crtc6845 {
                         // We are leaving vblank period. Generate a frame.
 
                         // Previously, we generated frames upon reaching vertical total. This was convenient as 
-                        // the display area would be at the top of the render buffer and both overscan periods
+                        // the display area would be at the top of the marty_render buffer and both overscan periods
                         // beneath it.
                         // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple 
-                        // 'screens' per frame in between vsyncs. To enable these tricks to work, we must render 
+                        // 'screens' per frame in between vsyncs. To enable these tricks to work, we must marty_render
                         // like a monitor would.                        
 
                         self.vsc_c3h = 0;

@@ -78,8 +78,7 @@ pub struct CEndHorizontalBlank {
 pub struct CEndHorizontalRetrace {
     pub end_horizontal_retrace: B5,
     pub horizontal_retrace_delay: B2,
-    #[skip]
-    unused: B1
+    pub start_odd: B1
 }
 
 #[bitfield]
@@ -165,6 +164,10 @@ impl EGACard {
             CRTCRegister::EndHorizontalRetrace => {
                 // (R5) 
                 self.crtc_end_horizontal_retrace = CEndHorizontalRetrace::from_bytes([byte]);
+
+                if self.crtc_end_horizontal_retrace.start_odd() != 0 {
+                    log::warn!("som == 1!");
+                }
                 self.normalize_end_horizontal_retrace();
             }
             CRTCRegister::VerticalTotal => {

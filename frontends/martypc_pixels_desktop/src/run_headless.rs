@@ -36,7 +36,9 @@ use marty_core::{
     sound::SoundPlayer,
 };
 
-use bpaf_toml_config::ConfigFileParams;
+use config_toml_bpaf::ConfigFileParams;
+use marty_core::coreconfig::CoreConfig;
+use marty_core::videocard::{ClockingMode, VideoType};
 
 pub fn run_headless(
     config: &ConfigFileParams,
@@ -70,6 +72,22 @@ pub fn run_headless(
         std::process::exit(1);        
     }
 
+    let (video_type, clock_mode, video_debug) = {
+        let mut video_type: Option<VideoType> = None;
+        let mut clock_mode: Option<ClockingMode> = None;
+        let video_cards = config.get_video_cards();
+        if video_cards.len() > 0 {
+            clock_mode = video_cards[0].clocking_mode;
+            video_type = Some(video_cards[0].video_type); // Videotype is not optional
+        }
+        (
+            video_type.unwrap_or(VideoType::CGA),
+            clock_mode.unwrap_or_default(),
+            video_cards[0].debug.unwrap_or(false)
+        )
+    };
+
+
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
@@ -77,7 +95,7 @@ pub fn run_headless(
         config.machine.model,
         *machine_desc_opt.unwrap(),
         config.emulator.trace_mode.unwrap_or_default(),
-        config.machine.video.unwrap_or_default(),
+        video_type,
         sp, 
         rom_manager, 
     );

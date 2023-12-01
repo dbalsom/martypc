@@ -85,7 +85,7 @@ impl EGACard {
                 std::cmp::min(5, 5)
             }
             else {
-                std::cmp::min(2, 2)
+                std::cmp::min(5, 5)
             };
 
             // Do a horizontal sync
@@ -99,33 +99,7 @@ impl EGACard {
                     self.mode_pending = false;
                 }*/
 
-                // END OF LOGICAL SCANLINE
-                if self.crtc_vblank {
-                
-                    //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-                    if (self.hslc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank {
-
-                        self.in_last_vblank_line = true;
-                        // We are leaving vblank period. Generate a frame.                      
-                        self.do_vsync();
-                        self.monitor_hsync = false;
-                        return
-                    }                        
-                }
-
-                // Restrict HSLC to 9-bit range.
-                self.hslc = (self.hslc + 1) & EGA_HSLC_MASK;
-                self.scanline += 1;
-                
-                // Reset beam to left of screen if we haven't already
-                if self.raster_x > 0 {
-                    self.raster_y += 1;
-                }
-                self.raster_x = 0;
-                self.char_col = 0;
-
-                let new_rba = self.extents.row_stride * self.raster_y as usize;
-                self.rba = new_rba;
+                self.do_hsync();
 
                 // CRTC may still be in hsync at this point (if the programmed CRTC hsync width is larger
                 // than our fixed hsync value)
@@ -136,8 +110,15 @@ impl EGACard {
         if self.crtc_hsync {
             // End horizontal sync when we reach R3
             if (self.hcc & EGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
-                self.hsync_ct += 1;
-                // Only end CRTC hsync. Monitor can still be in hsync until fixed target elapses.
+
+                // If the monitor is still in hsync, we can end it now - the monitor hsync
+                // only enforces a maximum hsync width, not a minimum.
+                // If the monitor is not in hsync, hsync has already occurred, so don't perform one.
+                if self.monitor_hsync {
+                    self.do_hsync();
+                    self.monitor_hsync = false;
+                }
+
                 self.crtc_hsync = false;
                 self.hsc = 0;
             }   
@@ -166,7 +147,7 @@ impl EGACard {
             self.crtc_den = false;
         }
 
-        if self.hcc == self.crtc_start_horizontal_retrace + 1 {
+        if self.hcc == self.crtc_start_horizontal_retrace + self.crtc_end_horizontal_retrace.horizontal_retrace_delay() {
             // Entering horizontal retrace
             self.crtc_hblank = true;
             // Both monitor and CRTC will enter hsync at the same time. Monitor may leave hsync first.
@@ -264,10 +245,34 @@ impl EGACard {
                 self.vcc = 0;
                 self.vlc = 0;
                 self.char_col = 0;                            
-                self.crtc_frame_address = self.crtc_start_address as usize;
-                self.vma = self.crtc_start_address as usize;
+
+                //self.pel_pan_latch = self.attribute_pel_panning;
+                //self.pel_pan_latch = 0;
+
+                /*
+                let start_addr_som = if self.crtc_end_horizontal_retrace.start_odd() == 1 {
+                    self.crtc_start_address | 0x0001
+                }
+                else {
+                    if self.crtc_start_address & 0x0001 != 0 {
+                        self.crtc_start_address + 1
+                    }
+                    else {
+                        self.crtc_start_address
+                    }
+                };
+
+                */
+                let start_addr_som = self.crtc_start_address;
+                self.start_address_latch = start_addr_som as usize;
+                self.vma = start_addr_som as usize;
                 self.vma_sl = self.vma;
-                self.vma_t = self.vma;
+
+                // Load first char + attr
+                self.set_char_addr();
+
+
+                //self.vma_t = (self.vma & 0xFFFE);
                 self.in_display_area = true;
                 self.crtc_den = true;
                 self.crtc_vborder = false;
@@ -278,10 +283,42 @@ impl EGACard {
                     self.blink_state = !self.blink_state;
                 }
 
-                // Load first char + attr
-                self.set_char_addr();     
+
             }
         }   
+    }
+
+    fn do_hsync(&mut self) {
+
+        self.hsync_ct += 1;
+
+        // END OF LOGICAL SCANLINE
+        if self.crtc_vblank {
+
+            //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
+            if (self.hslc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank {
+
+                self.in_last_vblank_line = true;
+                // We are leaving vblank period. Generate a frame.
+                self.do_vsync();
+                self.monitor_hsync = false;
+                return
+            }
+        }
+
+        // Restrict HSLC to 9-bit range.
+        self.hslc = (self.hslc + 1) & EGA_HSLC_MASK;
+        self.scanline += 1;
+
+        // Reset beam to left of screen if we haven't already
+        if self.raster_x > 0 {
+            self.raster_y += 1;
+        }
+        self.raster_x = 0;
+        self.char_col = 0;
+
+        let new_rba = self.extents.row_stride * self.raster_y as usize;
+        self.rba = new_rba;
     }
 
     /// Set the character attributes for the current character.

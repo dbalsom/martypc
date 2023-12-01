@@ -1607,7 +1607,7 @@ impl CGACard {
             return 
         }
 
-        // Only draw if render buffer address is in bounds.
+        // Only draw if marty_render buffer address is in bounds.
         if self.rba < (CGA_MAX_CLOCK - (8 * self.clock_divisor) as usize) {
             if self.in_display_area {
                 // Draw current character row
@@ -1688,7 +1688,7 @@ impl CGACard {
         self.cycles += 8;
         self.cur_screen_cycles += 8;
 
-        // Only draw if render buffer address is in bounds.
+        // Only draw if marty_render buffer address is in bounds.
         if self.rba < (CGA_MAX_CLOCK - 8) {
             if self.in_display_area {
                 // Draw current character row
@@ -1778,7 +1778,7 @@ impl CGACard {
         self.cycles += 16;
         self.cur_screen_cycles += 16;
 
-        // Only draw if render buffer address is in bounds.
+        // Only draw if marty_render buffer address is in bounds.
         if self.rba < (CGA_MAX_CLOCK - 16) {
             if self.in_display_area {
                 // Draw current character row
@@ -2064,10 +2064,10 @@ impl CGACard {
                         // We are leaving vblank period. Generate a frame.
 
                         // Previously, we generated frames upon reaching vertical total. This was convenient as 
-                        // the display area would be at the top of the render buffer and both overscan periods
+                        // the display area would be at the top of the marty_render buffer and both overscan periods
                         // beneath it.
                         // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple 
-                        // 'screens' per frame in between vsyncs. To enable these tricks to work, we must render 
+                        // 'screens' per frame in between vsyncs. To enable these tricks to work, we must marty_render
                         // like a monitor would.                        
 
                         self.vsc_c3h = 0;

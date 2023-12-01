@@ -2887,7 +2887,7 @@ impl Cpu {
         let mut hs = 0;
         let mut den = 0;
         let mut brd = 0;
-        if let Some(video) = self.bus().video() {
+        if let Some(video) = self.bus().primary_video() {
             let (vs_b, hs_b, den_b, brd_b) = video.get_sync();
             vs = if vs_b { 1 } else { 0 };
             hs = if hs_b { 1 } else { 0 };

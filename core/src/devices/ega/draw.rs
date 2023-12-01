@@ -45,8 +45,8 @@ impl EGACard {
     pub fn draw_solid_hchar_6bpp(&mut self, color: u8) {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
-        let fcolor = EGA_COLORS_6BPP_U64[self.attribute_palette_registers[(color & 0x3F) as usize].six as usize];
-        frame_u64[self.rba >> 3] = fcolor;
+        let attr_color = EGA_COLORS_6BPP_U64[(color & 0x3F) as usize];
+        frame_u64[self.rba >> 3] = attr_color;
     }
 
     pub fn draw_debug_hchar_at(&mut self, addr: usize, color: u8) {
@@ -61,6 +61,15 @@ impl EGACard {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         frame_u64[self.rba >> 3] = EGA_COLORS_U64[(color & 0x0F) as usize];
         frame_u64[(self.rba >> 3) + 1] = EGA_COLORS_U64[(color & 0x0F) as usize];
+    }
+
+    #[inline]
+    pub fn draw_solid_lchar_6bpp(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+
+        let attr_color = EGA_COLORS_6BPP_U64[self.attribute_palette_registers[(color & 0x3F) as usize].six as usize];
+        frame_u64[self.rba >> 3] = attr_color;
+        frame_u64[(self.rba >> 3) + 1] = attr_color;
     }
 
     /// Draw an entire character row in high resolution text mode (8 pixels)
@@ -95,7 +104,7 @@ impl EGACard {
             && self.blink_state
             && self.cursor_data[(self.vlc & 0x3F) as usize]
         {
-            self.draw_solid_hchar_6bpp(self.cur_fg);
+            self.draw_solid_lchar_6bpp(self.cur_fg);
         }
         else if self.mode_enable {
             // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
@@ -117,9 +126,9 @@ impl EGACard {
         //frame_u64[self.rba >> 3] = deplaned_u64[(self.vma & 0xFFFFF) >> 3];
 
         for i in 0..8 {
-            let buf_i = i - self.attribute_pel_panning as usize;
+            let buf_i = i - self.pel_pan_latch as usize;
             self.buf[self.back_buf][self.rba + buf_i] =
-                self.chain_buf[(self.vma * 8 & 0xFFFFF) + i];
+                self.chain_buf[(self.vma * 8 & 0x7FFFF) + i];
         }
     }
 
@@ -129,9 +138,9 @@ impl EGACard {
         //frame_u64[self.rba >> 3] = deplaned_u64[(self.vma & 0xFFFFF) >> 3];
 
         for i in 0..8 {
-            let buf_i = i - self.attribute_pel_panning as usize;
+            let buf_i = i - self.pel_pan_latch as usize;
 
-            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0xFFFFF) + i] & 0x0F) as usize].six;
+            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x0F) as usize].six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
         }
     }
@@ -142,8 +151,8 @@ impl EGACard {
         //frame_u64[self.rba >> 3] = deplaned_u64[(self.vma & 0xFFFFF) >> 3];
 
         for i in 0..8 {
-            let buf_i = (i * 2) - (self.attribute_pel_panning * 2) as usize;
-            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0xFFFFF) + i] & 0x3F) as usize].four_to_six;
+            let buf_i = (i * 2) - (self.pel_pan_latch * 2) as usize;
+            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x3F) as usize].four_to_six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
             self.buf[self.back_buf][self.rba + buf_i + 1] = attr_color;
         }
@@ -155,9 +164,9 @@ impl EGACard {
         //frame_u64[self.rba >> 3] = deplaned_u64[(self.vma & 0xFFFFF) >> 3];
 
         for i in 0..8 {
-            let buf_i = (i * 2) - (self.attribute_pel_panning * 2) as usize;
+            let buf_i = (i * 2) - (self.pel_pan_latch * 2) as usize;
 
-            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0xFFFFF) + i] & 0x3F) as usize].six;
+            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x3F) as usize].six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
             self.buf[self.back_buf][self.rba + buf_i + 1] = attr_color;
         }

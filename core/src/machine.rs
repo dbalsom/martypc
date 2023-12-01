@@ -64,11 +64,12 @@ use crate::{
     rom_manager::RomManager,
     sound::{BUFFER_MS, VOLUME_ADJUST, SoundPlayer},
     tracelogger::TraceLogger,
-    videocard::{VideoType, VideoCard, VideoCardState, VideoOption},
+    videocard::{VideoType, VideoCard, VideoCardInterface, VideoCardState, VideoOption},
     keys::MartyKey
 };
 
 use ringbuf::{RingBuffer, Producer, Consumer};
+use crate::videocard::{ClockingMode, VideoCardId};
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
@@ -208,7 +209,6 @@ pub struct Machine
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
     state: MachineState,
-    video_type: VideoType,
     sound_player: SoundPlayer,
     rom_manager: RomManager,
     load_bios: bool,
@@ -333,16 +333,33 @@ impl Machine {
         }
         */
 
-        let clock_mode = config.get_video_clockingmode().unwrap_or_default();
+        let (video_cards, video_type, clock_mode, video_debug) = {
+            let mut video_type: Option<VideoType> = None;
+            let mut clock_mode: Option<ClockingMode> = None;
+            let mut video_debug: Option<bool> = None;
+            let video_cards = config.get_video_cards();
+            if video_cards.len() > 0 {
+                clock_mode = video_cards[0].clocking_mode;
+                video_type = Some(video_cards[0].video_type); // Videotype is not optional
+                video_debug = video_cards[0].debug;
+            }
+            (
+                video_cards,
+                video_type.unwrap_or(VideoType::CGA),
+                clock_mode.unwrap_or_default(),
+                video_debug.unwrap_or(false)
+            )
+        };
+
         log::debug!("Using video clocking mode: {:?}", clock_mode);
 
         // Install devices
         cpu.bus_mut().install_devices(
-            video_type, 
+            video_cards,
             clock_mode,
             &machine_desc, 
             video_trace, 
-            config.get_video_debug(),
+            video_debug,
         );
 
         // Load keyboard translation file if specified.
@@ -396,7 +413,6 @@ impl Machine {
             machine_type,
             machine_desc,
             state: MachineState::On,
-            video_type,
             sound_player,
             rom_manager,
             load_bios: !config.get_machine_nobios(),
@@ -475,8 +491,30 @@ impl Machine {
     //    self.cga.clone()
     //}
 
-    pub fn videocard(&mut self) -> Option<Box<&mut dyn VideoCard>> {
-        self.cpu.bus_mut().video_mut()
+    pub fn video_buffer_mut(&mut self, vid: VideoCardId) -> Option<&mut u8> {
+
+
+
+        None
+    }
+
+    pub fn primary_videocard(&mut self) -> Option<Box<&mut dyn VideoCard>> {
+        self.cpu.bus_mut().primary_video_mut()
+    }
+
+    pub fn enumerate_video_cards(&mut self) -> Vec<VideoCardInterface> {
+
+        let mut vcivec = Vec::new();
+
+        if let Some(card) = self.cpu.bus_mut().primary_video_mut() {
+            let vtype = card.get_video_type();
+            vcivec.push( VideoCardInterface {
+                card,
+                id: VideoCardId{ idx: 0, vtype },
+            })
+        }
+
+        vcivec
     }
 
     pub fn cpu(&self) -> &Cpu {
@@ -495,7 +533,7 @@ impl Machine {
 
     /// Send the specified video option to the active videocard device
     pub fn set_video_option(&mut self, opt: VideoOption) {
-        if let Some(video) = self.cpu.bus_mut().video_mut() {
+        if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
             video.set_video_option(opt);
         }
     }
@@ -503,7 +541,7 @@ impl Machine {
     /// Flush all trace logs for devices that have one
     pub fn flush_trace_logs(&mut self) {
         self.cpu.trace_flush();
-        if let Some(video) = self.cpu.bus_mut().video_mut() {
+        if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
             video.trace_flush();   
         }
     }
@@ -611,7 +649,7 @@ impl Machine {
     }
     
     pub fn videocard_state(&mut self) -> Option<VideoCardState> {
-        if let Some(video_card) = self.cpu.bus_mut().video_mut() {
+        if let Some(video_card) = self.cpu.bus_mut().primary_video_mut() {
             // A video card is present
             Some(video_card.get_videocard_string_state())
         }
@@ -1210,4 +1248,13 @@ impl Machine {
         self.pit_data.fractional_part = next_sample_f.fract();
     }
 
+
+    pub fn for_each_videocard<F>(&mut self, mut f: F)
+        where
+            F: FnMut(VideoCardInterface),
+    {
+        self.bus_mut().for_each_videocard(|video|{
+            f(video)
+        })
+    }
 }

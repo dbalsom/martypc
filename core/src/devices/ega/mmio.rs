@@ -160,7 +160,7 @@ impl MemoryMappedDevice for EGACard {
                 }
 
                 // Third, the operation specified by the Logical Operation field of the Data Rotate register
-                // is perfomed on the data for each plane and the latch read register.
+                // is performed on the data for each plane and the latch read register.
                 // A 1 bit in the Graphics Bit Mask register will use the bit result of the Logical Operation.
                 // A 0 bit in the Graphics Bit Mask register will use the bit unchanged from the Read Latch register.
                 for i in 0..4 {
@@ -183,7 +183,7 @@ impl MemoryMappedDevice for EGACard {
                 // Fourth, the value of the Bit Mask register is used: A set bit in the Mask register will pass
                 // the bit from the data pipeline, a 0 bit will pass a bit from the read latch register.
                 //for i in 0..4 {
-//
+                //
                 //    self.write_buf[i] = 0;
                 //    
                 //    for k in 0..8 {

@@ -1,0 +1,33 @@
+[package]
+name = "OLD_marty_render"
+description = "An interface for rendering a MartyPC video device to a graphics Backend"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "OLD_marty_render"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+display_backend_trait = { path = "../../backend/display_backend_trait" }
+marty_core = { path = "../../../core" }
+#display_scaler_trait = { path = "../display_scaler_trait" }
+marty_pixels_scaler = { path = "../marty_pixels_scaler" }
+bytemuck = { version = "1.13.1", features = ["derive"] }
+cgmath = "0.18.0"
+glam = "0.24"
+fast_image_resize = "2.7.3"
+image = { version = "0.24.2", default-features = false, features = ["png"] }
+rand = "0.8.5"
+log = "0.4"
+
+[dev-dependencies]
+criterion = "0.5"
+bytemuck = { version = "1.13.1", features = ["derive"] }
+
+[[bench]]
+name = "render_bench"
+harness = false
