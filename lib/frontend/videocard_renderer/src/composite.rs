@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,7 +29,7 @@
     This module contains the composite conversion routine. It takes a vector
     of CGA color index values (0-15) and converts to a pseudo-composite signal
     based on the composite generation circuit of an original IBM "old style"
-    CGA card. 
+    CGA card.
 
     This module includes a basic conversion routine for NTSC artifact color
     from a the composite output of the composite conversion routine. It is not
@@ -51,25 +51,25 @@ pub const LUMA_ATTENUATE: f32 = 0.75;
 
 // Luma contribution of each color for each 1/2 Hdot of a color cycle
 pub const COLOR_GEN_HALF_INT: [[u8; 8]; 8] = [
-    [  0,   0,   0,   0,   0,   0,   0,   0 ], // Black
-    [  0,   0,   0, 255, 255, 255, 255,   0 ], // Blue
-    [255, 255,   0,   0,   0,   0, 255, 255 ], // Green
-    [255,   0,   0,   0,   0, 255, 255, 255 ], // Cyan
-    [  0, 255, 255, 255, 255,   0,   0,   0 ], // Red
-    [  0,   0, 255, 255, 255, 255,   0,   0 ], // Magenta
-    [255, 255, 255,   0,   0,   0,   0, 255 ], // Yellow
-    [255, 255, 255, 255, 255, 255, 255, 255 ], // White    
+    [0, 0, 0, 0, 0, 0, 0, 0],                 // Black
+    [0, 0, 0, 255, 255, 255, 255, 0],         // Blue
+    [255, 255, 0, 0, 0, 0, 255, 255],         // Green
+    [255, 0, 0, 0, 0, 255, 255, 255],         // Cyan
+    [0, 255, 255, 255, 255, 0, 0, 0],         // Red
+    [0, 0, 255, 255, 255, 255, 0, 0],         // Magenta
+    [255, 255, 255, 0, 0, 0, 0, 255],         // Yellow
+    [255, 255, 255, 255, 255, 255, 255, 255], // White
 ];
 
 pub const COLOR_GEN_EDGES_HALF: [[bool; 8]; 8] = [
-    [false, false, false, false, false, false, false, false ], // Black
-    [false, false, false, true,  false, false, true,  false ], // Blue
-    [false, true,  false, false, false, false, true,  false ], // Green
-    [true , false, false, false, false, true,  false, false ], // Cyan
-    [false, true,  false, false, true,  false, false, false ], // Red
-    [false, false, true,  false, false, true,  false, false ], // Magenta
-    [false, false, true,  false, false, false, false, true  ], // Yellow
-    [false, false, false, false, false, false, false, false ], // White    
+    [false, false, false, false, false, false, false, false], // Black
+    [false, false, false, true, false, false, true, false],   // Blue
+    [false, true, false, false, false, false, true, false],   // Green
+    [true, false, false, false, false, true, false, false],   // Cyan
+    [false, true, false, false, true, false, false, false],   // Red
+    [false, false, true, false, false, true, false, false],   // Magenta
+    [false, false, true, false, false, false, false, true],   // Yellow
+    [false, false, false, false, false, false, false, false], // White
 ];
 
 // NTSC stuff
@@ -82,8 +82,8 @@ const TAU: f32 = std::f32::consts::TAU;
 /*
 #[rustfmt::skip]
 static YIQ2RGB: Matrix3<f32> = Matrix3::new(
-    1.000, 1.000, 1.000, 
-    0.956, -0.272, -1.106, 
+    1.000, 1.000, 1.000,
+    0.956, -0.272, -1.106,
     0.621, -0.647, 1.703,
 );
 */
@@ -106,19 +106,18 @@ pub fn get_cycle_hdot(x: i32) -> usize {
 /// Convert a 640 pixel wide, 16 color CGA image into a 1280 pixel wide Composite image.
 /// The input image should be a slice of CGA color indices (0-15).
 /// The output image should be a slice of u8 values to receive the grayscale composite signal.
-/// 
+///
 /// Uses integer math.
 #[allow(unused_assignments)]
 pub fn process_cga_composite_int(
-    cga_buf: &[u8], 
-    img_w: u32, 
-    img_h: u32, 
+    cga_buf: &[u8],
+    img_w: u32,
+    img_h: u32,
     x_offset: u32,
     _y_offset: u32,
-    stride: u32, 
-    img_out: &mut [u8]
+    stride: u32,
+    img_out: &mut [u8],
 ) {
-
     //bench_t = Instant::now();
     for y in 0..img_h {
         for x in x_offset..(img_w - x_offset) {
@@ -128,7 +127,7 @@ pub fn process_cga_composite_int(
             let mut last_hhdot_value = 0;
 
             let src_o = (y * stride + x) as usize;
-            
+
             // Convert 0-15 color range to 0-7
             let color = cga_buf[src_o];
             let next_color = if x < (img_w - 1) {
@@ -143,18 +142,13 @@ pub fn process_cga_composite_int(
             let hdot = get_cycle_hdot(x as i32);
 
             for h in 0..2usize {
-
                 #[allow(unused_variables)]
                 let mut attenuate = false;
-                
+
                 let mut hhdot_value = COLOR_GEN_HALF_INT[base_color as usize][(hdot * 2 + h) as usize];
                 let next_hhdot_value = match h {
-                    0 => {
-                        COLOR_GEN_HALF_INT[base_color as usize][((hdot * 2 + h) + 1) % 8 as usize ]
-                    }
-                    _ => {
-                        COLOR_GEN_HALF_INT[next_color as usize][((hdot * 2 + h) + 1) % 8 as usize ]   
-                    }
+                    0 => COLOR_GEN_HALF_INT[base_color as usize][((hdot * 2 + h) + 1) % 8 as usize],
+                    _ => COLOR_GEN_HALF_INT[next_color as usize][((hdot * 2 + h) + 1) % 8 as usize],
                 };
                 let hhdot_is_edge = COLOR_GEN_EDGES_HALF[base_color as usize][(hdot * 2 + h) as usize];
 
@@ -187,10 +181,9 @@ pub fn process_cga_composite_int(
                 if is_bright {
                     hhdot_value += INTENSITY_GAIN_INT;
                 }
-                
-                let dst_o = ((y * img_w * 2) + ((x- x_offset) * 2)) as usize;
-                img_out[dst_o + h] =  hhdot_value as u8;
-                
+
+                let dst_o = ((y * img_w * 2) + ((x - x_offset) * 2)) as usize;
+                img_out[dst_o + h] = hhdot_value as u8;
             }
             //dst_o += 2;
         }
@@ -203,7 +196,7 @@ pub fn process_cga_composite_int(
 pub fn artifact_colors_fast(
     img_in: &[u8],
     img_in_w: u32,
-    img_in_h: u32,    
+    img_in_h: u32,
     sync_table: &[(f32, f32, f32)],
     img_out: &mut [u8],
     img_out_w: u32,
@@ -212,11 +205,9 @@ pub fn artifact_colors_fast(
     sat: f32,
     luma: f32,
 ) {
-
     let adjust_mat = make_adjust_mat(hue, sat, luma);
 
     for y in 0..img_in_h {
-        
         let mut dst_o0 = ((y * 2) * (img_out_w * 4)) as usize;
         let mut dst_o1 = dst_o0 + (img_out_w * 4) as usize;
 
@@ -260,7 +251,7 @@ pub fn artifact_colors_fast(
 pub fn artifact_colors_fast_u32(
     img_in: &[u8],
     img_in_w: u32,
-    img_in_h: u32,    
+    img_in_h: u32,
     sync_table: &[(f32, f32, f32)],
     img_out: &mut [u8],
     img_out_w: u32,
@@ -269,19 +260,17 @@ pub fn artifact_colors_fast_u32(
     sat: f32,
     luma: f32,
 ) {
-
     let img_out_u32: &mut [u32] = bytemuck::cast_slice_mut(img_out);
 
     let adjust_mat = make_adjust_mat(hue, sat, luma);
 
     for y in 0..img_in_h {
-        
         let mut dst_o0 = ((y * 2) * img_out_w) as usize;
         let mut dst_o1 = dst_o0 + img_out_w as usize;
 
         for x in 0..img_out_w {
             //let mut yiq: Vector3<f32> = Vector3::new(0.0, 0.0, 0.0);  // cgmath
-            let mut yiq = Vec3A::new(0.0, 0.0,0.0);
+            let mut yiq = Vec3A::new(0.0, 0.0, 0.0);
 
             for n in -CCYCLE_HALF..CCYCLE_HALF {
                 let signal = sample_gy_xy(img_in, img_in_w, img_in_h, (x * 2) as i32 + n, y as i32);
@@ -300,7 +289,10 @@ pub fn artifact_colors_fast_u32(
             let adjust_yiq = adjust(yiq, adjust_mat);
             let rgb = YIQ2RGB * adjust_yiq;
 
-            let pixel = to_u32_clamped(rgb.x * 255.0) << 24 | to_u32_clamped(rgb.y * 255.0) << 16 | to_u32_clamped(rgb.x * 255.0) << 8 | 0xFF;
+            let pixel = to_u32_clamped(rgb.x * 255.0) << 24
+                | to_u32_clamped(rgb.y * 255.0) << 16
+                | to_u32_clamped(rgb.x * 255.0) << 8
+                | 0xFF;
 
             img_out_u32[dst_o0] = pixel;
             img_out_u32[dst_o1] = pixel;
@@ -353,22 +345,18 @@ pub fn adjust(yiq: Vec3A, m: Mat3A) -> Vec3A {
 }
 
 pub fn make_adjust_mat(h: f32, s: f32, b: f32) -> Mat3A {
-    Mat3A::from_cols_array(
-        &[ 
-            b,0.0,0.0,
-            0.0,s * h.cos(), -h.sin(),
-            0.0,h.sin(), s * h.cos(),
-        ]
-    )
+    Mat3A::from_cols_array(&[b, 0.0, 0.0, 0.0, s * h.cos(), -h.sin(), 0.0, h.sin(), s * h.cos()])
 }
 
 #[inline]
 pub fn to_u8_clamped(f: f32) -> u8 {
     if f >= 255.0 {
         255
-    } else if f <= 0.0 {
+    }
+    else if f <= 0.0 {
         0
-    } else {
+    }
+    else {
         f as u8
     }
 }
@@ -377,15 +365,16 @@ pub fn to_u8_clamped(f: f32) -> u8 {
 pub fn to_u32_clamped(f: f32) -> u32 {
     if f >= 255.0 {
         255
-    } else if f <= 0.0 {
+    }
+    else if f <= 0.0 {
         0
-    } else {
+    }
+    else {
         f as u32
     }
 }
 
 pub fn regen_sync_table(table: &mut [(f32, f32, f32)], table_len: usize) {
-
     // Precalculate sync
     for x in 0..(table_len as i32 + CCYCLE) {
         let phase: f32 = ((x - CCYCLE_HALF) as f32) * TAU / 8.0;
