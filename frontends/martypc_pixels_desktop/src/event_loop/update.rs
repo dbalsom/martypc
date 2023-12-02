@@ -269,7 +269,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         let render_start = Instant::now();
 
         // Render all videocards.
-        emu.machine.for_each_videocard(|mut vci| {
+        emu.machine.for_each_videocard(|vci| {
             let mut new_w = 0;
             let mut new_h = 0;
 
@@ -326,7 +326,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
             }
 
             // Render videocard
-            let composite_enabled = emu.gui.get_option(GuiBoolean::CompositeDisplay).unwrap_or(false);
+            let _composite_enabled = emu.gui.get_option(GuiBoolean::CompositeDisplay).unwrap_or(false);
             let beam_pos;
             let videocard_buffer;
 

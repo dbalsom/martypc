@@ -32,20 +32,16 @@
 use crate::{event_loop::egui_events::handle_egui_event, Emulator};
 use display_manager_wgpu::DisplayManager;
 use marty_core::{
-    breakpoints::BreakPointType,
     bytequeue::ByteQueue,
     cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
     machine,
-    machine::{ExecutionState, MachineState},
     syntax_token::SyntaxToken,
     util,
-    vhd,
     vhd::VirtualHardDisk,
-    videocard::{ClockingMode, RenderMode},
 };
-use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiOption, GuiWindow, PerformanceStats};
-use videocard_renderer::AspectRatio;
+use marty_egui::{GuiWindow, PerformanceStats};
+
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {

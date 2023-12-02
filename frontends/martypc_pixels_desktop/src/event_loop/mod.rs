@@ -39,41 +39,23 @@ mod update;
 
 use keyboard::handle_modifiers;
 
-use marty_pixels_scaler::DisplayScaler;
-use std::{path::PathBuf, time::Instant};
+
+use std::{time::Instant};
 use winit::{
-    dpi::LogicalSize,
     event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
-    event_loop::{ControlFlow, EventLoopWindowTarget},
-    keyboard::KeyCode,
+    event_loop::{EventLoopWindowTarget},
 };
 
-use marty_core::{
-    breakpoints::BreakPointType,
-    bytequeue::ByteQueue,
-    cpu_808x::{Cpu, CpuAddress},
-    cpu_common::CpuOption,
-    machine,
-    machine::{ExecutionState, MachineState},
-    syntax_token::SyntaxToken,
-    util,
-    vhd,
-    vhd::VirtualHardDisk,
-    videocard::{ClockingMode, RenderMode, VideoOption},
-};
+
 
 use crate::{
-    event_loop::{keyboard::handle_key_event, render_frame::render_frame, update::process_update},
+    event_loop::{keyboard::handle_key_event, update::process_update},
     input::*,
     Emulator,
-    FPS_TARGET,
-    MICROS_PER_FRAME,
-    MIN_RENDER_HEIGHT,
-    MIN_RENDER_WIDTH,
 };
 use display_manager_wgpu::DisplayManager;
-use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiOption, GuiWindow, PerformanceStats};
-use videocard_renderer::AspectRatio;
+
+
 
 pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindowTarget<()>) {
     match event {

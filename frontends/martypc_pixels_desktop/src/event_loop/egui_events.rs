@@ -104,7 +104,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                                 video_card.set_aperture(aperture_n)
                             }
                         }
-                        GuiEnum::DisplayScalerMode(new_mode) => {
+                        GuiEnum::DisplayScalerMode(_new_mode) => {
                             /*
                             if let Some(renderer) = emu.dm.get_primary_renderer() {
                                 renderer.set_scaler_mode(new_mode);
@@ -315,7 +315,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             screenshot_path.push(emu.config.emulator.basedir.clone());
             screenshot_path.push("screenshots");
 
-            emu.dm.for_each_renderer(|renderer, _card_id, _buf| {
+            emu.dm.for_each_renderer(|_renderer, _card_id, _buf| {
                 //renderer.screenshot_with_backend(&screenshot_path);
             });
         }
@@ -331,7 +331,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         }
         GuiEvent::ScalerAdjust(params) => {
             log::warn!("Received ScalerAdjust event: {:?}", params);
-            if let Some(renderer) = emu.dm.get_primary_renderer() {
+            if let Some(_renderer) = emu.dm.get_primary_renderer() {
                 /*
                    renderer.set_scaler_params(&params);
 

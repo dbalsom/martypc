@@ -73,7 +73,7 @@ pub fn run_headless(config: &ConfigFileParams, rom_manager: RomManager, _floppy_
         std::process::exit(1);
     }
 
-    let (video_type, clock_mode, video_debug) = {
+    let (video_type, _clock_mode, _video_debug) = {
         let mut video_type: Option<VideoType> = None;
         let mut clock_mode: Option<ClockingMode> = None;
         let video_cards = config.get_video_cards();

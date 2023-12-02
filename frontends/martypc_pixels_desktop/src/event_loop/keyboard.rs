@@ -33,7 +33,7 @@
 use winit::{
     event::{ElementState, KeyEvent, Modifiers, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowId},
+    window::{WindowId},
 };
 
 use display_manager_wgpu::DisplayManager;

@@ -36,7 +36,7 @@
 #![allow(clippy::too_many_arguments)]
 #![forbid(unsafe_code)]
 
-use display_backend_pixels::PixelsBackend;
+
 use std::{
     cell::RefCell,
     ffi::OsString,
@@ -59,7 +59,7 @@ mod run_headless;
 mod run_processtests;
 
 use config_toml_bpaf::ConfigFileParams;
-use input::TranslateKey;
+
 use marty_egui::GuiState;
 
 #[cfg(feature = "arduino_validator")]
@@ -71,18 +71,17 @@ use crate::run_gentests::run_gentests;
 #[cfg(feature = "arduino_validator")]
 use crate::run_runtests::run_runtests;
 
-use crate::run_processtests::run_processtests;
+
 
 use marty_core::{
-    bytequeue::ByteQueue,
     cpu_common::CpuOption,
     devices::{hdc::HardDiskControllerType, keyboard::KeyboardModifiers},
     floppy_manager::{FloppyError, FloppyManager},
-    machine::{self, ExecutionControl, ExecutionState, Machine, MachineState},
+    machine::{ExecutionControl, ExecutionState, Machine, MachineState},
     machine_manager::MACHINE_DESCS,
     rom_manager::{RomError, RomFeature, RomManager},
     sound::SoundPlayer,
-    vhd::{self, VirtualHardDisk},
+    vhd::{VirtualHardDisk},
     vhd_manager::{VHDManager, VHDManagerError},
     videocard::{ClockingMode, VideoType},
 };
@@ -319,7 +318,7 @@ pub fn run() {
         },
     };
 
-    let (video_type, clock_mode, video_debug) = {
+    let (video_type, _clock_mode, _video_debug) = {
         let mut video_type: Option<VideoType> = None;
         let mut clock_mode: Option<ClockingMode> = None;
         let mut video_debug = false;
@@ -495,7 +494,7 @@ pub fn run() {
     }
 
     // Create the logical GUI.
-    let gui = GuiState::new(exec_control.clone());
+    let _gui = GuiState::new(exec_control.clone());
 
     /*
     let primary_video = if let Some(video) = config.machine.primary_video {
@@ -577,13 +576,13 @@ pub fn run() {
 
     //let pixels_arc = video.get_backend();
 
-    let mut stat_counter = Counter::new();
+    let stat_counter = Counter::new();
 
     // KB modifiers
-    let mut kb_data = KeyboardData::new();
+    let kb_data = KeyboardData::new();
 
     // Mouse event struct
-    let mut mouse_data = MouseData::new(config.input.reverse_mouse_buttons);
+    let mouse_data = MouseData::new(config.input.reverse_mouse_buttons);
 
     // Init sound
     // The cpal sound library uses generics to initialize depending on the SampleFormat type.
@@ -647,7 +646,7 @@ pub fn run() {
             std::process::exit(1);
         });
 
-    let mut render_egui = true;
+    let render_egui = true;
     let mut gui = GuiState::new(exec_control.clone());
 
     // Set list of serial ports
@@ -936,7 +935,7 @@ pub fn run() {
     // Start buffer playback
     machine.play_sound_buffer();
 
-    let gui_ctx = display_manager
+    let _gui_ctx = display_manager
         .get_main_gui_mut()
         .expect("Couldn't get main gui context!");
 
