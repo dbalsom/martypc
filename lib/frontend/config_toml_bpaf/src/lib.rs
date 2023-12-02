@@ -44,7 +44,6 @@ use marty_core::{
     devices::{hdc::HardDiskControllerType, keyboard::KeyboardType},
     machine_manager::MachineType,
     rom_manager::RomOverride,
-    videocard::{ClockingMode, VideoType},
 };
 
 use marty_common::display_scaler::ScalerMode;

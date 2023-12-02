@@ -32,7 +32,7 @@
    graphics backend and windowing system combination.
 */
 use anyhow::Error;
-use std::{fmt::Display, path::PathBuf};
+use std::{path::PathBuf};
 
 use crate::color::MartyColor;
 use marty_core::videocard::VideoCardId;

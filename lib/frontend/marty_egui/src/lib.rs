@@ -59,7 +59,7 @@ use egui_extras::install_image_loaders;
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 
 use pixels::{wgpu, PixelsContext};
-use winit::{event_loop::EventLoopWindowTarget, window::Window};
+use winit::window::Window;
 
 use regex::Regex;
 use serialport::SerialPortInfo;
@@ -101,7 +101,6 @@ use crate::{
     device_control::DeviceControl,
     disassembly_viewer::DisassemblyControl,
     dma_viewer::DmaViewerControl,
-    image::{get_ui_image, UiImage},
 
     instruction_history_viewer::InstructionHistoryControl,
     ivr_viewer::IvrViewerControl,

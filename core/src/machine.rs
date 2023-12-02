@@ -328,7 +328,7 @@ impl Machine {
         }
         */
 
-        let (video_cards, video_type, clock_mode, video_debug) = {
+        let (video_cards, _video_type, clock_mode, video_debug) = {
             let mut video_type: Option<VideoType> = None;
             let mut clock_mode: Option<ClockingMode> = None;
             let mut video_debug: Option<bool> = None;

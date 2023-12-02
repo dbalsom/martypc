@@ -42,7 +42,6 @@ use marty_core::{
     cpu_validator::ValidatorType,
     devices::{hdc::HardDiskControllerType, keyboard::KeyboardType},
     machine_manager::MachineType,
-    videocard::{ClockingMode, VideoType},
 };
 
 /*

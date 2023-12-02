@@ -32,10 +32,7 @@
 
 use crate::{bus::DeviceRunTimeUnit, devices::ega::EGACard};
 
-use crate::{
-    devices::ega::{attribute_regs::*, crtc_regs::*, graphics_regs::*, sequencer_regs::*, *},
-    videocard::*,
-};
+use crate::devices::ega::{attribute_regs::*, crtc_regs::*, graphics_regs::*, sequencer_regs::*, *};
 
 // Helper macro for pushing video card state entries.
 macro_rules! push_reg_str {

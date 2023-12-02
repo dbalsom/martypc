@@ -47,8 +47,7 @@ pub use display_backend_trait::{
 use winit::window::Window;
 
 use marty_egui::GuiRenderContext;
-use marty_pixels_scaler::{DisplayScaler, MartyScaler};
-use videocard_renderer::VideoRenderer;
+use marty_pixels_scaler::DisplayScaler;
 
 use anyhow::Error;
 
@@ -85,7 +84,7 @@ impl PixelsBackend {
 }
 
 impl DisplayBackendBuilder for PixelsBackend {
-    fn build(buffer_size: BufferDimensions, surface_size: SurfaceDimensions) -> Self
+    fn build(_buffer_size: BufferDimensions, _surface_size: SurfaceDimensions) -> Self
     where
         Self: Sized,
     {
