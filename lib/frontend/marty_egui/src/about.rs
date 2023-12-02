@@ -33,19 +33,19 @@
 use crate::*;
 
 pub struct AboutDialog {
-    texture: Option<egui::TextureHandle>,
+    //texture: Option<egui::TextureHandle>,
     _params: bool,
 }
 
 impl AboutDialog {
     pub fn new() -> Self {
         Self {
-            texture: None,
+            //texture: None,
             _params: Default::default(),
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, ctx: &Context, _events: &mut GuiEventQueue) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _ctx: &Context, _events: &mut GuiEventQueue) {
         /*
         let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
             ctx.load_texture(
@@ -57,7 +57,9 @@ impl AboutDialog {
         */
 
         //ui.image(about_texture, about_texture.size_vec2());
-        ui.image(egui::include_image!("../../../../assets/marty_logo_about.png"));
+        ui.add(
+            egui::Image::new(egui::include_image!("../../../../assets/marty_logo_about.png")).fit_to_original_size(1.0),
+        );
 
         ui.separator();
         ui.vertical(|ui| {
