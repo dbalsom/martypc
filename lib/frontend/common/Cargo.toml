@@ -1,0 +1,26 @@
+[package]
+name = "marty_common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "marty_common"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+videocard_renderer = { path = "../videocard_renderer" }
+#marty_color = { path = "../marty_color" }
+marty_core = { path = "../../../core" }
+anyhow.workspace = true
+serde.workspace = { workspace = true, features = ["derive"] }
+# feature dependencies:
+wgpu = { workspace = true, optional = true }
+pixels = { workspace = true, optional = true }
+
+[features]
+use_wgpu = ["wgpu", "pixels"]

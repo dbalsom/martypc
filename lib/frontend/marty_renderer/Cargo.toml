@@ -15,7 +15,7 @@ crate-type = ["cdylib", "rlib"]
 display_backend_trait = { path = "../../backend/display_backend_trait" }
 marty_core = { path = "../../../core" }
 #display_scaler_trait = { path = "../display_scaler_trait" }
-marty_pixels_scaler = { path = "../marty_pixels_scaler" }
+marty_pixels_scaler = { path = "../marty_scaler_wgpu" }
 bytemuck = { version = "1.13.1", features = ["derive"] }
 cgmath = "0.18.0"
 glam = "0.24"

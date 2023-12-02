@@ -34,11 +34,22 @@
 
 /// Define a universal color type that can be converted to and from implementation-defined types
 /// and other common color formats.
-pub struct MartyColor{ pub r: f32, pub g: f32, pub b: f32, pub a: f32 }
+#[derive(Debug)]
+pub struct MartyColor {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}
 
 impl Default for MartyColor {
     fn default() -> Self {
-        MartyColor{ r: 0.0, g: 0.0, b: 0.0, a: 0.0 }
+        MartyColor {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.0,
+        }
     }
 }
 /// Convert a MartyColor to an array of f32. This method is used for sending colors to a shader
@@ -53,18 +64,25 @@ impl From<MartyColor> for [f32; 4] {
 /// Implementing From<u32> also provides Into<u32>.
 impl From<u32> for MartyColor {
     fn from(rgba: u32) -> Self {
+        // Should we implement 32 bit or 24 bit conversion?
         let r = ((rgba >> 24) & 0xff) as f32 / 255.0;
-        let g = ((rgba >> 16) & 0xff) as f32  / 255.0;
+        let g = ((rgba >> 16) & 0xff) as f32 / 255.0;
         let b = ((rgba >> 8) & 0xff) as f32 / 255.0;
         let a = (rgba & 0xff) as f32 / 255.0;
 
-        MartyColor{ r, g, b, a }
+        /*
+        let r = ((rgba >> 16) & 0xff) as f32 / 255.0;
+        let g = ((rgba >> 8) & 0xff) as f32  / 255.0;
+        let b = (rgba & 0xff) as f32 / 255.0;
+        let a = 1.0;
+         */
+        MartyColor { r, g, b, a }
     }
 }
 
+#[cfg(feature = "use_wgpu")]
 /// Convert a wgpu::Color to MartyColor.
 /// Implementing From<wgpu::Color> also provides Into<wgpu::Color>.
-#[cfg(feature = "use_wgpu")]
 impl From<wgpu::Color> for MartyColor {
     fn from(color: wgpu::Color) -> MartyColor {
         MartyColor {
@@ -76,13 +94,52 @@ impl From<wgpu::Color> for MartyColor {
     }
 }
 
+#[cfg(feature = "use_wgpu")]
+/// Color conversions for wgpu::Color.
 impl MartyColor {
-    #[cfg(feature = "use_wgpu")]
     pub fn to_wgpu_color(&self) -> wgpu::Color {
         wgpu::Color {
             r: self.r as f64,
             g: self.g as f64,
             b: self.b as f64,
+            a: self.a as f64,
+        }
+    }
+
+    /// Convert a color (assumed to be in linear RGBA) to sRGB.
+    pub fn to_wgpu_color_srgb(&self) -> wgpu::Color {
+        fn convert_component(comp: f64) -> f64 {
+            if comp <= 0.0031308 {
+                12.92 * comp
+            }
+            else {
+                1.055 * comp.powf(1.0 / 2.4) - 0.055
+            }
+        }
+
+        wgpu::Color {
+            r: convert_component(self.r as f64),
+            g: convert_component(self.g as f64),
+            b: convert_component(self.b as f64),
+            a: self.a as f64,
+        }
+    }
+
+    /// Convert a color (assumed to be in sRGB) to linear RGB
+    pub fn to_wgpu_color_linear(&self) -> wgpu::Color {
+        fn convert_component(comp: f64) -> f64 {
+            if comp <= 0.04045 {
+                comp / 12.92
+            }
+            else {
+                ((comp + 0.055) / 1.055).powf(2.4)
+            }
+        }
+
+        wgpu::Color {
+            r: convert_component(self.r as f64),
+            g: convert_component(self.g as f64),
+            b: convert_component(self.b as f64),
             a: self.a as f64,
         }
     }

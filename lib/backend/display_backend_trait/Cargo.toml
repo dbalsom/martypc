@@ -9,6 +9,5 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-display_scaler_trait = { path = "../../frontend/display_scaler_trait" }
 thiserror = "1.0"
 anyhow = "1.0"

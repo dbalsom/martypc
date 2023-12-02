@@ -13,13 +13,14 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 display_backend_pixels = { path = "../../lib/backend/display_backend_pixels" }
 marty_core = { path = "../../core"}
+marty_common = { path = "../../lib/frontend/common" }
 videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
 display_manager_wgpu = { path = "../../lib/frontend/display_manager_wgpu" }
-marty_color = { path = "../../lib/frontend/marty_color", features = ["use_wgpu"] }
+
 marty_egui = { path = "../../lib/frontend/marty_egui" }
 config_toml_bpaf = { path = "../../lib/frontend/config_toml_bpaf" }
 #display_scaler = { path = "../../lib/frontend/display_scaler_trait" }
-marty_pixels_scaler = { path = "../../lib/frontend/marty_pixels_scaler" }
+marty_pixels_scaler = { path = "../../lib/frontend/marty_scaler_wgpu" }
 
 bytemuck.workspace = true
 colored = "2.0.4"

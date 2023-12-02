@@ -14,7 +14,7 @@ crate-type = ["cdylib", "rlib"]
 log = "0.4"
 anyhow = "1.0.58"
 marty_core = { path = "../../../core" }
-display_scaler_trait = { path = "../display_scaler_trait" }
+marty_common = { path = "../common" }
 bpaf = { version = "0.7.7", features = ["derive"] }
 toml = "0.5.10"
 serde = { version = "1.0.107", features = ["derive"] }

@@ -10,8 +10,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-display_scaler_trait = { path = "../display_scaler_trait" }
-marty_color = { path = "../marty_color", features = ["use_wgpu"] }
+marty_common = { path = "../common", features = ["use_wgpu"] }
 bytemuck = "1.13.1"
 pixels.workspace = true
 ultraviolet = "0.9"

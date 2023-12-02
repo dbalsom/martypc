@@ -1,10 +1,10 @@
 [workspace]
 members = [
     "core",
+    "lib/frontend/common",
     "lib/frontend/videocard_renderer",
-    "lib/frontend/marty_pixels_scaler",
+    "lib/frontend/marty_scaler_wgpu",
     "lib/frontend/display_manager_wgpu",
-    "lib/frontend/marty_color",
     "lib/frontend/marty_egui",
     "lib/frontend/config_toml_bpaf",
     "frontends/martypc_pixels_wasm32",

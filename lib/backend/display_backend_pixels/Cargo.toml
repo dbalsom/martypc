@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 display_backend_trait = { path = "../display_backend_trait" }
 videocard_renderer = { path = "../../frontend/videocard_renderer" }
 #display_scaler_trait = { path = "../../frontend/display_scaler_trait" }
-marty_pixels_scaler = { path = "../../frontend/marty_pixels_scaler" }
+marty_pixels_scaler = { path = "../../frontend/marty_scaler_wgpu" }
 marty_egui = { path = "../../frontend/marty_egui" }
 pixels.workspace = true
 winit.workspace = true

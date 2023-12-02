@@ -11,11 +11,9 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-display_manager_trait = { path = "../display_manager_trait" }
-#display_backend_trait = { path = "../../backend/display_backend_trait" }
+marty_common = { path = "../common", features = ["use_wgpu"] }
 display_backend_pixels = { path = "../../backend/display_backend_pixels" }
-#display_scaler_trait = { path = "../display_scaler_trait" }
-marty_pixels_scaler = { path = "../marty_pixels_scaler" }
+marty_pixels_scaler = { path = "../marty_scaler_wgpu" }
 videocard_renderer = { path = "../videocard_renderer" }
 
 marty_core = { path = "../../../core" }

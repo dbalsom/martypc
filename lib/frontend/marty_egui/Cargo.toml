@@ -9,10 +9,9 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+marty_common = { path = "../common", features=["use_wgpu"] }
 marty_core = { path = "../../../core" }
 videocard_renderer = { path = "../videocard_renderer" }
-display_scaler_trait = { path = "../display_scaler_trait" }
-display_manager_trait = { path = "../display_manager_trait" }
 winit.workspace = true
 pixels.workspace = true
 #egui = "0.24"

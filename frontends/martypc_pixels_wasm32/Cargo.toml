@@ -12,7 +12,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 marty_core = { path = "../../core/"}
 videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
-marty_pixels_scaler = { path = "../../lib/frontend/marty_pixels_scaler" }
+marty_pixels_scaler = { path = "../../lib/frontend/marty_scaler_wgpu" }
 
 bytemuck = "1.13.1"
 cpal = "0.13.5"
