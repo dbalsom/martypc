@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -41,12 +41,11 @@ pub enum UiImage {
 }
 
 pub fn get_ui_image(img_select: UiImage) -> ColorImage {
-
     match img_select {
         UiImage::Logo => {
             // This shouldn't fail since its all static
             load_image_from_memory(LOGO_IMAGE).unwrap()
-        }   
+        }
     }
 }
 
@@ -55,9 +54,5 @@ fn load_image_from_memory(image_data: &[u8]) -> Result<ColorImage, image::ImageE
     let size = [image.width() as _, image.height() as _];
     let image_buffer = image.to_rgba8();
     let pixels = image_buffer.as_flat_samples();
-    Ok(ColorImage::from_rgba_unmultiplied(
-        size,
-        pixels.as_slice(),
-    ))
+    Ok(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
 }
-

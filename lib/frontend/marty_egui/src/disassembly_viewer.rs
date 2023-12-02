@@ -17,27 +17,25 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-    
+
     egui::disassembly.rs
 
     Implements a disassembly viewer control.
-    The control is a virtual window that will display the disassembly of 
+    The control is a virtual window that will display the disassembly of
     the next X instructions from the specified address. This address can
     be an expression, such as 'cs:ip'
 
 */
-use crate::*;
-use crate::token_listview::*;
+use crate::{token_listview::*, *};
 use marty_core::syntax_token::*;
 
 pub struct DisassemblyControl {
-
     pub address: String,
     pub row: usize,
     pub lastrow: usize,
@@ -45,18 +43,16 @@ pub struct DisassemblyControl {
 }
 
 impl DisassemblyControl {
-
     pub fn new() -> Self {
         Self {
             address: "cs:ip".to_string(),
             row: 0,
             lastrow: 0,
-            tlv: TokenListView::new()
+            tlv: TokenListView::new(),
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
-
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         ui.horizontal(|ui| {
             ui.label("Address: ");
             if ui.text_edit_singleline(&mut self.address).changed() {

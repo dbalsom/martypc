@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -34,48 +34,47 @@ use crate::*;
 use marty_core::machine::DelayParams;
 
 pub struct DelayAdjustControl {
-    params: DelayParams
+    params: DelayParams,
 }
 
-
 impl DelayAdjustControl {
-    
     pub fn new() -> Self {
         Self {
             params: Default::default(),
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
-      
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         egui::Grid::new("composite_adjust")
             .striped(false)
             .min_col_width(200.0)
             .show(ui, |ui| {
-                
-
                 ui.label(egui::RichText::new("DRAM refresh delay:").text_style(egui::TextStyle::Monospace));
-                if ui.add(egui::Slider::new(&mut self.params.dram_delay, 0..=100)).changed() {
+                if ui
+                    .add(egui::Slider::new(&mut self.params.dram_delay, 0..=100))
+                    .changed()
+                {
                     events.send(GuiEvent::DelayAdjust);
                 }
                 ui.end_row();
-                    
+
                 ui.label(egui::RichText::new("HALT resume delay cycles:").text_style(egui::TextStyle::Monospace));
-                if ui.add(egui::Slider::new(&mut self.params.halt_resume_delay, 0..=256)).changed() {
+                if ui
+                    .add(egui::Slider::new(&mut self.params.halt_resume_delay, 0..=256))
+                    .changed()
+                {
                     events.send(GuiEvent::DelayAdjust);
                 }
-                ui.end_row();                    
-            }
-        );
+                ui.end_row();
+            });
     }
 
     #[allow(dead_code)]
-    pub fn update_params(&mut self, params: DelayParams ) {
+    pub fn update_params(&mut self, params: DelayParams) {
         self.params = params;
     }
 
     pub fn get_params(&self) -> &DelayParams {
         &self.params
     }
-
 }

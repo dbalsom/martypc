@@ -29,18 +29,19 @@
     Process received egui events.
 */
 
-
-use std::path::PathBuf;
-use winit::event_loop::EventLoopWindowTarget;
-use display_manager_wgpu::DisplayManager;
-use marty_core::breakpoints::BreakPointType;
-use marty_core::cpu_common::CpuOption;
-use marty_core::machine::MachineState;
-use marty_core::vhd;
-use marty_core::videocard::{ClockingMode, VideoOption};
-use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiOption};
-use videocard_renderer::AspectRatio;
 use crate::Emulator;
+use display_manager_wgpu::DisplayManager;
+use marty_core::{
+    breakpoints::BreakPointType,
+    cpu_common::CpuOption,
+    machine::MachineState,
+    vhd,
+    videocard::{ClockingMode, VideoOption},
+};
+use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiOption};
+use std::path::PathBuf;
+use videocard_renderer::AspectRatio;
+use winit::event_loop::EventLoopWindowTarget;
 
 pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, gui_event: &GuiEvent) {
     match gui_event {
@@ -75,7 +76,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         (GuiBoolean::CorrectAspect, true) => {
                             // Aspect correction was turned on.
                             if let Some(renderer) = emu.dm.get_primary_renderer() {
-                                renderer.set_aspect_ratio(Some(AspectRatio{h: 4, v: 3}));
+                                renderer.set_aspect_ratio(Some(AspectRatio { h: 4, v: 3 }));
                             }
                         }
                         (GuiBoolean::CpuEnableWaitStates, state) => {
@@ -113,7 +114,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     }
                 }
             }
-
         }
 
         GuiEvent::CreateVHD(filename, fmt) => {
@@ -125,8 +125,8 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 vhd_path.into_os_string(),
                 fmt.max_cylinders,
                 fmt.max_heads,
-                fmt.max_sectors) {
-
+                fmt.max_sectors,
+            ) {
                 Ok(_) => {
                     // We don't actually do anything with the newly created file
 
@@ -153,7 +153,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
 
             match emu.floppy_manager.load_floppy_data(&filename) {
                 Ok(vec) => {
-
                     if let Some(fdc) = emu.machine.fdc() {
                         match fdc.load_image_from(*drive_select, vec) {
                             Ok(()) => {
@@ -176,10 +175,9 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             log::debug!("Save floppy image: {:?} into drive: {}", filename, drive_select);
 
             if let Some(fdc) = emu.machine.fdc() {
-
                 let floppy = fdc.get_image_data(*drive_select);
                 if let Some(floppy_image) = floppy {
-                    match emu.floppy_manager.save_floppy_data(floppy_image,&filename) {
+                    match emu.floppy_manager.save_floppy_data(floppy_image, &filename) {
                         Ok(()) => {
                             log::info!("Floppy image successfully saved: {:?}", filename);
                         }
@@ -197,7 +195,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
         }
         GuiEvent::BridgeSerialPort(port_name) => {
-
             log::info!("Bridging serial port: {}", port_name);
             emu.machine.bridge_serial_port(1, port_name.clone());
         }
@@ -265,7 +262,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     let addr: u32 = i.into();
                     addr & !0x0F
                 }
-                None => 0
+                None => 0,
             };
             emu.gui.memory_viewer.set_row(mem_dump_addr as usize);
         }
@@ -281,14 +278,14 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         GuiEvent::DelayAdjust => {
             let delay_params = emu.gui.delay_adjust.get_params();
 
-            emu.machine.set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
-            emu.machine.set_cpu_option(CpuOption::HaltResumeDelay(delay_params.halt_resume_delay));
+            emu.machine
+                .set_cpu_option(CpuOption::DramRefreshAdjust(delay_params.dram_delay));
+            emu.machine
+                .set_cpu_option(CpuOption::HaltResumeDelay(delay_params.halt_resume_delay));
         }
         GuiEvent::TickDevice(dev, ticks) => {
             match dev {
-                DeviceSelection::Timer(_t) => {
-
-                }
+                DeviceSelection::Timer(_t) => {}
                 DeviceSelection::VideoCard => {
                     if let Some(video_card) = emu.machine.primary_videocard() {
                         // Playing around with the clock forces the adapter into
@@ -300,7 +297,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
         }
         GuiEvent::MachineStateChange(state) => {
-
             match state {
                 MachineState::Off | MachineState::Rebooting => {
                     // Clear the screen if rebooting or turning off
@@ -309,7 +305,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         renderer.clear();
                         buf.fill(0);
                     });
-
                 }
                 _ => {}
             }
@@ -323,7 +318,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             emu.dm.for_each_renderer(|renderer, _card_id, _buf| {
                 //renderer.screenshot_with_backend(&screenshot_path);
             });
-
         }
         GuiEvent::CtrlAltDel => {
             emu.machine.ctrl_alt_del();
@@ -334,19 +328,16 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             if let Some(renderer) = emu.dm.get_primary_renderer() {
                 renderer.cga_direct_param_update(&params);
             }
-
         }
         GuiEvent::ScalerAdjust(params) => {
             log::warn!("Received ScalerAdjust event: {:?}", params);
             if let Some(renderer) = emu.dm.get_primary_renderer() {
                 /*
-                    renderer.set_scaler_params(&params);
+                   renderer.set_scaler_params(&params);
 
-                 */
+                */
             }
         }
         _ => {}
     }
-
-
 }

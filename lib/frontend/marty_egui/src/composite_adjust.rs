@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,7 +26,7 @@
 
     egui::composite_adjust.rs
 
-    Implements hue, saturation and brightness controls for the composite 
+    Implements hue, saturation and brightness controls for the composite
     monitor simulation.
 
 */
@@ -39,33 +39,35 @@ pub struct CompositeAdjustControl {
     temp_phase: f64,
 }
 
-
 impl CompositeAdjustControl {
-    
     pub fn new() -> Self {
         Self {
             params: Default::default(),
-            temp_phase: 0.0
+            temp_phase: 0.0,
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
-      
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         egui::Grid::new("composite_adjust")
             .striped(false)
             .min_col_width(100.0)
             .show(ui, |ui| {
-                
                 let mut update = false;
 
                 ui.label(egui::RichText::new("Contrast:").text_style(egui::TextStyle::Monospace));
-                if ui.add(egui::Slider::new(&mut self.params.contrast, 0.0..=2.0)).changed() {
+                if ui
+                    .add(egui::Slider::new(&mut self.params.contrast, 0.0..=2.0))
+                    .changed()
+                {
                     update = true;
                 }
-                ui.end_row();   
+                ui.end_row();
 
                 ui.label(egui::RichText::new("Hue:").text_style(egui::TextStyle::Monospace));
-                if ui.add(egui::Slider::new(&mut self.params.hue, -180.0..=180.0)).changed() {
+                if ui
+                    .add(egui::Slider::new(&mut self.params.hue, -180.0..=180.0))
+                    .changed()
+                {
                     update = true;
                 }
                 ui.end_row();
@@ -79,13 +81,13 @@ impl CompositeAdjustControl {
                 ui.label(egui::RichText::new("Luminosity:").text_style(egui::TextStyle::Monospace));
                 if ui.add(egui::Slider::new(&mut self.params.luma, 0.0..=2.0)).changed() {
                     update = true;
-                }     
+                }
                 ui.end_row();
 
                 ui.label(egui::RichText::new("Phase Offset:").text_style(egui::TextStyle::Monospace));
                 if ui.add(egui::Slider::new(&mut self.temp_phase, 0.0..=270.0)).changed() {
                     update = true;
-                }     
+                }
                 ui.end_row();
 
                 ui.label(egui::RichText::new("CGA Type:").text_style(egui::TextStyle::Monospace));
@@ -98,12 +100,11 @@ impl CompositeAdjustControl {
                     self.params.phase = (self.temp_phase / 90.0).round() as usize;
                     events.send(GuiEvent::CompositeAdjust(self.params));
                 }
-            }
-        );
+            });
     }
 
     #[allow(dead_code)]
-    pub fn update_params(&mut self, params: CompositeParams ) {
+    pub fn update_params(&mut self, params: CompositeParams) {
         self.params = params;
     }
 
@@ -111,5 +112,4 @@ impl CompositeAdjustControl {
     pub fn get_params(&self) -> &CompositeParams {
         &self.params
     }
-
 }

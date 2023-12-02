@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -31,31 +31,32 @@
 */
 
 use anyhow::{bail, Result};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs::read_to_string,
+    path::Path,
+    str::FromStr,
+    vec::Vec,
+};
 use strum::IntoEnumIterator;
-use std::collections::{HashMap, VecDeque};
-use std::vec::Vec;
-use std::fs::read_to_string;
-use std::path::Path;
-use std::str::FromStr;
 
-use toml;
 use serde_derive::Deserialize;
+use toml;
 
-use crate::machine::KeybufferEntry;
-use crate::keys::MartyKey;
+use crate::{keys::MartyKey, machine::KeybufferEntry};
 
 // Define the various types of keyboard we can emulate.
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub enum KeyboardType {
     ModelF,
-    ModelM
+    ModelM,
 }
 
 impl FromStr for KeyboardType {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String>
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         match s {
             "ModelF" => Ok(KeyboardType::ModelF),
@@ -64,12 +65,12 @@ impl FromStr for KeyboardType {
         }
     }
 }
-#[derive (Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct KeyboardModifiers {
     pub control: bool,
     pub alt: bool,
     pub shift: bool,
-    pub meta: bool
+    pub meta: bool,
 }
 
 impl Default for KeyboardModifiers {
@@ -78,7 +79,7 @@ impl Default for KeyboardModifiers {
             control: false,
             alt: false,
             shift: false,
-            meta: false
+            meta: false,
         }
     }
 }
@@ -90,27 +91,27 @@ impl KeyboardModifiers {
 }
 
 /// Incoming keycode-presses can be translated two possible ways.
-/// In macro mode, translation produces additional keycodes that are fed back 
+/// In macro mode, translation produces additional keycodes that are fed back
 /// into the emulator's keyboard buffer for later delivery and processing.
 /// In scancode mode, translation produces a series of scancodes to be
 /// inserted into the emulated keyboard's keyboard buffer directly.
-#[derive (Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum TranslationType {
     Keycode(Vec<KeybufferEntry>),
-    Scancode(Vec<u8>)
+    Scancode(Vec<u8>),
 }
 
 pub enum TranslationMode {
     Keycode,
-    Scancode
+    Scancode,
 }
 
-#[derive (Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct KeyState {
     pressed: bool,
-    pressed_time: f64, // Time the key has been pressed in microseconds.
-    repeat_time: f64,  // Time accumulator until next repeat (at typematic_rate ms)
-    translation: Option<Vec<u8>> // The scancode translation applied to this key when it was pressed.
+    pressed_time: f64,            // Time the key has been pressed in microseconds.
+    repeat_time: f64,             // Time accumulator until next repeat (at typematic_rate ms)
+    translation: Option<Vec<u8>>, // The scancode translation applied to this key when it was pressed.
 }
 
 /// KeyState defaults to unpressed.
@@ -120,7 +121,7 @@ impl Default for KeyState {
             pressed: false,
             pressed_time: 0.0,
             repeat_time: 0.0,
-            translation: None
+            translation: None,
         }
     }
 }
@@ -154,10 +155,10 @@ pub struct KeycodeMapping {
 /// We maintain a hashmap of MartyKey to KeyState. This allows us to track
 /// which keys are currently pressed or not, and how long they have been
 /// pressed.
-/// 
+///
 /// For speed of updating the keyboard device, currently pressed keys are
 /// stored in the keys_pressed vector. This allows us to avoid iterating
-/// through all keys in the kb_map every keyboard update. We must add 
+/// through all keys in the kb_map every keyboard update. We must add
 /// keys to keys_pressed on keydown and remove them on keyup.
 pub struct Keyboard {
     debug: bool,
@@ -165,12 +166,12 @@ pub struct Keyboard {
     kb_hash: HashMap<MartyKey, KeyState>,
     keys_pressed: Vec<MartyKey>,
     typematic: bool,
-    typematic_delay: f64,                   // Typematic repeat delay from initial keypress (ms)
-    typematic_rate: f64,                    // Typematic repeat rate (ms)
+    typematic_delay: f64, // Typematic repeat delay from initial keypress (ms)
+    typematic_rate: f64,  // Typematic repeat rate (ms)
     kb_buffer_size: usize,
-    kb_buffer: Vec<u8>,                     // Keyboard buffer. Variable length depending on keyboard model.
+    kb_buffer: Vec<u8>, // Keyboard buffer. Variable length depending on keyboard model.
     kb_buffer_overflow: bool,
-    keycode_mappings: Vec<KeycodeMapping>
+    keycode_mappings: Vec<KeycodeMapping>,
 }
 
 impl Default for Keyboard {
@@ -192,10 +193,8 @@ impl Default for Keyboard {
 }
 
 impl Keyboard {
-
     pub fn new(kb_type: KeyboardType, debug: bool) -> Self {
-
-        let mut kb = Keyboard{
+        let mut kb = Keyboard {
             debug,
             kb_type,
             ..Keyboard::default()
@@ -203,10 +202,7 @@ impl Keyboard {
 
         // Create a hash entry for each possible key
         for martykey in MartyKey::iter() {
-            kb.kb_hash.insert(
-                martykey, 
-                KeyState::default()
-            ); 
+            kb.kb_hash.insert(martykey, KeyState::default());
         }
 
         kb
@@ -218,7 +214,6 @@ impl Keyboard {
 
     /// Set typematic repeat parameters. Optional arguments allow only updating some parmeters.
     pub fn set_typematic_params(&mut self, enabled: Option<bool>, delay: Option<f64>, rate: Option<f64>) {
-
         if let Some(enabled) = enabled {
             self.typematic = enabled;
         }
@@ -239,8 +234,8 @@ impl Keyboard {
         match self.kb_type {
             KeyboardType::ModelF => {
                 self.keycode_mappings = toml_mapping.keyboard.modelf.keycode_mappings;
-            },
-            _=> unimplemented!()
+            }
+            _ => unimplemented!(),
         }
 
         Ok(())
@@ -260,12 +255,10 @@ impl Keyboard {
         self.kb_hash.get(&key_code).cloned()
     }
 
-    pub fn modifiers_from_strings(modifier_strings: &Vec::<String>) -> KeyboardModifiers {
-
+    pub fn modifiers_from_strings(modifier_strings: &Vec<String>) -> KeyboardModifiers {
         let mut modifiers = KeyboardModifiers::default();
 
         for mstring in modifier_strings {
-
             if mstring.eq_ignore_ascii_case("control") {
                 modifiers.control = true;
             }
@@ -280,54 +273,45 @@ impl Keyboard {
 
             if mstring.eq_ignore_ascii_case("meta") {
                 modifiers.meta = true;
-            }                        
+            }
         }
 
         modifiers
     }
 
+    /*
+    #[derive(Copy, Clone, Debug)]
+    pub struct KeybufferEntry {
+        pub keycode: MartyKey,
+        pub pressed: bool,
+        pub modifiers: KeyboardModifiers
+    } */
 
-/*
-#[derive(Copy, Clone, Debug)]
-pub struct KeybufferEntry {
-    pub keycode: MartyKey,
-    pub pressed: bool,
-    pub modifiers: KeyboardModifiers
-} */
-
-    pub fn keycodes_from_strings(
-        keycode_strings: &Vec::<String>,
-        macro_translate: bool
-    ) -> Result<Vec::<KeybufferEntry>> {
-
+    pub fn keycodes_from_strings(keycode_strings: &Vec<String>, macro_translate: bool) -> Result<Vec<KeybufferEntry>> {
         let mut keycodes = Vec::new();
 
         for kstring in keycode_strings {
-
             // Process the first character, which should be a + for keydown, or - for keyup.
 
             if let Some((i, first_char)) = kstring.char_indices().nth(0) {
-
                 let is_keydown = match first_char {
                     '+' => true,
                     '-' => false,
                     _ => bail!("Invalid keycode in macro defintion - missing keydown/keyup code."),
                 };
-                let rest = &kstring[i+first_char.len_utf8()..];
+                let rest = &kstring[i + first_char.len_utf8()..];
 
                 let keycode_opt = MartyKey::from_str(rest);
 
                 if let Ok(keycode) = keycode_opt {
-                    keycodes.push(
-                        KeybufferEntry {
-                            keycode,
-                            pressed: is_keydown,
-                            modifiers: KeyboardModifiers::default(),
-                            translate: macro_translate
-                        }
-                    );
+                    keycodes.push(KeybufferEntry {
+                        keycode,
+                        pressed: is_keydown,
+                        modifiers: KeyboardModifiers::default(),
+                        translate: macro_translate,
+                    });
                 }
-            } 
+            }
             else {
                 bail!("String too short in macro definition!");
             }
@@ -339,26 +323,25 @@ pub struct KeybufferEntry {
     /// Convert a MartyKey key code into a physical scancode based on the configured
     /// keyboard model.
     pub fn keycode_to_scancodes(&self, key_code: MartyKey) -> Vec<u8> {
-
         let mut scancodes = Vec::new();
 
         match self.kb_type {
             KeyboardType::ModelF => {
-                // The model F was the original keyboard shipped with the IBM PC. 
+                // The model F was the original keyboard shipped with the IBM PC.
                 // It had two variants, an 83-key version without lock status lights
                 // and an 84-key version with an added 'sysreq' key.
 
                 let scancode = match key_code {
                     // From Left to Right on IBM XT keyboard
-                    MartyKey::F1  => Some(0x3b),
-                    MartyKey::F2  => Some(0x3c),
-                    MartyKey::F3  => Some(0x3d),
-                    MartyKey::F4  => Some(0x3e),
-                    MartyKey::F5  => Some(0x3f),
-                    MartyKey::F6  => Some(0x40),
-                    MartyKey::F7  => Some(0x41),
-                    MartyKey::F8  => Some(0x42),
-                    MartyKey::F9  => Some(0x43),
+                    MartyKey::F1 => Some(0x3b),
+                    MartyKey::F2 => Some(0x3c),
+                    MartyKey::F3 => Some(0x3d),
+                    MartyKey::F4 => Some(0x3e),
+                    MartyKey::F5 => Some(0x3f),
+                    MartyKey::F6 => Some(0x40),
+                    MartyKey::F7 => Some(0x41),
+                    MartyKey::F8 => Some(0x42),
+                    MartyKey::F9 => Some(0x43),
                     MartyKey::F10 => Some(0x44),
                     MartyKey::Escape => Some(0x01),
                     MartyKey::Tab => Some(0x0F),
@@ -366,7 +349,7 @@ pub struct KeybufferEntry {
                     MartyKey::ShiftLeft => Some(0x2A),
                     MartyKey::AltLeft => Some(0x38),
                     MartyKey::ControlRight => Some(0x1D),
-                    MartyKey::AltRight => Some(0x38),        
+                    MartyKey::AltRight => Some(0x38),
                     MartyKey::Digit1 => Some(0x02),
                     MartyKey::Digit2 => Some(0x03),
                     MartyKey::Digit3 => Some(0x04),
@@ -411,15 +394,15 @@ pub struct KeybufferEntry {
                     MartyKey::BracketLeft => Some(0x1A),
                     MartyKey::BracketRight => Some(0x1B),
                     MartyKey::Semicolon => Some(0x27),
-                    MartyKey::Backquote => Some(0x29),          // Grave
-                    MartyKey::Quote => Some(0x28),              // Apostrophe
+                    MartyKey::Backquote => Some(0x29), // Grave
+                    MartyKey::Quote => Some(0x28),     // Apostrophe
                     MartyKey::Comma => Some(0x33),
                     MartyKey::Period => Some(0x34),
                     MartyKey::Slash => Some(0x35),
-                    MartyKey::Enter => Some(0x1C),              // Return
+                    MartyKey::Enter => Some(0x1C), // Return
                     MartyKey::ShiftRight => Some(0x36),
-                    MartyKey::CapsLock => Some(0x3A),           // 'Capital'?
-                    MartyKey::PrintScreen => Some(0x37),        // 'Snapshot'ù
+                    MartyKey::CapsLock => Some(0x3A),    // 'Capital'?
+                    MartyKey::PrintScreen => Some(0x37), // 'Snapshot'ù
                     MartyKey::Delete => Some(0x53),
                     MartyKey::NumLock => Some(0x45),
                     MartyKey::ScrollLock => Some(0x46),
@@ -437,10 +420,10 @@ pub struct KeybufferEntry {
                     MartyKey::NumpadAdd => Some(0x4E),
                     MartyKey::NumpadDecimal => Some(0x53),
                     MartyKey::NumpadEnter => Some(0x1C),
-                    MartyKey::NumpadDivide => None, // Can't directly map to shift-7
-                    MartyKey::NumpadMultiply => None, // Can't directly map to shift-8
-                    MartyKey::NumpadEqual => Some(0x0D),  // Present on Mac
-                    _ => None
+                    MartyKey::NumpadDivide => None,      // Can't directly map to shift-7
+                    MartyKey::NumpadMultiply => None,    // Can't directly map to shift-8
+                    MartyKey::NumpadEqual => Some(0x0D), // Present on Mac
+                    _ => None,
                 };
 
                 if let Some(s) = scancode {
@@ -448,9 +431,9 @@ pub struct KeybufferEntry {
                     scancodes.push(s);
                 }
             }
-            _=> {
+            _ => {
                 unimplemented!();
-            }            
+            }
         }
 
         scancodes
@@ -458,33 +441,33 @@ pub struct KeybufferEntry {
 
     /// Set the corresponding key to pressed.
     pub fn key_down(
-        &mut self, 
-        key_code: MartyKey, 
-        modifiers: &KeyboardModifiers, 
-        kb_buf: Option<&mut VecDeque<KeybufferEntry>>
+        &mut self,
+        key_code: MartyKey,
+        modifiers: &KeyboardModifiers,
+        kb_buf: Option<&mut VecDeque<KeybufferEntry>>,
     ) {
-
         // Translation will produce either a Scancode or Keycode result
         let translation = self.translate_keydown(key_code, modifiers);
 
         match translation {
             TranslationType::Keycode(kvec) => {
                 // Add keycodes to emulator's keyboard buffer for future delivery
-                // and processing. 
+                // and processing.
                 if let Some(kb_buf) = kb_buf {
                     kb_buf.extend(kvec);
                 }
             }
             TranslationType::Scancode(svec) => {
-
                 if svec.len() > 0 {
-
                     if self.debug {
-                        log::debug!("key_down(): Got scancode translation for key: {:?}: {:X?}", key_code, svec);
+                        log::debug!(
+                            "key_down(): Got scancode translation for key: {:?}: {:X?}",
+                            key_code,
+                            svec
+                        );
                     }
 
                     if let Some(key) = self.kb_hash.get_mut(&key_code) {
-
                         let mut key_pressed = false;
                         for vkey in &self.keys_pressed {
                             if *vkey == key_code {
@@ -492,16 +475,15 @@ pub struct KeybufferEntry {
                                 key_pressed = true;
                             }
                         }
-                        
+
                         // Key not marked as pressed, add to pressed key vec.
                         if !key_pressed {
-            
                             key.pressed = true;
-    
+
                             key.translation = Some(svec.clone());
                             key.repeat_time = 0.0;
                             key.pressed_time = 0.0;
-            
+
                             self.keys_pressed.push(key_code);
                             self.send_scancodes(&svec);
                         }
@@ -510,28 +492,23 @@ pub struct KeybufferEntry {
                 else {
                     log::warn!("key_down(): Got no scancode translation for key: {:?}", key_code);
                 }
-
             }
         }
-
-
     }
 
     /// Set the corresponding key to unpressed.
     pub fn key_up(&mut self, key_code: MartyKey) {
-
         let mut convert_translation = None;
         //log::debug!("in key_up(): key_code: {:?}", key_code);
-        
+
         if let Some(key) = self.kb_hash.get_mut(&key_code) {
             key.pressed = false;
             // If key was translated, get the corresponding key up codes
             if let Some(translation) = &mut key.translation {
-                
                 convert_translation = Some(translation.clone());
-                
+
                 if self.debug {
-                    log::debug!("key_up(): got translation: {:X?}", convert_translation );
+                    log::debug!("key_up(): got translation: {:X?}", convert_translation);
                 }
             }
         }
@@ -542,22 +519,18 @@ pub struct KeybufferEntry {
         }
 
         // Remove this key from keys_pressed.
-        self.keys_pressed.retain(|&k| k != key_code);        
+        self.keys_pressed.retain(|&k| k != key_code);
     }
 
     /// Reset key states for all keys to unpressed.
     pub fn clear(&mut self) {
         for key in self.kb_hash.keys().cloned().collect::<Vec<MartyKey>>() {
-            self.kb_hash.insert(
-                key, 
-                KeyState::default()
-            );
+            self.kb_hash.insert(key, KeyState::default());
         }
     }
 
     /// Send the corresponding scancodes to the keyboard buffer.
     pub fn send_scancodes(&mut self, keys: &[u8]) {
-
         if keys.len() > 0 {
             if self.kb_buffer_size > 1 {
                 // We have a keyboard buffer
@@ -565,7 +538,6 @@ pub struct KeybufferEntry {
                     // KB overflow!
                     self.kb_buffer_overflow = true;
                 }
-    
             }
             else if self.kb_buffer_size == 1 {
                 // No keyboard buffer (kb_buffer_size == 1). Just set one scancode.
@@ -580,7 +552,6 @@ pub struct KeybufferEntry {
 
     /// Read out a scancode from the keyboard or None if no key in buffer.
     pub fn recv_scancode(&mut self) -> Option<u8> {
-
         if self.kb_buffer_overflow {
             // Send the keyboard overflow scancode
             self.kb_buffer_overflow = false;
@@ -591,19 +562,12 @@ pub struct KeybufferEntry {
         }
     }
 
-    pub fn translate_keydown(
-        &self, 
-        key_code: MartyKey,
-        modifiers: &KeyboardModifiers, 
-    ) -> TranslationType {
-
+    pub fn translate_keydown(&self, key_code: MartyKey, modifiers: &KeyboardModifiers) -> TranslationType {
         let mut translation = TranslationType::Scancode(Vec::new());
         let mut got_translation = false;
         for trans in &self.keycode_mappings {
-
             // Match keycode by string using Debug for MartyKey.
             if trans.keycode == format!("{:?}", key_code) {
-
                 let trans_modifiers = Keyboard::modifiers_from_strings(&trans.modifiers);
 
                 let mut matched = false;
@@ -624,7 +588,7 @@ pub struct KeybufferEntry {
 
                 // Load proper translation if we matched. If a macro definition is present,
                 // it overrides scancode translation.
-                if matched { 
+                if matched {
                     if trans.key_macro.len() > 0 {
                         // We have a macro.
 
@@ -635,7 +599,7 @@ pub struct KeybufferEntry {
                     }
                     else {
                         translation = TranslationType::Scancode(trans.scancodes.to_vec());
-                        got_translation = true;                           
+                        got_translation = true;
                     }
                 }
             }
@@ -649,14 +613,21 @@ pub struct KeybufferEntry {
             if self.debug {
                 match &translation {
                     TranslationType::Scancode(sc) => {
-                        log::debug!("translate_keydown(): got translation from key_code: {:?} to scancodes: {:X?}", key_code, sc);
+                        log::debug!(
+                            "translate_keydown(): got translation from key_code: {:?} to scancodes: {:X?}",
+                            key_code,
+                            sc
+                        );
                     }
                     TranslationType::Keycode(kc) => {
-                        log::debug!("translate_keydown(): got translation from key_code: {:?} to macro: {:X?}", key_code, kc);
+                        log::debug!(
+                            "translate_keydown(): got translation from key_code: {:?} to macro: {:X?}",
+                            key_code,
+                            kc
+                        );
                     }
                 }
-                
-            }          
+            }
         }
 
         translation
@@ -664,19 +635,22 @@ pub struct KeybufferEntry {
 
     /// Convert a translated scancode sequence to its corresponding keyup sequence.
     fn translate_keyup(&self, kb_type: KeyboardType, translation: &mut [u8]) {
-
         match kb_type {
             KeyboardType::ModelF => {
                 // ModelF has no keyboard buffer, therefore, translations should only have one keycode.
                 assert_eq!(translation.len(), 1);
 
                 if self.debug {
-                    log::debug!("translate_keyup(): sending key_up: {:02X} for keydown translation: {:02X}", translation[0] | 0x80, translation[0]);
+                    log::debug!(
+                        "translate_keyup(): sending key_up: {:02X} for keydown translation: {:02X}",
+                        translation[0] | 0x80,
+                        translation[0]
+                    );
                 }
-                
+
                 translation[0] = translation[0] | 0x80;
             }
-            _=> {
+            _ => {
                 unimplemented!();
             }
         }
@@ -684,7 +658,6 @@ pub struct KeybufferEntry {
 
     /// Run the keyboard device for the specified number of microseconds.
     pub fn run(&mut self, us: f64) {
-
         // Convert to milliseconds, all typematic delays are in ms.
         let ms: f64 = us / 1000.0;
 
@@ -692,18 +665,16 @@ pub struct KeybufferEntry {
 
         // Update keys pressed.
         for vkey in &self.keys_pressed {
-
             if self.is_typematic_key(*vkey) {
                 if let Some(key_state) = self.kb_hash.get_mut(&vkey) {
                     key_state.pressed_time += ms;
-                    
+
                     // TODO: implement key repeat here
                     if key_state.pressed_time > (self.typematic_delay - self.typematic_rate) {
-
                         if self.debug {
                             log::debug!("typematic delay elapsed for: {:?}", vkey);
                         }
-                        
+
                         key_state.repeat_time += ms;
                         if key_state.repeat_time > self.typematic_rate {
                             key_state.repeat_time -= self.typematic_rate;
@@ -715,13 +686,17 @@ pub struct KeybufferEntry {
         }
 
         // Sort all repeating keys by pressed_time
-        repeating_keys.sort_by(|a, b| a.pressed_time.partial_cmp(&b.pressed_time).unwrap_or(std::cmp::Ordering::Equal).reverse());
+        repeating_keys.sort_by(|a, b| {
+            a.pressed_time
+                .partial_cmp(&b.pressed_time)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .reverse()
+        });
 
         // Only repeat the oldest pressed key
         if let Some(key) = repeating_keys.pop() {
             if let Some(translation) = key.translation {
                 self.send_scancodes(&translation);
-
             }
         }
     }
@@ -729,17 +704,20 @@ pub struct KeybufferEntry {
     /// Return whether key is a typematic key or not. Modifiers and lock keys are not typematic.
     pub fn is_typematic_key(&self, key_code: MartyKey) -> bool {
         match key_code {
-            MartyKey::ControlLeft | MartyKey::ControlRight | 
-            MartyKey::ShiftLeft | MartyKey::ShiftRight |
-            MartyKey::AltLeft | MartyKey::AltRight |
-            MartyKey::NumLock | MartyKey::ScrollLock | MartyKey::CapsLock |
-            MartyKey::Insert => {
-                false
-            }
+            MartyKey::ControlLeft
+            | MartyKey::ControlRight
+            | MartyKey::ShiftLeft
+            | MartyKey::ShiftRight
+            | MartyKey::AltLeft
+            | MartyKey::AltRight
+            | MartyKey::NumLock
+            | MartyKey::ScrollLock
+            | MartyKey::CapsLock
+            | MartyKey::Insert => false,
             _ => {
                 // All other keys ok to repeat
                 true
             }
         }
-    }    
+    }
 }

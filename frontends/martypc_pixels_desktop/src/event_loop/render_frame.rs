@@ -29,16 +29,16 @@
     Handle rendering of video targets at the end of event processing.
 */
 
+use crate::Emulator;
 use display_backend_pixels::DisplayBackend;
 use display_manager_wgpu::DisplayManager;
-use crate::Emulator;
 
 pub fn render_frame(emu: &mut Emulator) {
-
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
     emu.dm.for_each_renderer(|renderer, vid, backend_buf| {
         if let Some(videocard) = emu.machine.bus_mut().video_mut(&vid) {
+            //log::debug!("Drawing renderer for vid: {:?}", vid);
             renderer.draw(
                 videocard.get_display_buf(),
                 backend_buf,
@@ -50,19 +50,10 @@ pub fn render_frame(emu: &mut Emulator) {
     });
 
     // Prepare guis for rendering.
-    emu.dm.for_each_gui(|gui, window| {
-        gui.prepare(
-            window,
-            &mut emu.gui
-        )
-    });
+    emu.dm.for_each_gui(|gui, window| gui.prepare(window, &mut emu.gui));
 
     // Next, render each backend
     emu.dm.for_each_backend(|backend, scaler, gui_opt| {
-        backend.render(
-            Some(scaler),
-            gui_opt,
-        );
+        backend.render(Some(scaler), gui_opt);
     });
-
 }

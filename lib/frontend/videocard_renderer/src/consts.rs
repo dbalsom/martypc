@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -31,14 +31,14 @@
 pub const DEFAULT_RENDER_WIDTH: u32 = 640;
 pub const DEFAULT_RENDER_HEIGHT: u32 = 400;
 
-pub const ATTR_BLUE_FG: u8      = 0b0000_0001;
-pub const ATTR_GREEN_FG: u8     = 0b0000_0010;
-pub const ATTR_RED_FG: u8       = 0b0000_0100;
-pub const ATTR_BRIGHT_FG: u8    = 0b0000_1000;
-pub const ATTR_BLUE_BG: u8      = 0b0001_0000;
-pub const ATTR_GREEN_BG: u8     = 0b0010_0000;
-pub const ATTR_RED_BG: u8       = 0b0100_0000;
-pub const ATTR_BRIGHT_BG: u8    = 0b1000_0000;
+pub const ATTR_BLUE_FG: u8 = 0b0000_0001;
+pub const ATTR_GREEN_FG: u8 = 0b0000_0010;
+pub const ATTR_RED_FG: u8 = 0b0000_0100;
+pub const ATTR_BRIGHT_FG: u8 = 0b0000_1000;
+pub const ATTR_BLUE_BG: u8 = 0b0001_0000;
+pub const ATTR_GREEN_BG: u8 = 0b0010_0000;
+pub const ATTR_RED_BG: u8 = 0b0100_0000;
+pub const ATTR_BRIGHT_BG: u8 = 0b1000_0000;
 
 // Font is encoded as a bit pattern with a span of 256 bits per row
 //static CGA_FONT: &'static [u8; 2048] = include_bytes!("cga_font.bin");
@@ -67,9 +67,9 @@ pub const VGA_HIRES_GFX_H: u32 = 480;
 pub const XOR_COLOR: u8 = 0x80;
 
 // This color-index to RGBA table supports two conversion palettes,
-// the "standard" palette given by most online references, and the 
+// the "standard" palette given by most online references, and the
 // alternate, more monitor-accurate "VileR palette"
-// See https://int10h.org/blog/2022/06/ibm-5153-color-true-cga-palette/ 
+// See https://int10h.org/blog/2022/06/ibm-5153-color-true-cga-palette/
 // for details.
 pub const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
     [

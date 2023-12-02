@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -40,7 +40,6 @@ pub const EGA_HSLC_MASK: u16 = 0x01FF;
 impl EGACard {
     /// Update the CRTC logic for next character.
     pub fn tick_crtc_char(&mut self) {
-
         // Update horizontal character counter
         self.hcc = self.hcc.wrapping_add(1);
 
@@ -51,7 +50,7 @@ impl EGACard {
                 // We are at the first character of a CRTC frame. Update start address.
                 self.vma = self.crtc_frame_address;
             }
-        }     
+        }
 
         if self.hcc == 0 && self.hslc == 0 {
             // We are at the first character of a CRTC frame. Update start address.
@@ -79,9 +78,9 @@ impl EGACard {
             // Increment horizontal sync counter (wrapping)
             self.hsc = self.hsc.wrapping_add(1);
 
-            // Implement a fixed hsync width from the monitor's perspective - 
+            // Implement a fixed hsync width from the monitor's perspective -
             // A wider programmed hsync width than these values shifts the displayed image to the right.
-            let hsync_target = if self.clock_divisor == 1 { 
+            let hsync_target = if self.clock_divisor == 1 {
                 std::cmp::min(5, 5)
             }
             else {
@@ -104,13 +103,12 @@ impl EGACard {
                 // CRTC may still be in hsync at this point (if the programmed CRTC hsync width is larger
                 // than our fixed hsync value)
                 self.monitor_hsync = false;
-            }                     
+            }
         }
 
         if self.crtc_hsync {
             // End horizontal sync when we reach R3
             if (self.hcc & EGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
-
                 // If the monitor is still in hsync, we can end it now - the monitor hsync
                 // only enforces a maximum hsync width, not a minimum.
                 // If the monitor is not in hsync, hsync has already occurred, so don't perform one.
@@ -121,7 +119,7 @@ impl EGACard {
 
                 self.crtc_hsync = false;
                 self.hsc = 0;
-            }   
+            }
         }
 
         if self.hcc == self.crtc_horizontal_display_end + 1 {
@@ -147,7 +145,8 @@ impl EGACard {
             self.crtc_den = false;
         }
 
-        if self.hcc == self.crtc_start_horizontal_retrace + self.crtc_end_horizontal_retrace.horizontal_retrace_delay() {
+        if self.hcc == self.crtc_start_horizontal_retrace + self.crtc_end_horizontal_retrace.horizontal_retrace_delay()
+        {
             // Entering horizontal retrace
             self.crtc_hblank = true;
             // Both monitor and CRTC will enter hsync at the same time. Monitor may leave hsync first.
@@ -186,7 +185,7 @@ impl EGACard {
             self.vlc += 1;
             // Return video memory address to starting position for next character row
             self.vma = self.vma_sl;
-            
+
             // Reset the current character glyph to start of row
             self.set_char_addr();
 
@@ -197,9 +196,9 @@ impl EGACard {
                     self.crtc_den = true;
                 }
             }
-            
-            if self.vlc > self.crtc_maximum_scanline  {
-                // C9 == R9 We finished drawing this row of characters 
+
+            if self.vlc > self.crtc_maximum_scanline {
+                // C9 == R9 We finished drawing this row of characters
 
                 self.vlc = 0;
                 // Advance Vertical Character Counter
@@ -210,7 +209,7 @@ impl EGACard {
                 //self.vma = self.vma_t;
                 self.vma_sl = self.vma_sl + self.crtc_offset as usize * 2;
                 self.vma = self.vma_sl;
-                
+
                 // Load next char + attr
                 self.set_char_addr();
             }
@@ -244,7 +243,7 @@ impl EGACard {
                 self.hcc = 0;
                 self.vcc = 0;
                 self.vlc = 0;
-                self.char_col = 0;                            
+                self.char_col = 0;
 
                 //self.pel_pan_latch = self.attribute_pel_panning;
                 //self.pel_pan_latch = 0;
@@ -271,7 +270,6 @@ impl EGACard {
                 // Load first char + attr
                 self.set_char_addr();
 
-
                 //self.vma_t = (self.vma & 0xFFFE);
                 self.in_display_area = true;
                 self.crtc_den = true;
@@ -282,27 +280,22 @@ impl EGACard {
                 if (self.frame % EGA_CURSOR_BLINK_RATE as u64) == 0 {
                     self.blink_state = !self.blink_state;
                 }
-
-
             }
-        }   
+        }
     }
 
     fn do_hsync(&mut self) {
-
         self.hsync_ct += 1;
 
         // END OF LOGICAL SCANLINE
         if self.crtc_vblank {
-
             //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
             if (self.hslc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank {
-
                 self.in_last_vblank_line = true;
                 // We are leaving vblank period. Generate a frame.
                 self.do_vsync();
                 self.monitor_hsync = false;
-                return
+                return;
             }
         }
 
@@ -324,16 +317,15 @@ impl EGACard {
     /// Set the character attributes for the current character.
     /// This applies to text mode only, but is computed in all modes at appropriate times.
     fn set_char_addr(&mut self) {
-
         // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
         let addr = (self.vma << 1) & 0xFFFF;
         self.cur_char = self.planes[0].buf[addr];
         self.cur_attr = self.planes[0].buf[addr + 1];
 
         self.cur_fg = self.cur_attr & 0x0F;
-        
-        // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors 
-        // are available. 
+
+        // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors
+        // are available.
         // If blinking is disabled, all 16 colors are available as background attributes.
         if self.mode_blinking {
             self.cur_bg = (self.cur_attr >> 4) & 0x07;
@@ -343,5 +335,5 @@ impl EGACard {
             self.cur_bg = self.cur_attr >> 4;
             self.cur_blink = false;
         }
-    }    
+    }
 }

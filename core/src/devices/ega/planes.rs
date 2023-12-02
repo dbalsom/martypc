@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,11 +30,10 @@
     Planes can be read directly - planes must be written to through the
     functions defined here to properly de-planarize data for fast rasterization.
 */
-    
+
 use crate::devices::ega::*;
 
 impl EGACard {
-
     pub fn deplane(&mut self, offset: usize) {
         for i in 0..8 {
             let mask = 0x80 >> i;
@@ -57,11 +56,11 @@ impl EGACard {
     pub fn plane_and(&mut self, p: usize, offset: usize, data: u8) {
         self.planes[p].buf[offset] &= data;
         self.deplane(offset);
-    }    
+    }
 
     #[inline]
     pub fn plane_or(&mut self, p: usize, offset: usize, data: u8) {
         self.planes[p].buf[offset] |= data;
         self.deplane(offset);
-    }  
+    }
 }

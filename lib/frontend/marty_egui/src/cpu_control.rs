@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,16 +30,11 @@
     restart, breakpoints, etc.
 
 */
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    rc::Rc,
-};
 use crate::*;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use marty_core::machine::{ExecutionControl, ExecutionState, ExecutionOperation};
+use marty_core::machine::{ExecutionControl, ExecutionOperation, ExecutionState};
 pub struct CpuControl {
-
     exec_control: Rc<RefCell<ExecutionControl>>,
     breakpoint: String,
     mem_breakpoint: String,
@@ -47,7 +42,6 @@ pub struct CpuControl {
 }
 
 impl CpuControl {
-    
     pub fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
         Self {
             exec_control,
@@ -57,8 +51,7 @@ impl CpuControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, gui_options: &mut HashMap<GuiBoolean, bool>, events: &mut GuiEventQueue ) {
-
+    pub fn draw(&mut self, ui: &mut egui::Ui, gui_options: &mut HashMap<GuiBoolean, bool>, events: &mut GuiEventQueue) {
         let mut exec_control = self.exec_control.borrow_mut();
 
         let (pause_enabled, step_enabled, run_enabled) = match exec_control.state {
@@ -67,117 +60,141 @@ impl CpuControl {
             ExecutionState::Halted => (false, false, false),
         };
 
-        ui.horizontal(|ui|{
-
+        ui.horizontal(|ui| {
             ui.add_enabled_ui(pause_enabled, |ui| {
-                if ui.button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0))).clicked() {
+                if ui
+                    .button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0)))
+                    .clicked()
+                {
                     exec_control.set_state(ExecutionState::Paused);
                 };
             });
 
             ui.add_enabled_ui(step_enabled, |ui| {
-                if ui.button(egui::RichText::new("⤵").font(egui::FontId::proportional(20.0))).clicked() {
-                   exec_control.set_op(ExecutionOperation::StepOver);
+                if ui
+                    .button(egui::RichText::new("⤵").font(egui::FontId::proportional(20.0)))
+                    .clicked()
+                {
+                    exec_control.set_op(ExecutionOperation::StepOver);
                 };
 
                 if ui.input(|i| i.key_pressed(egui::Key::F10)) {
                     exec_control.set_op(ExecutionOperation::StepOver);
                 };
-            });   
+            });
 
             ui.add_enabled_ui(step_enabled, |ui| {
-                if ui.button(egui::RichText::new("➡").font(egui::FontId::proportional(20.0))).clicked() {
-                   exec_control.set_op(ExecutionOperation::Step);
+                if ui
+                    .button(egui::RichText::new("➡").font(egui::FontId::proportional(20.0)))
+                    .clicked()
+                {
+                    exec_control.set_op(ExecutionOperation::Step);
                 };
 
                 if ui.input(|i| i.key_pressed(egui::Key::F11)) {
                     exec_control.set_op(ExecutionOperation::Step);
-                }                             
-            });                 
+                }
+            });
 
             ui.add_enabled_ui(run_enabled, |ui| {
-                if ui.button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0))).clicked() {
+                if ui
+                    .button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0)))
+                    .clicked()
+                {
                     exec_control.set_op(ExecutionOperation::Run);
                 };
 
                 if ui.input(|i| i.key_pressed(egui::Key::F5)) {
                     exec_control.set_op(ExecutionOperation::Run);
-                }                        
+                }
             });
 
-            if ui.button(egui::RichText::new("⟲").font(egui::FontId::proportional(20.0))).clicked() {
+            if ui
+                .button(egui::RichText::new("⟲").font(egui::FontId::proportional(20.0)))
+                .clicked()
+            {
                 exec_control.set_op(ExecutionOperation::Reset);
             };
 
             ui.menu_button(egui::RichText::new("⏷").font(egui::FontId::proportional(20.0)), |ui| {
-                if ui.checkbox(&mut gui_options.get_mut(&GuiBoolean::CpuEnableWaitStates).unwrap(), "Enable Wait States").clicked() {
-
+                if ui
+                    .checkbox(
+                        &mut gui_options.get_mut(&GuiBoolean::CpuEnableWaitStates).unwrap(),
+                        "Enable Wait States",
+                    )
+                    .clicked()
+                {
                     let new_opt = gui_options.get(&GuiBoolean::CpuEnableWaitStates).unwrap();
 
-                    events.send(
-                        GuiEvent::OptionChanged(
-                            GuiOption::Bool(GuiBoolean::CpuEnableWaitStates, *new_opt)
-                        )
-                    );
+                    events.send(GuiEvent::OptionChanged(GuiOption::Bool(
+                        GuiBoolean::CpuEnableWaitStates,
+                        *new_opt,
+                    )));
                     ui.close_menu();
-                } 
-                if ui.checkbox(&mut gui_options.get_mut(&GuiBoolean::CpuInstructionHistory).unwrap(), "Instruction History").clicked() {
-
+                }
+                if ui
+                    .checkbox(
+                        &mut gui_options.get_mut(&GuiBoolean::CpuInstructionHistory).unwrap(),
+                        "Instruction History",
+                    )
+                    .clicked()
+                {
                     let new_opt = gui_options.get(&GuiBoolean::CpuInstructionHistory).unwrap();
 
-                    events.send(
-                        GuiEvent::OptionChanged(
-                            GuiOption::Bool(GuiBoolean::CpuInstructionHistory, *new_opt)
-                        )
-                    );
+                    events.send(GuiEvent::OptionChanged(GuiOption::Bool(
+                        GuiBoolean::CpuInstructionHistory,
+                        *new_opt,
+                    )));
                     ui.close_menu();
-                }   
-                if ui.checkbox(&mut gui_options.get_mut(&GuiBoolean::CpuTraceLoggingEnabled).unwrap(), "Trace Logging Enabled").clicked() {
-
+                }
+                if ui
+                    .checkbox(
+                        &mut gui_options.get_mut(&GuiBoolean::CpuTraceLoggingEnabled).unwrap(),
+                        "Trace Logging Enabled",
+                    )
+                    .clicked()
+                {
                     let new_opt = gui_options.get(&GuiBoolean::CpuTraceLoggingEnabled).unwrap();
 
-                    events.send(
-                        GuiEvent::OptionChanged(
-                            GuiOption::Bool(GuiBoolean::CpuTraceLoggingEnabled, *new_opt)
-                        )
-                    );
+                    events.send(GuiEvent::OptionChanged(GuiOption::Bool(
+                        GuiBoolean::CpuTraceLoggingEnabled,
+                        *new_opt,
+                    )));
                     ui.close_menu();
-                }                                        
+                }
             });
         });
 
         let state_str = format!("{:?}", exec_control.get_state());
         ui.separator();
-        ui.horizontal(|ui|{
+        ui.horizontal(|ui| {
             ui.label("Run state: ");
             ui.label(&state_str);
         });
         ui.separator();
-        ui.horizontal(|ui|{
+        ui.horizontal(|ui| {
             ui.label("Exec Breakpoint: ");
             if ui.text_edit_singleline(&mut self.breakpoint).changed() {
                 events.send(GuiEvent::EditBreakpoint);
             };
         });
         ui.separator();
-        ui.horizontal(|ui|{
+        ui.horizontal(|ui| {
             ui.label("Mem Breakpoint: ");
             if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
                 events.send(GuiEvent::EditBreakpoint);
             }
         });
         ui.separator();
-        ui.horizontal(|ui|{
+        ui.horizontal(|ui| {
             ui.label("Int Breakpoint: ");
             if ui.text_edit_singleline(&mut self.int_breakpoint).changed() {
                 events.send(GuiEvent::EditBreakpoint);
             }
-        });                
+        });
     }
 
     pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {
         (&self.breakpoint, &self.mem_breakpoint, &self.int_breakpoint)
     }
-
-
 }

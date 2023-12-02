@@ -17,40 +17,36 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-    
+
     egui::memory.rs
 
     Implements a memory viewer control.
-    The control is a virtual window that can be scrolled over the entire 
-    address space. The virtual machine is polled for the contents of the 
+    The control is a virtual window that can be scrolled over the entire
+    address space. The virtual machine is polled for the contents of the
     active display as it is scrolled by sending GuiEvent::MemoryUpdate
     events.
 
 */
 
-use crate::*;
-use crate::token_listview::*;
+use crate::{token_listview::*, *};
 use marty_core::syntax_token::*;
 
 pub struct MemoryViewerControl {
-
     pub address: String,
     pub row: usize,
     pub lastrow: usize,
     pub mem: Vec<String>,
     //update_scroll_pos: bool,
-
     tlv: TokenListView,
 }
 
 impl MemoryViewerControl {
-
     pub fn new() -> Self {
         Self {
             address: format!("{:05X}", 0),
@@ -58,12 +54,11 @@ impl MemoryViewerControl {
             lastrow: 0,
             mem: Vec::new(),
             //update_scroll_pos: false,
-            tlv: TokenListView::new()
+            tlv: TokenListView::new(),
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
-
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         ui.horizontal(|ui| {
             ui.label("Address: ");
             if ui.text_edit_singleline(&mut self.address).changed() {
@@ -86,10 +81,9 @@ impl MemoryViewerControl {
             self.address = format!("{:05X}", new_row);
             self.row = new_row;
         }
-
     }
 
-    #[allow (dead_code)]
+    #[allow(dead_code)]
     fn update_addr_from_row(&mut self) {
         self.address = format!("{:05X}", self.row);
     }
@@ -99,7 +93,7 @@ impl MemoryViewerControl {
         self.row = row & !0x0F;
     }
 
-    #[allow (dead_code)]
+    #[allow(dead_code)]
     pub fn set_address(&mut self, address: String) {
         self.address = address;
     }
@@ -115,5 +109,4 @@ impl MemoryViewerControl {
     pub fn set_hover_text(&mut self, text: String) {
         self.tlv.set_hover_text(text);
     }
-
 }

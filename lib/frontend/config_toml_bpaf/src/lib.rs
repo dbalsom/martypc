@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -32,43 +32,46 @@
 
 */
 
-use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use marty_core::{
-    machine_manager::MachineType,
-    videocard::{VideoType, ClockingMode},
     coreconfig::VideoCardDefinition,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::{
-        keyboard::KeyboardType,
-        hdc::HardDiskControllerType,
-    },
+    devices::{hdc::HardDiskControllerType, keyboard::KeyboardType},
+    machine_manager::MachineType,
     rom_manager::RomOverride,
+    videocard::{ClockingMode, VideoType},
 };
 
-use display_scaler_trait::ScalerMode;
-use bpaf::{Bpaf};
-use serde_derive::{Deserialize};
+use marty_common::display_scaler::ScalerMode;
 
+use bpaf::Bpaf;
+use serde_derive::Deserialize;
 
-const fn _default_true() -> bool { true }
-const fn _default_false() -> bool { true }
+const fn _default_true() -> bool {
+    true
+}
+const fn _default_false() -> bool {
+    true
+}
 
 mod coreconfig;
 
-#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)] 
+#[derive(Copy, Clone, Debug, Bpaf, Deserialize, PartialEq)]
 pub enum TestMode {
     None,
     Generate,
     Run,
     Validate,
-    Process
+    Process,
 }
 
 impl Default for TestMode {
-    fn default() -> Self { 
+    fn default() -> Self {
         TestMode::None
     }
 }
@@ -91,7 +94,6 @@ impl FromStr for TestMode {
 
 #[derive(Debug, Deserialize)]
 pub struct Emulator {
-
     pub basedir: PathBuf,
 
     #[serde(default = "_default_true")]
@@ -104,7 +106,7 @@ pub struct Emulator {
     pub headless: bool,
 
     #[serde(default = "_default_false")]
-    pub fuzzer: bool,    
+    pub fuzzer: bool,
 
     #[serde(default = "_default_false")]
     pub warpspeed: bool,
@@ -113,7 +115,7 @@ pub struct Emulator {
     pub debug_mode: bool,
 
     #[serde(default = "_default_false")]
-    pub debug_warn: bool,    
+    pub debug_warn: bool,
 
     #[serde(default = "_default_false")]
     pub debug_keyboard: bool,
@@ -123,14 +125,13 @@ pub struct Emulator {
     pub run_bin_ofs: Option<u16>,
 
     #[serde(default)]
-    pub trace_on: bool,
+    pub trace_on:   bool,
     pub trace_mode: Option<TraceMode>,
     pub trace_file: Option<PathBuf>,
 
     #[serde(default)]
     pub video_trace_file: Option<PathBuf>,
     //pub video_frame_debug: bool,
-
     #[serde(default)]
     pub pit_output_file: Option<PathBuf>,
     #[serde(default = "_default_false")]
@@ -142,10 +143,10 @@ pub struct Emulator {
 #[derive(Debug, Deserialize)]
 pub struct Gui {
     #[serde(default)]
-    pub disabled: bool,
+    pub disabled:    bool,
     #[serde(default)]
-    pub theme_dark: bool,
-    pub theme_color: Option<u32>
+    pub theme_dark:  bool,
+    pub theme_color: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -166,7 +167,7 @@ pub struct Tests {
     pub test_extension_range: Option<Vec<u8>>,
     pub test_opcode_exclude_list: Option<Vec<u8>>,
     pub test_opcode_gen_count: Option<u32>,
-    pub test_opcode_gen_append: Option<bool>
+    pub test_opcode_gen_append: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -185,7 +186,7 @@ pub struct Machine {
     pub drive0: Option<String>,
     pub drive1: Option<String>,
     pub floppy0: Option<String>,
-    pub floppy1: Option<String>
+    pub floppy1: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -228,13 +229,12 @@ pub struct ConfigFileParams {
     pub machine: Machine,
     pub cpu: Cpu,
     pub validator: Validator,
-    pub tests: Tests
+    pub tests: Tests,
 }
 
 #[derive(Debug, Bpaf)]
 #[bpaf(options, version, generate(cli_args))]
 pub struct CmdLineArgs {
-
     #[bpaf(long)]
     pub configfile: Option<PathBuf>,
 
@@ -259,9 +259,8 @@ pub struct CmdLineArgs {
 
     //#[bpaf(long, switch)]
     //pub scaler_aspect_correction: bool,
-
     #[bpaf(long, switch)]
-    pub reverse_mouse_buttons: bool,    
+    pub reverse_mouse_buttons: bool,
 
     #[bpaf(long)]
     pub machine_model: Option<MachineType>,
@@ -286,24 +285,22 @@ pub struct CmdLineArgs {
 
     //#[bpaf(long, switch)]
     //pub video_frame_debug: bool,
-
     #[bpaf(long)]
     pub run_bin: Option<String>,
     #[bpaf(long)]
     pub run_bin_seg: Option<u16>,
     #[bpaf(long)]
-    pub run_bin_ofs: Option<u16>,    
+    pub run_bin_ofs: Option<u16>,
 }
 
 impl ConfigFileParams {
     pub fn overlay(&mut self, shell_args: CmdLineArgs) {
-
-        if let Some(machine_model) = shell_args.machine_model { 
+        if let Some(machine_model) = shell_args.machine_model {
             self.machine.model = machine_model;
         }
-        if let Some(validator) = shell_args.validator { 
+        if let Some(validator) = shell_args.validator {
             self.validator.vtype = Some(validator);
-        }       
+        }
 
         if let Some(basedir) = shell_args.basedir {
             self.emulator.basedir = basedir;
@@ -335,7 +332,7 @@ impl ConfigFileParams {
 
         if let Some(run_bin_ofs) = shell_args.run_bin_ofs {
             self.emulator.run_bin_ofs = Some(run_bin_ofs);
-        }                
+        }
 
         self.machine.turbo |= shell_args.turbo;
 
@@ -348,14 +345,14 @@ impl ConfigFileParams {
 }
 
 pub fn get_config<P>(default_path: P) -> Result<ConfigFileParams, anyhow::Error>
-where 
+where
     P: AsRef<Path>,
 {
     let shell_args: CmdLineArgs = cli_args().run();
     let mut toml_args: ConfigFileParams;
 
     // Allow configuration file path to be overridden by command line argument 'configfile'
-    
+
     if let Some(configfile_path) = shell_args.configfile.as_ref() {
         let toml_slice = std::fs::read(configfile_path)?;
         toml_args = toml::from_slice(&toml_slice)?;
@@ -364,7 +361,7 @@ where
         let toml_slice = std::fs::read(default_path)?;
         toml_args = toml::from_slice(&toml_slice)?;
     }
-    
+
     log::debug!("toml_config: {:?}", toml_args);
 
     // Command line arguments override config file arguments
@@ -373,12 +370,11 @@ where
     Ok(toml_args)
 }
 
-pub fn get_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::Error>
-{
+pub fn get_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::Error> {
     let toml_args: ConfigFileParams;
 
     toml_args = toml::from_str(toml_text)?;
-    
+
     log::debug!("toml_config: {:?}", toml_args);
 
     Ok(toml_args)

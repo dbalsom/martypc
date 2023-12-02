@@ -34,17 +34,14 @@
 
 */
 
-use std::path::PathBuf;
 use crate::{
-    machine_manager::MachineType,
-    videocard::{VideoType, ClockingMode},
-    cpu_validator::ValidatorType,
     cpu_common::TraceMode,
-    devices::{
-        keyboard::KeyboardType,
-        hdc::HardDiskControllerType,
-    },
+    cpu_validator::ValidatorType,
+    devices::{hdc::HardDiskControllerType, keyboard::KeyboardType},
+    machine_manager::MachineType,
+    videocard::{ClockingMode, VideoType},
 };
+use std::path::PathBuf;
 
 use serde::Deserialize;
 
@@ -58,7 +55,6 @@ pub struct VideoCardDefinition {
 }
 
 pub trait CoreConfig {
-
     fn get_base_dir(&self) -> PathBuf;
     fn get_machine_type(&self) -> MachineType;
     fn get_machine_nobios(&self) -> bool;

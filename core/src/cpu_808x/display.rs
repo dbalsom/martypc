@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,23 +26,21 @@
 
     cpu_808x::display.rs
 
-    Formatting routines for mnemonics and Instruction type. 
+    Formatting routines for mnemonics and Instruction type.
     Converts Instructions into string or token representations.
 
 */
 
 use std::fmt;
 
-use crate::cpu_808x::*;
-use crate::cpu_808x::mnemonic::Mnemonic;
-use crate::cpu_808x::addressing::AddressingMode;
+use crate::cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, *};
 
 use crate::syntax_token::SyntaxToken;
 
 #[derive(Copy, Clone)]
 pub enum OperandSelect {
     FirstOperand,
-    SecondOperand
+    SecondOperand,
 }
 
 fn mnemonic_to_str(op: Mnemonic) -> &'static str {
@@ -161,8 +159,6 @@ impl fmt::Display for Mnemonic {
     }
 }
 
-
-
 struct SignedHex<T>(T);
 
 struct WithPlusSign<T>(T);
@@ -171,12 +167,14 @@ struct WithSign<T>(T);
 impl fmt::Display for Displacement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => write!(f,"Invalid Displacement"),
+            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => {
+                write!(f, "Invalid Displacement")
+            }
             Displacement::Disp8(i) => {
-                write!(f,"{:X}h", i)
-            },
+                write!(f, "{:X}h", i)
+            }
             Displacement::Disp16(i) => {
-                write!(f,"{:X}h", i)
+                write!(f, "{:X}h", i)
             }
         }
     }
@@ -185,21 +183,23 @@ impl fmt::Display for Displacement {
 impl fmt::Display for SignedHex<Displacement> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
-            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => write!(f,"Invalid Displacement"),
+            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => {
+                write!(f, "Invalid Displacement")
+            }
             Displacement::Disp8(i) => {
                 if *i < 0 {
-                    write!(f,"{:X}h", !i.wrapping_sub(1))
+                    write!(f, "{:X}h", !i.wrapping_sub(1))
                 }
                 else {
-                    write!(f,"{:X}h", i)
+                    write!(f, "{:X}h", i)
                 }
-            },
+            }
             Displacement::Disp16(i) => {
                 if *i < 0 {
-                    write!(f,"{:X}h", !i.wrapping_sub(1))
+                    write!(f, "{:X}h", !i.wrapping_sub(1))
                 }
                 else {
-                    write!(f,"{:X}h", i)
+                    write!(f, "{:X}h", i)
                 }
             }
         }
@@ -209,21 +209,23 @@ impl fmt::Display for SignedHex<Displacement> {
 impl Display for WithPlusSign<Displacement> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
-            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => write!(f,"Invalid Displacement"),
+            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => {
+                write!(f, "Invalid Displacement")
+            }
             Displacement::Disp8(i) => {
                 if *i < 0 {
-                    write!(f,"-{}", SignedHex(self.0))
+                    write!(f, "-{}", SignedHex(self.0))
                 }
                 else {
-                    write!(f,"+{}", SignedHex(self.0))
+                    write!(f, "+{}", SignedHex(self.0))
                 }
             }
             Displacement::Disp16(i) => {
                 if *i < 0 {
-                    write!(f,"-{}", SignedHex(self.0))
+                    write!(f, "-{}", SignedHex(self.0))
                 }
                 else {
-                    write!(f,"+{}", SignedHex(self.0))
+                    write!(f, "+{}", SignedHex(self.0))
                 }
             }
         }
@@ -233,33 +235,33 @@ impl Display for WithPlusSign<Displacement> {
 impl Display for WithSign<Displacement> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.0 {
-            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => write!(f,"Invalid Displacement"),
+            Displacement::Pending8 | Displacement::Pending16 | Displacement::NoDisp => {
+                write!(f, "Invalid Displacement")
+            }
             Displacement::Disp8(i) => {
                 if *i < 0 {
-                    write!(f,"-{}", SignedHex(self.0))
+                    write!(f, "-{}", SignedHex(self.0))
                 }
                 else {
-                    write!(f,"{}", SignedHex(self.0))
+                    write!(f, "{}", SignedHex(self.0))
                 }
             }
             Displacement::Disp16(i) => {
                 if *i < 0 {
-                    write!(f,"-{}", SignedHex(self.0))
+                    write!(f, "-{}", SignedHex(self.0))
                 }
                 else {
-                    write!(f,"{}", SignedHex(self.0))
+                    write!(f, "{}", SignedHex(self.0))
                 }
             }
         }
     }
 }
 
-
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         let mut instruction_string = String::new();
-        
+
         // Stick segment override prefix on certain opcodes (string ops)
         let sego_prefix = override_prefix_to_string(self);
         if let Some(so) = sego_prefix {
@@ -277,11 +279,11 @@ impl fmt::Display for Instruction {
         }
 
         instruction_string.push_str(&mnemonic);
-        
+
         // Dont sign-extend 8-bit port addresses.
         let op_size = match self.mnemonic {
             Mnemonic::IN | Mnemonic::OUT => OperandSize::Operand8,
-            _ => self.operand1_size
+            _ => self.operand1_size,
         };
 
         let op1 = operand_to_string(self, OperandSelect::FirstOperand, op_size);
@@ -297,16 +299,15 @@ impl fmt::Display for Instruction {
         }
 
         write!(f, "{}", instruction_string)
-     }
+    }
 }
 
 impl Cpu {
     pub fn tokenize_instruction(i: &Instruction) -> Vec<SyntaxToken> {
-
         // Dont sign-extend 8-bit port addresses.
         let op_size = match i.mnemonic {
             Mnemonic::IN | Mnemonic::OUT => OperandSize::Operand8,
-            _ => i.operand1_size
+            _ => i.operand1_size,
         };
 
         let mut i_vec = SyntaxTokenVec(Vec::new());
@@ -359,7 +360,8 @@ impl fmt::UpperHex for Imm8sExtend {
             // If it's negative, sign-extend with FF
             let bare_hex = format!("FF{:2X}", self.0 as u8);
             f.pad_integral(true, prefix, &bare_hex)
-        } else {
+        }
+        else {
             // If it's positive or zero, simply show the original byte
             let bare_hex = format!("{:X}", self.0 as u8);
             f.pad_integral(true, prefix, &bare_hex)
@@ -375,7 +377,8 @@ impl fmt::UpperHex for Imm8Extend {
             // If it's set, sign-extend with FF
             let bare_hex = format!("FF{:02X}", self.0);
             f.pad_integral(true, prefix, &bare_hex)
-        } else {
+        }
+        else {
             // If it's not set, simply show the original byte
             let bare_hex = format!("{:02X}", self.0);
             f.pad_integral(true, prefix, &bare_hex)
@@ -391,7 +394,8 @@ impl fmt::UpperHex for Rel8Extend {
             // If it's negative, sign-extend with FF
             let bare_hex = format!("FF{:02X}", self.0 as u8);
             f.pad_integral(true, prefix, &bare_hex)
-        } else {
+        }
+        else {
             // If it's positive or zero, simply show the original byte
             let bare_hex = format!("00{:02X}", self.0 as u8);
             f.pad_integral(true, prefix, &bare_hex)
@@ -399,13 +403,12 @@ impl fmt::UpperHex for Rel8Extend {
     }
 }
 
-fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -> String {
-
+fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> String {
     let (op_type, op_size) = match op {
         OperandSelect::FirstOperand => (i.operand1_type, i.operand1_size),
-        OperandSelect::SecondOperand => (i.operand2_type, i.operand2_size)
+        OperandSelect::SecondOperand => (i.operand2_type, i.operand2_size),
     };
-    
+
     let instruction_string: String = match op_type {
         OperandType::Immediate8(imm8) => {
             if let OperandSize::Operand8 = lvalue {
@@ -418,7 +421,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -
         OperandType::Immediate8s(imm8) => {
             // imm8 is always sign-extended to 16
             format!("{:X}h", Imm8sExtend(imm8))
-        }         
+        }
         OperandType::Immediate16(imm16) => {
             format!("{:X}h", imm16)
         }
@@ -426,7 +429,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -
             //format!("short {:04X}h", i.size as i16 + rel8 as i16)
             format!("{:04X}h", i.size as i16 + rel8 as i16)
         }
-        OperandType::Relative16(rel16) => {     
+        OperandType::Relative16(rel16) => {
             //format!("short {:04X}h", i.size as i16 + rel16)
             format!("{:04X}h", i.size as i16 + rel16)
         }
@@ -436,7 +439,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -
                 SegmentOverride::CS => "cs".to_string(),
                 SegmentOverride::SS => "ss".to_string(),
                 _ => "ds".to_string(),
-            };         
+            };
             format!("byte [{}:{:X}h]", segment, offset8)
         }
         OperandType::Offset16(offset16) => {
@@ -445,50 +448,46 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -
                 SegmentOverride::CS => "cs".to_string(),
                 SegmentOverride::SS => "ss".to_string(),
                 _ => "ds".to_string(),
-            };                   
+            };
             format!("word [{}:{:X}h]", segment, offset16)
         }
-        OperandType::Register8(reg8) => {
-            match reg8 {
-                Register8::AL => "al".to_string(),
-                Register8::CL => "cl".to_string(),
-                Register8::DL => "dl".to_string(),
-                Register8::BL => "bl".to_string(),
-                Register8::AH => "ah".to_string(),
-                Register8::CH => "ch".to_string(),
-                Register8::DH => "dh".to_string(),
-                Register8::BH => "bh".to_string(),
-            }
-        }
-        OperandType::Register16(reg16) => {
-            match reg16 {
-                Register16::AX => "ax".to_string(),
-                Register16::CX => "cx".to_string(),
-                Register16::DX => "dx".to_string(),
-                Register16::BX => "bx".to_string(),
-                Register16::SP => "sp".to_string(),
-                Register16::BP => "bp".to_string(),
-                Register16::SI => "si".to_string(),
-                Register16::DI => "di".to_string(),
-                Register16::ES => "es".to_string(),
-                Register16::CS => "cs".to_string(),
-                Register16::SS => "ss".to_string(),
-                Register16::DS => "ds".to_string(),
-                _=>"".to_string(),
-            }
+        OperandType::Register8(reg8) => match reg8 {
+            Register8::AL => "al".to_string(),
+            Register8::CL => "cl".to_string(),
+            Register8::DL => "dl".to_string(),
+            Register8::BL => "bl".to_string(),
+            Register8::AH => "ah".to_string(),
+            Register8::CH => "ch".to_string(),
+            Register8::DH => "dh".to_string(),
+            Register8::BH => "bh".to_string(),
+        },
+        OperandType::Register16(reg16) => match reg16 {
+            Register16::AX => "ax".to_string(),
+            Register16::CX => "cx".to_string(),
+            Register16::DX => "dx".to_string(),
+            Register16::BX => "bx".to_string(),
+            Register16::SP => "sp".to_string(),
+            Register16::BP => "bp".to_string(),
+            Register16::SI => "si".to_string(),
+            Register16::DI => "di".to_string(),
+            Register16::ES => "es".to_string(),
+            Register16::CS => "cs".to_string(),
+            Register16::SS => "ss".to_string(),
+            Register16::DS => "ds".to_string(),
+            _ => "".to_string(),
         },
         OperandType::AddressingMode(addr_mode) => {
             let mut ptr_prefix: String = match op_size {
                 OperandSize::Operand8 => "byte ".to_string(),
                 OperandSize::Operand16 => "word ".to_string(),
                 OperandSize::NoOperand => "*invalid ptr* ".to_string(),
-                OperandSize::NoSize => "".to_string()
+                OperandSize::NoSize => "".to_string(),
             };
             // LEA uses addressing calculations but isn't actually a pointer
             if let Mnemonic::LEA = i.mnemonic {
                 ptr_prefix = "".to_string()
             }
-            // LES and LDS point to a DWORD address 
+            // LES and LDS point to a DWORD address
             if let Mnemonic::LES | Mnemonic::LDS = i.mnemonic {
                 ptr_prefix = "dword ".to_string()
             }
@@ -496,7 +495,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -
             let mut segment1 = "ds".to_string();
             let mut segment2 = "ss".to_string();
 
-            // Handle segment override prefixes 
+            // Handle segment override prefixes
             match i.segment_override {
                 SegmentOverride::ES => {
                     segment1 = "es".to_string();
@@ -518,31 +517,63 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -
             }
 
             match addr_mode {
-                AddressingMode::BxSi             => format!("{}[{}:bx+si]", ptr_prefix, segment1),
-                AddressingMode::BxDi             => format!("{}[{}:bx+di]", ptr_prefix, segment1),
-                AddressingMode::BpSi             => format!("{}[{}:bp+si]", ptr_prefix, segment2),
-                AddressingMode::BpDi             => format!("{}[{}:bp+di]", ptr_prefix, segment2),
-                AddressingMode::Si               => format!("{}[{}:si]", ptr_prefix, segment1),
-                AddressingMode::Di               => format!("{}[{}:di]", ptr_prefix, segment1),
-                AddressingMode::Disp16(disp)     => format!("{}[{}:{}]", ptr_prefix, segment1, disp),
-                AddressingMode::Bx               => format!("{}[{}:bx]", ptr_prefix, segment1),
-                AddressingMode::BxSiDisp8(disp)  => format!("{}[{}:bx+si{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::BxDiDisp8(disp)  => format!("{}[{}:bx+di{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::BpSiDisp8(disp)  => format!("{}[{}:bp+si{}]", ptr_prefix, segment2, WithPlusSign(disp)),
-                AddressingMode::BpDiDisp8(disp)  => format!("{}[{}:bp+di{}]", ptr_prefix, segment2, WithPlusSign(disp)),
-                AddressingMode::SiDisp8(disp)    => format!("{}[{}:si{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::DiDisp8(disp)    => format!("{}[{}:di{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::BpDisp8(disp)    => format!("{}[{}:bp{}]", ptr_prefix, segment2, WithPlusSign(disp)),
-                AddressingMode::BxDisp8(disp)    => format!("{}[{}:bx{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::BxSiDisp16(disp) => format!("{}[{}:bx+si{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::BxDiDisp16(disp) => format!("{}[{}:bx+di{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::BpSiDisp16(disp) => format!("{}[{}:bp+si{}]", ptr_prefix, segment2, WithPlusSign(disp)),
-                AddressingMode::BpDiDisp16(disp) => format!("{}[{}:bp+di{}]", ptr_prefix, segment2, WithPlusSign(disp)),
-                AddressingMode::SiDisp16(disp)   => format!("{}[{}:si{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::DiDisp16(disp)   => format!("{}[{}:di{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::BpDisp16(disp)   => format!("{}[{}:bp{}]", ptr_prefix, segment2, WithPlusSign(disp)),
-                AddressingMode::BxDisp16(disp)   => format!("{}[{}:bx{}]", ptr_prefix, segment1, WithPlusSign(disp)),
-                AddressingMode::RegisterMode => format!("")
+                AddressingMode::BxSi => format!("{}[{}:bx+si]", ptr_prefix, segment1),
+                AddressingMode::BxDi => format!("{}[{}:bx+di]", ptr_prefix, segment1),
+                AddressingMode::BpSi => format!("{}[{}:bp+si]", ptr_prefix, segment2),
+                AddressingMode::BpDi => format!("{}[{}:bp+di]", ptr_prefix, segment2),
+                AddressingMode::Si => format!("{}[{}:si]", ptr_prefix, segment1),
+                AddressingMode::Di => format!("{}[{}:di]", ptr_prefix, segment1),
+                AddressingMode::Disp16(disp) => format!("{}[{}:{}]", ptr_prefix, segment1, disp),
+                AddressingMode::Bx => format!("{}[{}:bx]", ptr_prefix, segment1),
+                AddressingMode::BxSiDisp8(disp) => {
+                    format!("{}[{}:bx+si{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::BxDiDisp8(disp) => {
+                    format!("{}[{}:bx+di{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::BpSiDisp8(disp) => {
+                    format!("{}[{}:bp+si{}]", ptr_prefix, segment2, WithPlusSign(disp))
+                }
+                AddressingMode::BpDiDisp8(disp) => {
+                    format!("{}[{}:bp+di{}]", ptr_prefix, segment2, WithPlusSign(disp))
+                }
+                AddressingMode::SiDisp8(disp) => {
+                    format!("{}[{}:si{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::DiDisp8(disp) => {
+                    format!("{}[{}:di{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::BpDisp8(disp) => {
+                    format!("{}[{}:bp{}]", ptr_prefix, segment2, WithPlusSign(disp))
+                }
+                AddressingMode::BxDisp8(disp) => {
+                    format!("{}[{}:bx{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::BxSiDisp16(disp) => {
+                    format!("{}[{}:bx+si{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::BxDiDisp16(disp) => {
+                    format!("{}[{}:bx+di{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::BpSiDisp16(disp) => {
+                    format!("{}[{}:bp+si{}]", ptr_prefix, segment2, WithPlusSign(disp))
+                }
+                AddressingMode::BpDiDisp16(disp) => {
+                    format!("{}[{}:bp+di{}]", ptr_prefix, segment2, WithPlusSign(disp))
+                }
+                AddressingMode::SiDisp16(disp) => {
+                    format!("{}[{}:si{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::DiDisp16(disp) => {
+                    format!("{}[{}:di{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::BpDisp16(disp) => {
+                    format!("{}[{}:bp{}]", ptr_prefix, segment2, WithPlusSign(disp))
+                }
+                AddressingMode::BxDisp16(disp) => {
+                    format!("{}[{}:bx{}]", ptr_prefix, segment1, WithPlusSign(disp))
+                }
+                AddressingMode::RegisterMode => format!(""),
             }
         }
         /*
@@ -554,19 +585,18 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize ) -
             format!("{:04X}h:{:04X}h", segment, offset)
         }
         OperandType::NoOperand => "".to_string(),
-        _=>"".to_string()
+        _ => "".to_string(),
     };
 
     instruction_string
 }
 
 fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> Vec<SyntaxToken> {
-
     let (op_type, op_size) = match op {
         OperandSelect::FirstOperand => (i.operand1_type, i.operand1_size),
-        OperandSelect::SecondOperand => (i.operand2_type, i.operand2_size)
+        OperandSelect::SecondOperand => (i.operand2_type, i.operand2_size),
     };
-    
+
     let mut op_vec = Vec::new();
 
     match op_type {
@@ -580,7 +610,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
         }
         OperandType::Immediate8s(imm8s) => {
             op_vec.push(SyntaxToken::HexValue(format!("{:X}h", Imm8sExtend(imm8s))));
-        }        
+        }
         OperandType::Immediate16(imm16) => {
             op_vec.push(SyntaxToken::HexValue(format!("{:X}h", imm16)));
         }
@@ -591,7 +621,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
         }
         OperandType::Relative16(rel16) => {
             //op_vec.push(SyntaxToken::Text("short".to_string()));
-            //op_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Space));  
+            //op_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
             op_vec.push(SyntaxToken::HexValue(format!("{:04X}h", i.size as i16 + rel16)));
         }
         OperandType::Offset8(offset8) => {
@@ -605,7 +635,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
             op_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
             op_vec.push(SyntaxToken::OpenBracket);
             op_vec.push(SyntaxToken::Segment(segment));
-            op_vec.push(SyntaxToken::Colon);            
+            op_vec.push(SyntaxToken::Colon);
             op_vec.push(SyntaxToken::HexValue(format!("{:X}h", offset8)));
             op_vec.push(SyntaxToken::CloseBracket);
         }
@@ -615,14 +645,14 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                 SegmentOverride::CS => "cs".to_string(),
                 SegmentOverride::SS => "ss".to_string(),
                 _ => "ds".to_string(),
-            };                     
+            };
             op_vec.push(SyntaxToken::Text("word".to_string()));
             op_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
             op_vec.push(SyntaxToken::OpenBracket);
             op_vec.push(SyntaxToken::Segment(segment));
-            op_vec.push(SyntaxToken::Colon);            
+            op_vec.push(SyntaxToken::Colon);
             op_vec.push(SyntaxToken::HexValue(format!("{:X}h", offset16)));
-            op_vec.push(SyntaxToken::CloseBracket);            
+            op_vec.push(SyntaxToken::CloseBracket);
         }
         OperandType::Register8(reg8) => {
             let reg = match reg8 {
@@ -651,22 +681,22 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                 Register16::CS => "cs".to_string(),
                 Register16::SS => "ss".to_string(),
                 Register16::DS => "ds".to_string(),
-                _=>"".to_string(),
+                _ => "".to_string(),
             };
             op_vec.push(SyntaxToken::Register(reg));
-        },
+        }
         OperandType::AddressingMode(addr_mode) => {
             let mut ptr_prefix: Option<String> = match op_size {
                 OperandSize::Operand8 => Some("byte".to_string()),
                 OperandSize::Operand16 => Some("word".to_string()),
                 OperandSize::NoOperand => Some("*invalid*".to_string()),
-                OperandSize::NoSize => None
+                OperandSize::NoSize => None,
             };
             // LEA uses addressing calculations but isn't actually a pointer
             if let Mnemonic::LEA = i.mnemonic {
                 ptr_prefix = None
             }
-            // LES and LDS point to a DWORD address 
+            // LES and LDS point to a DWORD address
             if let Mnemonic::LES | Mnemonic::LDS = i.mnemonic {
                 ptr_prefix = Some("dword".to_string())
             }
@@ -680,7 +710,7 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
             let mut segment1 = "ds".to_string();
             let mut segment2 = "ss".to_string();
 
-            // Handle segment override prefixes 
+            // Handle segment override prefixes
             match i.segment_override {
                 SegmentOverride::ES => {
                     segment1 = "es".to_string();
@@ -707,30 +737,30 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
             let mut have_addr_mode = true;
 
             let (seg_token, disp_opt, ea_vec) = match addr_mode {
-                AddressingMode::BxSi             => (segment1_token, None, ["bx","si"]),
-                AddressingMode::BxDi             => (segment1_token, None, ["bx", "di"]),
-                AddressingMode::BpSi             => (segment2_token, None, ["bp", "si"]),
-                AddressingMode::BpDi             => (segment2_token, None, ["bp", "di"]),
-                AddressingMode::Si               => (segment1_token, None, ["si", ""]),
-                AddressingMode::Di               => (segment1_token, None, ["di", ""]),
-                AddressingMode::Disp16(disp)     => (segment1_token, Some(disp), ["", ""]),
-                AddressingMode::Bx               => (segment1_token, None, ["bx",""]),
-                AddressingMode::BxSiDisp8(disp)  => (segment1_token, Some(disp), ["bx","si"]),
-                AddressingMode::BxDiDisp8(disp)  => (segment1_token, Some(disp), ["bx","di"]),
-                AddressingMode::BpSiDisp8(disp)  => (segment2_token, Some(disp), ["bp","si"]),
-                AddressingMode::BpDiDisp8(disp)  => (segment2_token, Some(disp), ["bp","di"]),
-                AddressingMode::SiDisp8(disp)    => (segment1_token, Some(disp), ["si", ""]),
-                AddressingMode::DiDisp8(disp)    => (segment1_token, Some(disp), ["di", ""]),
-                AddressingMode::BpDisp8(disp)    => (segment2_token, Some(disp), ["bp", ""]),
-                AddressingMode::BxDisp8(disp)    => (segment1_token, Some(disp), ["bx", ""]),
+                AddressingMode::BxSi => (segment1_token, None, ["bx", "si"]),
+                AddressingMode::BxDi => (segment1_token, None, ["bx", "di"]),
+                AddressingMode::BpSi => (segment2_token, None, ["bp", "si"]),
+                AddressingMode::BpDi => (segment2_token, None, ["bp", "di"]),
+                AddressingMode::Si => (segment1_token, None, ["si", ""]),
+                AddressingMode::Di => (segment1_token, None, ["di", ""]),
+                AddressingMode::Disp16(disp) => (segment1_token, Some(disp), ["", ""]),
+                AddressingMode::Bx => (segment1_token, None, ["bx", ""]),
+                AddressingMode::BxSiDisp8(disp) => (segment1_token, Some(disp), ["bx", "si"]),
+                AddressingMode::BxDiDisp8(disp) => (segment1_token, Some(disp), ["bx", "di"]),
+                AddressingMode::BpSiDisp8(disp) => (segment2_token, Some(disp), ["bp", "si"]),
+                AddressingMode::BpDiDisp8(disp) => (segment2_token, Some(disp), ["bp", "di"]),
+                AddressingMode::SiDisp8(disp) => (segment1_token, Some(disp), ["si", ""]),
+                AddressingMode::DiDisp8(disp) => (segment1_token, Some(disp), ["di", ""]),
+                AddressingMode::BpDisp8(disp) => (segment2_token, Some(disp), ["bp", ""]),
+                AddressingMode::BxDisp8(disp) => (segment1_token, Some(disp), ["bx", ""]),
                 AddressingMode::BxSiDisp16(disp) => (segment1_token, Some(disp), ["bx", "si"]),
                 AddressingMode::BxDiDisp16(disp) => (segment1_token, Some(disp), ["bx", "di"]),
                 AddressingMode::BpSiDisp16(disp) => (segment2_token, Some(disp), ["bp", "si"]),
                 AddressingMode::BpDiDisp16(disp) => (segment2_token, Some(disp), ["bp", "di"]),
-                AddressingMode::SiDisp16(disp)   => (segment1_token, Some(disp), ["si", ""]),
-                AddressingMode::DiDisp16(disp)   => (segment1_token, Some(disp), ["di", ""]),
-                AddressingMode::BpDisp16(disp)   => (segment2_token, Some(disp), ["bp", ""]),
-                AddressingMode::BxDisp16(disp)   => (segment1_token, Some(disp), ["bx", ""]),
+                AddressingMode::SiDisp16(disp) => (segment1_token, Some(disp), ["si", ""]),
+                AddressingMode::DiDisp16(disp) => (segment1_token, Some(disp), ["di", ""]),
+                AddressingMode::BpDisp16(disp) => (segment2_token, Some(disp), ["bp", ""]),
+                AddressingMode::BxDisp16(disp) => (segment1_token, Some(disp), ["bx", ""]),
                 AddressingMode::RegisterMode => {
                     have_addr_mode = false;
                     (segment1_token, None, ["", ""])
@@ -738,7 +768,6 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
             };
 
             if have_addr_mode {
-
                 op_vec.push(SyntaxToken::OpenBracket);
                 op_vec.push(seg_token);
                 op_vec.push(SyntaxToken::Colon);
@@ -757,13 +786,13 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
                     op_vec.push(SyntaxToken::PlusSign);
                     op_vec.push(SyntaxToken::Register(ea_vec[1].to_string()));
                 }
-                
+
                 if ea_vec[0].len() > 0 {
                     // Have at least one ea component. Add +displacement if present.
                     if let Some(disp) = disp_opt {
                         // TODO: Generate +/- as tokens for displacement?
                         op_vec.push(SyntaxToken::Displacement(format!("{}", WithPlusSign(disp))));
-                    }                    
+                    }
                 }
 
                 op_vec.push(SyntaxToken::CloseBracket);
@@ -788,16 +817,14 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
     op_vec
 }
 
-fn override_prefix_to_string(i: &Instruction ) -> Option<String> {
-
+fn override_prefix_to_string(i: &Instruction) -> Option<String> {
     if let SegmentOverride::None = i.segment_override {
         // No override
         None
     }
     else {
         match i.opcode {
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD |
-            0xA6 | 0xA7 | 0xAE | 0xAF => {
+            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD | 0xA6 | 0xA7 | 0xAE | 0xAF => {
                 let segment: String = match i.segment_override {
                     SegmentOverride::ES => "es".to_string(),
                     SegmentOverride::CS => "cs".to_string(),
@@ -806,13 +833,12 @@ fn override_prefix_to_string(i: &Instruction ) -> Option<String> {
                 };
                 Some(segment)
             }
-            _ => None
-        }        
+            _ => None,
+        }
     }
 }
 
-fn prefix_to_string(i: &Instruction ) -> Option<String> {
-
+fn prefix_to_string(i: &Instruction) -> Option<String> {
     // Handle REPx prefixes
     // TODO: IS F2 valid on 6C, 6D, etc?
 
@@ -822,17 +848,17 @@ fn prefix_to_string(i: &Instruction ) -> Option<String> {
     else if i.prefixes & OPCODE_PREFIX_REP1 != 0 {
         match i.opcode {
             0xF6 | 0xF7 => None, // Don't show REP prefix on div.
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD =>  Some("rep".to_string()),
-            0xA6 | 0xA7 | 0xAE | 0xAF =>  Some("repne".to_string()),
-            _ =>None
-        }        
-    }     
+            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => Some("rep".to_string()),
+            0xA6 | 0xA7 | 0xAE | 0xAF => Some("repne".to_string()),
+            _ => None,
+        }
+    }
     else if i.prefixes & OPCODE_PREFIX_REP2 != 0 {
         match i.opcode {
             0xF6 | 0xF7 => None, // Don't show REP prefix on div.
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD =>  Some("rep".to_string()),
-            0xA6 | 0xA7 | 0xAE | 0xAF =>  Some("repe".to_string()),
-            _ => None
+            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => Some("rep".to_string()),
+            0xA6 | 0xA7 | 0xAE | 0xAF => Some("repe".to_string()),
+            _ => None,
         }
     }
     else {
@@ -840,23 +866,20 @@ fn prefix_to_string(i: &Instruction ) -> Option<String> {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "cpu_validator")]
     use crate::cpu_validator;
 
-    use crate::cpu_808x::*;
-    use crate::syntax_token::*;
+    use crate::{cpu_808x::*, syntax_token::*};
 
     #[test]
     fn test_display_methods_match() {
-
         let test_ct = 1_000_000;
-        
+
         #[cfg(feature = "cpu_validator")]
         use cpu_validator::ValidatorMode;
-    
+
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
             TraceMode::None,
@@ -870,34 +893,28 @@ mod tests {
             #[cfg(feature = "cpu_validator")]
             1_000_000,
         );
-    
+
         cpu.randomize_seed(1234);
         cpu.randomize_mem();
 
         for i in 0..test_ct {
-
             cpu.reset();
             cpu.randomize_regs();
-    
+
             if cpu.get_register16(Register16::IP) > 0xFFF0 {
                 // Avoid IP wrapping issues for now
                 continue;
             }
             let opcodes: Vec<u8> = (0u8..=255u8).collect();
 
-            let mut instruction_address = Cpu::calc_linear_address(
-                cpu.get_register16(Register16::CS),  
-                cpu.get_register16(Register16::IP)
-            );
+            let mut instruction_address =
+                Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
 
             while (cpu.get_register16(Register16::IP) > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
                 // Avoid IP wrapping issues for now
                 cpu.randomize_regs();
-                instruction_address = 
-                    Cpu::calc_linear_address(
-                        cpu.get_register16(Register16::CS),  
-                        cpu.get_register16(Register16::IP)
-                    );
+                instruction_address =
+                    Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
             }
 
             cpu.random_inst_from_opcodes(&opcodes);
@@ -910,7 +927,7 @@ mod tests {
                 Err(_) => {
                     log::error!("Instruction decode error, skipping...");
                     continue;
-                }                
+                }
             };
 
             let s1 = i.to_string();
@@ -923,6 +940,6 @@ mod tests {
                 println!("Test: {} Disassembly mismatch: {}, {}", i, s1, s2);
                 assert_eq!(s1, s2);
             }
-        }    
+        }
     }
 }

@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,11 +30,9 @@
 
 */
 
-use crate::bus::MemoryMappedDevice;
-use crate::devices::ega::*;
+use crate::{bus::MemoryMappedDevice, devices::ega::*};
 
 impl MemoryMappedDevice for EGACard {
-
     fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
         0
     }
@@ -44,7 +42,6 @@ impl MemoryMappedDevice for EGACard {
     }
 
     fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
-
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
             return (0, 0);
@@ -66,14 +63,14 @@ impl MemoryMappedDevice for EGACard {
         // Reads are controlled by the Read Mode bit in the Mode register of the Graphics Controller.
         match self.graphics_mode.read_mode() {
             ReadMode::ReadSelectedPlane => {
-                // In Read Mode 0, the processor reads data from the memory plane selected 
+                // In Read Mode 0, the processor reads data from the memory plane selected
                 // by the read map select register.
                 let plane = (self.graphics_read_map_select & 0x03) as usize;
                 let byte = self.planes[plane].buf[offset];
                 return (byte, 0);
             }
             ReadMode::ReadComparedPlanes => {
-                // In Read Mode 1, the processor reads the result of a comparison with the value in the 
+                // In Read Mode 1, the processor reads the result of a comparison with the value in the
                 // Color Compare register, from the set of enabled planes in the Color Dont Care register
                 self.get_pixels(offset);
                 let comparison = self.pixel_op_compare();
@@ -83,7 +80,6 @@ impl MemoryMappedDevice for EGACard {
     }
 
     fn mmio_read_u16(&mut self, address: usize, cycles: u32) -> (u16, u32) {
-
         let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, cycles);
         let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, cycles);
 
@@ -100,7 +96,7 @@ impl MemoryMappedDevice for EGACard {
         // Validate address is within current memory map and get the offset into VRAM
         let offset = match self.plane_bounds_check(address) {
             Some(offset) => offset,
-            None => return 0
+            None => return 0,
         };
 
         self.planes[0].buf[offset]
@@ -115,30 +111,26 @@ impl MemoryMappedDevice for EGACard {
         // Validate address is within current memory map and get the offset into VRAM
         let offset = match self.plane_bounds_check(address) {
             Some(offset) => offset,
-            None => return 0
+            None => return 0,
         };
 
         (self.planes[0].buf[offset] as u16) << 8 | self.planes[0].buf[offset + 1] as u16
-    }        
+    }
 
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
-
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
-            return 0
+            return 0;
         }
 
         // Validate address is within current memory map and get the offset
         let offset = match self.plane_bounds_check(address) {
             Some(offset) => offset,
-            None => {
-                return 0
-            }
-        };        
+            None => return 0,
+        };
 
         match self.graphics_mode.write_mode() {
             WriteMode::Mode0 => {
-
                 // Write mode 0 performs a pipeline of operations:
                 // First, data is rotated as specified by the Rotate Count field of the Data Rotate Register.
                 let data_rot = EGACard::rotate_right_u8(byte, self.graphics_data_rotate.count());
@@ -149,9 +141,9 @@ impl MemoryMappedDevice for EGACard {
                     if self.graphics_enable_set_reset & (0x01 << i) != 0 {
                         // If the Set/Reset Enable bit is set, use expansion of corresponding Set/Reset register bit
                         self.pipeline_buf[i] = match self.graphics_set_reset & (0x01 << i) != 0 {
-                            true  => 0xFF,
-                            false => 0x00
-                        }                        
+                            true => 0xFF,
+                            false => 0x00,
+                        }
                     }
                     else {
                         // Set/Reset Enable bit not set, use data from rotate step
@@ -167,17 +159,12 @@ impl MemoryMappedDevice for EGACard {
                     self.pipeline_buf[i] = match self.graphics_data_rotate.function() {
                         RotateFunction::Unmodified => {
                             // Clear masked bits from pipeline, set them with mask bits from latch
-                            (self.pipeline_buf[i] & self.graphics_bitmask) | (!self.graphics_bitmask & self.planes[i].latch)
+                            (self.pipeline_buf[i] & self.graphics_bitmask)
+                                | (!self.graphics_bitmask & self.planes[i].latch)
                         }
-                        RotateFunction::And => {
-                            (self.pipeline_buf[i] | !self.graphics_bitmask) & self.planes[i].latch
-                        }
-                        RotateFunction::Or => {
-                            (self.pipeline_buf[i] & self.graphics_bitmask) | self.planes[i].latch
-                        }
-                        RotateFunction::Xor => {
-                            (self.pipeline_buf[i] & self.graphics_bitmask) ^ self.planes[i].latch
-                        }
+                        RotateFunction::And => (self.pipeline_buf[i] | !self.graphics_bitmask) & self.planes[i].latch,
+                        RotateFunction::Or => (self.pipeline_buf[i] & self.graphics_bitmask) | self.planes[i].latch,
+                        RotateFunction::Xor => (self.pipeline_buf[i] & self.graphics_bitmask) ^ self.planes[i].latch,
                     }
                 }
                 // Fourth, the value of the Bit Mask register is used: A set bit in the Mask register will pass
@@ -185,7 +172,7 @@ impl MemoryMappedDevice for EGACard {
                 //for i in 0..4 {
                 //
                 //    self.write_buf[i] = 0;
-                //    
+                //
                 //    for k in 0..8 {
                 //        if self.graphics_bitmask & (0x01 << k) != 0 {
                 //            // If a bit is set in the mask register, pass the bit from the previous stage
@@ -220,11 +207,9 @@ impl MemoryMappedDevice for EGACard {
                 }
             }
             WriteMode::Mode2 => {
-
                 for i in 0..4 {
                     // Only write to planes enabled in the Sequencer Map Mask.
                     if self.sequencer_map_mask & (0x01 << i) != 0 {
-
                         // Extend the bit for this plane to 8 bits.
                         let bit_span: u8 = match byte & (0x01 << i) != 0 {
                             true => 0xFF,
@@ -247,7 +232,7 @@ impl MemoryMappedDevice for EGACard {
             }
             WriteMode::Invalid => {
                 log::warn!("Invalid write mode!");
-                return 0
+                return 0;
             }
         }
 

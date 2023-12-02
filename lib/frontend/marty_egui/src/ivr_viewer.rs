@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,31 +30,24 @@
 
 */
 
-use crate::*;
-use crate::token_listview::*;
+use crate::{token_listview::*, *};
 use marty_core::syntax_token::*;
 
 pub struct IvrViewerControl {
-
     tlv: TokenListView,
     row: usize,
 }
 
 impl IvrViewerControl {
-
     pub fn new() -> Self {
         let mut tlv = TokenListView::new();
         tlv.set_capacity(256);
         tlv.set_visible(32);
 
-        Self {
-            tlv,
-            row: 0
-        }
+        Self { tlv, row: 0 }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue ) {
-
+    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         let mut new_row = self.row;
         ui.horizontal(|ui| {
             self.tlv.draw(ui, events, &mut new_row);
@@ -64,10 +57,10 @@ impl IvrViewerControl {
         if self.row != new_row {
             log::debug!("update address to: {:05X}", new_row);
             self.row = new_row;
-        }        
-    }        
+        }
+    }
 
     pub fn set_content(&mut self, mem: Vec<Vec<SyntaxToken>>) {
         self.tlv.set_contents(mem);
     }
-}    
+}

@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -46,7 +46,7 @@
 
 use thiserror::Error;
 
-#[derive (Error, Debug)]
+#[derive(Error, Debug)]
 pub enum DisplayBackendError {
     #[error("Initialization failed: {0}")]
     InitializationError(String),
@@ -70,14 +70,14 @@ impl Display for DisplayBackendError {
 
  */
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct BufferDimensions {
     pub w: u32,
     pub h: u32,
     pub pitch: u32,
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct SurfaceDimensions {
     pub w: u32,
     pub h: u32,
@@ -85,7 +85,11 @@ pub struct SurfaceDimensions {
 
 impl From<(u32, u32, u32)> for BufferDimensions {
     fn from(t: (u32, u32, u32)) -> Self {
-        BufferDimensions { w: t.0, h: t.1, pitch: t.2 }
+        BufferDimensions {
+            w: t.0,
+            h: t.1,
+            pitch: t.2,
+        }
     }
 }
 
@@ -96,11 +100,11 @@ impl From<(u32, u32)> for SurfaceDimensions {
 }
 
 use anyhow::Error;
-use display_scaler_trait::DisplayScaler;
 
 pub trait DisplayBackend<G> {
     type NativeBackend;
     type NativeBackendAdapterInfo;
+    type NativeScaler;
 
     fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo>;
     fn resize_buf(&mut self, new: BufferDimensions) -> Result<(), Error>;
@@ -110,13 +114,11 @@ pub trait DisplayBackend<G> {
     fn buf(&self) -> &[u8];
     fn buf_mut(&mut self) -> &mut [u8];
     fn get_backend_raw(&mut self) -> Option<&mut Self::NativeBackend>;
-    fn render(
-        &mut self,
-        scaler: Option<&mut dyn DisplayScaler>,
-        gui_renderer: Option<&mut G>
-    ) -> Result<(), Error>;
+    fn render(&mut self, scaler: Option<&mut Self::NativeScaler>, gui_renderer: Option<&mut G>) -> Result<(), Error>;
 }
 
 pub trait DisplayBackendBuilder {
-    fn build(buffer_size: BufferDimensions, surface_size: SurfaceDimensions) -> Self where Self: Sized;
+    fn build(buffer_size: BufferDimensions, surface_size: SurfaceDimensions) -> Self
+    where
+        Self: Sized;
 }

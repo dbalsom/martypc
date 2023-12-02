@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -35,11 +35,17 @@ use crate::GuiState;
 use egui::*;
 
 impl GuiState {
-
     pub fn color_swatch(ui: &mut Ui, color: Color32, open: bool) -> Response {
         let size = ui.spacing().interact_size;
-        let size = egui::Vec2 { x: size.y, y: size.y}; // Make square
-        let (rect, response) = ui.allocate_exact_size(size, Sense { click: false, drag: false, focusable: false});
+        let size = egui::Vec2 { x: size.y, y: size.y }; // Make square
+        let (rect, response) = ui.allocate_exact_size(
+            size,
+            Sense {
+                click: false,
+                drag: false,
+                focusable: false,
+            },
+        );
         //response.widget_info(|| WidgetInfo::new(WidgetType::ColorButton));
 
         ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
@@ -48,7 +54,8 @@ impl GuiState {
         if ui.is_rect_visible(rect) {
             let visuals = if open {
                 &ui.visuals().widgets.open
-            } else {
+            }
+            else {
                 ui.style().interact(&response)
             };
             //let rect = rect.expand(visuals.expansion);

@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,18 +26,18 @@
 
     floppy_manager.rs
 
-    Enumerate images in the 'floppy' directory to allow floppy selection 
+    Enumerate images in the 'floppy' directory to allow floppy selection
     from within the GUI.
 
 */
 
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
-    ffi::OsString,
-    fs,
     error::Error,
-    fmt::Display
+    ffi::OsString,
+    fmt::Display,
+    fs,
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug)]
@@ -62,28 +62,27 @@ impl Display for FloppyError {
 #[allow(dead_code)]
 pub struct FloppyImage {
     path: PathBuf,
-    size: u64
+    size: u64,
 }
 
 pub struct FloppyManager {
     image_vec: Vec<FloppyImage>,
-    image_map: HashMap<OsString, FloppyImage>
+    image_map: HashMap<OsString, FloppyImage>,
 }
 
 impl FloppyManager {
     pub fn new() -> Self {
         Self {
             image_vec: Vec::new(),
-            image_map: HashMap::new()
+            image_map: HashMap::new(),
         }
     }
 
     pub fn scan_dir(&mut self, path: &Path) -> Result<bool, FloppyError> {
-
         // Read in directory entries within the provided path
         let dir = match fs::read_dir(path) {
             Ok(dir) => dir,
-            Err(_) => return Err(FloppyError::DirNotFound)
+            Err(_) => return Err(FloppyError::DirNotFound),
         };
 
         let extensions = ["img", "ima", "dsk"];
@@ -98,21 +97,23 @@ impl FloppyManager {
                 if entry.path().is_file() {
                     if let Some(extension) = entry.path().extension() {
                         if extensions.contains(&extension.to_string_lossy().to_lowercase().as_ref()) {
+                            println!(
+                                "Found floppy image: {:?} size: {}",
+                                entry.path(),
+                                entry.metadata().unwrap().len()
+                            );
 
-                            println!("Found floppy image: {:?} size: {}", entry.path(), entry.metadata().unwrap().len());
-                            
-                            self.image_vec.push( 
+                            self.image_vec.push(FloppyImage {
+                                path: entry.path(),
+                                size: entry.metadata().unwrap().len(),
+                            });
+
+                            self.image_map.insert(
+                                entry.file_name(),
                                 FloppyImage {
                                     path: entry.path(),
-                                    size: entry.metadata().unwrap().len()
-                                }
-                            );
-                        
-                            self.image_map.insert(entry.file_name(), 
-                                FloppyImage { 
-                                    path: entry.path(),
-                                    size: entry.metadata().unwrap().len()
-                                 }
+                                    size: entry.metadata().unwrap().len(),
+                                },
                             );
                         }
                     }
@@ -121,7 +122,6 @@ impl FloppyManager {
         }
         Ok(true)
     }
-
 
     pub fn get_floppy_names(&self) -> Vec<OsString> {
         let mut vec: Vec<OsString> = Vec::new();
@@ -132,8 +132,7 @@ impl FloppyManager {
         vec
     }
 
-    pub fn load_floppy_data(&self, name: &OsString ) -> Result<Vec<u8>, FloppyError> {
-
+    pub fn load_floppy_data(&self, name: &OsString) -> Result<Vec<u8>, FloppyError> {
         let mut floppy_vec = Vec::new();
         if let Some(floppy) = self.image_map.get(name) {
             floppy_vec = match std::fs::read(&floppy.path) {
@@ -147,21 +146,18 @@ impl FloppyManager {
         Ok(floppy_vec)
     }
 
-    pub fn save_floppy_data(&self, data: &[u8], name: &OsString ) -> Result<(), FloppyError> {
-
+    pub fn save_floppy_data(&self, data: &[u8], name: &OsString) -> Result<(), FloppyError> {
         if let Some(floppy) = self.image_map.get(name) {
-
             match std::fs::write(&floppy.path, data) {
                 Ok(_) => Ok(()),
                 Err(e) => {
                     eprintln!("Couldn't save floppy image: {}", e);
-                    return Err(FloppyError::FileWriteError)
+                    return Err(FloppyError::FileWriteError);
                 }
             }
         }
         else {
             Err(FloppyError::ImageNotFound)
         }
-    }    
-
+    }
 }

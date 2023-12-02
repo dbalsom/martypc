@@ -1,4 +1,3 @@
-
 /*
     MartyPC
     https://github.com/dbalsom/martypc
@@ -18,34 +17,30 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-    
+
     egui::token_listview.rs
 
     Implements a listview control based on syntax tokens.
 
     The control is a virtual window that can be scrolled over a specified
-    virtual size. Contents are provided to the listview control for the 
+    virtual size. Contents are provided to the listview control for the
     visible window. Contents are constructed from vectors of syntax tokens
     to enable color syntax highlighting, hover tooltips and other features.
 
 */
 use std::mem::discriminant;
 
+use crate::{color::*, constants::*, *};
 use egui::*;
-use crate::*;
-use crate::color::*;
-use crate::constants::*;
 use marty_core::syntax_token::*;
 
-
 pub struct TokenListView {
-
     pub row: usize,
     pub previous_row: usize,
     pub visible_rows: usize,
@@ -60,7 +55,6 @@ pub struct TokenListView {
 }
 
 impl TokenListView {
-
     pub fn new() -> Self {
         Self {
             row: 0,
@@ -73,7 +67,7 @@ impl TokenListView {
             l_margin: 5.0,
             t_margin: 3.0,
 
-            hover_text: String::new()
+            hover_text: String::new(),
         }
     }
 
@@ -86,46 +80,42 @@ impl TokenListView {
     }
 
     pub fn set_contents(&mut self, mut contents: Vec<Vec<SyntaxToken>>) {
-
         if self.contents.len() != contents.len() {
             // Size of contents is changing. Assume these are all new bytes.
 
             for row in &mut contents {
                 for mut token in row {
-
                     match &mut token {
-                        SyntaxToken::MemoryByteHexValue(_,_,_,_,new_age) => {
+                        SyntaxToken::MemoryByteHexValue(_, _, _, _, new_age) => {
                             *new_age = TOKEN_MAX_AGE;
                         }
-                        SyntaxToken::MemoryByteAsciiValue(_,_,_,new_age) => {
-                            *new_age = TOKEN_MAX_AGE
-                        }
+                        SyntaxToken::MemoryByteAsciiValue(_, _, _, new_age) => *new_age = TOKEN_MAX_AGE,
                         _ => {}
                     }
                 }
             }
             self.contents = contents;
-            return
+            return;
         }
 
         // Age incoming SyntaxTokens.
         for row_it in contents.iter_mut().zip(self.contents.iter_mut()) {
-
             for token_it in row_it.0.iter_mut().zip(row_it.1.iter()) {
-
                 let (new, old) = token_it;
 
                 if discriminant(new) == discriminant(old) {
                     // Token types match
 
                     match (new, old) {
-
-                        (SyntaxToken::MemoryByteHexValue(new_addr,new_val,_,_,new_age), SyntaxToken::MemoryByteHexValue(old_addr,old_val,_,_,old_age)) => {
+                        (
+                            SyntaxToken::MemoryByteHexValue(new_addr, new_val, _, _, new_age),
+                            SyntaxToken::MemoryByteHexValue(old_addr, old_val, _, _, old_age),
+                        ) => {
                             if old_addr == new_addr {
                                 // This is the same byte as before. Compare values.
                                 if old_val == new_val {
                                     // Byte hasn't changed, so increment age.
-                                    *new_age = old_age.saturating_add(2);    
+                                    *new_age = old_age.saturating_add(2);
                                 }
                             }
                             else {
@@ -133,19 +123,22 @@ impl TokenListView {
                                 *new_age = 255;
                             }
                         }
-                        (SyntaxToken::MemoryByteAsciiValue(new_addr,new_val,_,new_age), SyntaxToken::MemoryByteAsciiValue(old_addr,old_val,_,old_age)) => {
+                        (
+                            SyntaxToken::MemoryByteAsciiValue(new_addr, new_val, _, new_age),
+                            SyntaxToken::MemoryByteAsciiValue(old_addr, old_val, _, old_age),
+                        ) => {
                             if old_addr == new_addr {
                                 // This is the same byte as before. Compare values.
                                 if old_val == new_val {
                                     // Byte hasn't changed, so increment age.
-                                    *new_age = old_age.saturating_add(2);    
+                                    *new_age = old_age.saturating_add(2);
                                 }
                             }
                             else {
                                 // Different byte address in this position. Set age to maximum so it doesn't flash.
                                 *new_age = 255;
-                            }                            
-                        }             
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -159,8 +152,7 @@ impl TokenListView {
         self.hover_text = text;
     }
 
-    pub fn measure_token(&self, ui: &mut Ui, token: &SyntaxToken, fontid: FontId ) -> Rect {
-
+    pub fn measure_token(&self, ui: &mut Ui, token: &SyntaxToken, fontid: FontId) -> Rect {
         let old_clip_rect = ui.clip_rect();
         //let old_cursor = ui.cursor();
         ui.set_clip_rect(Rect::NOTHING);
@@ -169,7 +161,7 @@ impl TokenListView {
             egui::Align2::LEFT_TOP,
             match token {
                 SyntaxToken::MemoryByteHexValue(_, _, s, _, _) => s.clone(),
-                _ => "0".to_string()
+                _ => "0".to_string(),
             },
             fontid,
             Color32::LIGHT_GRAY,
@@ -180,33 +172,27 @@ impl TokenListView {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue, new_row: &mut usize) {
-
         let font_id = egui::TextStyle::Monospace.resolve(ui.style());
         let mut row_height = 0.0;
-        ui.fonts(|f| { row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y});
+        ui.fonts(|f| row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y);
         let num_rows = self.max_rows;
         let show_rows = self.visible_rows;
 
         ui.set_height(row_height * show_rows as f32);
 
         let mut used_rect = egui::Rect::NOTHING;
-        
+
         // Draw background rect
-        ui.painter().rect_filled(
-            ui.max_rect(),
-            
-            egui::Rounding::default(),
-            egui::Color32::BLACK
-        );
+        ui.painter()
+            .rect_filled(ui.max_rect(), egui::Rounding::default(), egui::Color32::BLACK);
 
         egui::ScrollArea::vertical()
             .auto_shrink([false; 2])
             .show_viewport(ui, |ui, viewport| {
-
                 ui.set_height(row_height * num_rows as f32);
-                
+
                 //log::debug!("viewport.min.y: {}", viewport.min.y);
-                let mut first_item = (viewport.min.y / row_height).floor().at_least(0.0)as usize;
+                let mut first_item = (viewport.min.y / row_height).floor().at_least(0.0) as usize;
                 let last_item = (viewport.max.y / row_height).ceil() as usize + 1;
                 let last_item = last_item.at_most(num_rows - show_rows);
 
@@ -218,26 +204,25 @@ impl TokenListView {
 
                 if self.row != self.previous_row {
                     // View was scrolled, update address
-                    
+
                     *new_row = self.row & !0x0F;
                     self.previous_row = self.row;
-                    
+
                     events.send(GuiEvent::MemoryUpdate);
                 }
-                
+
                 //let start_y = ui.min_rect().top() + (first_item as f32) * row_height;
                 let start_y = viewport.min.y + ui.min_rect().top();
 
                 // Constrain visible rows if we don't have enough rows in contents
                 let show_rows = usize::min(show_rows, self.contents.len());
-                
+
                 // Measure the size of a byte token label.
-                let label_rect = 
-                    self.measure_token(
-                        ui, 
-                        &SyntaxToken::MemoryByteHexValue(0, 0, "00".to_string(), false, 0),
-                        font_id.clone()
-                    );
+                let label_rect = self.measure_token(
+                    ui,
+                    &SyntaxToken::MemoryByteHexValue(0, 0, "00".to_string(), false, 0),
+                    font_id.clone(),
+                );
 
                 let l_bracket = "[".to_string();
                 let r_bracket = "]".to_string();
@@ -254,7 +239,6 @@ impl TokenListView {
 
                     let mut column_select = 32; // Initial value out of range to not highlight anything
                     for (j, token) in row.iter().enumerate() {
-
                         let mut text_rect;
 
                         let drawn;
@@ -272,20 +256,21 @@ impl TokenListView {
                                 drawn = true;
                             }
                             SyntaxToken::MemoryByteHexValue(addr, _, s, cursor, age) => {
-
-                                if ui.put(
-                                    Rect {
-                                        min: egui::pos2(token_x, y), 
-                                        max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y)
-                                    },
-                                    egui::Label::new(
-                                        egui::RichText::new(s)
-                                            .text_style(egui::TextStyle::Monospace)
-                                            .color(fade_c32(Color32::GRAY, Color32::from_rgb(0, 255, 255), 255-*age))
-                                        )
-                                )
-                                .on_hover_text(format!("{}", self.hover_text))
-                                .hovered() {
+                                if ui
+                                    .put(
+                                        Rect {
+                                            min: egui::pos2(token_x, y),
+                                            max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
+                                        },
+                                        egui::Label::new(
+                                            egui::RichText::new(s).text_style(egui::TextStyle::Monospace).color(
+                                                fade_c32(Color32::GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
+                                            ),
+                                        ),
+                                    )
+                                    .on_hover_text(format!("{}", self.hover_text))
+                                    .hovered()
+                                {
                                     column_select = j;
                                     events.send(GuiEvent::TokenHover(*addr as usize));
                                 }
@@ -293,13 +278,13 @@ impl TokenListView {
                                 if *cursor {
                                     ui.painter().rect(
                                         Rect {
-                                            min: egui::pos2(token_x, y), 
-                                            max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y)
+                                            min: egui::pos2(token_x, y),
+                                            max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
                                         },
                                         egui::Rounding::ZERO,
                                         Color32::TRANSPARENT,
-                                        egui::Stroke::new(1.0, Color32::WHITE)
-                                    );                                    
+                                        egui::Stroke::new(1.0, Color32::WHITE),
+                                    );
                                 }
 
                                 token_x += label_rect.max.x + 7.0;
@@ -322,18 +307,18 @@ impl TokenListView {
                                     egui::Align2::LEFT_TOP,
                                     s,
                                     font_id.clone(),
-                                    fade_c32(Color32::LIGHT_GRAY, Color32::from_rgb(0, 255, 255), 255-*age),
+                                    fade_c32(Color32::LIGHT_GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
                                 );
 
                                 // If previous hex byte was hovered, show a rectangle around this ascii byte
-                                // TODO: Rather than rely on hex bytes directly preceding the ascii bytes, 
+                                // TODO: Rather than rely on hex bytes directly preceding the ascii bytes,
                                 // use an 'index' field in the enum?
                                 if (j - 16) == column_select {
                                     ui.painter().rect(
                                         text_rect.expand(2.0),
                                         egui::Rounding::ZERO,
                                         Color32::TRANSPARENT,
-                                        egui::Stroke::new(1.0, COLOR32_CYAN)
+                                        egui::Stroke::new(1.0, COLOR32_CYAN),
                                     );
                                 }
 
@@ -361,49 +346,24 @@ impl TokenListView {
                             }
                         }
 
-                        if !drawn { 
+                        if !drawn {
                             let (token_color, token_text, token_padding) = match token {
-                                SyntaxToken::MemoryAddressSeg16(_,_,s) => {
-                                    (Color32::LIGHT_GRAY, s, 10.0) 
-                                }
-                                SyntaxToken::InstructionBytes(s) => {
-                                    (Color32::from_rgb(6, 152, 255), s, 1.0)
-                                }
-                                SyntaxToken::Prefix(s) => {
-                                    (Color32::from_rgb(116, 228, 227), s, 2.0)
-                                }
-                                SyntaxToken::Register(s) => {
-                                    (Color32::from_rgb(245, 138, 52), s, 1.0)
-                                }
-                                SyntaxToken::OpenBracket => {
-                                    (Color32::from_rgb(228, 214, 116), &l_bracket, 1.0)
-                                }
-                                SyntaxToken::CloseBracket => {
-                                    (Color32::from_rgb(228, 214, 116), &r_bracket, 2.0)
-                                }
-                                SyntaxToken::Colon => {
-                                    (Color32::LIGHT_GRAY, &colon, 1.0) 
-                                }
-                                SyntaxToken::Comma => {
-                                    (Color32::LIGHT_GRAY, &comma, 6.0) 
-                                }
-                                SyntaxToken::PlusSign => {
-                                    (Color32::LIGHT_GRAY, &plus, 1.0) 
-                                }                                                              
+                                SyntaxToken::MemoryAddressSeg16(_, _, s) => (Color32::LIGHT_GRAY, s, 10.0),
+                                SyntaxToken::InstructionBytes(s) => (Color32::from_rgb(6, 152, 255), s, 1.0),
+                                SyntaxToken::Prefix(s) => (Color32::from_rgb(116, 228, 227), s, 2.0),
+                                SyntaxToken::Register(s) => (Color32::from_rgb(245, 138, 52), s, 1.0),
+                                SyntaxToken::OpenBracket => (Color32::from_rgb(228, 214, 116), &l_bracket, 1.0),
+                                SyntaxToken::CloseBracket => (Color32::from_rgb(228, 214, 116), &r_bracket, 2.0),
+                                SyntaxToken::Colon => (Color32::LIGHT_GRAY, &colon, 1.0),
+                                SyntaxToken::Comma => (Color32::LIGHT_GRAY, &comma, 6.0),
+                                SyntaxToken::PlusSign => (Color32::LIGHT_GRAY, &plus, 1.0),
                                 SyntaxToken::Displacement(s) | SyntaxToken::HexValue(s) => {
                                     (Color32::from_rgb(96, 200, 210), s, 2.0)
                                 }
-                                SyntaxToken::Segment(s) => {
-                                    (Color32::from_rgb(245, 138, 52), s, 1.0)
-                                }
-                                SyntaxToken::Text(s) => {
-                                    (Color32::LIGHT_GRAY, s, 2.0) 
-                                }
-                                SyntaxToken::ErrorString(s) => {
-                                    (Color32::RED, s, 2.0) 
-                                }                                                                                             
-                                _ => (Color32::WHITE, &null, 2.0)
-
+                                SyntaxToken::Segment(s) => (Color32::from_rgb(245, 138, 52), s, 1.0),
+                                SyntaxToken::Text(s) => (Color32::LIGHT_GRAY, s, 2.0),
+                                SyntaxToken::ErrorString(s) => (Color32::RED, s, 2.0),
+                                _ => (Color32::WHITE, &null, 2.0),
                             };
 
                             text_rect = ui.painter().text(
@@ -414,7 +374,7 @@ impl TokenListView {
                                 token_color,
                             );
                             token_x = text_rect.max.x + token_padding;
-                            used_rect = used_rect.union(text_rect); 
+                            used_rect = used_rect.union(text_rect);
                         }
                     }
                 }

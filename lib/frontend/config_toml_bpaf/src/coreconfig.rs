@@ -37,17 +37,13 @@ use std::path::PathBuf;
 use crate::ConfigFileParams;
 
 use marty_core::{
-    coreconfig::CoreConfig,
-    machine_manager::MachineType,
-    videocard::{VideoType, ClockingMode},
+    coreconfig::{CoreConfig, VideoCardDefinition},
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::{
-        keyboard::KeyboardType,
-        hdc::HardDiskControllerType,
-    },
+    devices::{hdc::HardDiskControllerType, keyboard::KeyboardType},
+    machine_manager::MachineType,
+    videocard::{ClockingMode, VideoType},
 };
-use marty_core::coreconfig::VideoCardDefinition;
 
 /*
 #[derive(Debug, Deserialize)]
@@ -62,14 +58,27 @@ pub struct ConfigFileParams {
 }
  */
 impl CoreConfig for ConfigFileParams {
-
-    fn get_base_dir(&self) -> PathBuf { self.emulator.basedir.clone() }
-    fn get_machine_type(&self) -> MachineType { self.machine.model }
-    fn get_machine_nobios(&self) -> bool { self.machine.no_bios }
-    fn get_machine_turbo(&self) -> bool { self.machine.turbo }
-    fn get_keyboard_type(&self) -> Option<KeyboardType> { self.machine.keyboard_type }
-    fn get_keyboard_layout(&self) -> Option<String> { self.machine.keyboard_layout.clone() }
-    fn get_keyboard_debug(&self) -> bool { self.emulator.debug_keyboard }
+    fn get_base_dir(&self) -> PathBuf {
+        self.emulator.basedir.clone()
+    }
+    fn get_machine_type(&self) -> MachineType {
+        self.machine.model
+    }
+    fn get_machine_nobios(&self) -> bool {
+        self.machine.no_bios
+    }
+    fn get_machine_turbo(&self) -> bool {
+        self.machine.turbo
+    }
+    fn get_keyboard_type(&self) -> Option<KeyboardType> {
+        self.machine.keyboard_type
+    }
+    fn get_keyboard_layout(&self) -> Option<String> {
+        self.machine.keyboard_layout.clone()
+    }
+    fn get_keyboard_debug(&self) -> bool {
+        self.emulator.debug_keyboard
+    }
 
     fn get_video_cards(&self) -> Vec<VideoCardDefinition> {
         self.machine.videocard.clone().unwrap_or_else(Vec::new)
@@ -77,12 +86,25 @@ impl CoreConfig for ConfigFileParams {
     //fn get_video_type(&self) -> Option<VideoType> { self.machine.primary_video }
     //fn get_video_clockingmode(&self) -> Option<ClockingMode> { self.machine.clocking_mode }
     //fn get_video_debug(&self) -> bool { self.emulator.video_frame_debug }
-    fn get_hdc_type(&self) -> Option<HardDiskControllerType> { self.machine.hdc }
-    fn get_validator_type(&self) -> Option<ValidatorType> { self.validator.vtype }
-    fn get_validator_trace_file(&self) -> Option<PathBuf> { self.validator.trace_file.clone() }
-    fn get_validator_baud(&self) -> Option<u32> { self.validator.baud_rate }
-    fn get_cpu_trace_mode(&self) -> Option<TraceMode> { self.emulator.trace_mode }
-    fn get_cpu_trace_on(&self) -> bool { self.emulator.trace_on }
-    fn get_cpu_trace_file(&self) -> Option<PathBuf> { self.emulator.trace_file.clone() }
-
+    fn get_hdc_type(&self) -> Option<HardDiskControllerType> {
+        self.machine.hdc
+    }
+    fn get_validator_type(&self) -> Option<ValidatorType> {
+        self.validator.vtype
+    }
+    fn get_validator_trace_file(&self) -> Option<PathBuf> {
+        self.validator.trace_file.clone()
+    }
+    fn get_validator_baud(&self) -> Option<u32> {
+        self.validator.baud_rate
+    }
+    fn get_cpu_trace_mode(&self) -> Option<TraceMode> {
+        self.emulator.trace_mode
+    }
+    fn get_cpu_trace_on(&self) -> bool {
+        self.emulator.trace_on
+    }
+    fn get_cpu_trace_file(&self) -> Option<PathBuf> {
+        self.emulator.trace_file.clone()
+    }
 }

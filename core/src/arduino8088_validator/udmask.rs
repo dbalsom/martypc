@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,24 +26,25 @@
 
 use crate::arduino8088_validator::ArduinoValidator;
 
-pub const VFLAG_CARRY: u16     = 0x001;
-pub const VFLAG_PARITY: u16    = 0x004;
+pub const VFLAG_CARRY: u16 = 0x001;
+pub const VFLAG_PARITY: u16 = 0x004;
 pub const VFLAG_AUXILIARY: u16 = 0x010;
-pub const VFLAG_ZERO: u16      = 0x040;
-pub const VFLAG_SIGN: u16      = 0x080;
-pub const VFLAG_TRAP: u16      = 0x100;
+pub const VFLAG_ZERO: u16 = 0x040;
+pub const VFLAG_SIGN: u16 = 0x080;
+pub const VFLAG_TRAP: u16 = 0x100;
 pub const VFLAG_INTERRUPT: u16 = 0x200;
 pub const VFLAG_DIRECTION: u16 = 0x400;
-pub const VFLAG_OVERFLOW: u16  = 0x800;
+pub const VFLAG_OVERFLOW: u16 = 0x800;
 
 pub const IGNORE_MASK: u16 = 0xCD5;
 
 pub struct FlagMask {
     pub opcode: i16,
-    pub group: usize,
-    pub mask: u16
+    pub group:  usize,
+    pub mask:   u16,
 }
 
+#[rustfmt::skip]
 pub const FLAG_MASK_LOOKUP: [FlagMask; 256] =  [
     FlagMask { opcode: 0x00, group: 0, mask: 0 },
     FlagMask { opcode: 0x01, group: 0, mask: 0 },
@@ -307,6 +308,7 @@ pub const FLAG_MASK_LOOKUP: [FlagMask; 256] =  [
     FlagMask { opcode: 0xFF, group: 5, mask: 0 }
 ];
 
+#[rustfmt::skip]
 pub const FLAG_MASK_GROUP_LOOKUP: [[FlagMask; 8]; 5] = [
     // Group #1 0x80-0x83
     [
@@ -352,7 +354,6 @@ pub const FLAG_MASK_GROUP_LOOKUP: [[FlagMask; 8]; 5] = [
         FlagMask { opcode: 0xF6, group: 0, mask: VFLAG_CARRY | VFLAG_PARITY | VFLAG_AUXILIARY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
         FlagMask { opcode: 0xF6, group: 0, mask: VFLAG_CARRY | VFLAG_PARITY | VFLAG_AUXILIARY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
     ],
-
     // Group #5 0xFE-0xFF
     [
         FlagMask { opcode: 0xFE, group: 0, mask: 0 },
@@ -367,9 +368,7 @@ pub const FLAG_MASK_GROUP_LOOKUP: [[FlagMask; 8]; 5] = [
 ];
 
 impl ArduinoValidator {
-
     pub fn mask_undefined_flags(opcode: u8, modrm: u8, flags: u16) -> u16 {
-
         let mut masked_flags = flags & IGNORE_MASK; // Ignore I, T and reserved flags
 
         let grp = FLAG_MASK_LOOKUP[opcode as usize].group as usize;
@@ -381,7 +380,7 @@ impl ArduinoValidator {
         else {
             // Is group opcode, look up from group table.
             let grp_op = ((modrm >> 3) & 0x07) as usize;
-            masked_flags &= !FLAG_MASK_GROUP_LOOKUP[grp-1][grp_op].mask;
+            masked_flags &= !FLAG_MASK_GROUP_LOOKUP[grp - 1][grp_op].mask;
         }
 
         masked_flags

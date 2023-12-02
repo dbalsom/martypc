@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -32,10 +32,10 @@
 
 #![allow(dead_code)]
 
-use std::str::FromStr;
 use serde::Deserialize;
+use std::str::FromStr;
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum CpuType {
     Intel8088,
     Intel8086,
@@ -46,14 +46,14 @@ pub enum TraceMode {
     None,
     Cycle,
     Sigrok,
-    Instruction
+    Instruction,
 }
 
 impl FromStr for TraceMode {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String>
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         match s.to_lowercase().as_str() {
             "none" => Ok(TraceMode::None),
@@ -71,10 +71,12 @@ impl Default for TraceMode {
 }
 
 impl Default for CpuType {
-    fn default() -> Self { CpuType::Intel8088 }
+    fn default() -> Self {
+        CpuType::Intel8088
+    }
 }
 
-#[derive (Debug)]
+#[derive(Debug)]
 pub enum CpuOption {
     InstructionHistory(bool),
     SimulateDramRefresh(bool, u32, u32),
@@ -91,7 +93,6 @@ use crate::cpu_808x::*;
 pub mod alu;
 
 impl Cpu {
-
     pub fn common_test(&self) {
         //log::trace!("I'm a common cpu function!");
     }

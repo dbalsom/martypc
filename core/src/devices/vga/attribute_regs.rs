@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,8 +29,8 @@
     Implement the VGA Attribute registers.
 */
 
-use modular_bitfield::prelude::*;
 use crate::devices::vga::VGACard;
+use modular_bitfield::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum AttributeRegister {
@@ -50,53 +50,53 @@ pub enum AttributeRegister {
     PaletteD,
     PaletteE,
     PaletteF,
-    ModeControl,                // (10)
-    OverscanColor,              // (11)
-    ColorPlaneEnable,           // (12)
-    HorizontalPelPanning,       // (13)
-    ColorSelect                 // (14)
+    ModeControl,          // (10)
+    OverscanColor,        // (11)
+    ColorPlaneEnable,     // (12)
+    HorizontalPelPanning, // (13)
+    ColorSelect,          // (14)
 }
 
 #[derive(Debug)]
 pub enum AttributeRegisterFlipFlop {
     Address,
-    Data
+    Data,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum AttributeMode {
     Text,
-    Graphics
+    Graphics,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum AttributeDisplayType {
     Color,
-    Monochrome
+    Monochrome,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum AttributeBlinkOrIntensity {
     BackgroundIntensity,
-    Blink
+    Blink,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum PaletteAddressSource {
     HostAccess,
-    DisplayAccess
+    DisplayAccess,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum PixelClock {
     EveryCycle,
-    EveryOtherCycle
+    EveryOtherCycle,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum PaletteSize {
     PaletteRegister45,
-    ColorRegister45
+    ColorRegister45,
 }
 
 #[bitfield]
@@ -105,7 +105,7 @@ pub struct AttributeAddress {
     #[bits = 1]
     pub palette_address_source: PaletteAddressSource,
     #[skip]
-    pub unused: B2
+    pub unused: B2,
 }
 
 #[bitfield]
@@ -117,7 +117,7 @@ pub struct APaletteRegister {
     pub secondary_blue: B1,
     pub secondary_green: B1,
     pub secondary_red: B1,
-    pub unused: B2
+    pub unused: B2,
 }
 
 #[bitfield]
@@ -135,11 +135,11 @@ pub struct AModeControl {
     #[bits = 1]
     pub pixel_clock_select: PixelClock,
     #[bits = 1]
-    pub internal_palette_size: PaletteSize
+    pub internal_palette_size: PaletteSize,
 }
 
 #[bitfield]
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct AOverscanColor {
     pub blue: B1,
     pub green: B1,
@@ -148,7 +148,7 @@ pub struct AOverscanColor {
     pub secondary_green: B1,
     pub secondary_red: B1,
     #[skip]
-    unused: B2
+    unused: B2,
 }
 
 #[bitfield]
@@ -156,7 +156,7 @@ pub struct AColorPlaneEnable {
     pub enable_plane: B4,
     pub video_status_mux: B2, // Unused on VGA
     #[skip]
-    unused: B2
+    unused: B2,
 }
 
 #[bitfield]
@@ -164,20 +164,18 @@ pub struct AColorSelect {
     pub c45: B2,
     pub c67: B2, // Unused on VGA
     #[skip]
-    unused: B4
+    unused:  B4,
 }
 
 impl VGACard {
     /// Handle a write to the Attribute Register 0x3C0.
-    /// 
-    /// Unlike the other register files on the VGA, the Attribute Register doesn't have an 
+    ///
+    /// Unlike the other register files on the VGA, the Attribute Register doesn't have an
     /// address port. Instead, it maintains a flipflop that determines whether the port 0x3C0
     /// is in address or data mode. The flipflop is reset to a known state by reading 0x3DA.
     pub fn write_attribute_register(&mut self, byte: u8) {
-
         match self.attribute_flipflop {
             AttributeRegisterFlipFlop::Address => {
-
                 self.attribute_address = AttributeAddress::from_bytes([byte]);
                 self.attribute_palette_index = (self.attribute_address.address() & 0x0F) as usize;
                 self.attribute_selected = match self.attribute_address.address() {
@@ -211,16 +209,29 @@ impl VGACard {
                 self.attribute_flipflop = AttributeRegisterFlipFlop::Data;
             }
             AttributeRegisterFlipFlop::Data => {
-
                 match self.attribute_selected {
-                    AttributeRegister::Palette0 | AttributeRegister::Palette1 | AttributeRegister::Palette2 |
-                    AttributeRegister::Palette3 | AttributeRegister::Palette4 | AttributeRegister::Palette5 |
-                    AttributeRegister::Palette6 | AttributeRegister::Palette7 | AttributeRegister::Palette8 |
-                    AttributeRegister::Palette9 | AttributeRegister::PaletteA | AttributeRegister::PaletteB |
-                    AttributeRegister::PaletteC | AttributeRegister::PaletteD | AttributeRegister::PaletteE |
-                    AttributeRegister::PaletteF => {
+                    AttributeRegister::Palette0
+                    | AttributeRegister::Palette1
+                    | AttributeRegister::Palette2
+                    | AttributeRegister::Palette3
+                    | AttributeRegister::Palette4
+                    | AttributeRegister::Palette5
+                    | AttributeRegister::Palette6
+                    | AttributeRegister::Palette7
+                    | AttributeRegister::Palette8
+                    | AttributeRegister::Palette9
+                    | AttributeRegister::PaletteA
+                    | AttributeRegister::PaletteB
+                    | AttributeRegister::PaletteC
+                    | AttributeRegister::PaletteD
+                    | AttributeRegister::PaletteE
+                    | AttributeRegister::PaletteF => {
                         //self.attribute_palette_registers[self.attribute_palette_index] = APaletteRegister::from_bytes([byte]);
-                        log::trace!("Palette register index {} set to {:08b}", self.attribute_palette_index, byte);
+                        log::trace!(
+                            "Palette register index {} set to {:08b}",
+                            self.attribute_palette_index,
+                            byte
+                        );
                         self.attribute_palette_registers[self.attribute_palette_index] = byte;
                     }
                     AttributeRegister::ModeControl => {

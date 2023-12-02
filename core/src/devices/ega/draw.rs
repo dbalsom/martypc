@@ -75,7 +75,7 @@ impl EGACard {
     /// Draw an entire character row in high resolution text mode (8 pixels)
     pub fn draw_text_mode_hchar14(&mut self) {
         // Do cursor if visible, enabled and defined
-        if     self.vma == self.crtc_cursor_address as usize
+        if self.vma == self.crtc_cursor_address as usize
             && self.cursor_status
             && self.blink_state
             && self.cursor_data[(self.vlc & 0x3F) as usize]
@@ -99,7 +99,7 @@ impl EGACard {
     /// Draw an entire character row in low resolution text mode (16 pixels)
     pub fn draw_text_mode_lchar14(&mut self) {
         // Do cursor if visible, enabled and defined
-        if     self.vma == self.crtc_cursor_address as usize
+        if self.vma == self.crtc_cursor_address as usize
             && self.cursor_status
             && self.blink_state
             && self.cursor_data[(self.vlc & 0x3F) as usize]
@@ -108,13 +108,13 @@ impl EGACard {
         }
         else if self.mode_enable {
             // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
-            let (glyph_row0, glyph_row1) =
-                self.get_lchar_glyph14_rows(self.cur_char as usize, self.vlc as usize);
+            let (glyph_row0, glyph_row1) = self.get_lchar_glyph14_rows(self.cur_char as usize, self.vlc as usize);
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
             frame_u64[self.rba >> 3] = glyph_row0;
             frame_u64[(self.rba >> 3) + 1] = glyph_row1;
-        } else {
+        }
+        else {
             // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
             self.draw_solid_lchar(0);
         }
@@ -127,8 +127,7 @@ impl EGACard {
 
         for i in 0..8 {
             let buf_i = i - self.pel_pan_latch as usize;
-            self.buf[self.back_buf][self.rba + buf_i] =
-                self.chain_buf[(self.vma * 8 & 0x7FFFF) + i];
+            self.buf[self.back_buf][self.rba + buf_i] = self.chain_buf[(self.vma * 8 & 0x7FFFF) + i];
         }
     }
 
@@ -140,7 +139,8 @@ impl EGACard {
         for i in 0..8 {
             let buf_i = i - self.pel_pan_latch as usize;
 
-            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x0F) as usize].six;
+            let attr_color =
+                self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x0F) as usize].six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
         }
     }
@@ -152,7 +152,9 @@ impl EGACard {
 
         for i in 0..8 {
             let buf_i = (i * 2) - (self.pel_pan_latch * 2) as usize;
-            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x3F) as usize].four_to_six;
+            let attr_color = self.attribute_palette_registers
+                [(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x3F) as usize]
+                .four_to_six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
             self.buf[self.back_buf][self.rba + buf_i + 1] = attr_color;
         }
@@ -166,11 +168,10 @@ impl EGACard {
         for i in 0..8 {
             let buf_i = (i * 2) - (self.pel_pan_latch * 2) as usize;
 
-            let attr_color = self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x3F) as usize].six;
+            let attr_color =
+                self.attribute_palette_registers[(self.chain_buf[(self.vma * 8 & 0x7FFFF) + i] & 0x3F) as usize].six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
             self.buf[self.back_buf][self.rba + buf_i + 1] = attr_color;
         }
     }
-
-
 }

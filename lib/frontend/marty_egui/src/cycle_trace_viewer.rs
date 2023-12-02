@@ -17,13 +17,13 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-    
+
     egui::cycle_trace_viewer.rs
 
     Implements a viewer for the cycle trace of the last instruction.
@@ -34,24 +34,24 @@
 use crate::*;
 
 pub struct CycleTraceViewerControl {
-
     pub content_str: String,
-    pub instr_len: usize
+    pub instr_len:   usize,
 }
 
 impl CycleTraceViewerControl {
     pub fn new() -> Self {
         Self {
             content_str: String::new(),
-            instr_len: 0,
+            instr_len:   0,
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue ) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
         ui.horizontal(|ui| {
-            ui.add_sized(ui.available_size(), 
-                egui::TextEdit::multiline(&mut self.content_str)
-                    .font(egui::TextStyle::Monospace));
+            ui.add_sized(
+                ui.available_size(),
+                egui::TextEdit::multiline(&mut self.content_str).font(egui::TextStyle::Monospace),
+            );
             ui.end_row()
         });
 
@@ -59,14 +59,11 @@ impl CycleTraceViewerControl {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new("Cycles:").text_style(egui::TextStyle::Monospace));
             ui.label(egui::RichText::new(format!("{}", self.instr_len)).text_style(egui::TextStyle::Monospace));
-        }); 
-
+        });
     }
 
     pub fn update(&mut self, trace_vec: &Vec<String>) {
-
         self.instr_len = trace_vec.len();
         self.content_str = trace_vec.join("\n");
     }
-
 }

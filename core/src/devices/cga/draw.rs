@@ -30,7 +30,6 @@
 
 */
 
-
 use crate::devices::cga::*;
 
 impl CGACard {
@@ -44,7 +43,6 @@ impl CGACard {
     }
 
     pub fn draw_pixel(&mut self, color: u8) {
-
         self.buf[self.back_buf][self.rba] = color & 0x0F;
 
         if self.clock_divisor == 2 {
@@ -100,13 +98,18 @@ impl CGACard {
         let mut new_pixel = match CGACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
             true => {
                 if self.cur_blink {
-                    if self.blink_state { self.cur_fg } else { self.cur_bg }
+                    if self.blink_state {
+                        self.cur_fg
+                    }
+                    else {
+                        self.cur_bg
+                    }
                 }
                 else {
                     self.cur_fg
                 }
-            },
-            false => self.cur_bg
+            }
+            false => self.cur_bg,
         };
 
         // Do cursor
@@ -131,9 +134,8 @@ impl CGACard {
 
     /// Draw an entire character row in high resolution text mode (8 pixels)
     pub fn draw_text_mode_hchar(&mut self) {
-
         // Do cursor if visible, enabled and defined
-        if     self.vma == self.crtc_cursor_address
+        if self.vma == self.crtc_cursor_address
             && self.cursor_status
             && self.blink_state
             && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
@@ -141,7 +143,6 @@ impl CGACard {
             self.draw_solid_hchar(self.cur_fg);
         }
         else if self.mode_enable {
-
             let glyph_row: u64;
             // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
             glyph_row = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
@@ -157,11 +158,10 @@ impl CGACard {
 
     /// Draw an entire character row in low resolution text mode (16 pixels)
     pub fn draw_text_mode_lchar(&mut self) {
-
         //let draw_span = (8 * self.clock_divisor) as usize;
 
         // Do cursor if visible, enabled and defined
-        if     self.vma == self.crtc_cursor_address
+        if self.vma == self.crtc_cursor_address
             && self.cursor_status
             && self.blink_state
             && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
@@ -181,7 +181,6 @@ impl CGACard {
             self.draw_solid_lchar(0);
         }
     }
-
 
     /// Draw a pixel in low resolution graphics mode (320x200)
     /// In this mode, pixels are doubled
@@ -204,14 +203,12 @@ impl CGACard {
     /// This routine uses precalculated lookups and masks to generate two u64
     /// values to write to the index frame buffer directly.
     pub fn draw_lowres_gfx_mode_char(&mut self) {
-
         if self.mode_enable {
-
             let lchar_dat = self.get_lowres_gfx_lchar(self.vlc_c9);
-            let color0 = lchar_dat.0.0;
-            let color1 = lchar_dat.1.0;
-            let mask0 = lchar_dat.0.1;
-            let mask1 = lchar_dat.1.1;
+            let color0 = lchar_dat.0 .0;
+            let color1 = lchar_dat.1 .0;
+            let mask0 = lchar_dat.0 .1;
+            let mask1 = lchar_dat.1 .1;
 
             let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
@@ -226,13 +223,12 @@ impl CGACard {
     /// Draw pixels in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn at the same time.
     pub fn draw_hires_gfx_mode_pixel(&mut self) {
-
         let base_addr = self.get_gfx_addr(self.vlc_c9);
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
 
-        let bit1 = ((word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 1))) & 0x01;
-        let bit2 = ((word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 2))) & 0x01;
+        let bit1 = (word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 1)) & 0x01;
+        let bit2 = (word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 2)) & 0x01;
 
         if self.mode_enable {
             if bit1 == 0 {
@@ -257,12 +253,10 @@ impl CGACard {
 
     /// Draw a single character column in high resolution graphics mode (640x200)
     pub fn draw_hires_gfx_mode_char(&mut self) {
-
         let base_addr = self.get_gfx_addr(self.vlc_c9);
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
         if self.mode_enable {
-
             let byte0 = self.mem[base_addr];
             let byte1 = self.mem[base_addr + 1];
 

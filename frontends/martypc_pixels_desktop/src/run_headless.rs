@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,24 +29,21 @@
 */
 
 use marty_core::{
-    machine::{Machine, ExecutionControl, ExecutionState},
-    rom_manager::RomManager,
     floppy_manager::FloppyManager,
+    machine::{ExecutionControl, ExecutionState, Machine},
     machine_manager::MACHINE_DESCS,
+    rom_manager::RomManager,
     sound::SoundPlayer,
 };
 
 use config_toml_bpaf::ConfigFileParams;
-use marty_core::coreconfig::CoreConfig;
-use marty_core::videocard::{ClockingMode, VideoType};
+use marty_core::{
+    coreconfig::CoreConfig,
+    videocard::{ClockingMode, VideoType},
+};
 
-pub fn run_headless(
-    config: &ConfigFileParams,
-    rom_manager: RomManager,
-    _floppy_manager: FloppyManager
-) {
-
-    // Init sound 
+pub fn run_headless(config: &ConfigFileParams, rom_manager: RomManager, _floppy_manager: FloppyManager) {
+    // Init sound
     // The cpal sound library uses generics to initialize depending on the SampleFormat type.
     // On Windows at least a sample type of f32 is typical, but just in case...
     let sample_fmt = SoundPlayer::get_sample_format();
@@ -59,7 +56,11 @@ pub fn run_headless(
     // Look up the machine description given the machine type in the configuration file
     let machine_desc_opt = MACHINE_DESCS.get(&config.machine.model);
     if let Some(machine_desc) = machine_desc_opt {
-        log::debug!("Given machine type {:?} got machine description: {:?}", config.machine.model, machine_desc);
+        log::debug!(
+            "Given machine type {:?} got machine description: {:?}",
+            config.machine.model,
+            machine_desc
+        );
     }
     else {
         log::error!("Couldn't get machine description for {:?}", config.machine.model);
@@ -69,7 +70,7 @@ pub fn run_headless(
              Check that you have a valid machine type specified in configuration file.",
             config.machine.model
         );
-        std::process::exit(1);        
+        std::process::exit(1);
     }
 
     let (video_type, clock_mode, video_debug) = {
@@ -83,10 +84,9 @@ pub fn run_headless(
         (
             video_type.unwrap_or(VideoType::CGA),
             clock_mode.unwrap_or_default(),
-            video_cards[0].debug.unwrap_or(false)
+            video_cards[0].debug.unwrap_or(false),
         )
     };
-
 
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
@@ -96,13 +96,12 @@ pub fn run_headless(
         *machine_desc_opt.unwrap(),
         config.emulator.trace_mode.unwrap_or_default(),
         video_type,
-        sp, 
-        rom_manager, 
+        sp,
+        rom_manager,
     );
 
     // Load program binary if one was specified in config options
     if let Some(prog_bin) = &config.emulator.run_bin {
-
         if let Some(prog_seg) = config.emulator.run_bin_seg {
             if let Some(prog_ofs) = config.emulator.run_bin_ofs {
                 let prog_vec = match std::fs::read(prog_bin.clone()) {
@@ -114,7 +113,10 @@ pub fn run_headless(
                 };
 
                 if let Err(_) = machine.load_program(&prog_vec, prog_seg, prog_ofs) {
-                    eprintln!("Error loading program into memory at {:04X}:{:04X}.", prog_seg, prog_ofs);
+                    eprintln!(
+                        "Error loading program into memory at {:04X}:{:04X}.",
+                        prog_seg, prog_ofs
+                    );
                     std::process::exit(1);
                 };
             }
@@ -125,7 +127,7 @@ pub fn run_headless(
         }
         else {
             eprintln!("Must specifiy program load segment.");
-            std::process::exit(1);  
+            std::process::exit(1);
         }
     }
 
@@ -136,7 +138,6 @@ pub fn run_headless(
         // This should really return a Result
         machine.run(1000, &mut exec_control);
     }
-    
+
     //std::process::exit(0);
 }
-

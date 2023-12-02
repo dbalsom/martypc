@@ -30,12 +30,11 @@
 
 */
 
-
 use crate::*;
-use display_scaler_trait::ScalerFilter;
+use marty_common::display_scaler::{PhosphorType, ScalerFilter, ScalerParams};
 
 pub struct ScalerAdjustControl {
-    params: ScalerParams
+    params: ScalerParams,
 }
 
 impl ScalerAdjustControl {
@@ -106,7 +105,10 @@ impl ScalerAdjustControl {
                 ui.end_row();
 
                 ui.label(egui::RichText::new("Barrel Distortion:").text_style(egui::TextStyle::Monospace));
-                if ui.add(egui::Slider::new(&mut self.params.crt_hcurvature, 0.0..=1.0)).changed() {
+                if ui
+                    .add(egui::Slider::new(&mut self.params.crt_hcurvature, 0.0..=1.0))
+                    .changed()
+                {
                     update = true;
                 }
                 ui.end_row();
@@ -120,7 +122,10 @@ impl ScalerAdjustControl {
                 */
 
                 ui.label(egui::RichText::new("Corner Radius:").text_style(egui::TextStyle::Monospace));
-                if ui.add(egui::Slider::new(&mut self.params.crt_cornerradius, 0.0..=1.0)).changed() {
+                if ui
+                    .add(egui::Slider::new(&mut self.params.crt_cornerradius, 0.0..=1.0))
+                    .changed()
+                {
                     update = true;
                 }
                 ui.end_row();
@@ -129,12 +134,11 @@ impl ScalerAdjustControl {
                     //log::debug!("Sending ScalerAdjust event!");
                     events.send(GuiEvent::ScalerAdjust(self.params));
                 }
-            },
-            );
+            });
     }
 
     #[allow(dead_code)]
-    pub fn update_params(&mut self, params: ScalerParams ) {
+    pub fn update_params(&mut self, params: ScalerParams) {
         self.params = params;
     }
 
@@ -142,5 +146,4 @@ impl ScalerAdjustControl {
     pub fn get_params(&self) -> &ScalerParams {
         &self.params
     }
-
 }

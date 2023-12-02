@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,24 +30,18 @@
 
     This module is implemented as an associated function, decode(), which
     operates on implementors of ByteQueue. This allows instruction decoding
-    from either the processor instruction queue emulation, or directly 
+    from either the processor instruction queue emulation, or directly
     from emulator memory for our debug disassembly viewer.
 
 */
 
+use std::{error::Error, fmt::Display};
 
-use std::fmt::Display;
-use std::error::Error;
-
-use crate::cpu_808x::*;
-use crate::cpu_808x::addressing::AddressingMode;
-use crate::cpu_808x::modrm::ModRmByte;
-use crate::cpu_808x::mnemonic::Mnemonic;
+use crate::cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, modrm::ModRmByte, *};
 
 use crate::bytequeue::*;
 
-#[derive(Copy, Clone)]
-#[derive(PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub enum OperandTemplate {
     NoTemplate,
     NoOperand,
@@ -68,7 +62,7 @@ pub enum OperandTemplate {
     FixedRegister8(Register8),
     FixedRegister16(Register16),
     //NearAddress,
-    FarAddress
+    FarAddress,
 }
 
 #[allow(dead_code)]
@@ -78,26 +72,26 @@ pub enum InstructionDecodeError {
     InvalidSegmentRegister,
     ReadOutOfBounds,
     GeneralDecodeError(u8),
-    Unimplemented(u8)
+    Unimplemented(u8),
 }
 
 impl Error for InstructionDecodeError {}
-impl Display for InstructionDecodeError{
+impl Display for InstructionDecodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            InstructionDecodeError::UnsupportedOpcode(o)=> {
-                write!(f, "An unsupported opcode was encountered: {:#2x}.", o )
+            InstructionDecodeError::UnsupportedOpcode(o) => {
+                write!(f, "An unsupported opcode was encountered: {:#2x}.", o)
             }
-            InstructionDecodeError::InvalidSegmentRegister=> {
+            InstructionDecodeError::InvalidSegmentRegister => {
                 write!(f, "An invalid segment register was specified.")
             }
-            InstructionDecodeError::ReadOutOfBounds=> {
+            InstructionDecodeError::ReadOutOfBounds => {
                 write!(f, "Unexpected buffer exhaustion while decoding instruction.")
             }
             InstructionDecodeError::GeneralDecodeError(o) => {
                 write!(f, "General error decoding opcode {:#2x}.", o)
             }
-            InstructionDecodeError::Unimplemented(o)=> {
+            InstructionDecodeError::Unimplemented(o) => {
                 write!(f, "Decoding of instruction {:#2x} not implemented.", o)
             }
         }
@@ -105,6 +99,7 @@ impl Display for InstructionDecodeError{
 }
 
 impl Cpu {
+    #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue) -> Result<Instruction, Box<dyn std::error::Error>> {
 
         let mut operand1_type: OperandType = OperandType::NoOperand;
@@ -119,7 +114,7 @@ impl Cpu {
 
         let mut operand1_template;
         let mut operand2_template;
-        
+
         let mut op_flags: u32;
         let mut op_prefixes: u32 = 0;
         let mut op_segment_override = SegmentOverride::None;
@@ -175,36 +170,36 @@ impl Cpu {
             0x0C => (Mnemonic::OR,   OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
             0x0D => (Mnemonic::OR,   OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
             0x0E => (Mnemonic::PUSH, OperandTemplate::FixedRegister16(Register16::CS),   OperandTemplate::NoOperand,   0),
-            0x0F => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::CS),   OperandTemplate::NoOperand,   0),    
+            0x0F => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::CS),   OperandTemplate::NoOperand,   0),
             0x10 => (Mnemonic::ADC,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
             0x11 => (Mnemonic::ADC,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
             0x12 => (Mnemonic::ADC,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
             0x13 => (Mnemonic::ADC,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x14 => (Mnemonic::ADC,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
-            0x15 => (Mnemonic::ADC,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
+            0x15 => (Mnemonic::ADC,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
             0x16 => (Mnemonic::PUSH, OperandTemplate::FixedRegister16(Register16::SS),   OperandTemplate::NoOperand,   0),
-            0x17 => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::SS),   OperandTemplate::NoOperand,   0), 
+            0x17 => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::SS),   OperandTemplate::NoOperand,   0),
             0x18 => (Mnemonic::SBB,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
             0x19 => (Mnemonic::SBB,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
             0x1A => (Mnemonic::SBB,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
             0x1B => (Mnemonic::SBB,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x1C => (Mnemonic::SBB,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
-            0x1D => (Mnemonic::SBB,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
+            0x1D => (Mnemonic::SBB,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
             0x1E => (Mnemonic::PUSH, OperandTemplate::FixedRegister16(Register16::DS),   OperandTemplate::NoOperand,   0),
-            0x1F => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::DS),   OperandTemplate::NoOperand,   0),   
+            0x1F => (Mnemonic::POP,  OperandTemplate::FixedRegister16(Register16::DS),   OperandTemplate::NoOperand,   0),
             0x20 => (Mnemonic::AND,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
             0x21 => (Mnemonic::AND,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
             0x22 => (Mnemonic::AND,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
             0x23 => (Mnemonic::AND,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x24 => (Mnemonic::AND,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
-            0x25 => (Mnemonic::AND,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
+            0x25 => (Mnemonic::AND,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
             0x27 => (Mnemonic::DAA,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand, 0),
             0x28 => (Mnemonic::SUB,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
             0x29 => (Mnemonic::SUB,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
             0x2A => (Mnemonic::SUB,  OperandTemplate::Register8,    OperandTemplate::ModRM8,    I_LOAD_EA ),
             0x2B => (Mnemonic::SUB,  OperandTemplate::Register16,    OperandTemplate::ModRM16,  I_LOAD_EA ),
             0x2C => (Mnemonic::SUB,  OperandTemplate::FixedRegister8(Register8::AL),    OperandTemplate::Immediate8,    0),
-            0x2D => (Mnemonic::SUB,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0), 
+            0x2D => (Mnemonic::SUB,  OperandTemplate::FixedRegister16(Register16::AX),    OperandTemplate::Immediate16, 0),
             0x2F => (Mnemonic::DAS,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,  0),
             0x30 => (Mnemonic::XOR,  OperandTemplate::ModRM8,    OperandTemplate::Register8,    I_LOAD_EA ),
             0x31 => (Mnemonic::XOR,  OperandTemplate::ModRM16,    OperandTemplate::Register16,  I_LOAD_EA ),
@@ -241,7 +236,7 @@ impl Cpu {
             0x6C => (Mnemonic::JL,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
             0x6D => (Mnemonic::JNL,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
             0x6E => (Mnemonic::JLE,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
-            0x6F => (Mnemonic::JNLE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),        
+            0x6F => (Mnemonic::JNLE, OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
             0x70 => (Mnemonic::JO,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
             0x71 => (Mnemonic::JNO,  OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
             0x72 => (Mnemonic::JB,   OperandTemplate::Relative8,    OperandTemplate::NoOperand,  I_REL_JUMP),
@@ -275,28 +270,28 @@ impl Cpu {
             0x91..=0x97 => (Mnemonic::XCHG,  OperandTemplate::Register16Encoded,   OperandTemplate::FixedRegister16(Register16::AX),  0),
             0x98 => (Mnemonic::CBW,   OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
             0x99 => (Mnemonic::CWD,   OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
-            0x9A => (Mnemonic::CALLF, OperandTemplate::FarAddress,   OperandTemplate::NoOperand,  0), 
-            0x9B => (Mnemonic::FWAIT, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0x9C => (Mnemonic::PUSHF, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0x9D => (Mnemonic::POPF,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0x9E => (Mnemonic::SAHF,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0x9F => (Mnemonic::LAHF,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
+            0x9A => (Mnemonic::CALLF, OperandTemplate::FarAddress,   OperandTemplate::NoOperand,  0),
+            0x9B => (Mnemonic::FWAIT, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0x9C => (Mnemonic::PUSHF, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0x9D => (Mnemonic::POPF,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0x9E => (Mnemonic::SAHF,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0x9F => (Mnemonic::LAHF,  OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
             0xA0 => (Mnemonic::MOV,   OperandTemplate::FixedRegister8(Register8::AL),   OperandTemplate::Offset8,      0),
             0xA1 => (Mnemonic::MOV,   OperandTemplate::FixedRegister16(Register16::AX),   OperandTemplate::Offset16,   0),
             0xA2 => (Mnemonic::MOV,   OperandTemplate::Offset8,   OperandTemplate::FixedRegister8(Register8::AL),      0),
             0xA3 => (Mnemonic::MOV,   OperandTemplate::Offset16,   OperandTemplate::FixedRegister16(Register16::AX),   0),
-            0xA4 => (Mnemonic::MOVSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xA5 => (Mnemonic::MOVSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xA6 => (Mnemonic::CMPSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xA7 => (Mnemonic::CMPSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),         
+            0xA4 => (Mnemonic::MOVSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xA5 => (Mnemonic::MOVSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xA6 => (Mnemonic::CMPSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xA7 => (Mnemonic::CMPSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
             0xA8 => (Mnemonic::TEST,  OperandTemplate::FixedRegister8(Register8::AL),   OperandTemplate::Immediate8,    0),
             0xA9 => (Mnemonic::TEST,  OperandTemplate::FixedRegister16(Register16::AX),   OperandTemplate::Immediate16, 0),
-            0xAA => (Mnemonic::STOSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xAB => (Mnemonic::STOSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xAC => (Mnemonic::LODSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xAD => (Mnemonic::LODSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xAE => (Mnemonic::SCASB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
-            0xAF => (Mnemonic::SCASW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0), 
+            0xAA => (Mnemonic::STOSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xAB => (Mnemonic::STOSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xAC => (Mnemonic::LODSB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xAD => (Mnemonic::LODSW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xAE => (Mnemonic::SCASB, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
+            0xAF => (Mnemonic::SCASW, OperandTemplate::NoOperand,   OperandTemplate::NoOperand,   0),
             0xB0..=0xB7 => (Mnemonic::MOV,  OperandTemplate::Register8Encoded,   OperandTemplate::Immediate8,   0),
             0xB8..=0xBF => (Mnemonic::MOV,  OperandTemplate::Register16Encoded,   OperandTemplate::Immediate16, 0),
             0xC0 => (Mnemonic::RETN, OperandTemplate::Immediate16,   OperandTemplate::NoOperand,  0),
@@ -365,7 +360,7 @@ impl Cpu {
 
             loaded_modrm = true;
             let op_ext = modrm.get_op_extension();
-            
+
             // FX group opcodes seem to have a one-cycle delay. TODO: Why not all groups?
 
             (mnemonic, operand1_template, operand2_template, op_flags) = match (opcode, op_ext) {
@@ -377,7 +372,7 @@ impl Cpu {
                 (0x80 | 0x82, 0x05) => (Mnemonic::SUB,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
                 (0x80 | 0x82, 0x06) => (Mnemonic::XOR,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
                 (0x80 | 0x82, 0x07) => (Mnemonic::CMP,  OperandTemplate::ModRM8,   OperandTemplate::Immediate8,    I_LOAD_EA ),
-                
+
                 (0x81, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
                 (0x81, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
                 (0x81, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
@@ -386,7 +381,7 @@ impl Cpu {
                 (0x81, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
                 (0x81, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
                 (0x81, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate16,    I_LOAD_EA ),
-                
+
                 (0x83, 0x00) => (Mnemonic::ADD,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
                 (0x83, 0x01) => (Mnemonic::OR,    OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
                 (0x83, 0x02) => (Mnemonic::ADC,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
@@ -394,8 +389,8 @@ impl Cpu {
                 (0x83, 0x04) => (Mnemonic::AND,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
                 (0x83, 0x05) => (Mnemonic::SUB,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
                 (0x83, 0x06) => (Mnemonic::XOR,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
-                (0x83, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),   
-                
+                (0x83, 0x07) => (Mnemonic::CMP,   OperandTemplate::ModRM16,   OperandTemplate::Immediate8SignExtended,    I_LOAD_EA ),
+
                 (0xD0, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
                 (0xD0, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
                 (0xD0, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
@@ -404,7 +399,7 @@ impl Cpu {
                 (0xD0, 0x05) => (Mnemonic::SHR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
                 (0xD0, 0x06) => (Mnemonic::SETMO, OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
                 (0xD0, 0x07) => (Mnemonic::SAR,   OperandTemplate::ModRM8,    OperandTemplate::NoOperand,    I_LOAD_EA ),
-                
+
                 (0xD1, 0x00) => (Mnemonic::ROL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
                 (0xD1, 0x01) => (Mnemonic::ROR,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
                 (0xD1, 0x02) => (Mnemonic::RCL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,    I_LOAD_EA ),
@@ -448,7 +443,7 @@ impl Cpu {
                 (0xF7, 0x04) => (Mnemonic::MUL,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
                 (0xF7, 0x05) => (Mnemonic::IMUL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
                 (0xF7, 0x06) => (Mnemonic::DIV,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xF7, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),                
+                (0xF7, 0x07) => (Mnemonic::IDIV,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
 
                 (0xFE, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
                 (0xFE, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
@@ -457,8 +452,8 @@ impl Cpu {
                 (0xFE, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
                 (0xFE, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
                 (0xFE, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
-                
-                (0xFE, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),                    
+
+                (0xFE, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM8,   OperandTemplate::NoOperand,      I_LOAD_EA ),
                 (0xFF, 0x00) => (Mnemonic::INC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
                 (0xFF, 0x01) => (Mnemonic::DEC,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
                 (0xFF, 0x02) => (Mnemonic::CALL,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
@@ -466,8 +461,8 @@ impl Cpu {
                 (0xFF, 0x04) => (Mnemonic::JMP,   OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
                 (0xFF, 0x05) => (Mnemonic::JMPF,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
                 (0xFF, 0x06) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
-                (0xFF, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ), 
-                
+                (0xFF, 0x07) => (Mnemonic::PUSH,  OperandTemplate::ModRM16,   OperandTemplate::NoOperand,     I_LOAD_EA ),
+
                 _=> (Mnemonic::NoOpcode, OperandTemplate::NoOperand, OperandTemplate::NoOperand, 0)
             };
 
@@ -489,7 +484,7 @@ impl Cpu {
             OperandTemplate::ModRM16 => true,
             OperandTemplate::Register8 => true,
             OperandTemplate::Register16 => true,
-            _=> false        
+            _=> false
         };
 
         // Load the ModRM byte if required
@@ -515,7 +510,7 @@ impl Cpu {
             else {
                 bytes.wait_i(2, &[0x1e3, MC_RTN]);
             }
-        }         
+        }
 
         // Match templatized operands.
         let mut match_op = |op_template| -> (OperandType, OperandSize) {
@@ -541,9 +536,9 @@ impl Cpu {
                     let operand_type = OperandType::Register8(modrm.get_op2_reg8());
                     (operand_type, OperandSize::Operand8)
                 }
-                OperandTemplate::Register16 => {              
+                OperandTemplate::Register16 => {
                     let operand_type = OperandType::Register16(modrm.get_op2_reg16());
-                    (operand_type, OperandSize::Operand16)     
+                    (operand_type, OperandSize::Operand16)
                 }
                 OperandTemplate::SegmentRegister => {
                     let operand_type = OperandType::Register16(modrm.get_op2_segmentreg16());
@@ -605,7 +600,7 @@ impl Cpu {
                     // Peek at rel16 value now, fetch during execute
                     let operand = bytes.q_peek_i16();
                     size += 2;
-                    (OperandType::Relative16(operand), OperandSize::Operand16)             
+                    (OperandType::Relative16(operand), OperandSize::Operand16)
                 }
                 OperandTemplate::Offset8 => {
                     // Peek at offset8 value now, fetch during execute
@@ -645,7 +640,7 @@ impl Cpu {
             OperandTemplate::NoTemplate => {},
             _=> (operand1_type, operand1_size) = match_op(operand1_template)
         }
-    
+
         match operand2_template {
             OperandTemplate::NoTemplate => {},
             _=> (operand2_type, operand2_size) = match_op(operand2_template)
@@ -665,7 +660,7 @@ impl Cpu {
             return Err(Box::new(InstructionDecodeError::UnsupportedOpcode(opcode)));
         }
 
-        Ok(Instruction { 
+        Ok(Instruction {
             opcode,
             flags: op_flags,
             prefixes: op_prefixes,

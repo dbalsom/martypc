@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -34,12 +34,10 @@ use crate::*;
 
 pub struct AboutDialog {
     texture: Option<egui::TextureHandle>,
-    _params: bool
+    _params: bool,
 }
 
-
 impl AboutDialog {
-
     pub fn new() -> Self {
         Self {
             texture: None,
@@ -47,8 +45,7 @@ impl AboutDialog {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, ctx: &Context, _events: &mut GuiEventQueue ) {
-
+    pub fn draw(&mut self, ui: &mut egui::Ui, ctx: &Context, _events: &mut GuiEventQueue) {
         /*
         let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
             ctx.load_texture(
@@ -75,16 +72,17 @@ impl AboutDialog {
         ui.separator();
         ui.vertical(|ui| {
             ui.label("Shoutouts to:");
-            ui.label(egui::RichText::new(
-                "reenigne, modem7, phix, Bigbass, iqon, xkevio, google0101, raphnet, Artlav, cngsoft, 640KB, \
+            ui.label(
+                egui::RichText::new(
+                    "reenigne, modem7, phix, Bigbass, iqon, xkevio, google0101, raphnet, Artlav, cngsoft, 640KB, \
                     i509VCB, qeeg, Kelpsy, phire, VileR, Scali, UtterChaos, Alkaid, kado, peach.bot, Dillon, velocity, \
-                    EMMIR, ThomW, Ratalon, Blackcat9, DianeOfTheMoon, Halen, TFO, DigitalSkunk, Heck"
-            )
-            .color(egui::Color32::WHITE)
-            .font(egui::FontId::proportional(20.0)));
+                    EMMIR, ThomW, Ratalon, Blackcat9, DianeOfTheMoon, Halen, TFO, DigitalSkunk, Heck",
+                )
+                .color(egui::Color32::WHITE)
+                .font(egui::FontId::proportional(20.0)),
+            );
         });
         ui.separator();
         ui.label("Dedicated to Near.");
-
     }
 }

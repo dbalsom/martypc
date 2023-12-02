@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -49,7 +49,7 @@ pub trait TranslateKey {
     fn to_internal(&self) -> MartyKey;
 }
 
-// Implement mapping from Winit Keycode to MartyKey. 
+// Implement mapping from Winit Keycode to MartyKey.
 // Most of these names are the same, except for Super -> Meta.
 impl TranslateKey for KeyCode {
     fn to_internal(&self) -> MartyKey {
@@ -248,11 +248,10 @@ impl TranslateKey for KeyCode {
             KeyCode::F33 => MartyKey::F33,
             KeyCode::F34 => MartyKey::F34,
             KeyCode::F35 => MartyKey::F35,
-            _ => MartyKey::None
+            _ => MartyKey::None,
         }
     }
 }
-
 
 pub fn button_from_id(id: u32, reverse: bool) -> MouseButton {
     match (OS, id, reverse) {
@@ -262,8 +261,8 @@ pub fn button_from_id(id: u32, reverse: bool) -> MouseButton {
         ("windows", 3, true) => MouseButton::Left,
         ("linux", 1, false) => MouseButton::Left, // TODO: Verify this
         ("linux", 1, true) => MouseButton::Right,
-        ("linux", 3, false) => MouseButton::Right, 
-        ("linux", 3, true) => MouseButton::Left, 
+        ("linux", 3, false) => MouseButton::Right,
+        ("linux", 3, true) => MouseButton::Left,
         ("macos", 1, false) => MouseButton::Right, // MacOS is reversed!
         ("macos", 1, true) => MouseButton::Left,
         ("macos", 3, false) => MouseButton::Left,
@@ -272,21 +271,20 @@ pub fn button_from_id(id: u32, reverse: bool) -> MouseButton {
         (_, 1, true) => MouseButton::Right,
         (_, 3, false) => MouseButton::Right,
         (_, 3, true) => MouseButton::Left,
-        _ => MouseButton::Middle // TODO: This assumes middle button is always 2, valid?
+        _ => MouseButton::Middle, // TODO: This assumes middle button is always 2, valid?
     }
 }
 
-/// Return the winit button id for 
+/// Return the winit button id for
 pub fn get_mouse_buttons(reverse: bool) -> (u32, u32) {
     match (OS, reverse) {
         ("windows", false) => (1, 3),
         ("windows", true) => (3, 1),
         ("linux", false) => (1, 3), // TODO: Verify this
-        ("linux", true) => (3, 1), 
+        ("linux", true) => (3, 1),
         ("macos", false) => (3, 1), // MacOS is reversed!
         ("macos", true) => (3, 1),
         (_, false) => (1, 3),
         (_, true) => (3, 1),
     }
 }
-

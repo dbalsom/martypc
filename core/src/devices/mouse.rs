@@ -1,37 +1,35 @@
 /*
-    MartyPC
-    https://github.com/dbalsom/martypc
+   MartyPC
+   https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+   Copyright 2022-2023 Daniel Balsom
 
-    Permission is hereby granted, free of charge, to any person obtaining a
-    copy of this software and associated documentation files (the “Software”),
-    to deal in the Software without restriction, including without limitation
-    the rights to use, copy, modify, merge, publish, distribute, sublicense,
-    and/or sell copies of the Software, and to permit persons to whom the
-    Software is furnished to do so, subject to the following conditions:
+   Permission is hereby granted, free of charge, to any person obtaining a
+   copy of this software and associated documentation files (the “Software”),
+   to deal in the Software without restriction, including without limitation
+   the rights to use, copy, modify, merge, publish, distribute, sublicense,
+   and/or sell copies of the Software, and to permit persons to whom the
+   Software is furnished to do so, subject to the following conditions:
 
-    The above copyright notice and this permission notice shall be included in
-    all copies or substantial portions of the Software.
+   The above copyright notice and this permission notice shall be included in
+   all copies or substantial portions of the Software.
 
-    THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
-    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-    DEALINGS IN THE SOFTWARE.
+   THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
 
-    --------------------------------------------------------------------------
+   --------------------------------------------------------------------------
 
-    devices::mouse.rs
+   devices::mouse.rs
 
-    Implements a Microsoft Serial Mouse
- 
- */
-use std::{
-    collections::VecDeque
-};
+   Implements a Microsoft Serial Mouse
+
+*/
+use std::collections::VecDeque;
 
 use crate::devices::serial::SerialPortController;
 
@@ -57,7 +55,6 @@ const MOUSE_UPDATE_LO_BITS: u8 = 0b0011_1111;
 
 #[allow(dead_code)]
 pub struct Mouse {
-
     updates: VecDeque<MouseUpdate>,
     rts: bool,
     rts_low_timer: f64,
@@ -65,7 +62,7 @@ pub struct Mouse {
 }
 
 pub enum MouseUpdate {
-    Update(u8, u8, u8)
+    Update(u8, u8, u8),
 }
 
 impl Mouse {
@@ -79,10 +76,9 @@ impl Mouse {
     }
 
     pub fn update(&mut self, l_button_pressed: bool, r_button_pressed: bool, delta_x: f64, delta_y: f64) {
-
         let mut scaled_x = delta_x * MOUSE_SCALE;
         let mut scaled_y = delta_y * MOUSE_SCALE;
-    
+
         // Mouse scale can cause fractional integer updates. Adjust to Minimum movement of one unit
         if scaled_x > 0.0 && scaled_x < 1.0 {
             scaled_x = 1.0;
@@ -95,7 +91,7 @@ impl Mouse {
         }
         if scaled_y < 0.0 && scaled_y > -1.0 {
             scaled_y = -1.0;
-        }        
+        }
         let delta_x_i8 = scaled_x as i8;
         let delta_y_i8 = scaled_y as i8;
 
@@ -133,13 +129,10 @@ impl Mouse {
         serial.queue_byte(MOUSE_PORT, byte1);
         serial.queue_byte(MOUSE_PORT, byte2);
         serial.queue_byte(MOUSE_PORT, byte3);*/
-
-
-     }
+    }
 
     /// Run the mouse device for the specified number of microseconds
     pub fn run(&mut self, serial: &mut SerialPortController, us: f64) {
-
         // Send a queued update.
         if let Some(MouseUpdate::Update(byte1, byte2, byte3)) = self.updates.pop_front() {
             serial.queue_byte(MOUSE_PORT, byte1);
@@ -168,10 +161,9 @@ impl Mouse {
                 // Reset mouse
                 self.rts_low_timer = 0.0;
                 // Send reset ack byte
-                log::trace!("Sending reset byte: {:02X}", MOUSE_RESET_ACK_BYTE );
+                log::trace!("Sending reset byte: {:02X}", MOUSE_RESET_ACK_BYTE);
                 serial.queue_byte(MOUSE_PORT, MOUSE_RESET_ACK_BYTE);
             }
         }
     }
 }
-

@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -32,30 +32,34 @@
 
 #![allow(dead_code)]
 
-use std::{ 
+use std::{
     error::Error,
     fmt::{self, Display},
+    str::FromStr,
 };
-use std::str::FromStr;
 
-use serde::{Serialize, Serializer, Deserialize};
-use serde::de::{self, SeqAccess, Visitor, Deserializer};
-use serde::ser::{SerializeSeq};
+use serde::{
+    de::{self, Deserializer, SeqAccess, Visitor},
+    ser::SerializeSeq,
+    Deserialize,
+    Serialize,
+    Serializer,
+};
 
 use crate::cpu_808x::QueueOp;
 
-pub const VAL_NO_READS: u8  = 0b0000_0001; // Don't validate read op data
+pub const VAL_NO_READS: u8 = 0b0000_0001; // Don't validate read op data
 pub const VAL_NO_WRITES: u8 = 0b0000_0010; // Don't validate write op data
-pub const VAL_NO_REGS: u8   = 0b0000_0100; // Don't validate registers
-pub const VAL_NO_FLAGS: u8  = 0b0000_1000; // Don't validate flags
-pub const VAL_ALLOW_ONE: u8 = 0b0001_0000; // Allow a one-cycle variance in cycle states. 
+pub const VAL_NO_REGS: u8 = 0b0000_0100; // Don't validate registers
+pub const VAL_NO_FLAGS: u8 = 0b0000_1000; // Don't validate flags
+pub const VAL_ALLOW_ONE: u8 = 0b0001_0000; // Allow a one-cycle variance in cycle states.
 pub const VAL_NO_CYCLES: u8 = 0b0010_0000; // Don't validate cycle states.
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub enum ValidatorType {
     None,
     Pi8088,
-    Arduino8088
+    Arduino8088,
 }
 
 impl Default for ValidatorType {
@@ -66,8 +70,8 @@ impl Default for ValidatorType {
 impl FromStr for ValidatorType {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String>
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         match s.to_lowercase().as_str() {
             "pi8088" => Ok(ValidatorType::Pi8088),
@@ -77,33 +81,32 @@ impl FromStr for ValidatorType {
     }
 }
 
-
-#[derive (PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum ValidatorMode {
     Instruction,
     Cycle,
 }
 
-#[derive (PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum ValidatorResult {
     Ok,
     OkEnd,
-    Error
+    Error,
 }
 
-#[derive (PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone)]
 pub enum BusType {
     Mem,
-    Io
+    Io,
 }
 
-#[derive (PartialEq, Copy, Clone)]
+#[derive(PartialEq, Copy, Clone)]
 pub enum ReadType {
     Code,
-    Data
+    Data,
 }
 
-#[derive (Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BusOpType {
     CodeRead,
     MemRead,
@@ -112,30 +115,30 @@ pub enum BusOpType {
     IoWrite,
 }
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct BusOp {
     pub op_type: BusOpType,
-    pub addr: u32,
-    pub data: u8,
-    pub flags: u8
+    pub addr:    u32,
+    pub data:    u8,
+    pub flags:   u8,
 }
 
-#[derive (Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct VRegisters {
-    pub ax: u16,
-    pub bx: u16,
-    pub cx: u16,
-    pub dx: u16,
-    pub cs: u16,
-    pub ss: u16,
-    pub ds: u16,
-    pub es: u16,
-    pub sp: u16,
-    pub bp: u16,
-    pub si: u16,
-    pub di: u16,
-    pub ip: u16,
-    pub flags: u16
+    pub ax:    u16,
+    pub bx:    u16,
+    pub cx:    u16,
+    pub dx:    u16,
+    pub cs:    u16,
+    pub ss:    u16,
+    pub ds:    u16,
+    pub es:    u16,
+    pub sp:    u16,
+    pub bp:    u16,
+    pub si:    u16,
+    pub di:    u16,
+    pub ip:    u16,
+    pub flags: u16,
 }
 
 impl Display for VRegisters {
@@ -147,33 +150,43 @@ impl Display for VRegisters {
             CS: {:04x} DS: {:04x} ES: {:04x} SS: {:04x}\n\
             IP: {:04x}\n\
             FLAGS: {:04x}",
-            self.ax, self.bx, self.cx, self.dx,
-            self.sp, self.bp, self.si, self.di,
-            self.cs, self.ds, self.es, self.ss,
+            self.ax,
+            self.bx,
+            self.cx,
+            self.dx,
+            self.sp,
+            self.bp,
+            self.si,
+            self.di,
+            self.cs,
+            self.ds,
+            self.es,
+            self.ss,
             self.ip,
-            self.flags)
+            self.flags
+        )
     }
 }
 
-#[derive (Debug)]
+#[derive(Debug)]
 pub enum ValidatorError {
     ParameterError,
     CpuError,
     MemOpMismatch,
     RegisterMismatch,
     CpuDesynced,
-    CycleMismatch
+    CycleMismatch,
 }
 
 impl Error for ValidatorError {}
-impl Display for ValidatorError{
+impl Display for ValidatorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
             ValidatorError::ParameterError => {
-                write!(f, "The validator was passed a bad parameter." )
+                write!(f, "The validator was passed a bad parameter.")
             }
             ValidatorError::CpuError => {
-                write!(f, "The CPU client encountered an error." )
+                write!(f, "The CPU client encountered an error.")
             }
             ValidatorError::MemOpMismatch => {
                 write!(f, "Instruction memory operands did not validate.")
@@ -186,22 +199,22 @@ impl Display for ValidatorError{
             }
             ValidatorError::CycleMismatch => {
                 write!(f, "Instruction cycle states did not validate.")
-            }                  
+            }
         }
     }
 }
 
-#[derive (Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BusCycle {
     Ti,
     T1,
     T2,
     T3,
     T4,
-    Tw
+    Tw,
 }
 
-#[derive (Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum AccessType {
     AlternateData = 0x0,
     Stack,
@@ -209,19 +222,19 @@ pub enum AccessType {
     Data,
 }
 
-#[derive (Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BusState {
-    INTA = 0,   // IRQ Acknowledge
-    IOR  = 1,   // IO Read
-    IOW  = 2,   // IO Write
-    HALT = 3,   // Halt
-    CODE = 4,   // Code
-    MEMR = 5,   // Memory Read
-    MEMW = 6,   // Memory Write
-    PASV = 7    // Passive
+    INTA = 0, // IRQ Acknowledge
+    IOR = 1,  // IO Read
+    IOW = 2,  // IO Write
+    HALT = 3, // Halt
+    CODE = 4, // Code
+    MEMR = 5, // Memory Read
+    MEMW = 6, // Memory Write
+    PASV = 7, // Passive
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct CycleState {
     pub n: u32,
     pub addr: u32,
@@ -261,9 +274,10 @@ impl Serialize for CycleState {
         let q_byte;
 
         let fields_as_strings = [
-            format!("{}", if self.ale == true { "A"} else {"-"}),
+            format!("{}", if self.ale == true { "A" } else { "-" }),
             format!("{:05X}", self.addr),
-            format!("{:02}", 
+            format!(
+                "{:02}",
                 if self.ale || matches!(self.t_state, BusCycle::Ti) {
                     "--"
                 }
@@ -276,47 +290,44 @@ impl Serialize for CycleState {
                     }
                 }
             ),
-            format!("{:03}", 
-                {
-                    let mut mem_str = String::new();
-                    // status lines are active-low
-                    mem_str.push(if !self.mrdc { 'R' } else { '-' });
-                    mem_str.push(if !self.amwc { 'A' } else { '-' });
-                    mem_str.push(if !self.mwtc { 'W' } else { '-' });
-                    mem_str
-                }
-            ),
-            format!("{:03}", 
-                {
-                    let mut io_str = String::new();
-                    // status lines are active-low
-                    io_str.push(if !self.iorc { 'R' } else { '-' });
-                    io_str.push(if !self.aiowc { 'A' } else { '-' });
-                    io_str.push(if !self.iowc { 'W' } else { '-' });
-                    io_str
-                }
-            ),
+            format!("{:03}", {
+                let mut mem_str = String::new();
+                // status lines are active-low
+                mem_str.push(if !self.mrdc { 'R' } else { '-' });
+                mem_str.push(if !self.amwc { 'A' } else { '-' });
+                mem_str.push(if !self.mwtc { 'W' } else { '-' });
+                mem_str
+            }),
+            format!("{:03}", {
+                let mut io_str = String::new();
+                // status lines are active-low
+                io_str.push(if !self.iorc { 'R' } else { '-' });
+                io_str.push(if !self.aiowc { 'A' } else { '-' });
+                io_str.push(if !self.iowc { 'W' } else { '-' });
+                io_str
+            }),
             format!("{:?}", self.data_bus),
             format!("{:?}", self.b_state),
             format!("{:?}", self.t_state),
-            format!("{}", 
+            format!(
+                "{}",
                 match self.q_op {
                     QueueOp::First => "F",
                     QueueOp::Subsequent => "S",
                     QueueOp::Flush => "E",
-                    _ => "-"
+                    _ => "-",
                 }
             ),
-            format!("{}", 
+            format!(
+                "{}",
                 if matches!(self.q_op, QueueOp::Idle) {
-                   "--"
+                    "--"
                 }
                 else {
                     q_byte = format!("{:02X}", self.q_byte);
                     &q_byte
                 }
-            )
-
+            ),
         ];
 
         let mut seq = serializer.serialize_seq(Some(fields_as_strings.len()))?;
@@ -326,7 +337,7 @@ impl Serialize for CycleState {
                 1 => seq.serialize_element(&self.addr),
                 5 => seq.serialize_element(&self.data_bus),
                 9 => seq.serialize_element(&self.q_byte),
-                _ => seq.serialize_element(field)
+                _ => seq.serialize_element(field),
             }?;
         }
 
@@ -352,14 +363,21 @@ impl<'de> de::Deserialize<'de> for CycleState {
             where
                 V: SeqAccess<'de>,
             {
-                let ale = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(0, &self))? {
+                let ale = match seq
+                    .next_element::<String>()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &self))?
+                {
                     ref s if s == "A" => true,
                     _ => false,
                 };
 
                 let addr = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
 
-                let a_type = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(2, &self))?.as_str() {
+                let a_type = match seq
+                    .next_element::<String>()?
+                    .ok_or_else(|| de::Error::invalid_length(2, &self))?
+                    .as_str()
+                {
                     "ES" => AccessType::AlternateData,
                     "SS" => AccessType::Stack,
                     "CS" => AccessType::CodeOrNone,
@@ -368,23 +386,23 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     _ => return Err(de::Error::custom("invalid a_type")),
                 };
 
-                let mem_str: String = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                let mem_str: String = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
                 let mrdc = mem_str.chars().nth(0) != Some('R');
                 let amwc = mem_str.chars().nth(1) != Some('A');
                 let mwtc = mem_str.chars().nth(2) != Some('W');
 
-                let io_str: String = seq
-                    .next_element()?
-                    .ok_or_else(|| de::Error::invalid_length(4, &self))?;
-                let iorc  = io_str.chars().nth(0) != Some('R');
+                let io_str: String = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(4, &self))?;
+                let iorc = io_str.chars().nth(0) != Some('R');
                 let aiowc = io_str.chars().nth(1) != Some('A');
-                let iowc  = io_str.chars().nth(2) != Some('W');                               
+                let iowc = io_str.chars().nth(2) != Some('W');
 
                 let data_bus = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
 
-                let b_state = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(6, &self))?.as_str() {
+                let b_state = match seq
+                    .next_element::<String>()?
+                    .ok_or_else(|| de::Error::invalid_length(6, &self))?
+                    .as_str()
+                {
                     "CODE" => BusState::CODE,
                     "MEMR" => BusState::MEMR,
                     "MEMW" => BusState::MEMW,
@@ -393,9 +411,13 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     "IOR" => BusState::IOR,
                     "INTA" => BusState::INTA,
                     _ => return Err(de::Error::custom("invalid b_state")),
-                };                
+                };
 
-                let t_state = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(7, &self))?.as_str() {
+                let t_state = match seq
+                    .next_element::<String>()?
+                    .ok_or_else(|| de::Error::invalid_length(7, &self))?
+                    .as_str()
+                {
                     "T1" => BusCycle::T1,
                     "T2" => BusCycle::T2,
                     "T3" => BusCycle::T3,
@@ -405,14 +427,18 @@ impl<'de> de::Deserialize<'de> for CycleState {
                     _ => return Err(de::Error::custom("invalid a_type")),
                 };
 
-                let q_op = match seq.next_element::<String>()?.ok_or_else(|| de::Error::invalid_length(8, &self))?.as_str() {
+                let q_op = match seq
+                    .next_element::<String>()?
+                    .ok_or_else(|| de::Error::invalid_length(8, &self))?
+                    .as_str()
+                {
                     "F" => QueueOp::First,
                     "S" => QueueOp::Subsequent,
                     "E" => QueueOp::Flush,
                     "-" => QueueOp::Idle,
-                    _ =>  return Err(de::Error::custom("invalid q_op")),
+                    _ => return Err(de::Error::custom("invalid q_op")),
                 };
-                
+
                 let q_byte = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(9, &self))?;
 
                 // Return the constructed CycleState at the end.
@@ -445,44 +471,43 @@ impl<'de> de::Deserialize<'de> for CycleState {
 
 impl Display for CycleState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-
         let ale_str = match self.ale {
             true => "A:",
-            false => "  "
+            false => "  ",
         };
 
         let mut seg_str = "  ";
         if self.t_state != BusCycle::T1 {
             // Segment status only valid in T2+
             seg_str = match self.a_type {
-                AccessType::AlternateData  => "ES",
+                AccessType::AlternateData => "ES",
                 AccessType::Stack => "SS",
                 AccessType::CodeOrNone => "CS",
-                AccessType::Data => "DS"
-            };    
+                AccessType::Data => "DS",
+            };
         }
 
         let q_op_chr = match self.q_op {
             QueueOp::Idle => ' ',
             QueueOp::First => 'F',
             QueueOp::Flush => 'E',
-            QueueOp::Subsequent => 'S'
+            QueueOp::Subsequent => 'S',
         };
 
         // All read/write signals are active/low
-        let rs_chr   = match !self.mrdc {
+        let rs_chr = match !self.mrdc {
             true => 'R',
             false => '.',
         };
-        let aws_chr  = match !self.aiowc {
+        let aws_chr = match !self.aiowc {
             true => 'A',
             false => '.',
         };
-        let ws_chr   = match !self.mwtc {
+        let ws_chr = match !self.mwtc {
             true => 'W',
             false => '.',
         };
-        let ior_chr  = match !self.iorc {
+        let ior_chr = match !self.iorc {
             true => 'R',
             false => '.',
         };
@@ -490,20 +515,20 @@ impl Display for CycleState {
             true => 'A',
             false => '.',
         };
-        let iow_chr  = match !self.iowc {
+        let iow_chr = match !self.iowc {
             true => 'W',
             false => '.',
-        };        
+        };
 
         let bus_str = match self.b_state {
             BusState::INTA => "INTA",
-            BusState::IOR  => "IOR ",
-            BusState::IOW  => "IOW ",
+            BusState::IOR => "IOR ",
+            BusState::IOW => "IOW ",
             BusState::HALT => "HALT",
             BusState::CODE => "CODE",
             BusState::MEMR => "MEMR",
             BusState::MEMW => "MEMW",
-            BusState::PASV => "PASV"           
+            BusState::PASV => "PASV",
         };
 
         let t_str = match self.t_state {
@@ -534,8 +559,8 @@ impl Display for CycleState {
         }
         else if self.q_op == QueueOp::Subsequent {
             q_read_str = format!("<-q {:02X}", self.q_byte);
-        }         
-      
+        }
+
         write!(
             f,
             "{:08} {:02}[{:05X}] {:02} M:{}{}{} I:{}{}{} {:04} {:02} {:06} | {:1}{:1} {} {:6}",
@@ -543,7 +568,12 @@ impl Display for CycleState {
             ale_str,
             self.addr,
             seg_str,
-            rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
+            rs_chr,
+            aws_chr,
+            ws_chr,
+            ior_chr,
+            aiow_chr,
+            iow_chr,
             bus_str,
             t_str,
             xfer_str,
@@ -556,7 +586,6 @@ impl Display for CycleState {
 }
 
 pub fn get_queue_str(q: &[u8], len: usize) -> String {
-
     let mut outer = "[".to_string();
     let mut inner = String::new();
 
@@ -569,9 +598,7 @@ pub fn get_queue_str(q: &[u8], len: usize) -> String {
 
 impl PartialEq<CycleState> for CycleState {
     fn eq(&self, other: &CycleState) -> bool {
-
-        let equals_a = 
-            self.t_state == other.t_state
+        let equals_a = self.t_state == other.t_state
             && self.b_state == other.b_state
             && self.ale == other.ale
             && self.mrdc == other.mrdc
@@ -582,9 +609,7 @@ impl PartialEq<CycleState> for CycleState {
             && self.q_op == other.q_op;
 
         let equals_b = match self.t_state {
-            BusCycle::Ti => {
-                true
-            }
+            BusCycle::Ti => true,
             BusCycle::T1 => {
                 if self.ale {
                     self.addr == other.addr
@@ -592,7 +617,7 @@ impl PartialEq<CycleState> for CycleState {
                 else {
                     true
                 }
-            },
+            }
             BusCycle::T4 => {
                 //(self.q_len == other.q_len) && (self.a_type == other.a_type)
                 self.a_type == other.a_type
@@ -601,7 +626,7 @@ impl PartialEq<CycleState> for CycleState {
                 //(self.data_bus == other.data_bus) && (self.a_type == other.a_type)
                 self.a_type == other.a_type
             }
-            _=> self.a_type == other.a_type
+            _ => self.a_type == other.a_type,
         };
 
         equals_a && equals_b
@@ -611,18 +636,18 @@ impl PartialEq<CycleState> for CycleState {
 pub trait CpuValidator {
     fn init(&mut self, mode: ValidatorMode, mask_flags: bool, cycle_trace: bool, visit_once: bool) -> bool;
     fn reset_instruction(&mut self);
-    fn begin_instruction(&mut self, regs: &VRegisters, end_instr: usize, end_program: usize );
+    fn begin_instruction(&mut self, regs: &VRegisters, end_instr: usize, end_program: usize);
     fn set_regs(&mut self);
     fn validate_instruction(
-        &mut self, 
-        name: String, 
-        instr: &[u8], 
+        &mut self,
+        name: String,
+        instr: &[u8],
         flags: u8,
         peek_fetch: u16,
-        has_modrm: bool, 
-        cycles: i32, 
-        regs: &VRegisters, 
-        emu_states: &[CycleState]
+        has_modrm: bool,
+        cycles: i32,
+        regs: &VRegisters,
+        emu_states: &[CycleState],
     ) -> Result<ValidatorResult, ValidatorError>;
     fn validate_regs(&mut self, regs: &VRegisters) -> Result<(), ValidatorError>;
     fn emu_read_byte(&mut self, addr: u32, data: u8, bus_type: BusType, read_type: ReadType);
@@ -630,7 +655,6 @@ pub trait CpuValidator {
     fn discard_op(&mut self);
     fn flush(&mut self);
 
-    
     fn cycle_states(&self) -> &Vec<CycleState>;
     fn name(&self) -> String;
     fn instr_bytes(&self) -> Vec<u8>;
@@ -640,6 +664,4 @@ pub trait CpuValidator {
     fn cpu_ops(&self) -> Vec<BusOp>;
     fn cpu_reads(&self) -> Vec<BusOp>;
     fn cpu_queue(&self) -> Vec<u8>;
-
 }
-

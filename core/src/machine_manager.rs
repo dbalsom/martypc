@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -27,25 +27,25 @@
     machine_manager.rs
 
     This module manages machine configuration defintions.
-  
+
 */
 
-use std::collections::HashMap;
-use std::str::FromStr;
 use lazy_static::lazy_static;
+use std::{collections::HashMap, str::FromStr};
 
-use crate::devices::pit::PitType;
-use crate::videocard::VideoType;
-use crate::devices::keyboard::KeyboardType;
-use crate::cpu_common::CpuType;
-use crate::bus::ClockFactor;
-use crate::tracelogger::TraceLogger;
+use crate::{
+    bus::ClockFactor,
+    cpu_common::CpuType,
+    devices::{keyboard::KeyboardType, pit::PitType},
+    tracelogger::TraceLogger,
+    videocard::VideoType,
+};
 
-use serde_derive::{Deserialize};
+use serde_derive::Deserialize;
 
 // Clock derivision from reenigne
 // See https://www.vogons.org/viewtopic.php?t=55049
-pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5/11.0;
+pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5 / 11.0;
 pub const PIT_DIVISOR: u32 = 12;
 
 #[allow(non_camel_case_types)]
@@ -53,14 +53,14 @@ pub const PIT_DIVISOR: u32 = 12;
 pub enum MachineType {
     FUZZER_8088,
     IBM_PC_5150,
-    IBM_XT_5160
+    IBM_XT_5160,
 }
 
 impl FromStr for MachineType {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, String>
-        where
-            Self: Sized,
+    where
+        Self: Sized,
     {
         match s {
             "IBM_PC_5150" => Ok(MachineType::IBM_PC_5150),
@@ -81,58 +81,57 @@ pub enum DeviceType {
 #[allow(dead_code)]
 pub struct MmioSpec {
     base_addr: u32,
-    size: u32
+    size: u32,
 }
 
 // placeholder for future feature
 #[allow(dead_code)]
 pub struct DeviceSpec {
-    dtype: DeviceType,          // Type of device.
-    debug: bool,                // Whether or not device should enable debug functionality. 
-    tracelog: TraceLogger,      // Tracelogger for device to use.
-    mmio: Option<MmioSpec>,     // Whether or not device has a mmio mapping.
-    io: bool,                   // Whether or not device registers IO ports / requires IO dispatch.
-    hotplug: bool,              // Whether or not a device can be added/removed while machine is running.
+    dtype: DeviceType,      // Type of device.
+    debug: bool,            // Whether or not device should enable debug functionality.
+    tracelog: TraceLogger,  // Tracelogger for device to use.
+    mmio: Option<MmioSpec>, // Whether or not device has a mmio mapping.
+    io: bool,               // Whether or not device registers IO ports / requires IO dispatch.
+    hotplug: bool,          // Whether or not a device can be added/removed while machine is running.
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum KbControllerType {
     Ppi,
-    At
+    At,
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum PicType {
     Single,
-    Chained
+    Chained,
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum DmaType {
     Single,
-    Chained
+    Chained,
 }
 
-
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum BusType {
     Isa8,
-    Isa16
+    Isa16,
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct MachineDescriptor {
     pub machine_type: MachineType,
-    pub system_crystal: f64,            // The main system crystal speed in MHz. 
-    pub timer_crystal: Option<f64>,     // The main timer crystal speed in MHz. On PC/AT, there is a separate timer
-                                        // crystal to run the PIT at the same speed as PC/XT. 
+    pub system_crystal: f64,        // The main system crystal speed in MHz.
+    pub timer_crystal: Option<f64>, // The main timer crystal speed in MHz. On PC/AT, there is a separate timer
+    // crystal to run the PIT at the same speed as PC/XT.
     pub bus_crystal: f64,
     pub cpu_type: CpuType,
-    pub cpu_factor: ClockFactor,        // Specifies the CPU speed in either a divisor or multiplier of system crystal.
-    pub cpu_turbo_factor: ClockFactor,  // Same as above, but when turbo button is active
+    pub cpu_factor: ClockFactor, // Specifies the CPU speed in either a divisor or multiplier of system crystal.
+    pub cpu_turbo_factor: ClockFactor, // Same as above, but when turbo button is active
     pub bus_type: BusType,
-    pub bus_factor: ClockFactor,        // Specifies the ISA bus speed in either a divisor or multiplier of bus crystal.
-    pub timer_divisor: u32,             // Specifies the PIT timer speed in a divisor of timer clock speed.
+    pub bus_factor: ClockFactor, // Specifies the ISA bus speed in either a divisor or multiplier of bus crystal.
+    pub timer_divisor: u32,      // Specifies the PIT timer speed in a divisor of timer clock speed.
     pub have_ppi: bool,
     pub kb_controller: KbControllerType,
     pub pit_type: PitType,
@@ -147,61 +146,58 @@ pub struct MachineDescriptor {
 
 lazy_static! {
     pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
-
-        let map = HashMap::from(
-            [
-                ( 
-                    MachineType::IBM_PC_5150,
-                    MachineDescriptor {
-                        machine_type: MachineType::IBM_PC_5150,
-                        system_crystal: IBM_PC_SYSTEM_CLOCK,
-                        timer_crystal: None,
-                        bus_crystal: IBM_PC_SYSTEM_CLOCK,
-                        cpu_type: CpuType::Intel8088,
-                        cpu_factor: ClockFactor::Divisor(3),
-                        cpu_turbo_factor: ClockFactor::Divisor(2),
-                        bus_type: BusType::Isa8,
-                        bus_factor: ClockFactor::Divisor(1),
-                        timer_divisor: PIT_DIVISOR,
-                        have_ppi: true,
-                        kb_controller: KbControllerType::Ppi,
-                        pit_type: PitType::Model8253,
-                        pic_type: PicType::Single,
-                        dma_type: DmaType::Single,
-                        conventional_ram: 0x100000,
-                        conventional_ram_speed: 200.0,
-                        num_floppies: 2,
-                        serial_ports: true,
-                        serial_mouse: true,
-                    }
-                ),
-                ( 
-                    MachineType::IBM_XT_5160,
-                    MachineDescriptor {
-                        machine_type: MachineType::IBM_XT_5160,
-                        system_crystal: IBM_PC_SYSTEM_CLOCK,
-                        timer_crystal: None,
-                        bus_crystal: IBM_PC_SYSTEM_CLOCK,
-                        cpu_type: CpuType::Intel8088,
-                        cpu_factor: ClockFactor::Divisor(3),
-                        cpu_turbo_factor: ClockFactor::Divisor(2),
-                        bus_type: BusType::Isa8,
-                        bus_factor: ClockFactor::Divisor(1),
-                        timer_divisor: PIT_DIVISOR,
-                        have_ppi: true,
-                        kb_controller: KbControllerType::Ppi,
-                        pit_type: PitType::Model8253,
-                        pic_type: PicType::Single,
-                        dma_type: DmaType::Single,
-                        conventional_ram: 0x100000,
-                        conventional_ram_speed: 200.0,
-                        num_floppies: 2,
-                        serial_ports: true,
-                        serial_mouse: true
-                    }
-                ),        
-            ]
-        );
+        let map = HashMap::from([
+            (
+                MachineType::IBM_PC_5150,
+                MachineDescriptor {
+                    machine_type: MachineType::IBM_PC_5150,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    cpu_type: CpuType::Intel8088,
+                    cpu_factor: ClockFactor::Divisor(3),
+                    cpu_turbo_factor: ClockFactor::Divisor(2),
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: true,
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: DmaType::Single,
+                    conventional_ram: 0x100000,
+                    conventional_ram_speed: 200.0,
+                    num_floppies: 2,
+                    serial_ports: true,
+                    serial_mouse: true,
+                },
+            ),
+            (
+                MachineType::IBM_XT_5160,
+                MachineDescriptor {
+                    machine_type: MachineType::IBM_XT_5160,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    cpu_type: CpuType::Intel8088,
+                    cpu_factor: ClockFactor::Divisor(3),
+                    cpu_turbo_factor: ClockFactor::Divisor(2),
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: true,
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: DmaType::Single,
+                    conventional_ram: 0x100000,
+                    conventional_ram_speed: 200.0,
+                    num_floppies: 2,
+                    serial_ports: true,
+                    serial_mouse: true,
+                },
+            ),
+        ]);
         map
     };
 }

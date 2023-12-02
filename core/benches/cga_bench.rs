@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,10 +30,7 @@
 
 */
 
-use marty_core::{
-    devices::cga::CGACard,
-    tracelogger::TraceLogger,
-};
+use marty_core::{devices::cga::CGACard, tracelogger::TraceLogger};
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use marty_core::videocard::ClockingMode;
@@ -43,7 +40,7 @@ pub fn cga_tick_bench(c: &mut Criterion) {
 
     c.bench_function("cga_bench_tick", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
-        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic, false);
 
         b.iter(|| {
             // Measured code goes here
@@ -54,13 +51,13 @@ pub fn cga_tick_bench(c: &mut Criterion) {
     c.bench_function("cga_bench_tick_char", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
-        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic, false);
 
         b.iter(|| {
             // Measured code goes here
             cga.tick_char();
         });
-    });    
+    });
 
     c.bench_function("cga_bench_frame_by_pixel_ticks", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
@@ -73,12 +70,12 @@ pub fn cga_tick_bench(c: &mut Criterion) {
                 cga.tick();
             }
         });
-    });      
+    });
 
     c.bench_function("cga_bench_frame_by_char_ticks", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
-        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic, false);
 
         b.iter(|| {
             // Measured code goes here
@@ -87,18 +84,17 @@ pub fn cga_tick_bench(c: &mut Criterion) {
             }
         });
     });
-    
+
     c.bench_function("cga_bench_draw_textmode_char", |b| {
         // Per-sample (note that a sample can be many iterations) setup goes here
 
-        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic,false);
+        let mut cga = CGACard::new(TraceLogger::None, ClockingMode::Dynamic, false);
 
         b.iter(|| {
             // Measured code goes here
             cga.draw_text_mode_hchar();
         });
     });
-
 }
 
 criterion_group!(benches, cga_tick_bench);

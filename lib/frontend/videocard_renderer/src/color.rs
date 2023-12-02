@@ -1,4 +1,3 @@
-
 /*
     MartyPC
     https://github.com/dbalsom/martypc
@@ -18,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -32,8 +31,8 @@
 use super::*;
 
 // Return a RGBA slice given a CGA color Enum
+#[rustfmt::skip]
 pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {
-    
     match color {
         CGAColor::Black         => &[0x10u8, 0x10u8, 0x10u8, 0xFFu8], // Make slightly visible for debugging
         CGAColor::Blue          => &[0x00u8, 0x00u8, 0xAAu8, 0xFFu8],
@@ -55,7 +54,6 @@ pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {
 }
 
 pub fn get_ega_gfx_color16(bits: u8) -> &'static [u8; 4] {
-
     #[allow(clippy::unusual_byte_groupings)]
     match bits & 0b010_111 {
         0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
@@ -79,7 +77,6 @@ pub fn get_ega_gfx_color16(bits: u8) -> &'static [u8; 4] {
 }
 
 pub fn get_ega_gfx_color64(bits: u8) -> &'static [u8; 4] {
-
     #[allow(clippy::unusual_byte_groupings)]
     match bits {
         0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
@@ -88,7 +85,7 @@ pub fn get_ega_gfx_color64(bits: u8) -> &'static [u8; 4] {
         0b000_011 => &[0x00, 0xAA, 0xAA, 0xFF],
         0b000_100 => &[0xAA, 0x00, 0x00, 0xFF],
         0b000_101 => &[0xAA, 0x00, 0xAA, 0xFF],
-        0b000_110 => &[0xAA, 0xAA, 0x00, 0xFF], 
+        0b000_110 => &[0xAA, 0xAA, 0x00, 0xFF],
         0b000_111 => &[0xAA, 0xAA, 0xAA, 0xFF],
         0b001_000 => &[0x00, 0x00, 0x55, 0xFF],
         0b001_001 => &[0x00, 0x00, 0xFF, 0xFF],
@@ -150,12 +147,10 @@ pub fn get_ega_gfx_color64(bits: u8) -> &'static [u8; 4] {
     }
 }
 
-/// Attempt a simple 4-pixel lookup to composite artifact color. 
+/// Attempt a simple 4-pixel lookup to composite artifact color.
 /// This is legacy code - you cannot accurately convert a composite image this way
-pub fn get_cga_composite_color( bits: u8, palette: &CGAPalette ) -> &'static [u8; 4] {
-
+pub fn get_cga_composite_color(bits: u8, palette: &CGAPalette) -> &'static [u8; 4] {
     match (bits, palette) {
-
         (0b0000, CGAPalette::Monochrome(_)) => &[0x00, 0x00, 0x00, 0xFF], // Black
         (0b0001, CGAPalette::Monochrome(_)) => &[0x00, 0x68, 0x0C, 0xFF], // Forest Green
         (0b0010, CGAPalette::Monochrome(_)) => &[0x21, 0x2B, 0xBD, 0xFF], // Dark Blue
@@ -189,7 +184,7 @@ pub fn get_cga_composite_color( bits: u8, palette: &CGAPalette ) -> &'static [u8
         (0b1101, CGAPalette::MagentaCyanWhite(_)) => &[0xED, 0xFF, 0xCC, 0xFF], // Pale yellow
         (0b1110, CGAPalette::MagentaCyanWhite(_)) => &[0xFF, 0xB2, 0xA6, 0xFF], // Peach
         (0b1111, CGAPalette::MagentaCyanWhite(_)) => &[0xFF, 0xFF, 0xFF, 0xFF], // White
-        _ => &[0x00, 0x00, 0x00, 0xFF], // Default black
+        _ => &[0x00, 0x00, 0x00, 0xFF],                                         // Default black
     }
 }
 
@@ -197,7 +192,7 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
     match (bits, palette, intensity) {
         // Monochrome
         (0b00, CGAPalette::Monochrome(_), false) => &[0x00u8, 0x00u8, 0x00u8, 0x00u8], // Black
-        (0b01, CGAPalette::Monochrome(fg), false) => color_enum_to_rgba(fg), // Foreground color
+        (0b01, CGAPalette::Monochrome(fg), false) => color_enum_to_rgba(fg),           // Foreground color
         // Palette 0 - Low Intensity
         (0b00, CGAPalette::RedGreenYellow(bg), false) => color_enum_to_rgba(bg), // Background color
         (0b01, CGAPalette::RedGreenYellow(_), false) => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8], // Green
@@ -228,6 +223,6 @@ pub fn get_cga_gfx_color(bits: u8, palette: &CGAPalette, intensity: bool) -> &'s
         (0b01, CGAPalette::RedCyanWhite(_), true) => &[0x55u8, 0xFFu8, 0xFFu8, 0xFFu8], // CyanBright
         (0b10, CGAPalette::RedCyanWhite(_), true) => &[0xFFu8, 0x55u8, 0x55u8, 0xFFu8], // RedBright
         (0b11, CGAPalette::RedCyanWhite(_), true) => &[0xFFu8, 0xFFu8, 0xFFu8, 0xFFu8], // WhiteBright
-        _=> &[0x00u8, 0x00u8, 0x00u8, 0xFFu8] // Default Black
+        _ => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8],                               // Default Black
     }
 }

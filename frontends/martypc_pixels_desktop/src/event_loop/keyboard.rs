@@ -31,21 +31,14 @@
 */
 
 use winit::{
-    event::{
-        ElementState,
-        KeyEvent,
-        Modifiers,
-        WindowEvent
-    }
+    event::{ElementState, KeyEvent, Modifiers, WindowEvent},
+    keyboard::{KeyCode, PhysicalKey},
+    window::{Window, WindowId},
 };
-use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowId};
 
 use display_manager_wgpu::DisplayManager;
 
-use crate::input::TranslateKey;
-use crate::{Emulator};
-
+use crate::{input::TranslateKey, Emulator};
 
 pub fn handle_modifiers(emu: &mut Emulator, event: &WindowEvent, modifiers: &Modifiers) {
     let state = modifiers.state();
@@ -60,11 +53,7 @@ pub fn handle_modifiers(emu: &mut Emulator, event: &WindowEvent, modifiers: &Mod
     }
 }
 
-pub fn handle_key_event(
-    emu: &mut Emulator,
-    window_id: WindowId,
-    key_event: &KeyEvent) -> bool
-{
+pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &KeyEvent) -> bool {
     // Destructure the KeyEvent.
     let KeyEvent {
         physical_key,
@@ -82,17 +71,13 @@ pub fn handle_key_event(
 
     // Determine if a GUI widget has focus.
     // TODO: This will only check the main window(?)
-    let gui_has_focus = {
-        emu.dm.get_main_gui_mut().map_or(false, |gui| gui.has_focus())
-    };
+    let gui_has_focus = { emu.dm.get_main_gui_mut().map_or(false, |gui| gui.has_focus()) };
 
     // Get the window for this event.
-    let event_window =
-        emu.dm
-            .get_window_by_id(window_id)
-            .expect(
-                &format!("Couldn't resolve window id {:?} to window.", window_id)
-            );
+    let event_window = emu
+        .dm
+        .get_window_by_id(window_id)
+        .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
 
     match (physical_key, gui_has_focus) {
         (PhysicalKey::Code(keycode), gui_focus) => {
@@ -107,14 +92,13 @@ pub fn handle_key_event(
                         log::info!("Control F1 pressed. Toggling egui state.");
                         emu.flags.render_gui = !emu.flags.render_gui;
                     }
-                },
+                }
                 (winit::event::ElementState::Pressed, KeyCode::F10) => {
                     if emu.kb_data.ctrl_pressed {
                         // Ctrl-F10 pressed. Toggle mouse capture.
                         log::info!("Control F10 pressed. Capturing mouse cursor.");
                         if !emu.mouse_data.is_captured {
                             let mut grab_success = false;
-
 
                             match event_window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
                                 Ok(_) => {
@@ -128,7 +112,9 @@ pub fn handle_key_event(
                                             emu.mouse_data.is_captured = true;
                                             grab_success = true;
                                         }
-                                        Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                        Err(e) => {
+                                            log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                        }
                                     }
                                 }
                             }
@@ -136,11 +122,12 @@ pub fn handle_key_event(
                             if grab_success {
                                 event_window.set_cursor_visible(false);
                             }
-                        } else {
+                        }
+                        else {
                             // Cursor is grabbed, ungrab
                             match event_window.set_cursor_grab(winit::window::CursorGrabMode::None) {
                                 Ok(_) => emu.mouse_data.is_captured = false,
-                                Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e),
                             }
                             event_window.set_cursor_visible(true);
                         }
@@ -173,7 +160,7 @@ pub fn handle_key_event(
                                     //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                 }
                                 return true;
-                            },
+                            }
                             ElementState::Released => {
                                 emu.machine.key_release(keycode.to_internal());
                                 return true;
@@ -183,7 +170,7 @@ pub fn handle_key_event(
                 }
             }
         }
-        (PhysicalKey::Unidentified(keycode), _ ) => {
+        (PhysicalKey::Unidentified(keycode), _) => {
             log::warn!("Unidentified keycode: {:?}", keycode);
             return false; // Send it along in case egui knows what to do with it.
         }

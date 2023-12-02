@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,7 +26,7 @@
 
     devices::cga::mod.rs
 
-    Implementation of the IBM CGA card, built around the Motorola MC6845 
+    Implementation of the IBM CGA card, built around the Motorola MC6845
     display controller.
 
     This implementation is a bit complex due to being able to clock the CGA
@@ -35,55 +35,55 @@
 */
 
 #![allow(dead_code)]
-use std::{
-    collections::HashMap,
-    path::Path,
-    convert::TryInto
-};
+use std::{collections::HashMap, convert::TryInto, path::Path};
 
 use bytemuck;
 
 #[macro_use]
 mod io;
+mod draw;
 mod mmio;
 mod tablegen;
 mod videocard;
-mod draw;
 
 use crate::devices::cga::tablegen::*;
 
-use crate::bus::{BusInterface, DeviceRunTimeUnit};
-use crate::tracelogger::TraceLogger;
-use crate::videocard::*;
+use crate::{
+    bus::{BusInterface, DeviceRunTimeUnit},
+    tracelogger::TraceLogger,
+    videocard::*,
+};
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 enum RwSlotType {
     Mem,
-    Io
+    Io,
 }
 
 impl Default for RwSlotType {
-    fn default() -> Self { RwSlotType::Mem }
+    fn default() -> Self {
+        RwSlotType::Mem
+    }
 }
 
 // A device can have a maximum of 4 operations to handle between calls to run().
 // Up to two IO operations (16-bit IO) or 4 memory operations (16-bit mov)
 // We maintain 4 slots of RwSlot structs to keep data about these operations.
 // The slot index is reset on call to run().
-#[derive (Copy, Clone, Default)]
+#[derive(Copy, Clone, Default)]
 struct RwSlot {
-    t: RwSlotType,
+    t:    RwSlotType,
     data: u8,
     addr: u32,
-    tick: u32
+    tick: u32,
 }
 
 static DUMMY_PLANE: [u8; 1] = [0];
 static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
 
-// Precalculated waits in system ticks for each of the possible 16 phases of the 
-// CGA clock could issue a memory request on. 
-static WAIT_TABLE: [u32; 16] = [14,13,12,11,10,9,24,23,22,21,20,19,18,17,16,15];
+// Precalculated waits in system ticks for each of the possible 16 phases of the
+// CGA clock could issue a memory request on.
+static WAIT_TABLE: [u32; 16] = [14, 13, 12, 11, 10, 9, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15];
 // in cpu cycles: 5,5,4,4,4,3,8,8,8,7,7,7,6,6,6,5
 
 pub const CGA_MEM_ADDRESS: usize = 0xB8000;
@@ -94,7 +94,7 @@ pub const CGA_MEM_MASK: usize = !0x4000; // Applying this mask will implement me
 
 pub const CGA_MODE_ENABLE_MASK: u8 = 0b1_0111;
 
-// Sensible defaults for CRTC registers. A real CRTC is probably uninitialized. 
+// Sensible defaults for CRTC registers. A real CRTC is probably uninitialized.
 // 4/5/2023: Changed these values to 40 column mode.
 const DEFAULT_HORIZONTAL_TOTAL: u8 = 56;
 const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 40;
@@ -118,13 +118,13 @@ const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x1F;
 const CGA_CLOCK: f64 = 14.318180;
 const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
 
-/*  
-    We can calculate the maximum theoretical size of a CGA display by working from the 
+/*
+    We can calculate the maximum theoretical size of a CGA display by working from the
     14.31818Mhz CGA clock. We are limited to 262 scanlines per NTSC (525/2)
-    This gives us 262 maximum scanlines. 
+    This gives us 262 maximum scanlines.
     The CGA gets programmed with a Horizontal Character total of 113(+1)=114 characters
-    in standard 80 column text mode. This is total - not displayed characters. 
-    So a single scan line is 114 * 8 or 912 clocks wide. 
+    in standard 80 column text mode. This is total - not displayed characters.
+    So a single scan line is 114 * 8 or 912 clocks wide.
     912 clocks * 262 scanlines = 238,944 clocks per frame.
     14,318,180Hz / 238,944 clocks equals a 59.92Hz refresh rate.
     So our final numbers are 912x262 @ 59.92Hz. This is a much higher resolution than
@@ -143,13 +143,13 @@ const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CGA_HCHAR_CLOCK as u32;
 const CGA_YRES_MAX: u32 = CRTC_SCANLINE_MAX;
 pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Should be 238944
 
-// Monitor sync position. The monitor will eventually perform an hsync at a fixed position 
+// Monitor sync position. The monitor will eventually perform an hsync at a fixed position
 // if hsync signal is late from the CGA card.
 const CGA_MONITOR_HSYNC_POS: u32 = 832;
 const CGA_MONITOR_HSYNC_WIDTH: u32 = 80;
 const CGA_MONITOR_VSYNC_POS: u32 = 246;
 // Minimum scanline value after which we can perform a vsync. A vsync before this scanline will be ignored.
-const CGA_MONITOR_VSYNC_MIN: u32 = 0; 
+const CGA_MONITOR_VSYNC_MIN: u32 = 0;
 
 // For derivision of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
 // We run the CGA card independent of the CPU frequency.
@@ -174,32 +174,32 @@ const CGA_CURSOR_BLINK_RATE_US: f64 = FRAME_TIME_US * 8.0;
 
 const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
 
-const MODE_MATCH_MASK: u8       = 0b0001_1111;
-const MODE_HIRES_TEXT: u8       = 0b0000_0001;
-const MODE_GRAPHICS: u8         = 0b0000_0010;
-const MODE_BW: u8               = 0b0000_0100;
-const MODE_ENABLE: u8           = 0b0000_1000;
-const MODE_HIRES_GRAPHICS: u8   = 0b0001_0000;
-const MODE_BLINKING: u8         = 0b0010_0000;
+const MODE_MATCH_MASK: u8 = 0b0001_1111;
+const MODE_HIRES_TEXT: u8 = 0b0000_0001;
+const MODE_GRAPHICS: u8 = 0b0000_0010;
+const MODE_BW: u8 = 0b0000_0100;
+const MODE_ENABLE: u8 = 0b0000_1000;
+const MODE_HIRES_GRAPHICS: u8 = 0b0001_0000;
+const MODE_BLINKING: u8 = 0b0010_0000;
 
-const CURSOR_LINE_MASK: u8      = 0b0001_1111;
-const CURSOR_ATTR_MASK: u8      = 0b0110_0000;
-const CURSOR_ENABLE_MASK: u8    = 0b0010_0000;
+const CURSOR_LINE_MASK: u8 = 0b0001_1111;
+const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
+const CURSOR_ENABLE_MASK: u8 = 0b0010_0000;
 
 // Color control register bits.
 // Alt color = Overscan in Text mode, BG color in 320x200 graphics, FG color in 640x200 graphics
-const CC_ALT_COLOR_MASK: u8     = 0b0000_0111;
-const CC_ALT_INTENSITY: u8      = 0b0000_1000;
-const CC_BRIGHT_BIT: u8         = 0b0001_0000; // Controls whether palette is high intensity
-const CC_PALETTE_BIT: u8        = 0b0010_0000; // Controls primary palette between magenta/cyan and red/green
+const CC_ALT_COLOR_MASK: u8 = 0b0000_0111;
+const CC_ALT_INTENSITY: u8 = 0b0000_1000;
+const CC_BRIGHT_BIT: u8 = 0b0001_0000; // Controls whether palette is high intensity
+const CC_PALETTE_BIT: u8 = 0b0010_0000; // Controls primary palette between magenta/cyan and red/green
 
-const STATUS_DISPLAY_ENABLE: u8         = 0b0000_0001;
-const STATUS_LIGHTPEN_TRIGGER_SET: u8   = 0b0000_0010;
+const STATUS_DISPLAY_ENABLE: u8 = 0b0000_0001;
+const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
 const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
-const STATUS_VERTICAL_RETRACE: u8       = 0b0000_1000;
+const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 
 // Include the standard 8x8 CGA font.
-// TODO: Support alternate font with thinner glyphs? It was normally not accessable except 
+// TODO: Support alternate font with thinner glyphs? It was normally not accessable except
 // by soldering a jumper
 const CGA_FONT: &'static [u8] = include_bytes!("../../../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
@@ -212,8 +212,8 @@ const CRTC_VBLANK_HEIGHT: u8 = 16;
 const CRTC_R0_HORIZONTAL_MAX: u32 = 113;
 const CRTC_SCANLINE_MAX: u32 = 262;
 
-// The CGA card decodes different numbers of address lines from the CRTC depending on 
-// whether it is in text or graphics modes. This causes wrapping at 0x2000 bytes in 
+// The CGA card decodes different numbers of address lines from the CRTC depending on
+// whether it is in text or graphics modes. This causes wrapping at 0x2000 bytes in
 // text mode, and 0x4000 bytes in graphics modes.
 const CGA_TEXT_MODE_WRAP: usize = 0x1FFF;
 const CGA_GFX_MODE_WRAP: usize = 0x3FFF;
@@ -233,16 +233,16 @@ pub enum CgaColor {
     RedBright = 12,
     MagentaBright = 13,
     Yellow = 14,
-    WhiteBright = 15
+    WhiteBright = 15,
 }
 
 const CGA_PALETTES: [[u8; 4]; 6] = [
-    [0, 2, 4, 6],       // Red / Green / Brown
-    [0, 10, 12, 14],    // Red / Green / Brown High Intensity
-    [0, 3, 5, 7],       // Cyan / Magenta / White
-    [0, 11, 13, 15],    // Cyan / Magenta / White High Intensity
-    [0, 3, 4, 7],       // Red / Cyan / White
-    [0, 11, 12, 15],    // Red / Cyan / White High Intensity
+    [0, 2, 4, 6],    // Red / Green / Brown
+    [0, 10, 12, 14], // Red / Green / Brown High Intensity
+    [0, 3, 5, 7],    // Cyan / Magenta / White
+    [0, 11, 13, 15], // Cyan / Magenta / White High Intensity
+    [0, 3, 4, 7],    // Red / Cyan / White
+    [0, 11, 12, 15], // Red / Cyan / White High Intensity
 ];
 
 const CGA_DEBUG_COLOR: u8 = CgaColor::Magenta as u8;
@@ -251,7 +251,6 @@ const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::Blue as u8;
 const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
 const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
 const CGA_OVERSCAN_DEBUG_COLOR: u8 = CgaColor::Green as u8;
-
 
 /*
 const CGA_FILL_COLOR: u8 = 4;
@@ -302,11 +301,11 @@ const CGA_DEBUG_U64: [u64; 16] = [
     0xF0F0F0F0F0F0F0F0,
 ];
 
-// Display aperatures. 
+// Display aperatures.
 // CROPPED will show the display area only - no overscan will be visible.
-// NORMAL is an attempt to represent the maximum visible display extents, including overscan. 
-// Anything more is likely to be hidden by the monitor bezel or not shown for some other reason. 
-// FULL will show the entire overscan area - this is nice for Area 5150 to see the entire extent 
+// NORMAL is an attempt to represent the maximum visible display extents, including overscan.
+// Anything more is likely to be hidden by the monitor bezel or not shown for some other reason.
+// FULL will show the entire overscan area - this is nice for Area 5150 to see the entire extent
 // of each effect, although it will display more than a monitor would.
 // DEBUG will show the entire display field and will enable coloring of hblank and vblank
 // periods.
@@ -367,20 +366,14 @@ const CGA_APERTURES: [DisplayAperture; 4] = [
 const CGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
         name: "Cropped",
-        idx: 0,
+        idx:  0,
     },
     DisplayApertureDesc {
         name: "Monitor Accurate",
-        idx: 1,
+        idx:  1,
     },
-    DisplayApertureDesc {
-        name: "Full",
-        idx: 2,
-    },
-    DisplayApertureDesc {
-        name: "Debug",
-        idx: 3,
-    },
+    DisplayApertureDesc { name: "Full", idx: 2 },
+    DisplayApertureDesc { name: "Debug", idx: 3 },
 ];
 
 const CGA_DEFAULT_APERTURE: usize = 1;
@@ -399,16 +392,10 @@ pub(crate) use trace;
 macro_rules! trace_regs {
     ($self:ident) => {
         if $self.trace_logger.is_some() {
-            $self.trace_logger.print(
-                &format!(
-                    "[SL:{:03} HCC:{:03} VCC:{:03} VT:{:03} VS:{:03}] ", 
-                    $self.scanline,
-                    $self.hcc_c0,
-                    $self.vcc_c4,
-                    $self.crtc_vertical_total,
-                    $self.crtc_vertical_sync_pos
-                )
-            );
+            $self.trace_logger.print(&format!(
+                "[SL:{:03} HCC:{:03} VCC:{:03} VT:{:03} VS:{:03}] ",
+                $self.scanline, $self.hcc_c0, $self.vcc_c4, $self.crtc_vertical_total, $self.crtc_vertical_sync_pos
+            ));
         }
     };
 }
@@ -416,7 +403,6 @@ macro_rules! trace_regs {
 pub(crate) use trace_regs;
 
 pub struct CGACard {
-    
     debug: bool,
     cycles: u64,
     last_vsync_cycles: u64,
@@ -454,7 +440,7 @@ pub struct CGACard {
 
     cursor_frames: u32,
 
-    frame_count: u64,
+    frame_count:  u64,
     status_reads: u64,
 
     cursor_status: bool,
@@ -464,7 +450,7 @@ pub struct CGACard {
     cursor_attr: u8,
 
     crtc_register_select_byte: u8,
-    crtc_register_selected: CRTCRegister,
+    crtc_register_selected:    CRTCRegister,
 
     crtc_horizontal_total: u8,
     crtc_horizontal_displayed: u8,
@@ -492,7 +478,7 @@ pub struct CGACard {
     vborder: bool,
 
     cc_register: u8,
-    clock_divisor: u8,              // Clock divisor is 1 in high resolution text mode, 2 in all other modes
+    clock_divisor: u8, // Clock divisor is 1 in high resolution text mode, 2 in all other modes
     clock_mode: ClockingMode,
     char_clock: u32,
     char_clock_mask: u64,
@@ -513,29 +499,29 @@ pub struct CGACard {
     vsync_len: u32,
 
     in_display_area: bool,
-    cur_char: u8,                   // Current character being drawn
-    cur_attr: u8,                   // Current attribute byte being drawn
-    cur_fg: u8,                     // Current glyph fg color
-    cur_bg: u8,                     // Current glyph bg color
-    cur_blink: bool,                // Current glyph blink attribute
-    char_col: u8,                   // Column of character glyph being drawn
-    hcc_c0: u8,                     // Horizontal character counter (x pos of character)
-    vlc_c9: u8,                     // Vertical line counter - row of character being drawn
-    vcc_c4: u8,                     // Vertical character counter (y pos of character)
-    vsc_c3h: u8,                    // Vertical sync counter - counts during vsync period
-    hsc_c3l: u8,                    // Horizontal sync counter - counts during hsync period
+    cur_char: u8,    // Current character being drawn
+    cur_attr: u8,    // Current attribute byte being drawn
+    cur_fg: u8,      // Current glyph fg color
+    cur_bg: u8,      // Current glyph bg color
+    cur_blink: bool, // Current glyph blink attribute
+    char_col: u8,    // Column of character glyph being drawn
+    hcc_c0: u8,      // Horizontal character counter (x pos of character)
+    vlc_c9: u8,      // Vertical line counter - row of character being drawn
+    vcc_c4: u8,      // Vertical character counter (y pos of character)
+    vsc_c3h: u8,     // Vertical sync counter - counts during vsync period
+    hsc_c3l: u8,     // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
     in_vta: bool,
     effective_vta: u8,
-    vma: usize,                     // VMA register - Video memory address
-    vma_t: usize,                   // VMA' register - Video memory address temporary
-    vmws: usize,                    // Video memory word size
-    rba: usize,                     // Render buffer address
-    blink_state: bool,              // Used to control blinking of cursor and text with blink attribute
-    blink_accum_us: f64,            // Microsecond accumulator for blink state flipflop
-    blink_accum_clocks: u32,        // CGA Clock accumulator for blink state flipflop
+    vma: usize,              // VMA register - Video memory address
+    vma_t: usize,            // VMA' register - Video memory address temporary
+    vmws: usize,             // Video memory word size
+    rba: usize,              // Render buffer address
+    blink_state: bool,       // Used to control blinking of cursor and text with blink attribute
+    blink_accum_us: f64,     // Microsecond accumulator for blink state flipflop
+    blink_accum_clocks: u32, // CGA Clock accumulator for blink state flipflop
     accumulated_us: f64,
-    ticks_advanced: u32,            // Number of ticks we have advanced mid-instruction via port or mmio access.
+    ticks_advanced: u32, // Number of ticks we have advanced mid-instruction via port or mmio access.
     pixel_clocks_owed: u32,
     ticks_accum: u32,
     clocks_accum: u32,
@@ -551,11 +537,11 @@ pub struct CGACard {
 
     debug_color: u8,
 
-    trace_logger: TraceLogger,
+    trace_logger:  TraceLogger,
     debug_counter: u64,
 
     lightpen_latch: bool,
-    lightpen_addr: usize
+    lightpen_addr:  usize,
 }
 
 #[derive(Debug)]
@@ -577,9 +563,8 @@ pub enum CRTCRegister {
     CursorAddressH,
     CursorAddressL,
     LightPenPositionH,
-    LightPenPositionL
+    LightPenPositionL,
 }
-
 
 // CGA implementation of Default for DisplayExtents.
 // Each videocard implementation should implement sensible defaults.
@@ -594,14 +579,13 @@ impl Default for DisplayExtents {
             visible_h: 0,
             row_stride: CGA_XRES_MAX as usize,
             double_scan: true,
-            mode_byte: 0
+            mode_byte: 0,
         }
     }
 }
 
 impl Default for CGACard {
     fn default() -> Self {
-
         Self {
             debug: false,
             cycles: 0,
@@ -634,13 +618,13 @@ impl Default for CGACard {
             mode_blinking: true,
             cc_palette: 0,
             cc_altcolor: 0,
-            cc_overscan_color: 0,            
+            cc_overscan_color: 0,
             frame_us: 0.0,
 
             cursor_frames: 0,
-            scanline_us: 0.0,
+            scanline_us:   0.0,
 
-            frame_count: 0,
+            frame_count:  0,
             status_reads: 0,
 
             cursor_status: false,
@@ -649,7 +633,7 @@ impl Default for CGACard {
             cursor_data: [false; CGA_CURSOR_MAX],
             cursor_attr: 0,
 
-            crtc_register_selected: CRTCRegister::HorizontalTotal,
+            crtc_register_selected:    CRTCRegister::HorizontalTotal,
             crtc_register_select_byte: 0,
 
             crtc_horizontal_total: DEFAULT_HORIZONTAL_TOTAL,
@@ -689,7 +673,7 @@ impl Default for CGACard {
             beam_y: 0,
             in_monitor_hsync: false,
             in_monitor_vblank: false,
-            monitor_hsc: 0,            
+            monitor_hsc: 0,
             scanline: 0,
             missed_hsyncs: 0,
 
@@ -714,7 +698,7 @@ impl Default for CGACard {
             effective_vta: 0,
             vma: 0,
             vma_t: 0,
-            vmws: 2,    
+            vmws: 2,
             rba: 0,
             blink_state: false,
             blink_accum_us: 0.0,
@@ -728,41 +712,36 @@ impl Default for CGACard {
 
             mem: vec![0; CGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
 
-            back_buf: 1,
+            back_buf:  1,
             front_buf: 0,
-            extents: Default::default(),
-            aperture: CGA_DEFAULT_APERTURE,
+            extents:   Default::default(),
+            aperture:  CGA_DEFAULT_APERTURE,
+
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
 
-            // Theoretically, boxed arrays may have some performance advantages over 
-            // vectors due to having a fixed size known by the compiler.  However they 
+            // Theoretically, boxed arrays may have some performance advantages over
+            // vectors due to having a fixed size known by the compiler.  However they
             // are a pain to initialize without overflowing the stack.
-            buf: [  
+            buf: [
                 vec![0; CGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
-                vec![0; CGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap()
+                vec![0; CGA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
             ],
 
             debug_color: 0,
 
-            trace_logger: TraceLogger::None,
+            trace_logger:  TraceLogger::None,
             debug_counter: 0,
 
             lightpen_latch: false,
-            lightpen_addr: 0
+            lightpen_addr:  0,
         }
     }
 }
 
 impl CGACard {
-
-    pub fn new(
-        trace_logger: TraceLogger, 
-        clock_mode: ClockingMode,
-        video_frame_debug: bool
-    ) -> Self {
-
+    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool) -> Self {
         let mut cga = Self::default();
-        
+
         cga.trace_logger = trace_logger;
         cga.debug = video_frame_debug;
         cga.clock_mode = clock_mode;
@@ -772,7 +751,6 @@ impl CGACard {
 
     /// Reset CGA state (on reboot, for example)
     fn reset_private(&mut self) {
-
         let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
 
         // Save non-default values
@@ -780,7 +758,7 @@ impl CGACard {
             debug: self.debug,
             clock_mode: self.clock_mode,
             enable_snow: self.enable_snow,
-            frame_count: self.frame_count,  // Keep frame count as to not confuse frontend
+            frame_count: self.frame_count, // Keep frame count as to not confuse frontend
             trace_logger,
             extents: self.extents,
 
@@ -789,14 +767,13 @@ impl CGACard {
     }
 
     fn rw_op(&mut self, ticks: u32, data: u8, addr: u32, rwtype: RwSlotType) {
-
         assert!(self.slot_idx < 4);
 
         self.rw_slots[self.slot_idx] = RwSlot {
             t: rwtype,
             data,
             addr,
-            tick: ticks - self.last_rw_tick
+            tick: ticks - self.last_rw_tick,
         };
 
         self.slot_idx += 1;
@@ -804,7 +781,6 @@ impl CGACard {
     }
 
     fn catch_up(&mut self, delta: DeviceRunTimeUnit, debug: bool) -> u32 {
-
         /*
         if self.sink_cycles > 0 {
             // Don't catch up when sinking;
@@ -829,8 +805,8 @@ impl CGACard {
                     self.tick();
                 }
 
-                if self.calc_phase_offset() != 0 { 
-                    log::error!("catch up failed: {} + {}" , self.cycles, phase_offset );
+                if self.calc_phase_offset() != 0 {
+                    log::error!("catch up failed: {} + {}", self.cycles, phase_offset);
                 }
 
                 // Tick a character
@@ -854,24 +830,23 @@ impl CGACard {
             //assert!((self.cycles + self.pixel_clocks_owed as u64) & (CGA_LCHAR_CLOCK as u64) == 0);
             self.catching_up = false;
 
-            if debug && self.rba < (CGA_MAX_CLOCK - 8) { 
+            if debug && self.rba < (CGA_MAX_CLOCK - 8) {
                 //log::debug!("crtc write!");
                 self.draw_solid_hchar(13);
             }
-            return ticks
+            return ticks;
         }
         0
     }
 
-    /// Update the number of pixel clocks we must execute before we can return to clocking the 
+    /// Update the number of pixel clocks we must execute before we can return to clocking the
     /// CGA card by character clock.  When an IO read/write occurs, the CGA card is updated to
     /// the current clock cycle by ticking pixels. During run() we then have to tick by pixels
     /// until we are back in phase with the character clock.
     #[inline]
     fn calc_cycles_owed(&mut self) -> u32 {
-
         if self.ticks_advanced % CGA_LCHAR_CLOCK as u32 > 0 {
-            // We have advanced the CGA card out of phase with the character clock. Count 
+            // We have advanced the CGA card out of phase with the character clock. Count
             // how many pixel clocks we need to tick by to be back in phase.
             ((!self.cycles + 1) & 0x0F) as u32
         }
@@ -879,14 +854,13 @@ impl CGACard {
             0
         }
     }
-    
+
     #[inline]
     fn calc_phase_offset(&mut self) -> u32 {
         ((!self.cycles + 1) & 0x0F) as u32
     }
-    
-    fn set_lp_latch(&mut self) {
 
+    fn set_lp_latch(&mut self) {
         if self.lightpen_latch == false {
             // Low to high transaition of light pen latch, set latch addr.
             log::debug!("Updating lightpen latch address");
@@ -907,7 +881,6 @@ impl CGACard {
 
     /// Update the cursor data array based on the values of cursor_start_line and cursor_end_line.
     fn update_cursor_data(&mut self) {
-
         // Reset cursor data to 0.
         self.cursor_data.fill(false);
 
@@ -918,7 +891,7 @@ impl CGACard {
             }
         }
         else {
-            // "Split" cursor. 
+            // "Split" cursor.
             for i in 0..=self.crtc_cursor_end_line {
                 // First part of cursor is 0->end_line
                 self.cursor_data[i as usize] = true;
@@ -942,24 +915,18 @@ impl CGACard {
 
     /// Update the CRTC start address. Usually called after a CRTC register write updates the HO or LO byte.
     fn update_start_address(&mut self) {
-
         // HO is already masked to 6 bits when set
         self.crtc_start_address = (self.crtc_start_address_ho as usize) << 8 | self.crtc_start_address_lo as usize;
 
         trace_regs!(self);
-        trace!(
-            self,
-            "Start address updated: {:04X}",
-            self.crtc_start_address
-        )
-    }        
+        trace!(self, "Start address updated: {:04X}", self.crtc_start_address)
+    }
 
     fn get_cursor_status(&self) -> bool {
         self.cursor_status
     }
 
-    fn handle_crtc_register_select(&mut self, byte: u8 ) {
-
+    fn handle_crtc_register_select(&mut self, byte: u8) {
         //log::trace!("CGA: CRTC register {:02X} selected", byte);
         self.crtc_register_select_byte = byte;
         self.crtc_register_selected = match byte {
@@ -985,18 +952,17 @@ impl CGACard {
                 log::debug!("CGA: Select to invalid CRTC register");
                 self.crtc_register_select_byte = 0;
                 CRTCRegister::HorizontalTotal
-            } 
+            }
         }
     }
 
-    fn handle_crtc_register_write(&mut self, byte: u8 ) {
-
+    fn handle_crtc_register_write(&mut self, byte: u8) {
         //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
         match self.crtc_register_selected {
             CRTCRegister::HorizontalTotal => {
                 // (R0) 8 bit write only
                 self.crtc_horizontal_total = byte;
-            },
+            }
             CRTCRegister::HorizontalDisplayed => {
                 // (R1) 8 bit write only
                 self.crtc_horizontal_displayed = byte;
@@ -1008,7 +974,7 @@ impl CGACard {
                 //    log::debug!("R2=2, HCC: {}", self.hcc_c0);
                 //}
                 self.crtc_horizontal_sync_pos = byte;
-            },
+            }
             CRTCRegister::SyncWidth => {
                 // (R3) 8 bit write only
 
@@ -1016,7 +982,7 @@ impl CGACard {
                     log::warn!("Warning: SyncWidth modified during hsync!");
                 }
                 self.crtc_sync_width = byte;
-            },
+            }
             CRTCRegister::VerticalTotal => {
                 // (R4) 7 bit write only
                 self.crtc_vertical_total = byte & 0x7F;
@@ -1027,15 +993,15 @@ impl CGACard {
                     "CRTC Register Write (04h): VerticalTotal updated: {}",
                     self.crtc_vertical_total
                 )
-            },
+            }
             CRTCRegister::VerticalTotalAdjust => {
                 // (R5) 5 bit write only
                 self.crtc_vertical_total_adjust = byte & 0x1F;
             }
             CRTCRegister::VerticalDisplayed => {
                 // (R6) 7 bit write only
-                self.crtc_vertical_displayed = byte; 
-            },
+                self.crtc_vertical_displayed = byte;
+            }
             CRTCRegister::VerticalSync => {
                 // (R7) 7 bit write only
                 self.crtc_vertical_sync_pos = byte & 0x7F;
@@ -1046,13 +1012,11 @@ impl CGACard {
                     "CRTC Register Write (07h): VerticalSync updated: {}",
                     self.crtc_vertical_sync_pos
                 )
-            },
+            }
             CRTCRegister::InterlaceMode => {
                 self.crtc_interlace_mode = byte;
-            },            
-            CRTCRegister::MaximumScanLineAddress => {
-                self.crtc_maximum_scanline_address = byte
-            }            
+            }
+            CRTCRegister::MaximumScanLineAddress => self.crtc_maximum_scanline_address = byte,
             CRTCRegister::CursorStartLine => {
                 self.crtc_cursor_start_line = byte & CURSOR_LINE_MASK;
                 self.cursor_attr = (byte & CURSOR_ATTR_MASK) >> 5;
@@ -1095,38 +1059,39 @@ impl CGACard {
                 // Entire Start Address register is 14 bits.
                 self.crtc_start_address_ho = byte & 0x3F;
                 trace_regs!(self);
-                trace!(
-                    self,
-                    "CRTC Register Write (0Ch): StartAddressH updated: {:02X}",
-                    byte
-                );
+                trace!(self, "CRTC Register Write (0Ch): StartAddressH updated: {:02X}", byte);
                 self.update_start_address();
             }
             CRTCRegister::StartAddressL => {
                 self.crtc_start_address_lo = byte;
                 trace_regs!(self);
-                trace!(
-                    self,
-                    "CRTC Register Write (0Dh): StartAddressL updated: {:02X}",
-                    byte
-                );                
+                trace!(self, "CRTC Register Write (0Dh): StartAddressL updated: {:02X}", byte);
                 self.update_start_address();
             }
             _ => {
-                trace!(self, "Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
-                log::warn!("CGA: Write to unsupported CRTC register {:?}: {:02X}", self.crtc_register_selected, byte);
+                trace!(
+                    self,
+                    "Write to unsupported CRTC register {:?}: {:02X}",
+                    self.crtc_register_selected,
+                    byte
+                );
+                log::warn!(
+                    "CGA: Write to unsupported CRTC register {:?}: {:02X}",
+                    self.crtc_register_selected,
+                    byte
+                );
             }
         }
     }
-    
-    fn handle_crtc_register_read(&mut self ) -> u8 {
+
+    fn handle_crtc_register_read(&mut self) -> u8 {
         match self.crtc_register_selected {
             CRTCRegister::CursorStartLine => self.crtc_cursor_start_line,
             CRTCRegister::CursorEndLine => self.crtc_cursor_end_line,
             CRTCRegister::CursorAddressH => {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_ho );
-                self.crtc_cursor_address_ho 
-            },
+                self.crtc_cursor_address_ho
+            }
             CRTCRegister::CursorAddressL => {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_lo );
                 self.crtc_cursor_address_lo
@@ -1142,7 +1107,10 @@ impl CGACard {
                 byte
             }
             _ => {
-                log::debug!("CGA: Read from unsupported CRTC register: {:?}", self.crtc_register_selected);
+                log::debug!(
+                    "CGA: Read from unsupported CRTC register: {:?}",
+                    self.crtc_register_selected
+                );
                 0
             }
         }
@@ -1151,12 +1119,11 @@ impl CGACard {
     /// Return true if the pending mode change defined by mode_byte would change from text mode to
     /// graphics mode, or vice-versa
     fn is_deferred_mode_change(&self, new_mode_byte: u8) -> bool {
-
-        // In general, we can determine whether we are in graphics mode or text mode by 
-        // checking the graphics bit, however, the graphics bit is allowed to coexist with the 
+        // In general, we can determine whether we are in graphics mode or text mode by
+        // checking the graphics bit, however, the graphics bit is allowed to coexist with the
         // HIREST_TEXT bit in an undocumented combination that remains in text mode but allows
         // a selectable background color.
-   
+
         // If both graphics and hi-res text bits are set, we are still in text mode
         let old_text_mode = (self.mode_byte & 0b01 != 0) || (self.mode_byte & 0b11 == 0b11);
         let old_graphics_mode = self.mode_byte & 0b10 != 0;
@@ -1175,33 +1142,31 @@ impl CGACard {
 
         // Return true if the mode is changing between text and graphics or vice versa
         (old_mode_is_text && new_mode_is_graphics) || (old_mode_is_graphics && new_mode_is_text)
-
     }
 
     /// Update the CGA graphics mode. This function may be called some time after the mode
-    /// register is actually written to, depending on if we are changing from text to graphics mode 
+    /// register is actually written to, depending on if we are changing from text to graphics mode
     /// or vice versa.
     fn update_mode(&mut self) {
-
         // Will this mode change change the character clock?
         let clock_changed = self.mode_hires_txt != (self.mode_byte & MODE_HIRES_TEXT != 0);
 
         if clock_changed {
             // Flag the clock for pending change.  The clock can only be changed in phase with
-            // LCHAR due to our dynamic clocking logic. 
+            // LCHAR due to our dynamic clocking logic.
             self.clock_pending = true;
         }
 
         self.mode_hires_txt = self.mode_byte & MODE_HIRES_TEXT != 0;
-        self.mode_graphics  = self.mode_byte & MODE_GRAPHICS != 0;
-        self.mode_bw        = self.mode_byte & MODE_BW != 0;
-        self.mode_enable    = self.mode_byte & MODE_ENABLE != 0;
+        self.mode_graphics = self.mode_byte & MODE_GRAPHICS != 0;
+        self.mode_bw = self.mode_byte & MODE_BW != 0;
+        self.mode_enable = self.mode_byte & MODE_ENABLE != 0;
         self.mode_hires_gfx = self.mode_byte & MODE_HIRES_GRAPHICS != 0;
-        self.mode_blinking  = self.mode_byte & MODE_BLINKING != 0;
+        self.mode_blinking = self.mode_byte & MODE_BLINKING != 0;
 
         self.vmws = 2;
-        
-        // Use color control register value for overscan unless high res graphics mode, 
+
+        // Use color control register value for overscan unless high res graphics mode,
         // in which case overscan must be black (0).
         self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.cc_altcolor };
 
@@ -1235,37 +1200,36 @@ impl CGACard {
         trace_regs!(self);
         trace!(
             self,
-            "Display mode set: {:?}. Mode byte: {:02X} Enabled: {} Clock: {}", 
-            self.display_mode, 
+            "Display mode set: {:?}. Mode byte: {:02X} Enabled: {} Clock: {}",
+            self.display_mode,
             self.mode_byte,
             self.mode_enable,
-            self.clock_divisor                
+            self.clock_divisor
         );
 
         /* Disabled debug due to noise. Some effects in Area 5150 write mode many times per frame
 
-        log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {} Clock: {}", 
+        log::debug!("CGA: Mode Selected ({:?}:{:02X}) Enabled: {} Clock: {}",
             self.display_mode,
-            self.mode_byte, 
+            self.mode_byte,
             self.mode_enable,
             self.clock_divisor
         );
         */
     }
 
-    /// Update the CGA character clock. Can only be done on LCLOCK boundaries to simplify 
+    /// Update the CGA character clock. Can only be done on LCLOCK boundaries to simplify
     /// our logic.
     #[inline]
     fn update_clock(&mut self) {
-
         if self.clock_pending && (self.cycles & 0x0F == 0) {
             // Clock divisor is 1 in high res text mode, 2 in all other modes
             // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
             (
-                self.clock_divisor, 
-                self.char_clock, 
-                self.char_clock_mask, 
-                self.char_clock_odd_mask
+                self.clock_divisor,
+                self.char_clock,
+                self.char_clock_mask,
+                self.char_clock_odd_mask,
             ) = if self.mode_hires_txt {
                 (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
             }
@@ -1277,10 +1241,9 @@ impl CGACard {
         }
     }
 
-    /// Handle a write to the CGA mode register. Defer the mode change if it would change 
+    /// Handle a write to the CGA mode register. Defer the mode change if it would change
     /// from graphics mode to text mode or back (Need to measure this on real hardware)
     fn handle_mode_register(&mut self, mode_byte: u8) {
-        
         if self.is_deferred_mode_change(mode_byte) {
             // Latch the mode change and mark it pending. We will change the mode on next hsync.
             log::trace!("deferring mode change.");
@@ -1288,7 +1251,7 @@ impl CGACard {
             self.mode_byte = mode_byte;
         }
         else {
-            // We're not changing from text to graphcis or vice versa, so we do not have to 
+            // We're not changing from text to graphcis or vice versa, so we do not have to
             // defer the update.
             self.mode_byte = mode_byte;
             self.update_mode();
@@ -1298,15 +1261,14 @@ impl CGACard {
     /// Handle a read from the CGA status register. This register has bits to indicate whether
     /// we are in vblank or if the display is in the active display area (enabled)
     fn handle_status_register_read(&mut self) -> u8 {
-
         // Bit 1 of the status register is set when the CGA can be safely written to without snow.
         // It is tied to the 'Display Enable' line from the CGA card, inverted.
         // Thus it will be 1 when the CGA card is not currently scanning, IE during both horizontal
         // and vertical refresh.
 
         // https://www.vogons.org/viewtopic.php?t=47052
-        
-        // Addendum: The DE line is from the MC6845, and actually includes anything outside of the 
+
+        // Addendum: The DE line is from the MC6845, and actually includes anything outside of the
         // active display area. This gives a much wider window to hit for scanline wait loops.
 
         let mut byte = if self.in_crtc_vblank {
@@ -1316,7 +1278,6 @@ impl CGACard {
             0xF0 | STATUS_DISPLAY_ENABLE
         }
         else {
-
             if self.vborder || self.hborder {
                 log::warn!("in border but returning 0");
             }
@@ -1324,11 +1285,7 @@ impl CGACard {
         };
 
         if self.in_crtc_vblank {
-            trace!(
-                self,
-                "in vblank: vsc: {:03}",
-                self.vsc_c3h
-            );            
+            trace!(self, "in vblank: vsc: {:03}", self.vsc_c3h);
         }
 
         self.status_reads += 1;
@@ -1346,7 +1303,7 @@ impl CGACard {
             self,
             "Status register read: byte: {:02X} in_display_area: {} vblank: {} ",
             byte,
-            self.in_display_area, 
+            self.in_display_area,
             self.in_crtc_vblank
         );
 
@@ -1356,7 +1313,6 @@ impl CGACard {
     /// Handle write to the Color Control register. This register controls the palette selection
     /// and background/overscan color (foreground color in high res graphics mode)
     fn handle_cc_register_write(&mut self, data: u8) {
-
         self.cc_register = data;
         self.update_palette();
 
@@ -1364,7 +1320,6 @@ impl CGACard {
     }
 
     fn update_palette(&mut self) {
-
         if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
             self.cc_palette = 4; // Select Red, Cyan and White palette (undocumented)
         }
@@ -1390,9 +1345,8 @@ impl CGACard {
 
     /// Swaps the front and back buffers by exchanging indices.
     fn swap(&mut self) {
-
         //std::mem::swap(&mut self.back_buf, &mut self.front_buf);
-        
+
         if self.back_buf == 0 {
             self.front_buf = 0;
             self.back_buf = 1;
@@ -1401,18 +1355,17 @@ impl CGACard {
             self.front_buf = 1;
             self.back_buf = 0;
         }
-        
+
         self.buf[self.back_buf].fill(0);
-    }    
+    }
 
     /// Return the bit value at (col,row) of the given font glyph
     fn get_glyph_bit(glyph: u8, col: u8, row: u8) -> bool {
-
         debug_assert!(col < CGA_HCHAR_CLOCK);
         //debug_assert!(row < CRTC_CHAR_CLOCK);
         let row_masked = row & 0x7;
 
-        // Calculate byte offset 
+        // Calculate byte offset
         let glyph_offset: usize = (row_masked as usize * CGA_FONT_SPAN) + glyph as usize;
         CGA_FONT[glyph_offset] & (0x01 << (7 - col)) != 0
     }
@@ -1420,7 +1373,6 @@ impl CGACard {
     /// Set the character attributes for the current character.
     /// This applies to text mode only, but is computed in all modes at appropriate times.
     fn set_char_addr(&mut self) {
-
         // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
         let addr = (self.vma & CGA_TEXT_MODE_WRAP) << 1;
 
@@ -1438,9 +1390,9 @@ impl CGACard {
         }
 
         self.cur_fg = self.cur_attr & 0x0F;
-        
-        // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors 
-        // are available. 
+
+        // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors
+        // are available.
         // If blinking is disabled, all 16 colors are available as background attributes.
         if self.mode_blinking {
             self.cur_bg = (self.cur_attr >> 4) & 0x07;
@@ -1456,13 +1408,10 @@ impl CGACard {
         //(self.cur_fg, self.cur_bg) = ATTRIBUTE_TABLE[self.cur_attr as usize];
     }
 
-
-
-    /// Get the 64-bit value representing the specified row of the specified character 
+    /// Get the 64-bit value representing the specified row of the specified character
     /// glyph in high-resolution text mode.
     #[inline]
     pub fn get_hchar_glyph_row(&self, glyph: usize, row: usize) -> u64 {
-
         if self.cur_blink && !self.blink_state {
             CGA_COLORS_U64[self.cur_bg as usize]
         }
@@ -1470,7 +1419,8 @@ impl CGACard {
             let glyph_row_base = CGA_HIRES_GLYPH_TABLE[glyph & 0xFF][row];
 
             // Combine glyph mask with foreground and background colors.
-            glyph_row_base & CGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base & CGA_COLORS_U64[self.cur_bg as usize]
+            glyph_row_base & CGA_COLORS_U64[self.cur_fg as usize]
+                | !glyph_row_base & CGA_COLORS_U64[self.cur_bg as usize]
         }
     }
 
@@ -1478,7 +1428,6 @@ impl CGACard {
     /// glyph in low-resolution (40-column) mode.
     #[inline]
     pub fn get_lchar_glyph_rows(&self, glyph: usize, row: usize) -> (u64, u64) {
-
         if self.cur_blink && !self.blink_state {
             let glyph = CGA_COLORS_U64[self.cur_bg as usize];
             (glyph, glyph)
@@ -1488,8 +1437,10 @@ impl CGACard {
             let glyph_row_base_1 = CGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][1][row];
 
             // Combine glyph mask with foreground and background colors.
-            let glyph0 = glyph_row_base_0 & CGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base_0 & CGA_COLORS_U64[self.cur_bg as usize];
-            let glyph1 = glyph_row_base_1 & CGA_COLORS_U64[self.cur_fg as usize] | !glyph_row_base_1 & CGA_COLORS_U64[self.cur_bg as usize];
+            let glyph0 = glyph_row_base_0 & CGA_COLORS_U64[self.cur_fg as usize]
+                | !glyph_row_base_0 & CGA_COLORS_U64[self.cur_bg as usize];
+            let glyph1 = glyph_row_base_1 & CGA_COLORS_U64[self.cur_fg as usize]
+                | !glyph_row_base_1 & CGA_COLORS_U64[self.cur_bg as usize];
 
             (glyph0, glyph1)
         }
@@ -1502,9 +1453,9 @@ impl CGACard {
 
         // Do cursor if visible, enabled and defined
         if     self.vma == self.crtc_cursor_address
-            && self.cursor_status 
+            && self.cursor_status
             && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize] 
+            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
         {
             self.draw_solid_char(self.cur_fg);
         }
@@ -1514,7 +1465,7 @@ impl CGACard {
                     true => {
                         if self.cur_blink {
                             if self.blink_state { self.cur_fg } else { self.cur_bg }
-                        } 
+                        }
                         else {
                             self.cur_fg
                         }
@@ -1536,10 +1487,7 @@ impl CGACard {
     }
     */
 
-
-
     pub fn get_lowres_pixel_color(&self, row: u8, col: u8) -> u8 {
-
         let base_addr = self.get_gfx_addr(row);
 
         let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
@@ -1558,34 +1506,33 @@ impl CGACard {
     /// byte (vma)
     #[inline]
     pub fn get_lowres_gfx_lchar(&self, row: u8) -> (&(u64, u64), &(u64, u64)) {
-
         let base_addr = self.get_gfx_addr(row);
         (
             &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr] as usize],
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr + 1] as usize]
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr + 1] as usize],
         )
     }
 
     /// Calculate the byte address given the current value of vma; given that the address
     /// programmed into the CRTC start register is interpreted by the CGA as a word address.
-    /// In graphics mode, the row counter determines whether address line A12 from the 
+    /// In graphics mode, the row counter determines whether address line A12 from the
     /// CRTC is set. This effectively creates a 0x2000 byte offset for odd character rows.
     #[inline]
     pub fn get_gfx_addr(&self, row: u8) -> usize {
         let row_offset = if (row & 0x01) != 0 { 0x1000 } else { 0 };
         let addr = (self.vma & 0x0FFF | row_offset) << 1;
-        addr 
+        addr
     }
 
     pub fn get_screen_ticks(&self) -> u64 {
         self.cur_screen_cycles
     }
-    
+
     /*
 
     /// Execute one CGA character.
     pub fn tick_char(&mut self) {
-        
+
         // sink_cycles must be factor of 8
         //assert!((self.sink_cycles & 0x07) == 0);
 
@@ -1600,11 +1547,11 @@ impl CGACard {
 
         self.cycles += 8;
         self.cur_screen_cycles += 8;
-        
+
         // Don't execute even character clocks in low-res mode
         if self.clock_divisor == 2 && (self.cycles & 0x0F == 0) {
             log::trace!("skipping odd hchar: {:X}", self.cycles);
-            return 
+            return
         }
 
         // Only draw if marty_render buffer address is in bounds.
@@ -1616,7 +1563,7 @@ impl CGACard {
                 }
                 else if self.mode_hires_gfx {
                     self.draw_hires_gfx_mode_char();
-                }   
+                }
                 else {
                     self.draw_lowres_gfx_mode_char();
                 }
@@ -1668,7 +1615,6 @@ impl CGACard {
 
     /// Execute one high resolution character clock.
     pub fn tick_hchar(&mut self) {
-
         // sink_cycles must be factor of 8
         // assert_eq!(self.sink_cycles & 0x07, 0);
 
@@ -1678,12 +1624,12 @@ impl CGACard {
 
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(8);
-            return
+            return;
         }
 
         // Cycles must be a factor of 8 and char_clock == 8
         assert_eq!(self.cycles & 0x07, 0);
-        assert_eq!(self.char_clock, 8);        
+        assert_eq!(self.char_clock, 8);
 
         self.cycles += 8;
         self.cur_screen_cycles += 8;
@@ -1725,7 +1671,6 @@ impl CGACard {
                 }
             }
             else {
-
                 self.draw_solid_hchar(CGA_DEBUG2_COLOR);
                 //log::warn!("invalid display state...");
                 //self.dump_status();
@@ -1747,8 +1692,12 @@ impl CGACard {
         }
 
         if self.cycles & self.char_clock_mask != 0 {
-            log::error!("tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
-        }  
+            log::error!(
+                "tick_hchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
+                self.cycles,
+                self.char_clock_mask
+            );
+        }
 
         self.tick_crtc_char();
         self.update_clock();
@@ -1756,7 +1705,6 @@ impl CGACard {
 
     /// Execute one low resolution character clock.
     pub fn tick_lchar(&mut self) {
-        
         // Cycles must be a factor of 16 and char_clock == 16
         assert_eq!(self.cycles & 0x0F, 0);
         assert_eq!(self.char_clock, 16);
@@ -1772,7 +1720,7 @@ impl CGACard {
 
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(16);
-            return
+            return;
         }
 
         self.cycles += 16;
@@ -1811,7 +1759,7 @@ impl CGACard {
                     //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
                     self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
                 }
-                else {                
+                else {
                     self.draw_solid_lchar(self.cc_overscan_color);
                 }
             }
@@ -1834,8 +1782,12 @@ impl CGACard {
         }
 
         if self.cycles & self.char_clock_mask != 0 {
-            log::error!("tick_lchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
-        }  
+            log::error!(
+                "tick_lchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
+                self.cycles,
+                self.char_clock_mask
+            );
+        }
 
         self.tick_crtc_char();
         self.update_clock();
@@ -1844,7 +1796,7 @@ impl CGACard {
     pub fn debug_tick2(&mut self) {
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(1);
-            return
+            return;
         }
         self.cycles += 1;
         self.cur_screen_cycles += 1;
@@ -1874,20 +1826,19 @@ impl CGACard {
 
         if self.rba != saved_rba + self.clock_divisor as usize {
             log::warn!("bad rba increment");
-        }  
+        }
 
-        // Done with the current character      
+        // Done with the current character
         if self.char_col == CGA_HCHAR_CLOCK {
             self.tick_crtc_char();
-        }    
+        }
     }
 
     /// Execute one CGA clock cycle.
     pub fn tick(&mut self) {
-
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(1);
-            return
+            return;
         }
         self.cycles += 1;
         self.cur_screen_cycles += 1;
@@ -1907,7 +1858,7 @@ impl CGACard {
                 }
                 else if self.mode_hires_gfx {
                     self.draw_hires_gfx_mode_pixel();
-                }   
+                }
                 else {
                     self.draw_lowres_gfx_mode_pixel();
                 }
@@ -1957,13 +1908,13 @@ impl CGACard {
             self.monitor_hsc += self.clock_divisor as u32;
 
             if self.monitor_hsc == CGA_HSYNC_WIDTH {
-                // We reached the end of the hsync period. Reset the beam to the 
+                // We reached the end of the hsync period. Reset the beam to the
                 // left, one scanline lower.
                 self.beam_x = 0;
                 self.beam_y += 1;
                 self.in_monitor_hsync = false;
                 self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-                
+
                 // draw diagnostic pixel
                 if self.rba < CGA_MAX_CLOCK {
                     self.buf[self.back_buf][self.rba] = 14;
@@ -1985,21 +1936,24 @@ impl CGACard {
 
         if self.rba != saved_rba + self.clock_divisor as usize {
             log::warn!("bad rba increment");
-        }  
+        }
 
-        // Done with the current character      
+        // Done with the current character
         if self.char_col == CGA_HCHAR_CLOCK {
             if self.cycles & self.char_clock_mask != 0 {
-                log::error!("tick(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
-            }            
+                log::error!(
+                    "tick(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
+                    self.cycles,
+                    self.char_clock_mask
+                );
+            }
             self.tick_crtc_char();
             self.update_clock();
-        }              
+        }
     }
 
     /// Update the CRTC logic for next character.
     pub fn tick_crtc_char(&mut self) {
-
         // Update horizontal character counter
         self.hcc_c0 = self.hcc_c0.wrapping_add(1);
         if self.hcc_c0 == 0 {
@@ -2008,7 +1962,7 @@ impl CGACard {
                 // We are at the first character of a CRTC frame. Update start address.
                 self.vma = self.crtc_frame_address;
             }
-        }     
+        }
 
         if self.hcc_c0 == 0 && self.vcc_c4 == 0 {
             // We are at the first character of a CRTC frame. Update start address.
@@ -2024,7 +1978,6 @@ impl CGACard {
 
         // Process horizontal blanking period
         if self.in_crtc_hblank {
-
             // Increment horizontal sync counter (wrapping)
 
             /*
@@ -2036,9 +1989,9 @@ impl CGACard {
             //self.hsc_c3l = (self.hsc_c3l + 1) & 0x0F;
             self.hsc_c3l = self.hsc_c3l.wrapping_add(1);
 
-            // Implement a fixed hsync width from the monitor's perspective - 
+            // Implement a fixed hsync width from the monitor's perspective -
             // A wider programmed hsync width than these values shifts the displayed image to the right.
-            let hsync_target = if self.clock_divisor == 1 { 
+            let hsync_target = if self.clock_divisor == 1 {
                 std::cmp::min(10, self.crtc_sync_width)
             }
             else {
@@ -2056,28 +2009,26 @@ impl CGACard {
 
                 // END OF LOGICAL SCANLINE
                 if self.in_crtc_vblank {
-                
                     //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
                     if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
-
                         self.in_last_vblank_line = true;
                         // We are leaving vblank period. Generate a frame.
 
-                        // Previously, we generated frames upon reaching vertical total. This was convenient as 
+                        // Previously, we generated frames upon reaching vertical total. This was convenient as
                         // the display area would be at the top of the marty_render buffer and both overscan periods
                         // beneath it.
-                        // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple 
+                        // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple
                         // 'screens' per frame in between vsyncs. To enable these tricks to work, we must marty_render
-                        // like a monitor would.                        
+                        // like a monitor would.
 
                         self.vsc_c3h = 0;
                         self.do_vsync();
-                        return
-                    }                        
+                        return;
+                    }
                 }
 
                 self.scanline += 1;
-                
+
                 // Reset beam to left of screen if we haven't already
                 if self.beam_x > 0 {
                     self.beam_y += 1;
@@ -2093,7 +2044,7 @@ impl CGACard {
             if self.hsc_c3l == self.crtc_sync_width {
                 self.in_crtc_hblank = false;
                 self.hsc_c3l = 0;
-            }            
+            }
         }
 
         if self.hcc_c0 == self.crtc_horizontal_displayed {
@@ -2142,7 +2093,7 @@ impl CGACard {
             self.vlc_c9 += 1;
             // Return video memory address to starting position for next character row
             self.vma = self.vma_t;
-            
+
             // Reset the current character glyph to start of row
             self.set_char_addr();
 
@@ -2152,9 +2103,9 @@ impl CGACard {
                     self.in_display_area = true;
                 }
             }
-            
-            if self.vlc_c9 > self.crtc_maximum_scanline_address  {
-                // C9 == R9 We finished drawing this row of characters 
+
+            if self.vlc_c9 > self.crtc_maximum_scanline_address {
+                // C9 == R9 We finished drawing this row of characters
 
                 self.vlc_c9 = 0;
                 // Advance Vertical Character Counter
@@ -2163,7 +2114,7 @@ impl CGACard {
                 // Set vma to starting position for next character row
                 //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
                 self.vma = self.vma_t;
-                
+
                 // Load next char + attr
                 self.set_char_addr();
 
@@ -2183,7 +2134,7 @@ impl CGACard {
                 self.in_display_area = false;
                 self.vborder = true;
             }
-            
+
             /*
             if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
 
@@ -2196,16 +2147,16 @@ impl CGACard {
                     self.vcc_c4 = 0;
                     self.vtac_c5 = 0;
                     self.vlc_c9 = 0;
-                    self.char_col = 0;                            
+                    self.char_col = 0;
                     self.crtc_frame_address = self.crtc_start_address;
                     self.vma = self.crtc_start_address;
                     self.vma_t = self.vma;
                     self.in_display_area = true;
                     self.vborder = false;
                     self.in_crtc_vblank = false;
-                    
+
                     // Load first char + attr
-                    self.set_char_addr();     
+                    self.set_char_addr();
                 }
             }
             */
@@ -2218,7 +2169,7 @@ impl CGACard {
             if self.in_vta {
                 // We are in vertical total adjust.
                 self.vtac_c5 += 1;
-                
+
                 if self.vtac_c5 > self.crtc_vertical_total_adjust {
                     // We have reached vertical total adjust. We are at the end of the top overscan.
                     self.in_vta = false;
@@ -2227,32 +2178,31 @@ impl CGACard {
                     self.hcc_c0 = 0;
                     self.vcc_c4 = 0;
                     self.vlc_c9 = 0;
-                    self.char_col = 0;                            
+                    self.char_col = 0;
                     self.crtc_frame_address = self.crtc_start_address;
                     self.vma = self.crtc_start_address;
                     self.vma_t = self.vma;
                     self.in_display_area = true;
                     self.vborder = false;
                     self.in_crtc_vblank = false;
-                    
+
                     // Load first char + attr
-                    self.set_char_addr();     
+                    self.set_char_addr();
                 }
             }
-        }   
+        }
     }
 
     pub fn do_vsync(&mut self) {
-
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
 
         if self.cycles_per_vsync > 300000 {
             log::warn!(
-                "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}", 
+                "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}",
                 self.char_clock,
-                self.cycles_per_vsync, 
+                self.cycles_per_vsync,
                 self.beam_y
             );
         }
@@ -2260,19 +2210,22 @@ impl CGACard {
         // Only do a vsync if we are past the minimum scanline #.
         // A monitor will refuse to vsync too quickly.
         if self.beam_y > CGA_MONITOR_VSYNC_MIN {
-
             // vblank remains set through the entire last line, including the right overscan of the new screen.
             // So we need to delay resetting vblank flag until then.
             //self.in_crtc_vblank = false;
-            
+
             if self.beam_y > 258 && self.beam_y < 262 {
                 // This is a "short" frame. Calculate delta.
                 let _delta_y = 262 - self.beam_y;
-                
+
                 //self.sink_cycles = delta_y * 912;
 
                 if self.cycles & self.char_clock_mask != 0 {
-                    log::error!("vsync out of phase with cclock: cycles: {} mask: {}", self.cycles, self.char_clock_mask);
+                    log::error!(
+                        "vsync out of phase with cclock: cycles: {} mask: {}",
+                        self.cycles,
+                        self.char_clock_mask
+                    );
                 }
                 //log::trace!("sink_cycles: {}", self.sink_cycles);
             }
@@ -2284,7 +2237,7 @@ impl CGACard {
 
             // Width is total characters * character width * clock_divisor.
             // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
-            self.extents.visible_w = 
+            self.extents.visible_w =
                 self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32 * self.clock_divisor as u32;
 
             trace_regs!(self);
@@ -2293,18 +2246,17 @@ impl CGACard {
             self.scanline = 0;
             self.frame_count += 1;
 
-            // Save the current mode byte, used for composite rendering. 
-            // The mode could have changed several times per frame, but I am not sure how the composite rendering should 
+            // Save the current mode byte, used for composite rendering.
+            // The mode could have changed several times per frame, but I am not sure how the composite rendering should
             // really handle that...
             self.extents.mode_byte = self.mode_byte;
 
             // Swap the display buffers
-            self.swap();   
+            self.swap();
         }
     }
 
     pub fn dump_status(&self) {
-
         println!("{}", self.hcc_c0);
         println!("{}", self.vlc_c9);
         println!("{}", self.vcc_c4);
@@ -2313,4 +2265,3 @@ impl CGACard {
         println!("{}", self.vtac_c5);
     }
 }
-
