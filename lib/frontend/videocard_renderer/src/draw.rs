@@ -29,8 +29,9 @@
     Drawing routines for VideoRenderer
 */
 
-use super::*;
 use crate::{consts::*, resize::*};
+
+use super::*;
 
 impl VideoRenderer {
     pub fn clear(&mut self) {

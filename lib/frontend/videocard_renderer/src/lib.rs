@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -39,72 +39,38 @@
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
-use std::path::Path;
-use std::mem::size_of;
-use std::sync::{Arc, Mutex};
-use std::marker::PhantomData;
-
-pub use display_backend_trait::DisplayBackend;
-use marty_core::videocard::RenderBpp;
-
-pub mod consts;
-pub mod color;
-pub mod resize;
-pub mod draw;
-pub mod composite;
-// Reenigne composite
-pub mod composite_new;
-
-// Re-export submodules
-pub use self::resize::*;
-pub use self::composite::*;
-pub use self::color::*;
-pub use self::consts::*;
-
-use composite_new::{ReCompositeContext, ReCompositeBuffers};
-
-use marty_core::{
-    videocard::{VideoType, CGAColor, CGAPalette, DisplayExtents, DisplayMode},
-    devices::cga,
-    file_util
+use std::{
+    mem::size_of,
+    path::Path,
 };
 
 use image;
 use log;
-pub use marty_pixels_scaler::{ScalerMode, ScalerOption, ScalerFilter, DisplayScaler};
 
-#[derive (Copy, Clone, Debug, Eq, PartialEq)]
-pub enum ScalingMode {
-    Integer = 0,
-    Scale = 1,
-    Stretch = 2
-}
+use composite_new::{ReCompositeBuffers, ReCompositeContext};
+pub use display_backend_trait::DisplayBackend;
+use marty_core::{
+    devices::cga,
+    file_util,
+    videocard::{CGAColor, CGAPalette, DisplayExtents, DisplayMode, VideoType},
+};
+use marty_core::videocard::RenderBpp;
 
-/*
-impl Default for ScalingMode {
-    fn default() -> Self {
-        ScalingMode::Integer
-    }
-}
+// Re-export submodules
+pub use self::{color::*, composite::*, consts::*, resize::*};
 
-pub const SCALING_MODES: [ScalingMode; 3] = [
-    ScalingMode::Integer,
-    ScalingMode::Scale,
-    ScalingMode::Stretch,
-];
-*/
+pub mod color;
+pub mod composite;
+pub mod consts;
+pub mod draw;
+pub mod resize;
+// Reenigne composite
+pub mod composite_new;
 
-pub const SCALING_MODES: [ScalerMode; 4] = [
-    ScalerMode::None,
-    ScalerMode::Integer,
-    ScalerMode::Fit,
-    ScalerMode::Stretch,
-];
-
-#[derive (Copy, Clone, Default, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub struct VideoDimensions {
     pub w: u32,
-    pub h: u32
+    pub h: u32,
 }
 
 impl From<(u32, u32)> for VideoDimensions {
@@ -119,26 +85,23 @@ impl VideoDimensions {
     }
 }
 
-
-
-#[derive (Copy, Clone, Default)]
-#[derive(PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub enum AspectCorrectionMode {
     #[default]
     None,
     Software,
-    Hardware
+    Hardware,
 }
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct VideoParams {
-    pub render: VideoDimensions,                    // The size of the internal marty_render buffer before aspect correction.
-    pub aspect_corrected: VideoDimensions,          // The size of the internal marty_render buffer after aspect correction.
-    pub backend: VideoDimensions,                   // The size of the backend buffer.
-    pub surface: VideoDimensions,                   // The size of the backend surface (window client area)
-    pub double_scan: bool,                          // Whether to double rows when rendering into the internal buffer.
-    pub aspect_correction: AspectCorrectionMode,    // Determines how to handle aspect correction.
-    pub composite_params: CompositeParams,          // Parameters used for composite emulation.
+    pub render: VideoDimensions, // The size of the internal marty_render buffer before aspect correction.
+    pub aspect_corrected: VideoDimensions, // The size of the internal marty_render buffer after aspect correction.
+    pub backend: VideoDimensions, // The size of the backend buffer.
+    pub surface: VideoDimensions, // The size of the backend surface (window client area)
+    pub double_scan: bool,       // Whether to double rows when rendering into the internal buffer.
+    pub aspect_correction: AspectCorrectionMode, // Determines how to handle aspect correction.
+    pub composite_params: CompositeParams, // Parameters used for composite emulation.
     pub bpp: RenderBpp,
 }
 
@@ -157,7 +120,7 @@ impl Default for VideoParams {
     }
 }
 
-#[derive (Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct AspectRatio {
     pub h: u32,
     pub v: u32,
@@ -165,10 +128,7 @@ pub struct AspectRatio {
 
 impl Default for AspectRatio {
     fn default() -> Self {
-        Self {
-            h: 4,
-            v: 3
-        }
+        Self { h: 4, v: 3 }
     }
 }
 
@@ -178,14 +138,14 @@ impl AspectRatio {
     }
 }
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct CompositeParams {
     pub phase: usize,
     pub contrast: f64,
     pub hue: f64,
     pub sat: f64,
     pub luma: f64,
-    pub new_cga: bool
+    pub new_cga: bool,
 }
 
 impl Default for CompositeParams {
@@ -201,34 +161,7 @@ impl Default for CompositeParams {
     }
 }
 
-#[derive (Copy, Clone, Debug)]
-pub struct ScalerParams {
-    pub filter: ScalerFilter,
-    pub crt_effect: bool,
-    pub crt_hcurvature: f32,
-    pub crt_vcurvature: f32,
-    pub crt_cornerradius: f32,
-    pub crt_scanlines: bool,
-    pub crt_phosphor_type: PhosphorType,
-    pub gamma: f32,
-}
-
-impl Default for ScalerParams {
-    fn default() -> Self {
-        Self {
-            filter: ScalerFilter::Linear,
-            crt_effect: false,
-            crt_hcurvature: 0.0,
-            crt_vcurvature: 0.0,
-            crt_cornerradius: 0.0,
-            crt_scanlines: false,
-            crt_phosphor_type: PhosphorType::Color,
-            gamma: 1.0,
-        }
-    }
-}
-
-#[derive (Copy, Clone, Debug, Default, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum PhosphorType {
     #[default]
     Color,
@@ -237,16 +170,16 @@ pub enum PhosphorType {
     Amber,
 }
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub enum RenderColor {
     CgaIndex(u8),
-    Rgb(u8, u8, u8)
+    Rgb(u8, u8, u8),
 }
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct DebugRenderParams {
     pub draw_scanline: Option<u32>,
-    pub draw_scanline_color: Option<RenderColor>
+    pub draw_scanline_color: Option<RenderColor>,
 }
 
 pub struct VideoRenderer {
@@ -260,13 +193,13 @@ pub struct VideoRenderer {
 
     // Legacy composite stuff
     composite_buf: Option<Vec<u8>>,
-    sync_table_w: u32,
-    sync_table: Vec<(f32, f32, f32)>,
+    sync_table_w:  u32,
+    sync_table:    Vec<(f32, f32, f32)>,
 
     // Reenigne composite stuff
-    composite_ctx: ReCompositeContext,
+    composite_ctx:  ReCompositeContext,
     composite_bufs: ReCompositeBuffers,
-    last_cga_mode: u8,
+    last_cga_mode:  u8,
 
     // Composite adjustments
     composite_params: CompositeParams,
@@ -274,21 +207,14 @@ pub struct VideoRenderer {
 }
 
 impl VideoRenderer {
-    pub fn new(
-        video_type: VideoType,
-    ) -> Self {
-
+    pub fn new(video_type: VideoType) -> Self {
         // Create a buffer to hold composite conversion of CGA graphics.
         // This buffer will need to be twice as large as the largest possible
-        // CGA screen (CGA_MAX_CLOCK * 4) to account for half-hdots used in the 
+        // CGA screen (CGA_MAX_CLOCK * 4) to account for half-hdots used in the
         // composite conversion process.
         let composite_vec_opt = match video_type {
-            VideoType::CGA => {
-                Some(vec![0; cga::CGA_MAX_CLOCK * 4])
-            }
-            _ => {
-                None
-            }
+            VideoType::CGA => Some(vec![0; cga::CGA_MAX_CLOCK * 4]),
+            _ => None,
         };
 
         Self {
@@ -351,7 +277,7 @@ impl VideoRenderer {
         if let Some(ref mut margin_callback) = self.on_margin {
             let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
             margin_callback(&mut *scaler, l, r, t, b);
-        }     
+        }
     }
 
      */
@@ -384,8 +310,7 @@ impl VideoRenderer {
      */
 
     /// Resizes the internal rendering buffer to the specified dimensions, before aspect correction.
-    pub fn resize(&mut self, new: VideoDimensions ) {
-
+    pub fn resize(&mut self, new: VideoDimensions) {
         self.params.render = new;
 
         let mut new_aspect = self.params.render;
@@ -423,47 +348,41 @@ impl VideoRenderer {
     // Given the new specified dimensions, returns a bool if the dimensions require resizing
     // the internal buffer.
     pub fn would_resize(&self, new: VideoDimensions) -> bool {
-
         match self.params.aspect_correction {
             AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
                 if self.params.render != new {
-                    return true
+                    return true;
                 }
             }
             AspectCorrectionMode::Software => {
                 let new_aspect = VideoRenderer::get_aspect_corrected_res(new, self.aspect_ratio);
                 if self.params.aspect_corrected != new_aspect {
-                    return true
+                    return true;
                 }
             }
         }
         false
     }
-    
+
     pub fn get_buf_dimensions(&mut self) -> VideoDimensions {
         self.params.render
     }
 
     pub fn get_display_dimensions(&mut self) -> VideoDimensions {
         match self.params.aspect_correction {
-            AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
-                self.params.render
-            }
-            AspectCorrectionMode::Software => {
-                self.params.aspect_corrected
-            }
+            AspectCorrectionMode::None | AspectCorrectionMode::Hardware => self.params.render,
+            AspectCorrectionMode::Software => self.params.aspect_corrected,
         }
     }
 
     pub fn set_aspect_ratio(&mut self, new_aspect: Option<AspectRatio>) {
-
         if let Some(aspect) = new_aspect {
             if self.aspect_ratio != new_aspect {
                 // Aspect ratio is changing.
                 log::debug!("set_aspect_ratio(): Updating aspect ratio.");
                 let desired_ratio: f64 = aspect.h as f64 / aspect.v as f64;
                 let adjusted_h = (self.params.render.w as f64 / desired_ratio) as u32;
-    
+
                 self.params.aspect_corrected.h = adjusted_h;
                 self.aspect_ratio = Some(aspect);
             }
@@ -516,15 +435,14 @@ impl VideoRenderer {
     /// Given the specified resolution and desired aspect ratio, return an aspect corrected resolution
     /// by adjusting the vertical resolution (Horizontal resolution will never be changed)
     pub fn get_aspect_corrected_res(res: VideoDimensions, aspect: Option<AspectRatio>) -> VideoDimensions {
-
         if let Some(aspect) = aspect {
             let desired_ratio: f64 = aspect.h as f64 / aspect.v as f64;
 
             let adjusted_h = (res.w as f64 / desired_ratio) as u32; // Result should be slightly larger than integer, ok to cast
-    
-            return (res.w, adjusted_h).into()
+
+            return (res.w, adjusted_h).into();
         }
-        
+
         (res.w, res.h).into()
     }
 
@@ -566,24 +484,20 @@ impl VideoRenderer {
         */
     }
 
-    pub fn screenshot(
-        &self,
-        frame: &[u8],
-        path: &Path) 
-    {
-
+    pub fn screenshot(&self, frame: &[u8], path: &Path) {
         // Find first unique filename in screenshot dir
         let filename = file_util::find_unique_filename(path, "screenshot", ".png");
 
-        let frame_slice = &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
+        let frame_slice =
+            &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
 
         match image::save_buffer(
             filename.clone(),
             frame_slice,
             self.params.backend.w,
             self.params.backend.h,
-            image::ColorType::Rgba8) 
-        {
+            image::ColorType::Rgba8,
+        ) {
             Ok(_) => println!("Saved screenshot: {}", filename.display()),
             Err(e) => {
                 println!("Error writing screenshot: {}: {}", filename.display(), e)

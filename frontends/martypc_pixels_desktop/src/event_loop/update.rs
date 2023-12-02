@@ -29,22 +29,25 @@
     Process an event loop update
 */
 
-use std::path::PathBuf;
 use std::time::Instant;
+
 use winit::event_loop::EventLoopWindowTarget;
+
 use display_manager_wgpu::DisplayManager;
-use marty_core::breakpoints::BreakPointType;
-use marty_core::cpu_common::CpuOption;
-use marty_core::machine::{ExecutionState, MachineState};
-use marty_core::{machine, vhd};
-use marty_core::vhd::VirtualHardDisk;
-use marty_core::videocard::{ClockingMode, RenderMode};
-use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiOption, GuiWindow, PerformanceStats};
-use videocard_renderer::AspectRatio;
-use crate::{Emulator, FPS_TARGET, MICROS_PER_FRAME, MIN_RENDER_HEIGHT, MIN_RENDER_WIDTH};
-use crate::event_loop::egui_events::handle_egui_event;
-use crate::event_loop::egui_update::update_egui;
-use crate::event_loop::render_frame::render_frame;
+use marty_core::{
+    machine::ExecutionState,
+    videocard::RenderMode,
+};
+use marty_egui::GuiBoolean;
+
+use crate::{
+    Emulator,
+    event_loop::{egui_update::update_egui, render_frame::render_frame},
+    FPS_TARGET,
+    MICROS_PER_FRAME,
+    MIN_RENDER_HEIGHT,
+    MIN_RENDER_WIDTH,
+};
 
 pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     emu.stat_counter.current_ups += 1;
@@ -96,7 +99,6 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     emu.stat_counter.accumulated_us += elapsed_us;
 
     while emu.stat_counter.accumulated_us > MICROS_PER_FRAME as u128 {
-
         emu.stat_counter.accumulated_us -= MICROS_PER_FRAME as u128;
         emu.stat_counter.last_frame = Instant::now();
         emu.stat_counter.frame_count += 1;
@@ -128,34 +130,27 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
                     emu.mouse_data.l_button_was_pressed,
                     emu.mouse_data.r_button_was_pressed,
                     emu.mouse_data.frame_delta_x,
-                    emu.mouse_data.frame_delta_y
+                    emu.mouse_data.frame_delta_y,
                 );
 
                 // Handle release event
-                let l_release_state =
-                    if emu.mouse_data.l_button_was_released {
-                        false
-                    }
-                    else {
-                        emu.mouse_data.l_button_was_pressed
-                    };
+                let l_release_state = if emu.mouse_data.l_button_was_released {
+                    false
+                }
+                else {
+                    emu.mouse_data.l_button_was_pressed
+                };
 
-                let r_release_state =
-                    if emu.mouse_data.r_button_was_released {
-                        false
-                    }
-                    else {
-                        emu.mouse_data.r_button_was_pressed
-                    };
+                let r_release_state = if emu.mouse_data.r_button_was_released {
+                    false
+                }
+                else {
+                    emu.mouse_data.r_button_was_pressed
+                };
 
                 if emu.mouse_data.l_button_was_released || emu.mouse_data.r_button_was_released {
                     // Send release event
-                    mouse.update(
-                        l_release_state,
-                        r_release_state,
-                        0.0,
-                        0.0
-                    );
+                    mouse.update(l_release_state, r_release_state, 0.0, 0.0);
                 }
 
                 // Reset mouse for next frame
@@ -171,12 +166,18 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         if mhz != emu.stat_counter.cpu_mhz {
             emu.stat_counter.cycles_per_frame = (emu.machine.get_cpu_mhz() * 1000000.0 / FPS_TARGET) as u32;
             emu.stat_counter.cycle_target = emu.stat_counter.cycles_per_frame;
-            log::info!("CPU clock has changed to {}Mhz; new cycle target: {}", mhz, emu.stat_counter.cycle_target);
+            log::info!(
+                "CPU clock has changed to {}Mhz; new cycle target: {}",
+                mhz,
+                emu.stat_counter.cycle_target
+            );
             emu.stat_counter.cpu_mhz = mhz;
         }
 
         let emulation_start = Instant::now();
-        emu.stat_counter.instr_count += emu.machine.run(emu.stat_counter.cycle_target, &mut emu.exec_control.borrow_mut());
+        emu.stat_counter.instr_count += emu
+            .machine
+            .run(emu.stat_counter.cycle_target, &mut emu.exec_control.borrow_mut());
         emu.stat_counter.emulation_time = Instant::now() - emulation_start;
 
         // Add instructions to IPS counter
@@ -269,7 +270,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         // Render all videocards.
         emu.machine.for_each_videocard(|mut vci| {
-            let mut new_w= 0;
+            let mut new_w = 0;
             let mut new_h = 0;
 
             match vci.card.get_render_mode() {
@@ -283,19 +284,34 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
             // If CGA, we will double scanlines later in the renderer, so make our buffer twice
             // as high.
-            if vci.card.get_scanline_double() {
+
+            let doublescan = if vci.card.get_scanline_double() {
                 new_h = new_h * 2;
+                true
+            }
+            else {
+                false
+            };
+
+            // Resize the card.
+            if let Err(_) = emu.dm.on_card_resized(vci.id, new_w, new_h, doublescan) {
+                log::error!("Error resizing videocard");
             }
 
-            // Detect resolution changes and resize renderer.
+            // Detect resolution changes and resize card.
             if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
                 // Resolve video renderer by id.
-                if let Some(video) = emu.dm.get_renderer_by_card_id(vci.id) {
-                    if video.would_resize((new_w, new_h).into()) {
+                if let Some(renderer) = emu.dm.get_renderer_by_card_id(vci.id) {
+                    if renderer.would_resize((new_w, new_h).into()) {
                         // Resize renderer & pixels
-                        vci.card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
-                        log::debug!("Aperture changed. Setting front buffer resolution to ({},{})", new_w, new_h);
-                        video.resize((new_w, new_h).into());
+                        vci.card
+                            .write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
+                        log::debug!(
+                            "Aperture changed. Setting front buffer resolution to ({},{})",
+                            new_w,
+                            new_h
+                        );
+                        renderer.resize((new_w, new_h).into());
 
                         /*
                         if let Err(e) = pixels.resize_buffer(new_buf_size.w, new_buf_size.h) {
@@ -351,9 +367,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         emu.stat_counter.render_time = Instant::now() - render_start;
 
         // Update egui data
-
         update_egui(emu, elwt);
-
 
         // Render the current frame for all window display targets.
         render_frame(emu);
