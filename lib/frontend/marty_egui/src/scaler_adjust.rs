@@ -31,7 +31,7 @@
 */
 
 use crate::*;
-use marty_common::display_scaler::{PhosphorType, ScalerFilter, ScalerParams};
+use frontend_common::display_scaler::{PhosphorType, ScalerFilter, ScalerParams};
 
 pub struct ScalerAdjustControl {
     params: ScalerParams,
@@ -106,7 +106,7 @@ impl ScalerAdjustControl {
 
                 ui.label(egui::RichText::new("Barrel Distortion:").text_style(egui::TextStyle::Monospace));
                 if ui
-                    .add(egui::Slider::new(&mut self.params.crt_hcurvature, 0.0..=1.0))
+                    .add(egui::Slider::new(&mut self.params.crt_barrel_distortion, 0.0..=1.0))
                     .changed()
                 {
                     update = true;
@@ -123,7 +123,7 @@ impl ScalerAdjustControl {
 
                 ui.label(egui::RichText::new("Corner Radius:").text_style(egui::TextStyle::Monospace));
                 if ui
-                    .add(egui::Slider::new(&mut self.params.crt_cornerradius, 0.0..=1.0))
+                    .add(egui::Slider::new(&mut self.params.crt_corner_radius, 0.0..=1.0))
                     .changed()
                 {
                     update = true;

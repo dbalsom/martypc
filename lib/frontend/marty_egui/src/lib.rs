@@ -29,6 +29,8 @@
     MartyPC's implementation of an egui-based GUI.
 */
 
+extern crate core;
+
 use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
@@ -50,8 +52,8 @@ use egui::{
 };
 
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
-use marty_common::{
-    display_manager::DisplayManagerGuiOptions,
+use frontend_common::{
+    display_manager::{DisplayInfo, DisplayManagerGuiOptions},
     display_scaler::{ScalerMode, ScalerParams},
 };
 
@@ -222,7 +224,7 @@ pub struct GuiRenderContext {
 pub struct PerformanceStats {
     pub adapter: String,
     pub backend: String,
-
+    pub dti: Vec<DisplayInfo>,
     pub current_ups: u32,
     pub current_fps: u32,
     pub emulated_fps: u32,

@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "core",
-    "lib/frontend/common",
+    "lib/common",
+    "lib/frontend/frontend_common",
     "lib/frontend/videocard_renderer",
     "lib/frontend/marty_scaler_wgpu",
     "lib/frontend/display_manager_wgpu",
@@ -43,11 +44,13 @@ thiserror = "1.0.37"
 anyhow = "1.0"
 image = "0.24.1"
 log = "0.4.20"
+serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
+
 
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"
 branch = "marty_update_deps"
-
 
 [profile.release]
 #lto = true

@@ -42,7 +42,6 @@ impl VideoRenderer {
         input_buf: &[u8],
         output_buf: &mut [u8],
         extents: &DisplayExtents,
-        composite_enabled: bool,
         beam_pos: Option<(u32, u32)>,
     ) {
         let do_software_aspect = if let AspectCorrectionMode::Software = self.params.aspect_correction {
@@ -63,7 +62,7 @@ impl VideoRenderer {
 
         match self.video_type {
             VideoType::CGA => {
-                if composite_enabled {
+                if self.composite_enabled {
                     VideoRenderer::draw_cga_direct_composite_reenigne(
                         first_pass_buf,
                         self.params.render.w,

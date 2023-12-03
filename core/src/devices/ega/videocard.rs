@@ -115,12 +115,16 @@ impl VideoCard for EGACard {
         self.extents.double_scan
     }
 
-    fn get_display_buf(&self) -> &[u8] {
-        &self.buf[self.front_buf][..]
+    /// Return the u8 slice representing the requested buffer type.
+    fn get_buf(&self, buf_select: BufferSelect) -> &[u8] {
+        match buf_select {
+            BufferSelect::Back => &self.buf[self.back_buf][..],
+            BufferSelect::Front => &self.buf[self.front_buf][..],
+        }
     }
 
-    fn get_back_buf(&self) -> &[u8] {
-        &self.buf[self.back_buf][..]
+    fn get_display_buf(&self) -> &[u8] {
+        &self.buf[self.front_buf][..]
     }
 
     fn get_display_aperture(&self) -> (u32, u32) {

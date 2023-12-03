@@ -24,7 +24,7 @@
 
    ---------------------------------------------------------------------------
 
-   common::display_manager::mod.rs
+   frontend_common::display_manager::mod.rs
 
    Define the DisplayManager trait.
 
@@ -32,12 +32,20 @@
    graphics backend and windowing system combination.
 */
 use anyhow::Error;
-use std::{path::PathBuf};
+use marty_core::{cpu_808x::Displacement, machine::Machine};
+use std::{
+    fmt::{Display, Formatter},
+    path::PathBuf,
+};
 
 use crate::color::MartyColor;
-use marty_core::videocard::VideoCardId;
+pub use crate::types::display_target_dimensions::DisplayTargetDimensions;
+
+use crate::display_scaler::ScalerPreset;
+use marty_core::videocard::{VideoCardId, VideoType};
 use videocard_renderer::VideoRenderer;
 
+#[derive(Copy, Clone)]
 pub enum DisplayTargetType {
     WindowBackground { main_window: bool },
     EguiWidget,
@@ -49,9 +57,53 @@ impl Default for DisplayTargetType {
     }
 }
 
+impl Display for DisplayTargetType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DisplayTargetType::WindowBackground { .. } => {
+                write!(f, "Window")
+            }
+            DisplayTargetType::EguiWidget => {
+                write!(f, "EGUI Widget")
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct DisplayInfo {
+    pub dtype: DisplayTargetType,
+    pub vtype: Option<VideoType>,
+    pub vid:   Option<VideoCardId>,
+    pub name:  String,
+}
+
 pub struct DisplayManagerGuiOptions {
     pub theme_dark:  bool,
     pub theme_color: Option<u32>,
+}
+
+/// Options for windows targets. All dimensions are specified as inner size (client area)
+pub struct DisplayManagerWindowOptions {
+    pub size: DisplayTargetDimensions,
+    pub min_size: Option<DisplayTargetDimensions>,
+    pub max_size: Option<DisplayTargetDimensions>,
+    pub title: String,
+    pub resizable: bool,
+    pub always_on_top: bool,
+}
+
+impl Default for DisplayManagerWindowOptions {
+    fn default() -> Self {
+        Self {
+            size: Default::default(),
+            min_size: Default::default(),
+            max_size: Default::default(),
+            title: "New Window".to_string(),
+            resizable: false,
+            always_on_top: false,
+        }
+    }
 }
 
 /// The DisplayManager trait is implemented by a DisplayManager that combines
@@ -71,15 +123,21 @@ pub trait DisplayManager<B, G, Wi, W> {
 
     fn create_target(
         &mut self,
+        name: String,
         ttype: DisplayTargetType,
         wid: Option<Wi>,
         window: Option<&W>,
+        window_opts: Option<DisplayManagerWindowOptions>,
         card_id: Option<VideoCardId>,
         w: u32,
         h: u32,
         fill_color: Option<MartyColor>,
         gui_options: &DisplayManagerGuiOptions,
     ) -> Result<(), Error>;
+
+    /// Return a vector of DisplayInfo structs representing all displays in the manager. A reference
+    /// to a Machine must be provided to query video card parameters.
+    fn get_display_info(&self, machine: &Machine) -> Vec<DisplayInfo>;
 
     /// Return the associated Window given a c
     fn get_window_by_id(&self, wid: Wi) -> Option<&W>;
@@ -168,4 +226,11 @@ pub trait DisplayManager<B, G, Wi, W> {
     fn with_gui_by_wid<F>(&mut self, wid: Wi, f: F)
     where
         F: FnMut(&mut G);
+
+    /// Add the new scaler preset definition. It can then later be referenced by name via
+    /// get_scaler_preset().
+    fn add_scaler_preset(&mut self, preset: ScalerPreset);
+
+    /// Retrieve the scaler preset by name.
+    fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset>;
 }

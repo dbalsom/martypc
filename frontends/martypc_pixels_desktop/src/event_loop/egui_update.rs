@@ -131,12 +131,16 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         if let Some(renderer) = emu.dm.get_primary_renderer() {
             emu.gui.perf_viewer.update_video_data(renderer.get_params());
         }
+
+        let dti = emu.dm.get_display_info(&emu.machine);
+
         //emu.gui.perf_viewer.update_video_data(*video.params());
         emu.gui.perf_viewer.update_stats(&PerformanceStats {
             //adapter: adapter_name_str.clone(),
             //backend: backend_str.clone(),
             adapter: "fixme".to_string(),
             backend: "fixme".to_string(),
+            dti,
             current_ups: emu.stat_counter.ups,
             current_fps: emu.stat_counter.fps,
             emulated_fps: emu.stat_counter.emulated_fps,

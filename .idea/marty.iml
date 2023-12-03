@@ -17,11 +17,12 @@
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_egui/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/videocard_renderer/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/videocard_renderer/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/common/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/display_scaler_trait_rm/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_renderer/benches" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_renderer/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/lib/frontend/marty_scaler_wgpu/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/lib/frontend/frontend_common/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

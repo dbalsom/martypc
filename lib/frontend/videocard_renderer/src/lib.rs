@@ -39,22 +39,19 @@
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
-use std::{
-    mem::size_of,
-    path::Path,
-};
+use std::{mem::size_of, path::Path};
 
 use image;
 use log;
 
 use composite_new::{ReCompositeBuffers, ReCompositeContext};
 pub use display_backend_trait::DisplayBackend;
+use marty_common::VideoDimensions;
 use marty_core::{
     devices::cga,
     file_util,
-    videocard::{CGAColor, CGAPalette, DisplayExtents, DisplayMode, VideoType},
+    videocard::{BufferSelect, CGAColor, CGAPalette, DisplayExtents, DisplayMode, RenderBpp, VideoType},
 };
-use marty_core::videocard::RenderBpp;
 
 // Re-export submodules
 pub use self::{color::*, composite::*, consts::*, resize::*};
@@ -66,24 +63,6 @@ pub mod draw;
 pub mod resize;
 // Reenigne composite
 pub mod composite_new;
-
-#[derive(Copy, Clone, Default, PartialEq)]
-pub struct VideoDimensions {
-    pub w: u32,
-    pub h: u32,
-}
-
-impl From<(u32, u32)> for VideoDimensions {
-    fn from(t: (u32, u32)) -> Self {
-        VideoDimensions { w: t.0, h: t.1 }
-    }
-}
-
-impl VideoDimensions {
-    pub fn has_some_size(&self) -> bool {
-        self.w > 0 && self.h > 0
-    }
-}
 
 #[derive(Copy, Clone, Default, PartialEq)]
 pub enum AspectCorrectionMode {
@@ -202,8 +181,11 @@ pub struct VideoRenderer {
     last_cga_mode:  u8,
 
     // Composite adjustments
-    composite_params: CompositeParams,
-    resample_context: ResampleContext,
+    composite_enabled: bool,
+    composite_params:  CompositeParams,
+    resample_context:  ResampleContext,
+
+    buffer_select: BufferSelect,
 }
 
 impl VideoRenderer {
@@ -237,8 +219,11 @@ impl VideoRenderer {
             composite_bufs: ReCompositeBuffers::new(),
             last_cga_mode: 0,
 
+            composite_enabled: false,
             composite_params: Default::default(),
             resample_context: ResampleContext::new(),
+
+            buffer_select: BufferSelect::Front,
         }
     }
 
@@ -246,68 +231,17 @@ impl VideoRenderer {
         &self.params
     }
 
-    /*
-    pub fn resize_scaler(
-        &mut self,
-        backend: &mut Backend,
-        buf: VideoDimensions,
-        target: VideoDimensions,
-        surface: VideoDimensions) {
-
-        if buf.has_some_size() && surface.has_some_size() {
-            log::debug!(
-                "Resizing scaler to texture {}x{}, target: {}x{}, surface: {}x{}...",
-                buf.w, buf.h,
-                target.w, target.h,
-                surface.w, surface.h,
-            );
-
-            self.scaler.resize(
-                backend.get_backend_raw().unwrap(),
-                buf.w, buf.h,
-                target.w, target.h,
-                surface.w, surface.h
-            );
-        }
-    }
-     */
-
-    /*
-    pub fn set_scaler_margin(&mut self, l: u32, r: u32, t: u32, b: u32) {
-        if let Some(ref mut margin_callback) = self.on_margin {
-            let mut scaler = self.scaler.lock().expect("Failed to lock scaler");
-            margin_callback(&mut *scaler, l, r, t, b);
-        }
+    pub fn select_buffer(&mut self, selection: BufferSelect) {
+        self.buffer_select = selection;
     }
 
-     */
-
-    /*
-    pub  fn get_buffer<F>(&mut self) -> Option<&mut [u8]>
-    where
-        F: 'static + FnMut(&mut T) -> &mut [u8] + Send,
-    {
-        if let Some(ref mut get_buffer_callback) = self.on_get_buffer {
-            let mut backend = self.backend.lock().expect("Failed to lock backend");
-            return Some(get_buffer_callback(&mut *backend))
-        }
-        None
+    #[inline]
+    pub fn get_selected_buffer(&self) -> BufferSelect {
+        self.buffer_select
     }
-    */
-
-    /*
-
-    pub fn get_backend(&self) -> Arc<Mutex<T>> {
-        self.backend.clone()
+    pub fn set_composite(&mut self, state: bool) {
+        self.composite_enabled = state;
     }
-     */
-
-    /*
-    pub fn has_gui(&self) -> bool {
-        self.has_gui
-    }
-
-     */
 
     /// Resizes the internal rendering buffer to the specified dimensions, before aspect correction.
     pub fn resize(&mut self, new: VideoDimensions) {

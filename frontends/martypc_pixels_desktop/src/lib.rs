@@ -36,7 +36,6 @@
 #![allow(clippy::too_many_arguments)]
 #![forbid(unsafe_code)]
 
-
 use std::{
     cell::RefCell,
     ffi::OsString,
@@ -71,8 +70,6 @@ use crate::run_gentests::run_gentests;
 #[cfg(feature = "arduino_validator")]
 use crate::run_runtests::run_runtests;
 
-
-
 use marty_core::{
     cpu_common::CpuOption,
     devices::{hdc::HardDiskControllerType, keyboard::KeyboardModifiers},
@@ -81,7 +78,7 @@ use marty_core::{
     machine_manager::MACHINE_DESCS,
     rom_manager::{RomError, RomFeature, RomManager},
     sound::SoundPlayer,
-    vhd::{VirtualHardDisk},
+    vhd::VirtualHardDisk,
     vhd_manager::{VHDManager, VHDManagerError},
     videocard::{ClockingMode, VideoType},
 };
@@ -721,6 +718,7 @@ pub fn run() {
         GuiBoolean::CpuInstructionHistory,
         config.cpu.instruction_history.unwrap_or(false),
     );
+
     machine.set_cpu_option(CpuOption::InstructionHistory(
         config.cpu.instruction_history.unwrap_or(false),
     ));
@@ -904,7 +902,7 @@ pub fn run() {
             Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
                 Ok(vhd) => {
                     if let Some(hdc) = machine.hdc() {
-                        match hdc.set_vhd(0_usize, vhd) {
+                        match hdc.set_vhd(vhd_idx, vhd) {
                             Ok(_) => {
                                 log::info!(
                                     "VHD image {:?} successfully loaded into virtual drive: {}",

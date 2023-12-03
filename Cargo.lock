@@ -693,6 +693,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "bpaf",
+ "frontend_common",
  "log",
  "marty_common",
  "marty_core",
@@ -1053,6 +1054,7 @@ dependencies = [
  "anyhow",
  "config_toml_bpaf",
  "display_backend_pixels",
+ "frontend_common",
  "image",
  "log",
  "marty_common",
@@ -1485,6 +1487,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13624c2627564efccf4934284bdd98cbaa14e79b0b5a141218e507b3a823456"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "frontend_common"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "display_backend_trait",
+ "marty_common",
+ "marty_core",
+ "pixels 0.13.0 (git+https://github.com/dbalsom/pixels_martypc.git?branch=marty_update_deps)",
+ "serde",
+ "videocard_renderer",
+ "wgpu 0.18.0",
 ]
 
 [[package]]
@@ -2159,12 +2175,7 @@ dependencies = [
 name = "marty_common"
 version = "0.2.0"
 dependencies = [
- "anyhow",
- "marty_core",
- "pixels 0.13.0 (git+https://github.com/dbalsom/pixels_martypc.git?branch=marty_update_deps)",
  "serde",
- "videocard_renderer",
- "wgpu 0.18.0",
 ]
 
 [[package]]
@@ -2201,9 +2212,9 @@ dependencies = [
  "egui-wgpu 0.24.0",
  "egui-winit 0.24.0",
  "egui_extras",
+ "frontend_common",
  "image",
  "log",
- "marty_common",
  "marty_core",
  "pixels 0.13.0 (git+https://github.com/dbalsom/pixels_martypc.git?branch=marty_update_deps)",
  "regex",
@@ -2218,7 +2229,7 @@ name = "marty_pixels_scaler"
 version = "0.2.0"
 dependencies = [
  "bytemuck",
- "marty_common",
+ "frontend_common",
  "pixels 0.13.0 (git+https://github.com/dbalsom/pixels_martypc.git?branch=marty_update_deps)",
  "ultraviolet",
  "wgpu 0.18.0",
@@ -2289,12 +2300,12 @@ dependencies = [
  "env_logger",
  "error-iter",
  "flate2",
+ "frontend_common",
  "getrandom",
  "image",
  "instant",
  "js-sys",
  "log",
- "marty_common",
  "marty_core",
  "marty_egui",
  "marty_pixels_scaler",
@@ -4118,6 +4129,7 @@ dependencies = [
  "glam",
  "image",
  "log",
+ "marty_common",
  "marty_core",
  "rand",
 ]

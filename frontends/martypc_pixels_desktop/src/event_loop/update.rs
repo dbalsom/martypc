@@ -34,15 +34,12 @@ use std::time::Instant;
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
-use marty_core::{
-    machine::ExecutionState,
-    videocard::RenderMode,
-};
+use marty_core::{machine::ExecutionState, videocard::RenderMode};
 use marty_egui::GuiBoolean;
 
 use crate::{
-    Emulator,
     event_loop::{egui_update::update_egui, render_frame::render_frame},
+    Emulator,
     FPS_TARGET,
     MICROS_PER_FRAME,
     MIN_RENDER_HEIGHT,
@@ -268,7 +265,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         let render_start = Instant::now();
 
-        // Render all videocards.
+        // Check if any videocard has resized and handle it
         emu.machine.for_each_videocard(|vci| {
             let mut new_w = 0;
             let mut new_h = 0;
@@ -282,86 +279,11 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
                 }
             }
 
-            // If CGA, we will double scanlines later in the renderer, so make our buffer twice
-            // as high.
-
-            let doublescan = if vci.card.get_scanline_double() {
-                new_h = new_h * 2;
-                true
-            }
-            else {
-                false
-            };
-
+            // If the current graphics mode is doublescanned, we will inform the renderer
+            let doublescan = vci.card.get_scanline_double();
             // Resize the card.
             if let Err(_) = emu.dm.on_card_resized(vci.id, new_w, new_h, doublescan) {
                 log::error!("Error resizing videocard");
-            }
-
-            // Detect resolution changes and resize card.
-            if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
-                // Resolve video renderer by id.
-                if let Some(renderer) = emu.dm.get_renderer_by_card_id(vci.id) {
-                    if renderer.would_resize((new_w, new_h).into()) {
-                        // Resize renderer & pixels
-                        vci.card
-                            .write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
-                        log::debug!(
-                            "Aperture changed. Setting front buffer resolution to ({},{})",
-                            new_w,
-                            new_h
-                        );
-                        renderer.resize((new_w, new_h).into());
-
-                        /*
-                        if let Err(e) = pixels.resize_buffer(new_buf_size.w, new_buf_size.h) {
-                            log::error!("Failed to resize pixel pixel buffer: {}", e);
-                        }
-                        pixels.frame_mut().fill(0);
-                        */
-
-                        //VideoRenderer::set_alpha(pixels.frame_mut(), new_buf_size.w, new_buf_size.h, 255);
-                    }
-                }
-            }
-
-            // Render videocard
-            let _composite_enabled = emu.gui.get_option(GuiBoolean::CompositeDisplay).unwrap_or(false);
-            let beam_pos;
-            let videocard_buffer;
-
-            // Get the appropriate buffer depending on run mode. If execution is paused
-            // (debugging) show the back buffer instead of front buffer.
-            // TODO: Discriminate between paused in debug mode vs user paused state
-            match emu.exec_control.borrow_mut().get_state() {
-                ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
-                    if emu.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
-                        videocard_buffer = vci.card.get_back_buf();
-                    }
-                    else {
-                        videocard_buffer = vci.card.get_display_buf();
-                    }
-                    beam_pos = vci.card.get_beam_pos();
-                }
-                _ => {
-                    videocard_buffer = vci.card.get_display_buf();
-                    beam_pos = None;
-                }
-            }
-
-            let extents = vci.card.get_display_extents();
-
-            //log::debug!("extents: {}x{}", extents.field_w, extents.field_h);
-
-            if let Some(renderer) = emu.dm.get_renderer_by_card_id(vci.id) {
-                if renderer.get_mode_byte() != extents.mode_byte {
-                    // Mode byte has changed, recalculate composite parameters
-                    renderer.cga_direct_mode_update(extents.mode_byte);
-                    renderer.set_mode_byte(extents.mode_byte);
-                }
-
-                emu.dm.render_card(vci.id);
-                //video.draw_with_backend(videocard_buffer, &extents, composite_enabled, beam_pos);
             }
         });
         emu.stat_counter.render_time = Instant::now() - render_start;

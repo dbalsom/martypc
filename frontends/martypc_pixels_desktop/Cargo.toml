@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 display_backend_pixels = { path = "../../lib/backend/display_backend_pixels" }
 marty_core = { path = "../../core"}
-marty_common = { path = "../../lib/frontend/common" }
+frontend_common = { path = "../../lib/frontend/frontend_common" }
 videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
 display_manager_wgpu = { path = "../../lib/frontend/display_manager_wgpu" }
 

@@ -11,11 +11,12 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+marty_common = { path = "../../common" }
 log = "0.4"
 anyhow = "1.0.58"
 marty_core = { path = "../../../core" }
-marty_common = { path = "../common" }
+frontend_common = { path = "../frontend_common" }
 bpaf = { version = "0.7.7", features = ["derive"] }
 toml = "0.5.10"
-serde = { version = "1.0.107", features = ["derive"] }
-serde_derive = "1.0.107"
+serde = { workspace = true, features = ["derive"] }
+serde_derive.workspace = true

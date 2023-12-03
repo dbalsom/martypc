@@ -24,16 +24,16 @@
 
     --------------------------------------------------------------------------
 
-    common::lib.rs
+    frontend_common::lib.rs
 
     This library provides facilities, data types and traits and common to all
     front ends.
 
 */
 
-pub mod display_manager;
-
 pub mod color;
-
+pub mod constants;
+pub mod display_manager;
 #[cfg(feature = "use_wgpu")]
 pub mod display_scaler;
+pub mod types;

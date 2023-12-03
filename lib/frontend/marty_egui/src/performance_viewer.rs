@@ -35,11 +35,24 @@
 */
 
 use crate::*;
+use core::fmt;
+use egui::CollapsingHeader;
 use videocard_renderer::VideoParams;
 
 pub struct PerformanceViewerControl {
     stats: PerformanceStats,
     video_data: VideoParams,
+}
+
+struct DisplayOption<T>(Option<T>);
+
+impl<T: fmt::Debug> fmt::Debug for DisplayOption<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.0 {
+            Some(value) => write!(f, "{:?}", value),
+            None => write!(f, "None"),
+        }
+    }
 }
 
 impl PerformanceViewerControl {
@@ -61,6 +74,31 @@ impl PerformanceViewerControl {
 
                 ui.label("Backend: ");
                 ui.label(egui::RichText::new(format!("{}", self.stats.backend)));
+                ui.end_row();
+
+                for (i, dt) in self.stats.dti.iter().enumerate() {
+                    CollapsingHeader::new(&format!("Display {}", i))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            egui::Grid::new("displays").striped(false).show(ui, |ui| {
+                                ui.label("Name: ");
+                                ui.label(egui::RichText::new(format!("{}", dt.name)));
+                                ui.end_row();
+                                ui.label("Type: ");
+                                ui.label(egui::RichText::new(format!("{}", dt.dtype)));
+                                ui.end_row();
+                                ui.label("Video Type: ");
+                                ui.label(egui::RichText::new(format!("{:?}", DisplayOption(dt.vtype))));
+                                ui.end_row();
+                                ui.label("Card ID: ");
+                                ui.label(egui::RichText::new(format!(
+                                    "{:?}",
+                                    DisplayOption(dt.vid.and_then(|vid| { Some(vid.idx) }))
+                                )));
+                                ui.end_row();
+                            })
+                        });
+                }
                 ui.end_row();
 
                 ui.label("Build: ");

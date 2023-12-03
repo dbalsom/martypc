@@ -24,7 +24,7 @@
 
     ---------------------------------------------------------------------------
 
-    frontend_libs::marty_color::lib.rs
+    frontend_common::color::lib.rs
 
     Defines tne MartyColor utility type. By controlling the feature flags to
     this library crate, you can enable conversion of colors to and from various

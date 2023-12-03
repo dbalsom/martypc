@@ -201,16 +201,17 @@ impl VideoCard for CGACard {
         true
     }
 
+    /// Return the u8 slice representing the requested buffer type.
+    fn get_buf(&self, buf_select: BufferSelect) -> &[u8] {
+        match buf_select {
+            BufferSelect::Back => &self.buf[self.back_buf][..],
+            BufferSelect::Front => &self.buf[self.front_buf][..],
+        }
+    }
+
     /// Return the u8 slice representing the front buffer of the device. (Direct rendering only)
     fn get_display_buf(&self) -> &[u8] {
         &self.buf[self.front_buf][..]
-    }
-
-    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
-    /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
-    /// progress.    
-    fn get_back_buf(&self) -> &[u8] {
-        &self.buf[self.back_buf][..]
     }
 
     /// Get the current display refresh rate of the device. For CGA, this is always 60.

@@ -12,6 +12,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+marty_common = { path = "../../common" }
 display_backend_trait = { path = "../../backend/display_backend_trait" }
 marty_core = { path = "../../../core" }
 bytemuck = { version = "1.13.1", features = ["derive"] }

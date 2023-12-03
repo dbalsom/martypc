@@ -38,7 +38,6 @@
    - A file (for screenshots)
 */
 
-use config_toml_bpaf::ConfigDimensions;
 use std::{collections::HashMap, path::PathBuf};
 
 pub use display_backend_pixels::{
@@ -60,16 +59,29 @@ use winit::{
     window::{Window, WindowBuilder, WindowId},
 };
 
-pub use marty_common::{
+pub use frontend_common::{
     color::MartyColor,
-    display_manager::{DisplayManager, DisplayManagerGuiOptions, DisplayTargetType},
+    display_manager::{
+        DisplayManager,
+        DisplayManagerGuiOptions,
+        DisplayManagerWindowOptions,
+        DisplayTargetDimensions,
+        DisplayTargetType,
+    },
 };
+use frontend_common::{constants::*, display_manager::DisplayInfo};
+use marty_common::VideoDimensions;
 
 use config_toml_bpaf::{ConfigFileParams, WindowDefinition};
-use marty_core::videocard::{VideoCardId, VideoCardInterface};
+use frontend_common::display_scaler::ScalerPreset;
+
+use marty_core::{
+    machine::Machine,
+    videocard::{VideoCardId, VideoCardInterface},
+};
 use marty_egui::GuiRenderContext;
 use marty_pixels_scaler::{DisplayScaler, MartyScaler, ScalerMode};
-use videocard_renderer::{AspectCorrectionMode, VideoDimensions, VideoRenderer};
+use videocard_renderer::{AspectCorrectionMode, VideoRenderer};
 
 const EGUI_MENU_BAR: u32 = 24;
 pub(crate) const WINDOW_MIN_WIDTH: u32 = 640;
@@ -83,41 +95,16 @@ const DEFAULT_RENDER_WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT;
 const STUB_RENDER_WIDTH: u32 = 16;
 const STUB_RENDER_HEIGHT: u32 = 16;
 
-pub struct DisplayTargetDimensions {
-    w: u32,
-    h: u32,
-}
-
-impl From<VideoDimensions> for DisplayTargetDimensions {
-    fn from(t: VideoDimensions) -> Self {
-        DisplayTargetDimensions { w: t.w, h: t.h }
-    }
-}
-impl From<DisplayTargetDimensions> for BufferDimensions {
-    fn from(t: DisplayTargetDimensions) -> Self {
-        BufferDimensions {
-            w: t.w,
-            h: t.h,
-            pitch: t.w,
-        }
-    }
-}
-
-impl From<DisplayTargetDimensions> for VideoDimensions {
-    fn from(t: DisplayTargetDimensions) -> Self {
-        VideoDimensions { w: t.w, h: t.h }
-    }
-}
-
 #[derive(Default)]
 pub struct DisplayTargetContext<T> {
     //pub(crate) event_loop: EventLoop<()>,
-    pub(crate) ttype:    DisplayTargetType, // The type of display we are targeting
-    pub(crate) window:   Option<Window>,    // The winit window, if any
-    pub(crate) gui_ctx:  Option<GuiRenderContext>, // The egui render context, if any
-    pub(crate) card_id:  Option<VideoCardId>, // The video card device id, if any
+    pub(crate) name: String,
+    pub(crate) ttype: DisplayTargetType, // The type of display we are targeting
+    pub(crate) window: Option<Window>,   // The winit window, if any
+    pub(crate) gui_ctx: Option<GuiRenderContext>, // The egui render context, if any
+    pub(crate) card_id: Option<VideoCardId>, // The video card device id, if any
     pub(crate) renderer: Option<VideoRenderer>, // The renderer
-    pub(crate) backend:  Option<T>,         // The graphics backend instance
+    pub(crate) backend: Option<T>,       // The graphics backend instance
     pub(crate) scaler:
         Option<Box<dyn DisplayScaler<Pixels, NativeTextureView = TextureView, NativeEncoder = CommandEncoder>>>, // The scaler pipeline
 }
@@ -139,6 +126,8 @@ pub struct WgpuDisplayManager {
     card_id_map:   HashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
     primary_idx:   Option<usize>,
     secondary_idx: Option<usize>,
+
+    scaler_presets: HashMap<String, ScalerPreset>,
 }
 
 impl Default for WgpuDisplayManager {
@@ -150,6 +139,7 @@ impl Default for WgpuDisplayManager {
             card_id_map: HashMap::new(),
             primary_idx: None,
             secondary_idx: None,
+            scaler_presets: HashMap::new(),
         }
     }
 }
@@ -179,11 +169,16 @@ impl DefaultResolver for WindowDefinition {
     fn resolve_with_defaults(&self) -> Self {
         WindowDefinition {
             name: self.name.clone(),
-            size: self
-                .size
-                .map_or_else(|| Some(ConfigDimensions { w: 640, h: 480 }), Some),
+            size: self.size.map_or_else(
+                || {
+                    Some(VideoDimensions {
+                        w: DEFAULT_RESOLUTION_W,
+                        h: DEFAULT_RESOLUTION_H,
+                    })
+                },
+                Some,
+            ),
             card_aperture: self.card_aperture.clone(),
-            scaler_aspect_correction: self.scaler_aspect_correction.map_or_else(|| Some(true), Some),
             ..*self
         }
     }
@@ -236,10 +231,28 @@ impl WgpuDisplayManagerBuilder {
             card_id_opt
         );
 
+        let mut window_opts: DisplayManagerWindowOptions = Default::default();
+
+        // Is window fixed size?
+        if window_def.fixed_size {
+            // We'l use the default size if none was specified...
+            window_opts.size = window_def.size.unwrap_or_default().into();
+            window_opts.min_size = Some(window_opts.size);
+            window_opts.max_size = Some(window_opts.size);
+            window_opts.resizable = false;
+        }
+        else {
+            // Do we have a min size?
+            window_opts.min_size = Some(window_def.min_size.unwrap_or_default().into());
+            window_opts.resizable = true;
+        }
+
         dm.create_target(
+            window_def.name.clone(),
             DisplayTargetType::WindowBackground { main_window },
             None,
             None,
+            Some(window_opts),
             card_id_opt,
             window_def.size.unwrap().w, // Guaranteed to be Some after resolve_with_defaults();
             window_def.size.unwrap().h,
@@ -286,14 +299,36 @@ impl DisplayTargetContext<PixelsBackend> {
 impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuDisplayManager {
     type NativeTextureView = TextureView;
     type NativeEncoder = CommandEncoder;
-    type ImplDisplayTarget = DisplayTargetContext<PixelsBackend>;
     type ImplScaler = Box<dyn DisplayScaler<Pixels, NativeTextureView = TextureView, NativeEncoder = CommandEncoder>>;
+    type ImplDisplayTarget = DisplayTargetContext<PixelsBackend>;
+
+    fn get_display_info(&self, machine: &Machine) -> Vec<DisplayInfo> {
+        let mut info_vec = Vec::new();
+
+        for vt in self.targets.iter() {
+            let mut vtype = None;
+            if let Some(vid) = vt.card_id {
+                vtype = machine.bus().video(&vid).and_then(|card| Some(card.get_video_type()));
+            }
+
+            info_vec.push(DisplayInfo {
+                dtype: vt.ttype,
+                vtype,
+                vid: vt.card_id,
+                name: vt.name.clone(),
+            })
+        }
+
+        info_vec
+    }
 
     fn create_target(
         &mut self,
+        name: String,
         ttype: DisplayTargetType,
         wid: Option<WindowId>,
         window: Option<&Window>,
+        window_opts: Option<DisplayManagerWindowOptions>,
         card_id: Option<VideoCardId>,
         w: u32,
         h: u32,
@@ -305,10 +340,25 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
             DisplayTargetType::WindowBackground { main_window } => {
                 // Create a new window.
 
-                log::debug!("Creating WindowBackground display target, size: {}x{}", w, h);
+                // Use the dimensions specified in window options, if supplied, otherwise fall back
+                // to w and h paramters.
+                let (tw, th) = if let Some(window_opts) = window_opts {
+                    window_opts.size.into()
+                }
+                else {
+                    (w, h)
+                };
+
+                let dt_idx = self.targets.len();
+                log::debug!(
+                    "Creating WindowBackground display target, idx: {} size: {}x{}",
+                    dt_idx,
+                    tw,
+                    th
+                );
 
                 let window = {
-                    let size = LogicalSize::new(w as f64, h as f64);
+                    let size = LogicalSize::new(tw as f64, th as f64);
 
                     // TODO: Better error handling here.
                     WindowBuilder::new()
@@ -324,10 +374,11 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 // Create the backend.
                 let mut pb = PixelsBackend::new(w, h, &window)?;
 
-                if let Some(ref mc) = fill_color {
-                    log::debug!("Have scaler fill color: {:?}", mc);
-                }
                 // Create the scaler.
+                let scale_mode = match main_window {
+                    true => ScalerMode::Integer,
+                    false => ScalerMode::None,
+                };
                 let marty_scaler = MartyScaler::new(
                     ScalerMode::Integer,
                     &pb.get_backend_raw().unwrap(),
@@ -353,18 +404,18 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                  */
 
                 let renderer = if let Some(card_id) = card_id {
-                    log::debug!("New display target has video card type: {:?}", card_id.vtype);
+                    log::debug!("New display target {} has video card type: {:?}", dt_idx, card_id.vtype);
                     let video = VideoRenderer::new(card_id.vtype);
                     Some(video)
                 }
                 else {
-                    log::warn!("New display target has no video card!");
+                    log::warn!("New display target {} has no video card!", dt_idx);
                     None
                 };
 
                 // If this is the main window, create a gui context.
                 let gui_ctx = if main_window {
-                    log::debug!("New display target has main gui.");
+                    log::debug!("New display target {} has main gui.", dt_idx);
                     Some(DisplayTargetContext::create_gui_context(
                         &window,
                         &pb.get_backend_raw().unwrap(),
@@ -372,12 +423,12 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                     ))
                 }
                 else {
+                    log::debug!("Skipping creation of gui context for target {}", dt_idx);
                     None
                 };
 
-                let dt_idx = self.targets.len();
-
                 self.targets.push(DisplayTargetContext {
+                    name,
                     ttype,
                     window: Some(window),
                     gui_ctx,
@@ -387,7 +438,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                     scaler: Some(Box::new(marty_scaler)), // The scaler pipeline
                 });
 
-                self.window_id_map.insert(wid, 0);
+                self.window_id_map.insert(wid, dt_idx);
                 if let Some(vid) = card_id {
                     if let Some(card_vec) = self.card_id_map.get_mut(&vid) {
                         // If there's already a vec here, add the target index to the vec.
@@ -475,6 +526,8 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         }
         if let Some(idx_vec) = self.card_id_map.get(&id) {
             // A single card can be mapped to multiple display targets, so iterate through them.
+
+            // log::debug!("card {:?} has {} display targets", id, idx_vec.len());
             for idx in idx_vec {
                 let vt = &mut self.targets[*idx];
 
@@ -482,18 +535,21 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 let mut buf_dimensions: Option<BufferDimensions> = None;
 
                 let mut resize_vt = false;
+                let mut software_aspect = false;
 
                 // get the VideoRenderer for this display target, and determine whether the renderer
                 // (and thus the backend and scaler) should resize.
                 if let Some(renderer) = &mut vt.renderer {
+                    software_aspect = matches!(renderer.get_params().aspect_correction, AspectCorrectionMode::Software);
                     resize_vt = renderer.would_resize((w, h).into());
 
                     if resize_vt {
+                        log::debug!("resizing renderer for dt {}...", idx);
                         renderer.resize((w, h).into());
-                        buf_dimensions = Some(DisplayTargetDimensions::from(renderer.get_buf_dimensions()).into());
-                        aspect_dimensions =
-                            Some(DisplayTargetDimensions::from(renderer.get_display_dimensions()).into());
                     }
+
+                    buf_dimensions = Some(DisplayTargetDimensions::from(renderer.get_buf_dimensions()).into());
+                    aspect_dimensions = Some(DisplayTargetDimensions::from(renderer.get_display_dimensions()).into());
                 }
 
                 let src_dimensions = buf_dimensions.unwrap_or(BufferDimensions {
@@ -503,21 +559,37 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 });
                 let target_dimensions = aspect_dimensions.unwrap_or(src_dimensions);
 
-                // Resize the Backend if present.
-                if let Some(backend) = &mut vt.backend {
-                    let surface_dimensions = backend.surface_dimensions();
+                // Resize the Backend and Scaler if the renderer resized.
+                if resize_vt {
+                    if let Some(backend) = &mut vt.backend {
+                        // If software aspect correction is enabled for this renderer, the backend must
+                        // be sized for it. Otherwise, the backend should be sized for the native
+                        // resolution.
+                        if software_aspect {
+                            backend
+                                .resize_buf(BufferDimensions::from(aspect_dimensions.unwrap()))
+                                .expect("FATAL: Failed to resize backend");
+                        }
+                        else {
+                            backend
+                                .resize_buf(BufferDimensions::from(buf_dimensions.unwrap()))
+                                .expect("FATAL: Failed to resize backend");
+                        }
 
-                    // Resize the DisplayScaler if present.
-                    if let Some(scaler) = &mut vt.scaler {
-                        scaler.resize(
-                            backend.get_backend_raw().unwrap(),
-                            src_dimensions.w,
-                            src_dimensions.h,
-                            target_dimensions.w,
-                            target_dimensions.h,
-                            surface_dimensions.w,
-                            surface_dimensions.h,
-                        )
+                        let surface_dimensions = backend.surface_dimensions();
+
+                        // Resize the DisplayScaler if present.
+                        if let Some(scaler) = &mut vt.scaler {
+                            scaler.resize(
+                                backend.get_backend_raw().unwrap(),
+                                src_dimensions.w,
+                                src_dimensions.h,
+                                target_dimensions.w,
+                                target_dimensions.h,
+                                surface_dimensions.w,
+                                surface_dimensions.h,
+                            )
+                        }
                     }
                 }
             }
@@ -527,19 +599,33 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
 
     fn on_window_resized(&mut self, wid: WindowId, w: u32, h: u32) -> Result<(), Error> {
         let idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
+
         let dt = &mut self.targets[*idx];
 
         if let Some(backend) = &mut dt.backend {
-            log::debug!("resizing backend surface");
+            log::debug!(
+                "on_window_resized(): dt{}: resizing backend surface to {},{}",
+                *idx,
+                w,
+                h
+            );
             backend.resize_surface(SurfaceDimensions { w, h })?;
 
+            // Resize the DisplayScaler if present.
             if let Some(scaler) = &mut dt.scaler {
+                log::debug!("on_window_resized(): dt{}: resizing scaler to {},{}", *idx, w, h);
                 scaler.resize_surface(backend.get_backend_raw().unwrap(), w, h)
             }
         }
 
         if let Some(gui_ctx) = &mut dt.gui_ctx {
-            log::debug!("resizing gui context for window id: {:?}", wid);
+            log::debug!(
+                "on_window_resized(): dt{}: resizing gui context for window id: {:?} to {},{}",
+                *idx,
+                wid,
+                w,
+                h
+            );
             gui_ctx.resize(w, h);
         }
         Ok(())
@@ -640,8 +726,21 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         }
 
         if !handled {
-            log::warn!("Window event sent to None gui");
+            //log::warn!("Window event sent to None gui");
         }
+    }
+
+    /// Add the specified scaler preset to the Display Manager.
+    fn add_scaler_preset(&mut self, preset: ScalerPreset) {
+        let hash_key = preset.name.clone();
+        if self.scaler_presets.insert(hash_key.clone(), preset).is_some() {
+            log::warn!("Scaler preset {} was overwritten", hash_key);
+        }
+    }
+
+    /// Retrieve the scaler preset by name.
+    fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset> {
+        self.scaler_presets.get(&name)
     }
 }
 

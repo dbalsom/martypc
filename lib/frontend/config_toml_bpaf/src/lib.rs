@@ -46,7 +46,8 @@ use marty_core::{
     rom_manager::RomOverride,
 };
 
-use marty_common::display_scaler::ScalerMode;
+use frontend_common::display_scaler::ScalerMode;
+use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
 use serde_derive::Deserialize;
@@ -200,24 +201,21 @@ pub struct Cpu {
 pub struct Input {
     pub reverse_mouse_buttons: bool,
 }
-
-#[derive(Copy, Clone, Debug, Deserialize)]
-pub struct ConfigDimensions {
-    pub w: u32,
-    pub h: u32,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct WindowDefinition {
     pub name: String,
-    pub size: Option<ConfigDimensions>,
-    pub min_size: Option<ConfigDimensions>,
-    pub fixed_size: Option<bool>,
+    pub size: Option<VideoDimensions>,
+    pub min_size: Option<VideoDimensions>,
+    #[serde(default)]
+    pub fixed_size: bool,
     pub card_id: Option<usize>,
     pub card_aperture: Option<String>,
     pub scaler_mode: Option<ScalerMode>,
     pub scaler_bg_color: Option<u32>,
-    pub scaler_aspect_correction: Option<bool>,
+    #[serde(default)]
+    pub scaler_aspect_correction: bool,
+    #[serde(default)]
+    pub always_on_top: bool,
 }
 
 #[derive(Debug, Deserialize)]

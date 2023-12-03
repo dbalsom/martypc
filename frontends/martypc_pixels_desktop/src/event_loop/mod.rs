@@ -39,14 +39,11 @@ mod update;
 
 use keyboard::handle_modifiers;
 
-
-use std::{time::Instant};
+use std::time::Instant;
 use winit::{
     event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
-    event_loop::{EventLoopWindowTarget},
+    event_loop::EventLoopWindowTarget,
 };
-
-
 
 use crate::{
     event_loop::{keyboard::handle_key_event, update::process_update},
@@ -54,8 +51,6 @@ use crate::{
     Emulator,
 };
 use display_manager_wgpu::DisplayManager;
-
-
 
 pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindowTarget<()>) {
     match event {
@@ -123,23 +118,9 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
                     });
                 }
                 WindowEvent::Resized(size) => {
-                    log::warn!("resize event");
-                    //video.resize((size.width, size.height).into());
-
-                    emu.dm.on_window_resized(window_id, size.width, size.height);
-
-                    /*
-                    if let Some(renderer) = emu.wm.get_renderer_by_window_id(window_id) {
-                        renderer.backend_resize_surface((size.width, size.height).into());
+                    if let Err(e) = emu.dm.on_window_resized(window_id, size.width, size.height) {
+                        log::error!("Failed to resize window: {}", e);
                     }
-                    */
-                    /*
-                    log::debug!("Resizing pixel surface to {}x{}", size.width, size.height);
-                    if pixels.resize_surface(size.width, size.height).is_err() {
-                        // Some error occurred but not much we can do about it.
-                        // Errors get thrown when the window minimizes.
-                    }*/
-                    //emu.context.resize(size.width, size.height);
                 }
                 WindowEvent::CloseRequested => {
                     elwt.exit();

@@ -9,7 +9,7 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-marty_common = { path = "../common", features=["use_wgpu"] }
+frontend_common = { path = "../frontend_common", features=["use_wgpu"] }
 marty_core = { path = "../../../core" }
 videocard_renderer = { path = "../videocard_renderer" }
 winit.workspace = true

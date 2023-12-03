@@ -1,18 +1,18 @@
 [package]
-name = "marty_common"
+name = "frontend_common"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
-name = "marty_common"
+name = "frontend_common"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+marty_common = { path = "../../common" }
+display_backend_trait = { path = "../../backend/display_backend_trait" }
 videocard_renderer = { path = "../videocard_renderer" }
 #marty_color = { path = "../marty_color" }
 marty_core = { path = "../../../core" }

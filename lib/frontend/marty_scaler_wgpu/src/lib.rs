@@ -37,13 +37,15 @@
 
 use bytemuck::{Pod, Zeroable};
 
-pub use marty_common::color::MartyColor;
+// Reexport trait items
+pub use frontend_common::{
+    color::MartyColor,
+    display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption},
+};
 
+use frontend_common::display_scaler::ScalerPreset;
 use ultraviolet::Mat4;
 use wgpu::{util::DeviceExt, TextureDescriptor};
-
-// Reexport trait items
-pub use marty_common::display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption};
 
 /// A logical texture size for a window surface.
 #[derive(Debug)]
@@ -814,7 +816,8 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
     */
 
     fn resize_surface(&mut self, pixels: &pixels::Pixels, screen_width: u32, screen_height: u32) {
-        self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
+        //self.texture_view = create_texture_view(pixels, self.screen_width, self.screen_height);
+        self.texture_view = pixels.texture().create_view(&wgpu::TextureViewDescriptor::default());
         self.nearest_bind_group = create_bind_group(
             pixels.device(),
             &self.bind_group_layout,

@@ -267,10 +267,10 @@ pub enum CGAColor {
     WhiteBright,
 }
 
-#[derive(Copy, Clone, Debug, Serialize)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub enum DisplayApertureType {
     Cropped,
-    MonitorAccurate,
+    Accurate,
     Full,
     Debug,
 }
@@ -350,13 +350,11 @@ pub trait VideoCard {
     /// Return the 16 color CGA color index for the active overscan color.
     fn get_overscan_color(&self) -> u8;
 
+    /// Return the u8 slice representing the selected buffer type. (Direct rendering only)
+    fn get_buf(&self, buf_select: BufferSelect) -> &[u8];
+
     /// Return the u8 slice representing the front buffer of the device. (Direct rendering only)
     fn get_display_buf(&self) -> &[u8];
-
-    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
-    /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
-    /// progress.
-    fn get_back_buf(&self) -> &[u8];
 
     fn get_clock_divisor(&self) -> u32;
 

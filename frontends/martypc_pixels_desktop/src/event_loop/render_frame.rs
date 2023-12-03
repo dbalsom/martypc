@@ -32,19 +32,48 @@
 use crate::Emulator;
 use display_backend_pixels::DisplayBackend;
 use display_manager_wgpu::DisplayManager;
+use marty_core::{machine::ExecutionState, videocard::BufferSelect};
+use marty_egui::GuiBoolean;
 
 pub fn render_frame(emu: &mut Emulator) {
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
     emu.dm.for_each_renderer(|renderer, vid, backend_buf| {
         if let Some(videocard) = emu.machine.bus_mut().video_mut(&vid) {
+            // Check if the emulator is paused - if paused, optionally select the back buffer
+            // so we can watch the raster beam draw
+            let beam_pos;
+            match emu.exec_control.borrow_mut().get_state() {
+                ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
+                    if emu.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
+                        renderer.select_buffer(BufferSelect::Back);
+                    }
+                    else {
+                        renderer.select_buffer(BufferSelect::Front);
+                    }
+                    beam_pos = videocard.get_beam_pos();
+                }
+                _ => {
+                    renderer.select_buffer(BufferSelect::Front);
+                    beam_pos = None;
+                }
+            }
+
+            let extents = videocard.get_display_extents();
+
+            // Update mode byte.
+            if renderer.get_mode_byte() != extents.mode_byte {
+                // Mode byte has changed, recalculate composite parameters
+                renderer.cga_direct_mode_update(extents.mode_byte);
+                renderer.set_mode_byte(extents.mode_byte);
+            }
+
             //log::debug!("Drawing renderer for vid: {:?}", vid);
             renderer.draw(
-                videocard.get_display_buf(),
+                videocard.get_buf(renderer.get_selected_buffer()),
                 backend_buf,
-                videocard.get_display_extents(),
-                false,
-                None,
+                extents,
+                beam_pos,
             )
         }
     });

@@ -24,11 +24,13 @@
 
     ---------------------------------------------------------------------------
 
-    frontend_libs::display_scaler::lib.rs
+    frontend_common::display_scaler::lib.rs
 
     Definition of the DisplayScaler trait
 
 */
+
+use marty_core::videocard::DisplayApertureType;
 
 use serde::Deserialize;
 pub use wgpu::Color;
@@ -42,7 +44,7 @@ pub enum ScalerMode {
     Stretch,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize)]
 
 pub enum ScalerFilter {
     Nearest,
@@ -77,7 +79,7 @@ pub enum ScalerOption {
     Effect(ScalerEffect),
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize)]
 pub enum PhosphorType {
     Color,
     White,
@@ -85,13 +87,30 @@ pub enum PhosphorType {
     Amber,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ScalerPreset {
+    pub name: String,
+    pub mode: Option<ScalerMode>,
+    pub aperture: Option<DisplayApertureType>,
+    pub border_color: Option<u32>,
+    pub aspect_correction: bool,
+
+    // Fields below should be identical to ScalerParams
+    pub filter: ScalerFilter,
+    pub crt_effect: bool,
+    pub crt_barrel_distortion: f32,
+    pub crt_corner_radius: f32,
+    pub crt_scanlines: bool,
+    pub crt_phosphor_type: PhosphorType,
+    pub gamma: f32,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct ScalerParams {
     pub filter: ScalerFilter,
     pub crt_effect: bool,
-    pub crt_hcurvature: f32,
-    pub crt_vcurvature: f32,
-    pub crt_cornerradius: f32,
+    pub crt_barrel_distortion: f32,
+    pub crt_corner_radius: f32,
     pub crt_scanlines: bool,
     pub crt_phosphor_type: PhosphorType,
     pub gamma: f32,
@@ -101,10 +120,9 @@ impl Default for ScalerParams {
     fn default() -> Self {
         Self {
             filter: ScalerFilter::Linear,
-            crt_effect: false,
-            crt_hcurvature: 0.0,
-            crt_vcurvature: 0.0,
-            crt_cornerradius: 0.0,
+            crt_effect: true,
+            crt_barrel_distortion: 0.0,
+            crt_corner_radius: 0.0,
             crt_scanlines: false,
             crt_phosphor_type: PhosphorType::Color,
             gamma: 1.0,
