@@ -1,11 +1,61 @@
 
-## [0.1.4](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-08-XX)
+## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-XX-XX)
 
+### New Features
+* #### New "Display Manager" Framework
+  * New graphics backend abstraction layer will eventually allow frontends built for other graphics backends such as SDL
+  * New scaling modes: Choose from Fixed, Integer, Fit and Stretch scaling options
+  * Display Apertures: Choose how much of the emulated display field you wish to see:
+    * No overscan
+    * 'Monitor-accurate' overscan
+    * Full overscan
+    * Full display field including hblank and vblank periods (for debugging)
+  * Hardware aspect correction: Aspect correction is now performed in the shader for reduced CPU load
+  * Multi-window support: Define additional output windows in the configuration file
+    * Multiple windows can display the same video card, with different display options
+    * Windows can be set to a fixed size or scale factor, or made completely resizable
+    * Windows can be pinned 'always on top'
+    * Windows can toggled full-screen via ALT-ENTER hotkey 
+  * Shader support: A basic CRT shader is built into the new display scaler
+    * Internal shader features:
+      * Barrel distortion
+      * Corner radius (rounded corners)
+      * Monochrome phosphor simulation
+      * Scanline emulation synchronized to emulated video resolution  
+    * Presets for the internal scaler can be defined in configuration and applied to different windows
+* #### EGA Graphics
+  * EGA is back! A cycle-clocked EGA implementation is here, although it may still be a bit rough around the edges. EGA will continue to be polished in upcoming releases.
+  * Known issues:
+    * Not all registers properly emulated 
+    * Jerky scrolling in Commander Keen 1-3
+    * User-definable fonts not yet supported
+* #### New Keyboard System
+  * MartyPC now performs low-level emulation of a Model F keyboard instead of directly translating OS input events to the core
+    * Model M emulation to come
+  * Guest typematic rate is fully configurable
+  * International keyboard layouts are now supported via translation files.
+    * Translation files support all keycode names defined by w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
+    * Translation files can define direct scancode mappings or full macros
+
+
+* Preliminary CGA snow emulation. Not yet 100% accurate
+* Added 8088 JSON CPU test generator and validator 
+  * Used to create the first [comprehensive test suite for the Intel 8088](https://github.com/TomHarte/ProcessorTests/tree/main/8088)
+* Memory Viewer will now show values for memory mapped regions
+* Major dependency updates:
+  * wgpu to 0.18 (latest)
+  * egui to 0.24.1 (latest, forked)
+  * pixels to 0.13 (latest, forked)
+  * winit to 0.29.4 (latest)
+  * cpal to 0.15 
+  
+
+### Bug Fixes / Improvements
+* CPU: Fixed device ticks after interrupts
+* CPU: Improved Halt/Resume logic and cycle timings
+* CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView
 * CPU: Updated disassembler to normalize output against iced-x86. Now resolves negative immediates and displacements.
 * CPU: Fixed typo for 'bp+di+DISP' in both disassemblers (Thanks Tom Harte)
-* Added 8088 JSON CPU test generator and validator
-* PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
-* BUS: Added MMIO peek functions. Allows Memory debug viewer to peek into MMIO regions, if device supports.
 * CPU: Brand new, simplified BIU state logic
 * CPU: Fixed & Improved DMA refresh scheduling. (Fixes 8088MPH CPU test)
 * CPU: Fixed issue where Call Stack could grow uncontrollably with recursive code or interrupts
@@ -14,9 +64,8 @@
 * CPU: Fixed CPU cycle timings for LES and LDS instructions
 * CPU: Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
 * CPU: Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
+* PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
 * CGA: Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
-* CGA: Added basic CGA snow emulation. Not yet 100% accurate.
-* Fixed screenshot function when aspect-correction is off
 * Fixed mouse capture hotkey (CTRL-F10)
 * KEYBOARD: Add debug_keyboard config flag - this will print keyboard event info to the console for support
 * CGA: Don't recalculate composite parameters if mode change was enable bit only
