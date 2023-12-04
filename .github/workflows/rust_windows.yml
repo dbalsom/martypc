@@ -1,0 +1,22 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main", "version_0_2_0"]
+  pull_request:
+    branches: [ "main", "version_0_2_0"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: windows-2022
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: cargo build -r --verbose
+    - name: Run tests
+      run: cargo test --verbose
