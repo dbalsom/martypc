@@ -98,12 +98,12 @@ impl CoreConfig for ConfigFileParams {
         self.validator.baud_rate
     }
     fn get_cpu_trace_mode(&self) -> Option<TraceMode> {
-        self.emulator.trace_mode
+        self.machine.cpu.trace_mode
     }
     fn get_cpu_trace_on(&self) -> bool {
-        self.emulator.trace_on
+        self.machine.cpu.trace_on
     }
     fn get_cpu_trace_file(&self) -> Option<PathBuf> {
-        self.emulator.trace_file.clone()
+        self.machine.cpu.trace_file.clone()
     }
 }

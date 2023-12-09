@@ -102,10 +102,10 @@ impl Emulator {
 
         // TODO: Add GUI for these two options?
         self.machine.set_cpu_option(CpuOption::OffRailsDetection(
-            self.config.cpu.off_rails_detection.unwrap_or(false),
+            self.config.machine.cpu.off_rails_detection.unwrap_or(false),
         ));
         self.machine.set_cpu_option(CpuOption::EnableServiceInterrupt(
-            self.config.cpu.service_interrupt_enabled.unwrap_or(false),
+            self.config.machine.cpu.service_interrupt.unwrap_or(false),
         ));
 
         // TODO: Reenable these
@@ -150,25 +150,25 @@ impl Emulator {
 
         self.gui.set_option(
             GuiBoolean::CpuEnableWaitStates,
-            self.config.cpu.wait_states_enabled.unwrap_or(true),
+            self.config.machine.cpu.wait_states.unwrap_or(true),
         );
         self.machine.set_cpu_option(CpuOption::EnableWaitStates(
-            self.config.cpu.wait_states_enabled.unwrap_or(true),
+            self.config.machine.cpu.wait_states.unwrap_or(true),
         ));
 
         self.gui.set_option(
             GuiBoolean::CpuInstructionHistory,
-            self.config.cpu.instruction_history.unwrap_or(false),
+            self.config.machine.cpu.instruction_history.unwrap_or(false),
         );
 
         self.machine.set_cpu_option(CpuOption::InstructionHistory(
-            self.config.cpu.instruction_history.unwrap_or(false),
+            self.config.machine.cpu.instruction_history.unwrap_or(false),
         ));
 
         self.gui
-            .set_option(GuiBoolean::CpuTraceLoggingEnabled, self.config.emulator.trace_on);
+            .set_option(GuiBoolean::CpuTraceLoggingEnabled, self.config.machine.cpu.trace_on);
         self.machine
-            .set_cpu_option(CpuOption::TraceLoggingEnabled(self.config.emulator.trace_on));
+            .set_cpu_option(CpuOption::TraceLoggingEnabled(self.config.machine.cpu.trace_on));
 
         self.gui.set_option(GuiBoolean::TurboButton, self.config.machine.turbo);
 

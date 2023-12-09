@@ -50,6 +50,7 @@ use frontend_common::display_scaler::ScalerPreset;
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
+use marty_core::cpu_common::HaltMode;
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -100,48 +101,33 @@ pub struct Media {
 #[derive(Debug, Deserialize)]
 pub struct Emulator {
     pub basedir: PathBuf,
-
     #[serde(default = "_default_true")]
     pub auto_poweron: bool,
-
     #[serde(default = "_default_true")]
     pub cpu_autostart: bool,
-
-    #[serde(default = "_default_false")]
+    #[serde(default)]
     pub headless: bool,
-
-    #[serde(default = "_default_false")]
+    #[serde(default)]
     pub fuzzer: bool,
-
-    #[serde(default = "_default_false")]
+    #[serde(default)]
     pub warpspeed: bool,
-
     #[serde(default)]
     pub debug_mode: bool,
-
-    #[serde(default = "_default_false")]
+    #[serde(default = "_default_true")]
     pub debug_warn: bool,
-
-    #[serde(default = "_default_false")]
+    #[serde(default)]
     pub debug_keyboard: bool,
-
     pub media: Media,
-
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
     pub run_bin_ofs: Option<u16>,
-
-    #[serde(default)]
-    pub trace_on:   bool,
-    pub trace_mode: Option<TraceMode>,
-    pub trace_file: Option<PathBuf>,
 
     #[serde(default)]
     pub video_trace_file: Option<PathBuf>,
     //pub video_frame_debug: bool,
     #[serde(default)]
     pub pit_output_file: Option<PathBuf>,
-    #[serde(default = "_default_false")]
+    #[serde(default)]
     pub pit_output_int_trigger: bool,
 
     pub window: Vec<WindowDefinition>,
@@ -180,10 +166,15 @@ pub struct Tests {
 
 #[derive(Debug, Deserialize)]
 pub struct Cpu {
-    pub wait_states_enabled: Option<bool>,
+    pub wait_states: Option<bool>,
     pub off_rails_detection: Option<bool>,
+    pub on_halt: Option<HaltMode>,
     pub instruction_history: Option<bool>,
-    pub service_interrupt_enabled: Option<bool>,
+    pub service_interrupt: Option<bool>,
+    #[serde(default)]
+    pub trace_on: bool,
+    pub trace_mode: Option<TraceMode>,
+    pub trace_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,7 +183,9 @@ pub struct Machine {
     #[serde(default)]
     pub no_bios: bool,
     pub rom_override: Option<Vec<RomOverride>>,
+    #[serde(default)]
     pub raw_rom: bool,
+    #[serde(default)]
     pub turbo: bool,
     pub cpu: Cpu,
     pub videocard: Option<Vec<VideoCardDefinition>>,
@@ -338,7 +331,7 @@ impl ConfigFileParams {
 
         self.machine.turbo |= shell_args.turbo;
 
-        if let Some(ref mut off_rails_detection) = self.cpu.off_rails_detection {
+        if let Some(ref mut off_rails_detection) = self.machine.cpu.off_rails_detection {
             *off_rails_detection |= shell_args.off_rails_detection;
         }
 

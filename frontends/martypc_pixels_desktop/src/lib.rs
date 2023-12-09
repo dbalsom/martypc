@@ -488,7 +488,7 @@ pub fn run() {
         &config,
         config.machine.model,
         *machine_desc_opt.unwrap(),
-        config.emulator.trace_mode.unwrap_or_default(),
+        config.machine.cpu.trace_mode.unwrap_or_default(),
         video_type.unwrap_or_default(),
         sp,
         rom_manager,

@@ -305,7 +305,7 @@ fn process_tests(
 
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
-        config.emulator.trace_mode.unwrap_or_default(),
+        config.machine.cpu.trace_mode.unwrap_or_default(),
         TraceLogger::None,
         #[cfg(feature = "cpu_validator")]
         ValidatorType::None,

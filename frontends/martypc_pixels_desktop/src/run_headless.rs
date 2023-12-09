@@ -94,7 +94,7 @@ pub fn run_headless(config: &ConfigFileParams, rom_manager: RomManager, _floppy_
         config,
         config.machine.model,
         *machine_desc_opt.unwrap(),
-        config.emulator.trace_mode.unwrap_or_default(),
+        config.machine.cpu.trace_mode.unwrap_or_default(),
         video_type,
         sp,
         rom_manager,
