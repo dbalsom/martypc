@@ -438,14 +438,14 @@ typematic_rate= 50.0
 # "None"  - No hard disk controller will be present
 # "Xebec" - Emulates the IBM/Xebec 20MB Fixed Disk Controller
 
-#hdc = "None"
-hdc = "Xebec"
+hdc = "None"
+#hdc = "Xebec"
 
-# VHD to mount into drive0 (Typically C:)
-drive0 = "dos330.vhd"
+# VHD to mount into drive 0 (Typically C:)
+#drive0 = "hdd0.vhd"
 
-# VHD to mount into drive1 (Typically D:)
-drive1 = "games.vhd"
+# VHD to mount into drive 1 (Typically D:)
+#drive1 = "hdd1.vhd"
 
 # ----------------------------------------------------------------------------
 # Video Cards
