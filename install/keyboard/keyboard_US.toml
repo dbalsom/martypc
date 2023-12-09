@@ -1,6 +1,7 @@
-# keyboard_IT.toml
-# Keyboard translation file for Italian keyboard layouts for the 
-# MartyPC emulator.
+# keyboard_US.toml
+# Keyboard translation file for US keyboard layouts for the MartyPC emulator
+#
+# US layouts do not require translation, so this file is empty by design.
 
 # Why a translation file?
 # ----------------------------------------------------------------------------
@@ -254,13 +255,4 @@
 # The model F keyboard has single-byte scancodes, so scancodes defined here 
 # should only have one element.
 [keyboard.modelf]
-keycode_mappings = [
-    # Map the '<>' key to IntlBackslash. 
-    {keycode="IntlBackslash", modifiers=["any"], key_macro=[], macro_translate=false, scancodes=[0x2B]},      
-    # Map the ù key to Backquote
-    {keycode="Backslash", modifiers=["any"], key_macro=[], macro_translate=false, scancodes=[0x29]},   
-    # Generate a backslash.
-    {keycode="Backquote", modifiers=["any"], key_macro=["+ControlLeft", "+AltLeft", "+IntlBackslash", "-ControlLeft", "-AltLeft", "-IntlBackslash"], macro_translate=false, scancodes=[]},
-    # Generate a pipe character. There is no equivalent on the italian model F.
-    {keycode="Backquote", modifiers=["shift"], key_macro=["+AltLeft", "+Numpad1", "+Numpad2", "+Numpad4", "-AltLeft",  "-Numpad1", "-Numpad2", "-Numpad4"], macro_translate=false, scancodes=[]},      
-]
+keycode_mappings = []
