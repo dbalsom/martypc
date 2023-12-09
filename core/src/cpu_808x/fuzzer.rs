@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -33,25 +33,23 @@
 use rand::{Rng, SeedableRng};
 //use rand::rngs::StdRng;
 
-use crate::cpu_808x::*;
-use crate::cpu_808x::modrm::MODRM_REG_MASK;
+use crate::cpu_808x::{modrm::MODRM_REG_MASK, *};
 
 const RNG_SEED: u64 = 0x58158258u64;
 
 macro_rules! get_rand {
     ($myself: expr) => {
         $myself.rng.as_mut().unwrap().gen()
-    }
+    };
 }
 
 macro_rules! get_rand_range {
     ($myself: expr, $begin: expr, $end: expr) => {
         $myself.rng.as_mut().unwrap().gen_range($begin..$end)
-    }
+    };
 }
 
 impl Cpu {
-
     #[allow(dead_code)]
     pub fn randomize_seed(&mut self, mut seed: u64) {
         if seed == 0 {
@@ -62,7 +60,6 @@ impl Cpu {
 
     #[allow(dead_code)]
     pub fn randomize_regs(&mut self) {
-
         self.cs = get_rand!(self);
         self.ip = get_rand!(self);
 
@@ -96,9 +93,7 @@ impl Cpu {
 
     #[allow(dead_code)]
     pub fn randomize_mem(&mut self) {
-
         for i in 0..self.bus.size() {
-
             let n: u8 = get_rand!(self);
             self.bus.write_u8(i, n, 0).expect("Mem err");
         }
@@ -111,7 +106,6 @@ impl Cpu {
 
     #[allow(dead_code)]
     pub fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]) {
-
         let mut instr: VecDeque<u8> = VecDeque::new();
 
         // Randomly pick one opcode from the provided list
@@ -125,13 +119,14 @@ impl Cpu {
         // Add rep prefixes to string ops with 50% probability
         let do_rep_prefix: u8 = get_rand!(self);
         match opcode {
-            0xA4..=0xA7 | 0xAA..=0xAF => { // String ops
+            0xA4..=0xA7 | 0xAA..=0xAF => {
+                // String ops
                 match do_rep_prefix {
                     0..=64 => {
                         instr.push_front(0xF2); // REPNZ
                     }
                     65..=128 => {
-                        instr.push_front(0xF3);  // REPZ
+                        instr.push_front(0xF3); // REPZ
                     }
                     _ => {}
                 }
@@ -140,17 +135,22 @@ impl Cpu {
                 //self.cx = self.cx & 0x00FF;
             }
             0x9D => {
-                // POPF. 
+                // POPF.
                 // We need to modify the word at SS:SP to clear the trap flag bit.
 
                 let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp);
 
-                let (mut flag_word, _) = self.bus_mut().read_u16(flat_addr as usize, 0).expect("Couldn't read stack!");
-                
+                let (mut flag_word, _) = self
+                    .bus_mut()
+                    .read_u16(flat_addr as usize, 0)
+                    .expect("Couldn't read stack!");
+
                 // Clear trap flag
                 flag_word = flag_word & !CPU_FLAG_TRAP;
 
-                self.bus_mut().write_u16(flat_addr as usize, flag_word, 0).expect("Couldn't write stack!");
+                self.bus_mut()
+                    .write_u16(flat_addr as usize, flag_word, 0)
+                    .expect("Couldn't write stack!");
             }
             0xCF => {
                 // IRET.
@@ -158,12 +158,17 @@ impl Cpu {
 
                 let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp.wrapping_add(4));
 
-                let (mut flag_word, _) = self.bus_mut().read_u16(flat_addr as usize, 0).expect("Couldn't read stack!");
-                
+                let (mut flag_word, _) = self
+                    .bus_mut()
+                    .read_u16(flat_addr as usize, 0)
+                    .expect("Couldn't read stack!");
+
                 // Clear trap flag
                 flag_word = flag_word & !CPU_FLAG_TRAP;
 
-                self.bus_mut().write_u16(flat_addr as usize, flag_word, 0).expect("Couldn't write stack!");                
+                self.bus_mut()
+                    .write_u16(flat_addr as usize, flag_word, 0)
+                    .expect("Couldn't write stack!");
             }
             0xD2 | 0xD3 => {
                 // Shifts and rotates by cl.
@@ -184,10 +189,9 @@ impl Cpu {
         }
 
         let mut modrm_valid = false;
-        let mut modrm_byte: u8  = get_rand!(self);
+        let mut modrm_byte: u8 = get_rand!(self);
 
         while !modrm_valid {
-
             modrm_byte = get_rand!(self);
 
             // Filter out invalid forms of some instructions that cannot
@@ -207,7 +211,7 @@ impl Cpu {
                         continue;
                     }
                 }
-                // POP 
+                // POP
                 0x8F => {
                     if (modrm_byte >> 3) & 0x07 != 0 {
                         // reg != 0, invalid.
@@ -219,7 +223,7 @@ impl Cpu {
                     }
                     //log::debug!("Picked valid modrm for 0x8F: {:02X}", modrm_byte);
                 }
-                _=> {}
+                _ => {}
             }
 
             modrm_valid = true;
@@ -254,13 +258,13 @@ impl Cpu {
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
-        self.bus.copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false).unwrap();
-
+        self.bus
+            .copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false)
+            .unwrap();
     }
 
     #[allow(dead_code)]
     pub fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]) {
-
         let mut instr: VecDeque<u8> = VecDeque::new();
 
         // Randomly pick one extension from the provided list
@@ -272,7 +276,7 @@ impl Cpu {
         let do_rep_prefix: u8 = get_rand!(self);
 
         match (opcode, extension) {
-            (0xF6 | 0xF7, 0x07) => { 
+            (0xF6 | 0xF7, 0x07) => {
                 // IDIV
                 // REP prefixes on IDIV invert quotient (undocumented)
                 match do_rep_prefix {
@@ -282,12 +286,12 @@ impl Cpu {
                     }
                     0x06..=0x10 => {
                         // Inject REP prefix at 5% probability
-                        instr.push_front(0xF3);  // REPZ
+                        instr.push_front(0xF3); // REPZ
                     }
                     _ => {}
                 }
             }
-            _=> {}
+            _ => {}
         }
 
         // Add a segment override prefix with 50% probability
@@ -304,17 +308,13 @@ impl Cpu {
             }
         }
 
-
-
-
         let mut modrm_valid = false;
         // Add a modrm
         let mut modrm_byte: u8 = get_rand!(self);
 
         while !modrm_valid {
-
             modrm_byte = get_rand!(self);
-            
+
             // Inject the operand extension. First, clear the REG bits
             modrm_byte &= !MODRM_REG_MASK;
 
@@ -340,7 +340,7 @@ impl Cpu {
                                 // Reg form, invalid.
                                 continue;
                             }
-                        }                        
+                        }
                         _ => {}
                     }
                 }
@@ -363,9 +363,8 @@ impl Cpu {
         // Copy instruction to memory at CS:IP
         let addr = Cpu::calc_linear_address(self.cs, self.ip);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
-        self.bus.copy_from(instr.make_contiguous(), addr as usize, 0, false).unwrap();
-
+        self.bus
+            .copy_from(instr.make_contiguous(), addr as usize, 0, false)
+            .unwrap();
     }
-    
-
 }

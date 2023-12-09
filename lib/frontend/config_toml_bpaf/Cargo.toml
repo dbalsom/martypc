@@ -1,0 +1,22 @@
+[package]
+name = "config_toml_bpaf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "config_toml_bpaf"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+marty_common = { path = "../../common" }
+log = "0.4"
+anyhow = "1.0.58"
+marty_core = { path = "../../../core" }
+frontend_common = { path = "../frontend_common" }
+bpaf = { version = "0.7.7", features = ["derive"] }
+toml = "0.5.10"
+serde = { workspace = true, features = ["derive"] }
+serde_derive.workspace = true

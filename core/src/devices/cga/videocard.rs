@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,14 +29,16 @@
     Implementats the VideoCard trait for the IBM CGA card.
 
 */
-use crate::devices::cga::*;
-use crate::videocard::*;
+use crate::{devices::cga::*, videocard::*};
 
-// Helper macro for pushing video card state entries. 
+// Helper macro for pushing video card state entries.
 // For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
 macro_rules! push_reg_str {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{} {:?}", $decorator, $reg ), VideoCardStateEntry::String(format!("{}", $val))))
+        $vec.push((
+            format!("{} {:?}", $decorator, $reg),
+            VideoCardStateEntry::String(format!("{}", $val)),
+        ))
     };
 }
 
@@ -51,23 +53,25 @@ macro_rules! push_reg_str_enum {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
         $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
     };
-}   
+}
 */
 
 impl VideoCard for CGACard {
-
     fn get_sync(&self) -> (bool, bool, bool, bool) {
-        (self.in_crtc_vblank, self.in_crtc_hblank, self.in_display_area, self.hborder | self.vborder)
+        (
+            self.in_crtc_vblank,
+            self.in_crtc_hblank,
+            self.in_display_area,
+            self.hborder | self.vborder,
+        )
     }
 
     fn set_video_option(&mut self, opt: VideoOption) {
-        
         match opt {
             VideoOption::EnableSnow(state) => {
                 log::debug!("VideoOption::EnableSnow set to: {}", state);
                 self.enable_snow = state;
             }
-            _=> {}
         }
     }
 
@@ -79,24 +83,25 @@ impl VideoCard for CGACard {
         RenderMode::Direct
     }
 
+    fn get_render_depth(&self) -> RenderBpp {
+        RenderBpp::Four
+    }
+
     fn get_display_mode(&self) -> DisplayMode {
         self.display_mode
     }
 
     fn set_clocking_mode(&mut self, mode: ClockingMode) {
-        
         // TODO: Switching from cycle clocking mode to character clocking mode
         // must be deferred until character-clock boundaries.
-        // For now we only support falling back to cycle clocking mode and 
+        // For now we only support falling back to cycle clocking mode and
         // staying there.
         log::debug!("Clocking mode set to: {:?}", mode);
         self.clock_mode = mode;
-
     }
 
     fn get_display_size(&self) -> (u32, u32) {
-
-        // CGA supports a single fixed 8x8 font. The size of the displayed window 
+        // CGA supports a single fixed 8x8 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
         let mut width = self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32;
@@ -109,11 +114,15 @@ impl VideoCard for CGACard {
     }
 
     fn get_display_extents(&self) -> &DisplayExtents {
-        &self.extents[self.back_buf]
+        &self.extents
     }
 
-    fn get_display_aperture(&self) -> (u32, u32) {
-        (self.extents[0].aperture_w, self.extents[0].aperture_h)
+    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
+        CGA_APERTURE_DESCS.to_vec()
+    }
+
+    fn get_display_apertures(&self) -> Vec<DisplayAperture> {
+        self.extents.apertures.clone()
     }
 
     /// Get the position of the electron beam.
@@ -123,14 +132,13 @@ impl VideoCard for CGACard {
 
     /// Tick the CGA the specified number of video clock cycles.
     fn debug_tick(&mut self, ticks: u32) {
-
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
                 let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
                 let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
-        
+
                 assert!(ticks == pixel_ticks + (lchar_ticks * 16));
-        
+
                 for _ in 0..pixel_ticks {
                     self.tick();
                 }
@@ -152,7 +160,12 @@ impl VideoCard for CGACard {
             _ => {}
         }
 
-        log::warn!("debug_tick(): new cur_screen_cycles: {} beam_x: {} beam_y: {}", self.cur_screen_cycles, self.beam_x, self.beam_y);
+        log::warn!(
+            "debug_tick(): new cur_screen_cycles: {} beam_x: {} beam_y: {}",
+            self.cur_screen_cycles,
+            self.beam_x,
+            self.beam_y
+        );
     }
 
     #[inline]
@@ -178,17 +191,18 @@ impl VideoCard for CGACard {
         true
     }
 
+    /// Return the u8 slice representing the requested buffer type.
+    fn get_buf(&self, buf_select: BufferSelect) -> &[u8] {
+        match buf_select {
+            BufferSelect::Back => &self.buf[self.back_buf][..],
+            BufferSelect::Front => &self.buf[self.front_buf][..],
+        }
+    }
+
     /// Return the u8 slice representing the front buffer of the device. (Direct rendering only)
     fn get_display_buf(&self) -> &[u8] {
         &self.buf[self.front_buf][..]
     }
-
-    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
-    /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
-    /// progress.    
-    fn get_back_buf(&self) -> &[u8] {
-        &self.buf[self.back_buf][..]
-    }  
 
     /// Get the current display refresh rate of the device. For CGA, this is always 60.
     fn get_refresh_rate(&self) -> u32 {
@@ -196,7 +210,6 @@ impl VideoCard for CGACard {
     }
 
     fn is_40_columns(&self) -> bool {
-
         match self.display_mode {
             DisplayMode::Mode0TextBw40 => true,
             DisplayMode::Mode1TextCo40 => true,
@@ -206,7 +219,7 @@ impl VideoCard for CGACard {
             DisplayMode::Mode5LowResAltPalette => true,
             DisplayMode::Mode6HiResGraphics => false,
             DisplayMode::Mode7LowResComposite => false,
-            _=> false
+            _ => false,
         }
     }
 
@@ -224,40 +237,36 @@ impl VideoCard for CGACard {
         let addr = self.get_cursor_address();
 
         match self.display_mode {
-            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => {
-                CursorInfo{
-                    addr,
-                    pos_x: (addr % 40) as u32,
-                    pos_y: (addr / 40) as u32,
-                    line_start: self.crtc_cursor_start_line,
-                    line_end: self.crtc_cursor_end_line,
-                    visible: self.get_cursor_status()
-                }
-            }
-            DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => {
-                CursorInfo{
-                    addr,
-                    pos_x: (addr % 80) as u32,
-                    pos_y: (addr / 80) as u32,
-                    line_start: self.crtc_cursor_start_line,
-                    line_end: self.crtc_cursor_end_line,
-                    visible: self.get_cursor_status()
-                }
-            }
-            _=> {
+            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => CursorInfo {
+                addr,
+                pos_x: (addr % 40) as u32,
+                pos_y: (addr / 40) as u32,
+                line_start: self.crtc_cursor_start_line,
+                line_end: self.crtc_cursor_end_line,
+                visible: self.get_cursor_status(),
+            },
+            DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => CursorInfo {
+                addr,
+                pos_x: (addr % 80) as u32,
+                pos_y: (addr / 80) as u32,
+                line_start: self.crtc_cursor_start_line,
+                line_end: self.crtc_cursor_end_line,
+                visible: self.get_cursor_status(),
+            },
+            _ => {
                 // Not a valid text mode
-                CursorInfo{
+                CursorInfo {
                     addr: 0,
                     pos_x: 0,
                     pos_y: 0,
                     line_start: 0,
                     line_end: 0,
-                    visible: false
+                    visible: false,
                 }
             }
         }
     }
-    
+
     fn get_clock_divisor(&self) -> u32 {
         1
     }
@@ -266,19 +275,18 @@ impl VideoCard for CGACard {
         FontInfo {
             w: CGA_HCHAR_CLOCK as u32,
             h: CRTC_FONT_HEIGHT as u32,
-            font_data: CGA_FONT
+            font_data: CGA_FONT,
         }
     }
 
     fn get_character_height(&self) -> u8 {
         self.crtc_maximum_scanline_address + 1
-    }    
+    }
 
     /// Return the current palette number, intensity attribute bit, and alt color
     fn get_cga_palette(&self) -> (CGAPalette, bool) {
-
         let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
-        
+
         // Get background color
         let alt_color = match self.cc_register & 0x0F {
             0b0000 => CGAColor::Black,
@@ -296,31 +304,31 @@ impl VideoCard for CGACard {
             0b1100 => CGAColor::RedBright,
             0b1101 => CGAColor::MagentaBright,
             0b1110 => CGAColor::Yellow,
-            _ => CGAColor::WhiteBright
+            _ => CGAColor::WhiteBright,
         };
 
         // Are we in high res mode?
         if self.mode_hires_gfx {
-            return (CGAPalette::Monochrome(alt_color), true); 
+            return (CGAPalette::Monochrome(alt_color), true);
         }
 
         let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
             true => CGAPalette::MagentaCyanWhite(alt_color),
-            false => CGAPalette::RedGreenYellow(alt_color)
+            false => CGAPalette::RedGreenYellow(alt_color),
         };
-        
+
         // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
-        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx { 
+        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
             palette = CGAPalette::RedCyanWhite(alt_color);
         }
-    
+
         (palette, intensity)
-    }    
+    }
 
+    #[rustfmt::skip]
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {
-
         let mut map = HashMap::new();
-        
+
         let mut general_vec = Vec::new();
 
         general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
@@ -379,11 +387,10 @@ impl VideoCard for CGACard {
         internal_vec.push((format!("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
-        map       
+        map
     }
 
     fn run(&mut self, time: DeviceRunTimeUnit) {
-
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);
@@ -402,7 +409,10 @@ impl VideoCard for CGACard {
         }
 
         if self.ticks_advanced > hdots {
-            panic!("Invalid condition: ticks_advanced: {} > clocks: {}", self.ticks_advanced, hdots);
+            panic!(
+                "Invalid condition: ticks_advanced: {} > clocks: {}",
+                self.ticks_advanced, hdots
+            );
         }
 
         let orig_cycles = self.cycles;
@@ -415,10 +425,11 @@ impl VideoCard for CGACard {
         self.ticks_advanced = 0;
 
         if let ClockingMode::Character | ClockingMode::Dynamic = self.clock_mode {
-            if (self.cycles + self.pixel_clocks_owed as u64) & self.char_clock_mask != 0 { 
+            if (self.cycles + self.pixel_clocks_owed as u64) & self.char_clock_mask != 0 {
                 log::error!(
-                    "pixel_clocks_owed incorrect: does not put clock back in phase. cycles: {} owed: {} mask: {:X}", 
-                    self.cycles, 
+                    "pixel_clocks_owed incorrect: does not put clock back in phase. \
+                    cycles: {} owed: {} mask: {:X}",
+                    self.cycles,
                     self.pixel_clocks_owed,
                     self.char_clock_mask
                 );
@@ -438,22 +449,22 @@ impl VideoCard for CGACard {
                 //log::warn!("exhausted accumulator trying to catch up to lclock");
 
                 self.slot_idx = 0;
-                return
+                return;
             }
         }
 
         // We should be back in phase with character clock now.
-        
+
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
-
                 if self.cycles & self.char_clock_mask as u64 != 0 {
                     log::warn!(
-                        "out of phase with char clock: {} mask: {:02X} cycles: {} out of phase: {} cycles: {} advanced: {} owed: {} accum: {} tick_ct: {}", 
-        
+                        "out of phase with char clock: {} mask: {:02X} \
+                        cycles: {} out of phase: {} \
+                        cycles: {} advanced: {} owed: {} accum: {} tick_ct: {}",
                         self.char_clock,
                         self.char_clock_mask,
-                        self.cycles, 
+                        self.cycles,
                         self.cycles % self.char_clock as u64,
                         orig_cycles,
                         orig_ticks_advanced,
@@ -465,49 +476,46 @@ impl VideoCard for CGACard {
 
                 // Drain accumulator and tick by character clock.
                 while self.clocks_accum > self.char_clock {
-                
                     if self.clocks_accum > 10000 {
                         log::error!("excessive clocks in accumulator: {}", self.clocks_accum);
                     }
-                
+
                     /*
                     if self.debug_counter >= 3638297 {
                         log::error!("Break on me");
                     }
                     */
-                
+
                     // Handle blinking. TODO: Move blink handling into tick().
                     self.blink_accum_clocks += self.char_clock;
                     if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
                         self.blink_state = !self.blink_state;
                         self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
                     }
-                
-                    // Char clock may update after tick_char() with deferred mode change, so save the 
+
+                    // Char clock may update after tick_char() with deferred mode change, so save the
                     // current clock.
                     let old_char_clock = self.char_clock;
-                
+
                     if self.clock_divisor == 2 {
                         self.tick_lchar();
                     }
                     else {
                         self.tick_hchar();
                     }
-                
+
                     /*
                     if self.debug_counter >= 3638298 {
                         log::error!("{} < {}", self.clocks_accum, self.char_clock);
                     }
                     self.debug_counter += 1;
                     */
-                
+
                     self.clocks_accum = self.clocks_accum.saturating_sub(old_char_clock);
                 }
             }
             ClockingMode::Cycle => {
-
                 while self.clocks_accum > 0 {
-
                     // Handle blinking. TODO: Move blink handling into tick().
                     self.blink_accum_clocks += 1;
                     if self.blink_accum_clocks > CGA_CURSOR_BLINK_RATE_CLOCKS {
@@ -518,8 +526,8 @@ impl VideoCard for CGACard {
                     self.tick();
                     self.clocks_accum = self.clocks_accum.saturating_sub(1);
                 }
-            },
-            _=> {
+            }
+            _ => {
                 panic!("Unsupported ClockingMode: {:?}", self.clock_mode);
             }
         }
@@ -534,11 +542,11 @@ impl VideoCard for CGACard {
         self.reset_private();
     }
 
-    fn get_pixel(&self, _x: u32, _y:u32) -> &[u8] {
+    fn get_pixel(&self, _x: u32, _y: u32) -> &[u8] {
         &DUMMY_PIXEL
     }
 
-    fn get_pixel_raw(&self, _x: u32, _y:u32) -> u8 {
+    fn get_pixel_raw(&self, _x: u32, _y: u32) -> u8 {
         0
     }
 
@@ -551,10 +559,9 @@ impl VideoCard for CGACard {
     }
 
     fn dump_mem(&self, path: &Path) {
-
         let mut filename = path.to_path_buf();
         filename.push("cga_mem.bin");
-        
+
         match std::fs::write(filename.clone(), &*self.mem) {
             Ok(_) => {
                 log::debug!("Wrote memory dump: {}", filename.display())
@@ -567,10 +574,9 @@ impl VideoCard for CGACard {
 
     fn write_trace_log(&mut self, msg: String) {
         self.trace_logger.print(msg);
-    }    
+    }
 
     fn trace_flush(&mut self) {
         self.trace_logger.flush();
     }
-
 }

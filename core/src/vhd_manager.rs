@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -32,16 +32,16 @@
 
 const DRIVE_MAX: usize = 4;
 
+use core::fmt::Display;
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
     ffi::OsString,
     fs,
-    fs::File
+    fs::File,
+    path::{Path, PathBuf},
 };
-use core::fmt::Display;
 
-#[derive (Debug)]
+#[derive(Debug)]
 pub enum VHDManagerError {
     DirNotFound,
     FileNotFound,
@@ -49,12 +49,14 @@ pub enum VHDManagerError {
     InvalidDrive,
     DriveAlreadyLoaded,
 }
-impl std::error::Error for VHDManagerError{}
+impl std::error::Error for VHDManagerError {}
 impl Display for VHDManagerError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &*self {
             VHDManagerError::DirNotFound => write!(f, "The VHD directory was not found."),
-            VHDManagerError::FileNotFound => write!(f, "File not found error scanning VHD directory."),
+            VHDManagerError::FileNotFound => {
+                write!(f, "File not found error scanning VHD directory.")
+            }
             VHDManagerError::FileReadError => write!(f, "File read error scanning VHD directory."),
             VHDManagerError::InvalidDrive => write!(f, "Specified drive out of range."),
             VHDManagerError::DriveAlreadyLoaded => write!(f, "Specified drive already loaded!"),
@@ -63,16 +65,16 @@ impl Display for VHDManagerError {
 }
 
 #[allow(dead_code)]
-#[derive (Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct VHDFile {
     path: PathBuf,
-    size: u64
+    size: u64,
 }
 
 pub struct VHDManager {
     file_vec: Vec<VHDFile>,
     file_map: HashMap<OsString, VHDFile>,
-    files_loaded: [Option<OsString>; DRIVE_MAX]
+    files_loaded: [Option<OsString>; DRIVE_MAX],
 }
 
 impl VHDManager {
@@ -80,16 +82,15 @@ impl VHDManager {
         Self {
             file_vec: Vec::new(),
             file_map: HashMap::new(),
-            files_loaded: [ None, None, None, None ]
+            files_loaded: [None, None, None, None],
         }
     }
 
     pub fn scan_dir(&mut self, path: &Path) -> Result<bool, VHDManagerError> {
-
         // Read in directory entries within the provided path
         let dir = match fs::read_dir(path) {
             Ok(dir) => dir,
-            Err(_) => return Err(VHDManagerError::DirNotFound)
+            Err(_) => return Err(VHDManagerError::DirNotFound),
         };
 
         let extensions = ["vhd"];
@@ -100,17 +101,23 @@ impl VHDManager {
                 if entry.path().is_file() {
                     if let Some(extension) = entry.path().extension() {
                         if extensions.contains(&extension.to_string_lossy().to_lowercase().as_ref()) {
-                            println!("Found VHD image: {:?} size: {}", entry.path(), entry.metadata().unwrap().len());
-                            self.file_vec.push( VHDFile {
+                            println!(
+                                "Found VHD image: {:?} size: {}",
+                                entry.path(),
+                                entry.metadata().unwrap().len()
+                            );
+                            self.file_vec.push(VHDFile {
                                 path: entry.path(),
-                                size: entry.metadata().unwrap().len()
+                                size: entry.metadata().unwrap().len(),
                             });
-        
-                            self.file_map.insert(entry.file_name(), 
-                                VHDFile { 
+
+                            self.file_map.insert(
+                                entry.file_name(),
+                                VHDFile {
                                     path: entry.path(),
-                                    size: entry.metadata().unwrap().len()
-                                 });
+                                    size: entry.metadata().unwrap().len(),
+                                },
+                            );
                         }
                     }
                 }
@@ -129,43 +136,33 @@ impl VHDManager {
     }
 
     pub fn is_vhd_loaded(&self, name: &OsString) -> Option<usize> {
-
         for i in 0..DRIVE_MAX {
-
             if let Some(drive) = &self.files_loaded[i] {
                 if name.as_os_str() == drive.as_os_str() {
-
-                    return Some(i)
+                    return Some(i);
                 }
             }
         }
         None
     }
 
-    pub fn load_vhd_file(&mut self, drive: usize, name: &OsString ) -> Result<File, VHDManagerError> {
-
+    pub fn load_vhd_file(&mut self, drive: usize, name: &OsString) -> Result<File, VHDManagerError> {
         if drive > 3 {
             return Err(VHDManagerError::InvalidDrive);
         }
 
         if let Some(vhd) = self.file_map.get(name) {
-
-            let vhd_file_result = 
-                File::options()
-                    .read(true)
-                    .write(true)
-                    .open(&vhd.path);
+            let vhd_file_result = File::options().read(true).write(true).open(&vhd.path);
 
             match vhd_file_result {
                 Ok(file) => {
-
                     log::debug!("Associating vhd: {} to drive: {}", name.to_string_lossy(), drive);
 
                     if let Some(_) = &self.files_loaded[drive] {
                         log::error!("VHD drive slot {} not empty!", drive);
                         return Err(VHDManagerError::DriveAlreadyLoaded);
                     }
-                    
+
                     if let Some(d) = self.is_vhd_loaded(name) {
                         log::error!("VHD already associated with drive {}! Release drive first.", d);
                         return Err(VHDManagerError::DriveAlreadyLoaded);
@@ -186,5 +183,4 @@ impl VHDManager {
     pub fn release_vhd(&mut self, drive: usize) {
         self.files_loaded[drive] = None;
     }
-
 }

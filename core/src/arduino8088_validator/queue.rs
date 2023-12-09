@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,18 +26,18 @@
 
 pub const QUEUE_SIZE: usize = 4;
 
-#[derive (Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum QueueDataType {
     Program,
     EndInstruction,
-    Finalize
+    Finalize,
 }
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct QueueEntry {
     opcode: u8,
-    dtype: QueueDataType,
-    addr: u32
+    dtype:  QueueDataType,
+    addr:   u32,
 }
 
 pub struct InstructionQueue {
@@ -53,13 +53,11 @@ impl InstructionQueue {
             len: 0,
             back: 0,
             front: 0,
-            q: [
-                QueueEntry {
-                    opcode: 0,
-                    dtype: QueueDataType::Program,
-                    addr: 0,
-                }; QUEUE_SIZE
-            ],
+            q: [QueueEntry {
+                opcode: 0,
+                dtype:  QueueDataType::Program,
+                addr:   0,
+            }; QUEUE_SIZE],
         }
     }
 
@@ -69,11 +67,10 @@ impl InstructionQueue {
 
     pub fn push(&mut self, byte: u8, dtype: QueueDataType, addr: u32) {
         if self.len < QUEUE_SIZE {
-
             self.q[self.front] = QueueEntry {
                 opcode: byte,
                 dtype,
-                addr
+                addr,
             };
             //self.dt[self.front] = dtype;
 
@@ -93,7 +90,7 @@ impl InstructionQueue {
             self.back = (self.back + 1) % QUEUE_SIZE;
             self.len -= 1;
 
-            return (q_entry.opcode, q_entry.dtype, q_entry.addr)
+            return (q_entry.opcode, q_entry.dtype, q_entry.addr);
         }
 
         panic!("Queue underrun!");
@@ -106,7 +103,6 @@ impl InstructionQueue {
     }
 
     pub fn to_string(&self) -> String {
-
         let mut base_str = "".to_string();
 
         for i in 0..self.len {
@@ -117,16 +113,14 @@ impl InstructionQueue {
     }
 
     /// Write the contents of the processor instruction queue in order to the
-    /// provided slice of u8. 
+    /// provided slice of u8.
     pub fn to_slice(&self, slice: &mut [u8]) {
-
         for i in 0..self.len {
             slice[i] = self.q[(self.back + i) % QUEUE_SIZE].opcode;
         }
     }
 
     pub fn to_vec(&self) -> Vec<u8> {
-
         let mut q_vec = Vec::new();
 
         for i in 0..self.len {
@@ -135,6 +129,4 @@ impl InstructionQueue {
 
         q_vec
     }
-
-
 }

@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,13 +26,14 @@
 
     cpu_808x::execute.rs
 
-    Executes an instruction after it has been fetched. 
+    Executes an instruction after it has been fetched.
     Includes all main opcode implementations.
 */
 
-use crate::cpu_808x::*;
-use crate::cpu_808x::biu::*;
-use crate::util;
+use crate::{
+    cpu_808x::{biu::*, *},
+    util,
+};
 
 /*
 macro_rules! read_operand {
@@ -73,20 +74,22 @@ macro_rules! alu_op {
 }
 */
 
+// rustfmt chokes on large match statements.
+#[rustfmt::skip]
 impl Cpu {
-    /// Execute the current instruction. At the phase this function is called we have 
+    /// Execute the current instruction. At the phase this function is called we have
     /// fetched and decoded any prefixes, the opcode byte, modrm and any displacement
     /// and populated an Instruction struct.
     ///
     /// Additionallly, if an EA was to be loaded, the load has already been performed.
-    /// 
-    /// For each opcode, we execute cycles equivalent to the microcode routine for 
-    /// that function. Microcode line numbers are usually provided for cycle tracing. 
-    /// 
+    ///
+    /// For each opcode, we execute cycles equivalent to the microcode routine for
+    /// that function. Microcode line numbers are usually provided for cycle tracing.
+    ///
     /// The microcode instruction with a terminating RNI should not be executed, as this
     /// requires the next instruction byte to be fetched and is handled by finalize().
+    #[rustfmt::skip]
     pub fn execute_instruction(&mut self) -> ExecutionResult {
-
         let mut unhandled: bool = false;
         let mut jump: bool = false;
         let mut exception: CpuException = CpuException::NoException;
@@ -134,7 +137,7 @@ impl Cpu {
         // Check for REPx prefixes
         if (self.i.prefixes & OPCODE_PREFIX_REP1 != 0) || (self.i.prefixes & OPCODE_PREFIX_REP2 != 0) {
             // A REPx prefix was set
-            
+
             let mut invalid_rep = false;
 
             match self.i.mnemonic {
@@ -154,12 +157,17 @@ impl Cpu {
                     // REP prefix on MUL/DIV negates the product/quotient.
                     self.rep_type = RepType::MulDiv;
                 }
-                _=> {
+                _ => {
                     invalid_rep = true;
                     //return ExecutionResult::ExecutionError(
                     //    format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", self.i.mnemonic, self.cs, self.ip)
                     //);
-                    log::warn!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", self.i.mnemonic, self.cs, self.ip);
+                    log::warn!(
+                        "REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].",
+                        self.i.mnemonic,
+                        self.cs,
+                        self.ip
+                    );
                 }
             }
 
@@ -171,11 +179,11 @@ impl Cpu {
 
         // Reset the wait cycle after STI
         self.interrupt_inhibit = false;
-        
+
         // Most instructions will issue an RNI. We can set RNI to false for those that don't.
         //self.rni = true;
 
-        // Keep a tally of how many Opcode 0x00's we've executed in a row. Too many likely means we've run 
+        // Keep a tally of how many Opcode 0x00's we've executed in a row. Too many likely means we've run
         // off the rails into uninitialized memory, whereupon we halt so we can check things out.
 
         // This is now optional in the configuration file, as some test applications like acid88 won't work
@@ -1183,7 +1191,7 @@ impl Cpu {
 
                 let value = self.biu_read_u8(segment, disp16);
                 
-                self.set_register8(Register8::AL, value as u8);
+                self.set_register8(Register8::AL, value);
             }
             0xD8..=0xDF => {
                 // ESC - FPU instructions. 
@@ -1267,7 +1275,7 @@ impl Cpu {
                 self.cycles_i(2, &[0x0ad, 0x0ae]);
 
                 let in_word = self.biu_io_read_u16(op2_value as u16, ReadWriteFlag::Normal);
-                self.set_register16(Register16::AX, in_word as u16);
+                self.set_register16(Register16::AX, in_word);
             }
             0xE6 => {
                 // OUT imm8, al
@@ -1375,7 +1383,7 @@ impl Cpu {
                 // IN ax, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 let in_word = self.biu_io_read_u16(op2_value, ReadWriteFlag::Normal);
-                self.set_register16(Register16::AX, in_word as u16);
+                self.set_register16(Register16::AX, in_word);
             }
             0xEE => {
                 // OUT dx, al
@@ -1383,7 +1391,7 @@ impl Cpu {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
                 self.cycle_i(0x0b8);
 
-                self.biu_io_write_u8(op1_value as u16, op2_value, ReadWriteFlag::RNI);  
+                self.biu_io_write_u8(op1_value, op2_value, ReadWriteFlag::RNI);
             }
             0xEF => {
                 // OUT dx, ax
@@ -1397,7 +1405,7 @@ impl Cpu {
                 }
 
                 // Write to consecutive ports
-                self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
+                self.biu_io_write_u16(op1_value, op2_value, ReadWriteFlag::RNI);
 
                 /*
                 // Write first 8 bits to first port
@@ -1803,7 +1811,7 @@ impl Cpu {
                     // Call Far
                     Mnemonic::CALLF => {
                         if let OperandType::AddressingMode(mode) = self.i.operand1_type {
-                            let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+                            let (_ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
 
                             // Read one byte of offset and one byte of segment
                             let offset = self.biu_read_u8(ea_segment, ea_offset);
@@ -1871,7 +1879,7 @@ impl Cpu {
                     // Jump Far
                     Mnemonic::JMPF => {
                         if let OperandType::AddressingMode(mode) = self.i.operand1_type {
-                            let (ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+                            let (_ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
 
                             // Read one byte of offset and one byte of segment
                             let offset = self.biu_read_u8(ea_segment, ea_offset);
@@ -2133,7 +2141,7 @@ impl Cpu {
 
         // Reset REP init flag. This flag is set after a rep-prefixed instruction is executed for the first time. It
         // should be preserved between executions of a rep-prefixed instruction unless an interrupt occurs, in which
-        // case the rep-prefix instruction terminates normally after RPTI. This flag determines whether RPTS is 
+        // case the rep-prefix instruction terminates normally after RPTI. This flag determines whether RPTS is
         // run when executing the instruction.
         if !self.in_rep {
             self.rep_init = false;
@@ -2141,12 +2149,12 @@ impl Cpu {
             // If we are not in a REP and didn't jump, update IP
             if !jump {
                 self.ip = self.ip.wrapping_add(self.i.size as u16);
-            }            
+            }
         }
 
         if unhandled {
             // This won't happen - the 8088 has no concept of an invalid instruction and we have implemented
-            // all opcodes. 
+            // all opcodes.
             unreachable!("Invalid opcode!");
             //ExecutionResult::UnsupportedOpcode(self.i.opcode)
         }
@@ -2158,7 +2166,6 @@ impl Cpu {
             ExecutionResult::OkayJump
         }
         else if self.in_rep {
-
             if let RepType::MulDiv = self.rep_type {
                 // Rep prefix on MUL/DIV just sets flags, do not rep
                 self.in_rep = false;
@@ -2172,8 +2179,8 @@ impl Cpu {
         else {
             match exception {
                 CpuException::DivideError => ExecutionResult::ExceptionError(exception),
-                CpuException::NoException => ExecutionResult::Okay
-            }                
+                CpuException::NoException => ExecutionResult::Okay,
+            }
         }
     }
 }

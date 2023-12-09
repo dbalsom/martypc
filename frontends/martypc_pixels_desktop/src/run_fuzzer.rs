@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,34 +29,26 @@
 */
 
 use std::{
+    cell::RefCell,
     fs::File,
     io::{BufWriter, Write},
-    cell::RefCell,
     rc::Rc,
 };
 
+use bpaf_toml_config::ConfigFileParams;
+
 use marty_core::{
-    
     bytequeue::ByteQueue,
-    cpu_808x::{
-        *,
-        Cpu,
-        mnemonic::Mnemonic,
-    },
-    cpu_common::{CpuType, CpuOption},
-    config::{ConfigFileParams, TraceMode},
-    rom_manager::{RomManager},
-    floppy_manager::{FloppyManager},
-    tracelogger::{TraceLogger},
+    cpu_808x::{mnemonic::Mnemonic, Cpu, *},
+    cpu_common::{CpuOption, CpuType, TraceMode},
     devices::pic::Pic,
+    floppy_manager::FloppyManager,
+    rom_manager::RomManager,
+    tracelogger::TraceLogger,
 };
 
-pub fn run_fuzzer (
-    config: &ConfigFileParams,
-    _rom_manager: RomManager,
-    _floppy_manager: FloppyManager
-) {
-    /* 
+pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_manager: FloppyManager) {
+    /*
     let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
     if config.emulator.trace_mode != TraceMode::None {
         // Open the trace file if specified
@@ -74,7 +66,7 @@ pub fn run_fuzzer (
     */
 
     //let mut io_bus = IoBusInterface::new();
-    let pic = Rc::new(RefCell::new(Pic::new()));    
+    let pic = Rc::new(RefCell::new(Pic::new()));
 
     // Create the cpu trace file, if specified
     let mut cpu_trace = TraceLogger::None;
@@ -102,7 +94,7 @@ pub fn run_fuzzer (
         #[cfg(feature = "cpu_validator")]
         ValidatorMode::Instruction,
         #[cfg(feature = "cpu_validator")]
-        config.validator.baud_rate.unwrap_or(1_000_000)
+        config.validator.baud_rate.unwrap_or(1_000_000),
     );
 
     cpu.randomize_seed(1234);
@@ -111,7 +103,6 @@ pub fn run_fuzzer (
     let mut test_num = 0;
 
     'testloop: loop {
-
         cpu.reset();
 
         test_num += 1;
@@ -125,7 +116,7 @@ pub fn run_fuzzer (
         // Generate specific opcodes (optional)
 
         // ALU ops
-        
+
         /*
         cpu.random_inst_from_opcodes(
             &[
@@ -140,14 +131,13 @@ pub fn run_fuzzer (
             ]
         );
         */
-        
+
         // Completed 5000 tests
-        
 
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
         cpu.random_inst_from_opcodes(&[0x37]);
-        
+
         //cpu.random_inst_from_opcodes(&[0x37]);
 
         //cpu.random_inst_from_opcodes(&[0x90]);
@@ -181,7 +171,7 @@ pub fn run_fuzzer (
             ]
         );
         */
-        
+
         //cpu.random_inst_from_opcodes(&[0x80, 0x81, 82, 83]); // ALU imm8, imm16, and imm8s
         //cpu.random_inst_from_opcodes(&[0x84, 0x85]); // TEST 8 & 16 bit
         //cpu.random_inst_from_opcodes(&[0x86, 0x87]); // XCHG 8 & 16 bit
@@ -197,7 +187,7 @@ pub fn run_fuzzer (
         //cpu.random_inst_from_opcodes(&[0x9C, 0x9D]); // PUSHF, POPF
         //cpu.random_inst_from_opcodes(&[0x9E, 0x9F]); // SAHF, LAHF
         //cpu.random_inst_from_opcodes(&[0xA0, 0xA1, 0xA2, 0xA3]); // MOV offset
-        
+
         //cpu.random_inst_from_opcodes(&[0xA4, 0xA5]); // MOVS
         //cpu.random_inst_from_opcodes(&[0xAC, 0xAD]); // LODS
 
@@ -205,14 +195,14 @@ pub fn run_fuzzer (
         //cpu.random_inst_from_opcodes(&[0xAE, 0xAF]); // SCAS
 
         //cpu.random_inst_from_opcodes(&[0xA8, 0xA9]); // TEST
-        
+
         //cpu.random_inst_from_opcodes(&[0xAA, 0xAB]); // STOS
-        
+
         // MOV imm
         /*
         cpu.random_inst_from_opcodes(
             &[
-                0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7, 
+                0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7,
                 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF
             ]
         );
@@ -227,7 +217,7 @@ pub fn run_fuzzer (
         //cpu.random_inst_from_opcodes(&[0xCD]); // INT
         //cpu.random_inst_from_opcodes(&[0xCE]); // INT0
         //cpu.random_inst_from_opcodes(&[0xCF]); // IRET  ** unaccounted for cycle after FLUSH
-        
+
         //cpu.random_inst_from_opcodes(&[0xD0, 0xD1]); // Misc bitshift ops, 1
         //cpu.random_inst_from_opcodes(&[0xD2]); // Misc bitshift ops, cl
 
@@ -246,7 +236,7 @@ pub fn run_fuzzer (
         //cpu.random_grp_instruction(0xF7, &[0, 1, 2, 3]); // 16 bit TEST, NOT & NEG
         //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
         //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
-          
+
         //cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
         //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
 
@@ -254,7 +244,7 @@ pub fn run_fuzzer (
 
         //cpu.random_grp_instruction(0xFE, &[0, 1]); // 8 bit INC & DEC
         //cpu.random_grp_instruction(0xFF, &[0, 1]); // 16 bit INC & DEC
-        
+
         //cpu.random_grp_instruction(0xFE, &[2, 3]); // CALL & CALLF
         //cpu.random_grp_instruction(0xFF, &[2, 3]); // CALL & CALLF
         //cpu.random_grp_instruction(0xFE, &[4, 5]); // JMP & JMPF
@@ -263,11 +253,8 @@ pub fn run_fuzzer (
         //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
-        let instruction_address = 
-            Cpu::calc_linear_address(
-                cpu.get_register16(Register16::CS),  
-                cpu.get_register16(Register16::IP)
-            );
+        let instruction_address =
+            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
 
         cpu.bus_mut().seek(instruction_address as usize);
         let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
@@ -277,7 +264,7 @@ pub fn run_fuzzer (
             Err(_) => {
                 log::error!("Instruction decode error, skipping...");
                 continue;
-            }                
+            }
         };
 
         // Skip N successful instructions
@@ -288,7 +275,7 @@ pub fn run_fuzzer (
         }
 
         cpu.set_option(CpuOption::EnableWaitStates(false));
-        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));        
+        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
 
         match i.opcode {
             0xFE | 0xD2 | 0xD3 | 0x8F => {
@@ -324,37 +311,57 @@ pub fn run_fuzzer (
             }
             /*
             Mnemonic::AAM | Mnemonic::DIV | Mnemonic::IDIV => {
-                // Timings on these will take some work 
+                // Timings on these will take some work
                 continue;
             }
             */
-            Mnemonic::MOVSB | Mnemonic::MOVSW | Mnemonic::CMPSB | Mnemonic::CMPSW | Mnemonic::STOSB | 
-            Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::SCASB | Mnemonic::SCASW => {
+            Mnemonic::MOVSB
+            | Mnemonic::MOVSW
+            | Mnemonic::CMPSB
+            | Mnemonic::CMPSW
+            | Mnemonic::STOSB
+            | Mnemonic::STOSW
+            | Mnemonic::LODSB
+            | Mnemonic::LODSW
+            | Mnemonic::SCASB
+            | Mnemonic::SCASW => {
                 // limit cx to 31.
                 cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) % 32);
 
                 rep = true;
             }
-            
-            Mnemonic::SETMO | Mnemonic::SETMOC | Mnemonic::ROL | Mnemonic::ROR | 
-            Mnemonic::RCL | Mnemonic::RCR | Mnemonic::SHL | Mnemonic::SHR | Mnemonic::SAR => {
+
+            Mnemonic::SETMO
+            | Mnemonic::SETMOC
+            | Mnemonic::ROL
+            | Mnemonic::ROR
+            | Mnemonic::RCL
+            | Mnemonic::RCR
+            | Mnemonic::SHL
+            | Mnemonic::SHR
+            | Mnemonic::SAR => {
                 // Limit cl to 0-31.
                 cpu.set_register8(Register8::CL, cpu.get_register8(Register8::CL) % 32);
             }
-            _=> {}
+            _ => {}
         }
 
         i.address = instruction_address;
-   
-        log::trace!("Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]", test_num, i, opcode, i.address);
-        
+
+        log::trace!(
+            "Test {}: Validating instruction: {} op:{:02X} @ [{:05X}]",
+            test_num,
+            i,
+            opcode,
+            i.address
+        );
+
         // Set terminating address for CPU validator.
 
-        let end_address = 
-            Cpu::calc_linear_address(
-                cpu.get_register16(Register16::CS),  
-                cpu.get_register16(Register16::IP).wrapping_add(i.size as u16)
-            );
+        let end_address = Cpu::calc_linear_address(
+            cpu.get_register16(Register16::CS),
+            cpu.get_register16(Register16::IP).wrapping_add(i.size as u16),
+        );
 
         cpu.set_end_address(end_address as usize);
         log::trace!("Setting end address: {:05X}", end_address);
@@ -367,18 +374,18 @@ pub fn run_fuzzer (
                     log::trace!("Instruction reported {} cycles", cycles);
 
                     if rep & cpu.in_rep() {
-                        continue
+                        continue;
                     }
                     break;
-                },
+                }
                 Err(err) => {
                     log::error!("CPU Error: {}\n", err);
                     cpu.trace_flush();
                     break 'testloop;
-                } 
+                }
             }
         }
     }
-    
+
     //std::process::exit(0);
 }

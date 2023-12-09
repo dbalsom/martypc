@@ -1,8 +1,9 @@
 [package]
 name = "martypc_pixels_desktop"
-version = "0.1.4"
-edition = "2021"
-license = "MIT"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [lib]
 name = "martypc_pixels_desktop"
@@ -10,43 +11,49 @@ path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-marty_core = { path = "../../core/"}
-marty_render = { path = "../../frontend_libs/render"}
-bytemuck = "1.13.1"
+display_backend_pixels = { path = "../../lib/backend/display_backend_pixels" }
+marty_core = { path = "../../core"}
+frontend_common = { path = "../../lib/frontend/frontend_common" }
+videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
+display_manager_wgpu = { path = "../../lib/frontend/display_manager_wgpu" }
+
+marty_egui = { path = "../../lib/frontend/marty_egui" }
+config_toml_bpaf = { path = "../../lib/frontend/config_toml_bpaf" }
+#display_scaler = { path = "../../lib/frontend/display_scaler_trait" }
+marty_pixels_scaler = { path = "../../lib/frontend/marty_scaler_wgpu" }
+
+bytemuck.workspace = true
 colored = "2.0.4"
 cpal = "0.13.5"
-#egui = "0.22"
-emath = "0.20"
-#egui-wgpu = "0.22"
-#egui-winit = { version = "0.22", default-features = false, features = ["links"] }
-env_logger = "0.9"
-flate2 = "1.0.27"
-image = { version = "0.24.2", default-features = false, features = ["png"] }
+
 log = "0.4"
-pixels = "0.13"
+env_logger = "0.9"
+flate2 = "1.0"
+image = { version = "0.24.2", default-features = false, features = ["png"] }
+
 rand = "0.8.5"
 getrandom = "0.2.6"
-regex = "1.5.5"
+regex = "1.10"
 resize = "0.7.4"
 rgb = "0.8.33"
-serde = { version = "1.0.107", features = ["derive"] }
-serde_derive = "1.0.107"
-serde_json = "1.0.105"
-serialport = "4.2.0"
-winit = { version = "=0.29.0-beta.0" }
-#winit_input_helper = "0.14"
+serde = { workspace = true, features = ["derive"] }
+serde_derive = "1.0"
+serde_json = "1.0"
+serialport = "4.2"
+winit.workspace = true
+anyhow.workspace = true
 
 [dependencies.egui]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "winit_0_29"
+branch = "0_24_winit_0_29"
 
 [dependencies.egui-wgpu]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "winit_0_29"
+branch = "0_24_winit_0_29"
 
 [dependencies.egui-winit]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "winit_0_29"
+branch = "0_24_winit_0_29"
 
 # Conditional dependencies for wasm32 target. 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -65,9 +72,6 @@ wgpu = { version = "0.16", features = ["webgl"] }
 
 [dev-dependencies]
 criterion = "0.5.1"
-
-[profile.dev.package."*"]
-opt-level = 3
 
 [features]
 devtools = []

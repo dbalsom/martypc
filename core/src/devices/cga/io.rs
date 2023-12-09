@@ -1,4 +1,3 @@
-
 /*
     MartyPC
     https://github.com/dbalsom/martypc
@@ -18,45 +17,43 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 
     --------------------------------------------------------------------------
 
-    devices::cga::mmio.rs
+    devices::cga::io.rs
 
     Implementation of the IoDevice interface trait for the IBM CGA card.
 
 */
 
-use crate::devices::cga::*;
-use crate::bus::{IoDevice};
+use crate::{bus::IoDevice, devices::cga::*};
 
 // CRTC registers are mirrored from 0x3D0 - 0x3D5 due to incomplete
 // address decoding.
-pub const CRTC_REGISTER_SELECT0: u16        = 0x3D0;
-pub const CRTC_REGISTER0: u16               = 0x3D1;
-pub const CRTC_REGISTER_SELECT1: u16        = 0x3D2;
-pub const CRTC_REGISTER1: u16               = 0x3D3;
-pub const CRTC_REGISTER_SELECT2: u16        = 0x3D4;
-pub const CRTC_REGISTER2: u16               = 0x3D5;
+pub const CRTC_REGISTER_SELECT0: u16 = 0x3D0;
+pub const CRTC_REGISTER0: u16 = 0x3D1;
+pub const CRTC_REGISTER_SELECT1: u16 = 0x3D2;
+pub const CRTC_REGISTER1: u16 = 0x3D3;
+pub const CRTC_REGISTER_SELECT2: u16 = 0x3D4;
+pub const CRTC_REGISTER2: u16 = 0x3D5;
 
-pub const CRTC_REGISTER_BASE: u16           = 0x3D0;
-pub const CRTC_REGISTER_MASK: u16           = 0x007;
+pub const CRTC_REGISTER_BASE: u16 = 0x3D0;
+pub const CRTC_REGISTER_MASK: u16 = 0x007;
 
-pub const CGA_MODE_CONTROL_REGISTER: u16    = 0x3D8;
-pub const CGA_COLOR_CONTROL_REGISTER: u16   = 0x3D9;
-pub const CGA_STATUS_REGISTER: u16          = 0x3DA;
-pub const CGA_LIGHTPEN_LATCH_RESET: u16     = 0x3DB;
-pub const CGA_LIGHTPEN_LATCH_SET: u16       = 0x3DC;
+pub const CGA_MODE_CONTROL_REGISTER: u16 = 0x3D8;
+pub const CGA_COLOR_CONTROL_REGISTER: u16 = 0x3D9;
+pub const CGA_STATUS_REGISTER: u16 = 0x3DA;
+pub const CGA_LIGHTPEN_LATCH_RESET: u16 = 0x3DB;
+pub const CGA_LIGHTPEN_LATCH_SET: u16 = 0x3DC;
 
 impl IoDevice for CGACard {
     fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
-
         // Catch up to CPU state.
-        let ticks = self.catch_up(delta, false);
+        let _ticks = self.catch_up(delta, false);
 
         //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
@@ -74,10 +71,8 @@ impl IoDevice for CGACard {
                 CGA_MODE_CONTROL_REGISTER => {
                     log::error!("CGA: Read from Mode control register!");
                     0
-                }            
-                CGA_STATUS_REGISTER => {
-                    self.handle_status_register_read()
                 }
+                CGA_STATUS_REGISTER => self.handle_status_register_read(),
                 CGA_LIGHTPEN_LATCH_RESET => {
                     self.clear_lp_latch();
                     0
@@ -86,19 +81,16 @@ impl IoDevice for CGACard {
                     self.set_lp_latch();
                     0
                 }
-                _ => {
-                    0
-                }
+                _ => 0,
             }
         }
     }
 
     fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
-
         let debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
 
         // Catch up to CPU state.
-        let ticks = self.catch_up(delta, debug_port);
+        let _ticks = self.catch_up(delta, debug_port);
 
         //self.rw_op(ticks, data, port as u32, RwSlotType::Io);
 
@@ -119,13 +111,11 @@ impl IoDevice for CGACard {
                 CGA_COLOR_CONTROL_REGISTER => {
                     self.handle_cc_register_write(data);
                 }
-                CGA_LIGHTPEN_LATCH_RESET => {
-                    self.clear_lp_latch()
-                }
+                CGA_LIGHTPEN_LATCH_RESET => self.clear_lp_latch(),
                 CGA_LIGHTPEN_LATCH_SET => {
                     log::debug!("wrote latch set register");
                     self.set_lp_latch()
-                }                
+                }
                 _ => {}
             }
         }
@@ -146,5 +136,4 @@ impl IoDevice for CGACard {
             CGA_STATUS_REGISTER,
         ]
     }
-
 }

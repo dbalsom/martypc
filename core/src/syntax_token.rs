@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,7 +26,7 @@
 
     syntax_token.rs
 
-    Defines token enums for visual formatting of debugging output 
+    Defines token enums for visual formatting of debugging output
     including disassembly and memory views. A corresponding egui control
     TokenListView can use these tokens to format output with syntax coloring.
 */
@@ -40,18 +40,17 @@ pub trait SyntaxTokenize {
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub enum SyntaxFormatType {
-    Space
+    Space,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub enum SyntaxToken {
-
     NullToken,
     // Generic display tokens
 
-    // State string has a 'dirty' flag for displaying state data as new, and a 
+    // State string has a 'dirty' flag for displaying state data as new, and a
     // u8 frame age counter for tracking age of value.
-    StateString(String, bool, u8), 
+    StateString(String, bool, u8),
 
     // Memory viewer tokens
     ErrorString(String),
@@ -76,18 +75,20 @@ pub enum SyntaxToken {
     Register(String),
     Displacement(String),
 
-    Formatter(SyntaxFormatType)
+    Formatter(SyntaxFormatType),
 }
 
 impl Default for SyntaxToken {
-    fn default() -> Self { SyntaxToken::NullToken }
+    fn default() -> Self {
+        SyntaxToken::NullToken
+    }
 }
 
 impl fmt::Display for SyntaxToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             SyntaxToken::NullToken => write!(f, ""),
-            SyntaxToken::StateString(s,..) => write!(f, "{}", s),
+            SyntaxToken::StateString(s, ..) => write!(f, "{}", s),
             SyntaxToken::ErrorString(s) => write!(f, "{}", s),
             SyntaxToken::MemoryAddressSeg16(seg, off, _) => write!(f, "{:04X}:{:04X}", seg, off),
             SyntaxToken::MemoryAddressFlat(addr, _) => write!(f, "{:05X}", addr),
@@ -110,7 +111,7 @@ impl fmt::Display for SyntaxToken {
 
             SyntaxToken::Formatter(fmt_type) => match fmt_type {
                 SyntaxFormatType::Space => write!(f, " "),
-            }
+            },
         }
     }
 }
@@ -150,13 +151,13 @@ impl SyntaxTokenVec {
         self.0.push(SyntaxToken::Comma);
         self.0.push(SyntaxToken::Formatter(SyntaxFormatType::Space));
         self.0.push(t);
-    }    
+    }
 
     pub fn strip_whitespace(&mut self) {
         self.0.retain(|item| match item {
             SyntaxToken::Formatter(SyntaxFormatType::Space) => false,
             _ => true,
-        });        
+        });
     }
 
     pub fn retain(&mut self, list: &[SyntaxToken]) {
@@ -164,12 +165,7 @@ impl SyntaxTokenVec {
         self.0.retain(|item| list.contains(&item));
     }
 
-    pub fn append(
-        &mut self, 
-        items: Vec<SyntaxToken>, 
-        start_tok: Option<SyntaxToken>,
-        separator: Option<SyntaxToken>) 
-    {
+    pub fn append(&mut self, items: Vec<SyntaxToken>, start_tok: Option<SyntaxToken>, separator: Option<SyntaxToken>) {
         if let Some(start) = start_tok {
             self.0.push(start);
         }
@@ -183,10 +179,9 @@ impl SyntaxTokenVec {
                     self.0.push(item);
                 }
             }
-        } 
+        }
         else {
             self.0.extend(items);
         }
     }
-    
 }

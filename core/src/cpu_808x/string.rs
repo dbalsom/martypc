@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -34,14 +34,13 @@ use crate::cpu_808x::*;
 
 impl Cpu {
     pub fn string_op(&mut self, opcode: Mnemonic, segment_override: SegmentOverride) {
-
-        let (segment_value_base_ds, segment_base_ds) = match segment_override {
+        let (_segment_value_base_ds, segment_base_ds) = match segment_override {
             SegmentOverride::None => (self.ds, Segment::DS),
-            SegmentOverride::ES  => (self.es, Segment::ES),
-            SegmentOverride::CS  => (self.cs, Segment::CS),
-            SegmentOverride::SS  => (self.ss, Segment::SS),
-            SegmentOverride::DS  => (self.ds, Segment::DS),
-        };   
+            SegmentOverride::ES => (self.es, Segment::ES),
+            SegmentOverride::CS => (self.cs, Segment::CS),
+            SegmentOverride::SS => (self.ss, Segment::SS),
+            SegmentOverride::DS => (self.ds, Segment::DS),
+        };
 
         match opcode {
             Mnemonic::STOSB => {
@@ -78,7 +77,7 @@ impl Cpu {
                         // Direction flag set, process backwards
                         self.di = self.di.wrapping_sub(2);
                     }
-                }                
+                }
             }
             Mnemonic::LODSB => {
                 // LODSB affects no flags
@@ -99,7 +98,7 @@ impl Cpu {
                         // Direction flag set, process backwards
                         self.si = self.si.wrapping_sub(1);
                     }
-                }    
+                }
             }
             Mnemonic::LODSW => {
                 // LODSW affects no flags
@@ -108,7 +107,7 @@ impl Cpu {
                 self.set_mc_pc(0x12d);
                 let data = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
 
-                self.set_register16(Register16::AX, data);  
+                self.set_register16(Register16::AX, data);
 
                 // Increment or Decrement SI according to Direction flag
                 match self.get_flag(Flag::Direction) {
@@ -120,8 +119,8 @@ impl Cpu {
                         // Direction flag set, process backwards
                         self.si = self.si.wrapping_sub(2);
                     }
-                }                   
-            }            
+                }
+            }
             Mnemonic::MOVSB => {
                 // Store byte from [ds:si] in [es:di]  (DS Segment overrideable)
 
@@ -160,10 +159,10 @@ impl Cpu {
                         self.si = self.si.wrapping_sub(2);
                         self.di = self.di.wrapping_sub(2);
                     }
-                }                   
+                }
             }
             Mnemonic::SCASB => {
-                // SCASB: Compare byte from [es:di] with value in AL.  
+                // SCASB: Compare byte from [es:di] with value in AL.
                 // Flags: o..szapc
                 // Override: ES cannot be overridden
 
@@ -171,12 +170,12 @@ impl Cpu {
                 let data = self.biu_read_u8(Segment::ES, self.di);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, data, false );
+                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, data, false);
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_szp_flags_from_result_u8(result);                
+                self.set_szp_flags_from_result_u8(result);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -190,20 +189,20 @@ impl Cpu {
                 }
             }
             Mnemonic::SCASW => {
-                // SCASW: Compare word from [es:di] with value in AX.  
+                // SCASW: Compare word from [es:di] with value in AX.
                 // Flags: o..szapc
-                // Override: ES cannot be overridden                
+                // Override: ES cannot be overridden
 
                 self.cycles_i(2, &[0x121, MC_JUMP]);
                 let data = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, data, false );
+                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, data, false);
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_szp_flags_from_result_u16(result);                
+                self.set_szp_flags_from_result_u16(result);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -214,7 +213,7 @@ impl Cpu {
                         // Direction flag set, process backwards
                         self.di = self.di.wrapping_sub(2);
                     }
-                }                 
+                }
             }
             Mnemonic::CMPSB => {
                 // CMPSB: Compare bytes from [es:di] to [ds:si]
@@ -233,7 +232,7 @@ impl Cpu {
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_szp_flags_from_result_u8(result);                    
+                self.set_szp_flags_from_result_u8(result);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -258,14 +257,14 @@ impl Cpu {
                 self.cycles_i(2, &[0x123, 0x124]);
                 let esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
-                
+
                 let (result, carry, overflow, aux_carry) = Cpu::sub_u16(dssi_op, esdi_op, false);
 
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::AuxCarry, aux_carry);
-                self.set_szp_flags_from_result_u16(result);                    
+                self.set_szp_flags_from_result_u16(result);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -279,19 +278,17 @@ impl Cpu {
                         self.di = self.di.wrapping_sub(2);
                     }
                 }
-            }            
+            }
             _ => {
                 panic!("CPU: Unhandled opcode to string_op(): {:?}", opcode);
-            }            
+            }
         }
     }
 
     /// Implement the RPTS microcode co-routine for string operation repetition.
     pub fn rep_start(&mut self) -> bool {
-
         if !self.rep_init {
-
-            // First entry into REP-prefixed instruction, run the first line where we 
+            // First entry into REP-prefixed instruction, run the first line where we
             // decide whether to call RPTS
             match self.i.mnemonic {
                 Mnemonic::MOVSB | Mnemonic::MOVSW => self.cycle_i(0x12c),
@@ -307,7 +304,7 @@ impl Cpu {
                 if self.cx == 0 {
                     self.cycles_i(4, &[MC_JUMP, 0x112, 0x113, 0x114]);
                     self.rep_end();
-                    return false
+                    return false;
                 }
                 else {
                     // CX > 0. Load ALU for decrementing CX
@@ -335,8 +332,8 @@ impl Cpu {
         // Rewind IP so that it points to REP instruction again afterwards.
         // This behavior will emulate the 8088's bug with string operations and segment overrides,
         // as the next time the instruction is fetched it will be with only a single prefix.
-        self.ip = self.ip.wrapping_sub(2); 
-            
+        self.ip = self.ip.wrapping_sub(2);
+
         self.rep_end();
         // Flush was on RNI so no extra cycle here
     }

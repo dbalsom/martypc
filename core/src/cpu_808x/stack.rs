@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,39 +30,33 @@
 
 */
 
-use crate::cpu_808x::*;
-use crate::cpu_808x::biu::*;
+use crate::cpu_808x::{biu::*, *};
 
 impl Cpu {
-
     pub fn push_u8(&mut self, data: u8, flag: ReadWriteFlag) {
-        
         // Stack pointer grows downwards
-        self.sp = self.sp.wrapping_sub(2); 
+        self.sp = self.sp.wrapping_sub(2);
         self.biu_write_u8(Segment::SS, self.sp, data, flag);
     }
 
     pub fn push_u16(&mut self, data: u16, flag: ReadWriteFlag) {
-
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
         self.biu_write_u16(Segment::SS, self.sp, data, flag);
     }
 
     pub fn pop_u16(&mut self) -> u16 {
-
         let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
-        
+
         // Stack pointer shrinks upwards
         self.sp = self.sp.wrapping_add(2);
         result
     }
 
     pub fn push_register16(&mut self, reg: Register16, flag: ReadWriteFlag) {
-        
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
-        
+
         let data = match reg {
             Register16::AX => self.ax,
             Register16::BX => self.bx,
@@ -76,15 +70,14 @@ impl Cpu {
             Register16::DS => self.ds,
             Register16::SS => self.ss,
             Register16::ES => self.es,
-            Register16::IP => self.ip,    
-            _ => panic!("Invalid register")            
+            Register16::IP => self.ip,
+            _ => panic!("Invalid register"),
         };
-    
+
         self.biu_write_u16(Segment::SS, self.sp, data, flag);
     }
 
     pub fn pop_register16(&mut self, reg: Register16, flag: ReadWriteFlag) {
-
         let data = self.biu_read_u16(Segment::SS, self.sp, flag);
 
         let mut update_sp = true;
@@ -108,10 +101,10 @@ impl Cpu {
                 self.ss = data;
                 // Inhibit interrupts for one instruction after issuing POP SS
                 self.interrupt_inhibit = true
-            },
-            Register16::ES => self.es = data,     
-            Register16::IP => self.ip = data,      
-            _ => panic!("Invalid register")            
+            }
+            Register16::ES => self.es = data,
+            Register16::IP => self.ip = data,
+            _ => panic!("Invalid register"),
         };
         // Stack pointer grows downwards
         if update_sp {
@@ -120,14 +113,12 @@ impl Cpu {
     }
 
     pub fn push_flags(&mut self, wflag: ReadWriteFlag) {
-
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
         self.biu_write_u16(Segment::SS, self.sp, self.flags, wflag);
     }
 
     pub fn pop_flags(&mut self) {
-
         let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
 
         let trap_was_set = self.get_flag(Flag::Trap);
@@ -152,7 +143,6 @@ impl Cpu {
     }
 
     pub fn release(&mut self, disp: u16) {
-
         // TODO: Stack exceptions?
         self.sp = self.sp.wrapping_add(disp);
     }

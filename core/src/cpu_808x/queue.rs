@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,8 +30,7 @@
 
 */
 
-use crate::cpu_808x::*;
-use crate::bytequeue::*;
+use crate::{bytequeue::*, cpu_808x::*};
 
 pub struct InstructionQueue {
     size: usize,
@@ -108,12 +107,11 @@ impl InstructionQueue {
 
     pub fn push8(&mut self, byte: u8) {
         if self.len < self.size {
-
             self.q[self.front] = byte;
             //self.dt[self.front] = dtype;
 
             self.front = (self.front + 1) % self.size;
-            self.len += 1;     
+            self.len += 1;
         }
         else {
             panic!("Queue overrun!");
@@ -121,7 +119,6 @@ impl InstructionQueue {
     }
 
     pub fn push16(&mut self, word: u16) {
-
         self.push8((word & 0xFF) as u8);
         self.push8(((word >> 8) & 0xFF) as u8);
     }
@@ -134,13 +131,13 @@ impl InstructionQueue {
             self.back = (self.back + 1) % self.size;
             self.len -= 1;
 
-            return byte
+            return byte;
         }
         panic!("Queue underrun!");
     }
 
     /// Flush the processor queue. This resets the queue to an empty state
-    /// with no delay flags. 
+    /// with no delay flags.
     pub fn flush(&mut self) {
         self.len = 0;
         self.back = 0;
@@ -150,7 +147,6 @@ impl InstructionQueue {
 
     /// Convert the contents of the processor instruction queue to a hexadecimal string.
     pub fn to_string(&self) -> String {
-
         let mut base_str = "".to_string();
 
         for i in 0..self.len {
@@ -161,11 +157,10 @@ impl InstructionQueue {
     }
 
     /// Write the contents of the processor instruction queue in order to the
-    /// provided slice of u8. The slice must be the same size as the current piq 
+    /// provided slice of u8. The slice must be the same size as the current piq
     /// length for the given cpu type.
     #[allow(dead_code)]
     pub fn to_slice(&self, slice: &mut [u8]) {
-
         assert_eq!(self.size, slice.len());
 
         for i in 0..self.len {

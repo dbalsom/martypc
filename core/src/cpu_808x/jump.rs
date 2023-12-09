@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,11 +29,9 @@
     Implements microcode routines for jumps and calls.
 */
 
-use crate::cpu_808x::*;
-use crate::cpu_808x::biu::*;
+use crate::cpu_808x::{biu::*, *};
 
 impl Cpu {
-
     /// Execute the RELJMP microcode routine, optionally including the jump into the procedure.
     #[inline]
     pub fn reljmp(&mut self, new_ip: u16, jump: bool) {
@@ -66,7 +64,6 @@ impl Cpu {
     /// Execute the FARCALL2 microcode routine. Called by interrupt procedures.
     #[inline]
     pub fn farcall2(&mut self, new_cs: u16, new_ip: u16) {
-        
         self.cycles_i(3, &[MC_JUMP, 0x06c, MC_CORR]);
         // Push return segment to stack
         self.push_u16(self.cs, ReadWriteFlag::Normal);
@@ -88,7 +85,6 @@ impl Cpu {
 
     /// Execute the FARRET microcode routine, including the jump into the procedure.
     pub fn farret(&mut self, far: bool) {
-
         self.cycle_i(MC_JUMP);
         self.set_mc_pc(0x0c2);
         self.pop_register16(Register16::IP, ReadWriteFlag::RNI);
@@ -102,7 +98,7 @@ impl Cpu {
         if far {
             self.cycle_i(MC_JUMP);
             self.pop_register16(Register16::CS, ReadWriteFlag::Normal);
-            
+
             self.biu_queue_flush();
             self.cycles_i(2, &[0x0c7, MC_RTN]);
         }

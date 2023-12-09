@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,10 +29,9 @@
     Defines the Memory Error enum.
 */
 
-
 #![allow(dead_code)]
-use std::error::Error;
 use core::fmt::Display;
+use std::error::Error;
 
 #[derive(Debug)]
 pub enum MemError {
@@ -42,13 +41,15 @@ pub enum MemError {
     MmioError,
 }
 impl Error for MemError {}
-impl Display for MemError{
+impl Display for MemError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            MemError::ReadOutOfBoundsError => write!(f, "An attempt was made to read out of buffer bounds."),
+            MemError::ReadOutOfBoundsError => {
+                write!(f, "An attempt was made to read out of buffer bounds.")
+            }
             MemError::SeekOutOfBoundsError => write!(f, "An attempt was made to move the buffer cursor out of bounds."),
             MemError::FileReadError => write!(f, "Error reading file into MemBuf."),
-            MemError::MmioError => write!(f, "Error accessing map for memory mapped device.")
+            MemError::MmioError => write!(f, "Error accessing map for memory mapped device."),
         }
     }
 }

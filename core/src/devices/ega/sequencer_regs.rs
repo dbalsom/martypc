@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,8 +30,8 @@
 
 */
 
-use modular_bitfield::prelude::*;
 use crate::devices::ega::EGACard;
+use modular_bitfield::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum SequencerRegister {
@@ -39,7 +39,7 @@ pub enum SequencerRegister {
     ClockingMode,
     MapMask,
     CharacterMapSelect,
-    MemoryMode
+    MemoryMode,
 }
 
 #[bitfield]
@@ -51,13 +51,14 @@ pub struct SClockingModeRegister {
     pub shift_load: B1,
     pub dot_clock: DotClock,
     #[skip]
-    unused: B4
+    unused: B4,
 }
 
+// Ferraro has this bit flipped. 0 == 9 Dots. IBM docs are correct.
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
 pub enum CharacterClock {
+    NineDots,
     EightDots,
-    NineDots
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
@@ -66,14 +67,12 @@ pub enum DotClock {
     HalfClock,
 }
 
-
 impl EGACard {
     /// Handle a write to the Sequencer Address register.
-    /// 
+    ///
     /// The value written to this register controls which regsiter will be written to
     /// when a byte is sent to the Sequencer Data register.
     pub fn write_sequencer_address(&mut self, byte: u8) {
-
         //log::trace!("CGA: CRTC register {:02X} selected", byte);
         self.sequencer_address_byte = byte & 0x1F;
 
@@ -86,15 +85,14 @@ impl EGACard {
             _ => {
                 log::debug!("Select to invalid sequencer register: {:02X}", byte);
                 self.sequencer_register_selected
-            } 
+            }
         }
     }
 
     /// Handle a write to the Sequencer Data register.
-    /// 
+    ///
     /// Will write to the internal register selected by the Sequencer Address Register.
     pub fn write_sequencer_data(&mut self, byte: u8) {
-
         match self.sequencer_register_selected {
             SequencerRegister::Reset => {
                 self.sequencer_reset = byte & 0x03;
@@ -103,6 +101,12 @@ impl EGACard {
             SequencerRegister::ClockingMode => {
                 self.sequencer_clocking_mode = SClockingModeRegister::from_bytes([byte]);
                 log::trace!("Write to Sequencer::ClockingMode register: {:02X}", byte);
+
+                self.clock_change_pending = true;
+                (self.clock_divisor, self.char_clock) = match self.sequencer_clocking_mode.dot_clock() {
+                    DotClock::HalfClock => (2, 16),
+                    DotClock::Native => (1, 8),
+                }
             }
             SequencerRegister::MapMask => {
                 self.sequencer_map_mask = byte & 0x0F;
@@ -120,5 +124,4 @@ impl EGACard {
         }
         self.recalculate_mode();
     }
-
 }

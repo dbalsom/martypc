@@ -21,6 +21,20 @@
 			],
 			"group": "build",
 			"label": "rust: cargo build release "
+		},
+		{
+			"type": "cargo",
+			"command": "build",
+			"args": [
+                "-r",
+				"--features",
+				"ega"
+            ],            
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build",
+			"label": "rust: cargo build release with EGA"
 		},        
 		{
 			"type": "cargo",

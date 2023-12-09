@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -31,7 +31,7 @@
 
     https://w3c.github.io/uievents-code/#code-value-tables
 
-    Frontend libraries should define a TranslateKey trait to convert the 
+    Frontend libraries should define a TranslateKey trait to convert the
     implementation-specific keycodes into MartyKey(s), such as:
 
     pub trait TranslateKey {
@@ -237,5 +237,5 @@ pub enum MartyKey {
     F32,
     F33,
     F34,
-    F35
+    F35,
 }

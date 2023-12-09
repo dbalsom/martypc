@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -56,21 +56,21 @@ macro_rules! impl_neg {
     ($prim:ty) => {
         impl AluNeg for $prim {
             /// Negation
-            /// 
+            ///
             /// Implemented as Sub(0 - Self)
             /// Flags are identical for Sub
             fn alu_neg(self) -> (Self, bool, bool, bool) {
                 0.alu_sub(self)
             }
         }
-    }
+    };
 }
 
 macro_rules! impl_sub {
     ($prim:ty) => {
         impl AluSub for $prim {
             /// Subtraction
-            /// 
+            ///
             /// Carry flag is set if Unsigned overflow occurred
             /// Overflow flag is set if Signed overflow occurred
             /// AF flag is set if borrow from top nibble
@@ -81,19 +81,18 @@ macro_rules! impl_sub {
                 (result, carry, overflow, aux_carry)
             }
         }
-    }
+    };
 }
 
 macro_rules! impl_sbb {
     ($prim:ty) => {
         impl AluSbb for $prim {
             /// Subtraction with borrow from carry flag
-            /// 
+            ///
             /// Carry flag is set if Unsigned overflow occurred
             /// Overflow flag is set if Signed overflow occurred
             /// AF flag is set if borrow from top nibble
             fn alu_sbb(self, rhs: Self, carry_in: bool) -> (Self, bool, bool, bool) {
-
                 let lhs_w: u32 = self as u32;
                 let rhs_w: u32 = rhs as u32;
                 let result: u32;
@@ -101,23 +100,28 @@ macro_rules! impl_sbb {
                 let carry2: bool;
 
                 (result, carry) = lhs_w.overflowing_sub(rhs_w.wrapping_add(if carry_in { 1 } else { 0 })); // DEST := (DEST – (SRC + CF));
-                carry2 = if result & (0xFFFFFFFF << <$prim>::BITS) != 0 { true } else { false }; // Unsigned overflow
+                carry2 = if result & (0xFFFFFFFF << <$prim>::BITS) != 0 {
+                    true
+                }
+                else {
+                    false
+                }; // Unsigned overflow
                 carry = if <$prim>::BITS == 32 { carry } else { carry2 };
 
                 let overflow = (lhs_w ^ rhs_w) & (lhs_w ^ result) & (1 << (<$prim>::BITS - 1)) != 0; // Signed overflow
-                let aux_carry = ((lhs_w ^ rhs_w ^ result) & 0x10) != 0; // Borrow from upper nibble 
+                let aux_carry = ((lhs_w ^ rhs_w ^ result) & 0x10) != 0; // Borrow from upper nibble
 
                 (result as Self, carry, overflow, aux_carry)
             }
         }
-    }
+    };
 }
 
 macro_rules! impl_add {
     ($prim:ty) => {
         impl AluAdd for $prim {
             /// Addition
-            /// 
+            ///
             /// Carry flag is set if Unsigned overflow occurred
             /// Overflow flag is set if Signed overflow occurred
             /// AF flag is set if borrow from top nibble
@@ -128,19 +132,18 @@ macro_rules! impl_add {
                 (result, carry, overflow, aux_carry)
             }
         }
-    }
+    };
 }
 
 macro_rules! impl_adc {
     ($prim:ty) => {
         impl AluAdc for $prim {
             /// Addition with carry from carry flag
-            /// 
+            ///
             /// Carry flag is set if Unsigned overflow occurred
             /// Overflow flag is set if Signed overflow occurred
             /// AF flag is set if borrow from top nibble
             fn alu_adc(self, rhs: Self, carry_in: bool) -> (Self, bool, bool, bool) {
-
                 let lhs_w: u32 = self as u32;
                 let rhs_w: u32 = rhs as u32;
                 let result: u32;
@@ -148,16 +151,21 @@ macro_rules! impl_adc {
                 let carry2: bool;
 
                 (result, carry) = lhs_w.overflowing_add(rhs_w.wrapping_add(if carry_in { 1 } else { 0 })); // DEST := (DEST + (SRC + CF));
-                carry2 = if result & (0xFFFFFFFF << <$prim>::BITS) != 0 { true } else { false }; // Unsigned overflow
+                carry2 = if result & (0xFFFFFFFF << <$prim>::BITS) != 0 {
+                    true
+                }
+                else {
+                    false
+                }; // Unsigned overflow
                 carry = if <$prim>::BITS == 32 { carry } else { carry2 };
 
                 let overflow = (lhs_w ^ result) & (rhs_w ^ result) & (1 << (<$prim>::BITS - 1)) != 0; // Signed overflow
-                let aux_carry = ((lhs_w ^ rhs_w ^ result) & 0x10) != 0; // Borrow from upper nibble 
+                let aux_carry = ((lhs_w ^ rhs_w ^ result) & 0x10) != 0; // Borrow from upper nibble
 
                 (result as Self, carry, overflow, aux_carry)
             }
         }
-    }
+    };
 }
 
 impl_neg!(u8);
@@ -190,7 +198,7 @@ macro_rules! impl_shl {
                 (self, carry)
             }
         }
-    }
+    };
 }
 
 pub trait AluShiftRight: Sized {
@@ -210,7 +218,7 @@ macro_rules! impl_shr {
                 (self, carry)
             }
         }
-    }
+    };
 }
 
 pub trait AluRotateLeft: Sized {
@@ -230,7 +238,7 @@ macro_rules! impl_rol {
                 (self, carry != 0)
             }
         }
-    }
+    };
 }
 
 pub trait AluRotateCarryLeft: Sized {
@@ -242,18 +250,18 @@ macro_rules! impl_rcl {
         impl AluRotateCarryLeft for $prim {
             fn alu_rcl(mut self, count: u8, carry: bool) -> (Self, bool) {
                 let mut carry = carry as $prim;
-                
+
                 for _ in 0..count {
                     let saved_carry = carry;
                     carry = self >> (<$prim>::BITS - 1);
                     self <<= 1;
                     self |= saved_carry;
                 }
-        
+
                 (self, carry != 0)
             }
         }
-    }
+    };
 }
 
 pub trait AluRotateRight: Sized {
@@ -273,7 +281,7 @@ macro_rules! impl_ror {
                 (self, carry != 0)
             }
         }
-    }
+    };
 }
 
 pub trait AluRotateCarryRight: Sized {
@@ -285,14 +293,14 @@ macro_rules! impl_rcr {
         impl AluRotateCarryRight for $prim {
             fn alu_rcr(mut self, count: u8, carry: bool) -> (Self, bool) {
                 let mut carry = carry as $prim << (<$prim>::BITS - 1);
-                
+
                 for _ in 0..count {
                     let saved_carry = carry;
                     carry = (self & 1) << (<$prim>::BITS - 1);   // (<$prim>::BITS - 1);
                     self >>= 1;
                     self |= saved_carry;
                 }
-        
+
                 (self, carry != 0)
             }
         }
@@ -312,15 +320,12 @@ impl_ror!(u16);
 impl_rcr!(u8);
 impl_rcr!(u16);
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_alu_shr() {
-
         let (result, carry) = 0x80u8.alu_shr(7);
         assert_eq!(result, 1);
         assert_eq!(carry, false);
@@ -338,21 +343,20 @@ mod tests {
         assert_eq!(result16, 0x00FF);
         assert_eq!(carry, false);
     }
-    
+
     #[test]
     fn test_alu_shl() {
-
-        let (result,carry) = 0x80u8.alu_shl(1);
+        let (result, carry) = 0x80u8.alu_shl(1);
         assert_eq!(result, 0);
         assert_eq!(carry, true);
-        let (result,carry) = 0x01u8.alu_shl(7);
+        let (result, carry) = 0x01u8.alu_shl(7);
         assert_eq!(result, 0x80);
         assert_eq!(carry, false);
 
-        let (result,carry) = 0x0080u16.alu_shl(1);
+        let (result, carry) = 0x0080u16.alu_shl(1);
         assert_eq!(result, 0x0100);
         assert_eq!(carry, false);
-        let (result,carry) = 0xFF00u16.alu_shl(8);
+        let (result, carry) = 0xFF00u16.alu_shl(8);
         assert_eq!(result, 0x0000);
         assert_eq!(carry, true);
     }
@@ -372,7 +376,7 @@ mod tests {
         assert_eq!(carry, false);
         let (result,carry) = Cpu::sar_u16_with_carry(0x8001, 1);
         assert_eq!(result, 0xC000);
-        assert_eq!(carry, true);        
+        assert_eq!(carry, true);
     }
     */
 
@@ -381,7 +385,7 @@ mod tests {
         let (result, carry) = 0x01u8.alu_rcr(1, false);
         assert_eq!(result, 0x00);
         assert_eq!(carry, true);
-        let (result, carry) = 0x01u8.alu_rcr( 3, false );
+        let (result, carry) = 0x01u8.alu_rcr(3, false);
         assert_eq!(result, 0x40);
         assert_eq!(carry, false);
         let (result, carry) = 0x00u8.alu_rcr(1, true);
@@ -391,7 +395,7 @@ mod tests {
         // Test overflow
         let mut existing_carry = false;
         let mut operand: u8 = 0x80;
-        let(result,carry) = operand.alu_rcr(1, existing_carry);
+        let (result, carry) = operand.alu_rcr(1, existing_carry);
         let overflow = (operand & 0x80 == 0 && existing_carry) || (operand & 0x80 != 0 && !existing_carry);
         assert_eq!(result, 0x40);
         assert_eq!(carry, false);
@@ -399,8 +403,8 @@ mod tests {
 
         operand = 0x04;
         existing_carry = true;
-        
-        let(result,carry) = operand.alu_rcr(1, existing_carry);
+
+        let (result, carry) = operand.alu_rcr(1, existing_carry);
         let overflow = (operand & 0x80 == 0 && existing_carry) || (operand & 0x80 != 0 && !existing_carry);
         assert_eq!(result, 0x82);
         assert_eq!(carry, false);
@@ -421,23 +425,20 @@ mod tests {
         assert_eq!(result, 0xDEAD);
         assert_eq!(carry, false);
 
-
         let (result, carry) = 0xC8a7u16.alu_rcl(255, false);
         assert_eq!(result, 0xC8a7);
         assert_eq!(carry, false);
-
     }
 
     #[test]
     fn test_rol() {
-
         let (result, carry) = 0xAAu8.alu_rol(8);
         assert_eq!(result, 0xAA);
         assert_eq!(carry, false);
 
         let (result, carry) = 0x55u8.alu_rol(16);
         assert_eq!(result, 0x55);
-        assert_eq!(carry, true);   
+        assert_eq!(carry, true);
 
         let (result, carry) = 0x80u8.alu_rol(1);
         assert_eq!(result, 0x01);
@@ -449,7 +450,7 @@ mod tests {
 
         let (result, carry) = 0x5555u16.alu_rol(16);
         assert_eq!(result, 0x5555);
-        assert_eq!(carry, true);        
+        assert_eq!(carry, true);
 
         let (result, carry) = 0x8000u16.alu_rol(1);
         assert_eq!(result, 0x0001);
@@ -458,14 +459,13 @@ mod tests {
 
     #[test]
     fn test_ror() {
-
         let (result, carry) = 0xAAu8.alu_ror(8);
         assert_eq!(result, 0xAA);
         assert_eq!(carry, true);
 
         let (result, carry) = 0x55u8.alu_ror(8);
         assert_eq!(result, 0x55);
-        assert_eq!(carry, false);        
+        assert_eq!(carry, false);
 
         let (result, carry) = 0x01u8.alu_ror(1);
         assert_eq!(result, 0x80);
@@ -477,11 +477,10 @@ mod tests {
 
         let (result, carry) = 0x5555u16.alu_ror(16);
         assert_eq!(result, 0x5555);
-        assert_eq!(carry, false);        
+        assert_eq!(carry, false);
 
         let (result, carry) = 0x0001u16.alu_ror(1);
         assert_eq!(result, 0x8000);
         assert_eq!(carry, true);
     }
-
 }

@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,12 +30,9 @@
 
 */
 
-
-use crate::cpu_808x::*;
-use crate::cpu_808x::muldiv::*;
+use crate::cpu_808x::{muldiv::*, *};
 
 impl Cpu {
-
     /// Ascii Adjust after Addition
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aaa(&mut self) {
@@ -60,7 +57,6 @@ impl Cpu {
             self.clear_flag(Flag::AuxCarry);
             self.clear_flag(Flag::Carry);
             self.cycle_i(MC_JUMP);
-            
         }
 
         // Handle undefined flag behavior. Determined by testing against real 8088.
@@ -82,8 +78,7 @@ impl Cpu {
 
     /// Ascii Adjust after Subtraction
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
-    pub fn aas(&mut self) {    
-
+    pub fn aas(&mut self) {
         let old_al = self.al;
         let old_af = self.get_flag(Flag::AuxCarry);
         let new_al;
@@ -98,7 +93,6 @@ impl Cpu {
             self.set_flag(Flag::AuxCarry);
             self.set_flag(Flag::Carry);
             //self.cycle_i(0x14e);
-            
         }
         else {
             new_al = self.al;
@@ -125,13 +119,12 @@ impl Cpu {
             self.set_flag(Flag::Sign);
         }
 
-        self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);        
+        self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
     }
 
     /// Ascii adjust before Divison
     /// Flags: The SF, ZF, and PF flags are set according to the resulting binary value in the AL register
     pub fn aad(&mut self, imm8: u8) {
-
         self.cycles_i(3, &[0x170, 0x171, MC_JUMP]);
         let product_native = (self.ah as u16).wrapping_mul(imm8 as u16) as u8;
         let (_, product) = 0u8.corx(self, self.ah as u16, imm8 as u16, false);
@@ -139,7 +132,7 @@ impl Cpu {
 
         self.set_register8(Register8::AL, self.al.wrapping_add(product as u8));
         self.set_register8(Register8::AH, 0);
-        
+
         self.cycles_i(2, &[0x172, 0x173]);
 
         // Other sources set flags from AX register. Intel's documentation specifies AL
@@ -151,7 +144,6 @@ impl Cpu {
     /// See https://www.righto.com/2023/01/understanding-x86s-decimal-adjust-after.html for
     /// clarification on intel's pseudocode for this function.
     pub fn daa(&mut self) {
-
         let old_cf = self.get_flag(Flag::Carry);
         let old_af = self.get_flag(Flag::AuxCarry);
         let old_al = self.al;
@@ -162,7 +154,7 @@ impl Cpu {
         // It is probably something you'd only discover from fuzzing.
         let al_check = match old_af {
             true => 0x9F,
-            false => 0x99
+            false => 0x99,
         };
 
         //log::debug!(" >>>> daa: af: {} cf: {} of: {}", old_af, old_cf, self.get_flag(Flag::Overflow));
@@ -172,7 +164,7 @@ impl Cpu {
         if old_cf {
             if self.al >= 0x1a && self.al <= 0x7F {
                 self.set_flag(Flag::Overflow);
-            }            
+            }
         }
         else if self.al >= 0x7a && self.al <= 0x7F {
             self.set_flag(Flag::Overflow);
@@ -200,14 +192,13 @@ impl Cpu {
     /// DAS — Decimal Adjust AL after Subtraction
     /// Flags: The SF, ZF, and PF flags are set according to the result.
     pub fn das(&mut self) {
-
         let old_al = self.al;
         let old_af = self.get_flag(Flag::AuxCarry);
         let old_cf = self.get_flag(Flag::Carry);
 
         let al_check = match old_af {
             true => 0x9F,
-            false => 0x99
+            false => 0x99,
         };
 
         // Handle undefined overflow flag behavior. Observed from testing against real cpu.
@@ -229,7 +220,7 @@ impl Cpu {
             (true, true) => match self.al {
                 0x80..=0xE5 => self.set_flag(Flag::Overflow),
                 _ => {}
-            }
+            },
         }
 
         self.clear_flag(Flag::Carry);
@@ -257,26 +248,21 @@ impl Cpu {
     /// As AAM is implemented via CORD, it can throw an exception. This is indicated by a return value
     /// of false.
     pub fn aam(&mut self, imm8: u8) -> bool {
-
         self.cycles_i(3, &[0x175, 0x176, MC_JUMP]);
         // 176: A->tmpc   | UNC CORD
         // Jump delay
 
         match 0u8.cord(self, 0, imm8 as u16, self.al as u16) {
             Ok((quotient, remainder, _)) => {
-
                 // 177:          | COM1 tmpc
                 self.set_register8(Register8::AH, !(quotient as u8));
                 self.set_register8(Register8::AL, remainder as u8);
                 self.cycle_i(0x177);
                 // Other sources set flags from AX register. Intel's documentation specifies AL
                 self.set_szp_flags_from_result_u8(self.al);
-                return true
+                return true;
             }
-            Err(_) => {
-                return false
-            }
+            Err(_) => return false,
         }
     }
-    
 }

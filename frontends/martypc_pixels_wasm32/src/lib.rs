@@ -1,60 +1,52 @@
 #![deny(clippy::all)]
 #![forbid(unsafe_code)]
 
-use instant::{Instant, Duration};
+use instant::{Duration, Instant};
 
+use js_sys::{self, Reflect};
 use pixels::wgpu::TextureView;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::JsValue;
-use wasm_bindgen::closure::Closure;
+use wasm_bindgen::{closure::Closure, prelude::*, JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, Response, Headers, Blob, FileReader, ProgressEvent, console, window};
-use js_sys;
-use js_sys::Reflect;
+use web_sys::{console, window, Blob, FileReader, Headers, ProgressEvent, Request, RequestInit, Response};
 
 use error_iter::ErrorIter as _;
 use log::error;
 use pixels::{Pixels, SurfaceTexture};
 use std::rc::Rc;
 use winit::{
-    dpi::{PhysicalSize, LogicalSize},
-    event::{Event, WindowEvent, VirtualKeyCode},
+    dpi::{LogicalSize, PhysicalSize},
+    event::{Event, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder
+    window::WindowBuilder,
 };
 use winit_input_helper::WinitInputHelper;
 
 use marty_core::{
-    config::{self, *},
-    machine::{self, Machine, MachineState, ExecutionControl, ExecutionState},
+    bytequeue::ByteQueue,
     cpu_808x::{Cpu, CpuAddress},
     cpu_common::CpuOption,
-    rom_manager::{RomManager, RawRomDescriptor},
-    floppy_manager::{FloppyManager, FloppyError},
+    floppy_manager::{FloppyError, FloppyManager},
+    input::{self, MouseButton},
+    lib::{self, *},
+    machine::{self, ExecutionControl, ExecutionState, Machine, MachineState},
     machine_manager::MACHINE_DESCS,
-    vhd_manager::{VHDManager, VHDManagerError},
-    vhd::{self, VirtualHardDisk},
-    videocard::{RenderMode},
-    bytequeue::ByteQueue,
+    rom_manager::{RawRomDescriptor, RomManager},
     sound::SoundPlayer,
     syntax_token::SyntaxToken,
-    input::{
-        self,
-        MouseButton
-    },
-    util
+    util,
+    vhd::{self, VirtualHardDisk},
+    vhd_manager::{VHDManager, VHDManagerError},
+    videocard::RenderMode,
 };
 
-use marty_render::{VideoData, VideoRenderer, CompositeParams, ResampleContext};
-use pixels_stretch_renderer::{StretchingRenderer, SurfaceSize};
+use marty_render::{CompositeParams, ResampleContext, VideoData, VideoRenderer};
+//use pixels_stretch_renderer::{StretchingRenderer, SurfaceSize};
 
 const DEFAULT_RENDER_WIDTH: u32 = 768;
 const DEFAULT_RENDER_HEIGHT: u32 = 524;
 
 const DEFAULT_ASPECT_WIDTH: u32 = 768;
 const DEFAULT_ASPECT_HEIGHT: u32 = 576;
-
 
 const MIN_RENDER_WIDTH: u32 = 160;
 const MIN_RENDER_HEIGHT: u32 = 200;
@@ -86,7 +78,7 @@ struct Counter {
     ups: u32,
     fps: u32,
     last_frame: Instant,
-    #[allow (dead_code)]
+    #[allow(dead_code)]
     last_sndbuf: Instant,
     last_second: Instant,
     last_cpu_cycles: u64,
@@ -109,7 +101,7 @@ impl Counter {
             frame_count: 0,
             cycle_count: 0,
             instr_count: 0,
-            
+
             current_ups: 0,
             current_cps: 0,
             current_fps: 0,
@@ -145,11 +137,11 @@ fn start() {
     #[cfg(target_arch = "wasm32")]
     {
         std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-        
+
         log::warn!("Initializing logger...");
         match console_log::init_with_level(log::Level::Warn) {
-            Ok(()) => {},
-            Err(e) => log::error!("Couldn't initialize logger: {}", e)
+            Ok(()) => {}
+            Err(e) => log::error!("Couldn't initialize logger: {}", e),
         };
 
         //wasm_bindgen_futures::spawn_local(run());
@@ -169,7 +161,10 @@ pub async fn fetch_binary_file(url: &str) -> Result<Vec<u8>, JsValue> {
     opts.method("GET");
 
     let request = Request::new_with_str_and_init(url, &opts)?;
-    request.headers().set("Content-Type", "application/octet-stream").unwrap();
+    request
+        .headers()
+        .set("Content-Type", "application/octet-stream")
+        .unwrap();
 
     let resp_value = JsFuture::from(client_window.fetch_with_request(&request)).await?;
     let resp: Response = resp_value.dyn_into()?;
@@ -207,7 +202,6 @@ fn read_blob_as_array_buffer(blob: &web_sys::Blob) -> js_sys::Promise {
 
 #[wasm_bindgen]
 pub async fn run(cfg: &str) {
-
     // Emulator stuff
     let mut stat_counter = Counter::new();
 
@@ -247,7 +241,7 @@ pub async fn run(cfg: &str) {
 
     let mut composite_enabled;
     let mut machine;
-    
+
     //#[cfg(target_arch = "wasm32")]
     {
         use wasm_bindgen::JsCast;
@@ -280,8 +274,7 @@ pub async fn run(cfg: &str) {
             })
             .and_then(|div| {
                 // Append the canvas to the div.
-                div.append_child(&web_sys::Element::from(window.canvas()))
-                    .ok()
+                div.append_child(&web_sys::Element::from(window.canvas())).ok()
 
                 /*
                 // Get the canvas element
@@ -317,17 +310,23 @@ pub async fn run(cfg: &str) {
         let mut opts = web_sys::RequestInit::new();
         opts.method("GET");
 
-        let request = web_sys::Request::new_with_str_and_init(&format!("./cfg/{}", cfg), &opts).expect("Couldn't create request for configuration file.");
-        request.headers().set("Content-Type", "text/plain").expect("Couldn't set headers!");
+        let request = web_sys::Request::new_with_str_and_init(&format!("./cfg/{}", cfg), &opts)
+            .expect("Couldn't create request for configuration file.");
+        request
+            .headers()
+            .set("Content-Type", "text/plain")
+            .expect("Couldn't set headers!");
 
-        let resp_value = JsFuture::from(client_window.fetch_with_request(&request)).await.unwrap();
+        let resp_value = JsFuture::from(client_window.fetch_with_request(&request))
+            .await
+            .unwrap();
         let resp: Response = resp_value.into();
 
-        // Get the response as text 
+        // Get the response as text
         let toml_text = JsFuture::from(resp.text().unwrap()).await.unwrap();
 
         // Read config file from toml text
-        let mut config = match config::get_config_from_str(&toml_text.as_string().unwrap()){
+        let mut config = match lib::get_config_from_str(&toml_text.as_string().unwrap()) {
             Ok(config) => config,
             Err(e) => {
                 match e.downcast_ref::<std::io::Error>() {
@@ -336,12 +335,15 @@ pub async fn run(cfg: &str) {
                     }
                     Some(e) => {
                         log::error!("Unknown IO error reading configuration file:\n{}", e);
-                    }                
+                    }
                     None => {
-                        log::error!("Failed to parse configuration file. There may be a typo or otherwise invalid toml:\n{}", e);
+                        log::error!(
+                            "Failed to parse configuration file. There may be a typo or otherwise invalid toml:\n{}",
+                            e
+                        );
                     }
                 }
-                return
+                return;
             }
         };
 
@@ -349,16 +351,20 @@ pub async fn run(cfg: &str) {
 
         let rom_override = match config.machine.rom_override {
             Some(ref rom_override) => rom_override,
-            None => panic!("No rom file specified!")
+            None => panic!("No rom file specified!"),
         };
 
         let floppy_path_str = match config.machine.floppy0 {
             Some(ref floppy) => floppy,
-            None => panic!("No floppy image specified!")
+            None => panic!("No floppy image specified!"),
         };
 
-        log::warn!("Read config file. Rom to load: {:?} Floppy to load: {:?}", rom_override[0].path, floppy_path_str);
-        
+        log::warn!(
+            "Read config file. Rom to load: {:?} Floppy to load: {:?}",
+            rom_override[0].path,
+            floppy_path_str
+        );
+
         // Convert Path to str
         let rom_path_str = &rom_override[0].path.clone().into_os_string().into_string().unwrap();
 
@@ -368,13 +374,16 @@ pub async fn run(cfg: &str) {
         // Get the floppy image as a vec<u8>
         let floppy_vec = fetch_binary_file(floppy_path_str).await.unwrap();
 
-
         //log::warn!("rom: {:?}", rom_vec);
 
         // Look up the machine description given the machine type in the configuration file
         let machine_desc_opt = MACHINE_DESCS.get(&config.machine.model);
         if let Some(machine_desc) = machine_desc_opt {
-            log::warn!("Given machine type {:?} got machine description: {:?}", config.machine.model, machine_desc);
+            log::warn!(
+                "Given machine type {:?} got machine description: {:?}",
+                config.machine.model,
+                machine_desc
+            );
         }
         else {
             log::error!(
@@ -382,10 +391,10 @@ pub async fn run(cfg: &str) {
                  Check that you have a valid machine type specified in configuration file.",
                 config.machine.model
             );
-            return        
+            return;
         }
 
-        // Init sound 
+        // Init sound
         // The cpal sound library uses generics to initialize depending on the SampleFormat type.
         // On Windows at least a sample type of f32 is typical, but just in case...
         let sample_fmt = SoundPlayer::get_sample_format();
@@ -398,20 +407,16 @@ pub async fn run(cfg: &str) {
         // Empty features
         let mut features = Vec::new();
 
-        let mut rom_manager = 
-            RomManager::new(
-                config.machine.model, 
-                features,
-                config.machine.rom_override.clone(),
-            );
+        let mut rom_manager = RomManager::new(config.machine.model, features, config.machine.rom_override.clone());
 
         rom_manager.add_raw_rom(
             &rom_vec,
             RawRomDescriptor {
-                addr: rom_override[0].address,
+                addr:   rom_override[0].address,
                 offset: rom_override[0].offset,
-                org: rom_override[0].org
-            });
+                org:    rom_override[0].org,
+            },
+        );
 
         // capture option before moving to machine
         composite_enabled = config.machine.composite;
@@ -421,9 +426,9 @@ pub async fn run(cfg: &str) {
             config.machine.model,
             *machine_desc_opt.unwrap(),
             config.emulator.trace_mode,
-            config.machine.video, 
-            sp, 
-            rom_manager, 
+            config.machine.video,
+            sp,
+            rom_manager,
         );
 
         if let Some(fdc) = machine.fdc() {
@@ -459,8 +464,7 @@ pub async fn run(cfg: &str) {
     let mut input = WinitInputHelper::new();
     let mut pixels = {
         let window_size = window.inner_size();
-        let surface_texture =
-            SurfaceTexture::new(window_size.width, window_size.height, window.as_ref());
+        let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window.as_ref());
 
         Pixels::new_async(DEFAULT_RENDER_WIDTH, DEFAULT_RENDER_HEIGHT, surface_texture)
             .await
@@ -479,32 +483,28 @@ pub async fn run(cfg: &str) {
     machine.play_sound_buffer();
 
     event_loop.run(move |event, _, control_flow| {
-
-
         match event {
-            Event::WindowEvent{ event, .. } => {
-
+            Event::WindowEvent { event, .. } => {
                 match event {
                     WindowEvent::ModifiersChanged(modifier_state) => {
                         //kb_data.ctrl_pressed = modifier_state.ctrl();
                     }
                     WindowEvent::KeyboardInput {
-                        input: winit::event::KeyboardInput {
-                            virtual_keycode: Some(keycode),
-                            state,
-                            ..
-                        },
+                        input:
+                            winit::event::KeyboardInput {
+                                virtual_keycode: Some(keycode),
+                                state,
+                                ..
+                            },
                         ..
                     } => {
-
                         match state {
                             winit::event::ElementState::Pressed => {
-                                
                                 if let Some(keycode) = input::match_virtual_keycode(keycode) {
                                     //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                     machine.key_press(keycode);
                                 };
-                            },
+                            }
                             winit::event::ElementState::Released => {
                                 if let Some(keycode) = input::match_virtual_keycode(keycode) {
                                     //log::debug!("Key released, keycode: {:?}: xt: {:02X}", keycode, keycode);
@@ -512,39 +512,36 @@ pub async fn run(cfg: &str) {
                                 };
                             }
                         }
-                    },
+                    }
                     _ => {}
                 }
-            },
+            }
             // Draw the current frame
             Event::RedrawRequested(event) => {
-                
                 //world.draw(pixels.frame_mut());
 
                 //stat_counter.current_fps += 1;
-                
-                if let Err(e) = pixels.render_with(
-                    |encoder, render_target, context| {
-                        let fill_texture = stretching_renderer.get_texture_view();
 
-                        //context.scaling_renderer.render(encoder, fill_texture);
-                    
-                        stretching_renderer.render(encoder, render_target);
-                        Ok(())
-                    }
-                ) {
+                if let Err(e) = pixels.render_with(|encoder, render_target, context| {
+                    let fill_texture = stretching_renderer.get_texture_view();
+
+                    //context.scaling_renderer.marty_render(encoder, fill_texture);
+
+                    stretching_renderer.render(encoder, render_target);
+                    Ok(())
+                }) {
                     log::error!("pixels.render_with error: {}", e);
                 };
 
                 /*
-                if let Err(err) = pixels.render() {
-                    log_error("pixels.render", err);
+                if let Err(err) = pixels.marty_render() {
+                    log_error("pixels.marty_render", err);
                     *control_flow = ControlFlow::Exit;
                     return;
                 }
                 */
-            } 
-            _ => {}           
+            }
+            _ => {}
         }
 
         let elapsed_ms = stat_counter.last_second.elapsed().as_millis();
@@ -555,12 +552,12 @@ pub async fn run(cfg: &str) {
             stat_counter.last_second = Instant::now();
         }
 
-        // Don't run the emulator if not in focus. 
+        // Don't run the emulator if not in focus.
         let focus = Reflect::get(&SHARED_STATE, &JsValue::from_str("browserFocus")).unwrap();
 
         if !focus {
             stat_counter.last_frame = Instant::now();
-            return
+            return;
         }
 
         // Decide whether to draw a frame
@@ -568,23 +565,26 @@ pub async fn run(cfg: &str) {
         stat_counter.last_frame = Instant::now();
 
         stat_counter.accumulated_us += elapsed_us;
-        
-        while stat_counter.accumulated_us > MICROS_PER_FRAME as u128 {
 
+        while stat_counter.accumulated_us > MICROS_PER_FRAME as u128 {
             stat_counter.accumulated_us -= MICROS_PER_FRAME as u128;
             stat_counter.last_frame = Instant::now();
             stat_counter.frame_count += 1;
             stat_counter.current_fps += 1;
 
             // Emulate a frame worth of instructions
-            // ---------------------------------------------------------------------------       
+            // ---------------------------------------------------------------------------
 
             // Recalculate cycle target based on current CPU speed if it has changed (or uninitialized)
             let mhz = machine.get_cpu_mhz();
             if mhz != stat_counter.cpu_mhz {
                 stat_counter.cycles_per_frame = (machine.get_cpu_mhz() * 1000000.0 / FPS_TARGET) as u32;
                 stat_counter.cycle_target = stat_counter.cycles_per_frame;
-                log::info!("CPU clock has changed to {}Mhz; new cycle target: {}", mhz, stat_counter.cycle_target);
+                log::info!(
+                    "CPU clock has changed to {}Mhz; new cycle target: {}",
+                    mhz,
+                    stat_counter.cycle_target
+                );
                 stat_counter.cpu_mhz = mhz;
             }
 
@@ -595,169 +595,163 @@ pub async fn run(cfg: &str) {
             // Add instructions to IPS counter
             stat_counter.cycle_count += stat_counter.cycle_target as u64;
 
-                    // Check if there was a resolution change, if a video card is present
-                    if let Some(video_card) = machine.videocard() {
+            // Check if there was a resolution change, if a video card is present
+            if let Some(video_card) = machine.videocard() {
+                let new_w;
+                let mut new_h;
 
-                        let new_w;
-                        let mut new_h;
+                match video_card.get_render_mode() {
+                    RenderMode::Direct => {
+                        (new_w, new_h) = video_card.get_display_aperture();
 
-                        match video_card.get_render_mode() {
-                            RenderMode::Direct => {
-                                (new_w, new_h) = video_card.get_display_aperture();
+                        // Set a sane maximum
+                        if new_h > 240 {
+                            new_h = 240;
+                        }
+                    }
+                    RenderMode::Indirect => {
+                        (new_w, new_h) = video_card.get_display_size();
+                    }
+                }
 
-                                // Set a sane maximum
-                                if new_h > 240 { 
-                                    new_h = 240;
-                                }
-                            }
-                            RenderMode::Indirect => {
-                                (new_w, new_h) = video_card.get_display_size();
-                            }
+                // If CGA, we will double scanlines later in the renderer, so make our buffer twice
+                // as high.
+                if video_card.get_scanline_double() {
+                    new_h = new_h * 2;
+                }
+
+                if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
+                    let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
+
+                    // TODO: The vertical delta hack was used for area 8088mph for the old style of rendering.
+                    // Now that we marty_render into a fixed frame, we should refactor this
+                    if (new_w != video_data.render_w) || ((new_h != video_data.render_h) && (vertical_delta <= 2)) {
+                        // Resize buffers
+                        log::debug!("Setting internal resolution to ({},{})", new_w, new_h);
+                        video_card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
+
+                        // Calculate new aspect ratio (make this option)
+                        video_data.render_w = new_w;
+                        video_data.render_h = new_h;
+                        render_src.resize((new_w * new_h * 4) as usize, 0);
+                        render_src.fill(0);
+
+                        video_data.aspect_w = video_data.render_w;
+                        let aspect_corrected_h = f32::floor(video_data.render_w as f32 * RENDER_ASPECT) as u32;
+                        // Don't make height smaller
+                        let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
+                        video_data.aspect_h = new_height;
+
+                        // Recalculate sampling factors
+                        resample_context.precalc(
+                            video_data.render_w,
+                            video_data.render_h,
+                            video_data.aspect_w,
+                            video_data.aspect_h,
+                        );
+
+                        pixels.frame_mut().fill(0);
+
+                        if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
+                            log::error!("Failed to resize pixel pixel buffer: {}", e);
                         }
 
-                        // If CGA, we will double scanlines later in the renderer, so make our buffer twice
-                        // as high.
-                        if video_card.get_scanline_double() {
-                            new_h = new_h * 2;
+                        VideoRenderer::set_alpha(pixels.frame_mut(), video_data.aspect_w, video_data.aspect_h, 255);
+                    }
+                }
+            }
+
+            // -- Draw video memory --
+            let aspect_correct = false;
+
+            let render_start = Instant::now();
+
+            // Draw video if there is a video card present
+            let bus = machine.bus_mut();
+
+            if let Some(video_card) = bus.video() {
+                let beam_pos;
+                let video_buffer;
+
+                video_buffer = video_card.get_display_buf();
+                beam_pos = None;
+
+                // Get the marty_render mode from the device and marty_render appropriately
+                match (video_card.get_video_type(), video_card.get_render_mode()) {
+                    (VideoType::CGA, RenderMode::Direct) => {
+                        // Draw device's front buffer in direct mode (CGA only for now)
+
+                        let extents = video_card.get_display_extents();
+
+                        if video_data.last_mode_byte != extents.mode_byte {
+                            // Mode byte has changed, recalculate composite parameters
+                            video.cga_direct_mode_update(extents.mode_byte);
+                            video_data.last_mode_byte = extents.mode_byte;
                         }
-                        
-                        if new_w >= MIN_RENDER_WIDTH && new_h >= MIN_RENDER_HEIGHT {
 
-                            let vertical_delta = (video_data.render_h as i32).wrapping_sub(new_h as i32).abs();
-
-                            // TODO: The vertical delta hack was used for area 8088mph for the old style of rendering.
-                            // Now that we render into a fixed frame, we should refactor this
-                            if (new_w != video_data.render_w) || ((new_h != video_data.render_h) && (vertical_delta <= 2)) {
-                                // Resize buffers
-                                log::debug!("Setting internal resolution to ({},{})", new_w, new_h);
-                                video_card.write_trace_log(format!("Setting internal resolution to ({},{})", new_w, new_h));
-
-                                // Calculate new aspect ratio (make this option)
-                                video_data.render_w = new_w;
-                                video_data.render_h = new_h;
-                                render_src.resize((new_w * new_h * 4) as usize, 0);                                
-                                render_src.fill(0);
-    
-                                video_data.aspect_w = video_data.render_w;
-                                let aspect_corrected_h = f32::floor(video_data.render_w as f32 * RENDER_ASPECT) as u32;
-                                // Don't make height smaller
-                                let new_height = std::cmp::max(video_data.render_h, aspect_corrected_h);
-                                video_data.aspect_h = new_height;
-                                
-                                // Recalculate sampling factors
-                                resample_context.precalc(
-                                    video_data.render_w, 
-                                    video_data.render_h, 
-                                    video_data.aspect_w,
-                                    video_data.aspect_h
+                        match aspect_correct {
+                            true => {
+                                video.draw_cga_direct(
+                                    &mut render_src,
+                                    video_data.render_w,
+                                    video_data.render_h,
+                                    video_buffer,
+                                    extents,
+                                    composite_enabled,
+                                    &video_data.composite_params,
+                                    beam_pos,
                                 );
 
-                                pixels.frame_mut().fill(0);
-
-                                if let Err(e) = pixels.resize_buffer(video_data.aspect_w, video_data.aspect_h) {
-                                    log::error!("Failed to resize pixel pixel buffer: {}", e);
-                                }
-
-                                VideoRenderer::set_alpha(pixels.frame_mut(), video_data.aspect_w, video_data.aspect_h, 255);
+                                marty_render::resize_linear_fast(
+                                    &mut render_src,
+                                    video_data.render_w,
+                                    video_data.render_h,
+                                    pixels.frame_mut(),
+                                    video_data.aspect_w,
+                                    video_data.aspect_h,
+                                    &mut resample_context,
+                                );
+                            }
+                            false => {
+                                video.draw_cga_direct(
+                                    pixels.frame_mut(),
+                                    video_data.render_w,
+                                    video_data.render_h,
+                                    video_buffer,
+                                    extents,
+                                    composite_enabled,
+                                    &video_data.composite_params,
+                                    beam_pos,
+                                );
                             }
                         }
                     }
-
-                    // -- Draw video memory --
-                    let aspect_correct = false;
-
-                    let render_start = Instant::now();
-
-                    // Draw video if there is a video card present
-                    let bus = machine.bus_mut();
-
-                    if let Some(video_card) = bus.video() {
-
-                        let beam_pos;
-                        let video_buffer;
-
-                        video_buffer = video_card.get_display_buf();
-                        beam_pos = None;
-
-                        // Get the render mode from the device and render appropriately
-                        match (video_card.get_video_type(), video_card.get_render_mode()) {
-
-                            (VideoType::CGA, RenderMode::Direct) => {
-                                // Draw device's front buffer in direct mode (CGA only for now)
-
-                                let extents = video_card.get_display_extents();
-
-                                if video_data.last_mode_byte != extents.mode_byte {
-                                    // Mode byte has changed, recalculate composite parameters
-                                    video.cga_direct_mode_update(extents.mode_byte);
-                                    video_data.last_mode_byte = extents.mode_byte;
-                                }
-
-                                match aspect_correct {
-                                    true => {
-                                        video.draw_cga_direct(
-                                            &mut render_src,
-                                            video_data.render_w, 
-                                            video_data.render_h,                                             
-                                            video_buffer,
-                                            extents,
-                                            composite_enabled,
-                                            &video_data.composite_params,
-                                            beam_pos
-                                        );
-
-                                        marty_render::resize_linear_fast(
-                                            &mut render_src, 
-                                            video_data.render_w, 
-                                            video_data.render_h, 
-                                            pixels.frame_mut(), 
-                                            video_data.aspect_w, 
-                                            video_data.aspect_h,
-                                            &mut resample_context
-                                        );
-
-                                    }
-                                    false => {
-                                        video.draw_cga_direct(
-                                            pixels.frame_mut(),
-                                            video_data.render_w, 
-                                            video_data.render_h,                                                                                         
-                                            video_buffer,
-                                            extents,
-                                            composite_enabled,
-                                            &video_data.composite_params,
-                                            beam_pos                                         
-                                        );
-                                    }
-                                }
+                    (_, RenderMode::Indirect) => {
+                        // Draw VRAM in indirect mode
+                        match aspect_correct {
+                            true => {
+                                video.draw(&mut render_src, video_card, bus, composite_enabled);
+                                marty_render::resize_linear(
+                                    &render_src,
+                                    video_data.render_w,
+                                    video_data.render_h,
+                                    pixels.frame_mut(),
+                                    video_data.aspect_w,
+                                    video_data.aspect_h,
+                                    &resample_context,
+                                );
                             }
-                            (_, RenderMode::Indirect) => {
-                                // Draw VRAM in indirect mode
-                                match aspect_correct {
-                                    true => {
-                                        video.draw(&mut render_src, video_card, bus, composite_enabled);
-                                        marty_render::resize_linear(
-                                            &render_src, 
-                                            video_data.render_w, 
-                                            video_data.render_h, 
-                                            pixels.frame_mut(), 
-                                            video_data.aspect_w, 
-                                            video_data.aspect_h,
-                                            &resample_context
-                                        );                            
-                                    }
-                                    false => {
-                                        video.draw(pixels.frame_mut(), video_card, bus, composite_enabled);
-                                    }
-                                }                                
+                            false => {
+                                video.draw(pixels.frame_mut(), video_card, bus, composite_enabled);
                             }
-                            _ => panic!("Invalid combination of VideoType and RenderMode")
                         }
                     }
+                    _ => panic!("Invalid combination of VideoType and RenderMode"),
+                }
+            }
 
-                    window.request_redraw();
+            window.request_redraw();
         }
-
     });
 }
 

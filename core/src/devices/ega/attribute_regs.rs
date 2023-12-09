@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -29,8 +29,8 @@
     Implements the EGA attribute registers.
 
 */
-use modular_bitfield::prelude::*;
 use crate::devices::ega::EGACard;
+use modular_bitfield::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum AttributeRegister {
@@ -59,32 +59,32 @@ pub enum AttributeRegister {
 #[derive(Debug)]
 pub enum AttributeRegisterFlipFlop {
     Address,
-    Data
+    Data,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum AttributeMode {
     Text,
-    Graphics
+    Graphics,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum AttributeDisplayType {
     Color,
-    Monochrome
+    Monochrome,
 }
 
 #[derive(Debug, BitfieldSpecifier)]
 pub enum AttributeBlinkOrIntensity {
     BackgroundIntensity,
-    Blink
+    Blink,
 }
 
 #[bitfield]
 pub struct AttributeAddress {
     address: B5,
     address_source: B1,
-    unused: B2
+    unused: B2,
 }
 
 #[bitfield]
@@ -97,7 +97,7 @@ pub struct APaletteRegister {
     pub secondary_green: B1,
     pub secondary_red: B1,
     #[skip]
-    unused: B2
+    unused: B2,
 }
 
 #[bitfield]
@@ -110,7 +110,7 @@ pub struct AModeControl {
     #[bits = 1]
     pub enable_blink_or_intensity: AttributeBlinkOrIntensity,
     #[skip]
-    unused: B4
+    unused: B4,
 }
 
 #[bitfield]
@@ -123,7 +123,7 @@ pub struct AOverscanColor {
     pub secondary_green: B1,
     pub secondary_red: B1,
     #[skip]
-    unused: B2
+    unused: B2,
 }
 
 #[bitfield]
@@ -131,20 +131,18 @@ pub struct AColorPlaneEnable {
     pub enable_plane: B4,
     pub video_status_mux: B2,
     #[skip]
-    unused: B2
+    unused: B2,
 }
 
 impl EGACard {
     /// Handle a write to the Attribute Register 0x3C0.
-    /// 
-    /// Unlike the other register files on the EGA, the Attribute Register doesn't have an 
+    ///
+    /// Unlike the other register files on the EGA, the Attribute Register doesn't have an
     /// address port. Instead, it maintains a flipflop that determines whether the port 0x3C0
     /// is in address or data mode. The flipflop is reset to a known state by reading 0x3DA.
     pub fn write_attribute_register(&mut self, byte: u8) {
-
         match self.attribute_register_flipflop {
             AttributeRegisterFlipFlop::Address => {
-
                 if byte <= 0x0F {
                     self.attribute_palette_index = byte as usize;
                 }
@@ -178,16 +176,26 @@ impl EGACard {
                 self.attribute_register_flipflop = AttributeRegisterFlipFlop::Data;
             }
             AttributeRegisterFlipFlop::Data => {
-
                 match self.attribute_register_selected {
-                    AttributeRegister::Palette0 | AttributeRegister::Palette1 | AttributeRegister::Palette2 |
-                    AttributeRegister::Palette3 | AttributeRegister::Palette4 | AttributeRegister::Palette5 |
-                    AttributeRegister::Palette6 | AttributeRegister::Palette7 | AttributeRegister::Palette8 |
-                    AttributeRegister::Palette9 | AttributeRegister::PaletteA | AttributeRegister::PaletteB |
-                    AttributeRegister::PaletteC | AttributeRegister::PaletteD | AttributeRegister::PaletteE |
-                    AttributeRegister::PaletteF => {
+                    AttributeRegister::Palette0
+                    | AttributeRegister::Palette1
+                    | AttributeRegister::Palette2
+                    | AttributeRegister::Palette3
+                    | AttributeRegister::Palette4
+                    | AttributeRegister::Palette5
+                    | AttributeRegister::Palette6
+                    | AttributeRegister::Palette7
+                    | AttributeRegister::Palette8
+                    | AttributeRegister::Palette9
+                    | AttributeRegister::PaletteA
+                    | AttributeRegister::PaletteB
+                    | AttributeRegister::PaletteC
+                    | AttributeRegister::PaletteD
+                    | AttributeRegister::PaletteE
+                    | AttributeRegister::PaletteF => {
                         //self.attribute_palette_registers[self.attribute_palette_index] = APaletteRegister::from_bytes([byte]);
-                        self.attribute_palette_registers[self.attribute_palette_index] = byte;
+                        //log::debug!("set palette index {} to {:08b}", self.attribute_palette_index, byte );
+                        self.attribute_palette_registers[self.attribute_palette_index].set(byte);
                     }
                     AttributeRegister::ModeControl => {
                         self.attribute_mode_control = AModeControl::from_bytes([byte]);
@@ -208,5 +216,5 @@ impl EGACard {
             }
         }
         self.recalculate_mode();
-    }    
+    }
 }

@@ -1,30 +1,63 @@
 [workspace]
 members = [
     "core",
-    "frontend_libs/render",
-    "frontend_libs/pixels_stretch_renderer",
+    "lib/common",
+    "lib/frontend/frontend_common",
+    "lib/frontend/videocard_renderer",
+    "lib/frontend/marty_scaler_wgpu",
+    "lib/frontend/display_manager_wgpu",
+    "lib/frontend/marty_egui",
+    "lib/frontend/config_toml_bpaf",
     "frontends/martypc_pixels_wasm32",
     "frontends/martypc_pixels_desktop"
 ]
 
-[package]
-name = "martypc"
-version = "0.1.4"
+[workspace.package]
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
+authors = ["Daniel Balsom"]
+
+[package]
+name = "martypc"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [[bin]]
 name = "martypc"
 path = "frontends/martypc_pixels_desktop/src/main.rs"
 
 [dependencies]
-marty_core = { path = "core/"}
-marty_render = { path = "frontend_libs/render"}
+marty_core = { path = "core"}
+videocard_renderer = { path = "lib/frontend/videocard_renderer" }
+marty_egui = { path = "lib/frontend/marty_egui" }
 martypc_pixels_desktop = { path = "frontends/martypc_pixels_desktop"}
+
+[workspace.dependencies]
+winit = "0.29.4"
+wgpu = "0.18"
+bytemuck = "1.14"
+raw-window-handle = "0.5.0"
+thiserror = "1.0.37"
+anyhow = "1.0"
+image = "0.24.1"
+log = "0.4.20"
+serde = { version = "1.0", features = ["derive"] }
+serde_derive = "1.0"
+
+
+[workspace.dependencies.pixels]
+git = "https://github.com/dbalsom/pixels_martypc.git"
+branch = "marty_update_deps"
 
 [profile.release]
 #lto = true
-#strip = true 
+#strip = true
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [features]
 devtools = ["martypc_pixels_desktop/devtools"]
@@ -33,18 +66,6 @@ cpu_validator = ["marty_core/cpu_validator", "martypc_pixels_desktop/cpu_validat
 ega = ["marty_core/ega"]
 vga = ["marty_core/vga"]
 
-
 [build-dependencies]
 winres = "0.1"
 
-[[bench]]
-name = "cga_bench"
-harness = false
-
-[[bench]]
-name = "render_bench"
-harness= false
-
-[[bench]]
-name = "cpu_bench"
-harness = false

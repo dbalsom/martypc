@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -25,33 +25,30 @@
     ---------------------------------------------------------------------------
 
     /cpu_test/mod.rs - Implement data structures for JSON test generation mode.
-                       
+
 */
 
-use marty_core::{
-    cpu_validator::{CycleState, VRegisters}
-};
+use marty_core::cpu_validator::{CycleState, VRegisters};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TestState {
-    pub regs: VRegisters,
-    pub ram: Vec<[u32; 2]>,
-    pub queue: Vec<u8>
+    pub regs:  VRegisters,
+    pub ram:   Vec<[u32; 2]>,
+    pub queue: Vec<u8>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct CpuTest {
-
-    pub name: String,   // Human readable name (disassembly)
-    pub bytes: Vec<u8>, // Instruction bytes 
+    pub name:  String,  // Human readable name (disassembly)
+    pub bytes: Vec<u8>, // Instruction bytes
 
     #[serde(rename = "initial")]
     pub initial_state: TestState, // Initial state of CPU before test execution
-    
+
     #[serde(rename = "final")]
     pub final_state: TestState, // Final state of CPU after test execution
 
-    pub cycles: Vec<CycleState>
+    pub cycles: Vec<CycleState>,
 }

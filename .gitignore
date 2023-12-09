@@ -37,12 +37,22 @@ icon.png
 # Allow tests/tools directory
 !/tests/tools
 
-# Example install dir
+# Ignore most files in /install directory unless specified
+/install/roms/*
+
+# Files to include for distribution
+!/install/roms/readme.md
+!/install/roms/GLABIOS_0.2.5_8PC.ROM
+!/install/roms/GLABIOS_0.2.5_8XC.ROM
 !/install/martypc.toml
-!/install/icon.png
 
 # Frontend files
 /frontends/martypc_pixels_wasm32/web/bin
 
 # Assembly stuff
 /asm
+/.idea/shelf/
+/.idea/dictionaries/Daniel.xml
+/.idea/workspace.xml
+/flopgen/flopgen_LICENSE.txt
+/tree.txt

@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,12 +26,12 @@
 
     videocard.rs
 
-    Defines the VideoCard trait which any video card device (CGA, EGA, VGA) 
+    Defines the VideoCard trait which any video card device (CGA, EGA, VGA)
     must implement.
 */
 
-/* 
-    Video Modes 
+/*
+    Video Modes
 
     Mode T/G   Resolution Adapter Colors Address
     ---- ----  ---------- ------- ------ -------
@@ -51,12 +51,16 @@
       05  Gfx     320x200     CGA     *4    b800 *alt CGA palette
       06  Gfx     640x200     CGA      2    b800
 
+      07  Text    720x350     MDA      2    b800
+
       0D  Gfx     320x200     EGA     16    a000
       0E  Gfx     640x200     EGA     16    a000
 
       10  Gfx     640x350     EGA    *16    a000 *256k EGA
       12  Gfx     640x480     VGA     16    a000
 */
+
+use std::{collections::HashMap, path::Path, str::FromStr};
 
 use crate::bus::DeviceRunTimeUnit;
 
@@ -66,7 +70,70 @@ use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
 
-use crate::config::ClockingMode;
+use serde::Deserialize;
+use serde_derive::Serialize;
+
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
+pub enum VideoType {
+    None,
+    MDA,
+    CGA,
+    EGA,
+    VGA,
+}
+
+impl Default for VideoType {
+    fn default() -> Self {
+        VideoType::None
+    }
+}
+
+impl FromStr for VideoType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s {
+            "None" => Ok(VideoType::None),
+            "MDA" => Ok(VideoType::MDA),
+            "CGA" => Ok(VideoType::CGA),
+            "EGA" => Ok(VideoType::EGA),
+            "VGA" => Ok(VideoType::VGA),
+            _ => Err("Bad value for videotype".to_string()),
+        }
+    }
+}
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum ClockingMode {
+    Cycle,
+    Character,
+    Scanline,
+    Dynamic,
+}
+impl Default for ClockingMode {
+    fn default() -> Self {
+        ClockingMode::Dynamic
+    }
+}
+
+impl FromStr for ClockingMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s {
+            "Cycle" => Ok(ClockingMode::Cycle),
+            "Character" => Ok(ClockingMode::Character),
+            "Scanline" => Ok(ClockingMode::Scanline),
+            "Dynamic" => Ok(ClockingMode::Dynamic),
+            _ => Err("Bad value for ClockingMode".to_string()),
+        }
+    }
+}
 
 // This enum holds variants that hold the various implementors of the VideoCard trait.
 // This is used for enum dispatch, to avoid overhead of dynamic dispatch when calling
@@ -80,28 +147,44 @@ pub enum VideoCardDispatch {
     Vga(VGACard),
 }
 
+// This struct provides an identifier for a VideoCard, encapuslating a unique numeric id ('idx')
+// and the card's type. Hashable to store look
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+pub struct VideoCardId {
+    pub idx:   usize,
+    pub vtype: VideoType,
+}
+
+// This struct provides access to a VideoCard and its unique identifier.
+pub struct VideoCardInterface<'a> {
+    pub card: Box<&'a mut dyn VideoCard>,
+    pub id:   VideoCardId,
+}
+
 // Video options that can be sent to a VideoCard device. Not all adapters will support
 // each option. For example, CGA snow is of course only specific to the CGA card.
 pub enum VideoOption {
-    EnableSnow(bool)
+    EnableSnow(bool),
 }
 
-// This enum determines the rendering method of the given videocard device. 
+// This enum determines the rendering method of the given videocard device.
 // Direct mode means the video card draws to a double buffering scheme itself,
-// Indirect mode means that the video renderer draws the device's VRAM. I think 
+// Indirect mode means that the video renderer draws the device's VRAM. I think
 // eventually I will want to move all devices to direct rendering.
 pub enum RenderMode {
     Direct,
-    Indirect
+    Indirect,
 }
 
-
-use std::collections::HashMap;
-use std::path::Path;
+#[derive(Copy, Clone, Default, PartialEq)]
+pub enum RenderBpp {
+    #[default]
+    Four,
+    Six,
+    Eight,
+}
 
 //pub const TEXTMODE_MEM_ADDRESS: usize = 0xB8000;
-
-use crate::config::VideoType;
 
 #[allow(dead_code)]
 pub enum VideoCardStateEntry {
@@ -114,7 +197,7 @@ pub enum VideoCardStateEntry {
 pub type VideoCardState = HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
 /// All valid graphics modes for CGA, EGA and VGA Cards
-#[allow (dead_code)] 
+#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum DisplayMode {
     Disabled,
@@ -138,7 +221,7 @@ pub enum DisplayMode {
     Mode10EGAHiResGraphics,
     Mode11VGAHiResMono,
     Mode12VGAHiResGraphics,
-    Mode13VGALowRes256
+    Mode13VGALowRes256,
 }
 
 pub struct CursorInfo {
@@ -147,20 +230,20 @@ pub struct CursorInfo {
     pub pos_y: u32,
     pub line_start: u8,
     pub line_end: u8,
-    pub visible: bool
+    pub visible: bool,
 }
 
 pub struct FontInfo {
     pub w: u32,
     pub h: u32,
-    pub font_data: &'static [u8]
+    pub font_data: &'static [u8],
 }
 
 pub enum CGAPalette {
     Monochrome(CGAColor),
     MagentaCyanWhite(CGAColor),
     RedGreenYellow(CGAColor),
-    RedCyanWhite(CGAColor) // "Hidden" CGA palette
+    RedCyanWhite(CGAColor), // "Hidden" CGA palette
 }
 
 #[repr(u8)]
@@ -181,30 +264,55 @@ pub enum CGAColor {
     RedBright,
     MagentaBright,
     Yellow,
-    WhiteBright
+    WhiteBright,
 }
 
-#[derive (Copy, Clone)]
-pub struct DisplayExtents {
-    pub field_w: u32,       // The total width of the video field, including all clocks except the horizontal retrace period
-    pub field_h: u32,       // The total height of the video field, including all clocks except the vertical retrace period
-    pub aperture_w: u32,    // Width in pixels of the 'viewport' into the video field. 
-    pub aperture_h: u32,    // Height in pixels of the 'viewport' into the video field.
-    pub aperture_x: u32,    // X offset of aperture.
-    pub aperture_y: u32,    // Y offset of aperture.
-    pub visible_w: u32,     // The width in pixels of the visible display area
-    pub visible_h: u32,     // The height in pixels of the visible display area
-    pub overscan_l: u32,    // Size in pixels of the left overscan area
-    pub overscan_r: u32,    // Size in pixels of the right overscan area
-    pub overscan_t: u32,    // Size in pixels of the top overscan area
-    pub overscan_b: u32,    // Size in pixels of the bottom overscan area
-    pub row_stride: usize,  // Number of bytes in frame buffer to skip to reach next row
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
+pub enum DisplayApertureType {
+    #[default]
+    Cropped,
+    Accurate,
+    Full,
+    Debug,
+}
 
-    pub mode_byte: u8       // Mode byte. Used by CGA modes only.
+#[derive(Copy, Clone, Debug)]
+pub enum BufferSelect {
+    Front,
+    Back,
+}
+
+#[derive(Clone)]
+pub struct DisplayApertureDesc {
+    pub name: &'static str,
+    pub aper_enum: DisplayApertureType,
+}
+
+/// A display aperture defines a visible subset rect of the total display field genereated by a
+/// video card in Direct mode. w and h provide the dimensions of this rect, and x and y the
+/// horizontal and vertical offsets from the origin (0,0)
+/// Additionally, a debug flag is set to indicate whether an aperture should render debugging
+/// information along with pixel data.
+#[derive(Copy, Clone)]
+pub struct DisplayAperture {
+    pub w: u32,
+    pub h: u32,
+    pub x: u32,
+    pub y: u32,
+    pub debug: bool,
+}
+
+#[derive(Clone)]
+pub struct DisplayExtents {
+    pub apertures: Vec<DisplayAperture>, // List of display aperture definitions.
+    pub field_w: u32,                    // The total width of the video field
+    pub field_h: u32,                    // The total height of the video field
+    pub row_stride: usize,               // Number of bytes in frame buffer to skip to reach next row
+    pub double_scan: bool,               // Whether the display should be double-scanned when RGBA converted
+    pub mode_byte: u8,                   // Mode byte. Used by CGA modes only.
 }
 
 pub trait VideoCard {
-
     /// Apply the specified VideoOption to the adapter.
     fn set_video_option(&mut self, opt: VideoOption);
 
@@ -213,6 +321,9 @@ pub trait VideoCard {
 
     /// Returns the rendering mode of the adapter.
     fn get_render_mode(&self) -> RenderMode;
+
+    /// Returns the bit depth of the internal buffer for direct mode
+    fn get_render_depth(&self) -> RenderBpp;
 
     /// Returns the currently configured DisplayMode
     fn get_display_mode(&self) -> DisplayMode;
@@ -229,23 +340,20 @@ pub trait VideoCard {
     /// Return the DisplayExtents struct corresponding to the last rendered frame.
     fn get_display_extents(&self) -> &DisplayExtents;
 
-    /// Return the DisplayExtents struct corresponding to the current back buffer.
-    //fn get_back_buf_extents(&self) -> &DisplayExtents;    
+    /// Return a list of available display aperture names, indices, and the default aperture index
+    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc>;
 
-    /// Return the visible resolution of the current video adapter's display field.
-    /// For CGA, this will be a fixed value. For EGA & VGA it may vary.
-    fn get_display_aperture(&self) -> (u32, u32);
+    /// Return a list of display aperture definitions
+    fn get_display_apertures(&self) -> Vec<DisplayAperture>;
 
     /// Return the 16 color CGA color index for the active overscan color.
     fn get_overscan_color(&self) -> u8;
 
+    /// Return the u8 slice representing the selected buffer type. (Direct rendering only)
+    fn get_buf(&self, buf_select: BufferSelect) -> &[u8];
+
     /// Return the u8 slice representing the front buffer of the device. (Direct rendering only)
     fn get_display_buf(&self) -> &[u8];
-
-    /// Return the u8 slice representing the back buffer of the device. (Direct rendering only)
-    /// This is used during debug modes when the cpu is paused/stepping so we can follow drawing
-    /// progress.
-    fn get_back_buf(&self) -> &[u8];
 
     fn get_clock_divisor(&self) -> u32;
 
@@ -270,7 +378,7 @@ pub trait VideoCard {
 
     /// Returns whether the current Display Mode has 40 col text
     fn is_40_columns(&self) -> bool;
-    
+
     /// Returns whether the current Display Mode is a graphics mode
     fn is_graphics_mode(&self) -> bool;
 
@@ -288,7 +396,7 @@ pub trait VideoCard {
     fn get_cga_palette(&self) -> (CGAPalette, bool);
 
     /// Returns a hash map of vectors containing name and value pairs.
-    /// 
+    ///
     /// This allows returning multiple categories of related registers.
     /// For the EGA for example, there are CRTC, Sequencer, Attribute and Graphics registers.
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
@@ -305,7 +413,7 @@ pub trait VideoCard {
     fn reset(&mut self);
 
     /// Read pixel raw value
-    fn get_pixel_raw(&self, x: u32, y:u32) -> u8;
+    fn get_pixel_raw(&self, x: u32, y: u32) -> u8;
 
     /// Read pixel color value as RGBA
     fn get_pixel(&self, x: u32, y: u32) -> &[u8];

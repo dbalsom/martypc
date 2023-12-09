@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -33,10 +33,8 @@
 use crate::cpu_808x::*;
 
 impl Cpu {
-
     /// Execute the IRET microcode routine.
     pub fn iret_routine(&mut self) {
-
         self.cycle_i(0x0c8);
         self.farret(true);
         self.pop_flags();
@@ -45,17 +43,19 @@ impl Cpu {
 
     /// Perform a software interrupt
     pub fn sw_interrupt(&mut self, interrupt: u8) {
-
         // Interrupt FC, emulator internal services.
         if self.enable_service_interrupt && interrupt == 0xFC {
             match self.ah {
                 0x01 => {
-
                     // TODO: Make triggering pit logging a separate service number. Just re-using this one
                     // out of laziness.
                     self.service_events.push_back(ServiceEvent::TriggerPITLogging);
 
-                    log::debug!("Received emulator trap interrupt: CS: {:04X} IP: {:04X}", self.bx, self.cx);
+                    log::debug!(
+                        "Received emulator trap interrupt: CS: {:04X} IP: {:04X}",
+                        self.bx,
+                        self.cx
+                    );
                     self.biu_suspend_fetch();
                     self.cycles(4);
 
@@ -71,15 +71,15 @@ impl Cpu {
 
                     self.biu_queue_flush();
                     self.cycles(4);
-                    self.set_breakpoint_flag();  
+                    self.set_breakpoint_flag();
                 }
                 _ => {}
             }
-            return
+            return;
         }
 
         self.cycles_i(3, &[0x19d, 0x19e, 0x19f]);
-        
+
         // Read the IVT
         let vec_addr = (interrupt as usize * INTERRUPT_VEC_LEN) as u16;
 
@@ -96,10 +96,10 @@ impl Cpu {
                 call_ip: new_ip,
                 itype: InterruptType::Software,
                 number: interrupt,
-                ah: self.ah
+                ah: self.ah,
             },
             self.cs,
-            self.ip
+            self.ip,
         );
 
         self.biu_suspend_fetch(); // 1a3 SUSP
@@ -108,67 +108,27 @@ impl Cpu {
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
 
+        // TODO: Call these functions instead of reimplementing
         // FARCALL2
         self.cycles_i(4, &[0x1a6, MC_JUMP, 0x06c, MC_CORR]);
         // Push return segment
         self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-        self.cs = new_cs;        
+        self.cs = new_cs;
         self.cycle_i(0x06e);
 
         // NEARCALL
         let old_ip = self.ip;
         self.cycles_i(2, &[0x06f, MC_JUMP]);
-        self.ip = new_ip;    
-        self.biu_queue_flush();  
+        self.ip = new_ip;
+        self.biu_queue_flush();
         self.cycles_i(3, &[0x077, 0x078, 0x079]);
         // Finally, push return address
         self.push_u16(old_ip, ReadWriteFlag::RNI);
-
-        if interrupt == 0x13 {
-            // Disk interrupts
-            if self.dl & 0x80 != 0 {
-                // Hard disk request
-                match self.ah {
-                    0x03 => {
-                        log::trace!("Hard disk int13h: Write Sectors: Num: {} Drive: {:02X} C: {} H: {} S: {}",
-                            self.al,
-                            self.dl,
-                            self.ch,
-                            self.dh,
-                            self.cl)
-                    }
-                    _=> log::trace!("Hard disk requested in int13h. AH: {:02X}", self.ah)
-                }
-                
-            }
-        }
-
-        if interrupt == 0x10 && self.ah==0x00 {
-            log::trace!("CPU: int10h: Set Mode {:02X} Return [{:04X}:{:04X}]", interrupt, self.cs, self.ip);
-        }        
-
-        if interrupt == 0x21 {
-            //log::trace!("CPU: int21h: AH: {:02X} [{:04X}:{:04X}]", self.ah, self.cs, self.ip);
-            if self.ah == 0x4B {
-                log::trace!("int21,4B: EXEC/Load and Execute Program @ [{:04X}:{:04X}] es:bx: [{:04X}:{:04X}]", self.cs, self.ip, self.es, self.bx);
-            }
-            if self.ah == 0x55 {
-                log::trace!("int21,55:  @ [{:04X}]:[{:04X}]", self.cs, self.ip);
-            }            
-        }         
-
-        if interrupt == 0x16 {
-            if self.ah == 0x01 {
-                //log::trace!("int16,01: Poll keyboard @ [{:04X}]:[{:04X}]", self.cs, self.ip);
-            }
-        }
-
         self.int_count += 1;
     }
 
     /// Handle a CPU exception
     pub fn handle_exception(&mut self, exception: u8) {
-
         self.push_flags(ReadWriteFlag::Normal);
 
         // Push return address of next instruction onto stack
@@ -176,9 +136,14 @@ impl Cpu {
 
         // Don't push address of next instruction
         self.push_u16(self.ip, ReadWriteFlag::Normal);
-        
+
         if exception == 0x0 {
-            log::trace!("CPU Exception: {:02X} Saving return: {:04X}:{:04X}", exception, self.cs, self.ip);
+            log::trace!(
+                "CPU Exception: {:02X} Saving return: {:04X}:{:04X}",
+                exception,
+                self.cs,
+                self.ip
+            );
         }
         // Read the IVT
         let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
@@ -194,10 +159,10 @@ impl Cpu {
                 call_ip: new_ip,
                 itype: InterruptType::Exception,
                 number: exception,
-                ah: self.ah
+                ah: self.ah,
             },
             self.cs,
-            self.ip
+            self.ip,
         );
 
         self.ip = new_ip;
@@ -205,23 +170,31 @@ impl Cpu {
 
         // Flush queue
         self.biu_queue_flush();
-        self.biu_update_pc();        
-    }    
+        self.biu_update_pc();
+    }
 
     #[allow(dead_code)]
     pub fn log_interrupt(&self, interrupt: u8) {
-
         match interrupt {
             0x10 => {
                 // Video Services
                 match self.ah {
                     0x00 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}", 
-                            interrupt, self.ah, self.al);
+                        log::trace!(
+                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}",
+                            interrupt,
+                            self.ah,
+                            self.al
+                        );
                     }
                     0x01 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})", 
-                            interrupt, self.ah, self.ch, self.cl);
+                        log::trace!(
+                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})",
+                            interrupt,
+                            self.ah,
+                            self.ch,
+                            self.cl
+                        );
                     }
                     0x02 => {
                         log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
@@ -232,8 +205,14 @@ impl Cpu {
                             interrupt, self.ah, self.al as char, self.bh, self.bl, self.cx);
                     }
                     0x10 => {
-                        log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}", 
-                            interrupt, self.ah, self.al as char, self.bh, self.cx);
+                        log::trace!(
+                            "CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}",
+                            interrupt,
+                            self.ah,
+                            self.al as char,
+                            self.bh,
+                            self.cx
+                        );
                     }
                     _ => {}
                 }
@@ -246,7 +225,6 @@ impl Cpu {
     /// skip_first is used to skip the first microcode instruction, such as when entering from
     /// INT1 or INT2.
     pub fn intr_routine(&mut self, vector: u8, itype: InterruptType, skip_first: bool) {
-
         // Check for interrupt breakpoint.
         if self.int_flags[vector as usize] & INTERRUPT_BREAKPOINT != 0 {
             self.set_breakpoint_flag();
@@ -273,17 +251,17 @@ impl Cpu {
                 call_ip: new_ip,
                 itype,
                 number: vector,
-                ah: self.ah
+                ah: self.ah,
             },
             self.cs,
-            self.ip
+            self.ip,
         );
 
         self.biu_suspend_fetch(); // 1a3 SUSP
         self.cycles_i(2, &[0x1a3, 0x1a4]);
         self.push_flags(ReadWriteFlag::Normal);
         self.clear_flag(Flag::Interrupt);
-        self.clear_flag(Flag::Trap);        
+        self.clear_flag(Flag::Trap);
         self.cycle_i(0x1a6);
 
         self.farcall2(new_cs, new_ip);
@@ -291,7 +269,6 @@ impl Cpu {
 
     /// Perform a hardware interrupt
     pub fn hw_interrupt(&mut self, vector: u8) {
-
         self.in_int = true;
         // Begin IRQ routine
         self.set_mc_pc(0x19a);
@@ -309,28 +286,28 @@ impl Cpu {
     pub fn int0(&mut self) {
         self.cycles_i(2, &[0x1a7, MC_JUMP]);
         self.intr_routine(0, InterruptType::Hardware, true);
-        self.int_count += 1;        
+        self.int_count += 1;
     }
 
     /// Perform INT1 (Trap)
     pub fn int1(&mut self) {
         self.cycles_i(2, &[0x198, MC_JUMP]);
         self.intr_routine(1, InterruptType::Hardware, true);
-        self.int_count += 1;        
+        self.int_count += 1;
     }
 
     /// Perform INT2 (NMI)
     pub fn int2(&mut self) {
         self.cycles_i(2, &[0x199, MC_JUMP]);
         self.intr_routine(2, InterruptType::Hardware, true);
-        self.int_count += 1;        
+        self.int_count += 1;
     }
 
     /// Perform INT3
     pub fn int3(&mut self) {
         self.cycles_i(4, &[0x1b0, MC_JUMP, 0x1b2, MC_JUMP]);
         self.intr_routine(3, InterruptType::Software, false);
-        self.int_count += 1;        
+        self.int_count += 1;
     }
 
     /// Perform INTO
@@ -340,9 +317,9 @@ impl Cpu {
         if self.get_flag(Flag::Overflow) {
             self.cycles_i(2, &[0x1af, MC_JUMP]);
             self.intr_routine(4, InterruptType::Hardware, false);
-            self.int_count += 1;     
+            self.int_count += 1;
         }
-    }        
+    }
 
     /// Return true if an interrupt can occur under current execution state
     #[inline]
@@ -355,7 +332,8 @@ impl Cpu {
     pub fn trap_enabled(&self) -> bool {
         // Trap if trap flag is set, OR trap flag has been cleared but disable delay in effect (to trap POPF that clears trap)
         // but only if trap is not suppressed and enable delay is 0.
-        (self.get_flag(Flag::Trap) || self.trap_disable_delay != 0) && !self.trap_suppressed && self.trap_enable_delay == 0
+        (self.get_flag(Flag::Trap) || self.trap_disable_delay != 0)
+            && !self.trap_suppressed
+            && self.trap_enable_delay == 0
     }
-
 }

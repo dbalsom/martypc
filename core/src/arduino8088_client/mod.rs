@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -31,37 +31,37 @@
 */
 #![allow(dead_code, unused_variables)]
 
-use serialport::ClearBuffer;
 use log;
+use serialport::ClearBuffer;
 
 pub const ARD8088_BAUD: u32 = 1000000;
 //pub const ARD8088_BAUD: u32 = 460800;
 
 #[derive(Copy, Clone)]
 pub enum ServerCommand {
-    CmdNull            = 0x00,
-    CmdVersion         = 0x01,
-    CmdReset           = 0x02,
-    CmdLoad            = 0x03,
-    CmdCycle           = 0x04,
-    CmdReadAddress     = 0x05,
-    CmdReadStatus      = 0x06,
+    CmdNull = 0x00,
+    CmdVersion = 0x01,
+    CmdReset = 0x02,
+    CmdLoad = 0x03,
+    CmdCycle = 0x04,
+    CmdReadAddress = 0x05,
+    CmdReadStatus = 0x06,
     CmdRead8288Command = 0x07,
-    CmdRead8288Control = 0x08, 
-    CmdReadDataBus     = 0x09,
-    CmdWriteDataBus    = 0x0A,
-    CmdFinalize        = 0x0B,
-    CmdBeginStore      = 0x0C,
-    CmdStore           = 0x0D,
-    CmdQueueLen        = 0x0E,
-    CmdQueueBytes      = 0x0F,
-    CmdWritePin        = 0x10,
-    CmdReadPin         = 0x11,
+    CmdRead8288Control = 0x08,
+    CmdReadDataBus = 0x09,
+    CmdWriteDataBus = 0x0A,
+    CmdFinalize = 0x0B,
+    CmdBeginStore = 0x0C,
+    CmdStore = 0x0D,
+    CmdQueueLen = 0x0E,
+    CmdQueueBytes = 0x0F,
+    CmdWritePin = 0x10,
+    CmdReadPin = 0x11,
     CmdGetProgramState = 0x12,
-    CmdGetLastError    = 0x13,
-    CmdGetCycleState   = 0x14,
-    CmdCGetCycleState  = 0x15,
-    CmdInvalid         = 0x16,
+    CmdGetLastError = 0x13,
+    CmdGetCycleState = 0x14,
+    CmdCGetCycleState = 0x15,
+    CmdInvalid = 0x16,
 }
 
 #[derive(Debug, PartialEq)]
@@ -75,30 +75,29 @@ pub enum ProgramState {
     ExecuteDone,
     Store,
     StoreDone,
-    Done
+    Done,
 }
 
-#[derive (PartialEq)]
+#[derive(PartialEq)]
 pub enum Segment {
     ES = 0,
     SS,
     CS,
-    DS
+    DS,
 }
 
 pub const REQUIRED_PROTOCOL_VER: u8 = 0x01;
 
-
-pub const COMMAND_MRDC_BIT: u8  = 0b0000_0001;
-pub const COMMAND_AMWC_BIT: u8  = 0b0000_0010;
-pub const COMMAND_MWTC_BIT: u8  = 0b0000_0100;
-pub const COMMAND_IORC_BIT: u8  = 0b0000_1000;
+pub const COMMAND_MRDC_BIT: u8 = 0b0000_0001;
+pub const COMMAND_AMWC_BIT: u8 = 0b0000_0010;
+pub const COMMAND_MWTC_BIT: u8 = 0b0000_0100;
+pub const COMMAND_IORC_BIT: u8 = 0b0000_1000;
 pub const COMMAND_AIOWC_BIT: u8 = 0b0001_0000;
-pub const COMMAND_IOWC_BIT: u8  = 0b0010_0000;
-pub const COMMAND_INTA_BIT: u8  = 0b0100_0000;
-pub const COMMAND_ALE_BIT: u8   = 0b1000_0000;
+pub const COMMAND_IOWC_BIT: u8 = 0b0010_0000;
+pub const COMMAND_INTA_BIT: u8 = 0b0100_0000;
+pub const COMMAND_ALE_BIT: u8 = 0b1000_0000;
 
-pub const STATUS_SEG_BITS: u8   = 0b0001_1000;
+pub const STATUS_SEG_BITS: u8 = 0b0001_1000;
 
 macro_rules! get_segment {
     ($s:expr) => {
@@ -106,7 +105,7 @@ macro_rules! get_segment {
             0b00 => Segment::ES,
             0b01 => Segment::SS,
             0b10 => Segment::CS,
-            _ => Segment::DS
+            _ => Segment::DS,
         }
     };
 }
@@ -117,7 +116,7 @@ macro_rules! get_access_type {
             0b00 => AccessType::AlternateData,
             0b01 => AccessType::Stack,
             0b10 => AccessType::CodeOrNone,
-            _ => AccessType::Data
+            _ => AccessType::Data,
         }
     };
 }
@@ -132,7 +131,7 @@ macro_rules! get_bus_state {
             4 => BusState::CODE,
             5 => BusState::MEMR,
             6 => BusState::MEMW,
-            _ => BusState::PASV
+            _ => BusState::PASV,
         }
     };
 }
@@ -143,7 +142,7 @@ macro_rules! get_queue_op {
             0b00 => QueueOp::Idle,
             0b01 => QueueOp::First,
             0b10 => QueueOp::Flush,
-            _ => QueueOp::Subsequent
+            _ => QueueOp::Subsequent,
         }
     };
 }
@@ -152,29 +151,23 @@ macro_rules! is_reading {
     ($s:expr) => {
         match ((!($s) & 0b0000_1001) != 0) {
             true => true,
-            false => false
+            false => false,
         }
-    }
+    };
 }
 
 macro_rules! is_writing {
     ($s:expr) => {
         match ((!($s) & 0b0011_0110) != 0) {
             true => true,
-            false => false
+            false => false,
         }
-    }
+    };
 }
 
-use std::{
-    rc::Rc,
-    cell::RefCell, 
-    error::Error,
-    fmt::Display,
-    str,
-};
+use std::{cell::RefCell, error::Error, fmt::Display, rc::Rc, str};
 
-#[derive (Debug)]
+#[derive(Debug)]
 pub enum CpuClientError {
     ReadFailure,
     WriteFailure,
@@ -186,12 +179,11 @@ pub enum CpuClientError {
 }
 
 impl Error for CpuClientError {}
-impl Display for CpuClientError{
+impl Display for CpuClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            
             CpuClientError::ReadFailure => {
-                write!(f, "Failed to read from serial port." )
+                write!(f, "Failed to read from serial port.")
             }
             CpuClientError::WriteFailure => {
                 write!(f, "Failed to write to serial port.")
@@ -210,13 +202,12 @@ impl Display for CpuClientError{
             }
             CpuClientError::CommandFailed => {
                 write!(f, "Server command returned failure code.")
-            }            
+            }
         }
     }
 }
 
 pub struct CpuClient {
-
     port: Rc<RefCell<Box<dyn serialport::SerialPort>>>,
 }
 
@@ -225,16 +216,14 @@ impl CpuClient {
         match serialport::available_ports() {
             Ok(ports) => {
                 for port in ports {
-                    log::trace!("Found serial port: {}", port.port_name );
+                    log::trace!("Found serial port: {}", port.port_name);
                     if let Some(rtk_port) = CpuClient::try_port(port, baud_rate) {
-                        return Ok(
-                            CpuClient {
-                                port: Rc::new(RefCell::new(rtk_port))
-                            }
-                        )
+                        return Ok(CpuClient {
+                            port: Rc::new(RefCell::new(rtk_port)),
+                        });
                     }
                 }
-            },
+            }
             Err(e) => {
                 log::error!("Didn't find any serial ports: {:?}", e);
                 return Err(CpuClientError::EnumerationError);
@@ -245,13 +234,12 @@ impl CpuClient {
 
     /// Try to access an Arduino8088 on the specified port. Return the port if successful, otherwise None.
     pub fn try_port(port_info: serialport::SerialPortInfo, baud_rate: u32) -> Option<Box<dyn serialport::SerialPort>> {
-
         let port_result = serialport::new(port_info.port_name.clone(), baud_rate)
             .timeout(std::time::Duration::from_millis(2000))
             .stop_bits(serialport::StopBits::One)
             .parity(serialport::Parity::None)
             .open();
-        
+
         match port_result {
             Ok(mut new_port) => {
                 //log::trace!("Successfully opened host port {}", port_info.port_name);
@@ -263,10 +251,10 @@ impl CpuClient {
                 let cmd: [u8; 1] = [1];
                 let mut buf: [u8; 100] = [0; 100];
                 match new_port.write(&cmd) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(_) => {
                         log::error!("try_port: Write error");
-                        return None
+                        return None;
                     }
                 }
 
@@ -282,20 +270,26 @@ impl CpuClient {
                 if bytes_read == 9 {
                     let ver_text = str::from_utf8(&buf).unwrap();
                     if ver_text.contains("ard8088") {
-
                         let proto_ver = buf[7];
-                        log::trace!("Found an Arduino8088 server, protocol verison: {} on port {}", proto_ver, port_info.port_name);
+                        log::trace!(
+                            "Found an Arduino8088 server, protocol verison: {} on port {}",
+                            proto_ver,
+                            port_info.port_name
+                        );
 
                         if proto_ver != REQUIRED_PROTOCOL_VER {
                             log::error!("Unsupported protocol version.");
-                            return None
+                            return None;
                         }
                     }
-                    return Some(new_port)
-                }     
+                    return Some(new_port);
+                }
                 else {
-                    log::trace!("Invalid response from discovery command. Read {} bytes (Expected 9).", bytes_read);
-                }           
+                    log::trace!(
+                        "Invalid response from discovery command. Read {} bytes (Expected 9).",
+                        bytes_read
+                    );
+                }
                 None
             }
             Err(e) => {
@@ -304,19 +298,15 @@ impl CpuClient {
             }
         }
     }
-    
+
     /// Send a command byte to the Arduino8088 CPU server.
     pub fn send_command_byte(&mut self, cmd: ServerCommand) -> Result<(), CpuClientError> {
         let cmd: [u8; 1] = [cmd as u8];
 
         self.port.borrow_mut().clear(ClearBuffer::Input).unwrap();
         match self.port.borrow_mut().write(&cmd) {
-            Ok(_) => {
-                Ok(())
-            },
-            Err(_) => {
-                Err(CpuClientError::WriteFailure)
-            }
+            Ok(_) => Ok(()),
+            Err(_) => Err(CpuClientError::WriteFailure),
         }
     }
 
@@ -336,10 +326,8 @@ impl CpuClient {
                 else {
                     Err(CpuClientError::CommandFailed)
                 }
-            },
-            Err(_) => {
-                Err(CpuClientError::ReadFailure)
             }
+            Err(_) => Err(CpuClientError::ReadFailure),
         }
     }
 
@@ -353,10 +341,8 @@ impl CpuClient {
                 else {
                     Ok(true)
                 }
-            },
-            Err(_) => {
-                Err(CpuClientError::WriteFailure)
             }
+            Err(_) => Err(CpuClientError::WriteFailure),
         }
     }
 
@@ -372,8 +358,7 @@ impl CpuClient {
                 else {
                     Ok(true)
                 }
-                
-            },
+            }
             Err(e) => {
                 log::error!("Read Error: {}", e);
                 Err(CpuClientError::ReadFailure)
@@ -386,12 +371,8 @@ impl CpuClient {
     /// Primarily used for get_last_error
     pub fn recv_dyn_buf(&mut self, buf: &mut [u8]) -> Result<usize, CpuClientError> {
         match self.port.borrow_mut().read(buf) {
-            Ok(bytes) => {
-                Ok(bytes)
-            },
-            Err(_) => {
-                Err(CpuClientError::ReadFailure)
-            }
+            Ok(bytes) => Ok(bytes),
+            Err(_) => Err(CpuClientError::ReadFailure),
         }
     }
 
@@ -474,7 +455,7 @@ impl CpuClient {
 
         Ok(buf[0])
     }
-    
+
     pub fn write_data_bus(&mut self, data: u8) -> Result<bool, CpuClientError> {
         let mut buf: [u8; 1] = [0; 1];
         self.send_command_byte(ServerCommand::CmdWriteDataBus)?;
@@ -507,7 +488,7 @@ impl CpuClient {
             0x07 => Ok(ProgramState::Store),
             0x08 => Ok(ProgramState::StoreDone),
             0x09 => Ok(ProgramState::Done),
-            _ => Err(CpuClientError::BadValue)
+            _ => Err(CpuClientError::BadValue),
         }
     }
 
@@ -516,7 +497,7 @@ impl CpuClient {
         let mut errbuf: [u8; 50] = [0; 50];
         self.send_command_byte(ServerCommand::CmdGetLastError)?;
         let bytes = self.recv_dyn_buf(&mut errbuf)?;
-        let err_string = str::from_utf8(&errbuf[..bytes-1]).unwrap();
+        let err_string = str::from_utf8(&errbuf[..bytes - 1]).unwrap();
 
         Ok(err_string.to_string())
     }
@@ -575,5 +556,5 @@ impl CpuClient {
         let control_bits = buf[0] & 0x0F;
 
         Ok((state, control_bits, buf[1], buf[2], buf[3]))
-    }    
+    }
 }
