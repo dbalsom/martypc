@@ -38,7 +38,7 @@ use marty_core::{
     vhd,
     videocard::{ClockingMode, VideoOption},
 };
-use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiOption};
+use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
 use std::path::PathBuf;
 use videocard_renderer::AspectRatio;
 use winit::event_loop::EventLoopWindowTarget;
@@ -55,66 +55,56 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             // User wants to crash the computer. Sure, why not.
             emu.machine.set_nmi(*state);
         }
-        GuiEvent::OptionChanged(eopt) => {
-            match eopt {
-                GuiOption::Bool(op, val) => {
-                    match (op, *val) {
-                        (GuiBoolean::CorrectAspect, false) => {
-                            // Aspect correction was turned off. We want to clear the marty_render buffer as the
-                            // display buffer is shrinking vertically.
-
-                            //let surface = pixels.frame_mut();
-                            //surface.fill(0);
-
-                            if let Some(renderer) = emu.dm.get_primary_renderer() {
-                                renderer.set_aspect_ratio(None);
-                            }
-
-                            //let dimensions = video.get_display_dimensions();
-                            //VideoRenderer::set_alpha(surface, dimensions.w, dimensions.h, 255);
-                        }
-                        (GuiBoolean::CorrectAspect, true) => {
-                            // Aspect correction was turned on.
-                            if let Some(renderer) = emu.dm.get_primary_renderer() {
-                                renderer.set_aspect_ratio(Some(AspectRatio { h: 4, v: 3 }));
-                            }
-                        }
-                        (GuiBoolean::CpuEnableWaitStates, state) => {
-                            emu.machine.set_cpu_option(CpuOption::EnableWaitStates(state));
-                        }
-                        (GuiBoolean::CpuInstructionHistory, state) => {
-                            emu.machine.set_cpu_option(CpuOption::InstructionHistory(state));
-                        }
-                        (GuiBoolean::CpuTraceLoggingEnabled, state) => {
-                            emu.machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
-                        }
-                        (GuiBoolean::TurboButton, state) => {
-                            emu.machine.set_turbo_mode(state);
-                        }
-                        (GuiBoolean::EnableSnow, state) => {
-                            emu.machine.set_video_option(VideoOption::EnableSnow(state));
-                        }
-                        _ => {}
-                    }
+        // Gui variables have a context, which is sort of like a namespace so that multiple versions
+        // of a single GuiEnum can be stored - for example we have a Context per configured Display
+        // target. A Global context is used if only a single instance of any GuiEnum is required.
+        GuiEvent::VariableChanged(ctx, eopt) => match eopt {
+            GuiVariable::Bool(op, val) => match (op, *val) {
+                (GuiBoolean::CpuEnableWaitStates, state) => {
+                    emu.machine.set_cpu_option(CpuOption::EnableWaitStates(state));
                 }
-                GuiOption::Enum(op) => {
-                    match *op {
-                        GuiEnum::DisplayAperture(aperture_n) => {
-                            if let Some(video_card) = emu.machine.primary_videocard() {
-                                video_card.set_aperture(aperture_n)
+                (GuiBoolean::CpuInstructionHistory, state) => {
+                    emu.machine.set_cpu_option(CpuOption::InstructionHistory(state));
+                }
+                (GuiBoolean::CpuTraceLoggingEnabled, state) => {
+                    emu.machine.set_cpu_option(CpuOption::TraceLoggingEnabled(state));
+                }
+                (GuiBoolean::TurboButton, state) => {
+                    emu.machine.set_turbo_mode(state);
+                }
+            },
+            GuiVariable::Enum(op) => match ctx {
+                GuiVariableContext::Display(d_idx) => match *op {
+                    GuiEnum::DisplayAperture(aperture) => {
+                        if let Some(vid) = emu.dm.set_display_aperture(*d_idx, aperture).ok().flatten() {
+                            if let Some(video_card) = emu.machine.bus().video(&vid) {
+                                if let Err(e) = emu.dm.on_card_resized(&vid, video_card.get_display_extents()) {
+                                    log::error!("Failed to set display aperture for display target: {:?}", e);
+                                }
                             }
-                        }
-                        GuiEnum::DisplayScalerMode(_new_mode) => {
-                            /*
-                            if let Some(renderer) = emu.dm.get_primary_renderer() {
-                                renderer.set_scaler_mode(new_mode);
-                            }
-                            */
                         }
                     }
-                }
-            }
-        }
+                    GuiEnum::DisplayScalerMode(new_mode) => {
+                        log::debug!("Got scaler mode update event: {:?}", new_mode);
+                        if let Err(e) = emu.dm.set_scaler_mode(*d_idx, new_mode) {
+                            log::error!("Failed to set scaler mode for display target!");
+                        }
+                    }
+                    GuiEnum::DisplayComposite(state) => {
+                        log::debug!("Got composite state update event: {}", state);
+                        if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
+                            renderer.set_composite(state);
+                        }
+                    }
+                    GuiEnum::DisplayAspectCorrect(state) => {
+                        if let Err(e) = emu.dm.set_aspect_correction(*d_idx, state) {
+                            log::error!("Failed to set aspect correction state for display target!");
+                        }
+                    }
+                },
+                GuiVariableContext::Global => {}
+            },
+        },
 
         GuiEvent::CreateVHD(filename, fmt) => {
             log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);

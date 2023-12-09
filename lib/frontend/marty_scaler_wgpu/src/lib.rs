@@ -312,11 +312,11 @@ impl MartyScaler {
             usage:    wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        println!(">>>>>>>> len of scaler_params: {:?}", scaler_param_bytes.len());
-        println!(
-            ">>>>>>>> size of scaler_params buffer uniform: {:?}",
-            std::mem::size_of::<ScalerOptionsUniform>() as usize
-        );
+        //println!(">>>>>>>> len of scaler_params: {:?}", scaler_param_bytes.len());
+        //println!(
+        //    ">>>>>>>> size of scaler_params buffer uniform: {:?}",
+        //    std::mem::size_of::<ScalerOptionsUniform>() as usize
+        //);
         // Create bind group
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label:   Some("marty_renderer_bind_group_layout"),
@@ -412,7 +412,7 @@ impl MartyScaler {
 
         let fill_color = fill_color.to_wgpu_color();
 
-        println!(">>>>>> have fill color: {:?}", fill_color);
+        //println!(">>>>>> have fill color: {:?}", fill_color);
 
         Self {
             mode,
@@ -547,7 +547,8 @@ impl MartyScaler {
         bytemuck::bytes_of(&uniform_struct).to_vec()
     }
     fn update_uniforms(&mut self, pixels: &pixels::Pixels) {
-        println!("Updating uniform data...");
+        //println!("Updating uniform data...");
+
         // Calculate current scaling matrix.
         let matrix = ScalingMatrix::new(
             self.mode,
@@ -581,6 +582,10 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
         self.update_matrix(pixels);
     }
 
+    fn get_mode(&self) -> ScalerMode {
+        self.mode
+    }
+
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32) {
         self.margin_l = l;
         self.margin_r = r;
@@ -592,8 +597,8 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
         self.bilinear = bilinear
     }
 
-    fn set_fill_color(&mut self, fill: wgpu::Color) {
-        self.fill_color = fill;
+    fn set_fill_color(&mut self, fill: MartyColor) {
+        self.fill_color = fill.to_wgpu_color();
     }
 
     /// Apply a ScalerOption. Update of uniform buffers is controlled by the 'update' boolean. If
@@ -602,7 +607,6 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
     fn set_option(&mut self, pixels: &pixels::Pixels, opt: ScalerOption, update: bool) -> bool {
         let mut update_uniform = false;
 
-        println!("Setting scaler option...");
         match opt {
             ScalerOption::Mode(new_mode) => {
                 self.set_mode(pixels, new_mode);
@@ -622,11 +626,11 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
                 self.set_bilinear(bilinear);
             }
             ScalerOption::FillColor { r, g, b, a } => {
-                self.set_fill_color(wgpu::Color {
-                    r: r as f64,
-                    g: g as f64,
-                    b: b as f64,
-                    a: a as f64,
+                self.set_fill_color(MartyColor {
+                    r: r as f32,
+                    g: g as f32,
+                    b: b as f32,
+                    a: a as f32,
                 });
                 update_uniform = true;
             }
@@ -658,9 +662,8 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
                 lines,
                 intensity: _i,
             } => {
-                println!("Setting scanline option to: {}, lines: {}", enabled, lines);
-                self.scanlines = lines;
-                self.do_scanlines = enabled;
+                self.scanlines = lines.unwrap_or(self.scanlines);
+                self.do_scanlines = enabled.unwrap_or(self.do_scanlines);
                 update_uniform = true;
             }
             ScalerOption::Effect(_) => {}
@@ -864,7 +867,7 @@ impl ScalingMatrix {
         margin_y: f32,
     ) -> Self {
         match mode {
-            ScalerMode::Null | ScalerMode::None => {
+            ScalerMode::Null | ScalerMode::Fixed => {
                 ScalingMatrix::none_matrix(texture_size, target_size, screen_size, margin_y)
             }
             ScalerMode::Integer => ScalingMatrix::integer_matrix(texture_size, target_size, screen_size, margin_y),

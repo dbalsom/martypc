@@ -117,22 +117,12 @@ impl VideoCard for CGACard {
         &self.extents
     }
 
-    fn get_display_aperture(&self) -> (u32, u32) {
-        (self.extents.aperture.w, self.extents.aperture.h)
+    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
+        CGA_APERTURE_DESCS.to_vec()
     }
 
-    fn list_display_apertures(&self) -> (Vec<DisplayApertureDesc>, usize) {
-        (CGA_APERTURE_DESCS.to_vec(), CGA_DEFAULT_APERTURE)
-    }
-
-    fn set_aperture(&mut self, aperture: u32) {
-        let new_aperture = aperture as usize;
-        if new_aperture < CGA_APERTURE_DESCS.len() {
-            self.aperture = new_aperture;
-        }
-
-        log::debug!("Setting aperture to {}", CGA_APERTURE_DESCS[new_aperture].name);
-        self.extents.aperture = CGA_APERTURES[new_aperture];
+    fn get_display_apertures(&self) -> Vec<DisplayAperture> {
+        self.extents.apertures.clone()
     }
 
     /// Get the position of the electron beam.

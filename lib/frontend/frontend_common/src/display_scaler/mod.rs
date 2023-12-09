@@ -32,17 +32,28 @@
 
 use marty_core::videocard::DisplayApertureType;
 
+use crate::color::MartyColor;
 use serde::Deserialize;
+use videocard_renderer::RendererConfigParams;
 pub use wgpu::Color;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize)]
 pub enum ScalerMode {
     Null,
-    None,
+    Fixed,
     Integer,
     Fit,
     Stretch,
 }
+
+// This array is intented to represent modes to be displayed to the user. Since Null is an
+// internal mode, we don't include it.
+pub const SCALER_MODES: [ScalerMode; 4] = [
+    ScalerMode::Fixed,
+    ScalerMode::Integer,
+    ScalerMode::Fit,
+    ScalerMode::Stretch,
+];
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Deserialize)]
 
@@ -75,7 +86,7 @@ pub enum ScalerOption {
     FillColor { r: u8, g: u8, b: u8, a: u8 },
     Mono { enabled: bool, r: f32, g: f32, b: f32, a: f32 },
     Geometry { h_curvature: f32, v_curvature: f32, corner_radius: f32 },
-    Scanlines { enabled: bool, lines: u32, intensity: f32 },
+    Scanlines { enabled: Option<bool>, lines: Option<u32>, intensity: Option<f32> },
     Effect(ScalerEffect),
 }
 
@@ -91,10 +102,7 @@ pub enum PhosphorType {
 pub struct ScalerPreset {
     pub name: String,
     pub mode: Option<ScalerMode>,
-    pub aperture: Option<DisplayApertureType>,
     pub border_color: Option<u32>,
-    pub aspect_correction: bool,
-
     // Fields below should be identical to ScalerParams
     pub filter: ScalerFilter,
     pub crt_effect: bool,
@@ -103,6 +111,8 @@ pub struct ScalerPreset {
     pub crt_scanlines: bool,
     pub crt_phosphor_type: PhosphorType,
     pub gamma: f32,
+    // Options for associated renderer
+    pub renderer: RendererConfigParams,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -114,6 +124,20 @@ pub struct ScalerParams {
     pub crt_scanlines: bool,
     pub crt_phosphor_type: PhosphorType,
     pub gamma: f32,
+}
+
+impl From<ScalerPreset> for ScalerParams {
+    fn from(value: ScalerPreset) -> Self {
+        Self {
+            filter: value.filter,
+            crt_effect: value.crt_effect,
+            crt_barrel_distortion: value.crt_barrel_distortion,
+            crt_scanlines: value.crt_scanlines,
+            crt_phosphor_type: value.crt_phosphor_type,
+            crt_corner_radius: value.crt_corner_radius,
+            gamma: value.gamma,
+        }
+    }
 }
 
 impl Default for ScalerParams {
@@ -164,9 +188,10 @@ pub trait DisplayScaler<B>: Send + Sync {
     );
 
     fn set_mode(&mut self, pixels: &B, new_mode: ScalerMode);
+    fn get_mode(&self) -> ScalerMode;
     fn set_margins(&mut self, l: u32, r: u32, t: u32, b: u32);
     fn set_bilinear(&mut self, bilinear: bool);
-    fn set_fill_color(&mut self, fill: wgpu::Color);
+    fn set_fill_color(&mut self, fill: MartyColor);
     fn set_option(&mut self, pixels: &B, opt: ScalerOption, update: bool) -> bool;
     fn set_options(&mut self, pixels: &B, opts: Vec<ScalerOption>);
 }

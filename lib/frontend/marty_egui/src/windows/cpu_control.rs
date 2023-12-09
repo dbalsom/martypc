@@ -126,10 +126,10 @@ impl CpuControl {
                 {
                     let new_opt = gui_options.get(&GuiBoolean::CpuEnableWaitStates).unwrap();
 
-                    events.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                        GuiBoolean::CpuEnableWaitStates,
-                        *new_opt,
-                    )));
+                    events.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::CpuEnableWaitStates, *new_opt),
+                    ));
                     ui.close_menu();
                 }
                 if ui
@@ -141,10 +141,10 @@ impl CpuControl {
                 {
                     let new_opt = gui_options.get(&GuiBoolean::CpuInstructionHistory).unwrap();
 
-                    events.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                        GuiBoolean::CpuInstructionHistory,
-                        *new_opt,
-                    )));
+                    events.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::CpuInstructionHistory, *new_opt),
+                    ));
                     ui.close_menu();
                 }
                 if ui
@@ -156,10 +156,10 @@ impl CpuControl {
                 {
                     let new_opt = gui_options.get(&GuiBoolean::CpuTraceLoggingEnabled).unwrap();
 
-                    events.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                        GuiBoolean::CpuTraceLoggingEnabled,
-                        *new_opt,
-                    )));
+                    events.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::CpuTraceLoggingEnabled, *new_opt),
+                    ));
                     ui.close_menu();
                 }
             });

@@ -429,7 +429,6 @@ impl BusInterface {
         }
 
         // Add entry to mmio_map_fast
-
         assert_eq!(mem_descriptor.size % MMIO_MAP_SIZE, 0);
         let map_segs = mem_descriptor.size / MMIO_MAP_SIZE;
 
@@ -1305,6 +1304,7 @@ impl BusInterface {
                 vtype: card.video_type,
             };
 
+            log::debug!("Creating video card of type: {:?}", card.video_type);
             match card.video_type {
                 VideoType::CGA => {
                     let cga = CGACard::new(TraceLogger::None, clock_mode, video_frame_debug);

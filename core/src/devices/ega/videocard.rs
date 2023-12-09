@@ -127,22 +127,12 @@ impl VideoCard for EGACard {
         &self.buf[self.front_buf][..]
     }
 
-    fn get_display_aperture(&self) -> (u32, u32) {
-        (self.extents.aperture.w, self.extents.aperture.h)
+    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
+        EGA_APERTURE_DESCS.to_vec()
     }
 
-    fn list_display_apertures(&self) -> (Vec<DisplayApertureDesc>, usize) {
-        (EGA_APERTURE_DESCS.to_vec(), 0)
-    }
-
-    fn set_aperture(&mut self, aperture: u32) {
-        let new_aperture = aperture as usize;
-        if new_aperture < EGA_APERTURE_DESCS.len() {
-            self.aperture = new_aperture;
-        }
-
-        log::debug!("Setting aperture to {}", EGA_APERTURE_DESCS[new_aperture].name);
-        self.extents.aperture = EGA_APERTURES[(self.misc_output_register.clock_select() as usize) & 0x01][new_aperture];
+    fn get_display_apertures(&self) -> Vec<DisplayAperture> {
+        self.extents.apertures.clone()
     }
 
     fn get_overscan_color(&self) -> u8 {
@@ -284,10 +274,7 @@ impl VideoCard for EGACard {
             "Field:".to_string(),
             VideoCardStateEntry::String(format!("{}x{}", self.extents.field_w, self.extents.field_h)),
         ));
-        general_vec.push((
-            "Aperture:".to_string(),
-            VideoCardStateEntry::String(format!("{}x{}", self.extents.aperture.w, self.extents.aperture.h)),
-        ));
+
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();

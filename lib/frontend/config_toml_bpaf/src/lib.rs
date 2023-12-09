@@ -46,7 +46,7 @@ use marty_core::{
     rom_manager::RomOverride,
 };
 
-use frontend_common::display_scaler::ScalerMode;
+use frontend_common::display_scaler::{ScalerMode, ScalerPreset};
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
@@ -138,6 +138,7 @@ pub struct Emulator {
     pub pit_output_int_trigger: bool,
 
     pub window: Vec<WindowDefinition>,
+    pub scaler_preset: Vec<ScalerPreset>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,19 +204,16 @@ pub struct Input {
 }
 #[derive(Debug, Deserialize)]
 pub struct WindowDefinition {
+    #[serde(default)]
+    pub enabled: bool,
     pub name: String,
     pub size: Option<VideoDimensions>,
-    pub min_size: Option<VideoDimensions>,
     #[serde(default)]
-    pub fixed_size: bool,
+    pub resizable: bool,
     pub card_id: Option<usize>,
-    pub card_aperture: Option<String>,
-    pub scaler_mode: Option<ScalerMode>,
-    pub scaler_bg_color: Option<u32>,
-    #[serde(default)]
-    pub scaler_aspect_correction: bool,
     #[serde(default)]
     pub always_on_top: bool,
+    pub scaler_preset: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

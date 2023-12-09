@@ -17,7 +17,7 @@ videocard_renderer = { path = "../videocard_renderer" }
 #marty_color = { path = "../marty_color" }
 marty_core = { path = "../../../core" }
 anyhow.workspace = true
-serde.workspace = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
 # feature dependencies:
 wgpu = { workspace = true, optional = true }
 pixels = { workspace = true, optional = true }

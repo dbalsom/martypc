@@ -50,8 +50,18 @@ use marty_common::VideoDimensions;
 use marty_core::{
     devices::cga,
     file_util,
-    videocard::{BufferSelect, CGAColor, CGAPalette, DisplayExtents, DisplayMode, RenderBpp, VideoType},
+    videocard::{
+        BufferSelect,
+        CGAColor,
+        CGAPalette,
+        DisplayApertureType,
+        DisplayExtents,
+        DisplayMode,
+        RenderBpp,
+        VideoType,
+    },
 };
+use serde::Deserialize;
 
 // Re-export submodules
 pub use self::{color::*, composite::*, consts::*, resize::*};
@@ -72,14 +82,25 @@ pub enum AspectCorrectionMode {
     Hardware,
 }
 
+#[derive(Copy, Clone, Debug, Deserialize)]
+pub struct RendererConfigParams {
+    #[serde(default)]
+    pub aspect_correction: bool,
+    pub aspect_ratio: Option<AspectRatio>,
+    pub display_aperture: Option<DisplayApertureType>,
+    #[serde(default)]
+    pub composite: bool,
+}
+
 #[derive(Copy, Clone)]
 pub struct VideoParams {
     pub render: VideoDimensions, // The size of the internal marty_render buffer before aspect correction.
     pub aspect_corrected: VideoDimensions, // The size of the internal marty_render buffer after aspect correction.
     pub backend: VideoDimensions, // The size of the backend buffer.
     pub surface: VideoDimensions, // The size of the backend surface (window client area)
-    pub double_scan: bool,       // Whether to double rows when rendering into the internal buffer.
+    pub line_double: bool,       // Whether to double rows when rendering into the internal buffer.
     pub aspect_correction: AspectCorrectionMode, // Determines how to handle aspect correction.
+    pub aperture: DisplayApertureType, // Selected display aperture for renderer
     pub composite_params: CompositeParams, // Parameters used for composite emulation.
     pub bpp: RenderBpp,
 }
@@ -91,15 +112,16 @@ impl Default for VideoParams {
             aspect_corrected: (640, 480).into(),
             backend: (640, 480).into(),
             surface: (640, 480).into(),
-            double_scan: false,
+            line_double: false,
             aspect_correction: AspectCorrectionMode::None,
+            aperture: DisplayApertureType::Cropped,
             composite_params: Default::default(),
             bpp: Default::default(),
         }
     }
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Deserialize)]
 pub struct AspectRatio {
     pub h: u32,
     pub v: u32,
@@ -165,6 +187,7 @@ pub struct VideoRenderer {
     video_type: VideoType,
     mode: DisplayMode,
     params: VideoParams,
+    initialized: bool, // Has the renderer received a resize event?
 
     buf: Vec<u8>,
     aspect_ratio: Option<AspectRatio>,
@@ -194,6 +217,8 @@ impl VideoRenderer {
         // This buffer will need to be twice as large as the largest possible
         // CGA screen (CGA_MAX_CLOCK * 4) to account for half-hdots used in the
         // composite conversion process.
+        //
+        // TODO: This is only used by the legacy composite code. Remove?
         let composite_vec_opt = match video_type {
             VideoType::CGA => Some(vec![0; cga::CGA_MAX_CLOCK * 4]),
             _ => None,
@@ -203,6 +228,7 @@ impl VideoRenderer {
             video_type,
             mode: DisplayMode::Mode3TextCo80,
             params: Default::default(),
+            initialized: false,
 
             buf: vec![0; (DEFAULT_RENDER_WIDTH * DEFAULT_RENDER_HEIGHT * 4) as usize],
             aspect_ratio: None,
@@ -227,6 +253,19 @@ impl VideoRenderer {
         }
     }
 
+    pub fn set_config_params(&mut self, cfg: &RendererConfigParams) {
+        self.composite_enabled = cfg.composite;
+        self.set_aspect_ratio(cfg.aspect_ratio, Some(AspectCorrectionMode::Hardware));
+    }
+
+    pub fn get_config_params(&self) -> RendererConfigParams {
+        RendererConfigParams {
+            aspect_correction: if self.aspect_ratio.is_some() { true } else { false },
+            aspect_ratio: self.aspect_ratio,
+            display_aperture: Some(self.params.aperture),
+            composite: self.composite_enabled,
+        }
+    }
     pub fn get_params(&self) -> &VideoParams {
         &self.params
     }
@@ -239,12 +278,23 @@ impl VideoRenderer {
     pub fn get_selected_buffer(&self) -> BufferSelect {
         self.buffer_select
     }
+
     pub fn set_composite(&mut self, state: bool) {
+        log::debug!("Setting composite rendering to {}", state);
         self.composite_enabled = state;
+    }
+
+    pub fn set_aperture(&mut self, aperture: DisplayApertureType) {
+        self.params.aperture = aperture
+    }
+
+    pub fn set_line_double(&mut self, state: bool) {
+        self.params.line_double = state;
     }
 
     /// Resizes the internal rendering buffer to the specified dimensions, before aspect correction.
     pub fn resize(&mut self, new: VideoDimensions) {
+        self.initialized = true;
         self.params.render = new;
 
         let mut new_aspect = self.params.render;
@@ -280,8 +330,11 @@ impl VideoRenderer {
     }
 
     // Given the new specified dimensions, returns a bool if the dimensions require resizing
-    // the internal buffer.
+    // the internal buffer. This should be called before actually resizing the renderer.
     pub fn would_resize(&self, new: VideoDimensions) -> bool {
+        if !self.initialized {
+            return true;
+        }
         match self.params.aspect_correction {
             AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
                 if self.params.render != new {
@@ -304,16 +357,16 @@ impl VideoRenderer {
 
     pub fn get_display_dimensions(&mut self) -> VideoDimensions {
         match self.params.aspect_correction {
-            AspectCorrectionMode::None | AspectCorrectionMode::Hardware => self.params.render,
-            AspectCorrectionMode::Software => self.params.aspect_corrected,
+            AspectCorrectionMode::None => self.params.render,
+            AspectCorrectionMode::Hardware | AspectCorrectionMode::Software => self.params.aspect_corrected,
         }
     }
 
-    pub fn set_aspect_ratio(&mut self, new_aspect: Option<AspectRatio>) {
+    pub fn set_aspect_ratio(&mut self, new_aspect: Option<AspectRatio>, new_mode: Option<AspectCorrectionMode>) {
         if let Some(aspect) = new_aspect {
             if self.aspect_ratio != new_aspect {
                 // Aspect ratio is changing.
-                log::debug!("set_aspect_ratio(): Updating aspect ratio.");
+                log::debug!("set_aspect_ratio(): Updating aspect ratio to {:?}", aspect);
                 let desired_ratio: f64 = aspect.h as f64 / aspect.v as f64;
                 let adjusted_h = (self.params.render.w as f64 / desired_ratio) as u32;
 
@@ -326,44 +379,10 @@ impl VideoRenderer {
             self.params.aspect_corrected = self.params.render;
             self.aspect_ratio = None;
         }
-        /*
-        let new_backend;
 
-        match self.params.aspect_correction {
-            AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
-                new_backend = self.params.render;
-            }
-            AspectCorrectionMode::Software => {
-                new_backend = self.params.aspect_corrected;
-            }
+        if let Some(mode) = new_mode {
+            self.params.aspect_correction = mode;
         }
-
-
-        // Are backend dimensions changing due to aspect change? If so, resize the backend.
-        if self.params.backend != new_backend {
-            self.params.backend = new_backend;
-
-            log::debug!(
-                    "VideoRenderer: Resizing backend due to aspect ratio change. New dimensions: {}x{}",
-                    self.params.backend.w,
-                    self.params.backend.h,
-                );
-
-            // Resize backend via closure
-            if let Some(ref mut resize_callback) = self.on_resize {
-                // Lock the backend and pass the mutable reference to the closure
-                let mut backend = self.backend.lock().expect("Failed to lock backend");
-                resize_callback(&mut *backend, self.params.backend);
-            }
-        }
-
-        // Resize scaler
-        self.backend_resize_scaler(
-            self.params.render,
-            self.params.aspect_corrected,
-            self.params.surface
-        );
-         */
     }
 
     /// Given the specified resolution and desired aspect ratio, return an aspect corrected resolution

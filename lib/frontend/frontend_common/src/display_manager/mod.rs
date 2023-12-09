@@ -41,9 +41,12 @@ use std::{
 use crate::color::MartyColor;
 pub use crate::types::display_target_dimensions::DisplayTargetDimensions;
 
-use crate::display_scaler::ScalerPreset;
-use marty_core::videocard::{VideoCardId, VideoType};
-use videocard_renderer::VideoRenderer;
+use crate::{
+    display_scaler::{ScalerMode, ScalerPreset},
+    types::display_target_margins::DisplayTargetMargins,
+};
+use marty_core::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
+use videocard_renderer::{RendererConfigParams, VideoParams, VideoRenderer};
 
 #[derive(Copy, Clone)]
 pub enum DisplayTargetType {
@@ -74,13 +77,17 @@ impl Display for DisplayTargetType {
 pub struct DisplayInfo {
     pub dtype: DisplayTargetType,
     pub vtype: Option<VideoType>,
-    pub vid:   Option<VideoCardId>,
-    pub name:  String,
+    pub vid: Option<VideoCardId>,
+    pub name: String,
+    pub renderer: Option<RendererConfigParams>,
+    pub scaler_mode: Option<ScalerMode>,
 }
 
 pub struct DisplayManagerGuiOptions {
-    pub theme_dark:  bool,
+    pub enabled: bool,
+    pub theme_dark: bool,
     pub theme_color: Option<u32>,
+    pub menubar_h: u32,
 }
 
 /// Options for windows targets. All dimensions are specified as inner size (client area)
@@ -88,6 +95,7 @@ pub struct DisplayManagerWindowOptions {
     pub size: DisplayTargetDimensions,
     pub min_size: Option<DisplayTargetDimensions>,
     pub max_size: Option<DisplayTargetDimensions>,
+    pub margins: DisplayTargetMargins,
     pub title: String,
     pub resizable: bool,
     pub always_on_top: bool,
@@ -99,6 +107,7 @@ impl Default for DisplayManagerWindowOptions {
             size: Default::default(),
             min_size: Default::default(),
             max_size: Default::default(),
+            margins: Default::default(),
             title: "New Window".to_string(),
             resizable: false,
             always_on_top: false,
@@ -121,6 +130,8 @@ pub trait DisplayManager<B, G, Wi, W> {
     type ImplScaler;
     type ImplDisplayTarget;
 
+    /// Create a display target with the specified parameters.
+    /// Returns: index of display target or Error.
     fn create_target(
         &mut self,
         name: String,
@@ -131,9 +142,9 @@ pub trait DisplayManager<B, G, Wi, W> {
         card_id: Option<VideoCardId>,
         w: u32,
         h: u32,
-        fill_color: Option<MartyColor>,
+        scaler_preset: String,
         gui_options: &DisplayManagerGuiOptions,
-    ) -> Result<(), Error>;
+    ) -> Result<usize, Error>;
 
     /// Return a vector of DisplayInfo structs representing all displays in the manager. A reference
     /// to a Machine must be provided to query video card parameters.
@@ -158,8 +169,10 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// Returns a mutable reference to the associated Backend for the main window.
     fn get_main_backend_mut(&mut self) -> Option<&mut B>;
 
-    /// Return the associated VideoRenderer given a card id. If the card id is not found,
-    /// returns None.
+    /// Return the associated VideoRenderer, if Some, given a display target index
+    fn get_renderer(&mut self, dt_idx: usize) -> Option<&mut VideoRenderer>;
+
+    /// Return the associated VideoRenderer, if Some, given a card id
     fn get_renderer_by_card_id(&mut self, id: VideoCardId) -> Option<&mut VideoRenderer>;
 
     /// Returns the associated VideoRenderer for the primary video card. If no primary card
@@ -168,20 +181,18 @@ pub trait DisplayManager<B, G, Wi, W> {
 
     /// Reflect a change to a videocard's output resolution, so that associated
     /// resources can be resized as well.
-    fn on_card_resized(&mut self, id: VideoCardId, w: u32, h: u32, doublescan: bool) -> Result<(), Error>;
+    fn on_card_resized(&mut self, vid: &VideoCardId, extents: &DisplayExtents) -> Result<(), Error>;
 
     /// Reflect a change in the specified window's dimensions, so that associated
     /// resources can be resized as well.
     /// Typically called in response to a resize event from a window manager event queue.
     fn on_window_resized(&mut self, wid: Wi, w: u32, h: u32) -> Result<(), Error>;
 
-    /// Render a VideoCard given the specified card_id. A card may have more than one
-    /// RenderTarget, so this call may affect multiple windows / surfaces.
-    fn render_card(&mut self, card_id: VideoCardId) -> Result<(), Error>;
-
-    /// Render all cards managed by the DisplayManager. Typically called at the end of
-    /// event processing every frame.
-    fn render_all_cards(&mut self) -> Result<(), Error>;
+    /// Execute a closure that is passed the VideoCardId for each VideoCard registered in the
+    /// DisplayManager.
+    fn for_each_card<F>(&mut self, f: F)
+    where
+        F: FnMut(&VideoCardId);
 
     /// Execute a closure that is passed a mutable reference to each VideoRenderer in the manager,
     /// its associated card ID, and a &mut [u8] representing the buffer to which the VideoRenderer
@@ -202,7 +213,7 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// Execute a closure that is passed a mutable reference to each RenderTarget in the manager.
     fn for_each_target<F>(&mut self, f: F)
     where
-        F: FnMut(&mut Self::ImplDisplayTarget);
+        F: FnMut(&mut Self::ImplDisplayTarget, usize);
 
     /// Execute a closure that is passed a mutable reference to each Gui context in the manager and
     /// its associated Window.
@@ -233,4 +244,21 @@ pub trait DisplayManager<B, G, Wi, W> {
 
     /// Retrieve the scaler preset by name.
     fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset>;
+
+    /// Set the desired Display Aperture for the specified display target.
+    /// Returns the associated VideoCardId, as the card will need to be resized when the aperture
+    /// is changed.
+    fn set_display_aperture(
+        &mut self,
+        dt_idx: usize,
+        aperture: DisplayApertureType,
+    ) -> Result<Option<VideoCardId>, Error>;
+
+    /// Enable or disable aspect correction for the specified display target.
+    /// The display manager will perform the required resizing of display target resources
+    /// and perform buffer clearing.
+    fn set_aspect_correction(&mut self, dt_idx: usize, state: bool) -> Result<(), Error>;
+
+    /// Set the ScalerMode for the associated scaler, if present.
+    fn set_scaler_mode(&mut self, dt_idx: usize, mode: ScalerMode) -> Result<(), Error>;
 }

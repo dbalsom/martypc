@@ -45,6 +45,7 @@ use std::{
 };
 
 mod cpu_test;
+mod emulator;
 mod event_loop;
 mod input;
 #[cfg(feature = "arduino_validator")]
@@ -57,8 +58,8 @@ mod run_runtests;
 mod run_headless;
 mod run_processtests;
 
+use crate::emulator::{EmuFlags, Emulator};
 use config_toml_bpaf::ConfigFileParams;
-
 use marty_egui::GuiState;
 
 #[cfg(feature = "arduino_validator")]
@@ -116,32 +117,6 @@ const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 
 // Remove static frequency references
 //const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
-
-/// Define the main Emulator struct for this frontend.
-/// All the items that the winit event loop closure needs should be set here so that
-/// we can call an event handler in a different file.
-pub struct Emulator {
-    dm: WgpuDisplayManager,
-    config: ConfigFileParams,
-    machine: Machine,
-    exec_control: Rc<RefCell<ExecutionControl>>,
-    mouse_data: MouseData,
-    kb_data: KeyboardData,
-    stat_counter: Counter,
-    gui: GuiState,
-    //context: &'a mut GuiRenderContext,
-    floppy_manager: FloppyManager,
-    vhd_manager: VHDManager,
-    hdd_path: PathBuf,
-    floppy_path: PathBuf,
-    flags: EmuFlags,
-}
-
-/// Define flags to be used by emulator.
-pub struct EmuFlags {
-    render_gui: bool,
-    debug_keyboard: bool,
-}
 
 // Rendering Stats
 struct Counter {
@@ -467,21 +442,6 @@ pub fn run() {
         return run_headless::run_headless(&config, rom_manager, floppy_manager);
     }
 
-    // Init graphics & GUI
-    // let event_loop = EventLoop::new();
-
-    /*
-    let render_window = {
-        let size = LogicalSize::new(WINDOW_WIDTH as f64, WINDOW_HEIGHT as f64);
-        WindowBuilder::new()
-            .with_title(format!("MartyPC {}", env!("CARGO_PKG_VERSION")))
-            .with_inner_size(size)
-            .with_min_inner_size(size)
-            .build(&event_loop)
-            .unwrap()
-    };
-    */
-
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
 
@@ -492,86 +452,6 @@ pub fn run() {
 
     // Create the logical GUI.
     let _gui = GuiState::new(exec_control.clone());
-
-    /*
-    let primary_video = if let Some(video) = config.machine.primary_video {
-        video
-    }
-    else {
-        panic!("No primary video type specified.")
-    };
-
-     */
-
-    /*
-    // Create pixels & egui backend
-    let (pixels, mut framework) = {
-
-        let render_window_opt = window_manager.get_render_window(primary_video);
-
-        if let Some(mw_render) = render_window_opt {
-            let window_size = mw_render.window.inner_size();
-            let scale_factor = mw_render.window.scale_factor() as f32;
-            let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &mw_render.window);
-            //let (pixels_w, pixels_h) = {
-            //    (video.params().aspect_w, video.params().aspect_h)
-            //};
-            let pixels =
-                Pixels::new(
-                    window::WINDOW_MIN_WIDTH,
-
-                    window::WINDOW_MIN_HEIGHT,
-                    surface_texture).unwrap();
-            let framework =
-                Framework::new(
-
-                    &window_manager.get_event_loop().unwrap(),
-                    window_size.width,
-                    window_size.height,
-                    scale_factor,
-                    &pixels,
-                    exec_control.clone(),
-                    config.gui.theme_color
-                );
-
-            (pixels, framework)
-        }
-        else {
-            panic!("Couldn't get marty_render window target.");
-        }
-    };
-
-     */
-
-    /*
-    let fill_color = Color { r: 0.03, g: 0.03, b: 0.03, a: 1.0 }; // Dark grey.
-
-    let marty_scaler = MartyScaler::new(
-        ScalerMode::Integer,
-        &pixels,
-        640,480,
-        640, 480,
-        640, 480,
-        24, // margin_y == egui menu height
-        true,
-        fill_color
-    );
-    */
-
-    //let adapter_info = pixels.adapter().get_info();
-
-    /*
-    // Create the video renderer
-    let mut video =
-        VideoRenderer::new(
-            config.machine.primary_video.unwrap_or_default(),
-            ScalerMode::Integer,
-            pixels,
-            marty_scaler,
-        );
-    */
-
-    //let pixels_arc = video.get_backend();
 
     let stat_counter = Counter::new();
 
@@ -632,26 +512,61 @@ pub fn run() {
     icon_path.push("icon.png");
 
     let gui_options = DisplayManagerGuiOptions {
+        enabled: !config.gui.disabled,
         theme_color: config.gui.theme_color,
-        theme_dark:  config.gui.theme_dark,
+        theme_dark: config.gui.theme_dark,
+        menubar_h: 24, // TODO: Dynamically measure the height of the egui menu bar somehow
     };
 
     // Create displays.
-    let mut display_manager = WgpuDisplayManagerBuilder::build(&config, cardlist, icon_path, &gui_options)
-        .unwrap_or_else(|e| {
-            log::error!("Failed to create displays: {:?}", e);
-            std::process::exit(1);
-        });
+    let mut display_manager = WgpuDisplayManagerBuilder::build(
+        &config,
+        cardlist,
+        &config.emulator.scaler_preset,
+        icon_path,
+        &gui_options,
+    )
+    .unwrap_or_else(|e| {
+        log::error!("Failed to create displays: {:?}", e);
+        std::process::exit(1);
+    });
 
+    // Create GUI state
     let render_egui = true;
     let mut gui = GuiState::new(exec_control.clone());
 
-    // Set list of serial ports
-    gui.update_serial_ports(serial_ports);
+    // Get main GUI context from Display Manager
+    let _gui_ctx = display_manager
+        .get_main_gui_mut()
+        .expect("Couldn't get main gui context!");
 
-    let adapter_info = display_manager
-        .get_main_backend()
-        .and_then(|backend| backend.get_adapter_info());
+    // Put everything we want to handle in event loop into an Emulator struct
+    let mut emu = Emulator {
+        dm: display_manager,
+        config,
+        machine,
+        exec_control,
+        mouse_data,
+        kb_data,
+        stat_counter,
+        gui,
+        floppy_manager,
+        vhd_manager,
+        hdd_path,
+        floppy_path,
+        flags: EmuFlags {
+            render_gui: render_egui,
+            debug_keyboard: false,
+        },
+    };
+
+    // Resize video cards
+    emu.post_dm_build_init();
+
+    // Set list of serial ports
+    emu.gui.update_serial_ports(serial_ports);
+
+    let adapter_info = emu.dm.get_main_backend().and_then(|backend| backend.get_adapter_info());
 
     let (backend_str, adapter_name_str) = {
         let backend_str;
@@ -670,297 +585,26 @@ pub fn run() {
 
     log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
 
-    // Set the inital power-on state.
-    if config.emulator.auto_poweron {
-        machine.change_state(MachineState::On);
-    }
-    else {
-        machine.change_state(MachineState::Off);
+    if let Err(e) = emu.apply_config() {
+        log::error!("Failed to apply configuration to Emulator state: {}", e);
+        std::process::exit(1);
     }
 
-    let debug_keyboard = config.emulator.debug_keyboard;
-
-    // Do PIT phase offset option
-    machine.pit_adjust(config.machine.pit_phase.unwrap_or(0) & 0x03);
-
-    // Set options from config. We do this now so that we can set the same state for both GUI and machine
-
-    // TODO: Add GUI for these two options?
-    machine.set_cpu_option(CpuOption::OffRailsDetection(
-        config.cpu.off_rails_detection.unwrap_or(false),
-    ));
-    machine.set_cpu_option(CpuOption::EnableServiceInterrupt(
-        config.cpu.service_interrupt_enabled.unwrap_or(false),
-    ));
-
-    // TODO: Reenable these
-    //gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));
-    //machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
-    //gui.set_option(GuiBoolean::CorrectAspect, config.emulator.scaler_aspect_correction);
-
-    //if config.emulator.scaler_aspect_correction {
-    // Default to hardware aspect correction.
-    //video.set_aspect_mode(AspectCorrectionMode::Hardware);
-    display_manager.for_each_target(|dt| {
-        dt.set_aspect_mode(AspectCorrectionMode::Hardware);
-    });
-    //}
-
-    gui.set_option(
-        GuiBoolean::CpuEnableWaitStates,
-        config.cpu.wait_states_enabled.unwrap_or(true),
-    );
-    machine.set_cpu_option(CpuOption::EnableWaitStates(
-        config.cpu.wait_states_enabled.unwrap_or(true),
-    ));
-
-    gui.set_option(
-        GuiBoolean::CpuInstructionHistory,
-        config.cpu.instruction_history.unwrap_or(false),
-    );
-
-    machine.set_cpu_option(CpuOption::InstructionHistory(
-        config.cpu.instruction_history.unwrap_or(false),
-    ));
-
-    gui.set_option(GuiBoolean::CpuTraceLoggingEnabled, config.emulator.trace_on);
-    machine.set_cpu_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
-
-    gui.set_option(GuiBoolean::TurboButton, config.machine.turbo);
-
-    //TODO: renable these.
-    //gui.set_option(GuiBoolean::CompositeDisplay, config.machine.composite.unwrap_or(false));
-
-    if let Some(video_card) = machine.primary_videocard() {
-        // Update display aperture options in GUI
-        gui.set_display_apertures(video_card.list_display_apertures());
+    if let Err(e) = emu.mount_vhds() {
+        log::error!("Failed to mount VHDs!");
+        std::process::exit(1);
     }
 
-    //gui.set_scaler_modes((SCALING_MODES.to_vec(), Default::default()));
+    // Start emulator
+    emu.start();
 
-    // Disable warpspeed feature if 'devtools' flag not on.
-    #[cfg(not(feature = "devtools"))]
-    {
-        config.emulator.warpspeed = false;
-    }
-
-    // Debug mode on?
-    if config.emulator.debug_mode {
-        // Open default debug windows
-        gui.set_window_open(GuiWindow::CpuControl, true);
-        gui.set_window_open(GuiWindow::DisassemblyViewer, true);
-        gui.set_window_open(GuiWindow::CpuStateViewer, true);
-
-        // Override CpuInstructionHistory
-        gui.set_option(GuiBoolean::CpuInstructionHistory, true);
-        machine.set_cpu_option(CpuOption::InstructionHistory(true));
-
-        // Disable autostart
-        config.emulator.cpu_autostart = false;
-    }
-
-    #[cfg(debug_assertions)]
-    if config.emulator.debug_warn {
-        // User compiled MartyPC in debug mode, let them know...
-        gui.show_warning(
-            &"MartyPC has been compiled in debug mode and will be extremely slow.\n \
-                    To compile in release mode, use 'cargo build -r'\n \
-                    To disable this error, set debug_warn=false in martypc.toml."
-                .to_string(),
-        );
-    }
-
-    // Load program binary if one was specified in config options
-    if let Some(prog_bin) = config.emulator.run_bin.clone() {
-        if let Some(prog_seg) = config.emulator.run_bin_seg {
-            if let Some(prog_ofs) = config.emulator.run_bin_ofs {
-                let prog_vec = match std::fs::read(prog_bin.clone()) {
-                    Ok(vec) => vec,
-                    Err(e) => {
-                        eprintln!("Error opening filename {:?}: {}", prog_bin, e);
-                        std::process::exit(1);
-                    }
-                };
-
-                if let Err(_) = machine.load_program(&prog_vec, prog_seg, prog_ofs) {
-                    eprintln!(
-                        "Error loading program into memory at {:04X}:{:04X}.",
-                        prog_seg, prog_ofs
-                    );
-                    std::process::exit(1);
-                };
-            }
-            else {
-                eprintln!("Must specify program load offset.");
-                std::process::exit(1);
-            }
-        }
-        else {
-            eprintln!("Must specify program load segment.");
-            std::process::exit(1);
-        }
-    }
-
-    /*
-    // Resize window if video card is in Direct mode and specifies a display aperture
-    {
-        if let Some(card) = machine.videocard() {
-            if let RenderMode::Direct = card.get_render_mode() {
-                if let Some(render_window) = window_manager.get_render_window(card.get_video_type()) {
-                    let extents = card.get_display_extents();
-                    let (aper_x, mut aper_y) = card.get_display_aperture();
-                    assert!(aper_x != 0 && aper_y !=0 );
-
-                    if extents.double_scan {
-                        video.set_double_scan(true);
-                        aper_y *= 2;
-                    }
-                    else {
-                        video.set_double_scan(false);
-                    }
-
-                    let aspect_ratio = if config.emulator.scaler_aspect_correction {
-                        Some(marty_render::AspectRatio{ h: 4, v: 3 })
-                    }
-                    else {
-                        None
-                    };
-
-                    video.set_aspect_ratio(aspect_ratio);
-
-                    let (aper_correct_x, aper_correct_y) = {
-                        let dim = video.get_display_dimensions();
-                        (dim.w, dim.h)
-                    };
-
-                    let mut double_res = false;
-
-
-                    // Get the current monitor resolution.
-                    if let Some(monitor) = render_window.window.current_monitor() {
-                        let monitor_size = monitor.size();
-                        let dip_scale = monitor.scale_factor();
-
-                        log::debug!("Current monitor resolution: {}x{} scale factor: {}", monitor_size.width, monitor_size.height, dip_scale);
-
-                        // Take into account DPI scaling for window-fit.
-                        let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
-                        let scaled_height = ((aper_correct_y * 2) as f64 * dip_scale) as u32;
-                        log::debug!("Target resolution after aspect correction and DPI scaling: {}x{}", scaled_width, scaled_height);
-
-                        if (scaled_width <= monitor_size.width) && (scaled_height <= monitor_size.height) {
-                            // Monitor is large enough to double the display window
-                            double_res = true;
-                        }
-                    }
-
-                    let window_resize_w = if double_res { aper_correct_x * 2 } else { aper_correct_x };
-                    let window_resize_h = if double_res { aper_correct_y * 2 } else { aper_correct_y };
-
-                    log::debug!("Resizing window to {}x{}", window_resize_w, window_resize_h);
-                    //resize_h = if card.get_scanline_double() { resize_h * 2 } else { resize_h };
-
-                    render_window.window.set_inner_size(winit::dpi::LogicalSize::new(window_resize_w, window_resize_h));
-
-                    log::debug!("Resizing marty_render buffer to {}x{}", aper_x, aper_y);
-
-                    video.resize((aper_x, aper_y).into());
-
-                    /*
-                    let pixel_res = video.get_display_dimensions();
-
-                    if (pixel_res.w > 0) && (pixel_res.h > 0) {
-                        log::debug!("Resizing pixel buffer to {}x{}", pixel_res.w, pixel_res.h);
-                        pixels.resize_buffer(pixel_res.w, pixel_res.h).expect("Failed to resize Pixels buffer.");
-                    }
-                    */
-
-                    //VideoRenderer::set_alpha(pixels.frame_mut(), pixel_res.w, pixel_res.h, 255);
-
-                    // Recalculate sampling parameters.
-                    //resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
-
-                    // Update internal state and request a redraw
-                    render_window.window.request_redraw();
-                }
-
-            }
-        }
-    }
-
-     */
-
-    let mut vhd_names: Vec<Option<String>> = Vec::new();
-
-    vhd_names.push(config.machine.drive0.clone());
-    vhd_names.push(config.machine.drive1.clone());
-
-    let mut vhd_idx: usize = 0;
-    for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
-        let vhd_os_name: OsString = vhd_name.into();
-        match vhd_manager.load_vhd_file(vhd_idx, &vhd_os_name) {
-            Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
-                Ok(vhd) => {
-                    if let Some(hdc) = machine.hdc() {
-                        match hdc.set_vhd(vhd_idx, vhd) {
-                            Ok(_) => {
-                                log::info!(
-                                    "VHD image {:?} successfully loaded into virtual drive: {}",
-                                    vhd_os_name,
-                                    0
-                                );
-                            }
-                            Err(err) => {
-                                log::error!("Error mounting VHD: {}", err);
-                            }
-                        }
-                    }
-                    else {
-                        log::error!("Couldn't load VHD: No Hard Disk Controller present!");
-                    }
-                }
-                Err(err) => {
-                    log::error!("Error loading VHD: {}", err);
-                }
-            },
-            Err(err) => {
-                log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
-            }
-        }
-        vhd_idx += 1;
-    }
-
-    // Start buffer playback
-    machine.play_sound_buffer();
-
-    let _gui_ctx = display_manager
-        .get_main_gui_mut()
-        .expect("Couldn't get main gui context!");
-
-    // Put everything we want to handle in event loop into an Emulator struct
-    let mut emulator = Emulator {
-        dm: display_manager,
-        config,
-        machine,
-        exec_control,
-        mouse_data,
-        kb_data,
-        stat_counter,
-        gui,
-        floppy_manager,
-        vhd_manager,
-        hdd_path,
-        floppy_path,
-        flags: EmuFlags {
-            render_gui: render_egui,
-            debug_keyboard,
-        },
-    };
-
-    let event_loop = emulator.dm.take_event_loop();
+    let event_loop = emu.dm.take_event_loop();
 
     // Run the winit event loop
-    event_loop.run(move |event, elwt| {
-        handle_event(&mut emulator, event, elwt);
-    });
+    if let Err(e) = event_loop.run(move |event, elwt| {
+        handle_event(&mut emu, event, elwt);
+    }) {
+        log::error!("Failed to start event loop!");
+        std::process::exit(1);
+    }
 }

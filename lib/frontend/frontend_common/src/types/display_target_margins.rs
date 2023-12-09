@@ -24,11 +24,43 @@
 
    ---------------------------------------------------------------------------
 
-   frontend_common::types::mod.rs
+   frontend_common::types::display_target_margins.rs
 
-   Define common frontend types.
+   Define the DisplayTargetMargins type and methods.
 
 */
 
-pub mod display_target_dimensions;
-pub mod display_target_margins;
+#[derive(Copy, Clone, Default, Debug)]
+pub struct DisplayTargetMargins {
+    pub l: u32,
+    pub r: u32,
+    pub t: u32,
+    pub b: u32,
+}
+
+impl DisplayTargetMargins {
+    pub fn from_t(t: u32) -> Self {
+        Self {
+            t,
+            ..Default::default()
+        }
+    }
+    pub fn from_b(b: u32) -> Self {
+        Self {
+            b,
+            ..Default::default()
+        }
+    }
+    pub fn from_l(l: u32) -> Self {
+        Self {
+            l,
+            ..Default::default()
+        }
+    }
+    pub fn from_r(r: u32) -> Self {
+        Self {
+            r,
+            ..Default::default()
+        }
+    }
+}

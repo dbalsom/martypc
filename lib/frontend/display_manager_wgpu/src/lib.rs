@@ -56,7 +56,7 @@ use anyhow::{anyhow, Context, Error};
 use winit::{
     dpi::LogicalSize,
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder, WindowId},
+    window::{Window, WindowBuilder, WindowId, WindowLevel},
 };
 
 pub use frontend_common::{
@@ -73,15 +73,18 @@ use frontend_common::{constants::*, display_manager::DisplayInfo};
 use marty_common::VideoDimensions;
 
 use config_toml_bpaf::{ConfigFileParams, WindowDefinition};
-use frontend_common::display_scaler::ScalerPreset;
+use frontend_common::{
+    display_scaler::{PhosphorType, ScalerFilter, ScalerOption, ScalerParams, ScalerPreset},
+    types::display_target_margins::DisplayTargetMargins,
+};
 
 use marty_core::{
     machine::Machine,
-    videocard::{VideoCardId, VideoCardInterface},
+    videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoCardInterface},
 };
 use marty_egui::GuiRenderContext;
 use marty_pixels_scaler::{DisplayScaler, MartyScaler, ScalerMode};
-use videocard_renderer::{AspectCorrectionMode, VideoRenderer};
+use videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
 
 const EGUI_MENU_BAR: u32 = 24;
 pub(crate) const WINDOW_MIN_WIDTH: u32 = 640;
@@ -104,6 +107,7 @@ pub struct DisplayTargetContext<T> {
     pub(crate) gui_ctx: Option<GuiRenderContext>, // The egui render context, if any
     pub(crate) card_id: Option<VideoCardId>, // The video card device id, if any
     pub(crate) renderer: Option<VideoRenderer>, // The renderer
+    pub(crate) aspect_ratio: AspectRatio, // Aspect ratio configured for this display
     pub(crate) backend: Option<T>,       // The graphics backend instance
     pub(crate) scaler:
         Option<Box<dyn DisplayScaler<Pixels, NativeTextureView = TextureView, NativeEncoder = CommandEncoder>>>, // The scaler pipeline
@@ -178,20 +182,35 @@ impl DefaultResolver for WindowDefinition {
                 },
                 Some,
             ),
-            card_aperture: self.card_aperture.clone(),
+            scaler_preset: self.scaler_preset.clone(),
             ..*self
         }
     }
 }
 
+/// Display managers should be constructed via a DisplayManagerBuilder. This allows display targets
+/// to be created as specified by a user-supplied configuration. For WgpuDisplayManager, we build
+/// our display targets using:
+/// - the user configuration file
+/// - a list of video cards from the emulator core
+/// - a list of scaler preset definitions
+/// - a path to an icon (TODO: support different icons per window?)
+/// - a struct of GUI options for the immediate-mode gui a window may contain
 impl WgpuDisplayManagerBuilder {
     pub fn build(
         config: &ConfigFileParams,
         cards: Vec<VideoCardInterface>,
+        scaler_presets: &Vec<ScalerPreset>,
         icon_path: PathBuf,
         gui_options: &DisplayManagerGuiOptions,
     ) -> Result<WgpuDisplayManager, Error> {
         let mut dm = WgpuDisplayManager::new();
+
+        // Install scaler presets
+        for preset in scaler_presets.iter() {
+            log::debug!("Installing scaler preset: {}", &preset.name);
+            dm.add_scaler_preset(preset.clone());
+        }
 
         // Only create windows if the config specifies any!
         if config.emulator.window.len() > 0 {
@@ -201,8 +220,10 @@ impl WgpuDisplayManagerBuilder {
 
             // Create the rest of the windows
             for window_def in config.emulator.window.iter().skip(1) {
-                Self::create_target_from_window_def(&mut dm, false, &window_def, &cards, gui_options)
-                    .expect("FATAL: Failed to create a window target");
+                if window_def.enabled {
+                    Self::create_target_from_window_def(&mut dm, false, &window_def, &cards, gui_options)
+                        .expect("FATAL: Failed to create a window target");
+                }
             }
         }
 
@@ -217,13 +238,17 @@ impl WgpuDisplayManagerBuilder {
         gui_options: &DisplayManagerGuiOptions,
     ) -> Result<(), Error> {
         let resolved_def = window_def.resolve_with_defaults();
+        log::debug!("{:?}", window_def);
 
         let mut card_id_opt = None;
+        let mut card_string = String::new();
 
         if let Some(w_card_id) = resolved_def.card_id {
             if w_card_id < cards.len() + 1 {
                 card_id_opt = Some(cards[w_card_id].id);
+                card_string.push_str(&format!("{:?}", cards[w_card_id].id.vtype))
             }
+            card_string.push_str(&format!("({})", w_card_id));
         }
 
         log::debug!(
@@ -231,24 +256,36 @@ impl WgpuDisplayManagerBuilder {
             card_id_opt
         );
 
+        // TODO: Implement FROM for this?
         let mut window_opts: DisplayManagerWindowOptions = Default::default();
 
-        // Is window fixed size?
-        if window_def.fixed_size {
-            // We'l use the default size if none was specified...
-            window_opts.size = window_def.size.unwrap_or_default().into();
+        // Honor initial window size, but we may have to resize it later.
+        window_opts.size = window_def.size.unwrap_or_default().into();
+        window_opts.always_on_top = window_def.always_on_top;
+
+        // If this is the main window and we have a gui...
+        if main_window && gui_options.enabled {
+            // Set the top margin to clear the egui menu bar.
+            window_opts.margins = DisplayTargetMargins::from_t(gui_options.menubar_h);
+        }
+
+        // Is window resizable?
+        if !window_def.resizable {
             window_opts.min_size = Some(window_opts.size);
             window_opts.max_size = Some(window_opts.size);
             window_opts.resizable = false;
         }
         else {
-            // Do we have a min size?
-            window_opts.min_size = Some(window_def.min_size.unwrap_or_default().into());
             window_opts.resizable = true;
         }
 
+        let preset_name = window_def.scaler_preset.clone().unwrap_or("default".to_string());
+
+        // Construct window title.
+        let window_title = format!("{}: {}", &window_def.name, card_string).to_string();
+
         dm.create_target(
-            window_def.name.clone(),
+            window_title,
             DisplayTargetType::WindowBackground { main_window },
             None,
             None,
@@ -256,7 +293,7 @@ impl WgpuDisplayManagerBuilder {
             card_id_opt,
             window_def.size.unwrap().w, // Guaranteed to be Some after resolve_with_defaults();
             window_def.size.unwrap().h,
-            window_def.scaler_bg_color.and_then(|c| Some(MartyColor::from(c))),
+            preset_name,
             gui_options,
         )
         .expect("Failed to create window target!");
@@ -269,6 +306,10 @@ impl DisplayTargetContext<PixelsBackend> {
     /// Set the aspect mode of the target. If the aspect mode is changed, we may need to resize
     /// the backend and scaler.
     pub fn set_aspect_mode(&mut self, mode: AspectCorrectionMode) {}
+
+    pub fn get_card_id(&mut self) -> Option<VideoCardId> {
+        self.card_id
+    }
 
     pub fn set_scale_factor(&mut self, factor: f64) {
         if let Some(gui_ctx) = &mut self.gui_ctx {
@@ -294,6 +335,118 @@ impl DisplayTargetContext<PixelsBackend> {
 
         ctx
     }
+
+    pub fn apply_scaler_preset(&mut self, preset: &ScalerPreset) {
+        // We must have a backend and scaler to continue...
+        if !self.backend.is_some() || !self.scaler.is_some() {
+            return;
+        }
+        log::debug!("Applying scaler preset: {}", &preset.name);
+
+        let bilinear = match preset.filter {
+            ScalerFilter::Linear => true,
+            ScalerFilter::Nearest => false,
+        };
+        let scaler = self.scaler.as_mut().unwrap();
+
+        scaler.set_mode(
+            self.backend.as_mut().unwrap().get_backend_raw().unwrap(),
+            preset.mode.unwrap_or(ScalerMode::Integer),
+        );
+        scaler.set_bilinear(bilinear);
+        scaler.set_fill_color(MartyColor::from_u24(preset.border_color.unwrap_or(0)));
+
+        self.apply_scaler_params(&ScalerParams::from(preset.clone()));
+    }
+    pub fn apply_scaler_params(&mut self, preset: &ScalerParams) {
+        // We must have a backend and scaler to continue...
+        if !self.backend.is_some() || !self.scaler.is_some() {
+            return;
+        }
+
+        let mut scaler_update = Vec::new();
+
+        scaler_update.push(ScalerOption::Geometry {
+            h_curvature:   preset.crt_barrel_distortion,
+            v_curvature:   preset.crt_barrel_distortion,
+            corner_radius: preset.crt_corner_radius,
+        });
+
+        scaler_update.push(ScalerOption::Adjustment {
+            h: 1.0,
+            s: 1.0,
+            c: 1.0,
+            b: 1.0,
+            g: preset.gamma,
+        });
+
+        scaler_update.push(ScalerOption::Filtering(preset.filter));
+
+        if let Some(renderer) = &self.renderer {
+            let params = renderer.get_params();
+
+            let lines = if params.line_double {
+                params.render.h / 2
+            }
+            else {
+                params.render.h
+            };
+            log::debug!(
+                "Setting scaler scanlines to {}, doublescan: {}",
+                lines,
+                params.line_double
+            );
+            scaler_update.push(ScalerOption::Scanlines {
+                enabled: Some(preset.crt_scanlines),
+                lines: Some(lines),
+                intensity: Some(0.3),
+            });
+        }
+        else {
+            // If there's no renderer, disable scanlines
+            scaler_update.push(ScalerOption::Scanlines {
+                enabled: Some(false),
+                lines: Some(0),
+                intensity: Some(0.0),
+            });
+        }
+
+        match preset.crt_phosphor_type {
+            PhosphorType::Color => scaler_update.push(ScalerOption::Mono {
+                enabled: false,
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            }),
+            PhosphorType::White => scaler_update.push(ScalerOption::Mono {
+                enabled: true,
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            }),
+            PhosphorType::Green => scaler_update.push(ScalerOption::Mono {
+                enabled: true,
+                r: 0.0,
+                g: 1.0,
+                b: 0.0,
+                a: 1.0,
+            }),
+            PhosphorType::Amber => scaler_update.push(ScalerOption::Mono {
+                enabled: true,
+                r: 1.0,
+                g: 0.75,
+                b: 0.0,
+                a: 1.0,
+            }),
+        }
+
+        self.scaler
+            .as_mut()
+            .unwrap()
+            .set_options(self.backend.as_mut().unwrap().get_backend_raw().unwrap(), scaler_update);
+    }
 }
 
 impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuDisplayManager {
@@ -311,11 +464,25 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 vtype = machine.bus().video(&vid).and_then(|card| Some(card.get_video_type()));
             }
 
+            let renderer_params = if let Some(renderer) = &vt.renderer {
+                Some(renderer.get_config_params().clone())
+            }
+            else {
+                None
+            };
+
+            let mut scaler_mode = None;
+            if let Some(scaler) = &vt.scaler {
+                scaler_mode = Some(scaler.get_mode());
+            }
+
             info_vec.push(DisplayInfo {
                 dtype: vt.ttype,
                 vtype,
                 vid: vt.card_id,
                 name: vt.name.clone(),
+                renderer: renderer_params,
+                scaler_mode,
             })
         }
 
@@ -332,39 +499,57 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         card_id: Option<VideoCardId>,
         w: u32,
         h: u32,
-        fill_color: Option<MartyColor>,
+        scaler_preset: String,
         gui_options: &DisplayManagerGuiOptions,
-    ) -> Result<(), Error> {
+    ) -> Result<usize, Error> {
         // For now, we only support creating new WindowBackground targets.
         match ttype {
             DisplayTargetType::WindowBackground { main_window } => {
                 // Create a new window.
 
+                // TODO: return error here instead of panic
+                // Attempt to resolve the specified scaler preset
+                let scaler_preset = self
+                    .get_scaler_preset(scaler_preset)
+                    .expect("Couldn't load scaler preset!")
+                    .clone();
+
                 // Use the dimensions specified in window options, if supplied, otherwise fall back
                 // to w and h paramters.
-                let (tw, th) = if let Some(window_opts) = window_opts {
-                    window_opts.size.into()
+                let ((tw, th), resizable) = if let Some(ref window_opts) = window_opts {
+                    (window_opts.size.into(), window_opts.resizable)
                 }
                 else {
-                    (w, h)
+                    ((w, h), true)
                 };
 
                 let dt_idx = self.targets.len();
                 log::debug!(
-                    "Creating WindowBackground display target, idx: {} size: {}x{}",
+                    "Creating WindowBackground display target, idx: {} size: {}x{} preset: {}",
                     dt_idx,
                     tw,
-                    th
+                    th,
+                    &scaler_preset.name
                 );
 
                 let window = {
                     let size = LogicalSize::new(tw as f64, th as f64);
 
+                    let level = match &window_opts {
+                        Some(wopts) if wopts.always_on_top == true => {
+                            log::debug!("Setting window always_on_top.");
+                            WindowLevel::AlwaysOnTop
+                        }
+                        _ => WindowLevel::Normal,
+                    };
+
                     // TODO: Better error handling here.
                     WindowBuilder::new()
-                        .with_title(format!("MartyPC {}", env!("CARGO_PKG_VERSION")))
+                        .with_title(format!("MartyPC {} [{}]", env!("CARGO_PKG_VERSION"), name))
                         .with_inner_size(size)
                         .with_min_inner_size(size)
+                        .with_resizable(resizable)
+                        .with_window_level(level)
                         .build(&self.event_loop.as_ref().unwrap())
                         .unwrap()
                 };
@@ -377,10 +562,14 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 // Create the scaler.
                 let scale_mode = match main_window {
                     true => ScalerMode::Integer,
-                    false => ScalerMode::None,
+                    false => ScalerMode::Fixed,
                 };
-                let marty_scaler = MartyScaler::new(
-                    ScalerMode::Integer,
+
+                // The texture sizes specified initially aren't important. Since DisplyManager can't
+                // query video cards directly, the caller must resize all video cards after calling
+                // the Builder.
+                let scaler = MartyScaler::new(
+                    scaler_preset.mode.unwrap_or(ScalerMode::Integer),
                     &pb.get_backend_raw().unwrap(),
                     640,
                     480,
@@ -390,22 +579,20 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                     h,
                     24, // margin_y == egui menu height
                     true,
-                    fill_color.unwrap_or_default(),
+                    MartyColor::from_u24(scaler_preset.border_color.unwrap_or_default()),
                 );
 
                 // If we have a video card id, we need to build a VideoRenderer to render the card.
-                /*
-                let renderer = if let Some(card_id) card_id.and_then(|id| {
-                    log::debug!("New display target has video card type: {:?}", id.vtype);
-                    let video = VideoRenderer::new(id.vtype);
-                    Some(video)
-                });
-
-                 */
-
                 let renderer = if let Some(card_id) = card_id {
-                    log::debug!("New display target {} has video card type: {:?}", dt_idx, card_id.vtype);
-                    let video = VideoRenderer::new(card_id.vtype);
+                    log::debug!(
+                        "New display target {} has renderer. Card type: {:?} Parameters: {:?}",
+                        dt_idx,
+                        card_id.vtype,
+                        &scaler_preset.renderer
+                    );
+                    let mut video = VideoRenderer::new(card_id.vtype);
+
+                    video.set_config_params(&scaler_preset.renderer);
                     Some(video)
                 }
                 else {
@@ -427,16 +614,21 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                     None
                 };
 
-                self.targets.push(DisplayTargetContext {
+                let mut dtc = DisplayTargetContext {
                     name,
                     ttype,
                     window: Some(window),
                     gui_ctx,
                     card_id,
-                    renderer,                             // The renderer
-                    backend: Some(pb),                    // The graphics backend instance
-                    scaler: Some(Box::new(marty_scaler)), // The scaler pipeline
-                });
+                    renderer,
+                    aspect_ratio: scaler_preset.renderer.aspect_ratio.unwrap_or_default(),
+                    backend: Some(pb),              // The graphics backend instance
+                    scaler: Some(Box::new(scaler)), // The scaler pipeline
+                };
+
+                dtc.apply_scaler_preset(&scaler_preset);
+
+                self.targets.push(dtc);
 
                 self.window_id_map.insert(wid, dt_idx);
                 if let Some(vid) = card_id {
@@ -451,12 +643,11 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                     // The first card added is assumed to be the primary card
                     self.primary_idx.get_or_insert(dt_idx);
                 }
+
+                return Ok(dt_idx);
             }
-            _ => {
-                anyhow!("Not implemented.");
-            }
+            _ => return Err(anyhow!("Not implemented.")),
         }
-        Ok(())
     }
 
     fn get_window_by_id(&self, wid: WindowId) -> Option<&Window> {
@@ -508,6 +699,15 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         None
     }
 
+    fn get_renderer(&mut self, dt_idx: usize) -> Option<&mut VideoRenderer> {
+        if dt_idx < self.targets.len() {
+            self.targets[dt_idx].renderer.as_mut()
+        }
+        else {
+            None
+        }
+    }
+
     fn get_primary_renderer(&mut self) -> Option<&mut VideoRenderer> {
         self.primary_idx.and_then(|idx| self.targets[idx].renderer.as_mut())
     }
@@ -520,11 +720,8 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
     /// resolution, then we do nothing for that display target.
     /// A renderer and scaler can be updated even if the card resolution has not changed, if aspect
     /// correction was toggled on the renderer since the last update.
-    fn on_card_resized(&mut self, id: VideoCardId, w: u32, mut h: u32, doublescan: bool) -> Result<(), Error> {
-        if doublescan {
-            h = h * 2;
-        }
-        if let Some(idx_vec) = self.card_id_map.get(&id) {
+    fn on_card_resized(&mut self, vid: &VideoCardId, extents: &DisplayExtents) -> Result<(), Error> {
+        if let Some(idx_vec) = self.card_id_map.get(vid) {
             // A single card can be mapped to multiple display targets, so iterate through them.
 
             // log::debug!("card {:?} has {} display targets", id, idx_vec.len());
@@ -540,11 +737,31 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 // get the VideoRenderer for this display target, and determine whether the renderer
                 // (and thus the backend and scaler) should resize.
                 if let Some(renderer) = &mut vt.renderer {
+                    // Inform the renderer if the card is to be double-scanned
+                    renderer.set_line_double(extents.double_scan);
+
                     software_aspect = matches!(renderer.get_params().aspect_correction, AspectCorrectionMode::Software);
+
+                    let aperture = renderer.get_params().aperture;
+                    let w = extents.apertures[aperture as usize].w;
+                    let mut h = extents.apertures[aperture as usize].h;
+
+                    if extents.double_scan {
+                        h *= 2;
+                    }
+
                     resize_vt = renderer.would_resize((w, h).into());
 
                     if resize_vt {
-                        log::debug!("resizing renderer for dt {}...", idx);
+                        log::debug!(
+                            "Card {:?} resized to {}x{} [Doublescan: {}, Aperture: {:?}] Resizing renderer for dt {}...",
+                            vid,
+                            w,
+                            h,
+                            extents.double_scan,
+                            aperture,
+                            idx
+                        );
                         renderer.resize((w, h).into());
                     }
 
@@ -580,6 +797,13 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
 
                         // Resize the DisplayScaler if present.
                         if let Some(scaler) = &mut vt.scaler {
+                            if resize_vt {
+                                log::debug!(
+                                    "Resizing scaler to videocard target size: {}x{}",
+                                    target_dimensions.w,
+                                    target_dimensions.h
+                                );
+                            }
                             scaler.resize(
                                 backend.get_backend_raw().unwrap(),
                                 src_dimensions.w,
@@ -588,7 +812,23 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                                 target_dimensions.h,
                                 surface_dimensions.w,
                                 surface_dimensions.h,
-                            )
+                            );
+
+                            // Update scanline shader param
+                            let scanlines = match extents.double_scan {
+                                true => src_dimensions.h / 2,
+                                false => src_dimensions.h,
+                            };
+
+                            scaler.set_option(
+                                backend.get_backend_raw().as_mut().unwrap(),
+                                ScalerOption::Scanlines {
+                                    enabled: None,
+                                    lines: Some(scanlines),
+                                    intensity: None,
+                                },
+                                true,
+                            );
                         }
                     }
                 }
@@ -631,12 +871,13 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         Ok(())
     }
 
-    fn render_card(&mut self, card_id: VideoCardId) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn render_all_cards(&mut self) -> Result<(), Error> {
-        Ok(())
+    /// Execute a closure that is passed the VideoCardId for each VideoCard registered in the
+    /// DisplayManager.
+    fn for_each_card<F>(&mut self, f: F)
+    where
+        F: FnMut(&VideoCardId),
+    {
+        for vid in &mut self.card_id_map.keys() {}
     }
 
     fn for_each_renderer<F>(&mut self, mut f: F)
@@ -669,11 +910,13 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         }
     }
 
-    fn for_each_target<F>(&mut self, f: F)
+    fn for_each_target<F>(&mut self, mut f: F)
     where
-        F: FnMut(&mut DisplayTargetContext<PixelsBackend>),
+        F: FnMut(&mut DisplayTargetContext<PixelsBackend>, usize),
     {
-        log::debug!("in for_each_target()!");
+        for (i, dtc) in &mut self.targets.iter_mut().enumerate() {
+            f(dtc, i)
+        }
     }
 
     fn for_each_gui<F>(&mut self, mut f: F)
@@ -741,6 +984,100 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
     /// Retrieve the scaler preset by name.
     fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset> {
         self.scaler_presets.get(&name)
+    }
+
+    fn set_scaler_mode(&mut self, dt_idx: usize, mode: ScalerMode) -> Result<(), Error> {
+        if dt_idx >= self.targets.len() {
+            return Err(anyhow!("Display target out of range!"));
+        }
+
+        let dt = &mut self.targets[dt_idx];
+
+        if let Some(backend) = &mut dt.backend {
+            if let Some(scaler) = &mut dt.scaler {
+                scaler.set_mode(&backend.get_backend_raw().unwrap(), mode)
+            }
+        }
+        Ok(())
+    }
+
+    fn set_display_aperture(
+        &mut self,
+        dt_idx: usize,
+        aperture: DisplayApertureType,
+    ) -> Result<Option<VideoCardId>, Error> {
+        if dt_idx >= self.targets.len() {
+            return Err(anyhow!("Display target out of range!"));
+        }
+
+        let dt = &mut self.targets[dt_idx];
+
+        if let Some(renderer) = &mut dt.renderer {
+            renderer.set_aperture(aperture);
+        }
+        Ok(dt.card_id)
+    }
+
+    fn set_aspect_correction(&mut self, dt_idx: usize, state: bool) -> Result<(), Error> {
+        if dt_idx >= self.targets.len() {
+            return Err(anyhow!("Display target out of range!"));
+        }
+
+        let dt = &mut self.targets[dt_idx];
+
+        if let Some(renderer) = &mut dt.renderer {
+            let aspect = match state {
+                true => Some(dt.aspect_ratio),
+                false => None,
+            };
+            log::debug!("Setting aspect ratio to: {:?}", aspect);
+            renderer.set_aspect_ratio(aspect, None);
+
+            let target_dimensions = renderer.get_display_dimensions();
+            let line_double = renderer.get_params().line_double;
+
+            // We need to resize the scaler to reflect the new target size.else {
+            if let Some(backend) = &mut dt.backend {
+                let buffer_dimensions = backend.buf_dimensions();
+                let surface_dimensions = backend.surface_dimensions();
+
+                // Resize the DisplayScaler if present.
+                if let Some(scaler) = &mut dt.scaler {
+                    log::debug!(
+                        "set_aspect_correction(): Resizing scaler to videocard target size: {}x{}",
+                        target_dimensions.w,
+                        target_dimensions.h
+                    );
+                    scaler.resize(
+                        backend.get_backend_raw().unwrap(),
+                        buffer_dimensions.w,
+                        buffer_dimensions.h,
+                        target_dimensions.w,
+                        target_dimensions.h,
+                        surface_dimensions.w,
+                        surface_dimensions.h,
+                    );
+
+                    // Update scanline shader param
+                    let scanlines = match line_double {
+                        true => buffer_dimensions.h / 2,
+                        false => buffer_dimensions.h,
+                    };
+
+                    scaler.set_option(
+                        backend.get_backend_raw().as_mut().unwrap(),
+                        ScalerOption::Scanlines {
+                            enabled: None,
+                            lines: Some(scanlines),
+                            intensity: None,
+                        },
+                        true,
+                    );
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

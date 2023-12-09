@@ -33,7 +33,7 @@
 use winit::{
     event::{ElementState, KeyEvent, Modifiers, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
-    window::{WindowId},
+    window::WindowId,
 };
 
 use display_manager_wgpu::DisplayManager;
@@ -53,6 +53,8 @@ pub fn handle_modifiers(emu: &mut Emulator, event: &WindowEvent, modifiers: &Mod
     }
 }
 
+/// Handle a KeyEvent from Winit. Return true if the event is handled; otherwise returns false
+/// to indicate that the event should be forwarded to the immediate-mode GUI fror processing.
 pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &KeyEvent) -> bool {
     // Destructure the KeyEvent.
     let KeyEvent {
@@ -133,7 +135,6 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
                         }
                     }
                 }
-
                 _ => {}
             }
 
@@ -156,13 +157,16 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
                             ElementState::Pressed => {
                                 emu.machine.key_press(keycode.to_internal(), emu.kb_data.modifiers);
                                 if emu.flags.debug_keyboard {
-                                    println!("Key pressed: {:?}", keycode);
+                                    println!("Window: {:?} Key pressed: {:?}", window_id, keycode);
                                     //log::debug!("Key pressed, keycode: {:?}: xt: {:02X}", keycode, keycode);
                                 }
                                 return true;
                             }
                             ElementState::Released => {
                                 emu.machine.key_release(keycode.to_internal());
+                                if emu.flags.debug_keyboard {
+                                    println!("Window: {:?} Key released: {:?}", window_id, keycode);
+                                }
                                 return true;
                             }
                         }

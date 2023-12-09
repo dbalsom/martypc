@@ -31,7 +31,9 @@
 */
 
 use crate::constants::*;
+use std::cmp::max;
 
+use crate::types::display_target_margins::DisplayTargetMargins;
 use display_backend_trait::BufferDimensions;
 use marty_common::VideoDimensions;
 
@@ -49,6 +51,29 @@ impl Default for DisplayTargetDimensions {
         }
     }
 }
+
+trait ExpandToFit<T = Self> {
+    fn expand_to_fit(&self, other: T) -> Self;
+}
+
+impl ExpandToFit for DisplayTargetDimensions {
+    fn expand_to_fit(&self, other: Self) -> Self {
+        Self {
+            w: max(self.w, other.w),
+            h: max(self.h, other.h),
+        }
+    }
+}
+
+impl DisplayTargetDimensions {
+    fn size_with_margins(&self, margins: DisplayTargetMargins) -> Self {
+        Self {
+            w: self.w + margins.l + margins.r,
+            h: self.h + margins.t + margins.b,
+        }
+    }
+}
+
 impl From<VideoDimensions> for DisplayTargetDimensions {
     fn from(t: VideoDimensions) -> Self {
         DisplayTargetDimensions { w: t.w, h: t.h }

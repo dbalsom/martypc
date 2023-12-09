@@ -58,7 +58,8 @@ impl AboutDialog {
 
         //ui.image(about_texture, about_texture.size_vec2());
         ui.add(
-            egui::Image::new(egui::include_image!("../../../../assets/marty_logo_about.png")).fit_to_original_size(1.0),
+            egui::Image::new(egui::include_image!("../../../../../assets/marty_logo_about.png"))
+                .fit_to_original_size(1.0),
         );
 
         ui.separator();

@@ -267,22 +267,9 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         // Check if any videocard has resized and handle it
         emu.machine.for_each_videocard(|vci| {
-            let mut new_w = 0;
-            let mut new_h = 0;
-
-            match vci.card.get_render_mode() {
-                RenderMode::Direct => {
-                    (new_w, new_h) = vci.card.get_display_aperture();
-                }
-                RenderMode::Indirect => {
-                    (new_w, new_h) = vci.card.get_display_size();
-                }
-            }
-
-            // If the current graphics mode is doublescanned, we will inform the renderer
-            let doublescan = vci.card.get_scanline_double();
+            let extents = vci.card.get_display_extents();
             // Resize the card.
-            if let Err(_) = emu.dm.on_card_resized(vci.id, new_w, new_h, doublescan) {
+            if let Err(_) = emu.dm.on_card_resized(&vci.id, &extents) {
                 log::error!("Error resizing videocard");
             }
         });

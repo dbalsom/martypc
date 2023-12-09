@@ -227,7 +227,6 @@ impl EGACard {
 
             if self.hslc == self.crtc_vertical_display_end + 1 {
                 // We are leaving the bottom of the active display area, entering the lower overscan area.
-                self.extents.visible_h = self.scanline;
                 self.in_display_area = false;
                 self.crtc_den = false;
                 self.crtc_vborder = true;

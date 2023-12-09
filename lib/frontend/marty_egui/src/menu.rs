@@ -30,7 +30,8 @@
 
 */
 
-use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiOption, GuiState, GuiWindow};
+use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiEventQueue, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
+use marty_core::videocard::VideoType;
 
 use marty_core::machine::MachineState;
 
@@ -73,10 +74,10 @@ impl GuiState {
                 {
                     let new_opt = self.get_option(GuiBoolean::TurboButton).unwrap();
 
-                    self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                        GuiBoolean::TurboButton,
-                        new_opt,
-                    )));
+                    self.event_queue.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::TurboButton, new_opt),
+                    ));
                     ui.close_menu();
                 }
 
@@ -236,109 +237,20 @@ impl GuiState {
             }
 
             ui.menu_button("Display", |ui| {
-                ui.menu_button("Display Scaling", |ui| {
-                    for (idx, mode) in self.scaler_modes.clone().iter().enumerate() {
-                        /*
-                        ui.radio_value(
-                            &mut self.get_option_enum_mut(GuiEnum::DisplayAperture(0)),
-                            GuiEnum::DisplayAperture(index as u32),
-                            aperture.name.clone()
-                        );
-                        */
+                ui.set_min_size(egui::vec2(240.0, 0.0));
 
-                        let enum_mut = self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()));
-
-                        let checked = *enum_mut == GuiEnum::DisplayAperture(idx as u32);
-
-                        if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
-                            *enum_mut = GuiEnum::DisplayAperture(idx as u32);
-                            self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Enum(
-                                GuiEnum::DisplayScalerMode(*mode),
-                            )));
-                        }
+                // If there is only one display, emit the display menu directly.
+                // Otherwise, emit named menus for each display.
+                if self.display_info.len() == 1 {
+                    self.draw_display_menu(ui, 0);
+                }
+                else if self.display_info.len() > 1 {
+                    for i in 0..self.display_info.len() {
+                        ui.menu_button(format!("Display {}: {}", i, &self.display_info[i].name), |ui| {
+                            self.draw_display_menu(ui, i);
+                        });
                     }
-                });
-
-                ui.menu_button("Monitor Aperture", |ui| {
-                    for (idx, aperture) in self.display_apertures.clone().iter().enumerate() {
-                        /*
-                        ui.radio_value(
-                            &mut self.get_option_enum_mut(GuiEnum::DisplayAperture(0)),
-                            GuiEnum::DisplayAperture(index as u32),
-                            aperture.name.clone()
-                        );
-                        */
-
-                        let enum_mut = self.get_option_enum_mut(GuiEnum::DisplayAperture(0));
-
-                        let checked = *enum_mut == GuiEnum::DisplayAperture(idx as u32);
-
-                        if ui.add(egui::RadioButton::new(checked, aperture.name)).clicked() {
-                            *enum_mut = GuiEnum::DisplayAperture(idx as u32);
-                            self.event_queue
-                                .send(GuiEvent::OptionChanged(GuiOption::Enum(GuiEnum::DisplayAperture(
-                                    idx as u32,
-                                ))));
-                        }
-                    }
-                });
-
-                if ui.button("Scaler Adjustments...").clicked() {
-                    *self.window_flag(GuiWindow::ScalerAdjust) = true;
-                    ui.close_menu();
                 }
-
-                if ui
-                    .checkbox(
-                        &mut self.get_option_mut(GuiBoolean::CorrectAspect),
-                        "Correct Aspect Ratio",
-                    )
-                    .clicked()
-                {
-                    let new_opt = self.get_option(GuiBoolean::CorrectAspect).unwrap();
-
-                    self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                        GuiBoolean::CorrectAspect,
-                        new_opt,
-                    )));
-
-                    ui.close_menu();
-                }
-                if ui
-                    .checkbox(
-                        &mut self.get_option_mut(GuiBoolean::CompositeDisplay),
-                        "Composite Monitor",
-                    )
-                    .clicked()
-                {
-                    ui.close_menu();
-                }
-
-                if ui
-                    .checkbox(&mut self.get_option_mut(GuiBoolean::EnableSnow), "Enable Snow")
-                    .clicked()
-                {
-                    let new_opt = self.get_option(GuiBoolean::EnableSnow).unwrap();
-
-                    self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                        GuiBoolean::EnableSnow,
-                        new_opt,
-                    )));
-
-                    ui.close_menu();
-                }
-
-                if ui.button("Composite Adjustments...").clicked() {
-                    *self.window_flag(GuiWindow::CompositeAdjust) = true;
-                    ui.close_menu();
-                }
-
-                ui.separator();
-
-                if ui.button("🖼 Take Screenshot").clicked() {
-                    self.event_queue.send(GuiEvent::TakeScreenshot);
-                    ui.close_menu();
-                };
             });
 
             ui.menu_button("Debug", |ui| {
@@ -374,10 +286,10 @@ impl GuiState {
                     {
                         let new_opt = self.get_option(GuiBoolean::CpuEnableWaitStates).unwrap();
 
-                        self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                            GuiBoolean::CpuEnableWaitStates,
-                            new_opt,
-                        )));
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Global,
+                            GuiVariable::Bool(GuiBoolean::CpuEnableWaitStates, new_opt),
+                        ));
                         ui.close_menu();
                     }
                     if ui
@@ -389,10 +301,10 @@ impl GuiState {
                     {
                         let new_opt = self.get_option(GuiBoolean::CpuInstructionHistory).unwrap();
 
-                        self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                            GuiBoolean::CpuInstructionHistory,
-                            new_opt,
-                        )));
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Global,
+                            GuiVariable::Bool(GuiBoolean::CpuInstructionHistory, new_opt),
+                        ));
                         ui.close_menu();
                     }
                     if ui
@@ -404,10 +316,10 @@ impl GuiState {
                     {
                         let new_opt = self.get_option(GuiBoolean::CpuTraceLoggingEnabled).unwrap();
 
-                        self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                            GuiBoolean::CpuTraceLoggingEnabled,
-                            new_opt,
-                        )));
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Global,
+                            GuiVariable::Bool(GuiBoolean::CpuTraceLoggingEnabled, new_opt),
+                        ));
                         ui.close_menu();
                     }
                     #[cfg(feature = "devtools")]
@@ -475,6 +387,8 @@ impl GuiState {
                     *self.window_flag(GuiWindow::VideoCardViewer) = true;
                     ui.close_menu();
                 }
+
+                /*
                 if ui
                     .checkbox(
                         &mut self.get_option_mut(GuiBoolean::ShowBackBuffer),
@@ -484,12 +398,13 @@ impl GuiState {
                 {
                     let new_opt = self.get_option(GuiBoolean::ShowBackBuffer).unwrap();
 
-                    self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
-                        GuiBoolean::ShowBackBuffer,
-                        new_opt,
-                    )));
+                    self.event_queue.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::ShowBackBuffer, new_opt),
+                    ));
                     ui.close_menu();
                 }
+                 */
 
                 if ui.button("Flush Trace Logs").clicked() {
                     self.event_queue.send(GuiEvent::FlushLogs);
@@ -515,5 +430,124 @@ impl GuiState {
                 });
             });
         });
+    }
+
+    pub fn draw_display_menu(&mut self, ui: &mut egui::Ui, display_idx: usize) {
+        let ctx = GuiVariableContext::Display(display_idx);
+
+        ui.menu_button("Scaler Mode", |ui| {
+            for (scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
+                if let Some(enum_mut) =
+                    self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(ctx))
+                {
+                    let checked = *enum_mut == GuiEnum::DisplayScalerMode(*mode);
+
+                    if ui.add(egui::RadioButton::new(checked, format!("{:?}", mode))).clicked() {
+                        *enum_mut = GuiEnum::DisplayScalerMode(*mode);
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Display(display_idx),
+                            GuiVariable::Enum(GuiEnum::DisplayScalerMode(*mode)),
+                        ));
+                    }
+                }
+            }
+        });
+
+        if ui.button("Scaler Adjustments...").clicked() {
+            *self.window_flag(GuiWindow::ScalerAdjust) = true;
+            ui.close_menu();
+        }
+
+        ui.menu_button("Display Aperture", |ui| {
+            let mut aperture_vec = Vec::new();
+            if let Some(aperture_vec_ref) = self.display_apertures.get(&display_idx) {
+                aperture_vec = aperture_vec_ref.clone()
+            };
+
+            for (aperture) in aperture_vec.iter() {
+                if let Some(enum_mut) =
+                    self.get_option_enum_mut(GuiEnum::DisplayAperture(Default::default()), Some(ctx))
+                {
+                    let checked = *enum_mut == GuiEnum::DisplayAperture(aperture.aper_enum);
+
+                    if ui.add(egui::RadioButton::new(checked, aperture.name)).clicked() {
+                        *enum_mut = GuiEnum::DisplayAperture(aperture.aper_enum);
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Display(display_idx),
+                            GuiVariable::Enum(GuiEnum::DisplayAperture(aperture.aper_enum)),
+                        ));
+                    }
+                }
+            }
+        });
+
+        let mut state_changed = false;
+        let mut new_state = false;
+        if let Some(GuiEnum::DisplayAspectCorrect(state)) =
+            &mut self.get_option_enum_mut(GuiEnum::DisplayAspectCorrect(false), Some(ctx))
+        {
+            if ui.checkbox(state, "Correct Aspect Ratio").clicked() {
+                //let new_opt = self.get_option_enum_mut()
+                state_changed = true;
+                new_state = *state;
+                ui.close_menu();
+            }
+        }
+        if state_changed {
+            self.event_queue.send(GuiEvent::VariableChanged(
+                GuiVariableContext::Display(display_idx),
+                GuiVariable::Enum(GuiEnum::DisplayAspectCorrect(new_state)),
+            ));
+        }
+
+        // CGA-specific options.
+        if matches!(self.display_info[display_idx].vtype, Some(VideoType::CGA)) {
+            let mut state_changed = false;
+            let mut new_state = false;
+
+            if let Some(GuiEnum::DisplayComposite(state)) =
+                self.get_option_enum_mut(GuiEnum::DisplayComposite(Default::default()), Some(ctx))
+            {
+                if ui.checkbox(state, "Composite Monitor").clicked() {
+                    state_changed = true;
+                    new_state = *state;
+                    ui.close_menu();
+                }
+            }
+            if state_changed {
+                self.event_queue.send(GuiEvent::VariableChanged(
+                    GuiVariableContext::Display(display_idx),
+                    GuiVariable::Enum(GuiEnum::DisplayComposite(new_state)),
+                ));
+            }
+
+            /* TODO: Snow should be set per-adapter, not per-display
+            if ui
+                .checkbox(&mut self.get_option_mut(GuiBoolean::EnableSnow), "Enable Snow")
+                .clicked()
+            {
+                let new_opt = self.get_option(GuiBoolean::EnableSnow).unwrap();
+
+                self.event_queue.send(GuiEvent::OptionChanged(GuiOption::Bool(
+                    GuiBoolean::EnableSnow,
+                    new_opt,
+                )));
+
+                ui.close_menu();
+            }
+             */
+
+            if ui.button("Composite Adjustments...").clicked() {
+                *self.window_flag(GuiWindow::CompositeAdjust) = true;
+                ui.close_menu();
+            }
+        }
+
+        ui.separator();
+
+        if ui.button("🖼 Take Screenshot").clicked() {
+            self.event_queue.send(GuiEvent::TakeScreenshot);
+            ui.close_menu();
+        };
     }
 }

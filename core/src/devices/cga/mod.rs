@@ -35,9 +35,9 @@
 */
 
 #![allow(dead_code)]
-use std::{collections::HashMap, convert::TryInto, path::Path};
-
 use bytemuck;
+use const_format::formatcp;
+use std::{collections::HashMap, convert::TryInto, path::Path};
 
 #[macro_use]
 mod io;
@@ -330,6 +330,7 @@ const CGA_APERTURE_DEBUG_X: u32 = 0;
 const CGA_APERTURE_DEBUG_Y: u32 = 0;
 
 const CGA_APERTURES: [DisplayAperture; 4] = [
+    // 14Mhz CROPPED aperture
     DisplayAperture {
         w: CGA_APERTURE_CROPPED_W,
         h: CGA_APERTURE_CROPPED_H,
@@ -337,7 +338,7 @@ const CGA_APERTURES: [DisplayAperture; 4] = [
         y: CGA_APERTURE_CROPPED_Y,
         debug: false,
     },
-    // 14Mhz NORMAL aperture
+    // 14Mhz ACCURATE aperture
     DisplayAperture {
         w: CGA_APERTURE_NORMAL_W,
         h: CGA_APERTURE_NORMAL_H,
@@ -357,26 +358,37 @@ const CGA_APERTURES: [DisplayAperture; 4] = [
     DisplayAperture {
         w: CGA_APERTURE_DEBUG_W,
         h: CGA_APERTURE_DEBUG_H,
-        x: CGA_APERTURE_FULL_X,
-        y: CGA_APERTURE_FULL_Y,
+        x: 0,
+        y: 0,
         debug: true,
     },
 ];
 
+const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", CGA_APERTURE_CROPPED_W, CGA_APERTURE_CROPPED_H);
+const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", CGA_APERTURE_NORMAL_W, CGA_APERTURE_NORMAL_H);
+const FULL_STRING: &str = &formatcp!("Full: {}x{}", CGA_APERTURE_FULL_W, CGA_APERTURE_FULL_H);
+const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", CGA_APERTURE_DEBUG_W, CGA_APERTURE_DEBUG_H);
+
 const CGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
-        name: "Cropped",
-        idx:  0,
+        name: CROPPED_STRING,
+        aper_enum: DisplayApertureType::Cropped,
     },
     DisplayApertureDesc {
-        name: "Monitor Accurate",
-        idx:  1,
+        name: ACCURATE_STRING,
+        aper_enum: DisplayApertureType::Accurate,
     },
-    DisplayApertureDesc { name: "Full", idx: 2 },
-    DisplayApertureDesc { name: "Debug", idx: 3 },
+    DisplayApertureDesc {
+        name: FULL_STRING,
+        aper_enum: DisplayApertureType::Full,
+    },
+    DisplayApertureDesc {
+        name: DEBUG_STRING,
+        aper_enum: DisplayApertureType::Debug,
+    },
 ];
 
-const CGA_DEFAULT_APERTURE: usize = 1;
+const CGA_DEFAULT_APERTURE: usize = 0;
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -404,6 +416,7 @@ pub(crate) use trace_regs;
 
 pub struct CGACard {
     debug: bool,
+    debug_draw: bool,
     cycles: u64,
     last_vsync_cycles: u64,
     cur_screen_cycles: u64,
@@ -569,14 +582,15 @@ pub enum CRTCRegister {
 // CGA implementation of Default for DisplayExtents.
 // Each videocard implementation should implement sensible defaults.
 // In CGA's case we know the maximum field size and thus row_stride.
-impl Default for DisplayExtents {
+trait CgaDefault {
+    fn default() -> Self;
+}
+impl CgaDefault for DisplayExtents {
     fn default() -> Self {
         Self {
+            apertures: CGA_APERTURES.to_vec(),
             field_w: CGA_XRES_MAX,
             field_h: CGA_YRES_MAX,
-            aperture: CGA_APERTURES[CGA_DEFAULT_APERTURE],
-            visible_w: 0,
-            visible_h: 0,
             row_stride: CGA_XRES_MAX as usize,
             double_scan: true,
             mode_byte: 0,
@@ -588,6 +602,7 @@ impl Default for CGACard {
     fn default() -> Self {
         Self {
             debug: false,
+            debug_draw: false,
             cycles: 0,
             last_vsync_cycles: 0,
             cur_screen_cycles: 0,
@@ -714,7 +729,7 @@ impl Default for CGACard {
 
             back_buf:  1,
             front_buf: 0,
-            extents:   Default::default(),
+            extents:   CgaDefault::default(),
             aperture:  CGA_DEFAULT_APERTURE,
 
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
@@ -760,7 +775,7 @@ impl CGACard {
             enable_snow: self.enable_snow,
             frame_count: self.frame_count, // Keep frame count as to not confuse frontend
             trace_logger,
-            extents: self.extents,
+            extents: self.extents.clone(),
 
             ..Self::default()
         }
@@ -1519,7 +1534,7 @@ impl CGACard {
     /// CRTC is set. This effectively creates a 0x2000 byte offset for odd character rows.
     #[inline]
     pub fn get_gfx_addr(&self, row: u8) -> usize {
-        let row_offset = if (row & 0x01) != 0 { 0x1000 } else { 0 };
+        let row_offset = (row as usize & 0x01) << 12;
         let addr = (self.vma & 0x0FFF | row_offset) << 1;
         addr
     }
@@ -1650,19 +1665,19 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
                 }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
                     self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
                 }
@@ -1743,19 +1758,19 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     self.draw_solid_lchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     self.draw_solid_lchar(CGA_VBLANK_DEBUG_COLOR);
                 }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
                     self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
                 }
@@ -1865,19 +1880,19 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     self.buf[self.back_buf][self.rba] = CGA_HBLANK_DEBUG_COLOR;
                 }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     self.buf[self.back_buf][self.rba] = CGA_VBLANK_DEBUG_COLOR;
                 }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     //self.draw_pixel(CGA_OVERSCAN_COLOR);
                     self.draw_pixel(CGA_OVERSCAN_DEBUG_COLOR);
                 }
@@ -2129,8 +2144,6 @@ impl CGACard {
 
             if self.vcc_c4 == self.crtc_vertical_displayed {
                 // Enter lower overscan area.
-                // This represents reaching the lowest visible scanline, so save the scanline in extents.
-                self.extents.visible_h = self.scanline;
                 self.in_display_area = false;
                 self.vborder = true;
             }
@@ -2234,11 +2247,6 @@ impl CGACard {
             self.beam_y = 0;
             self.rba = 0;
             // Write out preliminary DisplayExtents data for new front buffer based on current crtc values.
-
-            // Width is total characters * character width * clock_divisor.
-            // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since we scan pixels twice.
-            self.extents.visible_w =
-                self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32 * self.clock_divisor as u32;
 
             trace_regs!(self);
             trace!(self, "Leaving vsync and flipping buffers");

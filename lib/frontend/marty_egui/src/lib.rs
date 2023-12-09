@@ -66,58 +66,40 @@ use winit::window::Window;
 use regex::Regex;
 use serialport::SerialPortInfo;
 
-// Bring in submodules
-mod about;
 mod color;
 mod color_swatch;
-mod composite_adjust;
 mod constants;
-mod cpu_control;
-mod cpu_state_viewer;
-mod cycle_trace_viewer;
-mod delay_adjust;
-mod device_control;
-mod disassembly_viewer;
-mod dma_viewer;
 mod image;
-mod instruction_history_viewer;
-mod ivr_viewer;
-mod memory_viewer;
 mod menu;
-mod performance_viewer;
-mod pic_viewer;
-mod pit_viewer;
-mod scaler_adjust;
 mod theme;
 mod token_listview;
-mod videocard_viewer;
+mod windows;
 
 use crate::{
-    // Use custom windows
-    about::AboutDialog,
-    composite_adjust::CompositeAdjustControl,
-    cpu_control::CpuControl,
-    cpu_state_viewer::CpuViewerControl,
-    cycle_trace_viewer::CycleTraceViewerControl,
-    delay_adjust::DelayAdjustControl,
-    device_control::DeviceControl,
-    disassembly_viewer::DisassemblyControl,
-    dma_viewer::DmaViewerControl,
-
-    instruction_history_viewer::InstructionHistoryControl,
-    ivr_viewer::IvrViewerControl,
-    memory_viewer::MemoryViewerControl,
-    performance_viewer::PerformanceViewerControl,
-    pic_viewer::PicViewerControl,
-    pit_viewer::PitViewerControl,
-    scaler_adjust::ScalerAdjustControl,
     theme::GuiTheme,
+    // Use custom windows
+    windows::about::AboutDialog,
+    windows::composite_adjust::CompositeAdjustControl,
+    windows::cpu_control::CpuControl,
+    windows::cpu_state_viewer::CpuViewerControl,
+    windows::cycle_trace_viewer::CycleTraceViewerControl,
+    windows::delay_adjust::DelayAdjustControl,
+    windows::device_control::DeviceControl,
+    windows::disassembly_viewer::DisassemblyControl,
+    windows::dma_viewer::DmaViewerControl,
+    windows::instruction_history_viewer::InstructionHistoryControl,
+    windows::ivr_viewer::IvrViewerControl,
+    windows::memory_viewer::MemoryViewerControl,
+    windows::performance_viewer::PerformanceViewerControl,
+    windows::pic_viewer::PicViewerControl,
+    windows::pit_viewer::PitViewerControl,
+    windows::scaler_adjust::ScalerAdjustControl,
 };
 
 use marty_core::{
     devices::{hdc::HardDiskFormat, pic::PicStringState, pit::PitDisplayState, ppi::PpiStringState},
     machine::{ExecutionControl, MachineState},
-    videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
+    videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
 };
 
 use videocard_renderer::{CompositeParams, PhosphorType};
@@ -149,7 +131,7 @@ pub enum GuiWindow {
     CycleTraceViewer,
 }
 
-pub enum GuiOption {
+pub enum GuiVariable {
     Bool(GuiBoolean, bool),
     Enum(GuiEnum),
 }
@@ -157,21 +139,45 @@ pub enum GuiOption {
 #[derive(PartialEq, Eq, Hash)]
 pub enum GuiBoolean {
     // Boolean options
-    CompositeDisplay,
-    CorrectAspect,
     CpuEnableWaitStates,
     CpuInstructionHistory,
     CpuTraceLoggingEnabled,
     TurboButton,
-    ShowBackBuffer,
-    EnableSnow,
+}
+
+// Enums are hashed with with a tuple of GuiEnumContext and their base discriminant.
+// This allows the same enum to be stored in different contexts, ie, a DisplayAperture can be
+// stored for each Display context.  The Global context can be used if no specific context is
+// required.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub enum GuiVariableContext {
+    Global,
+    Display(usize),
+}
+impl Default for GuiVariableContext {
+    fn default() -> Self {
+        GuiVariableContext::Global
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GuiEnum {
-    DisplayAperture(u32),
+    DisplayAspectCorrect(bool),
+    DisplayAperture(DisplayApertureType),
     DisplayScalerMode(ScalerMode),
+    DisplayComposite(bool),
 }
+
+fn create_default_variant(ge: GuiEnum) -> GuiEnum {
+    match ge {
+        GuiEnum::DisplayAspectCorrect(_) => GuiEnum::DisplayAspectCorrect(Default::default()),
+        GuiEnum::DisplayAperture(_) => GuiEnum::DisplayAperture(Default::default()),
+        GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
+        GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
+    }
+}
+
+type GuiEnumMap = HashMap<(GuiVariableContext, Discriminant<GuiEnum>), GuiEnum>;
 
 #[allow(dead_code)]
 pub enum GuiEvent {
@@ -187,8 +193,7 @@ pub enum GuiEvent {
     EditBreakpoint,
     MemoryUpdate,
     TokenHover(usize),
-    OptionChanged(GuiOption),
-    EnumChanged(GuiEnum, bool),
+    VariableChanged(GuiVariableContext, GuiVariable),
     CompositeAdjust(CompositeParams),
     ScalerAdjust(ScalerParams),
     FlushLogs,
@@ -265,7 +270,7 @@ pub struct GuiState {
     warning_dialog_open: bool,
 
     option_flags: HashMap<GuiBoolean, bool>,
-    option_enums: HashMap<Discriminant<GuiEnum>, GuiEnum>,
+    option_enums: GuiEnumMap,
 
     machine_state: MachineState,
 
@@ -273,7 +278,7 @@ pub struct GuiState {
     perf_stats: PerformanceStats,
 
     // Display stuff
-    display_apertures: Vec<DisplayApertureDesc>,
+    display_apertures: HashMap<usize, Vec<DisplayApertureDesc>>,
     scaler_modes: Vec<ScalerMode>,
 
     // Floppy Disk Images
@@ -316,6 +321,7 @@ pub struct GuiState {
     pub ppi_state:  PpiStringState,
 
     pub videocard_state: VideoCardState,
+    pub display_info:    Vec<DisplayInfo>,
 
     pub disassembly_viewer: DisassemblyControl,
     pub dma_viewer: DmaViewerControl,
@@ -523,25 +529,18 @@ impl GuiState {
         .into();
 
         let option_flags: HashMap<GuiBoolean, bool> = [
-            (GuiBoolean::CompositeDisplay, false),
-            (GuiBoolean::CorrectAspect, false),
+            //(GuiBoolean::CompositeDisplay, false),
+            //(GuiBoolean::CorrectAspect, false),
             (GuiBoolean::CpuEnableWaitStates, true),
             (GuiBoolean::CpuInstructionHistory, false),
             (GuiBoolean::CpuTraceLoggingEnabled, false),
             (GuiBoolean::TurboButton, false),
-            (GuiBoolean::ShowBackBuffer, true),
-            (GuiBoolean::EnableSnow, true),
+            //(GuiBoolean::ShowBackBuffer, true),
+            //(GuiBoolean::EnableSnow, true),
         ]
         .into();
 
-        let option_enums: HashMap<Discriminant<GuiEnum>, GuiEnum> = [
-            (discriminant(&GuiEnum::DisplayAperture(0)), GuiEnum::DisplayAperture(0)),
-            (
-                discriminant(&GuiEnum::DisplayScalerMode(ScalerMode::Integer)),
-                GuiEnum::DisplayScalerMode(ScalerMode::Integer),
-            ),
-        ]
-        .into();
+        let option_enums = HashMap::new();
 
         Self {
             event_queue: GuiEventQueue::new(),
@@ -596,6 +595,7 @@ impl GuiState {
             ppi_state: Default::default(),
 
             videocard_state: Default::default(),
+            display_info: Vec::new(),
             disassembly_viewer: DisassemblyControl::new(),
             dma_viewer: DmaViewerControl::new(),
             trace_viewer: InstructionHistoryControl::new(),
@@ -634,13 +634,16 @@ impl GuiState {
         }
     }
 
-    pub fn set_option_enum(&mut self, option: GuiEnum) {
-        if let Some(opt) = self.option_enums.get_mut(&discriminant(&option)) {
-            log::debug!("Setting GuiEnum: {:?}", option);
+    pub fn set_option_enum(&mut self, option: GuiEnum, idx: Option<GuiVariableContext>) {
+        let ctx = idx.unwrap_or_default();
+
+        if let Some(opt) = self.option_enums.get_mut(&(ctx, discriminant(&option))) {
+            //log::debug!("Updating GuiEnum: {:?}", option);
             *opt = option
         }
         else {
-            log::warn!("Failed to set GuiEnum: {:?}", option);
+            log::debug!("Creating GuiEnum: {:?}", option);
+            self.option_enums.insert((ctx, discriminant(&option)), option);
         }
     }
 
@@ -649,16 +652,18 @@ impl GuiState {
     }
 
     #[allow(dead_code)]
-    pub fn get_option_enum(&self, option: GuiEnum) -> GuiEnum {
-        *self.option_enums.get(&discriminant(&option)).unwrap()
+    pub fn get_option_enum(&self, option: GuiEnum, ctx: Option<GuiVariableContext>) -> Option<&GuiEnum> {
+        let ctx = ctx.unwrap_or_default();
+        self.option_enums.get(&(ctx, discriminant(&option)))
+    }
+
+    pub fn get_option_enum_mut(&mut self, option: GuiEnum, ctx: Option<GuiVariableContext>) -> Option<&mut GuiEnum> {
+        let ctx = ctx.unwrap_or_default();
+        self.option_enums.get_mut(&(ctx, discriminant(&option)))
     }
 
     pub fn get_option_mut(&mut self, option: GuiBoolean) -> &mut bool {
         self.option_flags.get_mut(&option).unwrap()
-    }
-
-    pub fn get_option_enum_mut(&mut self, option: GuiEnum) -> &mut GuiEnum {
-        self.option_enums.get_mut(&discriminant(&option)).unwrap()
     }
 
     pub fn show_error(&mut self, err_str: &String) {
@@ -695,18 +700,15 @@ impl GuiState {
         self.vhd_names = names;
     }
 
-    /// Set display apertures and the default aperture to show as selected.
-    pub fn set_display_apertures(&mut self, apertures: (Vec<DisplayApertureDesc>, usize)) {
-        self.display_apertures = apertures.0;
-        //log::warn!("set_display_apertures: Setting selection to: {}", self.display_apertures[apertures.1].name);
-        self.set_option_enum(GuiEnum::DisplayAperture(apertures.1 as u32));
+    /// Set display apertures for the specified display. Should be called in a loop for each display
+    /// target.
+    pub fn set_display_apertures(&mut self, display: usize, apertures: Vec<DisplayApertureDesc>) {
+        self.display_apertures.insert(display, apertures);
     }
 
-    /// Set list of available scaling modes and the default scaling mode to show as selected
-    pub fn set_scaler_modes(&mut self, modes: (Vec<ScalerMode>, ScalerMode)) {
-        self.scaler_modes = modes.0;
-
-        self.set_option_enum(GuiEnum::DisplayScalerMode(modes.1));
+    /// Set list of available scaler modes
+    pub fn set_scaler_modes(&mut self, modes: Vec<ScalerMode>) {
+        self.scaler_modes = modes;
     }
 
     /// Retrieve a newly selected VHD image name for the specified device slot.
@@ -759,6 +761,44 @@ impl GuiState {
 
     pub fn update_videocard_state(&mut self, state: HashMap<String, Vec<(String, VideoCardStateEntry)>>) {
         self.videocard_state = state;
+    }
+
+    /// Initialize GUI Display enum state given a vector of DisplayInfo fields.  
+    pub fn update_display_info(&mut self, vci: Vec<DisplayInfo>) {
+        self.display_info = vci.clone();
+
+        // Build a vector of enums to set to avoid borrowing twice.
+        let mut enum_vec = Vec::new();
+
+        for (idx, display) in self.display_info.iter().enumerate() {
+            if let Some(renderer) = &display.renderer {
+                enum_vec.push((
+                    GuiEnum::DisplayAspectCorrect(renderer.aspect_correction),
+                    Some(GuiVariableContext::Display(idx)),
+                ));
+                enum_vec.push((
+                    // Fairly certain that if we have a renderer, we have an aperture...
+                    GuiEnum::DisplayAperture(renderer.display_aperture.unwrap()),
+                    Some(GuiVariableContext::Display(idx)),
+                ));
+                enum_vec.push((
+                    GuiEnum::DisplayComposite(renderer.composite),
+                    Some(GuiVariableContext::Display(idx)),
+                ));
+            }
+
+            if let Some(scaler_mode) = &display.scaler_mode {
+                enum_vec.push((
+                    GuiEnum::DisplayScalerMode(*scaler_mode),
+                    Some(GuiVariableContext::Display(idx)),
+                ));
+            }
+        }
+
+        // Set all enums.
+        for enum_item in enum_vec.iter() {
+            self.set_option_enum(enum_item.0, enum_item.1);
+        }
     }
 
     #[allow(dead_code)]

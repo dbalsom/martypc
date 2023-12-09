@@ -45,12 +45,15 @@ pub fn render_frame(emu: &mut Emulator) {
             let beam_pos;
             match emu.exec_control.borrow_mut().get_state() {
                 ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
+                    renderer.select_buffer(BufferSelect::Front);
+                    /* TODO: Enable this on a per-display basis?
                     if emu.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
                         renderer.select_buffer(BufferSelect::Back);
                     }
                     else {
                         renderer.select_buffer(BufferSelect::Front);
                     }
+                     */
                     beam_pos = videocard.get_beam_pos();
                 }
                 _ => {

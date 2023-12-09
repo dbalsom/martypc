@@ -77,13 +77,10 @@ impl PerformanceViewerControl {
                 ui.end_row();
 
                 for (i, dt) in self.stats.dti.iter().enumerate() {
-                    CollapsingHeader::new(&format!("Display {}", i))
+                    CollapsingHeader::new(&format!("Display {}: {}", i, dt.name))
                         .default_open(true)
                         .show(ui, |ui| {
                             egui::Grid::new("displays").striped(false).show(ui, |ui| {
-                                ui.label("Name: ");
-                                ui.label(egui::RichText::new(format!("{}", dt.name)));
-                                ui.end_row();
                                 ui.label("Type: ");
                                 ui.label(egui::RichText::new(format!("{}", dt.dtype)));
                                 ui.end_row();
@@ -98,8 +95,8 @@ impl PerformanceViewerControl {
                                 ui.end_row();
                             })
                         });
+                    ui.end_row();
                 }
-                ui.end_row();
 
                 ui.label("Build: ");
                 #[cfg(debug_assertions)]

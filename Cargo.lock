@@ -723,6 +723,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "const_format"
+version = "0.2.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3a214c7af3d04997541b18d432afaff4c455e79e2029079647e72fc2bd27673"
+dependencies = [
+ "const_format_proc_macros",
+]
+
+[[package]]
+name = "const_format_proc_macros"
+version = "0.2.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f6ff08fd20f4f299298a28e2dfa8a8ba1036e6cd2460ac1de7b425d76f2500"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-xid",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2185,6 +2205,7 @@ dependencies = [
  "anyhow",
  "arraydeque",
  "bytemuck",
+ "const_format",
  "cpal",
  "criterion",
  "lazy_static",
@@ -2285,6 +2306,7 @@ dependencies = [
 name = "martypc_pixels_desktop"
 version = "0.2.0"
 dependencies = [
+ "anyhow",
  "bytemuck",
  "colored",
  "config_toml_bpaf",
@@ -2309,7 +2331,6 @@ dependencies = [
  "marty_core",
  "marty_egui",
  "marty_pixels_scaler",
- "pixels 0.13.0 (git+https://github.com/dbalsom/pixels_martypc.git?branch=marty_update_deps)",
  "rand",
  "regex",
  "resize",
@@ -4132,6 +4153,7 @@ dependencies = [
  "marty_common",
  "marty_core",
  "rand",
+ "serde",
 ]
 
 [[package]]

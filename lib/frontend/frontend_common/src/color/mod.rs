@@ -80,6 +80,16 @@ impl From<u32> for MartyColor {
     }
 }
 
+impl MartyColor {
+    pub fn from_u24(rgb: u32) -> Self {
+        let r = ((rgb >> 16) & 0xff) as f32 / 255.0;
+        let g = ((rgb >> 8) & 0xff) as f32 / 255.0;
+        let b = (rgb & 0xff) as f32 / 255.0;
+        let a = 1.0;
+        MartyColor { r, g, b, a }
+    }
+}
+
 #[cfg(feature = "use_wgpu")]
 /// Convert a wgpu::Color to MartyColor.
 /// Implementing From<wgpu::Color> also provides Into<wgpu::Color>.

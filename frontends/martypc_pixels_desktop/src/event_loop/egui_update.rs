@@ -68,6 +68,10 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     // -- Update machine state
     emu.gui.set_machine_state(emu.machine.get_state());
 
+    // -- Update display info
+    let dti = emu.dm.get_display_info(&emu.machine);
+    emu.gui.update_display_info(dti);
+
     // -- Update list of floppies
     let name_vec = emu.floppy_manager.get_floppy_names();
     emu.gui.set_floppy_names(name_vec);

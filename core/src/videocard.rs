@@ -267,8 +267,9 @@ pub enum CGAColor {
     WhiteBright,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub enum DisplayApertureType {
+    #[default]
     Cropped,
     Accurate,
     Full,
@@ -284,9 +285,14 @@ pub enum BufferSelect {
 #[derive(Clone)]
 pub struct DisplayApertureDesc {
     pub name: &'static str,
-    pub idx:  usize,
+    pub aper_enum: DisplayApertureType,
 }
 
+/// A display aperture defines a visible subset rect of the total display field genereated by a
+/// video card in Direct mode. w and h provide the dimensions of this rect, and x and y the
+/// horizontal and vertical offsets from the origin (0,0)
+/// Additionally, a debug flag is set to indicate whether an aperture should render debugging
+/// information along with pixel data.
 #[derive(Copy, Clone)]
 pub struct DisplayAperture {
     pub w: u32,
@@ -296,16 +302,14 @@ pub struct DisplayAperture {
     pub debug: bool,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct DisplayExtents {
-    pub field_w: u32,              // The total width of the video field
-    pub field_h: u32,              // The total height of the video field
-    pub aperture: DisplayAperture, // The current display aperture.
-    pub visible_w: u32,            // The width in pixels of the visible display area
-    pub visible_h: u32,            // The height in pixels of the visible display area
-    pub row_stride: usize,         // Number of bytes in frame buffer to skip to reach next row
-    pub double_scan: bool,         // Whether the display should be double-scanned when RGBA converted
-    pub mode_byte: u8,             // Mode byte. Used by CGA modes only.
+    pub apertures: Vec<DisplayAperture>, // List of display aperture definitions.
+    pub field_w: u32,                    // The total width of the video field
+    pub field_h: u32,                    // The total height of the video field
+    pub row_stride: usize,               // Number of bytes in frame buffer to skip to reach next row
+    pub double_scan: bool,               // Whether the display should be double-scanned when RGBA converted
+    pub mode_byte: u8,                   // Mode byte. Used by CGA modes only.
 }
 
 pub trait VideoCard {
@@ -336,16 +340,11 @@ pub trait VideoCard {
     /// Return the DisplayExtents struct corresponding to the last rendered frame.
     fn get_display_extents(&self) -> &DisplayExtents;
 
-    /// Return the visible resolution of the current video adapter's display field.
-    /// For CGA, this will be a fixed value. For EGA & VGA it may vary.
-    fn get_display_aperture(&self) -> (u32, u32);
+    /// Return a list of available display aperture names, indices, and the default aperture index
+    fn list_display_apertures(&self) -> Vec<DisplayApertureDesc>;
 
-    /// Return a list of available display aperture modes, and the default aperture
-    fn list_display_apertures(&self) -> (Vec<DisplayApertureDesc>, usize);
-
-    /// Set the desired display aperture. The aperture number should be in the range of the vec
-    /// returend from list_display_apertures().
-    fn set_aperture(&mut self, aperture: u32);
+    /// Return a list of display aperture definitions
+    fn get_display_apertures(&self) -> Vec<DisplayAperture>;
 
     /// Return the 16 color CGA color index for the active overscan color.
     fn get_overscan_color(&self) -> u8;

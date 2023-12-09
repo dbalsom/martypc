@@ -513,9 +513,17 @@ const EGA16_APERTURE_FULL_H: u32 = 350;
 const EGA16_APERTURE_FULL_X: u32 = 32;
 const EGA16_APERTURE_FULL_Y: u32 = 2;
 
-const EGA_APERTURES: [[DisplayAperture; 3]; 2] = [
+const EGA_APERTURES: [[DisplayAperture; 4]; 2] = [
     [
-        // 14Mhz NORMAL aperture
+        // 14Mhz CROPPED aperture
+        DisplayAperture {
+            w: EGA14_APERTURE_CROPPED_W,
+            h: EGA14_APERTURE_CROPPED_H,
+            x: EGA14_APERTURE_CROPPED_X,
+            y: EGA14_APERTURE_CROPPED_Y,
+            debug: false,
+        },
+        // 14Mhz ACCURATE aperture
         DisplayAperture {
             w: EGA14_APERTURE_CROPPED_W,
             h: EGA14_APERTURE_CROPPED_H,
@@ -541,12 +549,20 @@ const EGA_APERTURES: [[DisplayAperture; 3]; 2] = [
         },
     ],
     [
-        // 16Mhz NORMAL aperture
+        // 16Mhz CROPPED aperture
         DisplayAperture {
             w: EGA16_APERTURE_CROPPED_W,
             h: EGA16_APERTURE_CROPPED_H,
             x: EGA16_APERTURE_CROPPED_X,
             y: EGA16_APERTURE_CROPPED_Y,
+            debug: false,
+        },
+        // 14Mhz ACCURATE aperture
+        DisplayAperture {
+            w: EGA14_APERTURE_CROPPED_W,
+            h: EGA14_APERTURE_CROPPED_H,
+            x: EGA14_APERTURE_CROPPED_X,
+            y: EGA14_APERTURE_CROPPED_Y,
             debug: false,
         },
         // 16Mhz FULL aperture
@@ -568,13 +584,23 @@ const EGA_APERTURES: [[DisplayAperture; 3]; 2] = [
     ],
 ];
 
-const EGA_APERTURE_DESCS: [DisplayApertureDesc; 3] = [
+const EGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
         name: "Cropped",
-        idx:  0,
+        aper_enum: DisplayApertureType::Cropped,
     },
-    DisplayApertureDesc { name: "Full", idx: 1 },
-    DisplayApertureDesc { name: "Debug", idx: 2 },
+    DisplayApertureDesc {
+        name: "Accurate",
+        aper_enum: DisplayApertureType::Accurate,
+    },
+    DisplayApertureDesc {
+        name: "Full",
+        aper_enum: DisplayApertureType::Full,
+    },
+    DisplayApertureDesc {
+        name: "Debug",
+        aper_enum: DisplayApertureType::Debug,
+    },
 ];
 
 #[derive(Clone)]
@@ -610,13 +636,15 @@ impl AttributePaletteEntry {
 }
 
 pub struct EGACard {
+    debug: bool,
+    debug_draw: bool,
+
     ticks_accum: f64,
     char_clock: u32,
     clock_mode: ClockingMode,
     clock_divisor: u32,
     clock_change_pending: bool,
     cycles: u64,
-    debug: bool,
     trace_logger: TraceLogger,
 
     io_adjust: u16,
@@ -830,13 +858,16 @@ pub enum RetracePolarity {
 impl Default for EGACard {
     fn default() -> Self {
         Self {
+            debug: false,
+            debug_draw: false,
+
             ticks_accum: 0.0,
             char_clock: 8,
             clock_divisor: 1,
             clock_change_pending: false,
             clock_mode: ClockingMode::Cycle,
             cycles: 0,
-            debug: false,
+
             trace_logger: TraceLogger::None,
 
             io_adjust: 0,
@@ -1007,39 +1038,17 @@ impl Default for EGACard {
     }
 }
 
-impl EGACard {
-    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool) -> Self {
-        let mut ega = Self::default();
+/* Can't do this as somehow the CGA Default is still in scope here.
 
-        ega.trace_logger = trace_logger;
-        ega.debug = video_frame_debug;
-        ega.clock_mode = clock_mode;
-
-        if video_frame_debug {
-            // move debugging flag to aperture selection.
-
-            /*
-            ega.extents.field_w = EGA16_MAX_RASTER_X;
-            ega.extents.field_h = EGA16_MAX_RASTER_Y;
-            ega.extents.aperture_w = EGA16_MAX_RASTER_X;
-            ega.extents.aperture_h = EGA16_MAX_RASTER_Y;
-            ega.extents.aperture_x = 0;
-            ega.extents.aperture_y = 0;
-            ega.extents.row_stride = EGA16_MAX_RASTER_X as usize;
-            ega.vblank_color = EGA_VBLANK_DEBUG_COLOR;
-            ega.hblank_color = EGA_HBLANK_DEBUG_COLOR;
-            ega.disable_color = EGA_DISABLE_DEBUG_COLOR;
-            */
-        }
-
-        ega
-    }
-
-    fn get_default_extents() -> DisplayExtents {
-        DisplayExtents {
+// EGA implementation of Default for DisplayExtents.
+// Each videocard implementation should implement sensible defaults.
+// In CGA's case we know the maximum field size and thus row_stride.
+impl Default for DisplayExtents {
+    fn default() -> Self {
+        Self {
+            apertures: EGA_APERTURES[1].to_vec(),
             field_w: EGA16_MAX_RASTER_X,
             field_h: EGA16_MAX_RASTER_Y,
-            aperture: EGA_APERTURES[1][0].clone(),
             visible_w: 0,
             visible_h: 0,
             row_stride: EGA16_MAX_RASTER_X as usize,
@@ -1047,8 +1056,44 @@ impl EGACard {
             mode_byte: 0,
         }
     }
+}*/
 
+impl EGACard {
+    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool) -> Self {
+        let mut ega = Self::default();
+
+        ega.trace_logger = trace_logger;
+        ega.debug = video_frame_debug;
+        ega.debug_draw = video_frame_debug;
+        ega.clock_mode = clock_mode;
+        ega
+    }
+
+    fn get_default_extents() -> DisplayExtents {
+        DisplayExtents {
+            apertures: EGA_APERTURES[1].to_vec(),
+            field_w: EGA16_MAX_RASTER_X,
+            field_h: EGA16_MAX_RASTER_Y,
+            row_stride: EGA16_MAX_RASTER_X as usize,
+            double_scan: false,
+            mode_byte: 0,
+        }
+    }
+
+    /// Reset the EGA card.
     fn reset_private(&mut self) {
+        let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
+
+        *self = Self {
+            debug: self.debug,
+            debug_draw: self.debug_draw,
+            clock_mode: self.clock_mode,
+            frame: self.frame,
+            trace_logger,
+            ..Self::default()
+        };
+
+        /*
         self.mode_byte = 0;
         self.display_mode = DisplayMode::Mode3TextCo80;
         self.mode_enable = true;
@@ -1088,6 +1133,8 @@ impl EGACard {
         self.crtc_cursor_start = DEFAULT_CURSOR_START_LINE;
         self.crtc_cursor_enabled = true;
         self.crtc_cursor_end = DEFAULT_CURSOR_END_LINE;
+
+         */
     }
 
     fn get_cursor_span(&self) -> (u8, u8) {
@@ -1387,7 +1434,7 @@ impl EGACard {
                 }
             }
             else if self.crtc_hblank {
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     // Draw hblank in debug color
                     if self.monitor_hsync {
                         self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Cyan as u8);
@@ -1401,14 +1448,14 @@ impl EGACard {
                 }
             }
             else if self.crtc_vblank {
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     // Draw vblank in debug color
                     self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Magenta as u8);
                 }
             }
             else if self.crtc_vborder | self.crtc_hborder {
                 // Draw overscan
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Green as u8);
                 }
                 else {
@@ -1467,7 +1514,7 @@ impl EGACard {
                 }
             }
             else if self.crtc_hblank {
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     if self.crtc_hsync {
                         self.draw_solid_lchar(EgaDefaultColor6Bpp::BlueBright as u8);
                     }
@@ -1477,14 +1524,14 @@ impl EGACard {
                 }
             }
             else if self.crtc_vblank {
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     // Draw vblank in debug color
                     self.draw_solid_lchar(EgaDefaultColor6Bpp::Magenta as u8);
                 }
             }
             else if self.crtc_vborder | self.crtc_hborder {
                 // Draw overscan
-                if self.extents.aperture.debug {
+                if self.debug_draw {
                     //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
                     self.draw_solid_lchar(EgaDefaultColor6Bpp::Green as u8);
                 }
@@ -1598,13 +1645,6 @@ impl EGACard {
             self.raster_y = 0;
             self.rba = 0;
 
-            // Width is total characters * character width * clock_divisor.
-            // This makes the buffer twice as wide as it normally would be in 320 pixel modes, since
-            // we scan pixels twice.
-            // TODO: We never really use the calculated 'visible' parameters. Can probably remove.
-            self.extents.visible_w =
-                (self.crtc_horizontal_total + 2) as u32 * EGA_HCHAR_CLOCK as u32 * self.clock_divisor as u32;
-
             //trace_regs!(self);
             //trace!(self, "Leaving vsync and flipping buffers");
 
@@ -1659,20 +1699,20 @@ impl EGACard {
                 DotClock::Native => (1, 8),
             };
 
-            // Update display aperture for new clock.
+            // Update display extents and aperture lists for new clock.
             match self.misc_output_register.clock_select() {
                 ClockSelect::Clock14 => {
                     self.extents.field_w = EGA14_MAX_RASTER_X;
                     self.extents.field_h = EGA14_MAX_RASTER_Y;
                     self.extents.row_stride = EGA14_MAX_RASTER_X as usize;
-                    self.extents.aperture = EGA_APERTURES[0][self.aperture].clone();
+                    self.extents.apertures = EGA_APERTURES[0].to_vec();
                     self.extents.double_scan = true;
                 }
                 ClockSelect::Clock16 => {
                     self.extents.field_w = EGA16_MAX_RASTER_X;
                     self.extents.field_h = EGA16_MAX_RASTER_Y;
                     self.extents.row_stride = EGA16_MAX_RASTER_X as usize;
-                    self.extents.aperture = EGA_APERTURES[1][self.aperture].clone();
+                    self.extents.apertures = EGA_APERTURES[1].to_vec();
                     self.extents.double_scan = false;
                 }
                 _ => {
@@ -1682,11 +1722,9 @@ impl EGACard {
         }
 
         log::debug!(
-            "Updated EGA Clock, new extents: {},{} aperture: {},{}",
+            "Updated EGA Clock, new extents: {}x{}",
             self.extents.field_w,
             self.extents.field_h,
-            self.extents.aperture.w,
-            self.extents.aperture.h
         );
     }
 
