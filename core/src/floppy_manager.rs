@@ -66,15 +66,23 @@ pub struct FloppyImage {
 }
 
 pub struct FloppyManager {
-    image_vec: Vec<FloppyImage>,
-    image_map: HashMap<OsString, FloppyImage>,
+    image_vec:  Vec<FloppyImage>,
+    image_map:  HashMap<OsString, FloppyImage>,
+    extensions: Vec<String>,
 }
 
 impl FloppyManager {
     pub fn new() -> Self {
         Self {
-            image_vec: Vec::new(),
-            image_map: HashMap::new(),
+            image_vec:  Vec::new(),
+            image_map:  HashMap::new(),
+            extensions: vec!["img".to_string(), "ima".to_string()],
+        }
+    }
+
+    pub fn set_extensions(&mut self, extensions: Option<Vec<String>>) {
+        if let Some(extensions) = extensions {
+            self.extensions = extensions;
         }
     }
 
@@ -85,8 +93,6 @@ impl FloppyManager {
             Err(_) => return Err(FloppyError::DirNotFound),
         };
 
-        let extensions = ["img", "ima", "dsk"];
-
         // Clear and rebuild image lists.
         self.image_vec.clear();
         self.image_map.clear();
@@ -96,7 +102,7 @@ impl FloppyManager {
             if let Ok(entry) = entry {
                 if entry.path().is_file() {
                     if let Some(extension) = entry.path().extension() {
-                        if extensions.contains(&extension.to_string_lossy().to_lowercase().as_ref()) {
+                        if self.extensions.contains(&extension.to_string_lossy().to_lowercase()) {
                             println!(
                                 "Found floppy image: {:?} size: {}",
                                 entry.path(),

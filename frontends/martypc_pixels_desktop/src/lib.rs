@@ -360,6 +360,8 @@ pub fn run() {
     // Instantiate the floppy manager
     let mut floppy_manager = FloppyManager::new();
 
+    floppy_manager.set_extensions(config.emulator.media.raw_sector_image_extensions.clone());
+
     // Scan the floppy directory
     let mut floppy_path = PathBuf::new();
     floppy_path.push(config.emulator.basedir.clone());

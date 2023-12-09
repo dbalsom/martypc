@@ -93,6 +93,11 @@ impl FromStr for TestMode {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Media {
+    pub raw_sector_image_extensions: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Emulator {
     pub basedir: PathBuf,
 
@@ -119,6 +124,8 @@ pub struct Emulator {
 
     #[serde(default = "_default_false")]
     pub debug_keyboard: bool,
+
+    pub media: Media,
 
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
@@ -172,6 +179,14 @@ pub struct Tests {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Cpu {
+    pub wait_states_enabled: Option<bool>,
+    pub off_rails_detection: Option<bool>,
+    pub instruction_history: Option<bool>,
+    pub service_interrupt_enabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Machine {
     pub model: MachineType,
     #[serde(default)]
@@ -179,6 +194,7 @@ pub struct Machine {
     pub rom_override: Option<Vec<RomOverride>>,
     pub raw_rom: bool,
     pub turbo: bool,
+    pub cpu: Cpu,
     pub videocard: Option<Vec<VideoCardDefinition>>,
     pub pit_phase: Option<u32>,
     pub keyboard_type: Option<KeyboardType>,
@@ -188,14 +204,6 @@ pub struct Machine {
     pub drive1: Option<String>,
     pub floppy0: Option<String>,
     pub floppy1: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct Cpu {
-    pub wait_states_enabled: Option<bool>,
-    pub off_rails_detection: Option<bool>,
-    pub instruction_history: Option<bool>,
-    pub service_interrupt_enabled: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,7 +230,6 @@ pub struct ConfigFileParams {
     pub gui: Gui,
     pub input: Input,
     pub machine: Machine,
-    pub cpu: Cpu,
     pub validator: Validator,
     pub tests: Tests,
 }
