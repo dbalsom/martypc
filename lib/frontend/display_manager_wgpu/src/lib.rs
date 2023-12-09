@@ -56,7 +56,7 @@ use anyhow::{anyhow, Context, Error};
 use winit::{
     dpi::LogicalSize,
     event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder, WindowId, WindowLevel},
+    window::{Icon, Window, WindowBuilder, WindowId, WindowLevel},
 };
 
 pub use frontend_common::{
@@ -201,9 +201,50 @@ impl WgpuDisplayManagerBuilder {
         config: &ConfigFileParams,
         cards: Vec<VideoCardInterface>,
         scaler_presets: &Vec<ScalerPreset>,
-        _icon_path: PathBuf,
+        icon_path: Option<PathBuf>,
+        icon_buf: Option<&[u8]>,
         gui_options: &DisplayManagerGuiOptions,
     ) -> Result<WgpuDisplayManager, Error> {
+        let icon = {
+            if let Some(path) = icon_path {
+                if let Ok(image) = image::open(path.clone()) {
+                    log::debug!("Using icon from path: {}", path.display());
+                    let rgba8 = image.into_rgba8();
+                    let (width, height) = rgba8.dimensions();
+                    let icon_raw = rgba8.into_raw();
+
+                    let icon = winit::window::Icon::from_rgba(icon_raw.clone(), width, height).unwrap();
+
+                    Some(icon)
+                }
+                else {
+                    log::error!("Couldn't load icon: {}", path.display());
+                    None
+                }
+            }
+            else {
+                if let Some(buf) = icon_buf {
+                    if let Ok(image) = image::load_from_memory(buf) {
+                        let rgba8 = image.into_rgba8();
+                        let (width, height) = rgba8.dimensions();
+                        let icon_raw = rgba8.into_raw();
+
+                        let icon = winit::window::Icon::from_rgba(icon_raw.clone(), width, height).unwrap();
+
+                        Some(icon)
+                    }
+                    else {
+                        log::error!("Couldn't load icon from buffer.");
+                        None
+                    }
+                }
+                else {
+                    log::warn!("No icon specified.");
+                    None
+                }
+            }
+        };
+
         let mut dm = WgpuDisplayManager::new();
 
         // Install scaler presets
@@ -215,13 +256,20 @@ impl WgpuDisplayManagerBuilder {
         // Only create windows if the config specifies any!
         if config.emulator.window.len() > 0 {
             // Create the main window.
-            Self::create_target_from_window_def(&mut dm, true, &config.emulator.window[0], &cards, gui_options)
-                .expect("FATAL: Failed to create a window target");
+            Self::create_target_from_window_def(
+                &mut dm,
+                true,
+                &config.emulator.window[0],
+                &cards,
+                gui_options,
+                icon.clone(),
+            )
+            .expect("FATAL: Failed to create a window target");
 
             // Create the rest of the windows
             for window_def in config.emulator.window.iter().skip(1) {
                 if window_def.enabled {
-                    Self::create_target_from_window_def(&mut dm, false, &window_def, &cards, gui_options)
+                    Self::create_target_from_window_def(&mut dm, false, &window_def, &cards, gui_options, icon.clone())
                         .expect("FATAL: Failed to create a window target");
                 }
             }
@@ -236,6 +284,7 @@ impl WgpuDisplayManagerBuilder {
         window_def: &WindowDefinition,
         cards: &Vec<VideoCardInterface>,
         gui_options: &DisplayManagerGuiOptions,
+        icon: Option<Icon>,
     ) -> Result<(), Error> {
         let resolved_def = window_def.resolve_with_defaults();
         log::debug!("{:?}", window_def);
@@ -297,6 +346,9 @@ impl WgpuDisplayManagerBuilder {
             gui_options,
         )
         .expect("Failed to create window target!");
+
+        let last_idx = dm.targets.len() - 1;
+        dm.targets[last_idx].window.as_mut().unwrap().set_window_icon(icon);
 
         Ok(())
     }

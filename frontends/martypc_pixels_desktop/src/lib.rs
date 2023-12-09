@@ -81,18 +81,8 @@ use marty_core::{
     videocard::{ClockingMode, VideoType},
 };
 
-use display_manager_wgpu::{
-    DisplayBackend,
-    DisplayManager,
-    DisplayManagerGuiOptions,
-    WgpuDisplayManagerBuilder,
-};
+use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
 use marty_core::coreconfig::CoreConfig;
-
-
-
-
-
 
 use crate::event_loop::handle_event;
 
@@ -113,6 +103,9 @@ const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 
 // Remove static frequency references
 //const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
+
+// Embed default icon
+const MARTY_ICON: &[u8] = include_bytes!("../../../assets/martypc_icon_small.png");
 
 // Rendering Stats
 struct Counter {
@@ -502,11 +495,6 @@ pub fn run() {
     // Get a list of video devices from machine.
     let cardlist = machine.enumerate_video_cards();
 
-    // Calculate icon path for window manager.
-    let mut icon_path = PathBuf::new();
-    icon_path.push(config.emulator.basedir.clone());
-    icon_path.push("icon.png");
-
     let gui_options = DisplayManagerGuiOptions {
         enabled: !config.gui.disabled,
         theme_color: config.gui.theme_color,
@@ -519,7 +507,8 @@ pub fn run() {
         &config,
         cardlist,
         &config.emulator.scaler_preset,
-        icon_path,
+        None,
+        Some(MARTY_ICON),
         &gui_options,
     )
     .unwrap_or_else(|e| {
