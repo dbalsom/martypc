@@ -34,7 +34,7 @@ use super::*;
 #[rustfmt::skip]
 pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {
     match color {
-        CGAColor::Black         => &[0x10u8, 0x10u8, 0x10u8, 0xFFu8], // Make slightly visible for debugging
+        CGAColor::Black         => &[0x00u8, 0x00u8, 0x00u8, 0xFFu8],
         CGAColor::Blue          => &[0x00u8, 0x00u8, 0xAAu8, 0xFFu8],
         CGAColor::Green         => &[0x00u8, 0xAAu8, 0x00u8, 0xFFu8],
         CGAColor::Cyan          => &[0x00u8, 0xAAu8, 0xAAu8, 0xFFu8],
@@ -56,7 +56,7 @@ pub fn color_enum_to_rgba(color: &CGAColor) -> &'static [u8; 4] {
 pub fn get_ega_gfx_color16(bits: u8) -> &'static [u8; 4] {
     #[allow(clippy::unusual_byte_groupings)]
     match bits & 0b010_111 {
-        0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
+        0b000_000 => &[0x00, 0x00, 0x00, 0xFF],
         0b000_001 => &[0x00, 0x00, 0xAA, 0xFF],
         0b000_010 => &[0x00, 0xAA, 0x00, 0xFF],
         0b000_011 => &[0x00, 0xAA, 0xAA, 0xFF],
@@ -79,7 +79,7 @@ pub fn get_ega_gfx_color16(bits: u8) -> &'static [u8; 4] {
 pub fn get_ega_gfx_color64(bits: u8) -> &'static [u8; 4] {
     #[allow(clippy::unusual_byte_groupings)]
     match bits {
-        0b000_000 => &[0x10, 0x10, 0x10, 0xFF], // Make slightly brighter for debugging
+        0b000_000 => &[0x00, 0x00, 0x00, 0xFF],
         0b000_001 => &[0x00, 0x00, 0xAA, 0xFF],
         0b000_010 => &[0x00, 0xAA, 0x00, 0xFF],
         0b000_011 => &[0x00, 0xAA, 0xAA, 0xFF],

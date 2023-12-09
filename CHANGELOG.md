@@ -1,5 +1,5 @@
 
-## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.1.4) (2023-XX-XX)
+## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0) (2023-XX-XX)
 
 ### New Features
 * #### New "Display Manager" Framework
@@ -26,7 +26,10 @@
 * #### EGA Graphics
   * EGA is back! A cycle-clocked EGA implementation is here, although it may still be a bit rough around the edges. EGA will continue to be polished in upcoming releases.
   * Known issues:
+    * No CGA emulation 
     * Not all registers properly emulated 
+    * Pel panning is a bit of a hack
+    * Aperture defintions / adjustments not final
     * Jerky scrolling in Commander Keen 1-3
     * User-definable fonts not yet supported
 * #### New Keyboard System
@@ -47,8 +50,7 @@
   * egui to 0.24.1 (latest, forked)
   * pixels to 0.13 (latest, forked)
   * winit to 0.29.4 (latest)
-  * cpal to 0.15 
-  
+
 
 ### Bug Fixes / Improvements
 * CPU: Fixed device ticks after interrupts
@@ -65,6 +67,7 @@
 * CPU: Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
 * CPU: Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
 * PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
+* CGA: Reverted color palette entry for black from dark gray to true black
 * CGA: Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
 * Fixed mouse capture hotkey (CTRL-F10)
 * KEYBOARD: Add debug_keyboard config flag - this will print keyboard event info to the console for support
