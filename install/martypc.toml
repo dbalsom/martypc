@@ -30,7 +30,7 @@ fuzzer = false
 # - CPU Autostart is disabled
 # - Several debug panels are opened automatically
 # - CPU Instruction history is turned on (overrides setting)
-debug_mode = true
+debug_mode = false
 
 # Warn if MartyPC was compiled in debug mode. Disable this if you intend to
 # do so and don't want the nag.
