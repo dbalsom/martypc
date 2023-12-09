@@ -94,6 +94,7 @@ use crate::{
     windows::pic_viewer::PicViewerControl,
     windows::pit_viewer::PitViewerControl,
     windows::scaler_adjust::ScalerAdjustControl,
+    windows::vhd_creator::VhdCreator,
 };
 
 use marty_core::{
@@ -103,8 +104,6 @@ use marty_core::{
 };
 
 use videocard_renderer::{CompositeParams, PhosphorType};
-
-const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
 #[derive(PartialEq, Eq, Hash)]
 pub enum GuiWindow {
@@ -293,11 +292,6 @@ pub struct GuiState {
     new_vhd_name1: Option<OsString>,
     vhd_name1: OsString,
 
-    vhd_formats: Vec<HardDiskFormat>,
-    selected_format_idx: usize,
-    new_vhd_filename: String,
-    vhd_regex: Regex,
-
     // Serial ports
     serial_ports: Vec<SerialPortInfo>,
     serial_port_name: String,
@@ -330,6 +324,7 @@ pub struct GuiState {
     pub scaler_adjust: ScalerAdjustControl,
     pub ivr_viewer: IvrViewerControl,
     pub device_control: DeviceControl,
+    pub vhd_creator: VhdCreator,
 
     call_stack_string: String,
 }
@@ -410,7 +405,10 @@ impl GuiRenderContext {
     /// Handle input events from the window manager.
     pub fn handle_event(&mut self, event: &winit::event::WindowEvent) {
         #[cfg(not(target_arch = "wasm32"))]
-        let _ = self.egui_state.on_window_event(&self.egui_ctx, event);
+        {
+            //log::debug!("Handling event: {:?}", event);
+            let _ = self.egui_state.on_window_event(&self.egui_ctx, event);
+        }
     }
 
     /// Resize egui.
@@ -569,11 +567,6 @@ impl GuiState {
             new_vhd_name1: Option::None,
             vhd_name1: OsString::new(),
 
-            vhd_formats: Vec::new(),
-            selected_format_idx: 0,
-            new_vhd_filename: String::new(),
-            vhd_regex: Regex::new(VHD_REGEX).unwrap(),
-
             serial_ports: Vec::new(),
             serial_port_name: String::new(),
 
@@ -603,6 +596,7 @@ impl GuiState {
             scaler_adjust: ScalerAdjustControl::new(),
             ivr_viewer: IvrViewerControl::new(),
             device_control: DeviceControl::new(),
+            vhd_creator: VhdCreator::new(),
             call_stack_string: String::new(),
         }
     }
@@ -749,10 +743,6 @@ impl GuiState {
 
     pub fn update_ppi_state(&mut self, state: PpiStringState) {
         self.ppi_state = state;
-    }
-
-    pub fn update_vhd_formats(&mut self, formats: Vec<HardDiskFormat>) {
-        self.vhd_formats = formats
     }
 
     pub fn update_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
@@ -1052,29 +1042,7 @@ impl GuiState {
             .resizable(false)
             .default_width(400.0)
             .show(ctx, |ui| {
-                if !self.vhd_formats.is_empty() {
-                    egui::ComboBox::from_label("Format")
-                        .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
-                        .show_ui(ui, |ui| {
-                            for (i, fmt) in self.vhd_formats.iter_mut().enumerate() {
-                                ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
-                            }
-                        });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Filename: ");
-                        ui.text_edit_singleline(&mut self.new_vhd_filename);
-                    });
-
-                    let enabled = self.vhd_regex.is_match(&self.new_vhd_filename.to_lowercase());
-
-                    if ui.add_enabled(enabled, egui::Button::new("Create")).clicked() {
-                        self.event_queue.send(GuiEvent::CreateVHD(
-                            OsString::from(&self.new_vhd_filename),
-                            self.vhd_formats[self.selected_format_idx].clone(),
-                        ))
-                    };
-                }
+                self.vhd_creator.draw(ui, &mut self.event_queue);
             });
 
         egui::Window::new("Composite Adjustment")

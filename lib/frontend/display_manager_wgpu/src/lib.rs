@@ -744,6 +744,16 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         self.targets[0].backend.as_mut()
     }
 
+    fn get_gui_by_window_id(&mut self, wid: WindowId) -> Option<&mut GuiRenderContext> {
+        self.window_id_map
+            .get(&wid)
+            .and_then(|idx| self.targets[*idx].gui_ctx.as_mut())
+            .or_else(|| {
+                log::warn!("get_gui_by_window_id(): No gui context for window id: {:?}", wid);
+                None
+            })
+    }
+
     fn get_renderer_by_card_id(&mut self, _id: VideoCardId) -> Option<&mut VideoRenderer> {
         //self.card_id_map.get(&id).and_then(|idx| {
         //    self.targets[*idx].renderer.as_mut()
@@ -1021,7 +1031,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         }
 
         if !handled {
-            //log::warn!("Window event sent to None gui");
+            log::warn!("Window event sent to None gui");
         }
     }
 

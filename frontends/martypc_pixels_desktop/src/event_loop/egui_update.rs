@@ -79,7 +79,7 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
         if let Some(hdc) = emu.machine.hdc() {
-            emu.gui.update_vhd_formats(hdc.get_supported_formats());
+            emu.gui.vhd_creator.set_formats(hdc.get_supported_formats());
         }
         else {
             log::error!("Couldn't query available formats: No Hard Disk Controller present!");

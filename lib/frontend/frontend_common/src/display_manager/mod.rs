@@ -165,6 +165,9 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// Returns the associated Gui render context for the main window.
     fn get_main_gui_mut(&mut self) -> Option<&mut G>;
 
+    /// Returns the associated Gui render context for the specified Window id.
+    fn get_gui_by_window_id(&mut self, wid: Wi) -> Option<&mut G>;
+
     /// Returns a mutable reference to the associated Backend for the main window.
     fn get_main_backend_mut(&mut self) -> Option<&mut B>;
 
