@@ -201,7 +201,7 @@ impl WgpuDisplayManagerBuilder {
         config: &ConfigFileParams,
         cards: Vec<VideoCardInterface>,
         scaler_presets: &Vec<ScalerPreset>,
-        icon_path: PathBuf,
+        _icon_path: PathBuf,
         gui_options: &DisplayManagerGuiOptions,
     ) -> Result<WgpuDisplayManager, Error> {
         let mut dm = WgpuDisplayManager::new();
@@ -305,7 +305,7 @@ impl WgpuDisplayManagerBuilder {
 impl DisplayTargetContext<PixelsBackend> {
     /// Set the aspect mode of the target. If the aspect mode is changed, we may need to resize
     /// the backend and scaler.
-    pub fn set_aspect_mode(&mut self, mode: AspectCorrectionMode) {}
+    pub fn set_aspect_mode(&mut self, _mode: AspectCorrectionMode) {}
 
     pub fn get_card_id(&mut self) -> Option<VideoCardId> {
         self.card_id
@@ -493,8 +493,8 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         &mut self,
         name: String,
         ttype: DisplayTargetType,
-        wid: Option<WindowId>,
-        window: Option<&Window>,
+        _wid: Option<WindowId>,
+        _window: Option<&Window>,
         window_opts: Option<DisplayManagerWindowOptions>,
         card_id: Option<VideoCardId>,
         w: u32,
@@ -560,7 +560,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 let mut pb = PixelsBackend::new(w, h, &window)?;
 
                 // Create the scaler.
-                let scale_mode = match main_window {
+                let _scale_mode = match main_window {
                     true => ScalerMode::Integer,
                     false => ScalerMode::Fixed,
                 };
@@ -692,7 +692,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         self.targets[0].backend.as_mut()
     }
 
-    fn get_renderer_by_card_id(&mut self, id: VideoCardId) -> Option<&mut VideoRenderer> {
+    fn get_renderer_by_card_id(&mut self, _id: VideoCardId) -> Option<&mut VideoRenderer> {
         //self.card_id_map.get(&id).and_then(|idx| {
         //    self.targets[*idx].renderer.as_mut()
         //})
@@ -873,11 +873,11 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
 
     /// Execute a closure that is passed the VideoCardId for each VideoCard registered in the
     /// DisplayManager.
-    fn for_each_card<F>(&mut self, f: F)
+    fn for_each_card<F>(&mut self, _f: F)
     where
         F: FnMut(&VideoCardId),
     {
-        for vid in &mut self.card_id_map.keys() {}
+        for _vid in &mut self.card_id_map.keys() {}
     }
 
     fn for_each_renderer<F>(&mut self, mut f: F)

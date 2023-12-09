@@ -225,7 +225,7 @@ impl Machine {
         machine_type: MachineType,
         machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
-        video_type: VideoType,
+        _video_type: VideoType,
         sound_player: SoundPlayer,
         rom_manager: RomManager,
     ) -> Machine {
@@ -482,7 +482,7 @@ impl Machine {
     //    self.cga.clone()
     //}
 
-    pub fn video_buffer_mut(&mut self, vid: VideoCardId) -> Option<&mut u8> {
+    pub fn video_buffer_mut(&mut self, _vid: VideoCardId) -> Option<&mut u8> {
         None
     }
 

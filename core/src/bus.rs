@@ -738,7 +738,7 @@ impl BusInterface {
                 // Handle memory-mapped devices
                 match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
                     MmioDeviceType::Video(vid) => {
-                        if let Some(mut card_dispatch) = self.videocards.get_mut(&vid) {
+                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             let system_ticks = self.cycles_to_ticks[cycles as usize];
                             match card_dispatch {
                                 VideoCardDispatch::Cga(cga) => {
@@ -781,7 +781,7 @@ impl BusInterface {
                 // Handle memory-mapped devices.
                 match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
                     MmioDeviceType::Video(vid) => {
-                        if let Some(mut card_dispatch) = self.videocards.get_mut(&vid) {
+                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             let system_ticks = self.cycles_to_ticks[cycles as usize];
                             match card_dispatch {
                                 VideoCardDispatch::Cga(cga) => {
@@ -825,7 +825,7 @@ impl BusInterface {
                 // Handle memory-mapped devices
                 match self.mmio_map_fast[address >> MMIO_MAP_SHIFT] {
                     MmioDeviceType::Video(vid) => {
-                        if let Some(mut card_dispatch) = self.videocards.get_mut(&vid) {
+                        if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             let system_ticks = self.cycles_to_ticks[cycles as usize];
 
                             match card_dispatch {
@@ -1209,7 +1209,7 @@ impl BusInterface {
         videocards: Vec<VideoCardDefinition>,
         clock_mode: ClockingMode,
         machine_desc: &MachineDescriptor,
-        video_trace: TraceLogger,
+        _video_trace: TraceLogger,
         video_frame_debug: bool,
     ) {
         // Create PPI if PPI is defined for this machine type
@@ -1591,7 +1591,7 @@ impl BusInterface {
         }
 
         // Run all video cards
-        for (vid, video_dispatch) in self.videocards.iter_mut() {
+        for (_vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Cga(cga) => {
                     self.cga_tick_accum += sys_ticks;
@@ -1690,7 +1690,7 @@ impl BusInterface {
         // Reset video cards
         let vids: Vec<_> = self.videocards.keys().cloned().collect();
         for vid in vids {
-            self.video_mut(&vid).map(|mut video| video.reset());
+            self.video_mut(&vid).map(|video| video.reset());
         }
     }
 

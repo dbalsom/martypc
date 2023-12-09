@@ -284,7 +284,7 @@ impl Emulator {
 
                 assert_eq!(extents.double_scan, true);
 
-                if let Err(e) = self.dm.on_card_resized(vid, extents) {
+                if let Err(_e) = self.dm.on_card_resized(vid, extents) {
                     log::error!("Failed to resize videocard!");
                 }
             }

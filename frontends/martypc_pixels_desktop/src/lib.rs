@@ -38,7 +38,6 @@
 
 use std::{
     cell::RefCell,
-    ffi::OsString,
     path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
@@ -59,7 +58,7 @@ mod run_headless;
 mod run_processtests;
 
 use crate::emulator::{EmuFlags, Emulator};
-use config_toml_bpaf::ConfigFileParams;
+
 use marty_egui::GuiState;
 
 #[cfg(feature = "arduino_validator")]
@@ -72,14 +71,12 @@ use crate::run_gentests::run_gentests;
 use crate::run_runtests::run_runtests;
 
 use marty_core::{
-    cpu_common::CpuOption,
     devices::{hdc::HardDiskControllerType, keyboard::KeyboardModifiers},
     floppy_manager::{FloppyError, FloppyManager},
-    machine::{ExecutionControl, ExecutionState, Machine, MachineState},
+    machine::{ExecutionControl, ExecutionState, Machine},
     machine_manager::MACHINE_DESCS,
     rom_manager::{RomError, RomFeature, RomManager},
     sound::SoundPlayer,
-    vhd::VirtualHardDisk,
     vhd_manager::{VHDManager, VHDManagerError},
     videocard::{ClockingMode, VideoType},
 };
@@ -88,15 +85,14 @@ use display_manager_wgpu::{
     DisplayBackend,
     DisplayManager,
     DisplayManagerGuiOptions,
-    WgpuDisplayManager,
     WgpuDisplayManagerBuilder,
 };
 use marty_core::coreconfig::CoreConfig;
-use marty_egui::{GuiBoolean, GuiWindow};
 
-use videocard_renderer::AspectCorrectionMode;
 
-use marty_pixels_scaler::DisplayScaler;
+
+
+
 
 use crate::event_loop::handle_event;
 
@@ -265,7 +261,7 @@ pub fn run() {
     let mut features = Vec::new();
 
     // Read config file
-    let mut config = match config_toml_bpaf::get_config("./martypc.toml") {
+    let config = match config_toml_bpaf::get_config("./martypc.toml") {
         Ok(config) => config,
         Err(e) => match e.downcast_ref::<std::io::Error>() {
             Some(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -533,7 +529,7 @@ pub fn run() {
 
     // Create GUI state
     let render_egui = true;
-    let mut gui = GuiState::new(exec_control.clone());
+    let gui = GuiState::new(exec_control.clone());
 
     // Get main GUI context from Display Manager
     let _gui_ctx = display_manager
@@ -590,7 +586,7 @@ pub fn run() {
         std::process::exit(1);
     }
 
-    if let Err(e) = emu.mount_vhds() {
+    if let Err(_e) = emu.mount_vhds() {
         log::error!("Failed to mount VHDs!");
         std::process::exit(1);
     }
@@ -601,7 +597,7 @@ pub fn run() {
     let event_loop = emu.dm.take_event_loop();
 
     // Run the winit event loop
-    if let Err(e) = event_loop.run(move |event, elwt| {
+    if let Err(_e) = event_loop.run(move |event, elwt| {
         handle_event(&mut emu, event, elwt);
     }) {
         log::error!("Failed to start event loop!");

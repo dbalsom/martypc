@@ -36,11 +36,11 @@ use marty_core::{
     cpu_common::CpuOption,
     machine::MachineState,
     vhd,
-    videocard::{ClockingMode, VideoOption},
+    videocard::{ClockingMode},
 };
 use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
 use std::path::PathBuf;
-use videocard_renderer::AspectRatio;
+
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, gui_event: &GuiEvent) {
@@ -86,7 +86,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     }
                     GuiEnum::DisplayScalerMode(new_mode) => {
                         log::debug!("Got scaler mode update event: {:?}", new_mode);
-                        if let Err(e) = emu.dm.set_scaler_mode(*d_idx, new_mode) {
+                        if let Err(_e) = emu.dm.set_scaler_mode(*d_idx, new_mode) {
                             log::error!("Failed to set scaler mode for display target!");
                         }
                     }
@@ -97,7 +97,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         }
                     }
                     GuiEnum::DisplayAspectCorrect(state) => {
-                        if let Err(e) = emu.dm.set_aspect_correction(*d_idx, state) {
+                        if let Err(_e) = emu.dm.set_aspect_correction(*d_idx, state) {
                             log::error!("Failed to set aspect correction state for display target!");
                         }
                     }

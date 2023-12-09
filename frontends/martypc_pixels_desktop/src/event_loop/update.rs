@@ -34,16 +34,14 @@ use std::time::Instant;
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
-use marty_core::{machine::ExecutionState, videocard::RenderMode};
-use marty_egui::GuiBoolean;
+
+
 
 use crate::{
     event_loop::{egui_update::update_egui, render_frame::render_frame},
     Emulator,
     FPS_TARGET,
     MICROS_PER_FRAME,
-    MIN_RENDER_HEIGHT,
-    MIN_RENDER_WIDTH,
 };
 
 pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
