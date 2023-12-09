@@ -133,7 +133,7 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
                 WindowEvent::KeyboardInput {
                     event: ref key_event, ..
                 } => {
-                    pass_to_egui = handle_key_event(emu, window_id, &key_event);
+                    pass_to_egui = !handle_key_event(emu, window_id, key_event);
                 }
                 WindowEvent::RedrawRequested => {
                     process_update(emu, elwt);
@@ -145,7 +145,10 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
 
             // Pass any unhandled events to egui for handling.
             if pass_to_egui {
-                emu.dm.with_gui_by_wid(window_id, |gui| gui.handle_event(&event));
+                emu.dm.with_gui_by_wid(window_id, |gui| {
+                    //log::debug!("Passing event to egui: {:?}", &event);
+                    gui.handle_event(&event)
+                });
             }
         }
         // AboutToWait used to be MainEventsCleared in previous versions of Winit.

@@ -39,7 +39,7 @@ debug_warn = true
 # Help the developer debug any keyboard issues you may be having. With this
 # feature set to true, MartyPC will print information about every keystroke
 # to the terminal.
-debug_keyboard = true
+debug_keyboard = false
 
 # Don't load BIOS if true (not useful on its own)
 no_bios = false
@@ -51,7 +51,7 @@ run_bin_seg = 0x1000
 run_bin_ofs = 0x0000
 
 [emulator.media]
-# Provide a list of file extensions toi interpret as raw floppy sector images.
+# Provide a list of file extensions to interpret as raw floppy sector images.
 raw_sector_image_extensions = [ "img", "ima", "dsk", "mnx" ]
 
 # ----------------------------------------------------------------------------

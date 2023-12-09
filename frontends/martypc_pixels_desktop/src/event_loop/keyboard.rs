@@ -54,7 +54,7 @@ pub fn handle_modifiers(emu: &mut Emulator, event: &WindowEvent, modifiers: &Mod
 }
 
 /// Handle a KeyEvent from Winit. Return true if the event is handled; otherwise returns false
-/// to indicate that the event should be forwarded to the immediate-mode GUI fror processing.
+/// to indicate that the event should be forwarded to the immediate-mode GUI for processing.
 pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &KeyEvent) -> bool {
     // Destructure the KeyEvent.
     let KeyEvent {
@@ -72,8 +72,10 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
     // a KeyCode or Unknown. We will just handle KeyCodes here and print a debug warning on Unknown.
 
     // Determine if a GUI widget has focus.
-    // TODO: This will only check the main window(?)
-    let gui_has_focus = { emu.dm.get_main_gui_mut().map_or(false, |gui| gui.has_focus()) };
+    let gui_has_focus = emu
+        .dm
+        .get_gui_by_window_id(window_id)
+        .map_or(false, |gui| gui.has_focus());
 
     // Get the window for this event.
     let event_window = emu
@@ -143,7 +145,7 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
                     if emu.flags.debug_keyboard {
                         println!("Keyboard event sent to framework.");
                     }
-                    // Inidicate caller should pass event to egui.
+                    // Indicate caller should pass event to egui.
                     return false;
                 }
                 false => {
