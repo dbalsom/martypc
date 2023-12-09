@@ -43,7 +43,6 @@ pub use frontend_common::{
     display_scaler::{DisplayScaler, ScalerEffect, ScalerFilter, ScalerMode, ScalerOption},
 };
 
-use frontend_common::display_scaler::ScalerPreset;
 use ultraviolet::Mat4;
 use wgpu::{util::DeviceExt, TextureDescriptor};
 

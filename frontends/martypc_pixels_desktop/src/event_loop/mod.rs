@@ -148,10 +148,10 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
                 emu.dm.with_gui_by_wid(window_id, |gui| gui.handle_event(&event));
             }
         }
-        /// AboutToWait used to be MainEventsCleared in previous versions of Winit.
-        /// But unlike that event, in Winit 0.29.4, this event does not appear to be throttled,
-        /// so can run millions of times per second. So we will instead request a redraw here and
-        /// move emulator logic to RedrawRequested.
+        // AboutToWait used to be MainEventsCleared in previous versions of Winit.
+        // But unlike that event, in Winit 0.29.4, this event does not appear to be throttled,
+        // so can run millions of times per second. So we will instead request a redraw here and
+        // move emulator logic to RedrawRequested.
         Event::AboutToWait => {
             emu.dm.for_each_window(|window| {
                 window.request_redraw();

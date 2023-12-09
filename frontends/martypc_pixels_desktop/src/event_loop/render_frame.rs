@@ -34,7 +34,6 @@ use display_backend_pixels::DisplayBackend;
 use display_manager_wgpu::DisplayManager;
 use marty_core::{machine::ExecutionState, videocard::BufferSelect};
 
-
 pub fn render_frame(emu: &mut Emulator) {
     // First, run each renderer to resolve all videocard views.
     // Every renderer will have an associated card and backend.
@@ -86,6 +85,8 @@ pub fn render_frame(emu: &mut Emulator) {
 
     // Next, render each backend
     emu.dm.for_each_backend(|backend, scaler, gui_opt| {
-        backend.render(Some(scaler), gui_opt);
+        if let Err(e) = backend.render(Some(scaler), gui_opt) {
+            log::error!("Failed to render backend: {}", e);
+        }
     });
 }

@@ -32,13 +32,12 @@
    graphics backend and windowing system combination.
 */
 use anyhow::Error;
-use marty_core::{cpu_808x::Displacement, machine::Machine};
+use marty_core::machine::Machine;
 use std::{
     fmt::{Display, Formatter},
     path::PathBuf,
 };
 
-use crate::color::MartyColor;
 pub use crate::types::display_target_dimensions::DisplayTargetDimensions;
 
 use crate::{
@@ -46,7 +45,7 @@ use crate::{
     types::display_target_margins::DisplayTargetMargins,
 };
 use marty_core::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
-use videocard_renderer::{RendererConfigParams, VideoParams, VideoRenderer};
+use videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 #[derive(Copy, Clone)]
 pub enum DisplayTargetType {

@@ -30,8 +30,6 @@
 
 */
 
-use marty_core::videocard::DisplayApertureType;
-
 use crate::color::MartyColor;
 use serde::Deserialize;
 use videocard_renderer::RendererConfigParams;

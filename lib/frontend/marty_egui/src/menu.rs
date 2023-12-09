@@ -30,7 +30,7 @@
 
 */
 
-use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiEventQueue, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
+use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
 use marty_core::videocard::VideoType;
 
 use marty_core::machine::MachineState;
@@ -436,7 +436,7 @@ impl GuiState {
         let ctx = GuiVariableContext::Display(display_idx);
 
         ui.menu_button("Scaler Mode", |ui| {
-            for (scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
+            for (_scaler_idx, mode) in self.scaler_modes.clone().iter().enumerate() {
                 if let Some(enum_mut) =
                     self.get_option_enum_mut(GuiEnum::DisplayScalerMode(Default::default()), Some(ctx))
                 {
@@ -464,7 +464,7 @@ impl GuiState {
                 aperture_vec = aperture_vec_ref.clone()
             };
 
-            for (aperture) in aperture_vec.iter() {
+            for aperture in aperture_vec.iter() {
                 if let Some(enum_mut) =
                     self.get_option_enum_mut(GuiEnum::DisplayAperture(Default::default()), Some(ctx))
                 {

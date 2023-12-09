@@ -46,7 +46,7 @@ use marty_core::{
     rom_manager::RomOverride,
 };
 
-use frontend_common::display_scaler::{ScalerMode, ScalerPreset};
+use frontend_common::display_scaler::ScalerPreset;
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
