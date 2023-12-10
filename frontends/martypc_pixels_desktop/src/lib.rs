@@ -502,6 +502,8 @@ pub fn run() {
         theme_color: config.gui.theme_color,
         theme_dark: config.gui.theme_dark,
         menubar_h: 24, // TODO: Dynamically measure the height of the egui menu bar somehow
+        zoom: config.gui.zoom.unwrap_or(1.0),
+        debug_drawing: false,
     };
 
     // Create displays.

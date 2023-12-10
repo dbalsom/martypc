@@ -113,7 +113,9 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
             let mut pass_to_egui = false;
             match event {
                 WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                    log::debug!("Got ScaleFactorChanged: {}", scale_factor);
                     emu.dm.with_target_by_wid(window_id, |dt| {
+                        log::debug!("Setting new scale factor: {}", scale_factor);
                         dt.set_scale_factor(scale_factor);
                     });
                 }
@@ -127,7 +129,7 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
                     return;
                 }
                 WindowEvent::ModifiersChanged(modifiers) => {
-                    handle_modifiers(emu, &event, &modifiers);
+                    handle_modifiers(emu, window_id, &event, &modifiers);
                     pass_to_egui = true;
                 }
                 WindowEvent::KeyboardInput {
@@ -145,9 +147,9 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
 
             // Pass any unhandled events to egui for handling.
             if pass_to_egui {
-                emu.dm.with_gui_by_wid(window_id, |gui| {
+                emu.dm.with_gui_by_wid(window_id, |gui, window| {
                     //log::debug!("Passing event to egui: {:?}", &event);
-                    gui.handle_event(&event)
+                    gui.handle_event(window, &event)
                 });
             }
         }

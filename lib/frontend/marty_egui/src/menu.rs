@@ -31,6 +31,7 @@
 */
 
 use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
+use egui::gui_zoom::zoom_menu_buttons;
 use marty_core::videocard::VideoType;
 
 use marty_core::machine::MachineState;
@@ -43,6 +44,14 @@ impl GuiState {
                     *self.window_flag(GuiWindow::PerfViewer) = true;
                     ui.close_menu();
                 }
+
+                ui.menu_button("GUI", |ui| {
+                    // Show zoom slider
+                    if ui.add(egui::Slider::new(&mut self.global_zoom, 0.25..=1.0)).changed() {
+                        self.event_queue.send(GuiEvent::ZoomChanged(self.global_zoom));
+                    }
+                });
+
                 if ui.button("❓ About...").clicked() {
                     *self.window_flag(GuiWindow::About) = true;
                     ui.close_menu();

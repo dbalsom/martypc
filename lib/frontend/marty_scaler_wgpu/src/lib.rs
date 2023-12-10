@@ -695,6 +695,7 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
 
     /// Draw the pixel buffer to the marty_render target.
     fn render(&self, encoder: &mut wgpu::CommandEncoder, render_target: &wgpu::TextureView) {
+        //println!("render_target: {:?}", render_target);
         let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("marty_renderer marty_render pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {

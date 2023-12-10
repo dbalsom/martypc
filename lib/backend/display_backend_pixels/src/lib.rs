@@ -105,11 +105,13 @@ impl DisplayBackend<GuiRenderContext> for PixelsBackend {
     fn get_adapter_info(&self) -> Option<Self::NativeBackendAdapterInfo> {
         Some(self.pixels.adapter().get_info())
     }
+
     fn resize_buf(&mut self, new: BufferDimensions) -> Result<(), Error> {
         self.pixels.resize_buffer(new.w, new.h)?;
         self.buffer_dim = (new.w, new.h, new.w).into();
         Ok(())
     }
+
     fn resize_surface(&mut self, new: SurfaceDimensions) -> Result<(), Error> {
         self.pixels.resize_surface(new.w, new.h)?;
         self.surface_dim = (new.w, new.h).into();

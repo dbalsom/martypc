@@ -36,10 +36,10 @@ use marty_core::{
     cpu_common::CpuOption,
     machine::MachineState,
     vhd,
-    videocard::{ClockingMode},
+    videocard::ClockingMode,
 };
 use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
-use std::path::PathBuf;
+use std::{mem::discriminant, path::PathBuf};
 
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -328,6 +328,13 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 */
             }
         }
-        _ => {}
+        GuiEvent::ZoomChanged(zoom) => {
+            emu.dm.for_each_gui(|gui, window| {
+                gui.set_zoom_factor(*zoom);
+            });
+        }
+        _ => {
+            log::warn!("Unhandled GUI event: {:?}", discriminant(gui_event));
+        }
     }
 }

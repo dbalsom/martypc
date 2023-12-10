@@ -43,17 +43,9 @@ serialport = "4.2"
 winit.workspace = true
 anyhow.workspace = true
 
-[dependencies.egui]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_winit_0_29"
-
-[dependencies.egui-wgpu]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_winit_0_29"
-
-[dependencies.egui-winit]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_winit_0_29"
+egui.workspace = true
+egui-wgpu.workspace = true
+egui-winit.workspace = true
 
 # Conditional dependencies for wasm32 target. 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

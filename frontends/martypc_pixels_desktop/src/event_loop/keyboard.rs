@@ -40,7 +40,7 @@ use display_manager_wgpu::DisplayManager;
 
 use crate::{input::TranslateKey, Emulator};
 
-pub fn handle_modifiers(emu: &mut Emulator, event: &WindowEvent, modifiers: &Modifiers) {
+pub fn handle_modifiers(emu: &mut Emulator, wid: WindowId, event: &WindowEvent, modifiers: &Modifiers) {
     let state = modifiers.state();
 
     emu.kb_data.ctrl_pressed = state.control_key();
@@ -48,9 +48,9 @@ pub fn handle_modifiers(emu: &mut Emulator, event: &WindowEvent, modifiers: &Mod
     emu.kb_data.modifiers.alt = state.alt_key();
     emu.kb_data.modifiers.shift = state.shift_key();
     emu.kb_data.modifiers.meta = state.super_key();
-    if let Some(gui) = emu.dm.get_main_gui_mut() {
-        gui.handle_event(event)
-    }
+
+    emu.dm
+        .with_gui_by_wid(wid, |gui, window| gui.handle_event(window, event));
 }
 
 /// Handle a KeyEvent from Winit. Return true if the event is handled; otherwise returns false
