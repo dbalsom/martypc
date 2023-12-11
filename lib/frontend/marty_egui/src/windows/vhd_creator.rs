@@ -32,13 +32,14 @@
 
 const VHD_REGEX: &str = r"[\w_]*.vhd$";
 
-use crate::*;
+use crate::{layouts::MartyLayout, widgets::big_icon::IconType, *};
 use std::{ffi::OsString, path::PathBuf};
 
 pub struct VhdCreator {
     vhd_formats: Vec<HardDiskFormat>,
     selected_format_idx: usize,
-    new_vhd_filename: String,
+    vhd_requested_name: String,
+    vhd_resolved_name: Option<PathBuf>,
     vhd_regex: Regex,
 }
 
@@ -47,18 +48,15 @@ impl VhdCreator {
         Self {
             vhd_formats: Vec::new(),
             selected_format_idx: 0,
-            new_vhd_filename: String::new(),
+            vhd_requested_name: String::new(),
+            vhd_resolved_name: None,
             vhd_regex: Regex::new(VHD_REGEX).unwrap(),
         }
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         ui.horizontal(|ui| {
-            ui.label(
-                egui::RichText::new("🖴")
-                    .font(egui::FontId::proportional(40.0))
-                    .color(ui.visuals().strong_text_color()),
-            );
+            IconType::HardDisk.draw(ui, None);
             ui.label(
                 (egui::RichText::new(
                     "Create a VHD (Virtual Hard Drive)\n\
@@ -71,12 +69,9 @@ impl VhdCreator {
 
         ui.separator();
 
-        egui::Grid::new("vhd_creator_grid")
-            .striped(false)
-            .min_col_width(100.0)
-            .show(ui, |ui| {
-                if !self.vhd_formats.is_empty() {
-                    ui.label("Disk Geometry:");
+        if !self.vhd_formats.is_empty() {
+            MartyLayout::new(layouts::Layout::KeyValue, "vhd-grid").show(ui, |ui| {
+                MartyLayout::kv_row(ui, "Disk Geometry", None, |ui| {
                     egui::ComboBox::from_id_source("vhd-formats")
                         .selected_text(format!("{}", self.vhd_formats[self.selected_format_idx].desc))
                         .show_ui(ui, |ui| {
@@ -84,29 +79,29 @@ impl VhdCreator {
                                 ui.selectable_value(&mut self.selected_format_idx, i, fmt.desc.to_string());
                             }
                         });
-                    ui.end_row();
-
-                    ui.label("VHD Name: ");
-
-                    ui.horizontal(|ui| {
-                        ui.set_min_width(300.0);
-                        ui.text_edit_singleline(&mut self.new_vhd_filename);
-                    });
-                    ui.end_row();
-
-                    let vhd_path = Self::ensure_vhd_extension(&self.new_vhd_filename);
-                    ui.label("Filename: ");
-                    ui.label(vhd_path.display().to_string());
-                    ui.end_row();
-                }
+                });
+                MartyLayout::kv_row(ui, "VHD Name", Some(300.0), |ui| {
+                    ui.text_edit_singleline(&mut self.vhd_requested_name);
+                });
+                MartyLayout::kv_row(ui, "Filename", None, |ui| {
+                    let resolved_name = Self::ensure_vhd_extension(&self.vhd_requested_name);
+                    ui.label(resolved_name.display().to_string());
+                    self.vhd_resolved_name = Some(resolved_name);
+                });
             });
+        }
+        else {
+            ui.vertical_centered(|ui| {
+                ui.label("No VHD formats available. Please check your configuration.");
+            });
+        }
 
         let (button_text, enabled) = self.get_button_state();
 
         ui.vertical_centered(|ui| {
             if ui.add_enabled(enabled, egui::Button::new(button_text)).clicked() {
                 events.send(GuiEvent::CreateVHD(
-                    OsString::from(&self.new_vhd_filename),
+                    OsString::from(&self.vhd_resolved_name.clone().unwrap_or_default()),
                     self.vhd_formats[self.selected_format_idx].clone(),
                 ))
             };
@@ -114,7 +109,7 @@ impl VhdCreator {
     }
 
     fn get_button_state(&self) -> (String, bool) {
-        if self.new_vhd_filename.is_empty() {
+        if self.vhd_requested_name.is_empty() {
             return ("Enter a VHD name".to_string(), false);
         }
         else {

@@ -39,7 +39,7 @@ use marty_core::{
     videocard::ClockingMode,
 };
 use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
-use std::{mem::discriminant, path::PathBuf};
+use std::{mem::discriminant, path::PathBuf, time::Duration};
 
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -119,6 +119,11 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             ) {
                 Ok(_) => {
                     // We don't actually do anything with the newly created file
+                    // But show a toast notification.
+                    emu.gui
+                        .toasts()
+                        .info(format!("Created VHD: {}", filename.to_string_lossy()))
+                        .set_duration(Some(Duration::from_secs(5)));
 
                     // Rescan dir to show new file in list
                     if let Err(e) = emu.vhd_manager.scan_dir(&emu.hdd_path) {
@@ -127,6 +132,10 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
                 Err(err) => {
                     log::error!("Error creating VHD: {}", err);
+                    emu.gui
+                        .toasts()
+                        .error(format!("Error creating VHD: {}", err))
+                        .set_duration(Some(Duration::from_secs(5)));
                 }
             }
         }

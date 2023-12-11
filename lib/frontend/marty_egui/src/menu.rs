@@ -440,6 +440,9 @@ impl GuiState {
                     }
                 });
             });
+
+            // Draw drive indicators, etc.
+            self.draw_status_widgets(ui);
         });
     }
 
@@ -560,5 +563,16 @@ impl GuiState {
             self.event_queue.send(GuiEvent::TakeScreenshot);
             ui.close_menu();
         };
+    }
+
+    pub fn draw_status_widgets(&mut self, ui: &mut egui::Ui) {
+        // Can we put stuff on the right hand side of the menu bar?
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+            ui.label("💾");
+        });
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+            ui.label("🐢");
+        });
     }
 }

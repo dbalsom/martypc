@@ -50,7 +50,7 @@ use frontend_common::{
 };
 
 use egui_extras::install_image_loaders;
-use egui_notify::Toasts;
+use egui_notify::{Anchor, Toasts};
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 
 use pixels::{wgpu, PixelsContext};
@@ -60,12 +60,14 @@ use regex::Regex;
 use serialport::SerialPortInfo;
 
 mod color;
-mod color_swatch;
 mod constants;
 mod image;
+
+mod layouts;
 mod menu;
 mod theme;
 mod token_listview;
+mod widgets;
 mod windows;
 
 use crate::{
@@ -253,14 +255,22 @@ impl GuiEventQueue {
     }
 }
 
-/// Example application state. A real application will need a lot more state than this.
+#[derive(Copy, Clone, Default)]
+pub struct MediaTrayState {
+    pub floppy: u8,
+    pub hdd:    u8,
+    pub turtle: u8,
+}
+
 pub struct GuiState {
     event_queue: GuiEventQueue,
 
     toasts: Toasts,
+    media_tray: MediaTrayState,
+
     /// Only show the associated window when true.
-    window_open_flags: HashMap<GuiWindow, bool>,
-    error_dialog_open: bool,
+    window_open_flags:   HashMap<GuiWindow, bool>,
+    error_dialog_open:   bool,
     warning_dialog_open: bool,
 
     option_flags: HashMap<GuiBoolean, bool>,
@@ -608,7 +618,8 @@ impl GuiState {
 
         Self {
             event_queue: GuiEventQueue::new(),
-            toasts: Toasts::default(),
+            toasts: Toasts::new().with_anchor(Anchor::BottomRight),
+            media_tray: Default::default(),
 
             window_open_flags,
             error_dialog_open: false,
@@ -669,6 +680,10 @@ impl GuiState {
 
             global_zoom: 1.0,
         }
+    }
+
+    pub fn toasts(&mut self) -> &mut Toasts {
+        &mut self.toasts
     }
 
     pub fn get_event(&mut self) -> Option<GuiEvent> {

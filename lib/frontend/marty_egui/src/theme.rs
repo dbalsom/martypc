@@ -41,6 +41,7 @@ impl GuiTheme {
         let mut new_visuals = base.clone();
 
         new_visuals.window_fill = color;
+        new_visuals.panel_fill = color;
         new_visuals.extreme_bg_color = darken_c32(color, 0.50);
         new_visuals.faint_bg_color = darken_c32(color, 0.15);
 
