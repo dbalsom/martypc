@@ -33,6 +33,7 @@
 use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
 use egui::gui_zoom::zoom_menu_buttons;
 use marty_core::videocard::VideoType;
+use std::time::Duration;
 
 use marty_core::machine::MachineState;
 
@@ -46,9 +47,10 @@ impl GuiState {
                 }
 
                 ui.menu_button("GUI", |ui| {
-                    // Show zoom slider
-                    if ui.add(egui::Slider::new(&mut self.global_zoom, 0.25..=1.0)).changed() {
-                        self.event_queue.send(GuiEvent::ZoomChanged(self.global_zoom));
+                    if ui.button("Toast!").clicked() {
+                        self.toasts
+                            .info("Hello world!")
+                            .set_duration(Some(Duration::from_secs(5)));
                     }
                 });
 

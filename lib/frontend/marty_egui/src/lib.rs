@@ -50,6 +50,7 @@ use frontend_common::{
 };
 
 use egui_extras::install_image_loaders;
+use egui_notify::Toasts;
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 
 use pixels::{wgpu, PixelsContext};
@@ -256,9 +257,10 @@ impl GuiEventQueue {
 pub struct GuiState {
     event_queue: GuiEventQueue,
 
+    toasts: Toasts,
     /// Only show the associated window when true.
-    window_open_flags:   HashMap<GuiWindow, bool>,
-    error_dialog_open:   bool,
+    window_open_flags: HashMap<GuiWindow, bool>,
+    error_dialog_open: bool,
     warning_dialog_open: bool,
 
     option_flags: HashMap<GuiBoolean, bool>,
@@ -380,6 +382,16 @@ impl GuiRenderContext {
             true => Visuals::dark(),
             false => Visuals::light(),
         };
+
+        // Make header smaller.
+        use egui::{FontFamily::Proportional, FontId, TextStyle::*};
+        let mut style = (*egui_ctx.style()).clone();
+
+        style.text_styles.entry(Heading).and_modify(|text_style| {
+            *text_style = FontId::new(14.0, Proportional);
+        });
+
+        egui_ctx.set_style(style);
 
         if let Some(color) = gui_options.theme_color {
             let theme = GuiTheme::new(&visuals, crate::color::hex_to_c32(color));
@@ -596,6 +608,8 @@ impl GuiState {
 
         Self {
             event_queue: GuiEventQueue::new(),
+            toasts: Toasts::default(),
+
             window_open_flags,
             error_dialog_open: false,
             warning_dialog_open: false,
@@ -858,6 +872,8 @@ impl GuiState {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             self.draw_menu(ui);
         });
+
+        self.toasts.show(ctx);
 
         egui::Window::new("About")
             .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())

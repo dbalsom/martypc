@@ -28,3 +28,5 @@ egui.workspace = true
 egui-wgpu.workspace = true
 egui-winit.workspace = true
 egui_extras.workspace = true
+
+egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_24_2"}

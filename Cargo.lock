@@ -1152,6 +1152,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-notify"
+version = "0.11.0"
+source = "git+https://github.com/dbalsom/egui-notify_martypc.git?branch=egui_0_24_2#69f49e51d67f9d2cebe1ca85bbcb649962d5d0ad"
+dependencies = [
+ "egui 0.24.2",
+]
+
+[[package]]
 name = "egui-wgpu"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2229,6 +2237,7 @@ name = "marty_egui"
 version = "0.2.0"
 dependencies = [
  "egui 0.24.2",
+ "egui-notify",
  "egui-wgpu 0.24.2",
  "egui-winit 0.24.2",
  "egui_extras",
