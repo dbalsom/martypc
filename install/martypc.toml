@@ -298,6 +298,10 @@ aspect_ratio = { h=4, v=3 }
 # the machine.
 disabled = false
 
+# Global zoom level for GUI. Smaller numbers will make all the GUI elements 
+# smaller. Default: 1.0 Max: 1.0 Min: 0.1
+zoom = 1.0
+
 # Enable dark theme (Recommended)
 theme_dark = true
 

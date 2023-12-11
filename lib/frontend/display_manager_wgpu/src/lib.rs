@@ -54,8 +54,8 @@ pub use display_backend_pixels::{
 use anyhow::{anyhow, Context, Error};
 
 use winit::{
-    dpi::LogicalSize,
-    event_loop::{ControlFlow, EventLoop},
+    dpi::{LogicalSize, PhysicalSize},
+    event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
     window::{Icon, Window, WindowBuilder, WindowId, WindowLevel},
 };
 
@@ -166,6 +166,21 @@ impl WgpuDisplayManager {
     }
 }
 
+impl WgpuDisplayManager {
+    /// Return the native pixels per point for the primary monitor.
+    /// Function taken from egui_winit (C) Emil Ernerfeldt <emil.ernerfeldt@gmail.com>
+    fn get_native_pixels_per_point(elwt: &EventLoopWindowTarget<()>) -> f32 {
+        elwt.primary_monitor()
+            .or_else(|| elwt.available_monitors().next())
+            .map_or_else(
+                || {
+                    log::debug!("Failed to find a monitor - assuming native_pixels_per_point of 1.0");
+                    1.0
+                },
+                |m| m.scale_factor() as f32,
+            )
+    }
+}
 pub trait DefaultResolver {
     fn resolve_with_defaults(&self) -> Self;
 }
@@ -335,7 +350,10 @@ impl WgpuDisplayManagerBuilder {
 
         dm.create_target(
             window_title,
-            DisplayTargetType::WindowBackground { main_window },
+            DisplayTargetType::WindowBackground {
+                main_window,
+                has_gui: main_window,
+            },
             None,
             None,
             Some(window_opts),
@@ -370,22 +388,21 @@ impl DisplayTargetContext<PixelsBackend> {
     }
 
     pub fn create_gui_context(
+        dt_idx: usize,
         window: &Window,
+        w: u32,
+        h: u32,
         pixels: &Pixels,
         gui_options: &DisplayManagerGuiOptions,
     ) -> GuiRenderContext {
-        let win_size = window.inner_size();
-
-        let ctx = GuiRenderContext::new(
-            win_size.width,
-            win_size.height,
-            window.scale_factor(),
-            pixels,
-            window,
-            gui_options,
+        let scale_factor = window.scale_factor();
+        log::debug!(
+            "Creating GUI context with size: [{}x{}] (scale factor: {})",
+            w,
+            h,
+            scale_factor
         );
-
-        ctx
+        GuiRenderContext::new(dt_idx, w, h, scale_factor, pixels, window, gui_options)
     }
 
     pub fn apply_scaler_preset(&mut self, preset: &ScalerPreset) {
@@ -556,7 +573,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
     ) -> Result<usize, Error> {
         // For now, we only support creating new WindowBackground targets.
         match ttype {
-            DisplayTargetType::WindowBackground { main_window } => {
+            DisplayTargetType::WindowBackground { main_window, has_gui } => {
                 // Create a new window.
 
                 // TODO: return error here instead of panic
@@ -576,16 +593,25 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 };
 
                 let dt_idx = self.targets.len();
+                let native_ppp = Self::get_native_pixels_per_point(self.event_loop.as_ref().unwrap());
+
+                let sw = (tw as f32 * native_ppp) as u32;
+                let sh = (th as f32 * native_ppp) as u32;
+
                 log::debug!(
-                    "Creating WindowBackground display target, idx: {} size: {}x{} preset: {}",
+                    "Creating WindowBackground display target, idx: {} requested size: {}x{} scaled size: {}x{} (factor:{}) preset: {}",
                     dt_idx,
                     tw,
                     th,
+                    sw,
+                    sh,
+                    native_ppp,
                     &scaler_preset.name
                 );
 
                 let window = {
-                    let size = LogicalSize::new(tw as f64, th as f64);
+                    let physical_size = PhysicalSize::new(w as f64, h as f64);
+                    let logical_size = LogicalSize::new(w as f64, h as f64);
 
                     let level = match &window_opts {
                         Some(wopts) if wopts.always_on_top == true => {
@@ -595,15 +621,18 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                         _ => WindowLevel::Normal,
                     };
 
+                    let window_builder = {
+                        WindowBuilder::new()
+                            .with_title(format!("MartyPC {} [{}]", env!("CARGO_PKG_VERSION"), name))
+                            .with_inner_size(physical_size)
+                            .with_min_inner_size(physical_size)
+                            .with_resizable(resizable)
+                            .with_window_level(level)
+                    };
                     // TODO: Better error handling here.
-                    WindowBuilder::new()
-                        .with_title(format!("MartyPC {} [{}]", env!("CARGO_PKG_VERSION"), name))
-                        .with_inner_size(size)
-                        .with_min_inner_size(size)
-                        .with_resizable(resizable)
-                        .with_window_level(level)
+                    window_builder
                         .build(&self.event_loop.as_ref().unwrap())
-                        .unwrap()
+                        .expect("Failed to build window!")
                 };
 
                 let wid = window.id();
@@ -652,11 +681,14 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                     None
                 };
 
-                // If this is the main window, create a gui context.
+                // If window has a gui, create a gui context.
                 let gui_ctx = if main_window {
                     log::debug!("New display target {} has main gui.", dt_idx);
                     Some(DisplayTargetContext::create_gui_context(
+                        dt_idx,
                         &window,
+                        w,
+                        h,
                         &pb.get_backend_raw().unwrap(),
                         gui_options,
                     ))
@@ -904,32 +936,39 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
 
         let dt = &mut self.targets[*idx];
 
-        if let Some(backend) = &mut dt.backend {
-            log::debug!(
-                "on_window_resized(): dt{}: resizing backend surface to {},{}",
-                *idx,
-                w,
-                h
-            );
-            backend.resize_surface(SurfaceDimensions { w, h })?;
+        if let Some(window) = &dt.window {
+            let scale_factor = window.scale_factor();
 
-            // Resize the DisplayScaler if present.
-            if let Some(scaler) = &mut dt.scaler {
-                log::debug!("on_window_resized(): dt{}: resizing scaler to {},{}", *idx, w, h);
-                scaler.resize_surface(backend.get_backend_raw().unwrap(), w, h)
+            let sw = (w as f64 * scale_factor) as u32;
+            let sh = (h as f64 * scale_factor) as u32;
+
+            let resize_string = format!("[{}x{}=>{}x{}] (scale factor: {})", w, h, sw, sh, scale_factor);
+            if let Some(backend) = &mut dt.backend {
+                log::debug!(
+                    "on_window_resized(): dt{}: resizing backend surface to {}",
+                    *idx,
+                    resize_string
+                );
+                backend.resize_surface(SurfaceDimensions { w: w, h: h })?;
+
+                // Resize the DisplayScaler if present.
+                if let Some(scaler) = &mut dt.scaler {
+                    log::debug!("on_window_resized(): dt{}: resizing scaler to {}", *idx, resize_string);
+                    scaler.resize_surface(backend.get_backend_raw().unwrap(), w, h)
+                }
+            }
+
+            if let Some(gui_ctx) = &mut dt.gui_ctx {
+                log::debug!(
+                    "on_window_resized(): dt{}: resizing gui context for window id: {:?} to {}",
+                    *idx,
+                    wid,
+                    resize_string
+                );
+                gui_ctx.resize(window, w, h);
             }
         }
 
-        if let Some(gui_ctx) = &mut dt.gui_ctx {
-            log::debug!(
-                "on_window_resized(): dt{}: resizing gui context for window id: {:?} to {},{}",
-                *idx,
-                wid,
-                w,
-                h
-            );
-            gui_ctx.resize(w, h);
-        }
         Ok(())
     }
 
@@ -1020,15 +1059,24 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
 
     fn with_gui_by_wid<F>(&mut self, wid: WindowId, mut f: F)
     where
-        F: FnMut(&mut GuiRenderContext),
+        F: FnMut(&mut GuiRenderContext, &Window),
     {
         let mut handled = false;
+        /*
         if let Some(idx) = self.window_id_map.get(&wid) {
             if let Some(gui) = &mut self.targets[*idx].gui_ctx {
                 f(gui);
                 handled = true;
             }
-        }
+        }*/
+
+        self.window_id_map.get(&wid).and_then(|idx| {
+            let dt = &mut self.targets[*idx];
+            dt.gui_ctx.as_mut().map(|gui| {
+                f(gui, dt.window.as_ref().expect("Gui without window!"));
+                handled = true;
+            })
+        });
 
         if !handled {
             log::warn!("Window event sent to None gui");

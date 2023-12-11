@@ -24,21 +24,9 @@ serialport = "4.2"
 regex = "1.10"
 log = "0.4"
 
-[dependencies.egui]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_winit_0_29"
+egui.workspace = true
+egui-wgpu.workspace = true
+egui-winit.workspace = true
+egui_extras.workspace = true
 
-[dependencies.egui-wgpu]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_winit_0_29"
-
-[dependencies.egui-winit]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_winit_0_29"
-features = ["links"]
-
-[dependencies.egui_extras]
-git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_winit_0_29"
-features = ["all_loaders"]
-
+egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_24_2"}

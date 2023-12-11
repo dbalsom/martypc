@@ -47,10 +47,27 @@ log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 
-
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"
 branch = "marty_update_deps"
+
+[workspace.dependencies.egui]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_2_winit_0_29"
+
+[workspace.dependencies.egui-wgpu]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_2_winit_0_29"
+
+[workspace.dependencies.egui-winit]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_2_winit_0_29"
+features = ["links"]
+
+[workspace.dependencies.egui_extras]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_2_winit_0_29"
+features = ["all_loaders"]
 
 [profile.release]
 #lto = true

@@ -137,9 +137,10 @@ pub struct Emulator {
 #[derive(Debug, Deserialize)]
 pub struct Gui {
     #[serde(default)]
-    pub disabled:    bool,
+    pub disabled: bool,
+    pub zoom: Option<f32>,
     #[serde(default)]
-    pub theme_dark:  bool,
+    pub theme_dark: bool,
     pub theme_color: Option<u32>,
 }
 

@@ -41,15 +41,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use egui::{
-    ClippedPrimitive,
-    Color32,
-    ColorImage,
-    Context,
-    //ImageData,
-    TexturesDelta,
-    Visuals,
-};
+use egui::{ClippedPrimitive, Color32, ColorImage, Context, TexturesDelta, ViewportId, Visuals};
 
 //use egui_wgpu_backend::{BackendError, RenderPass, ScreenDescriptor};
 use frontend_common::{
@@ -58,6 +50,7 @@ use frontend_common::{
 };
 
 use egui_extras::install_image_loaders;
+use egui_notify::Toasts;
 use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 
 use pixels::{wgpu, PixelsContext};
@@ -205,6 +198,7 @@ pub enum GuiEvent {
     TriggerParity,
     RescanMediaFolders,
     CtrlAltDel,
+    ZoomChanged(f32),
 }
 
 pub enum DeviceSelection {
@@ -263,9 +257,10 @@ impl GuiEventQueue {
 pub struct GuiState {
     event_queue: GuiEventQueue,
 
+    toasts: Toasts,
     /// Only show the associated window when true.
-    window_open_flags:   HashMap<GuiWindow, bool>,
-    error_dialog_open:   bool,
+    window_open_flags: HashMap<GuiWindow, bool>,
+    error_dialog_open: bool,
     warning_dialog_open: bool,
 
     option_flags: HashMap<GuiBoolean, bool>,
@@ -327,12 +322,13 @@ pub struct GuiState {
     pub vhd_creator: VhdCreator,
 
     call_stack_string: String,
+    global_zoom: f32,
 }
 
 impl GuiRenderContext {
     /// Create egui.
     pub fn new(
-        //event_loop: &EventLoopWindowTarget<T>,
+        dt_idx: usize,
         width: u32,
         height: u32,
         scale_factor: f64,
@@ -341,24 +337,37 @@ impl GuiRenderContext {
         gui_options: &DisplayManagerGuiOptions,
     ) -> Self {
         let max_texture_size = pixels.device().limits().max_texture_dimension_2d as usize;
-
         let egui_ctx = Context::default();
+
+        log::debug!(
+            "GuiRenderContext::new(): {}x{} (scale_factor: {} native_scale_factor: {})",
+            width,
+            height,
+            scale_factor,
+            egui_ctx.native_pixels_per_point().unwrap_or(1.0)
+        );
 
         // Load image loaders so we can use images in ui (0.24)
         install_image_loaders(&egui_ctx);
 
+        let _id_string = format!("display{}", dt_idx);
+
         #[cfg(not(target_arch = "wasm32"))]
         let mut egui_state = egui_winit::State::new(
-            egui::ViewportId::from_hash_of("marty_gui"),
+            egui_ctx.clone(),
+            //egui::ViewportId::from_hash_of(id_string.as_str()),
+            ViewportId::ROOT,
             //&event_loop,
             window as &dyn pixels::raw_window_handle::HasRawDisplayHandle,
-            None,
+            Some(scale_factor as f32),
             None,
         );
         #[cfg(not(target_arch = "wasm32"))]
         {
+            egui_ctx.set_zoom_factor(gui_options.zoom.min(1.0).max(0.1));
+            // DO NOT SET THIS. Let State::new() handle it.
+            //egui_ctx.set_pixels_per_point(scale_factor as f32);
             egui_state.set_max_texture_side(max_texture_size);
-            egui_ctx.set_pixels_per_point(scale_factor as f32);
         }
 
         let screen_descriptor = ScreenDescriptor {
@@ -374,6 +383,16 @@ impl GuiRenderContext {
             false => Visuals::light(),
         };
 
+        // Make header smaller.
+        use egui::{FontFamily::Proportional, FontId, TextStyle::*};
+        let mut style = (*egui_ctx.style()).clone();
+
+        style.text_styles.entry(Heading).and_modify(|text_style| {
+            *text_style = FontId::new(14.0, Proportional);
+        });
+
+        egui_ctx.set_style(style);
+
         if let Some(color) = gui_options.theme_color {
             let theme = GuiTheme::new(&visuals, crate::color::hex_to_c32(color));
             egui_ctx.set_visuals(theme.visuals().clone());
@@ -382,9 +401,11 @@ impl GuiRenderContext {
             egui_ctx.set_visuals(visuals);
         }
 
-        //egui_ctx.set_debug_on_hover(true);
+        if gui_options.debug_drawing {
+            egui_ctx.set_debug_on_hover(true);
+        }
 
-        Self {
+        let mut slf = Self {
             egui_ctx,
             #[cfg(not(target_arch = "wasm32"))]
             egui_state,
@@ -392,7 +413,14 @@ impl GuiRenderContext {
             renderer,
             paint_jobs: Vec::new(),
             textures,
-        }
+        };
+
+        //slf.resize(width, height);
+        slf
+    }
+
+    pub fn set_zoom_factor(&mut self, zoom: f32) {
+        self.egui_ctx.set_zoom_factor(zoom);
     }
 
     pub fn has_focus(&self) -> bool {
@@ -403,24 +431,55 @@ impl GuiRenderContext {
     }
 
     /// Handle input events from the window manager.
-    pub fn handle_event(&mut self, event: &winit::event::WindowEvent) {
+    pub fn handle_event(&mut self, window: &Window, event: &winit::event::WindowEvent) {
         #[cfg(not(target_arch = "wasm32"))]
         {
             //log::debug!("Handling event: {:?}", event);
-            let _ = self.egui_state.on_window_event(&self.egui_ctx, event);
+
+            let _ = self.egui_state.on_window_event(window, event);
         }
     }
 
     /// Resize egui.
-    pub fn resize(&mut self, width: u32, height: u32) {
-        if width > 0 && height > 0 {
-            self.screen_descriptor.size_in_pixels = [width, height];
+    pub fn resize(&mut self, window: &Window, w: u32, h: u32) {
+        if w > 0 && h > 0 {
+            //let scale_factor = self.egui_ctx.pixels_per_point();
+            let scale_factor = egui_winit::pixels_per_point(&self.egui_ctx, window);
+            //let w = (w as f32 * scale_factor as f32).floor() as u32;
+            //let h = (h as f32 * scale_factor as f32).floor() as u32;
+
+            log::debug!("GuiRenderContext::resize: {}x{} (scale_factor: {})", w, h, scale_factor);
+            self.screen_descriptor = ScreenDescriptor {
+                size_in_pixels:   [w, h],
+                pixels_per_point: scale_factor as f32,
+            };
+
+            //self.screen_descriptor.size_in_pixels = [width, height];
         }
     }
 
     /// Update scaling factor.
     pub fn scale_factor(&mut self, scale_factor: f64) {
+        log::debug!("Setting scale factor: {}", scale_factor);
         self.screen_descriptor.pixels_per_point = scale_factor as f32;
+    }
+
+    pub fn viewport_mut(&mut self) -> &mut egui::ViewportInfo {
+        /* Eventually this should get the viewport created by State::new(), but for the moment
+           that is just the root viewport.
+        let vpi = self.egui_state.get_viewport_id();
+        self.egui_state
+            .egui_input_mut()
+            .viewports
+            .get_mut(&vpi)
+            .expect(&format!("Failed to get viewport: {:?}", &vpi))
+         */
+
+        self.egui_state
+            .egui_input_mut()
+            .viewports
+            .get_mut(&ViewportId::ROOT)
+            .expect(&format!("Failed to get ROOT viewport!"))
     }
 
     /// Prepare egui.
@@ -428,21 +487,28 @@ impl GuiRenderContext {
         // Run the egui frame and create all paint jobs to prepare for rendering.
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let ctx = self.egui_ctx.clone();
+            let vpi = self.viewport_mut();
+            egui_winit::update_viewport_info(vpi, &ctx, window);
             let raw_input = self.egui_state.take_egui_input(window);
             let gui_start = Instant::now();
 
+            let mut ran = false;
             let output = self.egui_ctx.run(raw_input, |egui_ctx| {
                 // Draw the application.
                 state.ui(egui_ctx);
+                ran = true;
             });
 
-            self.textures.append(output.textures_delta);
-            self.egui_state
-                .handle_platform_output(window, &self.egui_ctx, output.platform_output);
-            self.paint_jobs = self
-                .egui_ctx
-                .tessellate(output.shapes, self.screen_descriptor.pixels_per_point);
+            if ran {
+                self.textures.append(output.textures_delta);
+                self.egui_state.handle_platform_output(window, output.platform_output);
 
+                //let ppp = output.pixels_per_point;
+                let ppp = egui_winit::pixels_per_point(&ctx, window);
+                //log::debug!("Tesselate with ppp: {}", ppp);
+                self.paint_jobs = self.egui_ctx.tessellate(output.shapes, ppp);
+            }
             state.perf_stats.gui_time = Instant::now() - gui_start;
         }
     }
@@ -542,6 +608,8 @@ impl GuiState {
 
         Self {
             event_queue: GuiEventQueue::new(),
+            toasts: Toasts::default(),
+
             window_open_flags,
             error_dialog_open: false,
             warning_dialog_open: false,
@@ -598,6 +666,8 @@ impl GuiState {
             device_control: DeviceControl::new(),
             vhd_creator: VhdCreator::new(),
             call_stack_string: String::new(),
+
+            global_zoom: 1.0,
         }
     }
 
@@ -802,6 +872,8 @@ impl GuiState {
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             self.draw_menu(ui);
         });
+
+        self.toasts.show(ctx);
 
         egui::Window::new("About")
             .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())

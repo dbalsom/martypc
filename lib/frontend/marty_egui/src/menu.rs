@@ -31,7 +31,9 @@
 */
 
 use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
+use egui::gui_zoom::zoom_menu_buttons;
 use marty_core::videocard::VideoType;
+use std::time::Duration;
 
 use marty_core::machine::MachineState;
 
@@ -43,6 +45,15 @@ impl GuiState {
                     *self.window_flag(GuiWindow::PerfViewer) = true;
                     ui.close_menu();
                 }
+
+                ui.menu_button("GUI", |ui| {
+                    if ui.button("Toast!").clicked() {
+                        self.toasts
+                            .info("Hello world!")
+                            .set_duration(Some(Duration::from_secs(5)));
+                    }
+                });
+
                 if ui.button("❓ About...").clicked() {
                     *self.window_flag(GuiWindow::About) = true;
                     ui.close_menu();

@@ -49,13 +49,16 @@ use videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 #[derive(Copy, Clone)]
 pub enum DisplayTargetType {
-    WindowBackground { main_window: bool },
+    WindowBackground { main_window: bool, has_gui: bool },
     EguiWidget,
 }
 
 impl Default for DisplayTargetType {
     fn default() -> Self {
-        DisplayTargetType::WindowBackground { main_window: false }
+        DisplayTargetType::WindowBackground {
+            main_window: false,
+            has_gui: false,
+        }
     }
 }
 
@@ -87,6 +90,8 @@ pub struct DisplayManagerGuiOptions {
     pub theme_dark: bool,
     pub theme_color: Option<u32>,
     pub menubar_h: u32,
+    pub zoom: f32,
+    pub debug_drawing: bool,
 }
 
 /// Options for windows targets. All dimensions are specified as inner size (client area)
@@ -234,11 +239,12 @@ pub trait DisplayManager<B, G, Wi, W> {
     where
         F: FnMut(&mut Self::ImplDisplayTarget);
 
-    /// Conditionally execute the provided closure receiving a Gui context, condtional on
-    /// resolution of a DisplayTarget for the specified Window ID.
+    /// Conditionally execute the provided closure receiving a reference to the Gui context
+    /// and associated Window, condtional on resolution of a DisplayTarget for the specified
+    /// Window ID.
     fn with_gui_by_wid<F>(&mut self, wid: Wi, f: F)
     where
-        F: FnMut(&mut G);
+        F: FnMut(&mut G, &W);
 
     /// Add the new scaler preset definition. It can then later be referenced by name via
     /// get_scaler_preset().
