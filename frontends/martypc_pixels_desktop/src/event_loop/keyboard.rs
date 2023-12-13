@@ -137,6 +137,20 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
                         }
                     }
                 }
+                (winit::event::ElementState::Pressed, KeyCode::Enter) => {
+                    if emu.kb_data.ctrl_pressed && emu.kb_data.modifiers.alt {
+                        // Ctrl-Alt Enter pressed. Toggle fullscreen.
+                        log::info!("Control-Alt-Enter pressed. Toggling fullscreen.");
+                        match event_window.fullscreen() {
+                            Some(_) => {
+                                event_window.set_fullscreen(None);
+                            }
+                            None => {
+                                event_window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
 

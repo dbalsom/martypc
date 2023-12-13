@@ -43,6 +43,7 @@ use std::time::Instant;
 use winit::{
     event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
     event_loop::EventLoopWindowTarget,
+    window::WindowLevel,
 };
 
 use crate::{
@@ -140,6 +141,24 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
                 WindowEvent::RedrawRequested => {
                     process_update(emu, elwt);
                 }
+                WindowEvent::Focused(state) => match state {
+                    true => {
+                        log::debug!("Window {:?} gained focus", window_id);
+                        emu.dm.for_each_target(|dtc, _| {
+                            if dtc.window_opts.as_ref().is_some_and(|opts| opts.always_on_top) {
+                                dtc.window.as_ref().map(|window| {
+                                    window.set_window_level(WindowLevel::AlwaysOnTop);
+                                });
+                            }
+                        });
+                    }
+                    false => {
+                        log::debug!("Window {:?} lost focus", window_id);
+                        emu.dm.for_each_window(|window| {
+                            window.set_window_level(WindowLevel::Normal);
+                        });
+                    }
+                },
                 _ => {
                     pass_to_egui = true;
                 }
