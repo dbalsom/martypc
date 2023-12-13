@@ -134,7 +134,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     log::error!("Error creating VHD: {}", err);
                     emu.gui
                         .toasts()
-                        .error(format!("Error creating VHD: {}", err))
+                        .error(format!("{}", err))
                         .set_duration(Some(Duration::from_secs(5)));
                 }
             }
