@@ -432,4 +432,8 @@ pub trait VideoCard {
 
     /// Flush the trace log (if one is configured)
     fn trace_flush(&mut self);
+
+    /// Return a vector of Strings representing the current text on screen. If the adapter is not in
+    /// text mode, an empty vector should be returned.
+    fn get_text_mode_strings(&self) -> Vec<String>;
 }

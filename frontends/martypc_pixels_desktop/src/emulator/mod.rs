@@ -278,6 +278,10 @@ impl Emulator {
             vid_list.push(vid.clone());
         });
 
+        if vid_list.len() != self.config.machine.videocard.as_ref().unwrap_or(&Vec::new()).len() {
+            log::error!("Number of videocards installed does not match number of cards in config!");
+        }
+
         for vid in vid_list.iter() {
             if let Some(card) = self.machine.bus().video(vid) {
                 let extents = card.get_display_extents();
@@ -289,6 +293,14 @@ impl Emulator {
                 }
             }
         }
+
+        // Build list of cards to set in UI.
+        let mut card_strs = Vec::new();
+        for vid in vid_list.iter() {
+            let card_str = format!("Card: {} ({:?})", vid.idx, vid.vtype);
+            card_strs.push(card_str);
+        }
+        self.gui.set_card_list(card_strs);
 
         /*
             if let Some(card) = machine.videocard() {

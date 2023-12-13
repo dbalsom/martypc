@@ -46,5 +46,6 @@ pub mod performance_viewer;
 pub mod pic_viewer;
 pub mod pit_viewer;
 pub mod scaler_adjust;
+pub mod text_mode_viewer;
 pub mod vhd_creator;
 pub mod videocard_viewer;

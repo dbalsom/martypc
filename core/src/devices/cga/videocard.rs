@@ -579,4 +579,37 @@ impl VideoCard for CGACard {
     fn trace_flush(&mut self) {
         self.trace_logger.flush();
     }
+
+    fn get_text_mode_strings(&self) -> Vec<String> {
+        let mut strings = Vec::new();
+
+        let mut line = String::new();
+
+        let start_addr = self.crtc_start_address;
+        let columns = self.crtc_horizontal_displayed as usize;
+        let rows = self.crtc_vertical_displayed as usize;
+
+        let mut row_addr = start_addr;
+
+        for _ in 0..rows {
+            let mut line = String::new();
+            line.extend(
+                self.mem[row_addr..(row_addr + (columns * 2) & 0x3fff)]
+                    .iter()
+                    .step_by(2)
+                    .filter_map(|&byte| {
+                        let ascii_byte = match byte {
+                            0x00..=0x1F => 0x20,
+                            0x80..=0xFF => 0x20,
+                            _ => byte,
+                        };
+                        Some(ascii_byte as char)
+                    }),
+            );
+            row_addr += columns * 2;
+            strings.push(line);
+        }
+
+        strings
+    }
 }

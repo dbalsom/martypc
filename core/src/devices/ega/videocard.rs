@@ -581,4 +581,8 @@ impl VideoCard for EGACard {
     fn trace_flush(&mut self) {
         //self.trace_logger.print(msg);
     }
+
+    fn get_text_mode_strings(&self) -> Vec<String> {
+        Vec::new()
+    }
 }

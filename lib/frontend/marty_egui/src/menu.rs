@@ -262,6 +262,11 @@ impl GuiState {
                         });
                     }
                 }
+
+                if ui.button("Text Viewer").clicked() {
+                    *self.window_flag(GuiWindow::TextModeViewer) = true;
+                    ui.close_menu();
+                }
             });
 
             ui.menu_button("Debug", |ui| {

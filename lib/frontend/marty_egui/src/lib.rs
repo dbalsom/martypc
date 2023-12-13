@@ -98,6 +98,7 @@ use marty_core::{
     videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
 };
 
+use crate::windows::text_mode_viewer::TextModeViewer;
 use videocard_renderer::{CompositeParams, PhosphorType};
 
 #[derive(PartialEq, Eq, Hash)]
@@ -123,6 +124,7 @@ pub enum GuiWindow {
     CallStack,
     VHDCreator,
     CycleTraceViewer,
+    TextModeViewer,
 }
 
 pub enum GuiVariable {
@@ -330,6 +332,7 @@ pub struct GuiState {
     pub ivr_viewer: IvrViewerControl,
     pub device_control: DeviceControl,
     pub vhd_creator: VhdCreator,
+    pub text_mode_viewer: TextModeViewer,
 
     call_stack_string: String,
     global_zoom: f32,
@@ -411,6 +414,7 @@ impl GuiRenderContext {
             egui_ctx.set_visuals(visuals);
         }
 
+        #[cfg(debug_assertions)]
         if gui_options.debug_drawing {
             egui_ctx.set_debug_on_hover(true);
         }
@@ -599,6 +603,7 @@ impl GuiState {
             (GuiWindow::CallStack, false),
             (GuiWindow::VHDCreator, false),
             (GuiWindow::CycleTraceViewer, false),
+            (GuiWindow::TextModeViewer, false),
         ]
         .into();
 
@@ -676,6 +681,7 @@ impl GuiState {
             ivr_viewer: IvrViewerControl::new(),
             device_control: DeviceControl::new(),
             vhd_creator: VhdCreator::new(),
+            text_mode_viewer: TextModeViewer::new(),
             call_stack_string: String::new(),
 
             global_zoom: 1.0,
@@ -788,6 +794,11 @@ impl GuiState {
     /// Set list of available scaler modes
     pub fn set_scaler_modes(&mut self, modes: Vec<ScalerMode>) {
         self.scaler_modes = modes;
+    }
+
+    /// Provide the list of graphics cards to all windows that need them.
+    pub fn set_card_list(&mut self, cards: Vec<String>) {
+        self.text_mode_viewer.set_cards(cards.clone());
     }
 
     /// Retrieve a newly selected VHD image name for the specified device slot.
@@ -1146,6 +1157,14 @@ impl GuiState {
             .default_width(300.0)
             .show(ctx, |ui| {
                 self.scaler_adjust.draw(ui, &mut self.event_queue);
+            });
+
+        egui::Window::new("Text Mode Viewer")
+            .open(self.window_open_flags.get_mut(&GuiWindow::TextModeViewer).unwrap())
+            .resizable(true)
+            .default_width(600.0)
+            .show(ctx, |ui| {
+                self.text_mode_viewer.draw(ui, &mut self.event_queue);
             });
     }
 }

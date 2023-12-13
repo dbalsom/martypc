@@ -15,7 +15,7 @@
     * Multiple windows can display the same video card, with different display options
     * Windows can be set to a fixed size or scale factor, or made completely resizable
     * Windows can be pinned 'always on top'
-    * Windows can toggled full-screen via ALT-ENTER hotkey 
+    * Windows can toggled full-screen via CONTROL-ALT-ENTER hotkey 
   * Shader support: A basic CRT shader is built into the new display scaler
     * Internal shader features:
       * Barrel distortion
@@ -24,11 +24,11 @@
       * Scanline emulation synchronized to emulated video resolution  
     * Presets for the internal scaler can be defined in configuration and applied to different windows
 * #### EGA Graphics
-  * EGA is back! A cycle-clocked EGA implementation is here, although it may still be a bit rough around the edges. EGA will continue to be polished in upcoming releases.
+  * EGA is back! A character-clocked EGA implementation is here, although it may still be a bit rough around the edges. EGA will continue to be polished in upcoming releases.
   * Known issues:
     * No CGA emulation 
     * Not all registers properly emulated 
-    * Pel panning is a bit of a hack
+    * Pel panning implementation is a bit of a hack
     * Aperture defintions / adjustments not final
     * Jerky scrolling in Commander Keen 1-3
     * User-definable fonts not yet supported
@@ -41,18 +41,22 @@
     * Translation files can define direct scancode mappings or full macros
 
 
+* New notification system courtesy of egui-notify crate. 
+  * Implemented success/error notifications for disk and file operations, screenshots, etc.
+* Improved VHD creator - should no longer be confusing to use
+* Text Mode Viewer - View ASCII contents of video memory, where you can select and copy to clipboard
 * Preliminary CGA snow emulation. Not yet 100% accurate
 * Added 8088 JSON CPU test generator and validator 
   * Used to create the first [comprehensive test suite for the Intel 8088](https://github.com/TomHarte/ProcessorTests/tree/main/8088)
 * Memory Viewer will now show values for memory mapped regions
 * Major dependency updates:
   * wgpu to 0.18 (latest)
-  * egui to 0.24.1 (latest, forked)
+  * egui to 0.24.2 (latest, forked)
   * pixels to 0.13 (latest, forked)
   * winit to 0.29.4 (latest)
+* Added debug_keyboard config flag - this will print keyboard event info to the console for support
 
-
-### Bug Fixes / Improvements
+### Bug Fixes
 * CPU: Fixed device ticks after interrupts
 * CPU: Improved Halt/Resume logic and cycle timings
 * CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView
@@ -69,9 +73,9 @@
 * PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
 * CGA: Reverted color palette entry for black from dark gray to true black
 * CGA: Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
-* Fixed mouse capture hotkey (CTRL-F10)
-* KEYBOARD: Add debug_keyboard config flag - this will print keyboard event info to the console for support
 * CGA: Don't recalculate composite parameters if mode change was enable bit only
+
+
 
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-07-06)
 
