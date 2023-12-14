@@ -39,6 +39,7 @@ icon.png
 
 # Ignore most files in /install directory unless specified
 /install/roms/*
+/install/hdd/*
 
 # Files to include for distribution
 !/install/roms/readme.md
