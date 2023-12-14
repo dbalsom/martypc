@@ -50,6 +50,11 @@ no_bios = false
 run_bin_seg = 0x1000
 run_bin_ofs = 0x0000
 
+[emulator.backend]
+# Enable vsync. For wgpu frontend, I would recommend leaving this off. FIFO
+# presentation mode increase latency and causes window resizing issues.
+vsync = false
+
 [emulator.media]
 # Provide a list of file extensions to interpret as raw floppy sector images.
 raw_sector_image_extensions = [ "img", "ima", "dsk", "mnx" ]
@@ -104,8 +109,9 @@ resizable = true
 card_id = 0
 
 # Size the initial window dimensions to the specified card's aperture size
-# times this number. Default is 1.
-card_scale = 1
+# times this number.
+# Setting this value overrides 'size' and 'resizable'.
+#card_scale = 1
 
 # Specify the scaler preset to use for this window. See the 
 # [[emulator.scaler_preset]] definitions defined below for reference.
@@ -210,16 +216,16 @@ gamma = 1.0
 # scaler, but included in scaler presets for convenience.
 [emulator.scaler_preset.renderer]
 #
-# video_aperture: Valid options are:
+# display_aperture: Valid options are:
 # Cropped  - Display the card in the "traditional" resolution for each graphics
 #            mode, with no overscan. Ie, 320x200 for low resolution CGA, 
 #            640x350 for high resolution EGA, 640x480 for high resolution VGA
-# Accurate - Display the card with overscan extents that as they would appear
-#            on a typical CRT monitor
+# Accurate - Display the card with overscan extents as they would appear on a 
+#            typical CRT monitor
 # Full     - Display the entire overscan area
 # Debug    - Display the entire video field, including horizontal and vertical
 #            blanking periods. Helpful for debugging video code.
-video_aperture = "Accurate"
+#display_aperture = "Cropped"
 
 # Aspect-correct scaler output to 4:3. This will make the video output more
 # visually accurate to what you would see on a real monitor, but will introduce
@@ -238,8 +244,6 @@ composite = false
 # Define additional scaler presets below...
 [[emulator.scaler_preset]]
 name = "IBM 5153"
-video_aperture = "Accurate"
-aspect_correction = true
 filter = "Linear"
 border_color = 0x323338 # Medium gray.
 crt_effect = true
@@ -249,15 +253,13 @@ crt_phosphor_type = "Color"
 crt_scanlines = true
 gamma = 1.0
 [emulator.scaler_preset.renderer]
-video_aperture = "Accurate"
+display_aperture = "Accurate"
 aspect_correction = true
 aspect_ratio = { h=4, v=3 }
 composite = false
 
 [[emulator.scaler_preset]]
 name = "Green CRT"
-video_aperture = "Accurate"
-aspect_correction = true
 filter = "Linear"
 border_color = 0x323338 # Medium gray.
 crt_effect = true
@@ -267,15 +269,13 @@ crt_phosphor_type = "Green"
 crt_scanlines = true
 gamma = 1.0
 [emulator.scaler_preset.renderer]
-video_aperture = "Accurate"
+display_aperture = "Accurate"
 aspect_correction = true
 aspect_ratio = { h=4, v=3 }
 composite = false
 
 [[emulator.scaler_preset]]
 name = "Amber CRT"
-video_aperture = "Accurate"
-aspect_correction = true
 filter = "Linear"
 border_color = 0x323338 # Medium gray.
 crt_effect = true
@@ -285,7 +285,7 @@ crt_phosphor_type = "Amber"
 crt_scanlines = true
 gamma = 1.0
 [emulator.scaler_preset.renderer]
-video_aperture = "Accurate"
+display_aperture = "Accurate"
 aspect_correction = true
 composite = false
 aspect_ratio = { h=4, v=3 }

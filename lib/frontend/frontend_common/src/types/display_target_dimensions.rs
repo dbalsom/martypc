@@ -37,7 +37,7 @@ use crate::types::display_target_margins::DisplayTargetMargins;
 use display_backend_trait::BufferDimensions;
 use marty_common::VideoDimensions;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct DisplayTargetDimensions {
     w: u32,
     h: u32,
@@ -49,6 +49,12 @@ impl Default for DisplayTargetDimensions {
             w: DEFAULT_RESOLUTION_W,
             h: DEFAULT_RESOLUTION_H,
         }
+    }
+}
+
+impl DisplayTargetDimensions {
+    pub fn new(w: u32, h: u32) -> Self {
+        Self { w, h }
     }
 }
 

@@ -213,6 +213,7 @@ pub struct WindowDefinition {
     #[serde(default)]
     pub resizable: bool,
     pub card_id: Option<usize>,
+    pub card_scale: Option<f32>,
     #[serde(default)]
     pub always_on_top: bool,
     pub scaler_preset: Option<String>,

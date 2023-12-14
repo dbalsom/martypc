@@ -472,6 +472,20 @@ impl GuiState {
             }
         });
 
+        ui.menu_button("Scaler Presets", |ui| {
+            for (preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
+                if ui.button(preset).clicked() {
+                    self.event_queue.send(GuiEvent::TakeScreenshot);
+                    self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(ctx));
+                    self.event_queue.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Display(display_idx),
+                        GuiVariable::Enum(GuiEnum::DisplayScalerPreset(preset.clone())),
+                    ));
+                    ui.close_menu();
+                }
+            }
+        });
+
         if ui.button("Scaler Adjustments...").clicked() {
             *self.window_flag(GuiWindow::ScalerAdjust) = true;
             ui.close_menu();

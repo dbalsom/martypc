@@ -74,9 +74,9 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             },
             GuiVariable::Enum(op) => match ctx {
-                GuiVariableContext::Display(d_idx) => match *op {
+                GuiVariableContext::Display(d_idx) => match op {
                     GuiEnum::DisplayAperture(aperture) => {
-                        if let Some(vid) = emu.dm.set_display_aperture(*d_idx, aperture).ok().flatten() {
+                        if let Some(vid) = emu.dm.set_display_aperture(*d_idx, *aperture).ok().flatten() {
                             if let Some(video_card) = emu.machine.bus().video(&vid) {
                                 if let Err(e) = emu.dm.on_card_resized(&vid, video_card.get_display_extents()) {
                                     log::error!("Failed to set display aperture for display target: {:?}", e);
@@ -86,18 +86,24 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     }
                     GuiEnum::DisplayScalerMode(new_mode) => {
                         log::debug!("Got scaler mode update event: {:?}", new_mode);
-                        if let Err(_e) = emu.dm.set_scaler_mode(*d_idx, new_mode) {
+                        if let Err(_e) = emu.dm.set_scaler_mode(*d_idx, *new_mode) {
                             log::error!("Failed to set scaler mode for display target!");
+                        }
+                    }
+                    GuiEnum::DisplayScalerPreset(new_preset) => {
+                        log::debug!("Got scaler preset update event: {:?}", new_preset);
+                        if let Err(_e) = emu.dm.apply_scaler_preset(*d_idx, new_preset.clone()) {
+                            log::error!("Failed to set scaler preset for display target!");
                         }
                     }
                     GuiEnum::DisplayComposite(state) => {
                         log::debug!("Got composite state update event: {}", state);
                         if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
-                            renderer.set_composite(state);
+                            renderer.set_composite(*state);
                         }
                     }
                     GuiEnum::DisplayAspectCorrect(state) => {
-                        if let Err(_e) = emu.dm.set_aspect_correction(*d_idx, state) {
+                        if let Err(_e) = emu.dm.set_aspect_correction(*d_idx, *state) {
                             log::error!("Failed to set aspect correction state for display target!");
                         }
                     }

@@ -49,7 +49,7 @@ use videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 #[derive(Copy, Clone)]
 pub enum DisplayTargetType {
-    WindowBackground { main_window: bool, has_gui: bool },
+    WindowBackground { main_window: bool, has_gui: bool, has_menu: bool },
     EguiWidget,
 }
 
@@ -58,6 +58,7 @@ impl Default for DisplayTargetType {
         DisplayTargetType::WindowBackground {
             main_window: false,
             has_gui: false,
+            has_menu: false,
         }
     }
 }
@@ -103,6 +104,7 @@ pub struct DisplayManagerWindowOptions {
     pub title: String,
     pub resizable: bool,
     pub always_on_top: bool,
+    pub card_scale: Option<f32>,
 }
 
 impl Default for DisplayManagerWindowOptions {
@@ -115,6 +117,7 @@ impl Default for DisplayManagerWindowOptions {
             title: "New Window".to_string(),
             resizable: false,
             always_on_top: false,
+            card_scale: None,
         }
     }
 }
@@ -252,6 +255,9 @@ pub trait DisplayManager<B, G, Wi, W> {
 
     /// Retrieve the scaler preset by name.
     fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset>;
+
+    /// Apply the named scaler preset to the specificed display target.
+    fn apply_scaler_preset(&mut self, dt_idx: usize, name: String) -> Result<(), Error>;
 
     /// Set the desired Display Aperture for the specified display target.
     /// Returns the associated VideoCardId, as the card will need to be resized when the aperture

@@ -191,6 +191,8 @@ pub struct VideoRenderer {
 
     buf: Vec<u8>,
     aspect_ratio: Option<AspectRatio>,
+    aspect_dirty: bool,
+    aperture_dirty: bool,
     mode_byte: u8,
 
     // Legacy composite stuff
@@ -232,7 +234,8 @@ impl VideoRenderer {
 
             buf: vec![0; (DEFAULT_RENDER_WIDTH * DEFAULT_RENDER_HEIGHT * 4) as usize],
             aspect_ratio: None,
-
+            aspect_dirty: false,
+            aperture_dirty: false,
             mode_byte: 0,
 
             // Legacy composite stuff
@@ -255,7 +258,15 @@ impl VideoRenderer {
 
     pub fn set_config_params(&mut self, cfg: &RendererConfigParams) {
         self.composite_enabled = cfg.composite;
-        self.set_aspect_ratio(cfg.aspect_ratio, Some(AspectCorrectionMode::Hardware));
+
+        if cfg.aspect_correction {
+            self.set_aspect_ratio(cfg.aspect_ratio, Some(AspectCorrectionMode::Hardware));
+        }
+        else {
+            self.set_aspect_ratio(None, Some(AspectCorrectionMode::Hardware));
+        }
+
+        self.set_aperture(cfg.display_aperture.unwrap_or(DisplayApertureType::Cropped));
     }
 
     pub fn get_config_params(&self) -> RendererConfigParams {
@@ -285,7 +296,9 @@ impl VideoRenderer {
     }
 
     pub fn set_aperture(&mut self, aperture: DisplayApertureType) {
-        self.params.aperture = aperture
+        log::debug!("Setting renderer aperture to {:?}", aperture);
+        self.params.aperture = aperture;
+        self.aperture_dirty = true;
     }
 
     pub fn set_line_double(&mut self, state: bool) {
@@ -331,10 +344,21 @@ impl VideoRenderer {
 
     // Given the new specified dimensions, returns a bool if the dimensions require resizing
     // the internal buffer. This should be called before actually resizing the renderer.
-    pub fn would_resize(&self, new: VideoDimensions) -> bool {
+    pub fn would_resize(&mut self, new: VideoDimensions) -> bool {
         if !self.initialized {
             return true;
         }
+        if (self.aspect_dirty) {
+            log::debug!("would_resize(): aspect ratio change detected.");
+            self.aspect_dirty = false;
+            return true;
+        }
+        if (self.aperture_dirty) {
+            log::debug!("would_resize(): aperture change detected.");
+            self.aperture_dirty = false;
+            return true;
+        }
+
         match self.params.aspect_correction {
             AspectCorrectionMode::None | AspectCorrectionMode::Hardware => {
                 if self.params.render != new {
@@ -372,16 +396,20 @@ impl VideoRenderer {
 
                 self.params.aspect_corrected.h = adjusted_h;
                 self.aspect_ratio = Some(aspect);
+                self.aspect_dirty = true;
             }
         }
         else {
             // Disable aspect correction
+            log::debug!("set_aspect_ratio(): Disabling aspect correction.");
             self.params.aspect_corrected = self.params.render;
             self.aspect_ratio = None;
+            self.aspect_dirty = true;
         }
 
         if let Some(mode) = new_mode {
             self.params.aspect_correction = mode;
+            self.aspect_dirty = true;
         }
     }
 

@@ -172,8 +172,7 @@ impl Emulator {
 
         self.gui.set_option(GuiBoolean::TurboButton, self.config.machine.turbo);
 
-        //TODO: renable these.
-        //gui.set_option(GuiBoolean::CompositeDisplay, config.machine.composite.unwrap_or(false));
+        self.gui.set_scaler_presets(&self.config.emulator.scaler_preset);
 
         // Populate the list of display targets for each display.
         self.dm.for_each_target(|dtc, dt_idx| {
@@ -286,8 +285,7 @@ impl Emulator {
             if let Some(card) = self.machine.bus().video(vid) {
                 let extents = card.get_display_extents();
 
-                assert_eq!(extents.double_scan, true);
-
+                //assert_eq!(extents.double_scan, true);
                 if let Err(_e) = self.dm.on_card_resized(vid, extents) {
                     log::error!("Failed to resize videocard!");
                 }

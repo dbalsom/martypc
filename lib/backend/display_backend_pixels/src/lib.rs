@@ -72,7 +72,7 @@ impl PixelsBackend {
                 force_fallback_adapter: false,
                 compatible_surface: None,
             })
-            .enable_vsync(true)
+            .enable_vsync(false)
             .build()?;
 
         Ok(PixelsBackend {

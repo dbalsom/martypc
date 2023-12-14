@@ -89,4 +89,12 @@ pub fn render_frame(emu: &mut Emulator) {
             log::error!("Failed to render backend: {}", e);
         }
     });
+
+    // Notify each window of presentation
+    // Note: Doing this seems to cause more wgpu validation errors...
+    /*
+    emu.dm.for_each_window(|window| {
+        window.pre_present_notify();
+    });
+    */
 }

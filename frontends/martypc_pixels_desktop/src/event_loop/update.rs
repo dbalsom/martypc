@@ -35,8 +35,6 @@ use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
 
-
-
 use crate::{
     event_loop::{egui_update::update_egui, render_frame::render_frame},
     Emulator,

@@ -56,6 +56,7 @@ use egui_wgpu::renderer::{Renderer, ScreenDescriptor};
 use pixels::{wgpu, PixelsContext};
 use winit::window::Window;
 
+use frontend_common::display_scaler::ScalerPreset;
 use regex::Regex;
 use serialport::SerialPortInfo;
 
@@ -67,6 +68,7 @@ mod layouts;
 mod menu;
 mod theme;
 mod token_listview;
+mod ui;
 mod widgets;
 mod windows;
 
@@ -156,11 +158,12 @@ impl Default for GuiVariableContext {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GuiEnum {
     DisplayAspectCorrect(bool),
     DisplayAperture(DisplayApertureType),
     DisplayScalerMode(ScalerMode),
+    DisplayScalerPreset(String),
     DisplayComposite(bool),
 }
 
@@ -169,6 +172,7 @@ fn create_default_variant(ge: GuiEnum) -> GuiEnum {
         GuiEnum::DisplayAspectCorrect(_) => GuiEnum::DisplayAspectCorrect(Default::default()),
         GuiEnum::DisplayAperture(_) => GuiEnum::DisplayAperture(Default::default()),
         GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
+        GuiEnum::DisplayScalerPreset(_) => GuiEnum::DisplayScalerPreset(String::new()),
         GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
     }
 }
@@ -286,6 +290,7 @@ pub struct GuiState {
     // Display stuff
     display_apertures: HashMap<usize, Vec<DisplayApertureDesc>>,
     scaler_modes: Vec<ScalerMode>,
+    scaler_presets: Vec<String>,
 
     // Floppy Disk Images
     floppy_names: Vec<OsString>,
@@ -640,6 +645,7 @@ impl GuiState {
 
             display_apertures: Default::default(),
             scaler_modes: Vec::new(),
+            scaler_presets: Vec::new(),
 
             floppy_names: Vec::new(),
             floppy0_name: Option::None,
@@ -801,6 +807,11 @@ impl GuiState {
         self.text_mode_viewer.set_cards(cards.clone());
     }
 
+    pub fn set_scaler_presets(&mut self, presets: &Vec<ScalerPreset>) {
+        self.scaler_presets = presets.iter().map(|p| p.name.clone()).collect();
+        log::debug!("installed scaler presets: {:?}", self.scaler_presets);
+    }
+
     /// Retrieve a newly selected VHD image name for the specified device slot.
     ///
     /// If a VHD image was selected from the UI then we return it as an Option.
@@ -883,288 +894,12 @@ impl GuiState {
 
         // Set all enums.
         for enum_item in enum_vec.iter() {
-            self.set_option_enum(enum_item.0, enum_item.1);
+            self.set_option_enum(enum_item.0.clone(), enum_item.1);
         }
     }
 
     #[allow(dead_code)]
     pub fn update_videomem_state(&mut self, mem: Vec<u8>, w: u32, h: u32) {
         self.video_mem = ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &mem);
-    }
-
-    /// Create the UI using egui.
-    fn ui(&mut self, ctx: &Context) {
-        // Draw top menu bar
-        egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
-            self.draw_menu(ui);
-        });
-
-        self.toasts.show(ctx);
-
-        egui::Window::new("About")
-            .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())
-            .show(ctx, |ui| {
-                self.about_dialog.draw(ui, ctx, &mut self.event_queue);
-            });
-
-        //let video_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
-        //        ctx.load_texture(
-        //            "video_mem",
-        //            self.video_mem,
-        //        )
-        //    });
-
-        egui::Window::new("Video Mem")
-            .open(self.window_open_flags.get_mut(&GuiWindow::VideoMemViewer).unwrap())
-            .show(ctx, |_ui| {});
-
-        egui::Window::new("Warning")
-            .open(&mut self.warning_dialog_open)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("⚠")
-                            .color(egui::Color32::YELLOW)
-                            .font(egui::FontId::proportional(40.0)),
-                    );
-                    ui.label(&self.warning_string);
-                });
-            });
-
-        egui::Window::new("Error")
-            .open(&mut self.error_dialog_open)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new("❎")
-                            .color(egui::Color32::RED)
-                            .font(egui::FontId::proportional(40.0)),
-                    );
-                    ui.label(&self.error_string);
-                });
-            });
-
-        egui::Window::new("Performance")
-            .open(self.window_open_flags.get_mut(&GuiWindow::PerfViewer).unwrap())
-            .show(ctx, |ui| {
-                self.perf_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("CPU Control")
-            .open(self.window_open_flags.get_mut(&GuiWindow::CpuControl).unwrap())
-            .show(ctx, |ui| {
-                self.cpu_control.draw(ui, &mut self.option_flags, &mut self.event_queue);
-            });
-
-        egui::Window::new("Memory View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::MemoryViewer).unwrap())
-            .resizable(true)
-            .default_width(540.0)
-            .show(ctx, |ui| {
-                self.memory_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Instruction History")
-            .open(self.window_open_flags.get_mut(&GuiWindow::HistoryViewer).unwrap())
-            .resizable(true)
-            .default_width(540.0)
-            .show(ctx, |ui| {
-                self.trace_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Cycle Trace")
-            .open(self.window_open_flags.get_mut(&GuiWindow::CycleTraceViewer).unwrap())
-            .resizable(true)
-            .default_width(540.0)
-            .show(ctx, |ui| {
-                self.cycle_trace_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Call Stack")
-            .open(self.window_open_flags.get_mut(&GuiWindow::CallStack).unwrap())
-            .resizable(true)
-            .default_width(540.0)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add_sized(
-                        ui.available_size(),
-                        egui::TextEdit::multiline(&mut self.call_stack_string).font(egui::TextStyle::Monospace),
-                    );
-                    ui.end_row()
-                });
-            });
-
-        egui::Window::new("Disassembly View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::DisassemblyViewer).unwrap())
-            .resizable(true)
-            .default_width(540.0)
-            .show(ctx, |ui| {
-                self.disassembly_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("IVR Viewer")
-            .open(self.window_open_flags.get_mut(&GuiWindow::IvrViewer).unwrap())
-            .resizable(true)
-            .default_width(400.0)
-            .show(ctx, |ui| {
-                self.ivr_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("CPU State")
-            .open(self.window_open_flags.get_mut(&GuiWindow::CpuStateViewer).unwrap())
-            .resizable(false)
-            .default_width(220.0)
-            .show(ctx, |ui| {
-                self.cpu_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Delay Adjust")
-            .open(self.window_open_flags.get_mut(&GuiWindow::DelayAdjust).unwrap())
-            .resizable(true)
-            .default_width(800.0)
-            .show(ctx, |ui| {
-                self.delay_adjust.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Device Control")
-            .open(self.window_open_flags.get_mut(&GuiWindow::DeviceControl).unwrap())
-            .resizable(true)
-            .default_width(400.0)
-            .show(ctx, |ui| {
-                self.device_control.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("PIT View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::PitViewer).unwrap())
-            .resizable(false)
-            .min_width(600.0)
-            .default_width(600.0)
-            .show(ctx, |ui| {
-                self.pit_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("PIC View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::PicViewer).unwrap())
-            .resizable(true)
-            .default_width(600.0)
-            .show(ctx, |ui| {
-                self.pic_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("PPI View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::PpiViewer).unwrap())
-            .resizable(true)
-            .default_width(600.0)
-            .show(ctx, |ui| {
-                egui::Grid::new("ppi_view")
-                    .num_columns(2)
-                    .striped(true)
-                    .spacing([40.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label(egui::RichText::new("Port A Mode:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_a_mode)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_bin)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port B Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_b_value_bin)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Keyboard resets:").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.kb_resets_counter)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port C Mode:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_c_mode)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port C Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_c_value)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-                    });
-            });
-
-        egui::Window::new("DMA View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::DmaViewer).unwrap())
-            .resizable(false)
-            .default_width(200.0)
-            .show(ctx, |ui| {
-                self.dma_viewer.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Video Card View")
-            .open(self.window_open_flags.get_mut(&GuiWindow::VideoCardViewer).unwrap())
-            .resizable(false)
-            .default_width(300.0)
-            .show(ctx, |ui| {
-                GuiState::draw_video_card_panel(ui, &self.videocard_state);
-            });
-
-        egui::Window::new("Create VHD")
-            .open(self.window_open_flags.get_mut(&GuiWindow::VHDCreator).unwrap())
-            .resizable(false)
-            .default_width(400.0)
-            .show(ctx, |ui| {
-                self.vhd_creator.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Composite Adjustment")
-            .open(self.window_open_flags.get_mut(&GuiWindow::CompositeAdjust).unwrap())
-            .resizable(false)
-            .default_width(300.0)
-            .show(ctx, |ui| {
-                self.composite_adjust.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Scaler Adjustment")
-            .open(self.window_open_flags.get_mut(&GuiWindow::ScalerAdjust).unwrap())
-            .resizable(false)
-            .default_width(300.0)
-            .show(ctx, |ui| {
-                self.scaler_adjust.draw(ui, &mut self.event_queue);
-            });
-
-        egui::Window::new("Text Mode Viewer")
-            .open(self.window_open_flags.get_mut(&GuiWindow::TextModeViewer).unwrap())
-            .resizable(true)
-            .default_width(600.0)
-            .show(ctx, |ui| {
-                self.text_mode_viewer.draw(ui, &mut self.event_queue);
-            });
     }
 }
