@@ -275,4 +275,9 @@ pub trait DisplayManager<B, G, Wi, W> {
 
     /// Set the ScalerMode for the associated scaler, if present.
     fn set_scaler_mode(&mut self, dt_idx: usize, mode: ScalerMode) -> Result<(), Error>;
+
+    /// Save a screenshot of the specified display target to the specified path.
+    /// A unique filename will be generated assuming the path is a directory.
+    /// No operational error is returned as screenshot operation may be deferred.
+    fn save_screenshot(&mut self, dt_idx: usize, path: PathBuf) -> Result<(), Error>;
 }

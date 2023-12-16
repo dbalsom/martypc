@@ -475,7 +475,6 @@ impl GuiState {
         ui.menu_button("Scaler Presets", |ui| {
             for (preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
                 if ui.button(preset).clicked() {
-                    self.event_queue.send(GuiEvent::TakeScreenshot);
                     self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(ctx));
                     self.event_queue.send(GuiEvent::VariableChanged(
                         GuiVariableContext::Display(display_idx),
@@ -579,7 +578,7 @@ impl GuiState {
         ui.separator();
 
         if ui.button("🖼 Take Screenshot").clicked() {
-            self.event_queue.send(GuiEvent::TakeScreenshot);
+            self.event_queue.send(GuiEvent::TakeScreenshot(display_idx));
             ui.close_menu();
         };
     }

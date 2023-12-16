@@ -315,14 +315,19 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
             emu.machine.change_state(*state);
         }
-        GuiEvent::TakeScreenshot => {
+        GuiEvent::TakeScreenshot(dt_idx) => {
+            // TODO: Get the screenshot path from common frontend code
             let mut screenshot_path = PathBuf::new();
             screenshot_path.push(emu.config.emulator.basedir.clone());
             screenshot_path.push("screenshots");
 
-            emu.dm.for_each_renderer(|_renderer, _card_id, _buf| {
-                //renderer.screenshot_with_backend(&screenshot_path);
-            });
+            if let Err(err) = emu.dm.save_screenshot(*dt_idx, screenshot_path) {
+                log::error!("Failed to save screenshot: {}", err);
+                emu.gui
+                    .toasts()
+                    .error(format!("{}", err))
+                    .set_duration(Some(Duration::from_secs(5)));
+            }
         }
         GuiEvent::CtrlAltDel => {
             emu.machine.ctrl_alt_del();

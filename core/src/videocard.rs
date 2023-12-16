@@ -64,11 +64,11 @@ use std::{collections::HashMap, path::Path, str::FromStr};
 
 use crate::bus::DeviceRunTimeUnit;
 
-use crate::devices::cga::CGACard;
 #[cfg(feature = "ega")]
 use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
+use crate::devices::{cga::CGACard, mda::MDACard};
 
 use serde::Deserialize;
 use serde_derive::Serialize;
@@ -140,6 +140,7 @@ impl FromStr for ClockingMode {
 // video card methods.
 pub enum VideoCardDispatch {
     None,
+    Mda(MDACard),
     Cga(CGACard),
     #[cfg(feature = "ega")]
     Ega(EGACard),

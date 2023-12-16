@@ -79,6 +79,7 @@ use frontend_common::{
 };
 
 use marty_core::{
+    file_util,
     machine::Machine,
     videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoCardInterface},
 };
@@ -1436,114 +1437,21 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         }
         Ok(())
     }
-}
 
-/*
-
-
-impl<T,G> DisplayManager<T,G>
-where
-    T: DisplayBackend<G> + DisplayBackendBuilder
-{
-    pub fn new() -> Self {
-        Default::default()
-    }
-
-    pub fn get_window_by_id(&self, wid: WindowId) -> Option<&Window> {
-        self.window_id_map.get(&wid).and_then(|idx| {
-            //log::warn!("got id, running map():");
-            self.displays[*idx].window.as_ref()
-        })
-    }
-
-    pub fn get_renderer_by_card_id(&mut self, id: usize) -> Option<&mut VideoRenderer> {
-        self.card_id_map.get(&id).and_then(|idx| {
-            self.displays[*idx].renderer.as_mut()
-        })
-    }
-
-    /// Reflect a change to a videocard's output resolution.
-    /// TODO: A card ID should eventually be able to resolve to multiple DisplayTargets.
-    /// Resize the backend and scaler associated with the VideoTarget, if applicable.
-    pub fn on_card_resized(&mut self, id: usize, w: u32, h: u32) -> Result<(), Error> {
-        if let Some(idx) = self.card_id_map.get(&id) {
-
-            let vt = &mut self.displays[*idx];
-
-            let mut aspect_dimensions: Option<BufferDimensions> = None;
-            let mut buf_dimensions: Option<BufferDimensions> = None;
-
-            // Resize the VideoRenderer if present.
-            if let Some(renderer) = &mut vt.renderer {
-                renderer.resize((w,h).into());
-
-                buf_dimensions =
-                    Some(DisplayTargetDimensions::from(renderer.get_buf_dimensions()).into());
-                aspect_dimensions =
-                    Some(DisplayTargetDimensions::from(renderer.get_display_dimensions()).into());
-            }
-
-            let src_dimensions =
-                buf_dimensions.unwrap_or(
-                    BufferDimensions {
-                        w: 16,
-                        h: 16,
-                        pitch: 16,
-                    });
-            let target_dimensions =
-                aspect_dimensions.unwrap_or(src_dimensions);
-
-
-
-            // Resize the Backend if present.
-            if let Some(backend) = &mut vt.backend {
-
-                let surface_dimensions = backend.surface_dimensions();
-
-                // Resize the DisplayScaler if present.
-                if let Some(scaler) = &mut vt.scaler {
-                    scaler.resize(
-                        backend.get_backend_raw().unwrap(),
-                        src_dimensions.w,
-                        src_dimensions.h,
-                        target_dimensions.w,
-                        target_dimensions.h,
-                        surface_dimensions.w,
-                        surface_dimensions.h
-                    )
-                }
-            }
+    fn save_screenshot(&mut self, dt_idx: usize, path: PathBuf) -> Result<(), Error> {
+        if dt_idx >= self.targets.len() {
+            return Err(anyhow!("Display target out of range!"));
         }
-        Ok(())
-    }
 
-    pub fn on_window_resized(&mut self, wid: WindowId, w: u32, h: u32) -> Result<(), Error> {
-        let idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
-        if let Some(backend) = &mut self.displays[*idx].backend {
-            backend.resize_surface(SurfaceDimensions{w, h})?;
-        }
-        Ok(())
-    }
+        let filename = file_util::find_unique_filename(&path, "screenshot", "png");
 
-    pub fn set_icon(&mut self, icon_path: PathBuf) {
-
-        if let Ok(image) = image::open(icon_path.clone()) {
-
-            let rgba8 = image.into_rgba8();
-            let (width, height) = rgba8.dimensions();
-            let icon_raw = rgba8.into_raw();
-
-            self.displays.iter().for_each(|dt| {
-                let icon = winit::window::Icon::from_rgba(icon_raw.clone(), width, height).unwrap();
-                if let Some(window) = &dt.window {
-                    window.set_window_icon(Some(icon));
-                }
-            });
+        if let Some(renderer) = &mut self.targets[dt_idx].renderer {
+            renderer.request_screenshot(&filename);
         }
         else {
-            log::error!("Couldn't load icon: {}", icon_path.display());
+            return Err(anyhow!("No renderer for display target!"));
         }
+
+        Ok(())
     }
 }
-
- */

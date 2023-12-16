@@ -200,7 +200,7 @@ pub enum GuiEvent {
     DelayAdjust,
     TickDevice(DeviceSelection, u32),
     MachineStateChange(MachineState),
-    TakeScreenshot,
+    TakeScreenshot(usize),
     Exit,
     SetNMI(bool),
     TriggerParity,

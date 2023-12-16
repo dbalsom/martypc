@@ -66,6 +66,44 @@ pub const VGA_HIRES_GFX_H: u32 = 480;
 
 pub const XOR_COLOR: u8 = 0x80;
 
+pub const MDA_RGBA_COLORS: &[[u8; 4]; 16] = &[
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x55, 0x55, 0x55, 0xFF], // 8 - Dark Gray
+    [0xAA, 0xAA, 0xAA, 0xFF], // 7 - Light Gray
+    [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+];
+
+pub const MDA_RGBA_COLORS_U32: &[u32; 16] = &[
+    u32::from_le_bytes(MDA_RGBA_COLORS[0]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[1]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[2]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[3]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[4]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[5]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[6]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[7]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[8]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[9]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[10]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[11]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[12]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[13]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[14]),
+    u32::from_le_bytes(MDA_RGBA_COLORS[15]),
+];
+
 // This color-index to RGBA table supports two conversion palettes,
 // the "standard" palette given by most online references, and the
 // alternate, more monitor-accurate "VileR palette"
@@ -73,7 +111,7 @@ pub const XOR_COLOR: u8 = 0x80;
 // for details.
 pub const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
     [
-        [0x10, 0x10, 0x10, 0xFF], // 0 - Black  (Slightly brighter for debugging)
+        [0x00, 0x00, 0x00, 0xFF], // 0 - Black  (Slightly brighter for debugging)
         [0x00, 0x00, 0xAA, 0xFF], // 1 - Blue
         [0x00, 0xAA, 0x00, 0xFF], // 2 - Green
         [0x00, 0xAA, 0xAA, 0xFF], // 3 - Cyan

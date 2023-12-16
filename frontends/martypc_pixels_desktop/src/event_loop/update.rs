@@ -29,11 +29,12 @@
     Process an event loop update
 */
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
+use videocard_renderer::RendererEvent;
 
 use crate::{
     event_loop::{egui_update::update_egui, render_frame::render_frame},
@@ -276,5 +277,20 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         // Render the current frame for all window display targets.
         render_frame(emu);
+
+        // Handle renderer events
+
+        emu.dm.for_each_renderer(|renderer, vid, backend_buf| {
+            while let Some(event) = renderer.get_event() {
+                match event {
+                    RendererEvent::ScreenshotSaved => {
+                        emu.gui
+                            .toasts()
+                            .info(format!("Screenshot saved!"))
+                            .set_duration(Some(Duration::from_secs(5)));
+                    }
+                }
+            }
+        });
     }
 }

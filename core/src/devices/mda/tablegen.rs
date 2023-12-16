@@ -24,25 +24,11 @@
 
     --------------------------------------------------------------------------
 
-    devices::mod.rs
+    devices::mda::tablegen.rs
 
-    Module to organize all device definitions
+    Const table generation for various lookups used by the MDA for fast
+    character drawing.
 
 */
 
-pub mod cga;
-#[cfg(feature = "ega")]
-pub mod ega;
-pub mod mda;
-#[cfg(feature = "vga")]
-pub mod vga;
-
-pub mod dma;
-pub mod fdc;
-pub mod hdc;
-pub mod keyboard;
-pub mod mouse;
-pub mod pic;
-pub mod pit;
-pub mod ppi;
-pub mod serial;
+use crate::devices::mda::*;

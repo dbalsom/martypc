@@ -44,15 +44,15 @@ impl VideoRenderer {
         extents: &DisplayExtents,
         beam_pos: Option<(u32, u32)>,
     ) {
-        let do_software_aspect = if let AspectCorrectionMode::Software = self.params.aspect_correction {
-            true
-        }
-        else {
-            false
-        };
+        let do_software_aspect = matches!(self.params.aspect_correction, AspectCorrectionMode::Software);
+        let mut screenshot_taken = false;
 
-        let (first_pass_buf, second_pass_buf) = if do_software_aspect {
-            // We are doing software aspect correction. First marty_render to internal buffer.
+        let (first_pass_buf, mut second_pass_buf) = if (self.screenshot_requested) {
+            // Either we are rendering a screenshot this pass, or we are doing software aspect correction.
+            // Render to internal buffer first instead of backend.
+            (&mut self.screenshot_buf[..], Some(output_buf))
+        }
+        else if do_software_aspect {
             (&mut self.buf[..], Some(output_buf))
         }
         else {
@@ -61,6 +61,16 @@ impl VideoRenderer {
         };
 
         match self.video_type {
+            VideoType::MDA => {
+                VideoRenderer::draw_mda_direct_u32(
+                    first_pass_buf,
+                    self.params.render.w,
+                    self.params.render.h,
+                    input_buf,
+                    self.params.aperture,
+                    extents,
+                );
+            }
             VideoType::CGA => {
                 if self.composite_enabled {
                     VideoRenderer::draw_cga_direct_composite_reenigne(
@@ -121,6 +131,41 @@ impl VideoRenderer {
         // We have now drawn to 'first_pass_buf' which might have been internal or the buffer
         // specified by the draw() call (most likely the backend's display buffer).
 
+        if self.screenshot_requested {
+            // We can now write the screenshot out to the specified file, then copy the image to the
+            // second pass buffer.
+            if let Some(path) = self.screenshot_path.as_ref() {
+                // We may not have been given a path, in which case the caller can retrieve the
+                // internal screenshot buffer, ie, for use in a GUI.
+                match image::save_buffer(
+                    path.clone(),
+                    first_pass_buf,
+                    self.params.render.w,
+                    self.params.render.h,
+                    image::ColorType::Rgba8,
+                ) {
+                    Ok(_) => {
+                        screenshot_taken = true;
+                        log::info!("Saved screenshot: {}", path.display())
+                    }
+                    Err(e) => {
+                        log::error!("Error writing screenshot: {}: {}", path.display(), e)
+                    }
+                }
+            }
+
+            if !do_software_aspect {
+                // If software aspect correction is on, we don't need to blit the image as the resampling
+                // operation will take care of it. But if not, we need to do it ourselves.
+                if let Some(ref mut second_pass) = second_pass_buf {
+                    second_pass.copy_from_slice(first_pass_buf);
+                }
+            }
+
+            self.screenshot_path = None;
+            self.screenshot_requested = false;
+        }
+
         // If we are doing software aspect correction, we now need to draw into the output_buf.
         if do_software_aspect {
             if let Some(second_pass) = second_pass_buf {
@@ -135,6 +180,10 @@ impl VideoRenderer {
                     &mut self.resample_context,
                 );
             }
+        }
+
+        if screenshot_taken {
+            self.send_event(RendererEvent::ScreenshotSaved);
         }
     }
 
@@ -464,6 +513,48 @@ impl VideoRenderer {
         self.composite_ctx.recalculate(self.last_cga_mode);
 
         self.composite_params = *composite_params;
+    }
+
+    /// Draw the MDA card in Direct Mode.
+    /// The MDA in Direct mode generates its own indexed-color framebuffer, which is
+    /// converted to 32-bit RGBA for display based on the selected display aperture profile.
+    ///
+    /// This version uses bytemuck to convert the framebuffer 32 bits at a time, which
+    /// is much faster (benchmarked)
+    pub fn draw_mda_direct_u32(
+        frame: &mut [u8],
+        w: u32,
+        h: u32,
+        dbuf: &[u8],
+        aperture: DisplayApertureType,
+        extents: &DisplayExtents,
+    ) {
+        let aperture = &extents.apertures[aperture as usize];
+
+        let mut horiz_adjust = aperture.x;
+        let mut vert_adjust = aperture.y;
+        // Ignore aperture adjustments if it pushes us outside of the field boundaries
+        if aperture.x + aperture.w >= extents.field_w {
+            horiz_adjust = 0;
+        }
+        if aperture.y + aperture.h >= extents.field_h {
+            vert_adjust = 0;
+        }
+
+        let max_y = std::cmp::min(h, aperture.h);
+        let max_x = std::cmp::min(w, aperture.w);
+        let frame_u32: &mut [u32] = bytemuck::cast_slice_mut(frame);
+
+        for y in 0..max_y {
+            let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
+            let frame_row0_offset = ((y * 2) * w) as usize;
+
+            for x in 0..max_x {
+                let fo0 = frame_row0_offset + x as usize;
+                let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
+                frame_u32[fo0] = MDA_RGBA_COLORS_U32[(dbuf[dbo] & 0x0F) as usize];
+            }
+        }
     }
 
     /// Draw the EGA card in Direct Mode.

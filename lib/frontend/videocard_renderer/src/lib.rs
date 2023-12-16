@@ -39,7 +39,7 @@
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
-use std::{mem::size_of, path::Path};
+use std::{collections::VecDeque, mem::size_of, path::Path};
 
 use image;
 use log;
@@ -73,6 +73,13 @@ pub mod draw;
 pub mod resize;
 // Reenigne composite
 pub mod composite_new;
+
+/// Events that the renderer can return. These must be read and handled every frame to avoid
+/// memory leaks.
+#[derive(Copy, Clone, Debug)]
+pub enum RendererEvent {
+    ScreenshotSaved,
+}
 
 #[derive(Copy, Clone, Default, PartialEq)]
 pub enum AspectCorrectionMode {
@@ -211,6 +218,12 @@ pub struct VideoRenderer {
     resample_context:  ResampleContext,
 
     buffer_select: BufferSelect,
+
+    screenshot_buf: Vec<u8>,
+    screenshot_path: Option<std::path::PathBuf>,
+    screenshot_requested: bool,
+
+    event_queue: VecDeque<RendererEvent>,
 }
 
 impl VideoRenderer {
@@ -253,7 +266,21 @@ impl VideoRenderer {
             resample_context: ResampleContext::new(),
 
             buffer_select: BufferSelect::Front,
+
+            screenshot_buf: Vec::new(),
+            screenshot_path: None,
+            screenshot_requested: false,
+
+            event_queue: VecDeque::new(),
         }
+    }
+
+    pub fn get_event(&mut self) -> Option<RendererEvent> {
+        self.event_queue.pop_front()
+    }
+
+    pub fn send_event(&mut self, event: RendererEvent) {
+        self.event_queue.push_back(event);
     }
 
     pub fn set_config_params(&mut self, cfg: &RendererConfigParams) {
@@ -306,39 +333,39 @@ impl VideoRenderer {
     }
 
     /// Resizes the internal rendering buffer to the specified dimensions, before aspect correction.
-    pub fn resize(&mut self, new: VideoDimensions) {
+    pub fn resize(&mut self, new_dims: VideoDimensions) {
         self.initialized = true;
-        self.params.render = new;
 
-        let mut new_aspect = self.params.render;
+        let mut new_aspect_corrected_dims = self.params.render;
         if let Some(_) = self.aspect_ratio {
-            new_aspect = VideoRenderer::get_aspect_corrected_res(new, self.aspect_ratio);
+            new_aspect_corrected_dims = VideoRenderer::get_aspect_corrected_res(new_dims, self.aspect_ratio);
         }
 
         match self.params.aspect_correction {
             AspectCorrectionMode::None => {
-                self.params.aspect_corrected = self.params.render;
+                self.params.aspect_corrected = new_dims;
                 self.params.backend = self.params.render;
             }
             AspectCorrectionMode::Software => {
                 // For software aspect correction, we must ensure the backend buffer is large enough
                 // to receive the aspect-corrected image.
-                self.params.aspect_corrected = new_aspect;
-                self.params.backend = new_aspect;
+                self.params.aspect_corrected = new_aspect_corrected_dims;
+                self.params.backend = new_aspect_corrected_dims;
             }
             AspectCorrectionMode::Hardware => {
                 // For hardware aspect correction, the backend dimensions remain the same as native
                 // marty_render resolution and the aspect corrected dimensions are used as a target for
                 // the vertex shader only.
-                self.params.aspect_corrected = new_aspect;
-                self.params.backend = self.params.render;
+                self.params.aspect_corrected = new_aspect_corrected_dims;
+                self.params.backend = new_dims;
             }
         }
 
         // Only resize the internal render buffer if size has changed.
-        if self.params.render != new {
-            self.buf.resize((new.w * new.h * 4) as usize, 0);
+        if self.params.render != new_dims {
+            self.buf.resize((new_dims.w * new_dims.h * 4) as usize, 0);
             self.buf.fill(0);
+            self.params.render = new_dims;
         }
     }
 
@@ -466,22 +493,60 @@ impl VideoRenderer {
     }
 
     pub fn screenshot(&self, frame: &[u8], path: &Path) {
-        // Find first unique filename in screenshot dir
-        let filename = file_util::find_unique_filename(path, "screenshot", ".png");
-
         let frame_slice =
             &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
 
         match image::save_buffer(
-            filename.clone(),
+            path.clone(),
             frame_slice,
             self.params.backend.w,
             self.params.backend.h,
             image::ColorType::Rgba8,
         ) {
-            Ok(_) => println!("Saved screenshot: {}", filename.display()),
+            Ok(_) => println!("Saved screenshot: {}", path.display()),
             Err(e) => {
-                println!("Error writing screenshot: {}: {}", filename.display(), e)
+                println!("Error writing screenshot: {}: {}", path.display(), e)
+            }
+        }
+    }
+
+    /// Request a screenshot be taken on next render pass. The screenshot will be saved to the specified path.
+    /// This is deferred to the next rendering pass for simplicity so we don't have to retrieve backend
+    /// or card buffers when requesting a screenshot.
+    pub fn request_screenshot(&mut self, path: &Path) {
+        self.screenshot_buf = vec![
+            0;
+            (self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())
+                as usize
+        ];
+        self.screenshot_path = Some(path.to_path_buf());
+        self.screenshot_requested = true;
+    }
+
+    pub fn render_screenshot(&self, frame: &[u8], path: &Path) {
+        let frame_slice =
+            &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
+
+        /*
+        self.draw(
+            &mut self,
+            input_buf: &[u8],
+            output_buf: &mut [u8],
+            extents: &DisplayExtents,
+            beam_pos: Option<(u32, u32)>,
+        )
+         */
+
+        match image::save_buffer(
+            path.clone(),
+            frame_slice,
+            self.params.backend.w,
+            self.params.backend.h,
+            image::ColorType::Rgba8,
+        ) {
+            Ok(_) => println!("Saved screenshot: {}", path.display()),
+            Err(e) => {
+                println!("Error writing screenshot: {}: {}", path.display(), e)
             }
         }
     }
