@@ -30,5 +30,3 @@
     character drawing.
 
 */
-
-use crate::devices::mda::*;

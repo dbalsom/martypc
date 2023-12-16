@@ -417,10 +417,15 @@ impl VideoRenderer {
         if let Some(aspect) = new_aspect {
             if self.aspect_ratio != new_aspect {
                 // Aspect ratio is changing.
-                log::debug!("set_aspect_ratio(): Updating aspect ratio to {:?}", aspect);
                 let desired_ratio: f64 = aspect.h as f64 / aspect.v as f64;
                 let adjusted_h = (self.params.render.w as f64 / desired_ratio) as u32;
-
+                log::debug!(
+                    "set_aspect_ratio(): Updating aspect ratio to {:?} aspect dim: {}x{}",
+                    aspect,
+                    self.params.render.w,
+                    adjusted_h
+                );
+                self.params.aspect_corrected.w = self.params.render.w;
                 self.params.aspect_corrected.h = adjusted_h;
                 self.aspect_ratio = Some(aspect);
                 self.aspect_dirty = true;

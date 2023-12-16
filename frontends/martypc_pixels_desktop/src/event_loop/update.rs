@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
+use marty_core::videocard::VideoOption;
 use videocard_renderer::RendererEvent;
 
 use crate::{

@@ -45,8 +45,6 @@ mod mmio;
 mod tablegen;
 mod videocard;
 
-use crate::devices::mda::tablegen::*;
-
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit},
     tracelogger::TraceLogger,
@@ -89,77 +87,54 @@ pub const MDA_MEM_ADDRESS: usize = 0xB0000;
 // MDA memory is repeated from B0000-B7FFFF due to incomplete address decoding.
 pub const MDA_MEM_APERTURE: usize = 0x8000;
 pub const MDA_MEM_SIZE: usize = 0x1000; // 4096 bytes
-pub const MDA_MEM_MASK: usize = !0x1000; // Applying this mask will implement memory mirror.
+pub const MDA_MEM_MASK: usize = 0x0FFF; // Applying this mask will implement memory mirror.
 
-pub const CGA_MODE_ENABLE_MASK: u8 = 0b1_0111;
-
-// Sensible defaults for CRTC registers. A real CRTC is probably uninitialized.
-// 4/5/2023: Changed these values to 40 column mode.
-const DEFAULT_HORIZONTAL_TOTAL: u8 = 56;
-const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 40;
-const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 45;
-const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 10;
-const DEFAULT_VERTICAL_TOTAL: u8 = 31;
+// Sensible defaults for MDA CRTC registers. A real CRTC is probably uninitialized.
+const DEFAULT_HORIZONTAL_TOTAL: u8 = 97;
+const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 80;
+const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 82;
+const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 15;
+const DEFAULT_VERTICAL_TOTAL: u8 = 25;
 const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 6;
 const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
-const DEFAULT_VERTICAL_SYNC_POS: u8 = 28;
-const DEFAULT_MAXIMUM_SCANLINE: u8 = 7;
-const DEFAULT_CURSOR_START_LINE: u8 = 6;
-const DEFAULT_CURSOR_END_LINE: u8 = 7;
+const DEFAULT_VERTICAL_SYNC_POS: u8 = 25;
+const DEFAULT_MAXIMUM_SCANLINE: u8 = 13;
+const DEFAULT_CURSOR_START_LINE: u8 = 11;
+const DEFAULT_CURSOR_END_LINE: u8 = 12;
+const DEFAULT_CLOCK_DIVISOR: u8 = 1; // On the MDA these are fixed and do not change.
+const DEFAULT_CHAR_CLOCK: u32 = 9; // On the MDA these are fixed and do not change.
 
-const DEFAULT_CLOCK_DIVISOR: u8 = 1;
-const DEFAULT_CHAR_CLOCK: u32 = 16;
-const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x0F;
-const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x1F;
+//const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x0F;      // MDA's 9-dot character clock is not easily represented in binary
+//const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x1F;
 
-// CGA is clocked at 14.318180Mhz, which is the main clock of the entire PC system.
-// The original CGA card did not have its own crystal.
-const CGA_CLOCK: f64 = 14.318180;
-const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
+// Unlike the CGA, the MDA has its own on-board crystal and does not run at the system bus clock.
+// MDA is clocked at 16.257Mhz and runs at 50Hz refresh rate and 18.432kHz horizontal scan rate.
+//  16,257,000 / 50 = 325,140 dots per frame
+//  325,140 / 18.432kHz = 882 dots per scanline
+//  882 / 9 = 98 maximum horizontal total characters
+//  325,140 / 882 = ~368.639 scanlines per frame (??)
+//const CDA_CLOCK: f64 = 14.318180;
+const MDA_CLOCK: f64 = 16.257;
+const US_PER_CLOCK: f64 = 1.0 / MDA_CLOCK;
+const US_PER_FRAME: f64 = 1.0 / 50.0;
 
-/*
-    We can calculate the maximum theoretical size of a CGA display by working from the
-    14.31818Mhz CGA clock. We are limited to 262 scanlines per NTSC (525/2)
-    This gives us 262 maximum scanlines.
-    The CGA gets programmed with a Horizontal Character total of 113(+1)=114 characters
-    in standard 80 column text mode. This is total - not displayed characters.
-    So a single scan line is 114 * 8 or 912 clocks wide.
-    912 clocks * 262 scanlines = 238,944 clocks per frame.
-    14,318,180Hz / 238,944 clocks equals a 59.92Hz refresh rate.
-    So our final numbers are 912x262 @ 59.92Hz. This is a much higher resolution than
-    the expected maximum of 640x200, but it includes overscan and retrace periods.
-    With a default horizontal sync width of 10(*8), and a fixed (on the Motorola at least)
-    vsync 'width' of 16, this brings us down to a visible area of 832x246.
-    This produces vertical ovescan borders of 26 pixels and horizontal borders of 96 pixels
-    The Area5150 demo manages to squeeze out a 768 pixel horizontal resolution mode from
-    the CGA. This is accomplished with a HorizontalDisplayed value of 96. (96 * 8 = 768)
-    I am assuming this is the highest value we will actually ever encounter and anything
-    wider might not sync to a real monitor.
-*/
+pub const MDA_MAX_CLOCK: usize = (MDA_XRES_MAX * MDA_YRES_MAX) as usize;
+//pub const MDA_MAX_CLOCK: usize = 325140; // 16,257,000 / 50
 
-// Calculate the maximum possible area of buf field (including refresh period)
+// Calculate the maximum possible area of display field (including refresh period)
 const MDA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * MDA_CHAR_CLOCK as u32; // 882
-const MDA_YRES_MAX: u32 = CRTC_SCANLINE_MAX;
-//pub const MDA_MAX_CLOCK: usize = (MGA_XRES_MAX * MGA_YRES_MAX) as usize;
-pub const MDA_MAX_CLOCK: usize = 325140; // 16,257,000 / 50
+const MDA_YRES_MAX: u32 = 369; // Actual value works out to 325,140 / 882 or 368.639
 
 // Monitor sync position. The monitor will eventually perform an hsync at a fixed position
 // if hsync signal is late from the CGA card.
-const CGA_MONITOR_HSYNC_POS: u32 = 832;
-const CGA_MONITOR_HSYNC_WIDTH: u32 = 80;
-const CGA_MONITOR_VSYNC_POS: u32 = 246;
+const MDA_MONITOR_HSYNC_POS: u32 = 832;
+const MDA_MONITOR_HSYNC_WIDTH: u32 = 80;
+//const MDA_MONITOR_VSYNC_POS: u32 = 246;
 // Minimum scanline value after which we can perform a vsync. A vsync before this scanline will be ignored.
-const CGA_MONITOR_VSYNC_MIN: u32 = 0;
-const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
-const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
+const MDA_MONITOR_VSYNC_MIN: u32 = 0;
 
-const MODE_MATCH_MASK: u8 = 0b0001_1111;
-const MODE_HIRES_TEXT: u8 = 0b0000_0001;
-const MODE_GRAPHICS: u8 = 0b0000_0010;
-const MODE_BW: u8 = 0b0000_0100;
-const MODE_ENABLE: u8 = 0b0000_1000;
-const MODE_HIRES_GRAPHICS: u8 = 0b0001_0000;
-const MODE_BLINKING: u8 = 0b0010_0000;
+const MDA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
+const MDA_DEFAULT_CURSOR_FRAME_CYCLE: u64 = 8;
 
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
@@ -188,7 +163,6 @@ const CRTC_FONT_HEIGHT: u8 = 14;
 const CRTC_VBLANK_HEIGHT: u8 = 16;
 
 const CRTC_R0_HORIZONTAL_MAX: u32 = 97;
-const CRTC_SCANLINE_MAX: u32 = 368;
 
 // The MDA card decodes 11 address lines off the CRTC chip. This produces 2048 word addresses (4096 bytes)
 const MDA_TEXT_MODE_WRAP: usize = 0x07FF;
@@ -223,7 +197,7 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
 
 const CGA_DEBUG_COLOR: u8 = CgaColor::Magenta as u8;
 const CGA_DEBUG2_COLOR: u8 = CgaColor::RedBright as u8;
-const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::Blue as u8;
+const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::BlueBright as u8;
 const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
 const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
 const CGA_OVERSCAN_DEBUG_COLOR: u8 = CgaColor::Green as u8;
@@ -233,7 +207,7 @@ const CGA_FILL_COLOR: u8 = 4;
 const CGA_SCANLINE_COLOR: u8 = 13;
 */
 
-const CGA_CURSOR_MAX: usize = 32;
+const MDA_CURSOR_MAX: usize = 32;
 
 // Solid color spans of 8 pixels.
 // Used for drawing overscan fast with bytemuck
@@ -285,65 +259,65 @@ const CGA_DEBUG_U64: [u64; 16] = [
 // of each effect, although it will display more than a monitor would.
 // DEBUG will show the entire display field and will enable coloring of hblank and vblank
 // periods.
-const CGA_APERTURE_CROPPED_W: u32 = 640;
-const CGA_APERTURE_CROPPED_H: u32 = 200;
-const CGA_APERTURE_CROPPED_X: u32 = 0;
-const CGA_APERTURE_CROPPED_Y: u32 = 0;
+const MDA_APERTURE_CROPPED_W: u32 = 720;
+const MDA_APERTURE_CROPPED_H: u32 = 350;
+const MDA_APERTURE_CROPPED_X: u32 = 9;
+const MDA_APERTURE_CROPPED_Y: u32 = 4;
 
-const CGA_APERTURE_NORMAL_W: u32 = 704;
-const CGA_APERTURE_NORMAL_H: u32 = 224;
-const CGA_APERTURE_NORMAL_X: u32 = 80;
-const CGA_APERTURE_NORMAL_Y: u32 = 10;
+const MDA_APERTURE_NORMAL_W: u32 = 738;
+const MDA_APERTURE_NORMAL_H: u32 = 354;
+const MDA_APERTURE_NORMAL_X: u32 = 0;
+const MDA_APERTURE_NORMAL_Y: u32 = 0;
 
-const CGA_APERTURE_FULL_W: u32 = 768;
-const CGA_APERTURE_FULL_H: u32 = 236;
-const CGA_APERTURE_FULL_X: u32 = 48;
-const CGA_APERTURE_FULL_Y: u32 = 0;
+const MDA_APERTURE_FULL_W: u32 = 738;
+const MDA_APERTURE_FULL_H: u32 = 354;
+const MDA_APERTURE_FULL_X: u32 = 0;
+const MDA_APERTURE_FULL_Y: u32 = 0;
 
-const CGA_APERTURE_DEBUG_W: u32 = 882;
-const CGA_APERTURE_DEBUG_H: u32 = 368;
-const CGA_APERTURE_DEBUG_X: u32 = 0;
-const CGA_APERTURE_DEBUG_Y: u32 = 0;
+const MDA_APERTURE_DEBUG_W: u32 = MDA_XRES_MAX;
+const MDA_APERTURE_DEBUG_H: u32 = MDA_YRES_MAX;
+const MDA_APERTURE_DEBUG_X: u32 = 0;
+const MDA_APERTURE_DEBUG_Y: u32 = 0;
 
 const MDA_APERTURES: [DisplayAperture; 4] = [
     // 14Mhz CROPPED aperture
     DisplayAperture {
-        w: CGA_APERTURE_CROPPED_W,
-        h: CGA_APERTURE_CROPPED_H,
-        x: CGA_APERTURE_CROPPED_X,
-        y: CGA_APERTURE_CROPPED_Y,
+        w: MDA_APERTURE_CROPPED_W,
+        h: MDA_APERTURE_CROPPED_H,
+        x: MDA_APERTURE_CROPPED_X,
+        y: MDA_APERTURE_CROPPED_Y,
         debug: false,
     },
     // 14Mhz ACCURATE aperture
     DisplayAperture {
-        w: CGA_APERTURE_NORMAL_W,
-        h: CGA_APERTURE_NORMAL_H,
-        x: CGA_APERTURE_NORMAL_X,
-        y: CGA_APERTURE_NORMAL_Y,
+        w: MDA_APERTURE_NORMAL_W,
+        h: MDA_APERTURE_NORMAL_H,
+        x: MDA_APERTURE_NORMAL_X,
+        y: MDA_APERTURE_NORMAL_Y,
         debug: false,
     },
     // 14Mhz FULL aperture
     DisplayAperture {
-        w: CGA_APERTURE_FULL_W,
-        h: CGA_APERTURE_FULL_H,
-        x: CGA_APERTURE_FULL_X,
-        y: CGA_APERTURE_FULL_Y,
+        w: MDA_APERTURE_FULL_W,
+        h: MDA_APERTURE_FULL_H,
+        x: MDA_APERTURE_FULL_X,
+        y: MDA_APERTURE_FULL_Y,
         debug: false,
     },
     // 14Mhz DEBUG aperture
     DisplayAperture {
-        w: CGA_APERTURE_DEBUG_W,
-        h: CGA_APERTURE_DEBUG_H,
+        w: MDA_APERTURE_DEBUG_W,
+        h: MDA_APERTURE_DEBUG_H,
         x: 0,
         y: 0,
         debug: true,
     },
 ];
 
-const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", CGA_APERTURE_CROPPED_W, CGA_APERTURE_CROPPED_H);
-const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", CGA_APERTURE_NORMAL_W, CGA_APERTURE_NORMAL_H);
-const FULL_STRING: &str = &formatcp!("Full: {}x{}", CGA_APERTURE_FULL_W, CGA_APERTURE_FULL_H);
-const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", CGA_APERTURE_DEBUG_W, CGA_APERTURE_DEBUG_H);
+const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", MDA_APERTURE_CROPPED_W, MDA_APERTURE_CROPPED_H);
+const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", MDA_APERTURE_NORMAL_W, MDA_APERTURE_NORMAL_H);
+const FULL_STRING: &str = &formatcp!("Full: {}x{}", MDA_APERTURE_FULL_W, MDA_APERTURE_FULL_H);
+const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", MDA_APERTURE_DEBUG_W, MDA_APERTURE_DEBUG_H);
 
 const MDA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
@@ -451,7 +425,7 @@ pub struct MDACard {
     cursor_status: bool,
     cursor_slowblink: bool,
     cursor_blink_rate: f64,
-    cursor_data: [bool; CGA_CURSOR_MAX],
+    cursor_data: [bool; MDA_CURSOR_MAX],
     cursor_attr: u8,
 
     crtc_register_select_byte: u8,
@@ -482,12 +456,10 @@ pub struct MDACard {
     hborder: bool,
     vborder: bool,
 
-    cc_register: u8,
+    cc_register:   u8,
     clock_divisor: u8, // Clock divisor is 1 in high resolution text mode, 2 in all other modes
-    clock_mode: ClockingMode,
-    char_clock: u32,
-    char_clock_mask: u64,
-    char_clock_odd_mask: u64,
+    clock_mode:    ClockingMode,
+    char_clock:    u32,
 
     // Monitor stuff
     beam_x: u32,
@@ -584,7 +556,7 @@ impl MdaDefault for DisplayExtents {
             field_w: MDA_XRES_MAX,
             field_h: MDA_YRES_MAX,
             row_stride: MDA_XRES_MAX as usize,
-            double_scan: true,
+            double_scan: false,
             mode_byte: 0,
         }
     }
@@ -594,7 +566,7 @@ impl Default for MDACard {
     fn default() -> Self {
         Self {
             debug: false,
-            debug_draw: false,
+            debug_draw: true,
             cycles: 0,
             last_vsync_cycles: 0,
             cur_screen_cycles: 0,
@@ -637,8 +609,8 @@ impl Default for MDACard {
 
             cursor_status: false,
             cursor_slowblink: false,
-            cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
-            cursor_data: [false; CGA_CURSOR_MAX],
+            cursor_blink_rate: MDA_DEFAULT_CURSOR_BLINK_RATE,
+            cursor_data: [false; MDA_CURSOR_MAX],
             cursor_attr: 0,
 
             crtc_register_selected:    CRTCRegister::HorizontalTotal,
@@ -673,10 +645,8 @@ impl Default for MDACard {
             cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
             clock_divisor: DEFAULT_CLOCK_DIVISOR,
-            clock_mode: ClockingMode::Dynamic,
+            clock_mode: ClockingMode::Character,
             char_clock: DEFAULT_CHAR_CLOCK,
-            char_clock_mask: DEFAULT_CHAR_CLOCK_MASK,
-            char_clock_odd_mask: DEFAULT_CHAR_CLOCK_ODD_MASK,
             beam_x: 0,
             beam_y: 0,
             in_monitor_hsync: false,
@@ -905,7 +875,7 @@ impl MDACard {
                 self.cursor_data[i as usize] = true;
             }
 
-            for i in (self.crtc_cursor_start_line as usize)..CGA_CURSOR_MAX {
+            for i in (self.crtc_cursor_start_line as usize)..MDA_CURSOR_MAX {
                 // Second part of cursor is start_line->max
                 self.cursor_data[i] = true;
             }
@@ -1322,14 +1292,14 @@ impl MDACard {
 
         // Calculate byte offset
         let glyph_offset: usize = (row_masked as usize * MDA_FONT_SPAN) + glyph as usize;
-        (MDA_FONT[glyph_offset] & (0x80 >> col)) != 0
+        let pixel = (MDA_FONT[glyph_offset] & (0x80 >> col)) != 0;
+        pixel
     }
 
     /// Set the character attributes for the current character.
-    /// This applies to text mode only, but is computed in all modes at appropriate times.
     fn set_char_addr(&mut self) {
-        // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
-        let addr = (self.vma & MDA_TEXT_MODE_WRAP) << 1;
+        let addr = ((self.vma & MDA_TEXT_MODE_WRAP) << 1);
+        self.cur_char = self.mem[addr];
         self.cur_attr = self.mem[addr + 1];
 
         if self.mode_blinking {
@@ -1440,13 +1410,7 @@ impl MDACard {
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.debug_draw {
-                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
-                    self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
-                }
-                else {
-                    self.draw_solid_hchar(self.cc_overscan_color);
-                }
+                self.draw_solid_hchar(self.cc_overscan_color);
             }
             else {
                 self.draw_solid_hchar(CGA_DEBUG2_COLOR);
@@ -1454,8 +1418,8 @@ impl MDACard {
         }
 
         // Update position to next pixel and character column.
-        self.beam_x += 8 * self.clock_divisor as u32;
-        self.rba += 8 * self.clock_divisor as usize;
+        self.beam_x += MDA_CHAR_CLOCK as u32;
+        self.rba += MDA_CHAR_CLOCK as usize;
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
@@ -1669,12 +1633,7 @@ impl MDACard {
 
             // Implement a fixed hsync width from the monitor's perspective -
             // A wider programmed hsync width than these values shifts the displayed image to the right.
-            let hsync_target = if self.clock_divisor == 1 {
-                std::cmp::min(10, self.crtc_sync_width)
-            }
-            else {
-                5
-            };
+            let hsync_target = self.crtc_sync_width;
 
             // Do a horizontal sync
             if self.hsc_c3l == hsync_target {
@@ -1885,7 +1844,7 @@ impl MDACard {
 
         // Only do a vsync if we are past the minimum scanline #.
         // A monitor will refuse to vsync too quickly.
-        if self.beam_y > CGA_MONITOR_VSYNC_MIN {
+        if self.beam_y > MDA_MONITOR_VSYNC_MIN {
             // vblank remains set through the entire last line, including the right overscan of the new screen.
             // So we need to delay resetting vblank flag until then.
             //self.in_crtc_vblank = false;
@@ -1896,6 +1855,7 @@ impl MDACard {
 
                 //self.sink_cycles = delta_y * 912;
 
+                /*
                 if self.cycles & self.char_clock_mask != 0 {
                     log::error!(
                         "vsync out of phase with cclock: cycles: {} mask: {}",
@@ -1903,6 +1863,8 @@ impl MDACard {
                         self.char_clock_mask
                     );
                 }
+
+                 */
                 //log::trace!("sink_cycles: {}", self.sink_cycles);
             }
 
@@ -1921,6 +1883,11 @@ impl MDACard {
             // The mode could have changed several times per frame, but I am not sure how the composite rendering should
             // really handle that...
             self.extents.mode_byte = self.mode_byte;
+
+            // Toggle blink state. This is toggled every 8 frames by default.
+            if (self.frame_count % MDA_DEFAULT_CURSOR_FRAME_CYCLE) == 0 {
+                self.blink_state = !self.blink_state;
+            }
 
             // Swap the display buffers
             self.swap();

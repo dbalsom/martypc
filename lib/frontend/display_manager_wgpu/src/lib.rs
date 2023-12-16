@@ -255,7 +255,7 @@ impl DefaultResolver for WindowDefinition {
 impl WgpuDisplayManagerBuilder {
     pub fn build(
         config: &ConfigFileParams,
-        cards: Vec<VideoCardInterface>,
+        cards: Vec<VideoCardId>,
         scaler_presets: &Vec<ScalerPreset>,
         icon_path: Option<PathBuf>,
         icon_buf: Option<&[u8]>,
@@ -338,7 +338,7 @@ impl WgpuDisplayManagerBuilder {
         dm: &mut WgpuDisplayManager,
         main_window: bool,
         window_def: &WindowDefinition,
-        cards: &Vec<VideoCardInterface>,
+        cards: &Vec<VideoCardId>,
         gui_options: &DisplayManagerGuiOptions,
         icon: Option<Icon>,
     ) -> Result<(), Error> {
@@ -350,8 +350,8 @@ impl WgpuDisplayManagerBuilder {
 
         if let Some(w_card_id) = resolved_def.card_id {
             if w_card_id < cards.len() + 1 {
-                card_id_opt = Some(cards[w_card_id].id);
-                card_string.push_str(&format!("{:?}", cards[w_card_id].id.vtype))
+                card_id_opt = Some(cards[w_card_id]);
+                card_string.push_str(&format!("{:?}", cards[w_card_id].vtype))
             }
             card_string.push_str(&format!("({})", w_card_id));
         }

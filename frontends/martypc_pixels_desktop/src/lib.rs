@@ -495,7 +495,7 @@ pub fn run() {
     );
 
     // Get a list of video devices from machine.
-    let cardlist = machine.enumerate_video_cards();
+    let cardlist = machine.bus().enumerate_videocards();
 
     let gui_options = DisplayManagerGuiOptions {
         enabled: !config.gui.disabled,

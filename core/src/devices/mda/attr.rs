@@ -29,8 +29,6 @@
     Table of attributes for MDA emulation.
 */
 
-use crate::devices::mda::*;
-
 /// MDA attribute table. Each entry is a tuple of (foreground, background)
 pub const MDA_ATTR_TABLE: [(u8, u8); 256] = [
     (0, 0),

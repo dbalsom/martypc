@@ -490,8 +490,17 @@ impl Machine {
         self.cpu.bus_mut().primary_video_mut()
     }
 
+    /*
     pub fn enumerate_video_cards(&mut self) -> Vec<VideoCardInterface> {
         let mut vcivec = Vec::new();
+
+        self.cpu.bus_mut().for_each_videocard(|vci| {
+            let vtype = vci.card.get_video_type();
+            vcivec.push(VideoCardInterface {
+                card: vci.card,
+                id:   VideoCardId { idx: vci.id.idx, vtype },
+            });
+        });
 
         if let Some(card) = self.cpu.bus_mut().primary_video_mut() {
             let vtype = card.get_video_type();
@@ -503,6 +512,8 @@ impl Machine {
 
         vcivec
     }
+
+     */
 
     pub fn cpu(&self) -> &Cpu {
         &self.cpu

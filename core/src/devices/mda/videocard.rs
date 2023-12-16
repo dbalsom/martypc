@@ -72,6 +72,10 @@ impl VideoCard for MDACard {
                 log::debug!("VideoOption::EnableSnow set to: {}", state);
                 self.enable_snow = state;
             }
+            VideoOption::DebugDraw(state) => {
+                log::debug!("VideoOption::DebugDraw set to: {}", state);
+                self.debug_draw = state;
+            }
         }
     }
 
@@ -418,10 +422,9 @@ impl VideoCard for MDACard {
             if (self.cycles + self.pixel_clocks_owed as u64) % MDA_CHAR_CLOCK as u64 != 0 {
                 log::error!(
                     "pixel_clocks_owed incorrect: does not put clock back in phase. \
-                    cycles: {} owed: {} mask: {:X}",
+                    cycles: {} owed: {}",
                     self.cycles,
                     self.pixel_clocks_owed,
-                    self.char_clock_mask
                 );
             }
         }
@@ -449,11 +452,10 @@ impl VideoCard for MDACard {
             ClockingMode::Character | ClockingMode::Dynamic => {
                 if self.cycles % MDA_CHAR_CLOCK as u64 != 0 {
                     log::warn!(
-                        "out of phase with char clock: {} mask: {:02X} \
+                        "out of phase with char clock: {}\
                         cycles: {} out of phase: {} \
                         cycles: {} advanced: {} owed: {} accum: {} tick_ct: {}",
                         self.char_clock,
-                        self.char_clock_mask,
                         self.cycles,
                         self.cycles % self.char_clock as u64,
                         orig_cycles,
@@ -554,7 +556,7 @@ impl VideoCard for MDACard {
         for _ in 0..rows {
             let mut line = String::new();
             line.extend(
-                self.mem[row_addr..(row_addr + (columns * 2) & 0x3fff)]
+                self.mem[row_addr..(row_addr + (columns * 2) & 0x1fff)]
                     .iter()
                     .step_by(2)
                     .filter_map(|&byte| {

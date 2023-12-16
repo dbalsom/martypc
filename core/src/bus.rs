@@ -1407,6 +1407,8 @@ impl BusInterface {
             self.videocard_ids.push(video_id);
         }
 
+        log::debug!("Created {} video cards.", self.videocards.len());
+
         self.machine_desc = Some(machine_desc.clone());
     }
 
@@ -2075,34 +2077,33 @@ impl BusInterface {
         F: FnMut(VideoCardInterface),
     {
         // For the moment we only support a primary video card.
-        for (_vid, video_dispatch) in self.videocards.iter_mut() {
+        for (vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
+                VideoCardDispatch::Mda(mda) => f(VideoCardInterface {
+                    card: Box::new(mda as &mut dyn VideoCard),
+                    id:   *vid,
+                }),
                 VideoCardDispatch::Cga(cga) => f(VideoCardInterface {
                     card: Box::new(cga as &mut dyn VideoCard),
-                    id:   VideoCardId {
-                        idx:   0,
-                        vtype: VideoType::CGA,
-                    },
+                    id:   *vid,
                 }),
                 #[cfg(feature = "ega")]
                 VideoCardDispatch::Ega(ega) => f(VideoCardInterface {
                     card: Box::new(ega as &mut dyn VideoCard),
-                    id:   VideoCardId {
-                        idx:   0,
-                        vtype: VideoType::EGA,
-                    },
+                    id:   *vid,
                 }),
                 #[cfg(feature = "vga")]
                 VideoCardDispatch::Vga(vga) => f(VideoCardInterface {
                     card: Box::new(vga as &mut dyn VideoCard),
-                    id:   VideoCardId {
-                        idx:   0,
-                        vtype: VideoType::VGA,
-                    },
+                    id:   *vid,
                 }),
                 _ => {}
             };
         }
+    }
+
+    pub fn enumerate_videocards(&self) -> Vec<VideoCardId> {
+        self.videocard_ids.clone()
     }
 
     pub fn keyboard_mut(&mut self) -> &mut Keyboard {

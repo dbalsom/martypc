@@ -547,7 +547,7 @@ impl VideoRenderer {
 
         for y in 0..max_y {
             let dbuf_row_offset = (y + vert_adjust) as usize * extents.row_stride;
-            let frame_row0_offset = ((y * 2) * w) as usize;
+            let frame_row0_offset = (y * w) as usize;
 
             for x in 0..max_x {
                 let fo0 = frame_row0_offset + x as usize;

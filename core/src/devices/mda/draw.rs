@@ -35,20 +35,10 @@ use crate::devices::mda::*;
 impl MDACard {
     pub fn draw_overscan_pixel(&mut self) {
         self.buf[self.back_buf][self.rba] = self.cc_overscan_color;
-
-        if self.clock_divisor == 2 {
-            // If we are in a 320 column mode, duplicate the last pixel drawn
-            self.buf[self.back_buf][self.rba + 1] = self.cc_overscan_color;
-        }
     }
 
     pub fn draw_pixel(&mut self, color: u8) {
-        self.buf[self.back_buf][self.rba] = color & 0x0F;
-
-        if self.clock_divisor == 2 {
-            // If we are in a 320 column mode, duplicate the last pixel drawn
-            self.buf[self.back_buf][self.rba + 1] = color & 0x0F;
-        }
+        self.buf[self.back_buf][self.rba] = color;
     }
 
     /*
@@ -63,38 +53,13 @@ impl MDACard {
     }
     */
 
-    /// Draw a character (8 or 16 pixels) using a single solid color.
-    /// Since all pixels are the same we can draw 64 bits at a time.
-    #[inline]
-    pub fn draw_solid_char(&mut self, color: u8) {
-        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-
-        frame_u64[self.rba >> 3] = CGA_COLORS_U64[(color & 0x0F) as usize];
-        if self.clock_divisor == 2 {
-            frame_u64[(self.rba >> 3) + 1] = CGA_COLORS_U64[(color & 0x0F) as usize];
-        }
-    }
-
     /// Draw a character in hires mode (8 pixels) using a single solid color.
     /// Since all pixels are the same we can draw 64 bits at a time.
     #[inline]
     pub fn draw_solid_hchar(&mut self, color: u8) {
-        let frame_addr = self.rba >> 3;
-        // If we are 64-bit aligned, draw 64 bits at a time.
-        /*
-        if self.rba % 8 == 0 {
-            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-            frame_u64[frame_addr] = CGA_COLORS_U64[(color & 0x0F) as usize];
-            // Draw 9th col.
-            self.buf[self.back_buf][self.rba + 9] = color;
-        }
-        else {
-
-         */
         for i in 0..MDA_CHAR_CLOCK as usize {
             self.buf[self.back_buf][self.rba + i] = color;
         }
-        //}
     }
 
     /// Draw a single character glyph column pixel in text mode, doubling the pixel if
@@ -130,11 +95,6 @@ impl MDACard {
         }
 
         self.buf[self.back_buf][self.rba] = new_pixel;
-
-        if self.clock_divisor == 2 {
-            // If we are in a 320 column mode, duplicate the last pixel drawn
-            self.buf[self.back_buf][self.rba + 1] = new_pixel;
-        }
     }
 
     pub fn draw_text_mode_hchar_slow(&mut self) {
@@ -170,12 +130,10 @@ impl MDACard {
                 new_pixel = 0;
             }
 
-            self.buf[self.back_buf][self.rba] = new_pixel;
-            self.rba += 1;
+            self.buf[self.back_buf][self.rba + hdot as usize] = new_pixel;
         }
         // TODO: Properly handle 9th column here.
-        self.buf[self.back_buf][self.rba] = 0;
-        self.rba += 1;
+        self.buf[self.back_buf][self.rba + (MDA_CHAR_CLOCK as usize) - 1] = self.cur_bg;
     }
 
     /*

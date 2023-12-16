@@ -165,6 +165,7 @@ pub struct VideoCardInterface<'a> {
 // Video options that can be sent to a VideoCard device. Not all adapters will support
 // each option. For example, CGA snow is of course only specific to the CGA card.
 pub enum VideoOption {
+    DebugDraw(bool),
     EnableSnow(bool),
 }
 

@@ -72,6 +72,10 @@ impl VideoCard for CGACard {
                 log::debug!("VideoOption::EnableSnow set to: {}", state);
                 self.enable_snow = state;
             }
+            VideoOption::DebugDraw(state) => {
+                log::debug!("VideoOption::DebugDraw set to: {}", state);
+                self.debug_draw = state;
+            }
         }
     }
 
@@ -582,8 +586,6 @@ impl VideoCard for CGACard {
 
     fn get_text_mode_strings(&self) -> Vec<String> {
         let mut strings = Vec::new();
-
-        let mut line = String::new();
 
         let start_addr = self.crtc_start_address;
         let columns = self.crtc_horizontal_displayed as usize;

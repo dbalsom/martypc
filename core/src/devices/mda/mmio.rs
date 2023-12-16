@@ -64,7 +64,7 @@ impl MemoryMappedDevice for MDACard {
             self.catch_up(DeviceRunTimeUnit::SystemTicks(cycles * 3));
         }*/
 
-        let a_offset = (address & MDA_MEM_MASK) - MDA_MEM_ADDRESS;
+        let a_offset = (address & MDA_MEM_MASK);
         if a_offset < MDA_MEM_SIZE {
             // Do snow every other hchar
             if self.cycles & 0b1000 == 0 {
@@ -89,19 +89,19 @@ impl MemoryMappedDevice for MDACard {
     }
 
     fn mmio_peek_u8(&self, address: usize) -> u8 {
-        let a_offset = (address & MDA_MEM_MASK) - MDA_MEM_ADDRESS;
+        let a_offset = (address & MDA_MEM_MASK);
 
         self.mem[a_offset & 0x0FFF]
     }
 
     fn mmio_peek_u16(&self, address: usize) -> u16 {
-        let a_offset = (address & MDA_MEM_MASK) - MDA_MEM_ADDRESS;
+        let a_offset = (address & MDA_MEM_MASK);
 
         (self.mem[a_offset & 0x0FFF] as u16) << 8 | self.mem[(a_offset + 1) & 0x0FFF] as u16
     }
 
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
-        let a_offset = (address & MDA_MEM_MASK) - MDA_MEM_ADDRESS;
+        let a_offset = (address & MDA_MEM_MASK);
         if a_offset < MDA_MEM_SIZE {
             // Save bus parameters for snow emulation
             self.last_bus_addr = a_offset;
