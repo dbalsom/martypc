@@ -38,8 +38,13 @@ icon.png
 !/tests/tools
 
 # Ignore most files in /install directory unless specified
+/install/*.zip
 /install/roms/*
 /install/hdd/*
+/install/floppy/*
+/install/dumps/*
+/install/screenshots/*
+/install/traces/*
 
 # Files to include for distribution
 !/install/roms/readme.md
