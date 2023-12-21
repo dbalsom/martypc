@@ -1,0 +1,438 @@
+# machineconfig.toml
+# Main Machine Configuration file for MartyPC.
+
+# MartyPC will search all *.toml files in 'machine' directories for machine
+# configurations, so if you create a custom machine configuration, you can 
+# put it in a separate file.
+#
+# ----------------------------------------------------------------------------
+# Defining a Machine Configuration  
+# Valid Machine types:
+#  "Ibm5150"
+#  "Ibm5160"
+#
+# Valid Floppy Disk Controller types:
+#  "IbmNec"
+#
+# Valid floppy Drive Types:
+#  "360k"
+#  "720k"
+#  "1.2m"
+#  "1.44m"
+
+# Valid Hard Disk Controller Types:
+#  "IbmXebec"
+#
+# Valid Serial Controller Types:
+#  "IbmAsync"
+#
+# Conventional memory amount may be different than value specified due to MMIO
+# optimizations. I recommend specifying a value in 0x10000 increments.
+# ----------------------------------------------------------------------------
+
+[[machine]]
+name = "ibm5150"
+type = "Ibm5150"
+rom_set = "auto"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "360k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "360k"   
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "MDA"
+    clock_mode = "Character"
+
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"
+
+[[machine]]
+name = "ibm5150_hdd"
+type = "Ibm5150"
+rom_set = "auto"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "360k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "360k"   
+
+    # Hard disk controller
+    [machine.hdc]
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        type = "Mfm"
+        vhd = "dos330.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #vhd = "games.vhd"
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "MDA"
+    clock_mode = "Character"
+
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"
+
+[[machine]]
+name = "ibm5160"
+type = "Ibm5160"
+rom_set = "auto"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "720k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "720k"   
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Dynamic"
+
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"    
+
+[[machine]]
+name = "ibm5160_hdd"
+type = "Ibm5160"
+rom_set = "auto"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "720k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "720k"   
+
+    # Hard disk controller
+    [machine.hdc]
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        type = "Mfm"
+        vhd = "dos330.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #vhd = "games.vhd"
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Dynamic"
+
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"    
+
+[[machine]]
+name = "ibm5160_hdd_ega"
+type = "Ibm5160"
+rom_set = "auto"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "720k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "720k"   
+
+    # Hard disk controller
+    [machine.hdc]
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        type = "Mfm"
+        vhd = "dos330.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #vhd = "games.vhd"
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "EGA"
+    clock_mode = "Dynamic"
+
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"    
+
+[[machine]]
+name = "generic_xt"
+type = "Ibm5160"
+rom_set = "glabios_xt"
+speaker = true
+
+    [machine.memory]
+    # Conventional memory in increments of 64k
+    conventional.size = 10
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "360k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "360k"   
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Dynamic"
+    
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"    
+    
+    [machine.serialmouse]
+    type = "Microsoft"
+    port = 0
+    
+
+[[machine]]
+name = "generic_xt_hdd"
+type = "Ibm5160"
+rom_set = "glabios_xt"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0xB0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "360k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "360k"   
+
+    # Hard disk controller
+    [machine.hdc]
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        type = "Mfm"
+        vhd = "dos330.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #type = "Mfm"
+        #vhd = "games.vhd"
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Dynamic"
+    
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"    
+    
+    [machine.serialmouse]
+    type = "Microsoft"
+    port = 0
+    
+[[machine]]
+name = "generic_xt_hdd_ega"
+type = "Ibm5160"
+rom_set = "glabios_xt"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0xB0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "360k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "360k"   
+
+    # Hard disk controller
+    [machine.hdc]
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        type = "Mfm"
+        vhd = "dos330.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #type = "Mfm"
+        #vhd = "games.vhd"
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "EGA"
+    clock_mode = "Character"
+    
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"
+    
+    [machine.serialmouse]
+    type = "Microsoft"
+    port = 0
+    

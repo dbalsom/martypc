@@ -31,7 +31,7 @@
 use marty_core::{
     floppy_manager::FloppyManager,
     machine::{ExecutionControl, ExecutionState, Machine},
-    machine_manager::MACHINE_DESCS,
+    machine_config::MACHINE_DESCS,
     rom_manager::RomManager,
     sound::SoundPlayer,
 };
@@ -43,6 +43,9 @@ use marty_core::{
 };
 
 pub fn run_headless(config: &ConfigFileParams, rom_manager: RomManager, _floppy_manager: FloppyManager) {
+
+    /*
+
     // Init sound
     // The cpal sound library uses generics to initialize depending on the SampleFormat type.
     // On Windows at least a sample type of f32 is typical, but just in case...
@@ -138,6 +141,7 @@ pub fn run_headless(config: &ConfigFileParams, rom_manager: RomManager, _floppy_
         // This should really return a Result
         machine.run(1000, &mut exec_control);
     }
+    */
 
     //std::process::exit(0);
 }

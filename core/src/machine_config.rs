@@ -24,12 +24,21 @@
 
     --------------------------------------------------------------------------
 
-    machine_manager.rs
+    machine_config.rs
 
-    This module manages machine configuration defintions.
+    This module manages machine configuration definitions.
 
 */
 
+use crate::machine_types::{
+    FdcType,
+    FloppyDriveType,
+    HardDiskControllerType,
+    HardDriveType,
+    MachineType,
+    SerialControllerType,
+    SerialMouseType,
+};
 use lazy_static::lazy_static;
 use std::{collections::HashMap, str::FromStr};
 
@@ -47,28 +56,6 @@ use serde_derive::Deserialize;
 // See https://www.vogons.org/viewtopic.php?t=55049
 pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5 / 11.0;
 pub const PIT_DIVISOR: u32 = 12;
-
-#[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
-pub enum MachineType {
-    FUZZER_8088,
-    IBM_PC_5150,
-    IBM_XT_5160,
-}
-
-impl FromStr for MachineType {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, String>
-    where
-        Self: Sized,
-    {
-        match s {
-            "IBM_PC_5150" => Ok(MachineType::IBM_PC_5150),
-            "IBM_XT_5160" => Ok(MachineType::IBM_XT_5160),
-            _ => Err("Bad value for model".to_string()),
-        }
-    }
-}
 
 /// This enum is intended to represent any specific add-on device type
 /// that the bus needs to know about.
@@ -119,12 +106,30 @@ pub enum BusType {
     Isa16,
 }
 
+lazy_static! {
+    /// This hashmap defines ROM feature requirements for the base machine types.
+    /// The key is the machine type, and the value is a vector of ROM features.
+    static ref BASE_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
+        let mut m = HashMap::new();
+        m.insert(MachineType::Fuzzer8088, vec![]);
+        m.insert(MachineType::Ibm5150, vec!["ibm5150", "ibm_basic"]);
+        m.insert(MachineType::Ibm5160, vec!["ibm5160", "ibm_basic"]);
+        m
+    };
+}
+
+pub fn get_base_rom_features(machine_type: MachineType) -> Option<&'static Vec<&'static str>> {
+    BASE_ROM_FEATURES.get(&machine_type)
+}
+
+/// Defines the basic architecture of a machine. These are the fixed components on a machine's motherboard or otherwise
+/// non-optional components common to all machines of its type. Optional components are defined in a machine
+/// configuration file.
 #[derive(Copy, Clone, Debug)]
 pub struct MachineDescriptor {
     pub machine_type: MachineType,
     pub system_crystal: f64,        // The main system crystal speed in MHz.
-    pub timer_crystal: Option<f64>, // The main timer crystal speed in MHz. On PC/AT, there is a separate timer
-    // crystal to run the PIT at the same speed as PC/XT.
+    pub timer_crystal: Option<f64>, // The main timer crystal speed in MHz. On PC/AT, there is a separate timer crystal to run the PIT at the same speed as PC/XT.
     pub bus_crystal: f64,
     pub cpu_type: CpuType,
     pub cpu_factor: ClockFactor, // Specifies the CPU speed in either a divisor or multiplier of system crystal.
@@ -137,20 +142,17 @@ pub struct MachineDescriptor {
     pub pit_type: PitType,
     pub pic_type: PicType,
     pub dma_type: DmaType,
-    pub conventional_ram: u32,
-    pub conventional_ram_speed: f64,
-    pub num_floppies: u32,
-    pub serial_ports: bool, // TODO: Eventually add a way to specify number of ports and base IO
-    pub serial_mouse: bool, // TODO: Allow specifying which port mouse is connected to?
 }
 
 lazy_static! {
+    /// Eventually we will want to move these machine definitions into a config file
+    /// so that people can define custom architectures.
     pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
         let map = HashMap::from([
             (
-                MachineType::IBM_PC_5150,
+                MachineType::Ibm5150,
                 MachineDescriptor {
-                    machine_type: MachineType::IBM_PC_5150,
+                    machine_type: MachineType::Ibm5150,
                     system_crystal: IBM_PC_SYSTEM_CLOCK,
                     timer_crystal: None,
                     bus_crystal: IBM_PC_SYSTEM_CLOCK,
@@ -165,17 +167,12 @@ lazy_static! {
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,
                     dma_type: DmaType::Single,
-                    conventional_ram: 0x100000,
-                    conventional_ram_speed: 200.0,
-                    num_floppies: 2,
-                    serial_ports: true,
-                    serial_mouse: true,
                 },
             ),
             (
-                MachineType::IBM_XT_5160,
+                MachineType::Ibm5160,
                 MachineDescriptor {
-                    machine_type: MachineType::IBM_XT_5160,
+                    machine_type: MachineType::Ibm5160,
                     system_crystal: IBM_PC_SYSTEM_CLOCK,
                     timer_crystal: None,
                     bus_crystal: IBM_PC_SYSTEM_CLOCK,
@@ -190,14 +187,97 @@ lazy_static! {
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,
                     dma_type: DmaType::Single,
-                    conventional_ram: 0x100000,
-                    conventional_ram_speed: 200.0,
-                    num_floppies: 2,
-                    serial_ports: true,
-                    serial_mouse: true,
                 },
             ),
         ]);
         map
     };
+}
+
+pub fn get_machine_descriptor(machine_type: MachineType) -> Option<&'static MachineDescriptor> {
+    MACHINE_DESCS.get(&machine_type)
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct MemoryConfig {
+    pub conventional: ConventionalMemoryConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ConventionalMemoryConfig {
+    pub size: u32,
+    pub wait_states: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct KeyboardConfig {
+    #[serde(rename = "type")]
+    pub kb_type: KeyboardType,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialMouseConfig {
+    #[serde(rename = "type")]
+    pub mouse_type: SerialMouseType,
+    pub port: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct VideoCardConfig {
+    #[serde(rename = "type")]
+    pub video_type: VideoType,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialPortConfig {
+    pub io_base: u32,
+    pub irq: u32,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SerialControllerConfig {
+    #[serde(rename = "type")]
+    pub sc_type: SerialControllerType,
+    pub port:    Vec<SerialPortConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FloppyControllerConfig {
+    #[serde(rename = "type")]
+    pub fdc_type: FdcType,
+    pub drive:    Vec<FloppyDriveConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FloppyDriveConfig {
+    #[serde(rename = "type")]
+    pub fd_type: FloppyDriveType,
+    pub image:   Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct HardDriveControllerConfig {
+    #[serde(rename = "type")]
+    pub hdc_type: HardDiskControllerType,
+    pub drive:    Vec<HardDriveConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct HardDriveConfig {
+    #[serde(rename = "type")]
+    pub hd_type: HardDriveType,
+    pub vhd: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MachineConfiguration {
+    pub speaker: bool,
+    pub machine_type: MachineType,
+    pub memory: MemoryConfig,
+    pub keyboard: Option<KeyboardConfig>,
+    pub serial_mouse: Option<SerialMouseConfig>,
+    pub video: Vec<VideoCardConfig>,
+    pub serial: Vec<SerialControllerConfig>,
+    pub fdc: Option<FloppyControllerConfig>,
+    pub hdc: Option<HardDriveControllerConfig>,
 }

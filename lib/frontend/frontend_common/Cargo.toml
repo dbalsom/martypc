@@ -14,13 +14,18 @@ crate-type = ["cdylib", "rlib"]
 marty_common = { path = "../../common" }
 display_backend_trait = { path = "../../backend/display_backend_trait" }
 videocard_renderer = { path = "../videocard_renderer" }
-#marty_color = { path = "../marty_color" }
 marty_core = { path = "../../../core" }
 anyhow.workspace = true
 serde = { workspace = true, features = ["derive"] }
+regex = "1.10"
+md5 = "0.7.0"
+
 # feature dependencies:
 wgpu = { workspace = true, optional = true }
 pixels = { workspace = true, optional = true }
+log = "0.4.20"
+toml = "0.5.11"
+serde_derive.workspace = true
 
 [features]
 use_wgpu = ["wgpu", "pixels"]

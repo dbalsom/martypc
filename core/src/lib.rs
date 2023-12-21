@@ -30,6 +30,8 @@
 
 */
 
+extern crate core;
+
 pub mod devices;
 
 pub mod breakpoints;
@@ -44,7 +46,7 @@ pub mod floppy_manager;
 pub mod interrupt;
 pub mod keys;
 pub mod machine;
-pub mod machine_manager;
+pub mod machine_config;
 pub mod memerror;
 pub mod rom_manager;
 pub mod sound;
@@ -64,3 +66,4 @@ pub mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
 #[macro_use]
 pub mod arduino8088_validator;
+pub mod machine_types;

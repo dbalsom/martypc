@@ -29,7 +29,7 @@ use marty_core::{
     input::{self, MouseButton},
     lib::{self, *},
     machine::{self, ExecutionControl, ExecutionState, Machine, MachineState},
-    machine_manager::MACHINE_DESCS,
+    machine_config::MACHINE_DESCS,
     rom_manager::{RawRomDescriptor, RomManager},
     sound::SoundPlayer,
     syntax_token::SyntaxToken,

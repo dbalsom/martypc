@@ -35,6 +35,7 @@
 */
 
 #![allow(dead_code)]
+use anyhow::Error;
 use std::{
     collections::{HashMap, VecDeque},
     fmt,
@@ -48,7 +49,7 @@ use crate::{bytequeue::*, coreconfig::VideoCardDefinition, cpu_808x::*};
 use crate::{
     devices::keyboard::KeyboardType,
     machine::KeybufferEntry,
-    machine_manager::MachineDescriptor,
+    machine_config::MachineDescriptor,
     syntax_token::SyntaxToken,
     videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType},
 };
@@ -79,6 +80,8 @@ use crate::{
         cga::{self, CGACard},
         mda::{self, MDACard},
     },
+    machine_config::MachineConfiguration,
+    machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
     memerror::MemError,
 };
 
@@ -1244,18 +1247,19 @@ impl BusInterface {
 
     pub fn install_devices(
         &mut self,
+        machine_desc: &MachineDescriptor,
+        machine_config: &MachineConfiguration,
         videocards: Vec<VideoCardDefinition>,
         clock_mode: ClockingMode,
-        machine_desc: &MachineDescriptor,
         _video_trace: TraceLogger,
         video_frame_debug: bool,
-    ) {
+    ) -> Result<(), Error> {
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
             self.ppi = Some(Ppi::new(
                 machine_desc.machine_type,
                 videocards.iter().map(|vcd| vcd.video_type).collect(),
-                machine_desc.num_floppies,
+                2,
             ));
             // Add PPI ports to io_map
             let port_list = self.ppi.as_mut().unwrap().port_list();
@@ -1313,29 +1317,47 @@ impl BusInterface {
             .extend(port_list.into_iter().map(|p| (p, IoDeviceType::FloppyController)));
         self.fdc = Some(fdc);
 
-        // Create HDC. This should probably be specified in the MachineDesc with an option to override it
-        // (Such as using a XTIDE instead of Xebec on PC & XT, perhaps)
-        let hdc = HardDiskController::new(DRIVE_TYPE2_DIP);
-        // Add HDC ports to io_map
-        let port_list = hdc.port_list();
-        self.io_map
-            .extend(port_list.into_iter().map(|p| (p, IoDeviceType::HardDiskController)));
-        self.hdc = Some(hdc);
+        // Create a HardDiskController if specified
+        if let Some(hdc_config) = &machine_config.hdc {
+            match hdc_config.hdc_type {
+                HardDiskControllerType::IbmXebec => {
+                    // TODO: Get the correct drive type from the specified VHD...?
+                    let hdc = HardDiskController::new(DRIVE_TYPE2_DIP);
+                    // Add HDC ports to io_map
+                    let port_list = hdc.port_list();
+                    self.io_map
+                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::HardDiskController)));
+                    self.hdc = Some(hdc);
+                }
+            }
+        }
 
-        // Create serial port.
-        let serial = SerialPortController::new();
-        // Add Serial Controller ports to io_map
-        let port_list = serial.port_list();
-        self.io_map
-            .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Serial)));
-        self.serial = Some(serial);
+        // Create a Serial card if specified
+        if let Some(serial_config) = machine_config.serial.get(0) {
+            match serial_config.sc_type {
+                SerialControllerType::IbmAsync => {
+                    let serial = SerialPortController::new();
+                    // Add Serial Controller ports to io_map
+                    let port_list = serial.port_list();
+                    self.io_map
+                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Serial)));
+                    self.serial = Some(serial);
+                }
+            }
+        }
 
-        // Create mouse.
-        let mouse = Mouse::new();
-        self.mouse = Some(mouse);
+        // Create a Serial mouse if specified
+        if let Some(serial_mouse_config) = &machine_config.serial_mouse {
+            match serial_mouse_config.mouse_type {
+                SerialMouseType::Microsoft => {
+                    let mouse = Mouse::new();
+                    self.mouse = Some(mouse);
+                }
+            }
+        }
 
         // Create video cards
-        for (i, card) in videocards.iter().enumerate() {
+        for (i, card) in machine_config.video.iter().enumerate() {
             let video_dispatch;
             let video_id = VideoCardId {
                 idx:   i,
@@ -1407,9 +1429,8 @@ impl BusInterface {
             self.videocard_ids.push(video_id);
         }
 
-        log::debug!("Created {} video cards.", self.videocards.len());
-
         self.machine_desc = Some(machine_desc.clone());
+        Ok(())
     }
 
     /// Return whether NMI is enabled.

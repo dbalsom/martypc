@@ -35,9 +35,10 @@
 */
 use log;
 
+use anyhow::{anyhow, Error};
 use std::{
     cell::Cell,
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
@@ -60,14 +61,18 @@ use crate::{
         ppi::PpiStringState,
     },
     keys::MartyKey,
-    machine_manager::{MachineDescriptor, MachineType},
+    machine_config::MachineDescriptor,
+    machine_types::MachineType,
     rom_manager::RomManager,
     sound::{SoundPlayer, BUFFER_MS, VOLUME_ADJUST},
     tracelogger::TraceLogger,
     videocard::{VideoCard, VideoCardInterface, VideoCardState, VideoOption, VideoType},
 };
 
-use crate::videocard::{ClockingMode, VideoCardId};
+use crate::{
+    machine_config::{get_machine_descriptor, MachineConfiguration},
+    videocard::{ClockingMode, VideoCardId},
+};
 use ringbuf::{Consumer, Producer, RingBuffer};
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -198,13 +203,126 @@ pub struct PitData {
     next_sample_size: usize,
 }
 
+#[derive(Clone, Default, Debug)]
+pub struct MachineRomEntry {
+    pub md5:  String,
+    pub addr: u32,
+    pub data: Vec<u8>,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct MachineCheckpoint {
+    pub addr: u32,
+    pub desc: String,
+}
+
+#[derive(Clone, Default, Debug)]
+pub struct MachinePatch {
+    pub trigger: u32,
+    pub addr:    u32,
+    pub data:    Vec<u8>,
+}
+
+#[derive(Default, Debug)]
+pub struct MachineRomManifest {
+    pub checkpoints: Vec<MachineCheckpoint>,
+    pub patches: Vec<MachinePatch>,
+    pub roms: Vec<MachineRomEntry>,
+}
+
+impl MachineRomManifest {
+    pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+pub type MachineResetCallback = Box<dyn Fn(&mut MachineRomManifest)>;
+
+#[derive(Default)]
+pub struct MachineBuilder<'a> {
+    mtype: Option<MachineType>,
+    descriptor: Option<MachineDescriptor>,
+    core_config: Option<Box<&'a dyn CoreConfig>>,
+    machine_config: Option<MachineConfiguration>,
+    rom_manifest: Option<MachineRomManifest>,
+    trace_mode: TraceMode,
+    sound_player: Option<SoundPlayer>,
+    reset_callback: Option<MachineResetCallback>,
+}
+
+impl<'a> MachineBuilder<'a> {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn with_core_config(mut self, config: Box<&'a dyn CoreConfig>) -> Self {
+        log::debug!("{:?}", config.get_base_dir());
+        self.core_config = Some(config);
+        self
+    }
+
+    pub fn with_machine_config(mut self, config: MachineConfiguration) -> Self {
+        let mtype = config.machine_type;
+        self.mtype = Some(mtype);
+        self.descriptor = Some(get_machine_descriptor(mtype).unwrap().clone());
+        self.machine_config = Some(config);
+        self
+    }
+
+    pub fn with_roms(mut self, manifest: MachineRomManifest) -> Self {
+        self.rom_manifest = Some(manifest);
+        self
+    }
+
+    pub fn with_trace_mode(mut self, trace_mode: TraceMode) -> Self {
+        self.trace_mode = trace_mode;
+        self
+    }
+
+    pub fn with_sound_player(mut self, sound_player: Option<SoundPlayer>) -> Self {
+        self.sound_player = sound_player;
+        self
+    }
+
+    pub fn with_reload_callback(mut self, callback: Option<MachineResetCallback>) -> Self {
+        self.reset_callback = callback;
+        self
+    }
+
+    pub fn build(self) -> Result<Machine, Error> {
+        if self.core_config.is_some() {
+            log::debug!("Not none!");
+        }
+
+        let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
+
+        let machine_config = self
+            .machine_config
+            .ok_or(anyhow!("No machine configuration specified"))?;
+        let machine_type = self.mtype.ok_or(anyhow!("No machine type specified"))?;
+        let machine_desc = self.descriptor.ok_or(anyhow!("Failed to get machine description"))?;
+        let rom_manifest = self.rom_manifest.ok_or(anyhow!("No ROM manifest specified!"))?;
+
+        Ok(Machine::new(
+            *core_config,
+            machine_config,
+            machine_type,
+            machine_desc,
+            self.trace_mode,
+            self.sound_player,
+            rom_manifest,
+            self.reset_callback,
+        ))
+    }
+}
+
 #[allow(dead_code)]
 pub struct Machine {
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
     state: MachineState,
-    sound_player: SoundPlayer,
-    rom_manager: RomManager,
+    sound_player: Option<SoundPlayer>,
+    rom_manifest: MachineRomManifest,
     load_bios: bool,
     cpu: Cpu,
     speaker_buf_producer: Producer<u8>,
@@ -217,17 +335,20 @@ pub struct Machine {
     next_cpu_factor: ClockFactor,
     cpu_cycles: u64,
     system_ticks: u64,
+    reset_callback: Option<MachineResetCallback>,
 }
 
 impl Machine {
     pub fn new(
-        config: &dyn CoreConfig,
+        core_config: &dyn CoreConfig,
+        machine_config: MachineConfiguration,
         machine_type: MachineType,
         machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
-        _video_type: VideoType,
-        sound_player: SoundPlayer,
-        rom_manager: RomManager,
+        sound_player: Option<SoundPlayer>,
+        rom_manifest: MachineRomManifest,
+        reset_callback: Option<MachineResetCallback>,
+        //rom_manager: RomManager,
     ) -> Machine {
         //let mut io_bus = IoBusInterface::new();
 
@@ -235,10 +356,10 @@ impl Machine {
 
         let mut trace_logger = TraceLogger::None;
 
-        match config.get_cpu_trace_mode() {
+        match core_config.get_cpu_trace_mode() {
             Some(TraceMode::None) => {
                 // Open the trace file if specified
-                if let Some(filename) = &config.get_cpu_trace_file() {
+                if let Some(filename) = &core_config.get_cpu_trace_file() {
                     trace_logger = TraceLogger::from_filename(filename);
 
                     if !trace_logger.is_some() {
@@ -270,7 +391,7 @@ impl Machine {
         let mut validator_trace = TraceLogger::None;
         #[cfg(feature = "cpu_validator")]
         {
-            if let Some(trace_filename) = &config.get_cpu_trace_file() {
+            if let Some(trace_filename) = &core_config.get_cpu_trace_file() {
                 validator_trace = TraceLogger::from_filename(&trace_filename);
             }
         }
@@ -283,22 +404,26 @@ impl Machine {
             trace_mode,
             trace_logger,
             #[cfg(feature = "cpu_validator")]
-            config.get_validator_type().unwrap_or_default(),
+            core_config.get_validator_type().unwrap_or_default(),
             #[cfg(feature = "cpu_validator")]
             validator_trace,
             #[cfg(feature = "cpu_validator")]
             ValidatorMode::Cycle,
             #[cfg(feature = "cpu_validator")]
-            config.get_validator_baud().unwrap_or(1_000_000),
+            core_config.get_validator_baud().unwrap_or(1_000_000),
         );
 
-        cpu.set_option(CpuOption::TraceLoggingEnabled(config.get_cpu_trace_on()));
+        cpu.set_option(CpuOption::TraceLoggingEnabled(core_config.get_cpu_trace_on()));
 
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
         let speaker_buf: RingBuffer<u8> = RingBuffer::new(speaker_buf_size);
         let (speaker_buf_producer, speaker_buf_consumer) = speaker_buf.split();
-        let sample_rate = sound_player.sample_rate();
+
+        let mut sample_rate = 44000;
+        if let Some(sound_player) = &sound_player {
+            sample_rate = sound_player.sample_rate();
+        }
         let pit_ticks_per_sample = (pit::PIT_MHZ * 1_000_000.0) / sample_rate as f64;
 
         let pit_data = PitData {
@@ -332,7 +457,7 @@ impl Machine {
             let mut video_type: Option<VideoType> = None;
             let mut clock_mode: Option<ClockingMode> = None;
             let mut video_debug: Option<bool> = None;
-            let video_cards = config.get_video_cards();
+            let video_cards = core_config.get_video_cards();
             if video_cards.len() > 0 {
                 clock_mode = video_cards[0].clocking_mode;
                 video_type = Some(video_cards[0].video_type); // Videotype is not optional
@@ -349,14 +474,20 @@ impl Machine {
         log::debug!("Using video clocking mode: {:?}", clock_mode);
 
         // Install devices
-        cpu.bus_mut()
-            .install_devices(video_cards, clock_mode, &machine_desc, video_trace, video_debug);
+        cpu.bus_mut().install_devices(
+            &machine_desc,
+            &machine_config,
+            video_cards,
+            clock_mode,
+            video_trace,
+            video_debug,
+        );
 
         // Load keyboard translation file if specified.
 
-        if let Some(kb_string) = &config.get_keyboard_layout() {
+        if let Some(kb_string) = &core_config.get_keyboard_layout() {
             let mut kb_translation_path = PathBuf::new();
-            kb_translation_path.push(config.get_base_dir().clone());
+            kb_translation_path.push(core_config.get_base_dir().clone());
             kb_translation_path.push("keyboard");
             kb_translation_path.push(format!("keyboard_{}.toml", kb_string));
 
@@ -375,24 +506,26 @@ impl Machine {
         }
 
         // Set keyboard debug flag.
-        cpu.bus_mut().keyboard_mut().set_debug(config.get_keyboard_debug());
+        cpu.bus_mut().keyboard_mut().set_debug(core_config.get_keyboard_debug());
 
         // Load BIOS ROM images unless config option suppressed rom loading
-        if !config.get_machine_nobios() {
-            rom_manager.copy_into_memory(cpu.bus_mut());
+        if !core_config.get_machine_nobios() {
+            Machine::install_roms(cpu.bus_mut(), &rom_manifest);
+
+            //rom_manager.copy_into_memory(cpu.bus_mut());
 
             // Load checkpoint flags into memory
-            rom_manager.install_checkpoints(cpu.bus_mut());
+            //rom_manager.install_checkpoints(cpu.bus_mut());
 
             // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
 
-            let rom_entry_point = rom_manager.get_entrypoint();
-            cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
+            //let rom_entry_point = rom_manager.get_entrypoint();
+            //cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
         }
 
         // Set CPU clock divisor/multiplier
         let cpu_factor;
-        if config.get_machine_turbo() {
+        if core_config.get_machine_turbo() {
             cpu_factor = machine_desc.cpu_turbo_factor;
         }
         else {
@@ -407,8 +540,8 @@ impl Machine {
             machine_desc,
             state: MachineState::On,
             sound_player,
-            rom_manager,
-            load_bios: !config.get_machine_nobios(),
+            rom_manifest,
+            load_bios: !core_config.get_machine_nobios(),
             cpu,
             speaker_buf_producer,
             pit_data,
@@ -420,6 +553,20 @@ impl Machine {
             next_cpu_factor: cpu_factor,
             cpu_cycles: 0,
             system_ticks: 0,
+            reset_callback,
+        }
+    }
+
+    pub fn install_roms(bus: &mut BusInterface, rom_manifest: &MachineRomManifest) {
+        for rom in rom_manifest.roms.iter() {
+            match bus.copy_from(&rom.data, rom.addr as usize, 0, true) {
+                Ok(_) => {
+                    log::debug!("Mounted rom at location {:06X}", rom.addr);
+                }
+                Err(e) => {
+                    log::debug!("Failed to mount rom at location {:06X}: {}", rom.addr, e);
+                }
+            }
         }
     }
 
@@ -478,10 +625,6 @@ impl Machine {
         self.cpu.bus_mut()
     }
 
-    //pub fn cga(&self) -> Rc<RefCell<CGACard>> {
-    //    self.cga.clone()
-    //}
-
     pub fn video_buffer_mut(&mut self, _vid: VideoCardId) -> Option<&mut u8> {
         None
     }
@@ -531,7 +674,7 @@ impl Machine {
 
     /// Send the specified video option to the active videocard device
     pub fn set_video_option(&mut self, opt: VideoOption) {
-        if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
+        if let Some(mut video) = self.cpu.bus_mut().primary_video_mut() {
             video.set_video_option(opt);
         }
     }
@@ -539,7 +682,7 @@ impl Machine {
     /// Flush all trace logs for devices that have one
     pub fn flush_trace_logs(&mut self) {
         self.cpu.trace_flush();
-        if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
+        if let Some(mut video) = self.cpu.bus_mut().primary_video_mut() {
             video.trace_flush();
         }
     }
@@ -727,11 +870,18 @@ impl Machine {
         // Clear RAM
         self.cpu.bus_mut().clear();
 
+        // Call the reset callback - this gives the front end an opportunity to reload
+        // ROMs specified for hot reloading
+        if let Some(cb) = &self.reset_callback {
+            cb(&mut self.rom_manifest);
+        }
+
         // Reload BIOS ROM images
         if self.load_bios {
-            self.rom_manager.copy_into_memory(self.cpu.bus_mut());
+            Machine::install_roms(self.cpu.bus_mut(), &self.rom_manifest);
+            //self.rom_manager.copy_into_memory(self.cpu.bus_mut());
             // Clear patch installation status
-            self.rom_manager.reset_patches();
+            //self.rom_manager.reset_patches();
         }
 
         // Reset all installed devices.
@@ -894,6 +1044,7 @@ impl Machine {
 
             // Match checkpoints
             if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
+                /*
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
                     log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
                 }
@@ -903,6 +1054,8 @@ impl Machine {
                     log::debug!("ROM PATCH CHECKPOINT: [{:05X}] Installing ROM patches...", flat_address);
                     self.rom_manager.install_patch(self.cpu.bus_mut(), flat_address);
                 }
+
+                 */
             }
 
             let mut step_over_target = None;
@@ -1147,7 +1300,9 @@ impl Machine {
     }
 
     pub fn play_sound_buffer(&self) {
-        self.sound_player.play();
+        if let Some(sound_player) = &self.sound_player {
+            sound_player.play();
+        }
     }
 
     pub fn pit_buf_to_sound_buf(&mut self) {
@@ -1164,13 +1319,10 @@ impl Machine {
         if let Some(file) = self.pit_data.log_file.as_mut() {
             if self.pit_data.logging_triggered {
                 for _ in 0..nsamples {
-                    sample = match self.pit_data.buffer_consumer.pop() {
-                        Some(s) => s,
-                        None => {
-                            log::trace!("No byte in pit buffer");
-                            0
-                        }
-                    };
+                    sample = self.pit_data.buffer_consumer.pop().unwrap_or_else(|| {
+                        log::trace!("No byte in pit buffer");
+                        0
+                    });
                     sum += sample;
 
                     let sample_f32: f32 = if sample == 0 { 0.0 } else { 1.0 };
@@ -1184,13 +1336,10 @@ impl Machine {
         // Otherwise, just read samples
         if !samples_read {
             for _ in 0..nsamples {
-                sample = match self.pit_data.buffer_consumer.pop() {
-                    Some(s) => s,
-                    None => {
-                        log::trace!("No byte in pit buffer");
-                        0
-                    }
-                };
+                sample = self.pit_data.buffer_consumer.pop().unwrap_or_else(|| {
+                    log::trace!("No byte in pit buffer");
+                    0
+                });
                 sum += sample;
             }
         }
@@ -1202,7 +1351,9 @@ impl Machine {
         //log::trace!("Sample: sum: {}, ticks: {}, avg: {}", sum, pit_ticks, average);
         self.pit_data.samples_produced += 1;
         //log::trace!("producer: {}", self.pit_samples_produced);
-        self.sound_player.queue_sample(average as f32 * VOLUME_ADJUST);
+        if let Some(sound_player) = &mut self.sound_player {
+            sound_player.queue_sample(average * VOLUME_ADJUST);
+        }
 
         // Calculate size of next audio sample in pit samples by carrying over fractional part
         let next_sample_f: f64 = self.pit_data.ticks_per_sample + self.pit_data.fractional_part;

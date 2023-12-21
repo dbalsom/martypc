@@ -36,7 +36,7 @@ use crate::{Counter, KeyboardData, MouseData};
 use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::WgpuDisplayManager;
-use frontend_common::display_scaler::SCALER_MODES;
+use frontend_common::{display_scaler::SCALER_MODES, resource_manager::ResourceManager, rom_manager::RomManager};
 use marty_core::{
     cpu_common::CpuOption,
     floppy_manager::FloppyManager,
@@ -58,7 +58,9 @@ pub struct EmuFlags {
 /// we can call an event handler in a different file.
 /// All members are public so that a reference to this struct can be passed around as 'god' state.
 pub struct Emulator {
+    pub rm: ResourceManager,
     pub dm: WgpuDisplayManager,
+    pub romm: RomManager,
     pub config: ConfigFileParams,
     pub machine: Machine,
     pub exec_control: Rc<RefCell<ExecutionControl>>,

@@ -39,7 +39,7 @@ use std::cell::Cell;
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
     devices::pic,
-    machine_manager::MachineType,
+    machine_types::MachineType,
     videocard::VideoType,
 };
 
@@ -212,15 +212,15 @@ impl Ppi {
         Self {
             machine_type,
             port_a_mode: match machine_type {
-                MachineType::IBM_PC_5150 => PortAMode::SwitchBlock1,
-                MachineType::IBM_XT_5160 => PortAMode::KeyboardByte,
+                MachineType::Ibm5150 => PortAMode::SwitchBlock1,
+                MachineType::Ibm5160 => PortAMode::KeyboardByte,
                 _ => {
                     panic!("Machine type: {:?} has no PPI", machine_type);
                 }
             },
             port_c_mode: match machine_type {
-                MachineType::IBM_PC_5150 => PortCMode::Switch2OneToFour,
-                MachineType::IBM_XT_5160 => PortCMode::Switch1FiveToEight,
+                MachineType::Ibm5150 => PortCMode::Switch2OneToFour,
+                MachineType::Ibm5160 => PortCMode::Switch1FiveToEight,
                 _ => {
                     panic!("Machine type: {:?} has no PPI", machine_type);
                 }
@@ -237,8 +237,8 @@ impl Ppi {
             ksr_cleared: true,
             kb_enabled: true,
             dip_sw1: match machine_type {
-                MachineType::IBM_PC_5150 => SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits,
-                MachineType::IBM_XT_5160 => SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits,
+                MachineType::Ibm5150 => SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits,
+                MachineType::Ibm5160 => SW1_HAS_FLOPPIES | SW1_RAM_BANKS | sw1_floppy_bits | sw1_video_bits,
                 _ => {
                     log::error!("Machine type: {:?} has no PPI", machine_type);
                     0
@@ -315,7 +315,7 @@ impl Ppi {
         self.pb_byte = byte;
 
         match self.machine_type {
-            MachineType::IBM_PC_5150 => {
+            MachineType::Ibm5150 => {
                 // 5150 Behavior Only
                 if byte & PORTB_SW2_SELECT != 0 {
                     // If Bit 2 is ON, PC0-PC3 represent SW2 S1-S4
@@ -337,7 +337,7 @@ impl Ppi {
                     self.port_a_mode = PortAMode::KeyboardByte
                 }
             }
-            MachineType::IBM_XT_5160 => {
+            MachineType::Ibm5160 => {
                 // 5160 Behavior only
                 if byte & PORTB_SW1_SELECT == 0 {
                     // If Bit 3 is OFF, PC0-PC3 represent SW1 S1-S4
@@ -398,26 +398,26 @@ impl Ppi {
 
     pub fn calc_port_c_value(&self) -> u8 {
         let mut speaker_bit = 0;
-        if let MachineType::IBM_XT_5160 = self.machine_type {
+        if let MachineType::Ibm5160 = self.machine_type {
             speaker_bit = (self.speaker_in as u8) << 4;
         }
         let timer_bit = (self.timer_in as u8) << 5;
 
         match (&self.machine_type, &self.port_c_mode) {
-            (MachineType::IBM_PC_5150, PortCMode::Switch2OneToFour) => {
+            (MachineType::Ibm5150, PortCMode::Switch2OneToFour) => {
                 // We aren't implementing the cassette on 5150, and we'll never have parity errors
                 (self.dip_sw2 & 0x0F) | timer_bit
             }
-            (MachineType::IBM_PC_5150, PortCMode::Switch2Five) => {
+            (MachineType::Ibm5150, PortCMode::Switch2Five) => {
                 // On 5150, only Switch Block 2, Switch #5 is actually passed through
                 // If Port C is in Switch Block 2 mode, switches 6, 7, 8 and will read high (off)
                 (self.dip_sw2 >> 4 & 0x01) | timer_bit
             }
-            (MachineType::IBM_XT_5160, PortCMode::Switch1OneToFour) => {
+            (MachineType::Ibm5160, PortCMode::Switch1OneToFour) => {
                 // Cassette data line has been replaced with a speaker monitor line.
                 (self.dip_sw1 & 0x0F) | speaker_bit | timer_bit
             }
-            (MachineType::IBM_XT_5160, PortCMode::Switch1FiveToEight) => {
+            (MachineType::Ibm5160, PortCMode::Switch1FiveToEight) => {
                 // Cassette data line has been replaced with a speaker monitor line.
                 // On 5160, all four switches 5-8 are readable
                 (self.dip_sw1 >> 4 & 0x0F) | speaker_bit | timer_bit

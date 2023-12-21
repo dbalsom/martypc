@@ -23,7 +23,13 @@
       * Monochrome phosphor simulation
       * Scanline emulation synchronized to emulated video resolution  
     * Presets for the internal scaler can be defined in configuration and applied to different windows
-* #### EGA Graphics
+* #### New ROM Definition Framework
+  * ROM set definitions are no longer hardcoded. They will be read from ROM set definition TOML files in the ROM directory.
+  * Add your own custom ROM sets or contribute missing ROM definitions to MartyPC!
+* #### New Machine Configuration Framework
+  * Define multiple Machine hardware configurations, name them, select them in the main config or via command line argument.
+  * Configure the amount of conventional memory, the number and type of floppy drives, video cards, serial ports and more!
+* #### EGA Video Card
   * EGA is back! A character-clocked EGA implementation is here, although it may still be a bit rough around the edges. EGA will continue to be polished in upcoming releases.
   * Known issues:
     * No CGA emulation 
@@ -32,6 +38,11 @@
     * Aperture defintions / adjustments not final
     * Jerky scrolling in Commander Keen 1-3
     * User-definable fonts not yet supported
+* #### MDA Video Card
+  * Not quite as a flashy as EGA, but the MDA card type is now also supported, and moreover, you can install an MDA alongside a CGA or EGA card for a dual head display.
+  * Known issues:
+    * Needs optimization - due to the 9-dot character clock making 64-bit aligned writes impossible, MDA is currently slower to emulate than EGA.
+    * Video mux bit in status register unimplemented. Doing so properly would require cycle precision. 
 * #### New Keyboard System
   * MartyPC now performs low-level emulation of a Model F keyboard instead of directly translating OS input events to the core
     * Model M emulation to come

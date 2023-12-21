@@ -65,7 +65,7 @@ pub struct SoundPlayer {
 }
 
 impl SoundPlayer {
-    pub fn get_sample_format() -> cpal::SampleFormat {
+    pub fn get_device() -> (cpal::Device, cpal::SampleFormat) {
         let audio_device = cpal::default_host()
             .default_output_device()
             .expect("Failed to get default output audio device.");
@@ -81,18 +81,13 @@ impl SoundPlayer {
             .expect("Failed to get default sample format.");
 
         log::debug!("Default audio config: {:?}", config);
-        config.sample_format()
+        (audio_device, config.sample_format())
     }
 
-    pub fn new<T>() -> Self
+    pub fn new<T>(audio_device: cpal::Device) -> Self
     where
         T: cpal::Sample,
     {
-        let host = cpal::default_host();
-        let audio_device = host
-            .default_output_device()
-            .expect("Failed to get default output audio device.");
-
         let config = audio_device.default_output_config().unwrap();
 
         let sample_format = config.sample_format();

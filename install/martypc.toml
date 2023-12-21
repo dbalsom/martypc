@@ -4,14 +4,45 @@
 file_type = "main_config"
 config_version = "0.2"
 
+# ----------------------------------------------------------------------------
+# Emulator paths
+#
+# By default, emulator paths are defined as relative to the base_dir path.
+# If $base_dir$ is omitted from a path specifier, then that patch becomes
+# an absolute path.
+# Each path entry must be defined on a single line due to TOML grammar.
+# 
+# Multiple entries for the same resource string can be defined for the
+# following resources:
+#
+# hdd    - MartyPC will search all defined paths for valid VHD images.
+# rom    - MartyPC will search all defined paths for valid ROMs. 
+# floppy - MartyPC will search all defined paths for valid floppy images.
+# ----------------------------------------------------------------------------
+[emulator]
+# basedir: Base emulator data directory. 
+#          Other emulator paths can be set as absolute paths, or relative to 
+#          basedir with $basedir$
+#          The default is ".", effecting a portable installation with all
+#          directories relative to the current working directory.
+basedir = "."
+paths = [
+    { resource = "machine", path = "$basedir$/configs/machines", recurse = true },
+    { resource = "rom", path = "$basedir$/media/roms", recurse = true },
+    { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
+    { resource = "floppy", path = "$basedir$/media/floppies", recurse = true },
+    { resource = "dump", path = "$basedir$/output/dumps" },
+    { resource = "trace", path = "$basedir$/output/traces" },
+    { resource = "screenshot", path = "$basedir$/output/screenshots" },
+]
+
+# Exclude any matching directories from recursion. Useful for temporarily
+# hiding files, or moving files in and out of a "library" subdir.
+ignore_dirs = [ "parking" ]
+
 # -------------------------------------------------------------------------------------
 # General emulator options
 # -------------------------------------------------------------------------------------
-[emulator]
-
-# Base emulator data directory. Other emulator paths can be set as absolute paths, or 
-# relative to basedir by prefixing with $basedir$
-basedir = "./"
 
 # Power on the emulated machine on startup (only applicable in gui mode)
 auto_poweron = true
@@ -54,6 +85,10 @@ run_bin_ofs = 0x0000
 # Enable vsync. For wgpu frontend, I would recommend leaving this off. FIFO
 # presentation mode increase latency and causes window resizing issues.
 vsync = false
+
+[emulator.audio]
+# Set to false to disable sound system initialization.
+enabled = true
 
 [emulator.media]
 # Provide a list of file extensions to interpret as raw floppy sector images.
@@ -373,33 +408,18 @@ trace_on = false
 # Machine Options
 # ----------------------------------------------------------------------------
 [machine]
-# Emulated machine model type.
-# ----------------------------------------------------------------------------
-# Valid options for model are:
-#  IBM_PC_5150
-#  IBM_XT_5160
-
-#model = "IBM_PC_5150"
-model = "IBM_XT_5160"
+# Specify the name of a machine configuration to load.
+#config_name = "generic_xt_hdd_ega"
+config_name = "ibm5160_hdd_ega"
 
 # ROM Override
 # ----------------------------------------------------------------------------
-# Specify a specific BIOS to load. This overrides MartyPC's ROM autodetection.
+# Override the rom set specifications for the given machine. The specified ROM
+# sets will be loaded regardless of machine compatibility or hardware 
+# requirements. Intended for developer use. You are responsible for loading
+# rom sets for all hardware requirements!
 
-# This feature is intended for advanced users. The address will depend on the
-# ROM loaded. Please indicate if you are using this feature if you need to
-# report issues.
-
-# Valid values for 'org' are:
-#  Normal          - ROM bytes are in normal order (default)
-#  Reversed        - ROM bytes are in reversed order (IBM EGA bios, etc)
-#  InterleavedEven - ROM contains the even bytes of an interleaved set (AT)
-#  InterleavedOdd  - ROM contains the odd bytes of an interleaved set (AT)
-
-#rom_override = [
-#    { path = "./roms/BIOS_5160_09MAY86_U19_62X0819_68X4370_27256_F000.BIN", address = 0xF0000, offset=0, org="Normal" },
-#    { path = "./roms/BIOS_5160_09MAY86_U18_59X7268_62X0890_27256_F800.BIN", address = 0xF8000, offset=0, org="Normal" }
-#]
+#rom_override = ["glabios_xt", "ibm_xebec"]
 
 # Turbo Button
 # ----------------------------------------------------------------------------
@@ -426,7 +446,7 @@ keyboard_type = "ModelF"
 #
 # Certain scancodes have changed their meaning since the 1980's. Your help
 # would be appreciated in developing new translation files.
-keyboard_layout="IT"
+keyboard_layout="US"
 
 # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
 typematic = true
@@ -442,7 +462,7 @@ typematic_rate= 50.0
 # "None"  - No hard disk controller will be present
 # "Xebec" - Emulates the IBM/Xebec 20MB Fixed Disk Controller
 
-hdc = "None"
+#hdc = "None"
 #hdc = "Xebec"
 
 # VHD to mount into drive 0 (Typically C:)
@@ -498,25 +518,16 @@ clocking_mode = "Dynamic"
 # Benchmarking (not yet implemented - configs are placeholder)
 # ----------------------------------------------------------------------------
 [benchmark]
-
-# Model to benchmark
-benchmark_model = "IBM_XT_5160"
-
-# Roms to use in benchmark mode (overrides auto-detection)
-benchmark_roms = [
-    { filename = "./benchmark/roms/BIOS_5160_09MAY86_U19_62X0819_68X4370_27256_F000.BIN", mount = 0xF0000 },
-    { filename = "./benchmark/roms/BIOS_5160_09MAY86_U18_59X7268_62X0890_27256_F800.BIN", mount = 0xF8000 }
-]
-# VHD to load in benchmark mode
-benchmark_hdd0 = "./benchmark/hdd/benchmark0.vhd"
-benchmark_video = "CGA"
-benchmark_hdc = "Xebec"
+# Machine configuration to benchmark
+config_name = "ibm5160"
 
 # Valid options for benchmark_end_condition are:
-# "Timeout" - Benchmark for 'benchmark_timeout' seconds and exit
+# "Timeout" - Benchmark for 'timeout' seconds and exit
 # "Trigger" - Terminate benchmark on signal from internal service interrupt
-benchmark_end_condition = "Trigger"
-benchmark_timeout = 60
+# "Cycles"  - Terminate benchmark after 'cycles' CPU cycles
+end_condition = "Timeout"
+timeout = 60
+cycles = 572400000 # 2 minutes
 
 # ----------------------------------------------------------------------------
 # Options for the CPU Validator module.

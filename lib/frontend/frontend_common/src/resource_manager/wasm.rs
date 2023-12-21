@@ -24,23 +24,32 @@
 
     --------------------------------------------------------------------------
 
-    build.rs
+    frontend_common::resource_manager::local_fs.rs
 
-    Build procedures for MartyPC.
+    Method implementations for wasm "virtual filesystem" operations.
+
 */
 
-use std::{env, io};
-use winres::WindowsResource;
+use crate::resource_manager::{ResourceItem, ResourceItemType, ResourceManager};
+use std::{fs, path::PathBuf};
 
-fn main() -> io::Result<()> {
-    if env::var_os("CARGO_CFG_WINDOWS").is_some() {
-        // Createa a icon resource for the Windows build.
-        // This icon is only used when viewing the executable itself in explorer.
-        // We have to set the icon again in Winit for each window we crewate.
-        WindowsResource::new()
-            // This path can be absolute, or relative to your crate root.
-            .set_icon("assets/martypc.ico")
-            .compile()?;
+impl ResourceManager {
+    /// On wasm targets, we can't get a directory listing, so return an empty vector.
+    /// TODO: Eventually we might load a manifest file that can provide a virtual directory listing.
+    pub(crate) fn enumerate_items(&self, resource: &str) -> Result<Vec<ResourceItem>, Error> {
+        let mut items: Vec<ResourceItem> = Vec::new();
+        Ok(items)
     }
-    Ok(())
+
+    /// On wasm targets, we don't have access to the filesystem to overwrite anything,
+    /// so we just return false
+    pub fn path_exists(path: &PathBuf) -> bool {
+        false
+    }
+
+    /// On wasm targets, we don't have access to the filesystem. We can probably detect what is
+    /// a directory based on the path string, but for now we just return false.
+    pub fn path_is_dir(path: &PathBuf) -> bool {
+        false
+    }
 }

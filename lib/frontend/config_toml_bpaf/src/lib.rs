@@ -41,12 +41,12 @@ use marty_core::{
     coreconfig::VideoCardDefinition,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::{hdc::HardDiskControllerType, keyboard::KeyboardType},
-    machine_manager::MachineType,
+    devices::keyboard::KeyboardType,
+    machine_types::{HardDiskControllerType, MachineType},
     rom_manager::RomOverride,
 };
 
-use frontend_common::display_scaler::ScalerPreset;
+use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem};
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
@@ -99,14 +99,26 @@ pub struct Media {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Audio {
+    #[serde(default = "_default_true")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Emulator {
     pub basedir: PathBuf,
+    pub paths: Vec<PathConfigItem>,
+    pub ignore_dirs: Option<Vec<String>>,
     #[serde(default = "_default_true")]
     pub auto_poweron: bool,
     #[serde(default = "_default_true")]
     pub cpu_autostart: bool,
     #[serde(default)]
     pub headless: bool,
+    #[serde(default)]
+    pub romscan: bool,
+    #[serde(default)]
+    pub machinescan: bool,
     #[serde(default)]
     pub fuzzer: bool,
     #[serde(default)]
@@ -118,6 +130,7 @@ pub struct Emulator {
     #[serde(default)]
     pub debug_keyboard: bool,
     pub media: Media,
+    pub audio: Audio,
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
     pub run_bin_ofs: Option<u16>,
@@ -180,7 +193,8 @@ pub struct Cpu {
 
 #[derive(Debug, Deserialize)]
 pub struct Machine {
-    pub model: MachineType,
+    pub config_name: String,
+    //pub model: MachineType,
     #[serde(default)]
     pub no_bios: bool,
     pub rom_override: Option<Vec<RomOverride>>,
@@ -238,12 +252,22 @@ pub struct CmdLineArgs {
     #[bpaf(long)]
     pub basedir: Option<PathBuf>,
 
+    #[bpaf(long, switch)]
+    pub noaudio: bool,
+
     // Emulator options
     #[bpaf(long, switch)]
     pub headless: bool,
 
     #[bpaf(long, switch)]
     pub fuzzer: bool,
+
+    // Emulator options
+    #[bpaf(long, switch)]
+    pub romscan: bool,
+
+    #[bpaf(long, switch)]
+    pub machinescan: bool,
 
     #[bpaf(long, switch)]
     pub auto_poweron: bool,
@@ -260,7 +284,7 @@ pub struct CmdLineArgs {
     pub reverse_mouse_buttons: bool,
 
     #[bpaf(long)]
-    pub machine_model: Option<MachineType>,
+    pub machine_config_name: Option<String>,
 
     #[bpaf(long)]
     pub turbo: bool,
@@ -292,8 +316,8 @@ pub struct CmdLineArgs {
 
 impl ConfigFileParams {
     pub fn overlay(&mut self, shell_args: CmdLineArgs) {
-        if let Some(machine_model) = shell_args.machine_model {
-            self.machine.model = machine_model;
+        if let Some(config_name) = shell_args.machine_config_name {
+            self.machine.config_name = config_name;
         }
         if let Some(validator) = shell_args.validator {
             self.validator.vtype = Some(validator);
@@ -302,10 +326,12 @@ impl ConfigFileParams {
         if let Some(basedir) = shell_args.basedir {
             self.emulator.basedir = basedir;
         }
+
         self.emulator.headless |= shell_args.headless;
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.auto_poweron |= shell_args.auto_poweron;
         self.emulator.warpspeed |= shell_args.warpspeed;
+        self.emulator.audio.enabled &= !shell_args.noaudio;
 
         //self.emulator.scaler_aspect_correction |= shell_args.scaler_aspect_correction;
         self.emulator.debug_mode |= shell_args.debug_mode;
@@ -338,6 +364,9 @@ impl ConfigFileParams {
         }
 
         self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
+
+        self.emulator.romscan = shell_args.romscan;
+        self.emulator.machinescan = shell_args.romscan;
     }
 }
 
@@ -359,7 +388,7 @@ where
         toml_args = toml::from_slice(&toml_slice)?;
     }
 
-    log::debug!("toml_config: {:?}", toml_args);
+    //log::debug!("toml_config: {:?}", toml_args);
 
     // Command line arguments override config file arguments
     toml_args.overlay(shell_args);
@@ -372,7 +401,7 @@ pub fn get_config_from_str(toml_text: &str) -> Result<ConfigFileParams, anyhow::
 
     toml_args = toml::from_str(toml_text)?;
 
-    log::debug!("toml_config: {:?}", toml_args);
+    //log::debug!("toml_config: {:?}", toml_args);
 
     Ok(toml_args)
 }

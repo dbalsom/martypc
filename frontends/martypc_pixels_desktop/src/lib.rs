@@ -71,18 +71,21 @@ use crate::run_gentests::run_gentests;
 use crate::run_runtests::run_runtests;
 
 use marty_core::{
-    devices::{hdc::HardDiskControllerType, keyboard::KeyboardModifiers},
+    devices::keyboard::KeyboardModifiers,
     floppy_manager::{FloppyError, FloppyManager},
     machine::{ExecutionControl, ExecutionState, Machine},
-    machine_manager::MACHINE_DESCS,
+    machine_config::MACHINE_DESCS,
+    machine_types::HardDiskControllerType,
     rom_manager::{RomError, RomFeature, RomManager},
     sound::SoundPlayer,
     vhd_manager::{VHDManager, VHDManagerError},
     videocard::{ClockingMode, VideoType},
 };
 
+use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
-use marty_core::coreconfig::CoreConfig;
+use frontend_common::resource_manager::ResourceManager;
+use marty_core::{coreconfig::CoreConfig, machine::MachineBuilder, machine_types::MachineType};
 
 use crate::event_loop::handle_event;
 
@@ -253,7 +256,11 @@ pub fn run() {
 
     let mut features = Vec::new();
 
-    // Read config file
+    // TODO: Move most of everything from here into an EmulatorBuilder
+
+    // First we resolve the emulator configuration by parsing the configuration toml and merging it with
+    // command line arguments. For the desktop frontend, this is handled by the config_toml_bpaf front end
+    // library.
     let config = match config_toml_bpaf::get_config("./martypc.toml") {
         Ok(config) => config,
         Err(e) => match e.downcast_ref::<std::io::Error>() {
@@ -278,6 +285,23 @@ pub fn run() {
             }
         },
     };
+
+    // Now that we have our configuration, we can instantiate a ResourceManager.
+    let mut resource_manager = ResourceManager::from_config(config.emulator.basedir.clone(), &config.emulator.paths)
+        .unwrap_or_else(|e| {
+            log::error!("Failed to create resource manager: {:?}", e);
+            std::process::exit(1);
+        });
+
+    let resolved_paths = resource_manager.pm.dump_paths();
+    for path in &resolved_paths {
+        println!("Resolved resource path: {:?}", path);
+    }
+
+    // Tell the resource manager to ignore specified dirs
+    if let Some(ignore_dirs) = &config.emulator.ignore_dirs {
+        resource_manager.set_ignore_dirs(ignore_dirs.clone());
+    }
 
     let (video_type, _clock_mode, _video_debug) = {
         let mut video_type: Option<VideoType> = None;
@@ -306,7 +330,7 @@ pub fn run() {
     }
 
     match config.machine.hdc {
-        Some(HardDiskControllerType::Xebec) => {
+        Some(HardDiskControllerType::IbmXebec) => {
             // The Xebec controller ROM is required for Xebec HDC
             features.push(RomFeature::XebecHDC);
         }
@@ -322,8 +346,127 @@ pub fn run() {
         _ => {}
     }
 
+    // Instantiate the new machine manager to load Machine configurations.
+    let mut machine_manager = frontend_common::machine_manager::MachineManager::new();
+    if let Err(err) = machine_manager.load_configs(&resource_manager) {
+        eprintln!("Error loading Machine configuration files: {}", err);
+        std::process::exit(1);
+    }
+
+    // Get a list of machine configuration names
+    let machine_names = machine_manager.get_config_names();
+    let have_machine_config = machine_names.contains(&config.machine.config_name);
+
+    // Do 'romscan' commandline argument. We print machine info (and rom info if --romscan
+    // was also specified) and then quit.
+    if config.emulator.machinescan {
+        // Print the list of machine configurations and their rom requirements
+        for machine in machine_names {
+            println!("Machine: {}", machine);
+            if let Some(reqs) = machine_manager
+                .get_config(&machine)
+                .and_then(|config| Some(config.get_rom_requirements()))
+            {
+                println!("  Requires: {:?}", reqs);
+            }
+        }
+
+        if !have_machine_config {
+            println!(
+                "Warning! No matching configuration found for: {}",
+                config.machine.config_name
+            );
+        }
+
+        // Exit unless we will also run romscan
+        if !config.emulator.romscan {
+            std::process::exit(0);
+        }
+    }
+
+    if !have_machine_config {
+        eprintln!(
+            "No machine configuration for specified config name: {}",
+            config.machine.config_name
+        );
+        std::process::exit(1);
+    }
+
+    // Instantiate the new rom manager to load roms
+    let mut nu_rom_manager = frontend_common::rom_manager::RomManager::new();
+    if let Err(err) = nu_rom_manager.load_defs(&resource_manager) {
+        eprintln!("Error loading ROM definition files: {}", err);
+        std::process::exit(1);
+    }
+
+    // Get the ROM requirements for the requested machine type
+    let mut machine_config_file = machine_manager.get_config(&config.machine.config_name).unwrap();
+    let rom_requirements = machine_config_file.get_rom_requirements().unwrap_or_else(|e| {
+        eprintln!("Error getting ROM requirements for machine: {}", e);
+        std::process::exit(1);
+    });
+
+    // Scan the rom resource director(ies)
+    if let Err(err) = nu_rom_manager.scan(&resource_manager) {
+        eprintln!("Error scanning ROM resource directories: {}", err);
+        std::process::exit(1);
+    }
+
+    // Determine what complete ROM sets we have
+    if let Err(err) = nu_rom_manager.resolve_rom_sets() {
+        eprintln!("Error resolving ROM sets: {}", err);
+        std::process::exit(1);
+    }
+
+    // Do --romscan option.  We print rom and machine info and quit.
+    if config.emulator.romscan {
+        nu_rom_manager.print_rom_stats();
+        nu_rom_manager.print_romset_stats();
+        std::process::exit(0);
+    }
+
+    println!(
+        "Selected machine config {} requires the following ROM features:",
+        config.machine.config_name
+    );
+    for rom_feature in &rom_requirements {
+        println!("  {}", rom_feature);
+    }
+
+    // Resolve the ROM requirements for the requested ROM features
+    let rom_sets_resolved = nu_rom_manager
+        .resolve_requirements(rom_requirements)
+        .unwrap_or_else(|err| {
+            eprintln!("Error resolving ROM sets for machine: {}", err);
+            std::process::exit(1);
+        });
+
+    println!(
+        "Selected machine config {} has resolved the following ROM sets:",
+        config.machine.config_name
+    );
+    for rom_set in &rom_sets_resolved {
+        println!("  {}", rom_set);
+    }
+
+    // Create the ROM manifest
+    let rom_manifest = nu_rom_manager
+        .create_manifest(rom_sets_resolved, &resource_manager)
+        .unwrap_or_else(|err| {
+            eprintln!("Error loading ROM set: {}", err);
+            std::process::exit(1);
+        });
+
+    log::debug!("Created manifest!");
+    for (i, rom) in rom_manifest.roms.iter().enumerate() {
+        log::debug!("  rom {}: md5: {} length: {}", i, rom.md5, rom.data.len());
+    }
+
+    //std::process::exit(0);
+
+    /*
     // Instantiate the rom manager to load roms for the requested machine type
-    let mut rom_manager = RomManager::new(config.machine.model, features, config.machine.rom_override.clone());
+    let mut rom_manager = RomManager::new(MachineType::Ibm5160, features, config.machine.rom_override.clone());
 
     let mut rom_path = PathBuf::new();
     rom_path.push(config.emulator.basedir.clone());
@@ -356,6 +499,8 @@ pub fn run() {
     //        std::process::exit(1);
     //    }
     //}
+
+    */
 
     // Instantiate the floppy manager
     let mut floppy_manager = FloppyManager::new();
@@ -399,13 +544,10 @@ pub fn run() {
     }
 
     // Enumerate host serial ports
-    let serial_ports = match serialport::available_ports() {
-        Ok(ports) => ports,
-        Err(e) => {
-            log::error!("Didn't find any serial ports: {:?}", e);
-            Vec::new()
-        }
-    };
+    let serial_ports = serialport::available_ports().unwrap_or_else(|e| {
+        log::warn!("Didn't find any serial ports: {:?}", e);
+        Vec::new()
+    });
 
     for port in &serial_ports {
         log::debug!("Found serial port: {:?}", port);
@@ -425,12 +567,12 @@ pub fn run() {
     // If fuzzer mode was specified, run the emulator in fuzzer mode now
     #[cfg(feature = "cpu_validator")]
     if config.emulator.fuzzer {
-        return run_fuzzer(&config, rom_manager, floppy_manager);
+        //return run_fuzzer(&config, rom_manager, floppy_manager);
     }
 
     // If headless mode was specified, run the emulator in headless mode now
     if config.emulator.headless {
-        return run_headless::run_headless(&config, rom_manager, floppy_manager);
+        //return run_headless::run_headless(&config, rom_manager, floppy_manager);
     }
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
@@ -453,35 +595,37 @@ pub fn run() {
     let mouse_data = MouseData::new(config.input.reverse_mouse_buttons);
 
     // Init sound
-    // The cpal sound library uses generics to initialize depending on the SampleFormat type.
-    // On Windows at least a sample type of f32 is typical, but just in case...
-    let sample_fmt = SoundPlayer::get_sample_format();
-    let sp = match sample_fmt {
-        cpal::SampleFormat::F32 => SoundPlayer::new::<f32>(),
-        cpal::SampleFormat::I16 => SoundPlayer::new::<i16>(),
-        cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(),
+    let sound_player_opt = {
+        if config.emulator.audio.enabled {
+            // The cpal sound library uses generics to initialize depending on the SampleFormat type.
+            // On Windows at least a sample type of f32 is typical, but just in case...
+            let (audio_device, sample_fmt) = SoundPlayer::get_device();
+            let sp = match sample_fmt {
+                cpal::SampleFormat::F32 => SoundPlayer::new::<f32>(audio_device),
+                cpal::SampleFormat::I16 => SoundPlayer::new::<i16>(audio_device),
+                cpal::SampleFormat::U16 => SoundPlayer::new::<u16>(audio_device),
+            };
+            Some(sp)
+        }
+        else {
+            None
+        }
     };
 
-    // Look up the machine description given the machine type in the configuration file
-    let machine_desc_opt = MACHINE_DESCS.get(&config.machine.model);
-    if let Some(machine_desc) = machine_desc_opt {
-        log::debug!(
-            "Given machine type {:?} got machine description: {:?}",
-            config.machine.model,
-            machine_desc
-        );
-    }
-    else {
-        log::error!("Couldn't get machine description for {:?}", config.machine.model);
+    let machine_config = machine_config_file.to_machine_config();
 
-        eprintln!(
-            "Couldn't get machine description for machine type {:?}. \
-             Check that you have a valid machine type specified in configuration file.",
-            config.machine.model
-        );
+    let mut machine_builder = MachineBuilder::new()
+        .with_core_config(Box::new(&config))
+        .with_machine_config(machine_config)
+        .with_roms(rom_manifest)
+        .with_sound_player(sound_player_opt);
+
+    let machine = machine_builder.build().unwrap_or_else(|e| {
+        log::error!("Failed to build machine: {:?}", e);
         std::process::exit(1);
-    }
+    });
 
+    /*
     // Instantiate the main Machine data struct
     // Machine coordinates all the parts of the emulated computer
     let mut machine = Machine::new(
@@ -493,6 +637,7 @@ pub fn run() {
         sp,
         rom_manager,
     );
+    */
 
     // Get a list of video devices from machine.
     let cardlist = machine.bus().enumerate_videocards();
@@ -531,7 +676,9 @@ pub fn run() {
 
     // Put everything we want to handle in event loop into an Emulator struct
     let mut emu = Emulator {
+        rm: resource_manager,
         dm: display_manager,
+        romm: nu_rom_manager,
         config,
         machine,
         exec_control,

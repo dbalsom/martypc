@@ -40,8 +40,8 @@ use marty_core::{
     coreconfig::{CoreConfig, VideoCardDefinition},
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::{hdc::HardDiskControllerType, keyboard::KeyboardType},
-    machine_manager::MachineType,
+    devices::keyboard::KeyboardType,
+    machine_types::{HardDiskControllerType, MachineType},
 };
 
 /*
@@ -61,7 +61,7 @@ impl CoreConfig for ConfigFileParams {
         self.emulator.basedir.clone()
     }
     fn get_machine_type(&self) -> MachineType {
-        self.machine.model
+        MachineType::Ibm5160
     }
     fn get_machine_nobios(&self) -> bool {
         self.machine.no_bios
