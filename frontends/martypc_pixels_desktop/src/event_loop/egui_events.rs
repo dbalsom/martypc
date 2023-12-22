@@ -39,7 +39,7 @@ use marty_core::{
     vhd,
 };
 use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
-use std::{mem::discriminant, path::PathBuf, time::Duration};
+use std::{mem::discriminant, time::Duration};
 
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -342,7 +342,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
         }
         GuiEvent::ZoomChanged(zoom) => {
-            emu.dm.for_each_gui(|gui, window| {
+            emu.dm.for_each_gui(|gui, _window| {
                 gui.set_zoom_factor(*zoom);
             });
         }

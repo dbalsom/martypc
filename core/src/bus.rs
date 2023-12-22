@@ -44,7 +44,7 @@ use std::{
 
 use ringbuf::Producer;
 
-use crate::{bytequeue::*, coreconfig::VideoCardDefinition, cpu_808x::*};
+use crate::{bytequeue::*, cpu_808x::*};
 
 use crate::{
     devices::{
@@ -1265,11 +1265,10 @@ impl BusInterface {
         &mut self,
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
-        _videocards: Vec<VideoCardDefinition>,
-        clock_mode: ClockingMode,
-        _video_trace: TraceLogger,
-        video_frame_debug: bool,
     ) -> Result<(), Error> {
+        let video_frame_debug = false;
+        let clock_mode = ClockingMode::Default;
+
         // First we need to initialize the PPI. The PPI is used to read the system's DIP switches, so the PPI must be
         // given several parameters from the machine configuration.
 

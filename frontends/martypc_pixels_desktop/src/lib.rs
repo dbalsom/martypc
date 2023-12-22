@@ -38,7 +38,6 @@
 
 use std::{
     cell::RefCell,
-    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -71,36 +70,18 @@ use crate::run_gentests::run_gentests;
 use crate::run_runtests::run_runtests;
 
 use marty_core::{
-    devices::{
-        implementations::keyboard::KeyboardModifiers,
-        traits::videocard::{ClockingMode, VideoType},
-    },
-    floppy_manager::{FloppyError, FloppyManager},
-    machine::{ExecutionControl, ExecutionState, Machine},
-    machine_config::MACHINE_DESCS,
-    machine_types::HardDiskControllerType,
+    devices::implementations::keyboard::KeyboardModifiers,
+    floppy_manager::FloppyManager,
+    machine::{ExecutionControl, ExecutionState},
     sound::SoundPlayer,
-    vhd_manager::{VHDManager, VHDManagerError},
+    vhd_manager::VHDManager,
 };
 
-use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
 use frontend_common::resource_manager::ResourceManager;
-use marty_core::{coreconfig::CoreConfig, machine::MachineBuilder, machine_types::MachineType};
+use marty_core::{coreconfig::CoreConfig, machine::MachineBuilder};
 
 use crate::event_loop::handle_event;
-
-const EGUI_MENU_BAR: u32 = 25;
-
-const WINDOW_MIN_WIDTH: u32 = 640;
-const WINDOW_MIN_HEIGHT: u32 = 480;
-
-const WINDOW_WIDTH: u32 = WINDOW_MIN_WIDTH;
-const WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT + EGUI_MENU_BAR * 2;
-
-const MIN_RENDER_WIDTH: u32 = 160;
-const MIN_RENDER_HEIGHT: u32 = 200;
-//const RENDER_ASPECT: f32 = 0.75;
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
@@ -302,19 +283,6 @@ pub fn run() {
         resource_manager.set_ignore_dirs(ignore_dirs.clone());
     }
 
-    let (video_type, _clock_mode, _video_debug) = {
-        let mut video_type: Option<VideoType> = None;
-        let mut clock_mode: Option<ClockingMode> = None;
-        let mut video_debug = false;
-        let video_cards = config.get_video_cards();
-        if video_cards.len() > 0 {
-            clock_mode = video_cards[0].clocking_mode;
-            video_type = Some(video_cards[0].video_type); // Videotype is not optional
-            video_debug = video_cards[0].debug.unwrap_or(false);
-        }
-        (video_type, clock_mode.unwrap_or_default(), video_debug)
-    };
-
     #[cfg(feature = "cpu_validator")]
     match config.validator.vtype {
         Some(ValidatorType::None) | None => {
@@ -378,7 +346,7 @@ pub fn run() {
     }
 
     // Get the ROM requirements for the requested machine type
-    let mut machine_config_file = {
+    let machine_config_file = {
         if let Some(overlay_vec) = &config.machine.config_overlays {
             machine_manager
                 .get_config_with_overlays(&config.machine.config_name, overlay_vec)
@@ -512,7 +480,7 @@ pub fn run() {
     let mut vhd_manager = VHDManager::new();
 
     // Scan the HDD directory
-    let mut hdd_path = resource_manager.get_resource_path("hdd").unwrap_or_else(|| {
+    let hdd_path = resource_manager.get_resource_path("hdd").unwrap_or_else(|| {
         eprintln!("Failed to retrieve 'hdd' resource path.f");
         std::process::exit(1);
     });
@@ -593,7 +561,7 @@ pub fn run() {
 
     let machine_config = machine_config_file.to_machine_config();
 
-    let mut machine_builder = MachineBuilder::new()
+    let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(&config))
         .with_machine_config(machine_config)
         .with_roms(rom_manifest)

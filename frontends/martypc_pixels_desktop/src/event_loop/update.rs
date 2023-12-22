@@ -30,11 +30,9 @@
 */
 
 use std::time::{Duration, Instant};
-
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
-use marty_core::devices::traits::videocard::VideoOption;
 use videocard_renderer::RendererEvent;
 
 use crate::{
@@ -281,7 +279,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         // Handle renderer events
 
-        emu.dm.for_each_renderer(|renderer, vid, backend_buf| {
+        emu.dm.for_each_renderer(|renderer, _vid, _backend_buf| {
             while let Some(event) = renderer.get_event() {
                 match event {
                     RendererEvent::ScreenshotSaved => {

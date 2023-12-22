@@ -37,7 +37,7 @@ use std::path::PathBuf;
 use crate::ConfigFileParams;
 
 use marty_core::{
-    coreconfig::{CoreConfig, VideoCardDefinition},
+    coreconfig::CoreConfig,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
     devices::implementations::keyboard::KeyboardType,
@@ -77,10 +77,6 @@ impl CoreConfig for ConfigFileParams {
     }
     fn get_keyboard_debug(&self) -> bool {
         self.emulator.debug_keyboard
-    }
-
-    fn get_video_cards(&self) -> Vec<VideoCardDefinition> {
-        self.machine.videocard.clone().unwrap_or_else(Vec::new)
     }
     //fn get_video_type(&self) -> Option<VideoType> { self.machine.primary_video }
     //fn get_video_clockingmode(&self) -> Option<ClockingMode> { self.machine.clocking_mode }

@@ -28,20 +28,11 @@
 
 */
 
-use marty_core::{
-    floppy_manager::FloppyManager,
-    machine::{ExecutionControl, ExecutionState, Machine},
-    machine_config::MACHINE_DESCS,
-    sound::SoundPlayer,
-};
+use marty_core::floppy_manager::FloppyManager;
 
 use config_toml_bpaf::ConfigFileParams;
-use marty_core::{
-    coreconfig::CoreConfig,
-    devices::traits::videocard::{ClockingMode, VideoType},
-};
 
-pub fn run_headless(config: &ConfigFileParams, _floppy_manager: FloppyManager) {
+pub fn run_headless(_config: &ConfigFileParams, _floppy_manager: FloppyManager) {
 
     /*
 

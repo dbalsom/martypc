@@ -38,7 +38,7 @@ use log;
 use anyhow::{anyhow, Error};
 use std::{
     cell::Cell,
-    collections::{VecDeque},
+    collections::VecDeque,
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
@@ -61,15 +61,7 @@ use crate::{
             pit::{self, PitDisplayState},
             ppi::PpiStringState,
         },
-        traits::videocard::{
-            ClockingMode,
-            VideoCard,
-            VideoCardId,
-            VideoCardInterface,
-            VideoCardState,
-            VideoOption,
-            VideoType,
-        },
+        traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     },
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
@@ -451,42 +443,15 @@ impl Machine {
         );
 
         // Create the video trace file, if specified
-        let video_trace = TraceLogger::None;
+        //let video_trace = TraceLogger::None;
         /*
         if let Some(trace_filename) = &config.get_video_trace_file() {
             video_trace = TraceLogger::from_filename(&trace_filename);
         }
         */
 
-        let (video_cards, _video_type, clock_mode, video_debug) = {
-            let mut video_type: Option<VideoType> = None;
-            let mut clock_mode: Option<ClockingMode> = None;
-            let mut video_debug: Option<bool> = None;
-            let video_cards = core_config.get_video_cards();
-            if video_cards.len() > 0 {
-                clock_mode = video_cards[0].clocking_mode;
-                video_type = Some(video_cards[0].video_type); // Videotype is not optional
-                video_debug = video_cards[0].debug;
-            }
-            (
-                video_cards,
-                video_type.unwrap_or(VideoType::CGA),
-                clock_mode.unwrap_or_default(),
-                video_debug.unwrap_or(false),
-            )
-        };
-
-        log::debug!("Using video clocking mode: {:?}", clock_mode);
-
         // Install devices
-        if let Err(err) = cpu.bus_mut().install_devices(
-            &machine_desc,
-            &machine_config,
-            video_cards,
-            clock_mode,
-            video_trace,
-            video_debug,
-        ) {
+        if let Err(err) = cpu.bus_mut().install_devices(&machine_desc, &machine_config) {
             log::error!("Failed to install devices: {}", err);
         }
 

@@ -30,8 +30,6 @@
 
 */
 
-const VHD_REGEX: &str = r"[\w_]*.vhd$";
-
 use crate::{layouts::MartyLayout, widgets::big_icon::IconType, *};
 use std::{ffi::OsString, path::PathBuf};
 
@@ -40,7 +38,6 @@ pub struct VhdCreator {
     selected_format_idx: usize,
     vhd_requested_name: String,
     vhd_resolved_name: Option<PathBuf>,
-    vhd_regex: Regex,
 }
 
 impl VhdCreator {
@@ -50,7 +47,6 @@ impl VhdCreator {
             selected_format_idx: 0,
             vhd_requested_name: String::new(),
             vhd_resolved_name: None,
-            vhd_regex: Regex::new(VHD_REGEX).unwrap(),
         }
     }
 

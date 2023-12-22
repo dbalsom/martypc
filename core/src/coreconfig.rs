@@ -64,7 +64,6 @@ pub trait CoreConfig {
     fn get_keyboard_type(&self) -> Option<KeyboardType>;
     fn get_keyboard_layout(&self) -> Option<String>;
     fn get_keyboard_debug(&self) -> bool;
-    fn get_video_cards(&self) -> Vec<VideoCardDefinition>;
     //fn get_video_type(&self) -> Option<VideoType>;
     //fn get_video_clockingmode(&self) -> Option<ClockingMode>;
     //fn get_video_debug(&self) -> bool;

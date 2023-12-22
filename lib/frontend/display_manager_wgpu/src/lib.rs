@@ -54,7 +54,7 @@ pub use display_backend_pixels::{
 use anyhow::{anyhow, Context, Error};
 
 use winit::{
-    dpi::{PhysicalSize},
+    dpi::PhysicalSize,
     event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
     window::{Icon, Window, WindowBuilder, WindowButtons, WindowId, WindowLevel},
 };
@@ -88,20 +88,21 @@ use marty_pixels_scaler::{DisplayScaler, MartyScaler, ScalerMode};
 use videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
 
 const EGUI_MENU_BAR: u32 = 24;
+
+/*
 pub(crate) const WINDOW_MIN_WIDTH: u32 = 640;
 pub(crate) const WINDOW_MIN_HEIGHT: u32 = 480;
 const DEFAULT_MAIN_WINDOW_WIDTH: u32 = WINDOW_MIN_WIDTH;
 const DEFAULT_MAIN_WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT + EGUI_MENU_BAR;
-
 const DEFAULT_RENDER_WINDOW_WIDTH: u32 = WINDOW_MIN_WIDTH;
 const DEFAULT_RENDER_WINDOW_HEIGHT: u32 = WINDOW_MIN_HEIGHT;
-
 const STUB_RENDER_WIDTH: u32 = 16;
 const STUB_RENDER_HEIGHT: u32 = 16;
+*/
 
 const RESOLVE_BUFFER: u32 = 0x01;
 const RESOLVE_RENDERER: u32 = 0x02;
-const RESOLVE_SCALER: u32 = 0x04;
+//const RESOLVE_SCALER: u32 = 0x04;
 const RESOLVE_SURFACE: u32 = 0x08;
 const RESOLVE_WINDOW: u32 = 0x10;
 
@@ -166,12 +167,9 @@ pub struct WgpuDisplayManager {
     // two adapters - a primary and secondary adapter. This implies a limit of 3 windows.
     // The window containing egui will always be at index 0.
     targets: Vec<DisplayTargetContext<PixelsBackend>>,
-
     window_id_map: HashMap<WindowId, usize>,
-    card_id_map:   HashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
-    primary_idx:   Option<usize>,
-    secondary_idx: Option<usize>,
-
+    card_id_map: HashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
+    primary_idx: Option<usize>,
     scaler_presets: HashMap<String, ScalerPreset>,
 }
 
@@ -183,7 +181,6 @@ impl Default for WgpuDisplayManager {
             window_id_map: HashMap::new(),
             card_id_map: HashMap::new(),
             primary_idx: None,
-            secondary_idx: None,
             scaler_presets: HashMap::new(),
         }
     }

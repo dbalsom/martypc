@@ -57,7 +57,6 @@ use pixels::{wgpu, PixelsContext};
 use winit::window::Window;
 
 use frontend_common::display_scaler::ScalerPreset;
-use regex::Regex;
 use serialport::SerialPortInfo;
 
 mod color;
@@ -103,7 +102,7 @@ use marty_core::{
 };
 
 use crate::windows::text_mode_viewer::TextModeViewer;
-use videocard_renderer::{CompositeParams};
+use videocard_renderer::CompositeParams;
 
 #[derive(PartialEq, Eq, Hash)]
 pub enum GuiWindow {

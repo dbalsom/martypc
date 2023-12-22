@@ -108,6 +108,7 @@ impl FromStr for VideoType {
 }
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub enum ClockingMode {
+    Default,
     Cycle,
     Character,
     Scanline,
