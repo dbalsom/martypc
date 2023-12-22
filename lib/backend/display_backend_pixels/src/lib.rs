@@ -46,7 +46,7 @@ pub use display_backend_trait::{
 
 use winit::window::Window;
 
-use marty_egui::GuiRenderContext;
+use marty_egui::context::GuiRenderContext;
 use marty_pixels_scaler::DisplayScaler;
 
 use anyhow::Error;

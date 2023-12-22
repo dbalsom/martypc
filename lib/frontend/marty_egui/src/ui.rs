@@ -29,7 +29,7 @@
     Main UI drawing code for EGUI.
 */
 
-use crate::{GuiState, GuiWindow};
+use crate::{state::GuiState, GuiWindow};
 use egui::Context;
 
 impl GuiState {

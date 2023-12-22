@@ -58,7 +58,7 @@ mod run_processtests;
 
 use crate::emulator::{EmuFlags, Emulator};
 
-use marty_egui::GuiState;
+use marty_egui::state::GuiState;
 
 #[cfg(feature = "arduino_validator")]
 use crate::run_fuzzer::run_fuzzer;

@@ -44,7 +44,7 @@ use marty_core::{
     vhd::VirtualHardDisk,
     vhd_manager::VHDManager,
 };
-use marty_egui::{GuiBoolean, GuiState, GuiWindow};
+use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use videocard_renderer::AspectCorrectionMode;
 
 /// Define flags to be used by emulator.

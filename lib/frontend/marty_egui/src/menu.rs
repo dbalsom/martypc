@@ -30,7 +30,7 @@
 
 */
 
-use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
+use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 
 use marty_core::devices::traits::videocard::VideoType;
 use std::time::Duration;

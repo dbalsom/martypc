@@ -83,7 +83,7 @@ use marty_core::{
     file_util,
     machine::Machine,
 };
-use marty_egui::GuiRenderContext;
+use marty_egui::context::GuiRenderContext;
 use marty_pixels_scaler::{DisplayScaler, MartyScaler, ScalerMode};
 use videocard_renderer::{AspectCorrectionMode, AspectRatio, VideoRenderer};
 
