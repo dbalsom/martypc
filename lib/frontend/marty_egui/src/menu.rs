@@ -32,7 +32,7 @@
 
 use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
 use egui::gui_zoom::zoom_menu_buttons;
-use marty_core::videocard::VideoType;
+use marty_core::devices::traits::videocard::VideoType;
 use std::time::Duration;
 
 use marty_core::machine::MachineState;

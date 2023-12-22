@@ -93,7 +93,7 @@
 [[romset]]
 alias = "ibm5150_81_v1"
 priority = 1
-provides = ["ibm5150"]
+provides = ["ibm5150v64k"]
 desc = "IBM 5150 BIOS v1 04/24/81"
 datestr = "04/24/81"
 rom = [
@@ -127,7 +127,7 @@ checkpoints = [
 [[romset]]
 alias = "ibm5150_81_v2"
 priority = 2
-provides = ["ibm5150"]
+provides = ["ibm5150v64k"]
 desc = "IBM 5150 BIOS v2 10/19/81"
 datestr = "10/19/81"
 rom = [
@@ -137,7 +137,7 @@ rom = [
 [[romset]]
 alias = "ibm5150_82_v3"
 priority = 3
-provides = ["expansion", "ibm5150"]
+provides = ["expansion", "ibm5150v64k", "ibm5150v256k"]
 desc = "IBM 5150 BIOS v3 10/27/82"
 datestr = "10/27/82"
 rom = [

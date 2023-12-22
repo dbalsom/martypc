@@ -44,7 +44,7 @@ use crate::{
     display_scaler::{ScalerMode, ScalerPreset},
     types::display_target_margins::DisplayTargetMargins,
 };
-use marty_core::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
+use marty_core::devices::traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
 use videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 #[derive(Copy, Clone)]

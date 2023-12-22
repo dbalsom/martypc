@@ -40,7 +40,7 @@ use marty_core::{
     coreconfig::{CoreConfig, VideoCardDefinition},
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::keyboard::KeyboardType,
+    devices::implementations::keyboard::KeyboardType,
     machine_types::{HardDiskControllerType, MachineType},
 };
 

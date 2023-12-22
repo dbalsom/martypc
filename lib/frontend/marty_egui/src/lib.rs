@@ -95,9 +95,11 @@ use crate::{
 };
 
 use marty_core::{
-    devices::{hdc::HardDiskFormat, pic::PicStringState, pit::PitDisplayState, ppi::PpiStringState},
+    devices::{
+        implementations::{hdc::HardDiskFormat, pic::PicStringState, pit::PitDisplayState, ppi::PpiStringState},
+        traits::videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
+    },
     machine::{ExecutionControl, MachineState},
-    videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
 };
 
 use crate::windows::text_mode_viewer::TextModeViewer;

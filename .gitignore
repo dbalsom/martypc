@@ -40,16 +40,21 @@ icon.png
 # Ignore most files in /install directory unless specified
 /install/*.zip
 /install/roms/*
+/install/rom/parking/*
 /install/hdd/*
 /install/floppy/*
 /install/dumps/*
 /install/screenshots/*
 /install/traces/*
+# New media paths for 0.2.0
+/install/media/roms/*
+/install/media/floppies/*
+/install/media/hdds/*
 
 # Files to include for distribution
-!/install/roms/readme.md
-!/install/roms/GLABIOS_0.2.5_8PC.ROM
-!/install/roms/GLABIOS_0.2.5_8XC.ROM
+!/install/media/roms/readme.md
+!/install/media/roms/GLABIOS_0.2.5_8PC.ROM
+!/install/media/roms/GLABIOS_0.2.5_8XC.ROM
 !/install/martypc.toml
 
 # Frontend files

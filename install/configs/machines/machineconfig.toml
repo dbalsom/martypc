@@ -31,100 +31,6 @@
 # ----------------------------------------------------------------------------
 
 [[machine]]
-name = "ibm5150"
-type = "Ibm5150"
-rom_set = "auto"
-speaker = true
-
-    [machine.memory]
-    conventional.size = 0xA0000
-    conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        image = "dos330.img"
-        [[machine.fdc.drive]]
-        type  = "360k"   
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
-    
-    # Video cards
-    [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
-
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
-
-[[machine]]
-name = "ibm5150_hdd"
-type = "Ibm5150"
-rom_set = "auto"
-speaker = true
-
-    [machine.memory]
-    conventional.size = 0xA0000
-    conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        image = "dos330.img"
-        [[machine.fdc.drive]]
-        type  = "360k"   
-
-    # Hard disk controller
-    [machine.hdc]
-    type = "IbmXebec"
-    
-        # Drives connected to controller. Maximum of 2.
-        # Drive #0 - (Typically C:)
-        [[machine.hdc.drive]]
-        type = "Mfm"
-        vhd = "dos330.vhd"
-        
-        # Drive #1 - (Typically D:)
-        #[[machine.hdc.drive]]
-        #vhd = "games.vhd"
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
-    
-    # Video cards
-    [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
-
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
-
-[[machine]]
 name = "ibm5160"
 type = "Ibm5160"
 rom_set = "auto"
@@ -318,6 +224,25 @@ speaker = true
     port = 0
     
 
+[[machine]]
+name = "generic_xt_empty"
+type = "Ibm5160"
+rom_set = "glabios_xt"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0x10000
+    conventional.wait_states = 0
+    
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Dynamic"
+    
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"    
+    
 [[machine]]
 name = "generic_xt_hdd"
 type = "Ibm5160"

@@ -56,6 +56,7 @@ const BASEDIR_TOKEN: &'static str = "$basedir$";
 // Resource flags
 const RESOURCE_READONLY: u32 = 0x00000001;
 
+#[derive(Copy, Clone, Debug)]
 pub enum ResourceItemType {
     Directory,
     LocalFile,
@@ -67,6 +68,7 @@ pub enum ResourceItemType {
     RemoteArchiveFile,
 }
 
+#[derive(Clone, Debug)]
 pub struct ResourceItem {
     rtype: ResourceItemType,
     pub(crate) full_path: PathBuf,
@@ -100,7 +102,7 @@ impl ResourceManager {
     }
 
     pub fn get_resource_path(&self, resource: &str) -> Option<PathBuf> {
-        self.pm.get_path(resource)
+        self.pm.get_resource_path(resource)
     }
 
     /// Return a unique filename for the given resource, base name, and extension.
@@ -113,7 +115,7 @@ impl ResourceManager {
     ) -> Result<PathBuf, Error> {
         let mut path = self
             .pm
-            .get_path(resource)
+            .get_resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
         // Generate a regex to extract a sequence of digits from a filename
@@ -122,7 +124,7 @@ impl ResourceManager {
 
         // First, generate a map of all items starting with 'base_name'
         let mut existing_basenames: HashSet<PathBuf> = HashSet::new();
-        if let Ok(items) = self.enumerate_items(resource, false) {
+        if let Ok(items) = self.enumerate_items(resource, false, false, None) {
             for item in items {
                 if let Some(filename) = item.filename_only.clone() {
                     if filename.starts_with(base_name) {

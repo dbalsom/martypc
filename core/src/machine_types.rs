@@ -38,7 +38,8 @@ use std::str::FromStr;
 #[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
 pub enum MachineType {
     Fuzzer8088,
-    Ibm5150,
+    Ibm5150v64K,
+    Ibm5150v256K,
     Ibm5160,
 }
 
@@ -50,7 +51,8 @@ impl FromStr for MachineType {
     {
         match s.to_lowercase().as_str() {
             "fuzzer8088" => Ok(MachineType::Fuzzer8088),
-            "ibm5150" => Ok(MachineType::Ibm5150),
+            "ibm5150v64k" => Ok(MachineType::Ibm5150v64K),
+            "ibm5150v256k" => Ok(MachineType::Ibm5150v64K),
             "ibm5160" => Ok(MachineType::Ibm5160),
             _ => Err("Bad value for model".to_string()),
         }

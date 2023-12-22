@@ -41,9 +41,8 @@ use marty_core::{
     coreconfig::VideoCardDefinition,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::keyboard::KeyboardType,
+    devices::implementations::keyboard::KeyboardType,
     machine_types::{HardDiskControllerType, MachineType},
-    rom_manager::RomOverride,
 };
 
 use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem};
@@ -197,7 +196,6 @@ pub struct Machine {
     //pub model: MachineType,
     #[serde(default)]
     pub no_bios: bool,
-    pub rom_override: Option<Vec<RomOverride>>,
     #[serde(default)]
     pub raw_rom: bool,
     #[serde(default)]

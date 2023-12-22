@@ -51,28 +51,33 @@ use crate::{
     cpu_808x::{Cpu, CpuAddress, CpuError, ServiceEvent, StepResult},
     cpu_common::{CpuOption, CpuType, TraceMode},
     devices::{
-        dma::DMAControllerStringState,
-        fdc::FloppyController,
-        hdc::HardDiskController,
-        keyboard::KeyboardModifiers,
-        mouse::Mouse,
-        pic::PicStringState,
-        pit::{self, PitDisplayState},
-        ppi::PpiStringState,
+        implementations::{
+            dma::DMAControllerStringState,
+            fdc::FloppyController,
+            hdc::HardDiskController,
+            keyboard::KeyboardModifiers,
+            mouse::Mouse,
+            pic::PicStringState,
+            pit::{self, PitDisplayState},
+            ppi::PpiStringState,
+        },
+        traits::videocard::{
+            ClockingMode,
+            VideoCard,
+            VideoCardId,
+            VideoCardInterface,
+            VideoCardState,
+            VideoOption,
+            VideoType,
+        },
     },
     keys::MartyKey,
-    machine_config::MachineDescriptor,
+    machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
     machine_types::MachineType,
-    rom_manager::RomManager,
     sound::{SoundPlayer, BUFFER_MS, VOLUME_ADJUST},
     tracelogger::TraceLogger,
-    videocard::{VideoCard, VideoCardInterface, VideoCardState, VideoOption, VideoType},
 };
 
-use crate::{
-    machine_config::{get_machine_descriptor, MachineConfiguration},
-    videocard::{ClockingMode, VideoCardId},
-};
 use ringbuf::{Consumer, Producer, RingBuffer};
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -474,14 +479,16 @@ impl Machine {
         log::debug!("Using video clocking mode: {:?}", clock_mode);
 
         // Install devices
-        cpu.bus_mut().install_devices(
+        if let Err(err) = cpu.bus_mut().install_devices(
             &machine_desc,
             &machine_config,
             video_cards,
             clock_mode,
             video_trace,
             video_debug,
-        );
+        ) {
+            log::error!("Failed to install devices: {}", err);
+        }
 
         // Load keyboard translation file if specified.
 

@@ -39,17 +39,64 @@ use crate::machine_types::{
     SerialControllerType,
     SerialMouseType,
 };
+use anyhow::{anyhow, Error};
 use lazy_static::lazy_static;
 use std::{collections::HashMap, str::FromStr};
 
 use crate::{
     bus::ClockFactor,
     cpu_common::CpuType,
-    devices::{keyboard::KeyboardType, pit::PitType},
+    devices::{
+        implementations::{keyboard::KeyboardType, pit::PitType},
+        traits::videocard::VideoType,
+    },
     tracelogger::TraceLogger,
-    videocard::VideoType,
 };
 
+use crate::devices::implementations::ppi::{
+    SW1_RAM_BANKS_1,
+    SW1_RAM_BANKS_2,
+    SW1_RAM_BANKS_3,
+    SW1_RAM_BANKS_4,
+    SW2_V1_RAM_128K,
+    SW2_V1_RAM_160K,
+    SW2_V1_RAM_16K,
+    SW2_V1_RAM_192K,
+    SW2_V1_RAM_224K,
+    SW2_V1_RAM_256K,
+    SW2_V1_RAM_288K,
+    SW2_V1_RAM_320K,
+    SW2_V1_RAM_32K,
+    SW2_V1_RAM_352K,
+    SW2_V1_RAM_384K,
+    SW2_V1_RAM_416K,
+    SW2_V1_RAM_448K,
+    SW2_V1_RAM_480K,
+    SW2_V1_RAM_48K,
+    SW2_V1_RAM_512K,
+    SW2_V1_RAM_544K,
+    SW2_V1_RAM_576K,
+    SW2_V1_RAM_608K,
+    SW2_V1_RAM_640K,
+    SW2_V1_RAM_64K,
+    SW2_V1_RAM_96K,
+    SW2_V2_RAM_128K,
+    SW2_V2_RAM_192K,
+    SW2_V2_RAM_256K,
+    SW2_V2_RAM_288K,
+    SW2_V2_RAM_320K,
+    SW2_V2_RAM_352K,
+    SW2_V2_RAM_384K,
+    SW2_V2_RAM_416K,
+    SW2_V2_RAM_448K,
+    SW2_V2_RAM_480K,
+    SW2_V2_RAM_512K,
+    SW2_V2_RAM_544K,
+    SW2_V2_RAM_576K,
+    SW2_V2_RAM_608K,
+    SW2_V2_RAM_640K,
+    SW2_V2_RAM_64K,
+};
 use serde_derive::Deserialize;
 
 // Clock derivision from reenigne
@@ -112,7 +159,8 @@ lazy_static! {
     static ref BASE_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
         let mut m = HashMap::new();
         m.insert(MachineType::Fuzzer8088, vec![]);
-        m.insert(MachineType::Ibm5150, vec!["ibm5150", "ibm_basic"]);
+        m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k", "ibm_basic"]);
+        m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k", "ibm_basic"]);
         m.insert(MachineType::Ibm5160, vec!["ibm5160", "ibm_basic"]);
         m
     };
@@ -150,9 +198,29 @@ lazy_static! {
     pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
         let map = HashMap::from([
             (
-                MachineType::Ibm5150,
+                MachineType::Ibm5150v64K,
                 MachineDescriptor {
-                    machine_type: MachineType::Ibm5150,
+                    machine_type: MachineType::Ibm5150v64K,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    cpu_type: CpuType::Intel8088,
+                    cpu_factor: ClockFactor::Divisor(3),
+                    cpu_turbo_factor: ClockFactor::Divisor(2),
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: true,
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: DmaType::Single,
+                },
+            ),
+            (
+                MachineType::Ibm5150v256K,
+                MachineDescriptor {
+                    machine_type: MachineType::Ibm5150v256K,
                     system_crystal: IBM_PC_SYSTEM_CLOCK,
                     timer_crystal: None,
                     bus_crystal: IBM_PC_SYSTEM_CLOCK,
@@ -280,4 +348,68 @@ pub struct MachineConfiguration {
     pub serial: Vec<SerialControllerConfig>,
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,
+}
+
+pub fn normalize_conventional_memory(config: &MachineConfiguration) -> Result<u32, Error> {
+    let mut conventional_memory = config.memory.conventional.size;
+    conventional_memory = conventional_memory & 0xfffff000; // Normalize to 4K boundary
+
+    // For 5150 machines we set conventional memory to the next largest valid DIP value
+    let new_conventional_memory = match config.machine_type {
+        MachineType::Ibm5150v64K => match conventional_memory {
+            0x00000..=0x04000 => 0x04000,
+            0x04001..=0x08000 => 0x08000,
+            0x08001..=0x0C000 => 0x0C000,
+            0x0C001..=0x10000 => 0x10000,
+            0x10001..=0x18000 => 0x18000,
+            0x18001..=0x20000 => 0x20000,
+            0x20001..=0x28000 => 0x28000,
+            0x28001..=0x30000 => 0x30000,
+            0x30001..=0x38000 => 0x38000,
+            0x38001..=0x40000 => 0x40000,
+            0x40001..=0x48000 => 0x48000,
+            0x48001..=0x50000 => 0x50000,
+            0x50001..=0x58000 => 0x58000,
+            0x58001..=0x60000 => 0x60000,
+            0x60001..=0x68000 => 0x68000,
+            0x68001..=0x70000 => 0x70000,
+            0x70001..=0x78000 => 0x78000,
+            0x78001..=0x80000 => 0x80000,
+            0x80001..=0x88000 => 0x88000,
+            0x88001..=0x90000 => 0x90000,
+            0x90001..=0x98000 => 0x98000,
+            0x98001..=0xA0000 => 0xA0000,
+            0xA0001.. => conventional_memory,
+        },
+        MachineType::Ibm5150v256K => match conventional_memory {
+            0x00000..=0x10000 => 0x10000,
+            0x10000..=0x20000 => 0x20000,
+            0x20000..=0x30000 => 0x30000,
+            0x30000..=0x40000 => 0x40000,
+            0x40000..=0x48000 => 0x48000,
+            0x48000..=0x50000 => 0x50000,
+            0x50000..=0x58000 => 0x58000,
+            0x58000..=0x60000 => 0x60000,
+            0x60000..=0x68000 => 0x68000,
+            0x68000..=0x70000 => 0x70000,
+            0x70000..=0x78000 => 0x78000,
+            0x78000..=0x80000 => 0x80000,
+            0x80000..=0x88000 => 0x88000,
+            0x88000..=0x90000 => 0x90000,
+            0x90000..=0x98000 => 0x98000,
+            0x98000..=0xA0000 => 0xA0000,
+            0xA0001.. => conventional_memory,
+        },
+        _ => conventional_memory,
+    };
+
+    if new_conventional_memory == 0 {
+        Err(anyhow!(
+            "Invalid conventional memory size specified: {}",
+            conventional_memory
+        ))
+    }
+    else {
+        Ok(new_conventional_memory)
+    }
 }

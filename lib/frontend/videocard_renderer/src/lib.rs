@@ -39,6 +39,7 @@
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
+use marty_core::devices::implementations::cga;
 use std::{collections::VecDeque, mem::size_of, path::Path};
 
 use image;
@@ -48,9 +49,7 @@ use composite_new::{ReCompositeBuffers, ReCompositeContext};
 pub use display_backend_trait::DisplayBackend;
 use marty_common::VideoDimensions;
 use marty_core::{
-    devices::cga,
-    file_util,
-    videocard::{
+    devices::traits::videocard::{
         BufferSelect,
         CGAColor,
         CGAPalette,
@@ -60,6 +59,7 @@ use marty_core::{
         RenderBpp,
         VideoType,
     },
+    file_util,
 };
 use serde::Deserialize;
 

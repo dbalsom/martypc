@@ -40,7 +40,7 @@ use marty_core::{
     bytequeue::ByteQueue,
     cpu_808x::{Cpu, ReadWriteFlag, Segment},
     cpu_common::{CpuType, TraceMode},
-    machine_manager::{MachineType, MACHINE_DESCS},
+    machine_config::{MachineType, MACHINE_DESCS},
     tracelogger::TraceLogger,
     videocard::{ClockingMode, VideoType},
 };

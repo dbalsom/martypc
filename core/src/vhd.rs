@@ -45,7 +45,7 @@ use uuid::Uuid;
 
 use crate::{
     bytebuf::{ByteBuf, ByteBufWriter},
-    devices::hdc::SECTOR_SIZE,
+    devices::implementations::hdc::SECTOR_SIZE,
 };
 
 pub const VHD_FOOTER_LEN: usize = 512;

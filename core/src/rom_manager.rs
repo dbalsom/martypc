@@ -45,7 +45,7 @@
 */
 
 #![allow(dead_code)]
-
+/*
 use std::{
     cell::Cell,
     collections::HashMap,
@@ -1872,3 +1872,4 @@ impl RomManager {
         &self.features_available
     }
 }
+*/

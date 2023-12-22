@@ -50,7 +50,7 @@ pub struct PathConfigItem {
 
 pub struct PathManager {
     base_path: PathBuf,
-    paths: HashMap<String, PathBuf>,
+    paths: HashMap<String, Vec<PathBuf>>,
 }
 
 impl PathManager {
@@ -69,7 +69,13 @@ impl PathManager {
                 resolved_path.to_str().unwrap_or_default()
             ));
         }
-        self.paths.insert(resource_name.to_string(), resolved_path);
+
+        self.paths
+            .entry(resource_name.to_string())
+            .and_modify(|e| {
+                e.push(resolved_path.clone());
+            })
+            .or_insert(vec![resolved_path.clone()]);
         Ok(())
     }
 
@@ -100,7 +106,11 @@ impl PathManager {
         }
     }
 
-    pub fn get_path(&self, resource_name: &str) -> Option<PathBuf> {
+    pub fn get_resource_path(&self, resource_name: &str) -> Option<PathBuf> {
+        self.paths.get(resource_name).map(|p| p[0].clone())
+    }
+
+    pub fn get_resource_paths(&self, resource_name: &str) -> Option<Vec<PathBuf>> {
         self.paths.get(resource_name).map(|p| p.clone())
     }
 
@@ -109,6 +119,10 @@ impl PathManager {
     }
 
     pub fn dump_paths(&self) -> Vec<PathBuf> {
-        self.paths.values().map(|p| p.clone()).collect()
+        self.paths
+            .values()
+            .map(|p| p.iter().map(|pi| pi.clone()).collect::<Vec<PathBuf>>())
+            .flatten()
+            .collect()
     }
 }

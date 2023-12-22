@@ -34,9 +34,9 @@ use display_manager_wgpu::DisplayManager;
 use marty_core::{
     breakpoints::BreakPointType,
     cpu_common::CpuOption,
+    devices::traits::videocard::ClockingMode,
     machine::MachineState,
     vhd,
-    videocard::ClockingMode,
 };
 use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
 use std::{mem::discriminant, path::PathBuf, time::Duration};

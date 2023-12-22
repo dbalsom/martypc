@@ -35,6 +35,7 @@ use crate::{
 };
 use anyhow::Error;
 use marty_core::{
+    devices::traits::videocard::VideoType,
     machine_config::{
         FloppyControllerConfig,
         HardDriveControllerConfig,
@@ -46,7 +47,6 @@ use marty_core::{
         VideoCardConfig,
     },
     machine_types::{HardDiskControllerType, MachineType},
-    videocard::VideoType,
 };
 use serde;
 use serde_derive::Deserialize;
@@ -125,7 +125,7 @@ impl MachineManager {
         let mut machine_configs: Vec<MachineConfigFileEntry> = Vec::new();
 
         // Get a file listing of the rom directory.
-        let items = rm.enumerate_items("machine", true)?;
+        let items = rm.enumerate_items("machine", false, true, None)?;
 
         // Filter out any non-toml files.
         let toml_configs: Vec<_> = items
@@ -213,6 +213,13 @@ impl MachineManager {
 }
 
 impl MachineConfigFileEntry {
+    pub fn get_specified_rom_set(&self) -> Option<String> {
+        if self.rom_set.contains("auto") {
+            return None;
+        }
+        Some(self.rom_set.clone())
+    }
+
     /// Return a vector of strings representing the ROM feature requirements for this configuration
     pub fn get_rom_requirements(&self) -> Result<Vec<String>, Error> {
         let mut req_set: HashSet<String> = HashSet::new();

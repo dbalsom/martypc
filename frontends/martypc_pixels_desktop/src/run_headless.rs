@@ -32,17 +32,16 @@ use marty_core::{
     floppy_manager::FloppyManager,
     machine::{ExecutionControl, ExecutionState, Machine},
     machine_config::MACHINE_DESCS,
-    rom_manager::RomManager,
     sound::SoundPlayer,
 };
 
 use config_toml_bpaf::ConfigFileParams;
 use marty_core::{
     coreconfig::CoreConfig,
-    videocard::{ClockingMode, VideoType},
+    devices::traits::videocard::{ClockingMode, VideoType},
 };
 
-pub fn run_headless(config: &ConfigFileParams, rom_manager: RomManager, _floppy_manager: FloppyManager) {
+pub fn run_headless(config: &ConfigFileParams, _floppy_manager: FloppyManager) {
 
     /*
 

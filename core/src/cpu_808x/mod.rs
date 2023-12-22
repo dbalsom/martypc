@@ -1904,7 +1904,7 @@ impl Cpu {
             // It takes 6 or 7 cycles after INTR to enter INTA.
             // 3 of these are resuming from suspend, so not accounted from here.
             self.trace_comment("INTR");
-            log::debug!("resuming from halt with {} cycles", self.halt_resume_delay);
+            //log::debug!("resuming from halt with {} cycles", self.halt_resume_delay);
             self.cycles(self.halt_resume_delay);
         }
         else {

@@ -37,9 +37,11 @@
 use crate::{
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::keyboard::KeyboardType,
+    devices::{
+        implementations::keyboard::KeyboardType,
+        traits::videocard::{ClockingMode, VideoType},
+    },
     machine_types::{HardDiskControllerType, MachineType},
-    videocard::{ClockingMode, VideoType},
 };
 use std::path::PathBuf;
 

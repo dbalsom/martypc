@@ -79,9 +79,9 @@ use frontend_common::{
 };
 
 use marty_core::{
+    devices::traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoCardInterface},
     file_util,
     machine::Machine,
-    videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoCardInterface},
 };
 use marty_egui::GuiRenderContext;
 use marty_pixels_scaler::{DisplayScaler, MartyScaler, ScalerMode};

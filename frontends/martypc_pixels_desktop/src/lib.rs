@@ -71,15 +71,16 @@ use crate::run_gentests::run_gentests;
 use crate::run_runtests::run_runtests;
 
 use marty_core::{
-    devices::keyboard::KeyboardModifiers,
+    devices::{
+        implementations::keyboard::KeyboardModifiers,
+        traits::videocard::{ClockingMode, VideoType},
+    },
     floppy_manager::{FloppyError, FloppyManager},
     machine::{ExecutionControl, ExecutionState, Machine},
     machine_config::MACHINE_DESCS,
     machine_types::HardDiskControllerType,
-    rom_manager::{RomError, RomFeature, RomManager},
     sound::SoundPlayer,
     vhd_manager::{VHDManager, VHDManagerError},
-    videocard::{ClockingMode, VideoType},
 };
 
 use config_toml_bpaf::ConfigFileParams;
@@ -254,8 +255,6 @@ fn main() {
 pub fn run() {
     env_logger::init();
 
-    let mut features = Vec::new();
-
     // TODO: Move most of everything from here into an EmulatorBuilder
 
     // First we resolve the emulator configuration by parsing the configuration toml and merging it with
@@ -315,27 +314,6 @@ pub fn run() {
         }
         (video_type, clock_mode.unwrap_or_default(), video_debug)
     };
-
-    // Determine required ROM features from configuration options
-    match video_type {
-        Some(VideoType::EGA) => {
-            // an EGA BIOS ROM is required for EGA
-            features.push(RomFeature::EGA);
-        }
-        Some(VideoType::VGA) => {
-            // a VGA BIOS ROM is required for VGA
-            features.push(RomFeature::VGA);
-        }
-        _ => {}
-    }
-
-    match config.machine.hdc {
-        Some(HardDiskControllerType::IbmXebec) => {
-            // The Xebec controller ROM is required for Xebec HDC
-            features.push(RomFeature::XebecHDC);
-        }
-        _ => {}
-    }
 
     #[cfg(feature = "cpu_validator")]
     match config.validator.vtype {
@@ -433,9 +411,12 @@ pub fn run() {
         println!("  {}", rom_feature);
     }
 
+    // Determine if the machine configuration specifies a particular ROM set.as
+    let specified_rom_set = machine_config_file.get_specified_rom_set();
+
     // Resolve the ROM requirements for the requested ROM features
     let rom_sets_resolved = nu_rom_manager
-        .resolve_requirements(rom_requirements)
+        .resolve_requirements(rom_requirements, specified_rom_set)
         .unwrap_or_else(|err| {
             eprintln!("Error resolving ROM sets for machine: {}", err);
             std::process::exit(1);
@@ -508,19 +489,13 @@ pub fn run() {
     floppy_manager.set_extensions(config.emulator.media.raw_sector_image_extensions.clone());
 
     // Scan the floppy directory
-    let mut floppy_path = PathBuf::new();
-    floppy_path.push(config.emulator.basedir.clone());
-    floppy_path.push("floppy");
+    let floppy_path = resource_manager.get_resource_path("floppy").unwrap_or_else(|| {
+        eprintln!("Failed to retrieve 'floppy' resource path.");
+        std::process::exit(1);
+    });
 
     if let Err(e) = floppy_manager.scan_dir(&floppy_path) {
-        match e {
-            FloppyError::DirNotFound => {
-                eprintln!("Floppy directory not found: {}", floppy_path.display())
-            }
-            _ => {
-                eprintln!("Error reading floppy directory: {}", floppy_path.display())
-            }
-        }
+        eprintln!("Failed to read floppy path: {:?}", e);
         std::process::exit(1);
     }
 
@@ -528,18 +503,13 @@ pub fn run() {
     let mut vhd_manager = VHDManager::new();
 
     // Scan the HDD directory
-    let mut hdd_path = PathBuf::new();
-    hdd_path.push(config.emulator.basedir.clone());
-    hdd_path.push("hdd");
+    let mut hdd_path = resource_manager.get_resource_path("hdd").unwrap_or_else(|| {
+        eprintln!("Failed to retrieve 'hdd' resource path.f");
+        std::process::exit(1);
+    });
+
     if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
-        match e {
-            VHDManagerError::DirNotFound => {
-                eprintln!("HDD directory not found")
-            }
-            _ => {
-                eprintln!("Error reading floppy directory")
-            }
-        }
+        eprintln!("Failed to read hdd path: {:?}", e);
         std::process::exit(1);
     }
 

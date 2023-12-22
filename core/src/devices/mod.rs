@@ -26,23 +26,9 @@
 
     devices::mod.rs
 
-    Module to organize all device definitions
-
+    'Devices' module. Containts all device implementations, traits, and types.
 */
 
-pub mod cga;
-#[cfg(feature = "ega")]
-pub mod ega;
-pub mod mda;
-#[cfg(feature = "vga")]
-pub mod vga;
-
-pub mod dma;
-pub mod fdc;
-pub mod hdc;
-pub mod keyboard;
-pub mod mouse;
-pub mod pic;
-pub mod pit;
-pub mod ppi;
-pub mod serial;
+pub mod implementations;
+pub mod traits;
+pub mod types;

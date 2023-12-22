@@ -47,14 +47,16 @@ use ringbuf::Producer;
 use crate::{bytequeue::*, coreconfig::VideoCardDefinition, cpu_808x::*};
 
 use crate::{
-    devices::keyboard::KeyboardType,
+    devices::{
+        implementations::keyboard::KeyboardType,
+        traits::videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType},
+    },
     machine::KeybufferEntry,
     machine_config::MachineDescriptor,
     syntax_token::SyntaxToken,
-    videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType},
 };
 
-use crate::devices::{
+use crate::devices::implementations::{
     dma::*,
     fdc::FloppyController,
     hdc::*,
@@ -66,33 +68,34 @@ use crate::devices::{
     serial::*,
 };
 
-use crate::{
-    tracelogger::TraceLogger,
-    videocard::{VideoCard, VideoCardDispatch},
-};
+use crate::tracelogger::TraceLogger;
 
 #[cfg(feature = "ega")]
-use crate::devices::ega::{self, EGACard};
+use crate::devices::implementations::ega::{self, EGACard};
 #[cfg(feature = "vga")]
-use crate::devices::vga::{self, VGACard};
+use crate::devices::implementations::vga::{self, VGACard};
 use crate::{
     devices::{
-        cga::{self, CGACard},
-        mda::{self, MDACard},
+        implementations::{
+            cga::{self, CGACard},
+            mda::{self, MDACard},
+        },
+        traits::videocard::{VideoCard, VideoCardDispatch},
     },
-    machine_config::MachineConfiguration,
+    machine_config::{normalize_conventional_memory, MachineConfiguration},
     machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
     memerror::MemError,
 };
 
 pub const NO_IO_BYTE: u8 = 0xFF; // This is the byte read from a unconnected IO address.
-pub const FLOATING_BUS_BYTE: u8 = 0x00; // This is the byte read from an unmapped memory address.
+pub const OPEN_BUS_BYTE: u8 = 0xFF; // This is the byte read from an unmapped memory address.
 
-const ADDRESS_SPACE: usize = 1_048_576;
+const ADDRESS_SPACE: usize = 0x10_0000;
 const DEFAULT_WAIT_STATES: u32 = 0;
 
 const MMIO_MAP_SIZE: usize = 0x2000;
 const MMIO_MAP_SHIFT: usize = 13;
+const MMIO_MAP_LEN: usize = ADDRESS_SPACE >> MMIO_MAP_SHIFT;
 
 pub const MEM_ROM_BIT: u8 = 0b1000_0000; // Bit to signify that this address is ROM
 pub const MEM_RET_BIT: u8 = 0b0100_0000; // Bit to signify that this address is a return address for a CALL or INT
@@ -231,6 +234,7 @@ pub struct BusInterface {
     machine_desc: Option<MachineDescriptor>,
     keyboard_type: KeyboardType,
     keyboard: Keyboard,
+    conventional_size: usize,
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
@@ -366,11 +370,12 @@ impl Default for BusInterface {
             machine_desc: None,
             keyboard_type: KeyboardType::ModelF,
             keyboard: Keyboard::new(KeyboardType::ModelF, false),
-            memory: vec![0; ADDRESS_SPACE],
+            conventional_size: ADDRESS_SPACE,
+            memory: vec![OPEN_BUS_BYTE; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
             desc_vec: Vec::new(),
             mmio_map: Vec::new(),
-            mmio_map_fast: [MmioDeviceType::Memory; ADDRESS_SPACE >> MMIO_MAP_SHIFT],
+            mmio_map_fast: [MmioDeviceType::Memory; MMIO_MAP_LEN],
             mmio_data: MmioData::new(),
             cursor: 0,
 
@@ -411,6 +416,14 @@ impl BusInterface {
             keyboard: Keyboard::new(keyboard_type, false),
             ..BusInterface::default()
         }
+    }
+
+    pub fn set_conventional_size(&mut self, size: usize) {
+        self.conventional_size = size;
+    }
+
+    pub fn conventional_size(&self) -> usize {
+        self.conventional_size
     }
 
     pub fn size(&self) -> usize {
@@ -796,8 +809,10 @@ impl BusInterface {
     pub fn write_u8(&mut self, address: usize, data: u8, cycles: u32) -> Result<u32, MemError> {
         if address < self.memory.len() {
             if self.memory_mask[address] & (MEM_MMIO_BIT | MEM_ROM_BIT) == 0 {
-                // Address is not mapped and not ROM, write to it.
-                self.memory[address] = data;
+                // Address is not mapped and not ROM, write to it if it is within conventional memory.
+                if address < self.conventional_size {
+                    self.memory[address] = data;
+                }
                 return Ok(DEFAULT_WAIT_STATES);
             }
             else {
@@ -840,12 +855,13 @@ impl BusInterface {
     pub fn write_u16(&mut self, address: usize, data: u16, cycles: u32) -> Result<u32, MemError> {
         if address < self.memory.len() - 1 {
             if self.memory_mask[address] & (MEM_MMIO_BIT | MEM_ROM_BIT) == 0 {
-                // Address is not mapped.
-
-                // Little Endian is LO byte first
-                if self.memory_mask[address] & MEM_ROM_BIT == 0 {
+                // Address is not mapped. Write to memory if within conventional memory size.
+                if address < self.conventional_size - 1 {
                     self.memory[address] = (data & 0xFF) as u8;
                     self.memory[address + 1] = (data >> 8) as u8;
+                }
+                else if address < self.conventional_size {
+                    self.memory[address] = (data & 0xFF) as u8;
                 }
                 return Ok(DEFAULT_WAIT_STATES);
             }
@@ -1254,12 +1270,34 @@ impl BusInterface {
         _video_trace: TraceLogger,
         video_frame_debug: bool,
     ) -> Result<(), Error> {
+        // First we need to initialize the PPI. The PPI is used to read the system's DIP switches, so the PPI must be
+        // given several parameters from the machine configuration.
+
+        // Create vector of videotypes for PPI initialization.
+        let video_types = machine_config
+            .video
+            .iter()
+            .map(|vcd| vcd.video_type)
+            .collect::<Vec<VideoType>>();
+
+        // Get the number of floppies.
+        let num_floppies = machine_config
+            .fdc
+            .as_ref()
+            .map(|fdc| fdc.drive.len() as u32)
+            .unwrap_or(0);
+
+        // Get normalized conventional memory and set it.
+        let conventional_memory = normalize_conventional_memory(machine_config)?;
+        self.set_conventional_size(conventional_memory as usize);
+
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
             self.ppi = Some(Ppi::new(
                 machine_desc.machine_type,
-                videocards.iter().map(|vcd| vcd.video_type).collect(),
-                2,
+                conventional_memory,
+                video_types,
+                num_floppies,
             ));
             // Add PPI ports to io_map
             let port_list = self.ppi.as_mut().unwrap().port_list();
@@ -1350,7 +1388,7 @@ impl BusInterface {
         if let Some(serial_mouse_config) = &machine_config.serial_mouse {
             match serial_mouse_config.mouse_type {
                 SerialMouseType::Microsoft => {
-                    let mouse = Mouse::new();
+                    let mouse = Mouse::new(serial_mouse_config.port as usize);
                     self.mouse = Some(mouse);
                 }
             }

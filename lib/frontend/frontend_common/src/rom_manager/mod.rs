@@ -196,7 +196,7 @@ impl RomManager {
         let mut rom_defs: Vec<RomSetDefinition> = Vec::new();
 
         // Get a file listing of the rom directory.
-        let items = rm.enumerate_items("rom", true)?;
+        let items = rm.enumerate_items("rom", true, true, None)?;
 
         // Filter out any non-toml files.
         let toml_defs: Vec<_> = items
@@ -372,7 +372,7 @@ impl RomManager {
     }
 
     pub fn scan(&mut self, rm: &ResourceManager) -> Result<(), Error> {
-        let roms = rm.enumerate_items("rom", true)?;
+        let roms = rm.enumerate_items("rom", true, true, None)?;
 
         // Clear the list of ROM candidates so we can rebuild it
         self.rom_candidates.clear();
@@ -593,11 +593,48 @@ impl RomManager {
     /// Given a vector of ROM requirements, return a vector of ROM set names that satisfy the requirements.
     /// The logic here has the potential to be quite complex in certain situations, but the limited number
     /// of sets we support at the moment should permit a simple implementation.
-    pub fn resolve_requirements(&mut self, required: Vec<String>) -> Result<Vec<String>, Error> {
+    pub fn resolve_requirements(
+        &mut self,
+        required: Vec<String>,
+        specified: Option<String>,
+    ) -> Result<Vec<String>, Error> {
         let mut romset_vec = Vec::new();
         let mut provided_features = HashSet::new();
 
+        if let Some(rom_vec) = self.rom_sets_by_feature.get(&String::from("ibm_basic")) {
+            for rom in rom_vec.iter() {
+                log::debug!("Found rom set for feature ibm_basic: {}", rom);
+            }
+        }
+        else {
+            log::debug!("No rom set found for feature ibm_basic.");
+        }
+
+        // If a specified rom is provided, we can add it first and mark its features as provided.
+        if let Some(specified_rom) = specified {
+            if let Some(rom_set_idx) = self.rom_def_map.get(&specified_rom) {
+                let rom_set = &self.rom_defs[*rom_set_idx];
+                for feature in rom_set.provides.iter() {
+                    provided_features.insert(feature.clone());
+                }
+                romset_vec.push(specified_rom.clone());
+            }
+            else {
+                return Err(anyhow::anyhow!(
+                    "Specified rom set {} not found in rom set map.",
+                    specified_rom
+                ));
+            }
+        }
+
         for feature in required.iter() {
+            log::debug!("Resolving feature: {}...", feature);
+
+            if provided_features.contains(feature) {
+                log::debug!("Feature {} already provided. Skipping.", feature);
+                continue;
+            }
+
             if let Some(feature_vec) = self.rom_sets_by_feature.get(feature) {
                 if feature_vec.is_empty() {
                     return Err(anyhow::anyhow!(
@@ -606,17 +643,36 @@ impl RomManager {
                     ));
                 }
                 else {
-                    if provided_features.contains(feature) {
-                        log::debug!("Feature {} already provided. Skipping.", feature);
-                        continue;
-                    }
                     // Get the list of provided features for the first rom set in the feature vector.
-                    let rom_set_idx = self.rom_def_map.get(&feature_vec[0]).unwrap();
-                    let rom_set = &self.rom_defs[*rom_set_idx];
-                    for feature in rom_set.provides.iter() {
-                        provided_features.insert(feature.clone());
+
+                    for rom in feature_vec.iter() {
+                        log::debug!("Found rom set for feature {}: {}", feature, rom);
+                        let rom_set_idx = self.rom_def_map.get(rom).unwrap();
+                        let rom_set = &self.rom_defs[*rom_set_idx];
+
+                        // Only add the rom set if NONE of its features are already provided.
+                        let mut add_rom_set = true;
+                        for feature in rom_set.provides.iter() {
+                            if provided_features.contains(feature) {
+                                log::debug!(
+                                    "Rom set {} provides feature {} which is already provided. Skipping.",
+                                    feature_vec[0],
+                                    feature
+                                );
+                                add_rom_set = false;
+                                continue;
+                            }
+                        }
+
+                        if add_rom_set {
+                            for feature in rom_set.provides.iter() {
+                                provided_features.insert(feature.clone());
+                            }
+                            log::debug!("Adding ROM: {}", rom);
+                            romset_vec.push(rom.clone());
+                            break;
+                        }
                     }
-                    romset_vec.push(feature_vec[0].clone());
                 }
             }
         }
