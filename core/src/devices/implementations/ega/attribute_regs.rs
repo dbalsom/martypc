@@ -32,8 +32,6 @@
 
 use super::*;
 
-use modular_bitfield::prelude::*;
-
 #[derive(Copy, Clone, Debug)]
 pub enum AttributeRegister {
     Palette0,

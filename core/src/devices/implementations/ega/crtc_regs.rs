@@ -31,7 +31,6 @@
 */
 
 use super::*;
-use modular_bitfield::prelude::*;
 
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 

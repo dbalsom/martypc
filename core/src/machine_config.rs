@@ -41,7 +41,7 @@ use crate::machine_types::{
 };
 use anyhow::{anyhow, Error};
 use lazy_static::lazy_static;
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 use crate::{
     bus::ClockFactor,
@@ -52,7 +52,6 @@ use crate::{
     },
     tracelogger::TraceLogger,
 };
-
 
 use serde_derive::Deserialize;
 
@@ -340,21 +339,21 @@ pub fn normalize_conventional_memory(config: &MachineConfiguration) -> Result<u3
         },
         MachineType::Ibm5150v256K => match conventional_memory {
             0x00000..=0x10000 => 0x10000,
-            0x10000..=0x20000 => 0x20000,
-            0x20000..=0x30000 => 0x30000,
-            0x30000..=0x40000 => 0x40000,
-            0x40000..=0x48000 => 0x48000,
-            0x48000..=0x50000 => 0x50000,
-            0x50000..=0x58000 => 0x58000,
-            0x58000..=0x60000 => 0x60000,
-            0x60000..=0x68000 => 0x68000,
-            0x68000..=0x70000 => 0x70000,
-            0x70000..=0x78000 => 0x78000,
-            0x78000..=0x80000 => 0x80000,
-            0x80000..=0x88000 => 0x88000,
-            0x88000..=0x90000 => 0x90000,
-            0x90000..=0x98000 => 0x98000,
-            0x98000..=0xA0000 => 0xA0000,
+            0x10001..=0x20000 => 0x20000,
+            0x20001..=0x30000 => 0x30000,
+            0x30001..=0x40000 => 0x40000,
+            0x40001..=0x48000 => 0x48000,
+            0x48001..=0x50000 => 0x50000,
+            0x50001..=0x58000 => 0x58000,
+            0x58001..=0x60000 => 0x60000,
+            0x60001..=0x68000 => 0x68000,
+            0x68001..=0x70000 => 0x70000,
+            0x70001..=0x78000 => 0x78000,
+            0x78001..=0x80000 => 0x80000,
+            0x80001..=0x88000 => 0x88000,
+            0x88001..=0x90000 => 0x90000,
+            0x90001..=0x98000 => 0x98000,
+            0x98001..=0xA0000 => 0xA0000,
             0xA0001.. => conventional_memory,
         },
         _ => conventional_memory,
