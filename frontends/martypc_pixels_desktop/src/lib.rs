@@ -378,7 +378,16 @@ pub fn run() {
     }
 
     // Get the ROM requirements for the requested machine type
-    let mut machine_config_file = machine_manager.get_config(&config.machine.config_name).unwrap();
+    let mut machine_config_file = {
+        if let Some(overlay_vec) = &config.machine.config_overlays {
+            machine_manager
+                .get_config_with_overlays(&config.machine.config_name, overlay_vec)
+                .unwrap()
+        }
+        else {
+            machine_manager.get_config(&config.machine.config_name).unwrap()
+        }
+    };
     let rom_requirements = machine_config_file.get_rom_requirements().unwrap_or_else(|e| {
         eprintln!("Error getting ROM requirements for machine: {}", e);
         std::process::exit(1);

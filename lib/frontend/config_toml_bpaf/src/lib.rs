@@ -193,6 +193,7 @@ pub struct Cpu {
 #[derive(Debug, Deserialize)]
 pub struct Machine {
     pub config_name: String,
+    pub config_overlays: Option<Vec<String>>,
     //pub model: MachineType,
     #[serde(default)]
     pub no_bios: bool,

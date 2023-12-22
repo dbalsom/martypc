@@ -76,51 +76,55 @@ impl ResourceManager {
         resursive: bool,
         extension_filter: Option<Vec<OsString>>,
     ) -> Result<Vec<ResourceItem>, Error> {
-        if resursive {
-            return self.enumerate_items_recursive(multipath, resource);
+        let mut items = if resursive {
+            self.enumerate_items_recursive(multipath, resource)?
         }
+        else {
+            let mut items: Vec<ResourceItem> = Vec::new();
 
-        let mut items: Vec<ResourceItem> = Vec::new();
+            let mut paths = self
+                .pm
+                .get_resource_paths(resource)
+                .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
-        let mut paths = self
-            .pm
-            .get_resource_paths(resource)
-            .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
-
-        if !multipath {
-            // If multipath is false, only use the first path
-            paths.truncate(1);
-        }
-
-        for path in paths.iter() {
-            let mut path = path.clone();
-            path.push(resource);
-            let path = path.canonicalize()?;
-            if path.is_dir() {
-                items.push(ResourceItem {
-                    rtype: ResourceItemType::Directory,
-                    full_path: path.clone(),
-                    filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
-                    flags: 0,
-                });
+            if !multipath {
+                // If multipath is false, only use the first path
+                paths.truncate(1);
             }
-            else {
-                items.push(ResourceItem {
-                    rtype: ResourceItemType::LocalFile,
-                    full_path: path.clone(),
-                    filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
-                    flags: 0,
-                });
+
+            for path in paths.iter() {
+                let mut path = path.clone();
+                path.push(resource);
+                let path = path.canonicalize()?;
+                if path.is_dir() {
+                    items.push(ResourceItem {
+                        rtype: ResourceItemType::Directory,
+                        full_path: path.clone(),
+                        filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
+                        flags: 0,
+                    });
+                }
+                else {
+                    items.push(ResourceItem {
+                        rtype: ResourceItemType::LocalFile,
+                        full_path: path.clone(),
+                        filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
+                        flags: 0,
+                    });
+                }
             }
-        }
+            items
+        };
 
         // If extension filter was provided, filter items by extension
         if let Some(extension_filter) = extension_filter {
             items = items
                 .iter()
                 .filter_map(|item| {
+                    log::debug!("in filter_map()");
                     if item.full_path.is_file() {
                         if let Some(extension) = item.full_path.extension() {
+                            log::debug!("extension: {:?}", extension);
                             if extension_filter.contains(&extension.to_ascii_lowercase()) {
                                 return Some(item);
                             }
@@ -166,6 +170,7 @@ impl ResourceManager {
                 });
             })?
         }
+
         Ok(items)
     }
 

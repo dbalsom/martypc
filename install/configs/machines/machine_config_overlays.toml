@@ -1,0 +1,27 @@
+# machine_config_overlays.toml
+# Main Machine Configuration Overlay file for MartyPC.
+
+[[overlay]]
+name = "cga"
+    
+    [[overlay.video]]               
+    type = "CGA"
+    clock_mode = "Default"
+
+[[overlay]]
+name = "ega"
+    
+    [[overlay.video]]               
+    type = "EGA"
+    clock_mode = "Default"
+
+[[overlay]]
+name = "cga_and_mda"
+    
+    [[overlay.video]]               
+    type = "CGA"
+    clock_mode = "Default"
+
+    [[overlay.video]]               
+    type = "MDA"
+    clock_mode = "Default"

@@ -36,6 +36,7 @@ use crate::{
 use anyhow::Error;
 use marty_core::{
     devices::traits::videocard::VideoType,
+    machine::Machine,
     machine_config::{
         FloppyControllerConfig,
         HardDriveControllerConfig,
@@ -52,12 +53,14 @@ use serde;
 use serde_derive::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
+    ffi::OsString,
     path::PathBuf,
 };
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct MachineConfigFile {
-    machine: Vec<MachineConfigFileEntry>,
+    machine: Option<Vec<MachineConfigFileEntry>>,
+    overlay: Option<Vec<MachineConfigFileOverlayEntry>>,
 }
 
 pub struct MachineConfigContext<'a> {
@@ -82,6 +85,17 @@ pub struct MachineConfigFileEntry {
     serial_mouse: Option<SerialMouseConfig>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct MachineConfigFileOverlayEntry {
+    name: String,
+    fdc: Option<FloppyControllerConfig>,
+    hdc: Option<HardDriveControllerConfig>,
+    serial: Option<Vec<SerialControllerConfig>>,
+    video: Option<Vec<VideoCardConfig>>,
+    keyboard: Option<KeyboardConfig>,
+    serial_mouse: Option<SerialMouseConfig>,
+}
+
 /*
 #[derive(Clone, Debug, Deserialize)]
 pub struct ParallelControllerConfig {
@@ -91,10 +105,11 @@ pub struct ParallelControllerConfig {
  */
 
 pub struct MachineManager {
-    active_config_name: String,
     active_config: Option<MachineConfigFileEntry>,
     config_names: HashSet<String>,
+    overlay_names: HashSet<String>,
     configs: HashMap<String, MachineConfigFileEntry>,
+    overlays: HashMap<String, MachineConfigFileOverlayEntry>,
     features_requested: HashSet<String>,
     features_provided: HashSet<String>,
     rom_sets_required: Vec<usize>,
@@ -103,10 +118,11 @@ pub struct MachineManager {
 impl Default for MachineManager {
     fn default() -> Self {
         Self {
-            active_config_name: String::new(),
             active_config: None,
             config_names: HashSet::new(),
+            overlay_names: HashSet::new(),
             configs: HashMap::new(),
+            overlays: HashMap::new(),
             features_requested: HashSet::new(),
             features_provided: HashSet::new(),
             rom_sets_required: Vec::new(),
@@ -123,31 +139,29 @@ impl MachineManager {
 
     pub fn load_configs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
         let mut machine_configs: Vec<MachineConfigFileEntry> = Vec::new();
+        let mut overlay_configs: Vec<MachineConfigFileOverlayEntry> = Vec::new();
 
-        // Get a file listing of the rom directory.
-        let items = rm.enumerate_items("machine", false, true, None)?;
-
-        // Filter out any non-toml files.
-        let toml_configs: Vec<_> = items
-            .iter()
-            .filter_map(|item| {
-                log::debug!("item: {:?}", item.full_path);
-                if item.full_path.extension().is_some_and(|ext| ext == "toml") {
-                    return Some(item);
-                }
-                None
-            })
-            .collect();
+        // Get a file listing of 'toml' files in the machine configuration directory.
+        let toml_configs = rm.enumerate_items("machine", false, true, Some(vec![OsString::from("toml")]))?;
 
         log::debug!(
-            "load_configs(): Found {} Machine Configuration files",
+            "load_configs(): Found {} Machine Configuration files:",
             toml_configs.len()
         );
+        for item in toml_configs.iter() {
+            log::debug!("  {:?}", item.full_path);
+        }
 
-        // Attempt to load each toml file as a rom definition file.
+        // Attempt to parse each toml file as a machine configuration or overlay file.
         for config in toml_configs {
             let mut loaded_config = self.parse_config_file(&config.full_path)?;
-            machine_configs.append(&mut loaded_config.machine);
+
+            if let Some(machine_vec) = loaded_config.machine.as_mut() {
+                machine_configs.append(machine_vec);
+            }
+            if let Some(overlay_vec) = loaded_config.overlay.as_mut() {
+                overlay_configs.append(overlay_vec);
+            }
         }
 
         // Check for duplicate names
@@ -156,6 +170,12 @@ impl MachineManager {
                 return Err(anyhow::anyhow!("Duplicate machine name: {}", config.name));
             }
             self.configs.insert(config.name.clone(), config);
+        }
+        for overlay in overlay_configs {
+            if self.overlays.contains_key(&overlay.name) {
+                return Err(anyhow::anyhow!("Duplicate overlay name: {}", overlay.name));
+            }
+            self.overlays.insert(overlay.name.clone(), overlay);
         }
 
         self.print_config_stats();
@@ -194,6 +214,31 @@ impl MachineManager {
     /// Return the machine configuration with the given name, if present.
     pub fn get_config(&self, config_name: &str) -> Option<&MachineConfigFileEntry> {
         self.configs.get(config_name)
+    }
+
+    /// Return the machine configuration with the given name, after applying the specified overlays. If the machine
+    /// name or one of the overlays is not found, an error is returned.
+    pub fn get_config_with_overlays(
+        &mut self,
+        config_name: &str,
+        overlays: &Vec<String>,
+    ) -> Result<&MachineConfigFileEntry, Error> {
+        let mut config = self
+            .configs
+            .get(config_name)
+            .ok_or(anyhow::anyhow!("Machine configuration not found: {}", config_name))?
+            .clone();
+
+        for overlay_name in overlays {
+            let overlay = self.overlays.get(overlay_name).ok_or(anyhow::anyhow!(
+                "Machine configuration overlay not found: {}",
+                overlay_name
+            ))?;
+            config.apply_overlay(overlay.clone());
+        }
+
+        self.active_config = Some(config);
+        Ok(&self.active_config.as_ref().unwrap())
     }
 
     /*
@@ -258,6 +303,29 @@ impl MachineConfigFileEntry {
         let mut req_list = Vec::from_iter(req_set.into_iter());
         req_list.sort();
         Ok(req_list)
+    }
+
+    /// Apply a Machine Config Overlay to this configuration. Every option that is Some within the overlay is
+    /// copied into this configuration.
+    pub fn apply_overlay(&mut self, overlay: MachineConfigFileOverlayEntry) {
+        if let Some(fdc) = overlay.fdc {
+            self.fdc = Some(fdc);
+        }
+        if let Some(hdc) = overlay.hdc {
+            self.hdc = Some(hdc);
+        }
+        if let Some(serial) = overlay.serial {
+            self.serial = Some(serial);
+        }
+        if let Some(video) = overlay.video {
+            self.video = Some(video);
+        }
+        if let Some(keyboard) = overlay.keyboard {
+            self.keyboard = Some(keyboard);
+        }
+        if let Some(serial_mouse) = overlay.serial_mouse {
+            self.serial_mouse = Some(serial_mouse);
+        }
     }
 
     pub fn to_machine_config(&self) -> MachineConfiguration {
