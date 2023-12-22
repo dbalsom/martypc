@@ -29,7 +29,7 @@
     Displays a big icon designed to flow in-line with text.
 */
 
-use egui::{CursorIcon::Default, Response};
+use egui::{Response};
 
 pub enum IconType {
     Info,

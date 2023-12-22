@@ -58,12 +58,12 @@ impl VhdCreator {
         ui.horizontal(|ui| {
             IconType::HardDisk.draw(ui, None);
             ui.label(
-                (egui::RichText::new(
+                egui::RichText::new(
                     "Create a VHD (Virtual Hard Drive)\n\
                         Currently only one disk geometry is supported.\n\
                         Enter a filename and click Create.",
                 )
-                .font(egui::FontId::proportional(15.0))),
+                .font(egui::FontId::proportional(15.0)),
             );
         });
 

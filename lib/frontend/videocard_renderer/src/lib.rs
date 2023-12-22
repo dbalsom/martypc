@@ -59,7 +59,6 @@ use marty_core::{
         RenderBpp,
         VideoType,
     },
-    file_util,
 };
 use serde::Deserialize;
 
@@ -375,12 +374,12 @@ impl VideoRenderer {
         if !self.initialized {
             return true;
         }
-        if (self.aspect_dirty) {
+        if self.aspect_dirty {
             log::debug!("would_resize(): aspect ratio change detected.");
             self.aspect_dirty = false;
             return true;
         }
-        if (self.aperture_dirty) {
+        if self.aperture_dirty {
             log::debug!("would_resize(): aperture change detected.");
             self.aperture_dirty = false;
             return true;
@@ -502,7 +501,7 @@ impl VideoRenderer {
             &frame[0..(self.params.backend.w as usize * self.params.backend.h as usize * std::mem::size_of::<u32>())];
 
         match image::save_buffer(
-            path.clone(),
+            path,
             frame_slice,
             self.params.backend.w,
             self.params.backend.h,
@@ -543,7 +542,7 @@ impl VideoRenderer {
          */
 
         match image::save_buffer(
-            path.clone(),
+            path,
             frame_slice,
             self.params.backend.w,
             self.params.backend.h,

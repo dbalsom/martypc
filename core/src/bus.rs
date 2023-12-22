@@ -1265,7 +1265,7 @@ impl BusInterface {
         &mut self,
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
-        videocards: Vec<VideoCardDefinition>,
+        _videocards: Vec<VideoCardDefinition>,
         clock_mode: ClockingMode,
         _video_trace: TraceLogger,
         video_frame_debug: bool,

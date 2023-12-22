@@ -31,7 +31,7 @@
 */
 
 use crate::{GuiBoolean, GuiEnum, GuiEvent, GuiState, GuiVariable, GuiVariableContext, GuiWindow};
-use egui::gui_zoom::zoom_menu_buttons;
+
 use marty_core::devices::traits::videocard::VideoType;
 use std::time::Duration;
 
@@ -473,7 +473,7 @@ impl GuiState {
         });
 
         ui.menu_button("Scaler Presets", |ui| {
-            for (preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
+            for (_preset_idx, preset) in self.scaler_presets.clone().iter().enumerate() {
                 if ui.button(preset).clicked() {
                     self.set_option_enum(GuiEnum::DisplayScalerPreset(preset.clone()), Some(ctx));
                     self.event_queue.send(GuiEvent::VariableChanged(

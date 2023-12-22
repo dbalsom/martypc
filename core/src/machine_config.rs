@@ -41,7 +41,7 @@ use crate::machine_types::{
 };
 use anyhow::{anyhow, Error};
 use lazy_static::lazy_static;
-use std::{collections::HashMap, str::FromStr};
+use std::{collections::HashMap};
 
 use crate::{
     bus::ClockFactor,
@@ -53,50 +53,7 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
-use crate::devices::implementations::ppi::{
-    SW1_RAM_BANKS_1,
-    SW1_RAM_BANKS_2,
-    SW1_RAM_BANKS_3,
-    SW1_RAM_BANKS_4,
-    SW2_V1_RAM_128K,
-    SW2_V1_RAM_160K,
-    SW2_V1_RAM_16K,
-    SW2_V1_RAM_192K,
-    SW2_V1_RAM_224K,
-    SW2_V1_RAM_256K,
-    SW2_V1_RAM_288K,
-    SW2_V1_RAM_320K,
-    SW2_V1_RAM_32K,
-    SW2_V1_RAM_352K,
-    SW2_V1_RAM_384K,
-    SW2_V1_RAM_416K,
-    SW2_V1_RAM_448K,
-    SW2_V1_RAM_480K,
-    SW2_V1_RAM_48K,
-    SW2_V1_RAM_512K,
-    SW2_V1_RAM_544K,
-    SW2_V1_RAM_576K,
-    SW2_V1_RAM_608K,
-    SW2_V1_RAM_640K,
-    SW2_V1_RAM_64K,
-    SW2_V1_RAM_96K,
-    SW2_V2_RAM_128K,
-    SW2_V2_RAM_192K,
-    SW2_V2_RAM_256K,
-    SW2_V2_RAM_288K,
-    SW2_V2_RAM_320K,
-    SW2_V2_RAM_352K,
-    SW2_V2_RAM_384K,
-    SW2_V2_RAM_416K,
-    SW2_V2_RAM_448K,
-    SW2_V2_RAM_480K,
-    SW2_V2_RAM_512K,
-    SW2_V2_RAM_544K,
-    SW2_V2_RAM_576K,
-    SW2_V2_RAM_608K,
-    SW2_V2_RAM_640K,
-    SW2_V2_RAM_64K,
-};
+
 use serde_derive::Deserialize;
 
 // Clock derivision from reenigne

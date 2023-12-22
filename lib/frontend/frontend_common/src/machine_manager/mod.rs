@@ -31,12 +31,10 @@
 
 use crate::{
     resource_manager::ResourceManager,
-    rom_manager::{RomCheckpoint, RomDefinitionFile, RomManager, RomPatch, RomSet, RomSetDefinition},
 };
 use anyhow::Error;
 use marty_core::{
     devices::traits::videocard::VideoType,
-    machine::Machine,
     machine_config::{
         FloppyControllerConfig,
         HardDriveControllerConfig,
@@ -49,7 +47,7 @@ use marty_core::{
     },
     machine_types::{HardDiskControllerType, MachineType},
 };
-use serde;
+
 use serde_derive::Deserialize;
 use std::{
     collections::{HashMap, HashSet},

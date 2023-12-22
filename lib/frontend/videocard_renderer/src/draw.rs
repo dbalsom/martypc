@@ -48,7 +48,7 @@ impl VideoRenderer {
         let do_software_aspect = matches!(self.params.aspect_correction, AspectCorrectionMode::Software);
         let mut screenshot_taken = false;
 
-        let (first_pass_buf, mut second_pass_buf) = if (self.screenshot_requested) {
+        let (first_pass_buf, mut second_pass_buf) = if self.screenshot_requested {
             // Either we are rendering a screenshot this pass, or we are doing software aspect correction.
             // Render to internal buffer first instead of backend.
             (&mut self.screenshot_buf[..], Some(output_buf))

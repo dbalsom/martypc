@@ -47,7 +47,7 @@ pub use tree::TreeNode as PathTreeNode;
 use anyhow::Error;
 use regex::Regex;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashSet},
     path::PathBuf,
 };
 

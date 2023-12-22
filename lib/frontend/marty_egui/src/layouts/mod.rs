@@ -30,7 +30,7 @@
 
 */
 
-use egui::{style::Spacing, InnerResponse, Response, Ui};
+use egui::{style::Spacing, InnerResponse, Response};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static LAYOUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -70,7 +70,7 @@ impl MartyLayout {
             .show(ui, content)
     }
 
-    pub fn kv_row<F: FnOnce(&mut egui::Ui)>(ui: &mut egui::Ui, label: &str, min_width: Option<f32>, content: F) {
+    pub fn kv_row<F: FnOnce(&mut egui::Ui)>(ui: &mut egui::Ui, label: &str, _min_width: Option<f32>, content: F) {
         ui.label(label);
         ui.horizontal(|ui| {
             content(ui);

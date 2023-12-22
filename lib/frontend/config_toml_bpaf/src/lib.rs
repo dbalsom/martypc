@@ -42,7 +42,7 @@ use marty_core::{
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
     devices::implementations::keyboard::KeyboardType,
-    machine_types::{HardDiskControllerType, MachineType},
+    machine_types::{HardDiskControllerType},
 };
 
 use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem};

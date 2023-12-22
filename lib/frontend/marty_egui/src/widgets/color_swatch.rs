@@ -31,7 +31,7 @@
 
 */
 
-use crate::GuiState;
+
 use egui::*;
 
 /// Simple color swatch widget. Used for palette register display.

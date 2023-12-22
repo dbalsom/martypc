@@ -49,7 +49,7 @@ impl TextModeViewer {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
         if self.card_idx < self.card_descs.len() {
             MartyLayout::new(layouts::Layout::KeyValue, "text-mode-card-grid").show(ui, |ui| {
                 MartyLayout::kv_row(ui, "Card", None, |ui| {

@@ -99,7 +99,7 @@ impl FloppyManager {
         self.image_map.clear();
 
         // Retrieve all items from the floppy resource paths.
-        let mut floppy_items = rm.enumerate_items("floppy", true, true, Some(self.extensions.clone()))?;
+        let floppy_items = rm.enumerate_items("floppy", true, true, Some(self.extensions.clone()))?;
 
         for item in floppy_items {
             let idx = self.image_vec.len();
@@ -206,7 +206,7 @@ impl FloppyManager {
             let floppy_path = self.image_vec[*idx].path.clone();
             floppy_vec = match std::fs::read(&floppy_path) {
                 Ok(vec) => vec,
-                Err(e) => {
+                Err(_e) => {
                     return Err(FloppyError::FileReadError);
                 }
             };
@@ -222,7 +222,7 @@ impl FloppyManager {
             let floppy_path = self.image_vec[*idx].path.clone();
             match std::fs::write(&floppy_path, data) {
                 Ok(_) => Ok(()),
-                Err(e) => {
+                Err(_e) => {
                     return Err(FloppyError::FileWriteError);
                 }
             }
