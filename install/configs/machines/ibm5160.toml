@@ -1,5 +1,5 @@
-# ibm5150.toml
-# Machine Configurations for the IBM 5150
+# ibm5160.toml
+# Machine Configurations for the IBM 5160
 
 # MartyPC will search all *.toml files in 'machine' directories for machine
 # configurations, so if you create a custom machine configuration, you can 
@@ -32,8 +32,8 @@
 # ----------------------------------------------------------------------------
 
 [[machine]]
-name = "ibm5150_64k"
-type = "Ibm5150v64K"
+name = "ibm5160"
+type = "Ibm5160"
 rom_set = "auto"
 speaker = true
 
@@ -47,10 +47,10 @@ speaker = true
     
         # Drives connected to controller. Maximum of 4.
         [[machine.fdc.drive]]
-        type  = "360k"
+        type  = "720k"
         image = "dos330.img"
         [[machine.fdc.drive]]
-        type  = "360k"   
+        type  = "720k"   
 
     # Serial card
     [[machine.serial]]
@@ -64,16 +64,16 @@ speaker = true
     
     # Video cards
     [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
+    type = "CGA"
+    clock_mode = "Dynamic"
 
     [machine.keyboard]
     type = "ModelF"
-    layout = "US"
+    layout = "US"    
 
 [[machine]]
-name = "ibm5150_64k_hdd"
-type = "Ibm5150v64K"
+name = "ibm5160_hdd"
+type = "Ibm5160"
 rom_set = "auto"
 speaker = true
 
@@ -87,10 +87,10 @@ speaker = true
     
         # Drives connected to controller. Maximum of 4.
         [[machine.fdc.drive]]
-        type  = "360k"
+        type  = "720k"
         image = "dos330.img"
         [[machine.fdc.drive]]
-        type  = "360k"   
+        type  = "720k"   
 
     # Hard disk controller
     [machine.hdc]
@@ -118,16 +118,16 @@ speaker = true
     
     # Video cards
     [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
+    type = "CGA"
+    clock_mode = "Dynamic"
 
     [machine.keyboard]
     type = "ModelF"
-    layout = "US"
+    layout = "US"    
 
 [[machine]]
-name = "ibm5150_256k"
-type = "Ibm5150v256K"
+name = "ibm5160_hdd_ega"
+type = "Ibm5160"
 rom_set = "auto"
 speaker = true
 
@@ -141,50 +141,10 @@ speaker = true
     
         # Drives connected to controller. Maximum of 4.
         [[machine.fdc.drive]]
-        type  = "360k"
+        type  = "720k"
         image = "dos330.img"
         [[machine.fdc.drive]]
-        type  = "360k"   
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
-    
-    # Video cards
-    [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
-
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
-
-[[machine]]
-name = "ibm5150_256k_hdd"
-type = "Ibm5150v256K"
-rom_set = "auto"
-speaker = true
-
-    [machine.memory]
-    conventional.size = 0xA0000
-    conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        image = "dos330.img"
-        [[machine.fdc.drive]]
-        type  = "360k"   
+        type  = "720k"   
 
     # Hard disk controller
     [machine.hdc]
@@ -212,10 +172,9 @@ speaker = true
     
     # Video cards
     [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
+    type = "EGA"
+    clock_mode = "Dynamic"
 
     [machine.keyboard]
     type = "ModelF"
-    layout = "US"
-
+    layout = "US"    

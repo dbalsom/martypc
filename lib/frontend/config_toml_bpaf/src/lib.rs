@@ -93,8 +93,15 @@ impl FromStr for TestMode {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct VhdConfigEntry {
+    pub drive:    usize,
+    pub filename: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Media {
     pub raw_sector_image_extensions: Option<Vec<String>>,
+    pub vhd: Option<Vec<VhdConfigEntry>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -284,6 +291,8 @@ pub struct CmdLineArgs {
 
     #[bpaf(long)]
     pub machine_config_name: Option<String>,
+    #[bpaf(long)]
+    pub machine_config_overlays: Option<String>,
 
     #[bpaf(long)]
     pub turbo: bool,
@@ -318,6 +327,12 @@ impl ConfigFileParams {
         if let Some(config_name) = shell_args.machine_config_name {
             self.machine.config_name = config_name;
         }
+        if let Some(config_overlay_string) = shell_args.machine_config_overlays {
+            // Split comma-separated list of overlays into vector of strings
+            let config_overlays: Vec<String> = config_overlay_string.split(',').map(|s| s.trim().to_string()).collect();
+            self.machine.config_overlays = Some(config_overlays);
+        }
+
         if let Some(validator) = shell_args.validator {
             self.validator.vtype = Some(validator);
         }

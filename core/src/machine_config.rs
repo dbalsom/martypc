@@ -327,7 +327,7 @@ pub struct FloppyDriveConfig {
 pub struct HardDriveControllerConfig {
     #[serde(rename = "type")]
     pub hdc_type: HardDiskControllerType,
-    pub drive:    Vec<HardDriveConfig>,
+    pub drive:    Option<Vec<HardDriveConfig>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

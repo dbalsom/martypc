@@ -2,26 +2,49 @@
 # Main Machine Configuration Overlay file for MartyPC.
 
 [[overlay]]
+name = "xebec"
+    # Hard disk controller
+    [overlay.hdc]
+    type = "IbmXebec"
+        
+[[overlay]]
 name = "cga"
-    
+    # Video card
     [[overlay.video]]               
     type = "CGA"
-    clock_mode = "Default"
+    
+    # Clocking mode for video card. Default values are:
+    # Dynamic   - Switch between supported clocking modes as required.
+    #             Recommended setting. Supported by all cards.
+    # Cycle     - Clock by cycle. Accurate but slow. Only really useful for debugging.
+    #             Only valid for CGA.
+    # Character - Clock by character. Faster but may not be able to emulate certain effects.
+    #             Only valid for CGA and EGA.
+    # Scanline  - Clock by scanline. Fastest but unable to emulate certain effects.
+    #             Only valid for MDA and VGA.
+    clocking_mode = "Default"
+    
+    # Request line doubling for 15Khz (200 scanline) modes during rendering. 
+    # Recommended.
+    # This occurs before aspect correction, so reduces blur. Not applicable
+    # to VGA as VGA double-scans such modes in hardware.
+    line_double = true
+    snow = false
 
 [[overlay]]
 name = "ega"
-    
+    # Video card
     [[overlay.video]]               
     type = "EGA"
     clock_mode = "Default"
 
 [[overlay]]
 name = "cga_and_mda"
-    
+    # Video card
     [[overlay.video]]               
     type = "CGA"
     clock_mode = "Default"
-
+    # Video card
     [[overlay.video]]               
     type = "MDA"
     clock_mode = "Default"

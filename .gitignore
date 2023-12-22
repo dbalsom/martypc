@@ -53,8 +53,7 @@ icon.png
 
 # Files to include for distribution
 !/install/media/roms/readme.md
-!/install/media/roms/GLABIOS_0.2.5_8PC.ROM
-!/install/media/roms/GLABIOS_0.2.5_8XC.ROM
+!/install/media/roms/GLaBIOS
 !/install/martypc.toml
 
 # Frontend files

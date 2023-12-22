@@ -205,25 +205,21 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         }
         GuiEvent::DumpVRAM => {
             if let Some(video_card) = emu.machine.primary_videocard() {
-                let mut dump_path = PathBuf::new();
-                dump_path.push(emu.config.emulator.basedir.clone());
-                dump_path.push("dumps");
+                let dump_path = emu.rm.get_resource_path("dump").unwrap();
                 video_card.dump_mem(&dump_path);
             }
         }
         GuiEvent::DumpCS => {
-            let mut dump_path = PathBuf::new();
-            dump_path.push(emu.config.emulator.basedir.clone());
-            dump_path.push("dumps");
-
-            emu.machine.cpu().dump_cs(&dump_path);
+            emu.rm
+                .get_available_filename("dump", "cs_dump", Some("bin"))
+                .ok()
+                .map(|path| emu.machine.cpu().dump_cs(&path));
         }
         GuiEvent::DumpAllMem => {
-            let mut dump_path = PathBuf::new();
-            dump_path.push(emu.config.emulator.basedir.clone());
-            dump_path.push("dumps");
-
-            emu.machine.bus().dump_mem(&dump_path);
+            emu.rm
+                .get_available_filename("dump", "memdump", Some("bin"))
+                .ok()
+                .map(|path| emu.machine.bus().dump_mem(&path));
         }
         GuiEvent::EditBreakpoint => {
             // Get breakpoints from GUI
@@ -316,10 +312,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             emu.machine.change_state(*state);
         }
         GuiEvent::TakeScreenshot(dt_idx) => {
-            // TODO: Get the screenshot path from common frontend code
-            let mut screenshot_path = PathBuf::new();
-            screenshot_path.push(emu.config.emulator.basedir.clone());
-            screenshot_path.push("screenshots");
+            let screenshot_path = emu.rm.get_resource_path("screenshot").unwrap();
 
             if let Err(err) = emu.dm.save_screenshot(*dt_idx, screenshot_path) {
                 log::error!("Failed to save screenshot: {}", err);

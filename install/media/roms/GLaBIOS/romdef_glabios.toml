@@ -1,0 +1,68 @@
+# romdef_glabios.toml
+# ROM definition file for MartyPC.
+
+# ----------------------------------------------------------------------------
+# ROM definitions for GLaBIOS
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "glabios_pc_2.5"
+priority = 0
+provides = ["expansion", "ibm5150"]
+desc = "GLaBIOS for IBM 5150 (MartyPC)"
+rom = [
+    { filename = "GLABIOS_0.2.5_8PC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]
+
+[[romset]]
+alias = "glabios_xt_2.5"
+priority = 0
+provides = ["expansion", "ibm5160"]
+desc = "GLaBIOS for IBM 5160 (MartyPC)"
+rom = [
+    { filename = "GLABIOS_0.2.5_8XC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]
+
+[[romset]]
+alias = "glabios_xt_2.5_lp"
+priority = 0
+provides = ["expansion", "ibm5160"]
+desc = "GLaBIOS for IBM 5160 (MartyPC + Lightpen)"
+rom = [
+    { filename = "GLABIOS_0.2.5_8TC_PEN.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]
+
+[[romset]]
+alias = "glabios_pc_2.6"
+priority = 1
+provides = ["expansion", "ibm5150"]
+desc = "GLaBIOS for IBM 5150)"
+rom = [
+    { filename = "GLABIOS_0.2.6_8P.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]
+
+[[romset]]
+alias = "glabios_xt_2.6"
+priority = 1
+provides = ["expansion", "ibm5160"]
+desc = "GLaBIOS for IBM 5160"
+rom = [
+    { filename = "GLABIOS_0.2.6_8X.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]
+
+[[romset]]
+alias = "glabios_pc"
+priority = 2
+provides = ["expansion", "ibm5150"]
+desc = "GLaBIOS 2.6 for IBM 5150 (MartyPC)"
+rom = [
+    { filename = "GLABIOS_0.2.6_8PC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]
+
+[[romset]]
+alias = "glabios_xt"
+priority = 2
+provides = ["expansion", "ibm5160"]
+desc = "GLaBIOS 2.6 for IBM 5160 (MartyPC)"
+rom = [
+    { filename = "GLABIOS_0.2.6_8XC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]

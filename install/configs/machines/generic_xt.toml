@@ -1,5 +1,5 @@
-# ibm5150.toml
-# Machine Configurations for the IBM 5150
+# generic_xt.toml
+# Machine Configurations for Generic XT systems
 
 # MartyPC will search all *.toml files in 'machine' directories for machine
 # configurations, so if you create a custom machine configuration, you can 
@@ -32,9 +32,28 @@
 # ----------------------------------------------------------------------------
 
 [[machine]]
-name = "ibm5150_64k"
-type = "Ibm5150v64K"
-rom_set = "auto"
+name = "generic_xt_base"
+type = "Ibm5160"
+rom_set = "glabios_xt"
+speaker = true
+
+    [machine.memory]
+    conventional.size = 0x10000
+    conventional.wait_states = 0
+    
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Dynamic"
+    
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"   
+
+[[machine]]
+name = "generic_xt"
+type = "Ibm5160"
+rom_set = "glabios_xt"
 speaker = true
 
     [machine.memory]
@@ -64,17 +83,21 @@ speaker = true
     
     # Video cards
     [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
-
+    type = "CGA"
+    clock_mode = "Dynamic"
+    
     [machine.keyboard]
     type = "ModelF"
-    layout = "US"
-
+    layout = "US"    
+    
+    [machine.serialmouse]
+    type = "Microsoft"
+    port = 0 
+    
 [[machine]]
-name = "ibm5150_64k_hdd"
-type = "Ibm5150v64K"
-rom_set = "auto"
+name = "generic_xt_hdd"
+type = "Ibm5160"
+rom_set = "glabios_xt"
 speaker = true
 
     [machine.memory]
@@ -104,6 +127,7 @@ speaker = true
         
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
+        #type = "Mfm"
         #vhd = "games.vhd"
 
     # Serial card
@@ -118,57 +142,21 @@ speaker = true
     
     # Video cards
     [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
-
+    type = "CGA"
+    clock_mode = "Dynamic"
+    
     [machine.keyboard]
     type = "ModelF"
-    layout = "US"
-
-[[machine]]
-name = "ibm5150_256k"
-type = "Ibm5150v256K"
-rom_set = "auto"
-speaker = true
-
-    [machine.memory]
-    conventional.size = 0xA0000
-    conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
+    layout = "US"    
     
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        image = "dos330.img"
-        [[machine.fdc.drive]]
-        type  = "360k"   
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
+    [machine.serialmouse]
+    type = "Microsoft"
+    port = 0
     
-    # Video cards
-    [[machine.video]]
-    type = "MDA"
-    clock_mode = "Character"
-
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
-
 [[machine]]
-name = "ibm5150_256k_hdd"
-type = "Ibm5150v256K"
-rom_set = "auto"
+name = "generic_xt_hdd_ega"
+type = "Ibm5160"
+rom_set = "glabios_xt"
 speaker = true
 
     [machine.memory]
@@ -198,6 +186,7 @@ speaker = true
         
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
+        #type = "Mfm"
         #vhd = "games.vhd"
 
     # Serial card
@@ -212,10 +201,14 @@ speaker = true
     
     # Video cards
     [[machine.video]]
-    type = "MDA"
+    type = "EGA"
     clock_mode = "Character"
-
+    
     [machine.keyboard]
     type = "ModelF"
     layout = "US"
-
+    
+    [machine.serialmouse]
+    type = "Microsoft"
+    port = 0
+    

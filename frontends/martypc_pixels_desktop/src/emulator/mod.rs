@@ -227,8 +227,9 @@ impl Emulator {
     pub fn mount_vhds(&mut self) -> Result<(), Error> {
         let mut vhd_names: Vec<Option<String>> = Vec::new();
 
-        vhd_names.push(self.config.machine.drive0.clone());
-        vhd_names.push(self.config.machine.drive1.clone());
+        for vhd in self.config.emulator.media.vhd.as_ref().unwrap_or(&Vec::new()) {
+            vhd_names.push(Some(vhd.filename.clone()));
+        }
 
         let mut vhd_idx: usize = 0;
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
