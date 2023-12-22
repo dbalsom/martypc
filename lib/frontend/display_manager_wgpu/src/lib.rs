@@ -38,7 +38,7 @@
    - A file (for screenshots)
 */
 
-use std::{collections::HashMap, fmt::Display, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf};
 
 pub use display_backend_pixels::{
     BufferDimensions,
@@ -54,7 +54,7 @@ pub use display_backend_pixels::{
 use anyhow::{anyhow, Context, Error};
 
 use winit::{
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::{PhysicalSize},
     event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
     window::{Icon, Window, WindowBuilder, WindowButtons, WindowId, WindowLevel},
 };
@@ -79,7 +79,7 @@ use frontend_common::{
 };
 
 use marty_core::{
-    devices::traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoCardInterface},
+    devices::traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId},
     file_util,
     machine::Machine,
 };
@@ -627,7 +627,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         match ttype {
             DisplayTargetType::WindowBackground {
                 main_window,
-                has_gui,
+                has_gui: _,
                 has_menu,
             } => {
                 // Create a new window.
@@ -1000,8 +1000,8 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                             // Card scaling is enabled. Scale the window to the specified factor, even
                             // if that would shrink the window.
                             PhysicalSize::new(
-                                ((target_dimensions.w as f32 * card_scale) as u32),
-                                ((target_dimensions.h as f32 * card_scale) as u32 + top_margin),
+                                (target_dimensions.w as f32 * card_scale) as u32,
+                                (target_dimensions.h as f32 * card_scale) as u32 + top_margin,
                             )
                         }
                         _ => PhysicalSize::new(target_dimensions.w, target_dimensions.h + top_margin),

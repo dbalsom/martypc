@@ -35,7 +35,7 @@
 use std::{collections::VecDeque, error::Error};
 
 use core::fmt::Display;
-use std::str::FromStr;
+
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit},
@@ -44,7 +44,7 @@ use crate::{
 //use crate::fdc::Operation;
 use crate::{bus::IoDevice, vhd::VirtualHardDisk};
 
-use serde::Deserialize;
+
 
 // Public consts
 pub const HDC_IRQ: u8 = 0x05;

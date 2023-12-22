@@ -33,15 +33,14 @@ use crate::resource_manager::ResourceManager;
 use anyhow::Error;
 use marty_core::{
     machine::{MachineRomEntry, MachineRomManifest},
-    machine_types::MachineType,
 };
 use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     fmt::Display,
-    path::{Path, PathBuf},
+    path::{PathBuf},
 };
-use videocard_renderer::process_cga_composite_int;
+
 
 #[derive(Debug)]
 pub enum RomError {
@@ -493,7 +492,7 @@ impl RomManager {
     }
 
     pub fn resolve_rom_set(&mut self, set_idx: usize) -> Result<(), Error> {
-        let mut set = &mut self.rom_defs[set_idx];
+        let set = &mut self.rom_defs[set_idx];
 
         // First, for any roms that are specified by filename, resolve the filename to a hash.
         for rom in set.rom.iter_mut() {

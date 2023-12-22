@@ -33,7 +33,7 @@
 
 #![allow(dead_code)]
 use super::mda::attr::*;
-use bytemuck;
+
 use const_format::formatcp;
 use modular_bitfield::{bitfield, prelude::*};
 use std::{collections::HashMap, convert::TryInto, path::Path};
@@ -1298,7 +1298,7 @@ impl MDACard {
 
     /// Set the character attributes for the current character.
     fn set_char_addr(&mut self) {
-        let addr = ((self.vma & MDA_TEXT_MODE_WRAP) << 1);
+        let addr = (self.vma & MDA_TEXT_MODE_WRAP) << 1;
         self.cur_char = self.mem[addr];
         self.cur_attr = self.mem[addr + 1];
 

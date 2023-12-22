@@ -103,7 +103,7 @@ use marty_core::{
 };
 
 use crate::windows::text_mode_viewer::TextModeViewer;
-use videocard_renderer::{CompositeParams, PhosphorType};
+use videocard_renderer::{CompositeParams};
 
 #[derive(PartialEq, Eq, Hash)]
 pub enum GuiWindow {
@@ -426,7 +426,7 @@ impl GuiRenderContext {
             egui_ctx.set_debug_on_hover(true);
         }
 
-        let mut slf = Self {
+        let slf = Self {
             egui_ctx,
             #[cfg(not(target_arch = "wasm32"))]
             egui_state,

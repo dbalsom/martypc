@@ -109,7 +109,7 @@ impl VideoCard for MDACard {
         // MDA supports a single fixed 8x14 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let mut width = self.crtc_horizontal_displayed as u32 * MDA_CHAR_CLOCK as u32;
+        let width = self.crtc_horizontal_displayed as u32 * MDA_CHAR_CLOCK as u32;
         let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
         (width, height)
     }

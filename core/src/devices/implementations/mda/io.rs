@@ -54,7 +54,7 @@ pub const MDA_STATUS_REGISTER: u16 = 0x3BA;
 //pub const CGA_LIGHTPEN_LATCH_SET: u16 = 0x3DC;
 
 impl IoDevice for MDACard {
-    fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
+    fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         // Catch up to CPU state.
         //let _ticks = self.catch_up(delta, false);
 
@@ -81,8 +81,8 @@ impl IoDevice for MDACard {
         }
     }
 
-    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, delta: DeviceRunTimeUnit) {
-        let debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
+    fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
+        let _debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
 
         // Catch up to CPU state.
         //let _ticks = self.catch_up(delta, debug_port);

@@ -210,7 +210,7 @@ impl ResourceManager {
     /// Converts a list of resource items into a tree structure.
     pub fn items_to_tree(&self, resource: &str, items: Vec<ResourceItem>) -> Result<TreeNode, Error> {
         // TODO: support multipath
-        let mut root_path = self
+        let root_path = self
             .pm
             .get_resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
@@ -235,7 +235,7 @@ impl ResourceManager {
 
     /// Reads the contents of a resource from a specified file system path into a byte vector, or returns an error.
     pub fn read_resource_from_path(&self, path: &PathBuf) -> Result<Vec<u8>, Error> {
-        let mut buffer = std::fs::read(path)?;
+        let buffer = std::fs::read(path)?;
         Ok(buffer)
     }
 }

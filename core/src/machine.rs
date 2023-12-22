@@ -38,7 +38,7 @@ use log;
 use anyhow::{anyhow, Error};
 use std::{
     cell::Cell,
-    collections::{HashMap, VecDeque},
+    collections::{VecDeque},
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
@@ -681,7 +681,7 @@ impl Machine {
 
     /// Send the specified video option to the active videocard device
     pub fn set_video_option(&mut self, opt: VideoOption) {
-        if let Some(mut video) = self.cpu.bus_mut().primary_video_mut() {
+        if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
             video.set_video_option(opt);
         }
     }
@@ -689,7 +689,7 @@ impl Machine {
     /// Flush all trace logs for devices that have one
     pub fn flush_trace_logs(&mut self) {
         self.cpu.trace_flush();
-        if let Some(mut video) = self.cpu.bus_mut().primary_video_mut() {
+        if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
             video.trace_flush();
         }
     }
