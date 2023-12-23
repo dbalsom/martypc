@@ -760,7 +760,13 @@ impl CGACard {
 
         cga.trace_logger = trace_logger;
         cga.debug = video_frame_debug;
-        cga.clock_mode = clock_mode;
+
+        if let ClockingMode::Default = clock_mode {
+            cga.clock_mode = ClockingMode::Dynamic;
+        }
+        else {
+            cga.clock_mode = clock_mode;
+        }
 
         cga
     }

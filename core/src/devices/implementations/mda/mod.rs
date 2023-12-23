@@ -718,13 +718,19 @@ impl Default for MDACard {
 
 impl MDACard {
     pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool) -> Self {
-        let mut cga = Self::default();
+        let mut mda = Self::default();
 
-        cga.trace_logger = trace_logger;
-        cga.debug = video_frame_debug;
-        cga.clock_mode = clock_mode;
+        mda.trace_logger = trace_logger;
+        mda.debug = video_frame_debug;
 
-        cga
+        if let ClockingMode::Default = clock_mode {
+            mda.clock_mode = ClockingMode::Character;
+        }
+        else {
+            mda.clock_mode = clock_mode;
+        }
+
+        mda
     }
 
     /// Reset CGA state (on reboot, for example)

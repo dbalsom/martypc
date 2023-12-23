@@ -1062,7 +1062,13 @@ impl EGACard {
         ega.trace_logger = trace_logger;
         ega.debug = video_frame_debug;
         ega.debug_draw = video_frame_debug;
-        ega.clock_mode = clock_mode;
+
+        if let ClockingMode::Default = clock_mode {
+            ega.clock_mode = ClockingMode::Character;
+        }
+        else {
+            ega.clock_mode = clock_mode;
+        }
         ega
     }
 

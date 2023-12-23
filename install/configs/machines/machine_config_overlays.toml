@@ -14,14 +14,14 @@ name = "cga"
     type = "CGA"
     
     # Clocking mode for video card. Default values are:
+    # Default   - Choose the best mode per card. (Recommended)
     # Dynamic   - Switch between supported clocking modes as required.
-    #             Recommended setting. Supported by all cards.
     # Cycle     - Clock by cycle. Accurate but slow. Only really useful for debugging.
     #             Only valid for CGA.
     # Character - Clock by character. Faster but may not be able to emulate certain effects.
-    #             Only valid for CGA and EGA.
+    #             Valid for MDA, CGA and EGA.
     # Scanline  - Clock by scanline. Fastest but unable to emulate certain effects.
-    #             Only valid for MDA and VGA.
+    #             (Unimplemented)
     clocking_mode = "Default"
     
     # Request line doubling for 15Khz (200 scanline) modes during rendering. 

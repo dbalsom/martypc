@@ -44,7 +44,7 @@ speaker = true
     # Video cards
     [[machine.video]]
     type = "CGA"
-    clock_mode = "Dynamic"
+    clock_mode = "Default"
     
     [machine.keyboard]
     type = "ModelF"
@@ -84,7 +84,7 @@ speaker = true
     # Video cards
     [[machine.video]]
     type = "CGA"
-    clock_mode = "Dynamic"
+    clock_mode = "Default"
     
     [machine.keyboard]
     type = "ModelF"
@@ -143,7 +143,7 @@ speaker = true
     # Video cards
     [[machine.video]]
     type = "CGA"
-    clock_mode = "Dynamic"
+    clock_mode = "Default"
     
     [machine.keyboard]
     type = "ModelF"
@@ -202,7 +202,7 @@ speaker = true
     # Video cards
     [[machine.video]]
     type = "EGA"
-    clock_mode = "Character"
+    clock_mode = "Default"
     
     [machine.keyboard]
     type = "ModelF"
