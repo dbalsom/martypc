@@ -348,6 +348,9 @@ pub fn run() {
     // Get the ROM requirements for the requested machine type
     let machine_config_file = {
         if let Some(overlay_vec) = &config.machine.config_overlays {
+            for overlay in overlay_vec.iter() {
+                log::debug!("Have machine config overlay: {}", overlay);
+            }
             machine_manager
                 .get_config_with_overlays(&config.machine.config_name, overlay_vec)
                 .unwrap()
