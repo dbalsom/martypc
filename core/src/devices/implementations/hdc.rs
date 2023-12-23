@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -36,15 +36,12 @@ use std::{collections::VecDeque, error::Error};
 
 use core::fmt::Display;
 
-
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit},
     devices::implementations::dma,
 };
 //use crate::fdc::Operation;
 use crate::{bus::IoDevice, vhd::VirtualHardDisk};
-
-
 
 // Public consts
 pub const HDC_IRQ: u8 = 0x05;

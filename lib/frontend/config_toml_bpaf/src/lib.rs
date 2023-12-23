@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -42,7 +42,7 @@ use marty_core::{
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
     devices::implementations::keyboard::KeyboardType,
-    machine_types::{HardDiskControllerType},
+    machine_types::HardDiskControllerType,
 };
 
 use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem};

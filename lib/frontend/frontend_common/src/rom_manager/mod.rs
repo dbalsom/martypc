@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -31,16 +31,13 @@
 
 use crate::resource_manager::ResourceManager;
 use anyhow::Error;
-use marty_core::{
-    machine::{MachineRomEntry, MachineRomManifest},
-};
+use marty_core::machine::{MachineRomEntry, MachineRomManifest};
 use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
     fmt::Display,
-    path::{PathBuf},
+    path::PathBuf,
 };
-
 
 #[derive(Debug)]
 pub enum RomError {

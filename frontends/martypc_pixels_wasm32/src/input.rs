@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -47,8 +47,8 @@ pub fn button_from_id(id: u32, reverse: bool) -> MouseButton {
         ("windows", 3, true) => MouseButton::Left,
         ("linux", 1, false) => MouseButton::Left, // TODO: Verify this
         ("linux", 1, true) => MouseButton::Right,
-        ("linux", 3, false) => MouseButton::Right, 
-        ("linux", 3, true) => MouseButton::Left, 
+        ("linux", 3, false) => MouseButton::Right,
+        ("linux", 3, true) => MouseButton::Left,
         ("macos", 1, false) => MouseButton::Right, // MacOS is reversed!
         ("macos", 1, true) => MouseButton::Left,
         ("macos", 3, false) => MouseButton::Left,
@@ -57,17 +57,17 @@ pub fn button_from_id(id: u32, reverse: bool) -> MouseButton {
         (_, 1, true) => MouseButton::Right,
         (_, 3, false) => MouseButton::Right,
         (_, 3, true) => MouseButton::Left,
-        _ => MouseButton::Middle // TODO: This assumes middle button is always 2, valid?
+        _ => MouseButton::Middle, // TODO: This assumes middle button is always 2, valid?
     }
 }
 
-/// Return the winit button id for 
+/// Return the winit button id for
 pub fn get_mouse_buttons(reverse: bool) -> (u32, u32) {
     match (OS, reverse) {
         ("windows", false) => (1, 3),
         ("windows", true) => (3, 1),
         ("linux", false) => (1, 3), // TODO: Verify this
-        ("linux", true) => (3, 1), 
+        ("linux", true) => (3, 1),
         ("macos", false) => (3, 1), // MacOS is reversed!
         ("macos", true) => (3, 1),
         (_, false) => (1, 3),
@@ -75,20 +75,18 @@ pub fn get_mouse_buttons(reverse: bool) -> (u32, u32) {
     }
 }
 
-
-pub fn match_virtual_keycode( vkc: VirtualKeyCode ) -> Option<u8> {
-
+pub fn match_virtual_keycode(vkc: VirtualKeyCode) -> Option<u8> {
     match vkc {
         // From Left to Right on IBM XT keyboard
-        VirtualKeyCode::F1  => Some(0x3b),
-        VirtualKeyCode::F2  => Some(0x3c),
-        VirtualKeyCode::F3  => Some(0x3d),
-        VirtualKeyCode::F4  => Some(0x3e),
-        VirtualKeyCode::F5  => Some(0x3f),
-        VirtualKeyCode::F6  => Some(0x40),
-        VirtualKeyCode::F7  => Some(0x41),
-        VirtualKeyCode::F8  => Some(0x42),
-        VirtualKeyCode::F9  => Some(0x43),
+        VirtualKeyCode::F1 => Some(0x3b),
+        VirtualKeyCode::F2 => Some(0x3c),
+        VirtualKeyCode::F3 => Some(0x3d),
+        VirtualKeyCode::F4 => Some(0x3e),
+        VirtualKeyCode::F5 => Some(0x3f),
+        VirtualKeyCode::F6 => Some(0x40),
+        VirtualKeyCode::F7 => Some(0x41),
+        VirtualKeyCode::F8 => Some(0x42),
+        VirtualKeyCode::F9 => Some(0x43),
         VirtualKeyCode::F10 => Some(0x44),
 
         VirtualKeyCode::Escape => Some(0x01),
@@ -168,12 +166,11 @@ pub fn match_virtual_keycode( vkc: VirtualKeyCode ) -> Option<u8> {
         VirtualKeyCode::Numpad9 => Some(0x49),
         VirtualKeyCode::NumpadSubtract => Some(0x4A),
         VirtualKeyCode::NumpadAdd => Some(0x4E),
-        
+
         VirtualKeyCode::Left => Some(0x4B),
         VirtualKeyCode::Right => Some(0x4D),
         VirtualKeyCode::Up => Some(0x48),
         VirtualKeyCode::Down => Some(0x50),
-        _=>None
+        _ => None,
     }
-
 }

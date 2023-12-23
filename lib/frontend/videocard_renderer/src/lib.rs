@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -48,17 +48,15 @@ use log;
 use composite_new::{ReCompositeBuffers, ReCompositeContext};
 pub use display_backend_trait::DisplayBackend;
 use marty_common::VideoDimensions;
-use marty_core::{
-    devices::traits::videocard::{
-        BufferSelect,
-        CGAColor,
-        CGAPalette,
-        DisplayApertureType,
-        DisplayExtents,
-        DisplayMode,
-        RenderBpp,
-        VideoType,
-    },
+use marty_core::devices::traits::videocard::{
+    BufferSelect,
+    CGAColor,
+    CGAPalette,
+    DisplayApertureType,
+    DisplayExtents,
+    DisplayMode,
+    RenderBpp,
+    VideoType,
 };
 use serde::Deserialize;
 
