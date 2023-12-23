@@ -24,11 +24,11 @@
 
     --------------------------------------------------------------------------
 
-    bpaf_toml_cnofig::lib.rs
+    bpaf_toml_config::lib.rs
 
     Routines to parse configuration file and command line arguments.
 
-    This library implements CoreConfig for BPAF & TOML parsing.
+    This library implements CoreConfig for bpaf & TOML parsing.
 
 */
 
