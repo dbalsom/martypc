@@ -138,7 +138,10 @@ fn is_inside_corner_radius(uv: vec2<f32>, corner_radius: f32) -> bool {
 }
 
 fn do_monochrome(color: vec4<f32>, gamma: f32) -> vec4<f32> {
-    let brightness = brightness(color);
+    var brightness = brightness(color);
+    if (brightness < 0.0) {
+        brightness = 0.0;
+    }
     let baseColor = scaler_opts.crt_params.mono_color;
     let modulatedColor = baseColor * pow(brightness, gamma);
     return modulatedColor;
