@@ -302,8 +302,8 @@ priority = 1
 provides = ["ibm_ega"]
 requires = ["expansion"]
 rom = [
-    { md5 = "528455ed0b701722c166c6536ba4ff46", addr = 0xC0000, size = 16384, chip = "1", ord = "Normal" },
-    { md5 = "0636f46316f3e15cb287ce3da6ba43a1", addr = 0xC0000, size = 16384, chip = "1", ord = "Reversed" }
+    { md5 = "528455ed0b701722c166c6536ba4ff46", addr = 0xC0000, size = 16384, chip = "1", org = "Normal" },
+    { md5 = "0636f46316f3e15cb287ce3da6ba43a1", addr = 0xC0000, size = 16384, chip = "1", org = "Reversed" }
 ]
 checkpoints = [
     { addr = 0xC0003, desc = "EGA Expansion Init" },
