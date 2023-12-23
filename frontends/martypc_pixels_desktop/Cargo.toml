@@ -18,7 +18,7 @@ cpal = "0.13.5"
 emath = "0.20"
 #egui-wgpu = "0.22"
 #egui-winit = { version = "0.22", default-features = false, features = ["links"] }
-env_logger = "0.9"
+env_logger = "0.10"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 log = "0.4"
 pixels = "0.13"
