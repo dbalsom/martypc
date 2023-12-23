@@ -8,8 +8,8 @@ members = [
     "lib/frontend/display_manager_wgpu",
     "lib/frontend/marty_egui",
     "lib/frontend/config_toml_bpaf",
-    "frontends/martypc_pixels_wasm32",
-    "frontends/martypc_pixels_desktop"
+    "frontends/martypc_web_player_wgpu",
+    "frontends/martypc_desktop_wgpu"
 ]
 
 [workspace.package]
@@ -27,13 +27,13 @@ authors.workspace = true
 
 [[bin]]
 name = "martypc"
-path = "frontends/martypc_pixels_desktop/src/main.rs"
+path = "frontends/martypc_desktop_wgpu/src/main.rs"
 
 [dependencies]
 marty_core = { path = "core"}
 videocard_renderer = { path = "lib/frontend/videocard_renderer" }
 marty_egui = { path = "lib/frontend/marty_egui" }
-martypc_pixels_desktop = { path = "frontends/martypc_pixels_desktop"}
+martypc_pixels_desktop = { path = "frontends/martypc_desktop_wgpu" }
 
 [workspace.dependencies]
 winit = "0.29.4"

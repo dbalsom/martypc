@@ -31,7 +31,7 @@ marty*.toml
 *.cfg
 *.log
 *.exe
-/frontends/martypc_pixels_wasm32/wasm/
+/frontends/martypc_web_player_wgpu/wasm/
 icon.png
 
 # Allow tests/tools directory
@@ -57,7 +57,7 @@ icon.png
 !/install/martypc.toml
 
 # Frontend files
-/frontends/martypc_pixels_wasm32/web/bin
+/frontends/martypc_web_player_wgpu/web/bin
 
 # Assembly stuff
 /asm
