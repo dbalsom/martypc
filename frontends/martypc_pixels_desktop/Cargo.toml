@@ -24,10 +24,10 @@ marty_pixels_scaler = { path = "../../lib/frontend/marty_scaler_wgpu" }
 
 bytemuck.workspace = true
 colored = "2.0.4"
-cpal = "0.13.5"
+cpal = "0.13"
 
 log = "0.4"
-env_logger = "0.9"
+env_logger = "0.10"
 flate2 = "1.0"
 image = { version = "0.24.2", default-features = false, features = ["png"] }
 
