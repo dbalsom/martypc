@@ -139,9 +139,15 @@ impl GuiState {
                     _ => (false, false),
                 };
 
-                ui.set_min_size(egui::vec2(240.0, 0.0));
+                //ui.set_min_size(egui::vec2(240.0, 0.0));
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
 
+                ui.set_width_range(egui::Rangef { min: 100.0, max: 240.0 });
+                for i in 0..self.floppy_drives.len() {
+                    self.draw_floppy_menu(ui, i);
+                }
+
+                /*
                 ui.menu_button("💾 Load Floppy in Drive A:...", |ui| {
                     for name in &self.floppy_names {
                         ui.set_min_size(egui::vec2(200.0, 0.0));
@@ -203,6 +209,8 @@ impl GuiState {
                     self.floppy1_name = None;
                     ui.close_menu();
                 };
+
+                 */
 
                 // Only enable VHD loading if machine is off to prevent corruption to VHD.
                 ui.add_enabled_ui(!is_on, |ui| {
@@ -449,6 +457,49 @@ impl GuiState {
             // Draw drive indicators, etc.
             self.draw_status_widgets(ui);
         });
+    }
+
+    pub fn draw_floppy_menu(&mut self, ui: &mut egui::Ui, drive_idx: usize) {
+        let floppy_name = match drive_idx {
+            0 => "💾 Floppy Drive 0 (A:)".to_string(),
+            1 => "💾 Floppy Drive 1 (B:)".to_string(),
+            _ => format!("Drive {}", drive_idx),
+        };
+
+        ui.menu_button(floppy_name, |ui| {
+            ui.menu_button("Load image", |ui| {
+                self.floppy_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
+                    log::debug!("Clicked closure called with image_idx {}", image_idx);
+                    self.event_queue.send(GuiEvent::LoadFloppy(drive_idx, image_idx));
+                });
+            });
+
+            ui.horizontal(|ui| {
+                if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
+                    if ui.button(format!("Eject image: {}", floppy_name)).clicked() {
+                        self.event_queue.send(GuiEvent::EjectFloppy(drive_idx));
+                    }
+                }
+                else {
+                    ui.add_enabled(false, egui::Button::new("Eject image: <No Disk>"));
+                }
+            });
+
+            ui.horizontal(|ui| {
+                if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
+                    ui.add_enabled(
+                        !self.floppy_drives[drive_idx].write_protected,
+                        egui::Button::new(format!("Save image: {}", floppy_name)),
+                    );
+                }
+                else {
+                    ui.add_enabled(false, egui::Button::new("Save image: <No Disk>"));
+                }
+            });
+
+            ui.checkbox(&mut self.floppy_drives[drive_idx].write_protected, "Write Protect")
+        });
+        ui.end_row();
     }
 
     pub fn draw_display_menu(&mut self, ui: &mut egui::Ui, display_idx: usize) {

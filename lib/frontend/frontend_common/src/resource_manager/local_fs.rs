@@ -100,6 +100,7 @@ impl ResourceManager {
                     items.push(ResourceItem {
                         rtype: ResourceItemType::Directory,
                         full_path: path.clone(),
+                        relative_path: None,
                         filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
                         flags: 0,
                     });
@@ -108,6 +109,7 @@ impl ResourceManager {
                     items.push(ResourceItem {
                         rtype: ResourceItemType::LocalFile,
                         full_path: path.clone(),
+                        relative_path: None,
                         filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
                         flags: 0,
                     });
@@ -135,6 +137,14 @@ impl ResourceManager {
                 .cloned()
                 .collect::<Vec<_>>();
         }
+
+        // Convert paths to relative paths
+        let path_prefix = self
+            .pm
+            .get_resource_path(resource)
+            .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
+
+        ResourceManager::set_relative_paths_for_items(path_prefix, &mut items);
 
         Ok(items)
     }
@@ -165,6 +175,7 @@ impl ResourceManager {
                 items.push(ResourceItem {
                     rtype: ResourceItemType::LocalFile,
                     full_path: entry.path(),
+                    relative_path: None,
                     filename_only: Some(PathBuf::from(entry.path().file_name().unwrap_or_default())),
                     flags: 0,
                 });
@@ -208,14 +219,16 @@ impl ResourceManager {
     }
 
     /// Converts a list of resource items into a tree structure.
-    pub fn items_to_tree(&self, resource: &str, items: Vec<ResourceItem>) -> Result<TreeNode, Error> {
+    pub fn items_to_tree(&self, resource: &str, items: &Vec<ResourceItem>) -> Result<TreeNode, Error> {
         // TODO: support multipath
         let root_path = self
             .pm
             .get_resource_path(resource)
             .ok_or(anyhow::anyhow!("Resource path not found: {}", resource))?;
 
-        build_tree(String::from(root_path.to_string_lossy()), items)
+        let skip_size = root_path.components().count();
+
+        build_tree(String::from(root_path.to_string_lossy()), items, skip_size)
     }
 
     /// Return whether the specified path exists.

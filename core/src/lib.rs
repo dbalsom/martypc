@@ -42,7 +42,6 @@ pub mod coreconfig;
 pub mod cpu_808x;
 pub mod cpu_common;
 pub mod file_util;
-pub mod floppy_manager;
 pub mod interrupt;
 pub mod keys;
 pub mod machine;

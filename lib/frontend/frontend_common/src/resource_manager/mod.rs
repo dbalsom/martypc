@@ -36,7 +36,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 mod local_fs;
 mod path_manager;
-mod tree;
+pub mod tree;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 
@@ -69,6 +69,7 @@ pub enum ResourceItemType {
 pub struct ResourceItem {
     rtype: ResourceItemType,
     pub(crate) full_path: PathBuf,
+    pub(crate) relative_path: Option<PathBuf>,
     pub(crate) filename_only: Option<PathBuf>,
     flags: u32,
 }
@@ -176,5 +177,17 @@ impl ResourceManager {
 
     pub fn path_contains_dirs(path: &PathBuf, dirs: &Vec<&str>) -> bool {
         dirs.iter().any(|&dir| path.iter().any(|component| component == dir))
+    }
+
+    pub fn set_relative_paths_for_items(base: PathBuf, items: &mut Vec<ResourceItem>) {
+        // Strip the base path from all items.
+        for item in items.iter_mut() {
+            item.relative_path = Some(
+                item.full_path
+                    .strip_prefix(&base)
+                    .unwrap_or(&item.full_path)
+                    .to_path_buf(),
+            );
+        }
     }
 }

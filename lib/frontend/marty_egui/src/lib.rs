@@ -156,8 +156,8 @@ type GuiEnumMap = HashMap<(GuiVariableContext, Discriminant<GuiEnum>), GuiEnum>;
 pub enum GuiEvent {
     LoadVHD(usize, OsString),
     CreateVHD(OsString, HardDiskFormat),
-    LoadFloppy(usize, OsString),
-    SaveFloppy(usize, OsString),
+    LoadFloppy(usize, usize),
+    SaveFloppy(usize, usize),
     EjectFloppy(usize),
     BridgeSerialPort(String),
     DumpVRAM,

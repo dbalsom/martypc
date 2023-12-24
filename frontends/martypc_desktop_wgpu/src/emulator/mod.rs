@@ -36,10 +36,14 @@ use crate::{Counter, KeyboardData, MouseData};
 use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::WgpuDisplayManager;
-use frontend_common::{display_scaler::SCALER_MODES, resource_manager::ResourceManager, rom_manager::RomManager};
+use frontend_common::{
+    display_scaler::SCALER_MODES,
+    floppy_manager::FloppyManager,
+    resource_manager::ResourceManager,
+    rom_manager::RomManager,
+};
 use marty_core::{
     cpu_common::CpuOption,
-    floppy_manager::FloppyManager,
     machine::{ExecutionControl, Machine, MachineState},
     vhd::VirtualHardDisk,
     vhd_manager::VHDManager,
@@ -72,7 +76,7 @@ pub struct Emulator {
     pub floppy_manager: FloppyManager,
     pub vhd_manager: VHDManager,
     pub hdd_path: PathBuf,
-    pub floppy_path: PathBuf,
+    //pub floppy_path: PathBuf,
     pub flags: EmuFlags,
 }
 
@@ -398,6 +402,9 @@ impl Emulator {
         }
 
          */
+
+        // Set floppy drives.
+        self.gui.set_floppy_drives(self.machine.bus().floppy_drive_ct());
     }
     pub fn start(&mut self) {
         self.machine.play_sound_buffer();

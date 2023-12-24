@@ -71,14 +71,13 @@ use crate::run_runtests::run_runtests;
 
 use marty_core::{
     devices::implementations::keyboard::KeyboardModifiers,
-    floppy_manager::FloppyManager,
     machine::{ExecutionControl, ExecutionState},
     sound::SoundPlayer,
     vhd_manager::VHDManager,
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
-use frontend_common::resource_manager::ResourceManager;
+use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager};
 use marty_core::{coreconfig::CoreConfig, machine::MachineBuilder};
 
 use crate::event_loop::handle_event;
@@ -468,13 +467,15 @@ pub fn run() {
 
     floppy_manager.set_extensions(config.emulator.media.raw_sector_image_extensions.clone());
 
+    /*
     // Scan the floppy directory
     let floppy_path = resource_manager.get_resource_path("floppy").unwrap_or_else(|| {
         eprintln!("Failed to retrieve 'floppy' resource path.");
         std::process::exit(1);
-    });
+    });*/
 
-    if let Err(e) = floppy_manager.scan_dir(&floppy_path) {
+    // Scan the "floppy" resource
+    if let Err(e) = floppy_manager.scan_resource(&resource_manager) {
         eprintln!("Failed to read floppy path: {:?}", e);
         std::process::exit(1);
     }
@@ -639,7 +640,6 @@ pub fn run() {
         floppy_manager,
         vhd_manager,
         hdd_path,
-        floppy_path,
         flags: EmuFlags {
             render_gui: render_egui,
             debug_keyboard: false,

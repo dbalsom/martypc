@@ -41,6 +41,7 @@ use marty_core::{
 use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
 use std::{mem::discriminant, time::Duration};
 
+use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, gui_event: &GuiEvent) {
@@ -141,18 +142,57 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     emu.gui
                         .toasts()
                         .error(format!("{}", err))
-                        .set_duration(Some(Duration::from_secs(5)));
+                        .set_duration(Some(LONG_NOTIFICATION_TIME));
                 }
             }
         }
         GuiEvent::RescanMediaFolders => {
-            if let Err(e) = emu.floppy_manager.scan_dir(&emu.floppy_path) {
+            if let Err(e) = emu.floppy_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning floppy directory: {}", e);
             }
             if let Err(e) = emu.vhd_manager.scan_dir(&emu.hdd_path) {
                 log::error!("Error scanning hdd directory: {}", e);
             };
         }
+        GuiEvent::LoadFloppy(drive_select, item_idx) => {
+            log::debug!("Load floppy image: {:?} into drive: {}", item_idx, drive_select);
+
+            if let Some(fdc) = emu.machine.fdc() {
+                emu.floppy_manager.get_floppy_name(*item_idx).map(|name| {
+                    log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
+
+                    match emu.floppy_manager.load_floppy_data(*item_idx, &emu.rm) {
+                        Ok(floppy_image) => match fdc.load_image_from(*drive_select, floppy_image) {
+                            Ok(()) => {
+                                log::info!("Floppy image successfully loaded into virtual drive.");
+                                emu.gui
+                                    .set_floppy_selection(*drive_select, Some(*item_idx), Some(name.clone().into()));
+
+                                emu.gui
+                                    .toasts()
+                                    .info(format!("Floppy loaded: {:?}", name.clone()))
+                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                            Err(err) => {
+                                log::error!("Floppy image failed to load into virtual drive: {}", err);
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Floppy load failed: {}", err))
+                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                        },
+                        Err(err) => {
+                            log::error!("Failed to load floppy image: {:?} Error: {}", item_idx, err);
+                            emu.gui
+                                .toasts()
+                                .error(format!("Floppy load failed: {}", err))
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                    }
+                });
+            }
+        }
+        /*
         GuiEvent::LoadFloppy(drive_select, filename) => {
             log::debug!("Load floppy image: {:?} into drive: {}", filename, drive_select);
 
@@ -193,10 +233,16 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             }
         }
+        */
         GuiEvent::EjectFloppy(drive_select) => {
             log::info!("Ejecting floppy in drive: {}", drive_select);
             if let Some(fdc) = emu.machine.fdc() {
                 fdc.unload_image(*drive_select);
+                emu.gui.set_floppy_selection(*drive_select, None, None);
+                emu.gui
+                    .toasts()
+                    .info("Floppy ejected!".to_string())
+                    .set_duration(Some(SHORT_NOTIFICATION_TIME));
             }
         }
         GuiEvent::BridgeSerialPort(port_name) => {
@@ -319,7 +365,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 emu.gui
                     .toasts()
                     .error(format!("{}", err))
-                    .set_duration(Some(Duration::from_secs(5)));
+                    .set_duration(Some(LONG_NOTIFICATION_TIME));
             }
         }
         GuiEvent::CtrlAltDel => {

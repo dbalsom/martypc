@@ -28,9 +28,8 @@
 
 */
 
-use marty_core::floppy_manager::FloppyManager;
-
 use config_toml_bpaf::ConfigFileParams;
+use frontend_common::floppy_manager::FloppyManager;
 
 pub fn run_headless(_config: &ConfigFileParams, _floppy_manager: FloppyManager) {
 

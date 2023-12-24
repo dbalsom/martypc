@@ -73,8 +73,12 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     emu.gui.update_display_info(dti);
 
     // -- Update list of floppies
-    let name_vec = emu.floppy_manager.get_floppy_names();
-    emu.gui.set_floppy_names(name_vec);
+    //let name_vec = emu.floppy_manager.get_floppy_names();
+    //emu.gui.set_floppy_names(name_vec);
+
+    if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
+        emu.gui.set_floppy_tree(floppy_tree);
+    }
 
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {

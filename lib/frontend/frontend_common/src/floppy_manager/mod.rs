@@ -31,7 +31,7 @@
 
 */
 
-use crate::resource_manager::ResourceManager;
+use crate::resource_manager::{PathTreeNode, ResourceItem, ResourceManager};
 use std::{
     collections::HashMap,
     ffi::OsString,
@@ -70,16 +70,18 @@ pub struct FloppyImage {
 }
 
 pub struct FloppyManager {
-    image_vec:  Vec<FloppyImage>,
-    image_map:  HashMap<OsString, usize>,
+    files: Vec<ResourceItem>,
+    image_vec: Vec<FloppyImage>,
+    image_map: HashMap<OsString, usize>,
     extensions: Vec<OsString>,
 }
 
 impl FloppyManager {
     pub fn new() -> Self {
         Self {
-            image_vec:  Vec::new(),
-            image_map:  HashMap::new(),
+            files: Vec::new(),
+            image_vec: Vec::new(),
+            image_map: HashMap::new(),
             extensions: vec![OsString::from("img"), OsString::from("ima")],
         }
     }
@@ -101,7 +103,8 @@ impl FloppyManager {
         // Retrieve all items from the floppy resource paths.
         let floppy_items = rm.enumerate_items("floppy", true, true, Some(self.extensions.clone()))?;
 
-        for item in floppy_items {
+        // Index mapping between 'files' vec and 'image_vec' should be maintained.
+        for item in floppy_items.iter() {
             let idx = self.image_vec.len();
             self.image_vec.push(FloppyImage {
                 idx,
@@ -113,7 +116,15 @@ impl FloppyManager {
             self.image_map
                 .insert(item.full_path.file_name().unwrap().to_os_string(), idx);
         }
+
+        self.files = floppy_items;
+
         Ok(true)
+    }
+
+    pub fn make_tree(&mut self, rm: &ResourceManager) -> Result<PathTreeNode, Error> {
+        let tree = rm.items_to_tree("floppy", &self.files)?;
+        Ok(tree)
     }
 
     pub fn scan_paths(&mut self, paths: Vec<PathBuf>) -> Result<bool, FloppyError> {
@@ -193,10 +204,34 @@ impl FloppyManager {
         for (key, _val) in &self.image_map {
             vec.push(key.clone());
         }
-        vec.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
+        //vec.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
         vec
     }
 
+    pub fn get_floppy_name(&self, idx: usize) -> Option<OsString> {
+        if idx >= self.image_vec.len() {
+            return None;
+        }
+        Some(self.image_vec[idx].name.clone())
+    }
+
+    pub fn load_floppy_data(&self, idx: usize, rm: &ResourceManager) -> Result<Vec<u8>, FloppyError> {
+        let mut floppy_vec = Vec::new();
+
+        if idx >= self.image_vec.len() {
+            return Err(FloppyError::ImageNotFound);
+        }
+        let floppy_path = self.image_vec[idx].path.clone();
+        floppy_vec = match rm.read_resource_from_path(&floppy_path) {
+            Ok(vec) => vec,
+            Err(_e) => {
+                return Err(FloppyError::FileReadError);
+            }
+        };
+        Ok(floppy_vec)
+    }
+
+    /*
     pub fn load_floppy_data(&self, name: &OsString) -> Result<Vec<u8>, FloppyError> {
         let mut floppy_vec = Vec::new();
         if let Some(idx) = self.image_map.get(name) {
@@ -212,7 +247,7 @@ impl FloppyManager {
             };
         }
         Ok(floppy_vec)
-    }
+    }*/
 
     pub fn save_floppy_data(&self, data: &[u8], name: &OsString) -> Result<(), FloppyError> {
         if let Some(idx) = self.image_map.get(name) {

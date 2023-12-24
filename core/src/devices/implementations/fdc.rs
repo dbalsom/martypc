@@ -35,6 +35,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     devices::implementations::dma,
+    machine_config::FloppyControllerConfig,
 };
 
 pub const FDC_IRQ: u8 = 0x06;
@@ -323,6 +324,7 @@ pub struct FloppyController {
     format_buffer: VecDeque<u8>,
 
     drives: [DiskDrive; 4],
+    drive_ct: usize,
     drive_select: usize,
 
     in_dma: bool,
@@ -367,8 +369,8 @@ impl IoDevice for FloppyController {
     }
 }
 
-impl FloppyController {
-    pub fn new() -> Self {
+impl Default for FloppyController {
+    fn default() -> Self {
         Self {
             status_byte: 0,
             reset_flag: false,
@@ -399,6 +401,7 @@ impl FloppyController {
             format_buffer: VecDeque::new(),
 
             drives: [DiskDrive::new(), DiskDrive::new(), DiskDrive::new(), DiskDrive::new()],
+            drive_ct: 0,
             drive_select: 0,
 
             in_dma: false,
@@ -407,6 +410,15 @@ impl FloppyController {
             xfer_size_sectors: 0,
             xfer_size_bytes: 0,
             xfer_completed_sectors: 0,
+        }
+    }
+}
+
+impl FloppyController {
+    pub fn new(drive_ct: usize) -> Self {
+        Self {
+            drive_ct,
+            ..Default::default()
         }
     }
 
@@ -449,6 +461,10 @@ impl FloppyController {
         self.in_dma = false;
         self.dma_byte_count = 0;
         self.dma_bytes_left = 0;
+    }
+
+    pub fn drive_ct(&self) -> usize {
+        self.drive_ct
     }
 
     /// Load a disk into the specified drive

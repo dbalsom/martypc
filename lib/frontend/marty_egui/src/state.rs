@@ -45,6 +45,7 @@ use egui_notify::{Anchor, Toasts};
 use frontend_common::{
     display_manager::DisplayInfo,
     display_scaler::{ScalerMode, ScalerPreset},
+    resource_manager::PathTreeNode,
 };
 use marty_core::{
     devices::{
@@ -54,9 +55,8 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
 };
 use serialport::SerialPortInfo;
-use std::{cell::RefCell, collections::HashMap, ffi::OsString, mem::discriminant, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, ffi::OsString, mem::discriminant, path::PathBuf, rc::Rc};
 
-use crate::windows::text_mode_viewer::TextModeViewer;
 use crate::{
     theme::GuiTheme,
     // Use custom windows
@@ -78,6 +78,23 @@ use crate::{
     windows::scaler_adjust::ScalerAdjustControl,
     windows::vhd_creator::VhdCreator,
 };
+use crate::{widgets::file_tree_menu::FileTreeMenu, windows::text_mode_viewer::TextModeViewer};
+
+pub struct GuiFloppyDriveInfo {
+    pub(crate) idx: usize,
+    pub(crate) selected_idx: Option<usize>,
+    pub(crate) selected_path: Option<PathBuf>,
+    pub(crate) write_protected: bool,
+}
+
+impl GuiFloppyDriveInfo {
+    pub fn filename(&self) -> Option<String> {
+        match &self.selected_path {
+            Some(path) => Some(path.to_string_lossy().to_string()),
+            None => None,
+        }
+    }
+}
 
 pub struct GuiState {
     pub(crate) event_queue: GuiEventQueue,
@@ -104,9 +121,9 @@ pub struct GuiState {
     pub(crate) scaler_presets: Vec<String>,
 
     // Floppy Disk Images
-    pub(crate) floppy_names: Vec<OsString>,
-    pub(crate) floppy0_name: Option<OsString>,
-    pub(crate) floppy1_name: Option<OsString>,
+    pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
+    pub(crate) floppy0_name:  Option<OsString>,
+    pub(crate) floppy1_name:  Option<OsString>,
 
     // VHD Images
     pub(crate) vhd_names: Vec<OsString>,
@@ -149,6 +166,8 @@ pub struct GuiState {
     pub device_control: DeviceControl,
     pub vhd_creator: VhdCreator,
     pub text_mode_viewer: TextModeViewer,
+
+    pub floppy_tree_menu: FileTreeMenu,
 
     pub(crate) call_stack_string: String,
     pub(crate) global_zoom: f32,
@@ -219,7 +238,7 @@ impl GuiState {
             scaler_modes: Vec::new(),
             scaler_presets: Vec::new(),
 
-            floppy_names: Vec::new(),
+            floppy_drives: Vec::new(),
             floppy0_name: Option::None,
             floppy1_name: Option::None,
 
@@ -261,6 +280,8 @@ impl GuiState {
             vhd_creator: VhdCreator::new(),
             text_mode_viewer: TextModeViewer::new(),
             call_stack_string: String::new(),
+
+            floppy_tree_menu: FileTreeMenu::new(),
 
             global_zoom: 1.0,
         }
@@ -355,8 +376,25 @@ impl GuiState {
         self.machine_state = state;
     }
 
-    pub fn set_floppy_names(&mut self, names: Vec<OsString>) {
-        self.floppy_names = names;
+    pub fn set_floppy_drives(&mut self, drivect: usize) {
+        self.floppy_drives.clear();
+        for idx in 0..drivect {
+            self.floppy_drives.push(GuiFloppyDriveInfo {
+                idx,
+                selected_idx: None,
+                selected_path: None,
+                write_protected: true,
+            });
+        }
+    }
+
+    pub fn set_floppy_tree(&mut self, tree: PathTreeNode) {
+        self.floppy_tree_menu.set_root(tree);
+    }
+
+    pub fn set_floppy_selection(&mut self, drive: usize, idx: Option<usize>, name: Option<PathBuf>) {
+        self.floppy_drives[drive].selected_idx = idx;
+        self.floppy_drives[drive].selected_path = name;
     }
 
     pub fn set_vhd_names(&mut self, names: Vec<OsString>) {

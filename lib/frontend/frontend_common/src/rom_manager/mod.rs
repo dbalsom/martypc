@@ -544,9 +544,6 @@ impl RomManager {
             if chip_set.contains(&rom.chip.clone().unwrap()) {
                 continue;
             }
-            else {
-                chip_set.insert(rom.chip.clone().unwrap());
-            }
 
             // Now, we check that the ROM is present in the candidate list. If it is not, we mark it to
             // be dropped from the set.
@@ -557,6 +554,8 @@ impl RomManager {
                 }
                 else {
                     rom.present = true;
+                    //log::trace!("Adding ROM {} to resolve chip {}", md5, rom.chip.clone().unwrap());
+                    chip_set.insert(rom.chip.clone().unwrap());
                 }
             }
         }
@@ -596,15 +595,6 @@ impl RomManager {
     ) -> Result<Vec<String>, Error> {
         let mut romset_vec = Vec::new();
         let mut provided_features = HashSet::new();
-
-        if let Some(rom_vec) = self.rom_sets_by_feature.get(&String::from("ibm_basic")) {
-            for rom in rom_vec.iter() {
-                log::debug!("Found rom set for feature ibm_basic: {}", rom);
-            }
-        }
-        else {
-            log::debug!("No rom set found for feature ibm_basic.");
-        }
 
         // If a specified rom is provided, we can add it first and mark its features as provided.
         if let Some(specified_rom) = specified {
@@ -664,7 +654,7 @@ impl RomManager {
                             for feature in rom_set.provides.iter() {
                                 provided_features.insert(feature.clone());
                             }
-                            log::debug!("Adding ROM: {}", rom);
+                            //log::trace!("Adding ROM: {}", rom);
                             romset_vec.push(rom.clone());
                             break;
                         }
@@ -702,6 +692,9 @@ impl RomManager {
                 .ok_or(anyhow::anyhow!("Rom set {} not found in rom set map.", rom_set))?;
 
             let rom_set_def = &self.rom_defs[*rom_set_idx];
+            if rom_set_def.rom.is_empty() {
+                return Err(anyhow::anyhow!("Rom set {} has no roms.", rom_set));
+            }
 
             // Iterate over the roms in the rom set definition, load them from disk and add them to the manifest.
             for rom_desc in rom_set_def.rom.iter() {
@@ -714,6 +707,7 @@ impl RomManager {
 
                 // Handle rom organization
                 // TODO: Interleaved organizations... double rom size and then interleave?
+                //log::trace!("create_manifest(): ROM organization is {:?}", rom_desc.org);
                 match rom_desc.org {
                     None | Some(RomOrganization::Normal) => {
                         let mut offset_len = 0;

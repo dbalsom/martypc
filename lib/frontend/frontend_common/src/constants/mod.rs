@@ -30,5 +30,11 @@
 
 */
 
+use std::time::Duration;
+
 pub const DEFAULT_RESOLUTION_W: u32 = 640;
 pub const DEFAULT_RESOLUTION_H: u32 = 480;
+
+pub const SHORT_NOTIFICATION_TIME: Duration = Duration::from_secs(1);
+pub const NORMAL_NOTIFICATION_TIME: Duration = Duration::from_secs(3);
+pub const LONG_NOTIFICATION_TIME: Duration = Duration::from_secs(5);
