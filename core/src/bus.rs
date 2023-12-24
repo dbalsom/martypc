@@ -1346,13 +1346,17 @@ impl BusInterface {
             .extend(port_list.into_iter().map(|p| (p, IoDeviceType::PicPrimary)));
         self.pic1 = Some(pic1);
 
-        // Create FDC.
-        let fdc = FloppyController::new();
-        // Add FDC ports to io_map
-        let port_list = fdc.port_list();
-        self.io_map
-            .extend(port_list.into_iter().map(|p| (p, IoDeviceType::FloppyController)));
-        self.fdc = Some(fdc);
+        // Create FDC if specified.
+        if let Some(fdc_config) = &machine_config.fdc {
+            let floppy_ct = fdc_config.drive.len();
+
+            let fdc = FloppyController::new(floppy_ct);
+            // Add FDC ports to io_map
+            let port_list = fdc.port_list();
+            self.io_map
+                .extend(port_list.into_iter().map(|p| (p, IoDeviceType::FloppyController)));
+            self.fdc = Some(fdc);
+        }
 
         // Create a HardDiskController if specified
         if let Some(hdc_config) = &machine_config.hdc {
@@ -1385,10 +1389,13 @@ impl BusInterface {
 
         // Create a Serial mouse if specified
         if let Some(serial_mouse_config) = &machine_config.serial_mouse {
-            match serial_mouse_config.mouse_type {
-                SerialMouseType::Microsoft => {
-                    let mouse = Mouse::new(serial_mouse_config.port as usize);
-                    self.mouse = Some(mouse);
+            // Only create mouse if we have as serial card to plug it into!
+            if self.serial.is_some() {
+                match serial_mouse_config.mouse_type {
+                    SerialMouseType::Microsoft => {
+                        let mouse = Mouse::new(serial_mouse_config.port as usize);
+                        self.mouse = Some(mouse);
+                    }
                 }
             }
         }
@@ -2162,6 +2169,15 @@ impl BusInterface {
 
     pub fn enumerate_videocards(&self) -> Vec<VideoCardId> {
         self.videocard_ids.clone()
+    }
+
+    pub fn floppy_drive_ct(&self) -> usize {
+        if let Some(fdc) = &self.fdc {
+            fdc.drive_ct()
+        }
+        else {
+            0
+        }
     }
 
     pub fn keyboard_mut(&mut self) -> &mut Keyboard {
