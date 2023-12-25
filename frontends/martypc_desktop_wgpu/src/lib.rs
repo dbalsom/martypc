@@ -78,7 +78,7 @@ use marty_core::{
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
 use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager};
-use marty_core::{coreconfig::CoreConfig, machine::MachineBuilder};
+use marty_core::machine::MachineBuilder;
 
 use crate::event_loop::handle_event;
 
@@ -92,37 +92,37 @@ const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
 const MARTY_ICON: &[u8] = include_bytes!("../../../assets/martypc_icon_small.png");
 
 // Rendering Stats
-struct Counter {
-    frame_count: u64,
-    cycle_count: u64,
-    instr_count: u64,
+pub struct Counter {
+    pub frame_count: u64,
+    pub cycle_count: u64,
+    pub instr_count: u64,
 
-    current_ups: u32,
-    current_cps: u64,
-    current_fps: u32,
-    current_ips: u64,
-    emulated_fps: u32,
-    current_emulated_frames: u64,
-    emulated_frames: u64,
+    pub current_ups: u32,
+    pub current_cps: u64,
+    pub current_fps: u32,
+    pub current_ips: u64,
+    pub emulated_fps: u32,
+    pub current_emulated_frames: u64,
+    pub emulated_frames: u64,
 
-    ups: u32,
-    fps: u32,
-    last_frame: Instant,
+    pub ups: u32,
+    pub fps: u32,
+    pub last_frame: Instant,
     #[allow(dead_code)]
-    last_sndbuf: Instant,
-    last_second: Instant,
-    last_cpu_cycles: u64,
-    current_cpu_cps: u64,
-    last_system_ticks: u64,
-    last_pit_ticks: u64,
-    current_sys_tps: u64,
-    current_pit_tps: u64,
-    emulation_time: Duration,
-    render_time: Duration,
-    accumulated_us: u128,
-    cpu_mhz: f64,
-    cycles_per_frame: u32,
-    cycle_target: u32,
+    pub last_sndbuf: Instant,
+    pub last_second: Instant,
+    pub last_cpu_cycles: u64,
+    pub current_cpu_cps: u64,
+    pub last_system_ticks: u64,
+    pub last_pit_ticks: u64,
+    pub current_sys_tps: u64,
+    pub current_pit_tps: u64,
+    pub emulation_time: Duration,
+    pub render_time: Duration,
+    pub accumulated_us: u128,
+    pub cpu_mhz: f64,
+    pub cycles_per_frame: u32,
+    pub cycle_target: u32,
 }
 
 impl Counter {
@@ -163,21 +163,22 @@ impl Counter {
 }
 
 #[allow(dead_code)]
-struct MouseData {
-    reverse_buttons: bool,
-    l_button_id: u32,
-    r_button_id: u32,
-    is_captured: bool,
-    have_update: bool,
-    l_button_was_pressed: bool,
-    l_button_was_released: bool,
-    l_button_is_pressed: bool,
-    r_button_was_pressed: bool,
-    r_button_was_released: bool,
-    r_button_is_pressed: bool,
-    frame_delta_x: f64,
-    frame_delta_y: f64,
+pub struct MouseData {
+    pub reverse_buttons: bool,
+    pub l_button_id: u32,
+    pub r_button_id: u32,
+    pub is_captured: bool,
+    pub have_update: bool,
+    pub l_button_was_pressed: bool,
+    pub l_button_was_released: bool,
+    pub l_button_is_pressed: bool,
+    pub r_button_was_pressed: bool,
+    pub r_button_was_released: bool,
+    pub r_button_is_pressed: bool,
+    pub frame_delta_x: f64,
+    pub frame_delta_y: f64,
 }
+
 impl MouseData {
     fn new(reverse_buttons: bool) -> Self {
         Self {
@@ -213,9 +214,9 @@ impl MouseData {
     }
 }
 
-struct KeyboardData {
-    modifiers:    KeyboardModifiers,
-    ctrl_pressed: bool,
+pub struct KeyboardData {
+    pub modifiers:    KeyboardModifiers,
+    pub ctrl_pressed: bool,
 }
 impl KeyboardData {
     fn new() -> Self {
