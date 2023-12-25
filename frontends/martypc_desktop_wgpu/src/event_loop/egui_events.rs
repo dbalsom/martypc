@@ -162,11 +162,20 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     log::info!("Loading floppy image: {:?} into drive: {}", name, drive_select);
 
                     match emu.floppy_manager.load_floppy_data(*item_idx, &emu.rm) {
-                        Ok(floppy_image) => match fdc.load_image_from(*drive_select, floppy_image) {
+                        Ok(floppy_image) => match fdc.load_image_from(
+                            *drive_select,
+                            floppy_image,
+                            emu.config.emulator.media.write_protect_default,
+                        ) {
                             Ok(()) => {
                                 log::info!("Floppy image successfully loaded into virtual drive.");
                                 emu.gui
                                     .set_floppy_selection(*drive_select, Some(*item_idx), Some(name.clone().into()));
+
+                                emu.gui.set_floppy_write_protected(
+                                    *drive_select,
+                                    emu.config.emulator.media.write_protect_default,
+                                );
 
                                 emu.gui
                                     .toasts()
@@ -243,6 +252,12 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     .toasts()
                     .info("Floppy ejected!".to_string())
                     .set_duration(Some(SHORT_NOTIFICATION_TIME));
+            }
+        }
+        GuiEvent::SetFloppyWriteProtect(drive_select, state) => {
+            log::info!("Setting floppy write protect: {}", state);
+            if let Some(fdc) = emu.machine.fdc() {
+                fdc.write_protect(*drive_select, *state);
             }
         }
         GuiEvent::BridgeSerialPort(port_name) => {

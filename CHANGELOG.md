@@ -50,10 +50,15 @@
   * International keyboard layouts are now supported via translation files.
     * Translation files support all keycode names defined by w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
     * Translation files can define direct scancode mappings or full macros
-
-
-* New notification system courtesy of egui-notify crate. 
+* #### New Notification system
+  * Courtesy of [egui-notify](https://github.com/ItsEthra/egui-notify) crate.
   * Implemented success/error notifications for disk and file operations, screenshots, etc.
+
+
+### General Improvements
+* Floppy browser now supports subdirectories
+* Write protection can be toggled for floppy drives
+* Sound initialization now optional
 * Improved VHD creator - should no longer be confusing to use
 * Text Mode Viewer - View ASCII contents of video memory, where you can select and copy to clipboard
 * Preliminary CGA snow emulation. Not yet 100% accurate

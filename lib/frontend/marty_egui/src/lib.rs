@@ -159,6 +159,7 @@ pub enum GuiEvent {
     LoadFloppy(usize, usize),
     SaveFloppy(usize, usize),
     EjectFloppy(usize),
+    SetFloppyWriteProtect(usize, bool),
     BridgeSerialPort(String),
     DumpVRAM,
     DumpCS,

@@ -382,7 +382,12 @@ impl FloppyController {
     }
 
     /// Load a disk into the specified drive
-    pub fn load_image_from(&mut self, drive_select: usize, src_vec: Vec<u8>) -> Result<(), &'static str> {
+    pub fn load_image_from(
+        &mut self,
+        drive_select: usize,
+        src_vec: Vec<u8>,
+        write_protect: bool,
+    ) -> Result<(), &'static str> {
         if drive_select >= FDC_MAX_DRIVES {
             return Err("Invalid drive selection");
         }
@@ -425,6 +430,8 @@ impl FloppyController {
             self.drives[drive_select].max_heads,
             self.drives[drive_select].max_sectors
         );
+
+        self.drives[drive_select].write_protected = write_protect;
 
         Ok(())
     }

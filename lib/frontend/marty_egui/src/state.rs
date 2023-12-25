@@ -376,9 +376,9 @@ impl GuiState {
         self.machine_state = state;
     }
 
-    pub fn set_floppy_drives(&mut self, drivect: usize) {
+    pub fn set_floppy_drives(&mut self, drive_ct: usize) {
         self.floppy_drives.clear();
-        for idx in 0..drivect {
+        for idx in 0..drive_ct {
             self.floppy_drives.push(GuiFloppyDriveInfo {
                 idx,
                 selected_idx: None,
@@ -386,6 +386,10 @@ impl GuiState {
                 write_protected: true,
             });
         }
+    }
+
+    pub fn set_floppy_write_protected(&mut self, drive: usize, state: bool) {
+        self.floppy_drives[drive].write_protected = state;
     }
 
     pub fn set_floppy_tree(&mut self, tree: PathTreeNode) {

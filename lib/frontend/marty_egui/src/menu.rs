@@ -497,7 +497,15 @@ impl GuiState {
                 }
             });
 
-            ui.checkbox(&mut self.floppy_drives[drive_idx].write_protected, "Write Protect")
+            if ui
+                .checkbox(&mut self.floppy_drives[drive_idx].write_protected, "Write Protect")
+                .changed()
+            {
+                self.event_queue.send(GuiEvent::SetFloppyWriteProtect(
+                    drive_idx,
+                    self.floppy_drives[drive_idx].write_protected,
+                ));
+            }
         });
         ui.end_row();
     }
