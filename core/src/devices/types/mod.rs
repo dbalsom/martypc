@@ -30,4 +30,5 @@
 
 */
 
+pub mod chs;
 pub mod fdc;

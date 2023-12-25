@@ -30,12 +30,18 @@
 */
 #![allow(dead_code)]
 use lazy_static::lazy_static;
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    default::Default,
+    fmt::Display,
+};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::implementations::dma,
-    machine_config::FloppyControllerConfig,
+    devices::{
+        implementations::{dma, floppy_drive::FloppyDiskDrive},
+        types::{chs::DiskChs, fdc::DISK_FORMATS},
+    },
 };
 
 pub const FDC_IRQ: u8 = 0x06;
@@ -119,76 +125,6 @@ pub const ST3_TRACK0: u8 = 0b0001_0000;
 pub const ST3_DOUBLESIDED: u8 = 0b0000_1000;
 pub const ST3_HEAD: u8 = 0b0000_0100;
 
-pub struct DiskFormat {
-    pub cylinders: u8,
-    pub heads: u8,
-    pub sectors: u8,
-}
-
-lazy_static! {
-    static ref DISK_FORMATS: HashMap<usize, DiskFormat> = {
-        let map = HashMap::from([
-            (
-                163_840,
-                DiskFormat {
-                    cylinders: 40,
-                    heads: 1,
-                    sectors: 8,
-                },
-            ),
-            (
-                184_320,
-                DiskFormat {
-                    cylinders: 40,
-                    heads: 1,
-                    sectors: 9,
-                },
-            ),
-            (
-                327_680,
-                DiskFormat {
-                    cylinders: 40,
-                    heads: 2,
-                    sectors: 8,
-                },
-            ),
-            (
-                368_640,
-                DiskFormat {
-                    cylinders: 40,
-                    heads: 2,
-                    sectors: 9,
-                },
-            ),
-            (
-                737_280,
-                DiskFormat {
-                    cylinders: 80,
-                    heads: 2,
-                    sectors: 9,
-                },
-            ),
-            (
-                1_228_800,
-                DiskFormat {
-                    cylinders: 80,
-                    heads: 2,
-                    sectors: 15,
-                },
-            ),
-            (
-                1_474_560,
-                DiskFormat {
-                    cylinders: 80,
-                    heads: 2,
-                    sectors: 18,
-                },
-            ),
-        ]);
-        map
-    };
-}
-
 /// Represent the state of the DIO bit of the Main Status Register in a readable way.
 pub enum IoMode {
     ToCpu,
@@ -214,6 +150,14 @@ pub enum Command {
     Invalid,
 }
 
+/// Encapsulates a result from a command or operation execution and used to build a
+/// status response.
+pub enum ControllerResult {
+    Success(InterruptCode),
+    GeneralFailure(InterruptCode),
+    WriteProtectFailure,
+}
+
 /// Represents the possible values of the Interrupt Code field in Status Register 0.
 /// Returning 'AbnormalTermination' may result in a General Failure reading drive
 /// message in DOS.
@@ -227,7 +171,7 @@ pub enum InterruptCode {
 }
 
 /// Attempt to classify every general error condition a virtual disk drive may experience.
-/// These states are used to build the status bytes presented afer a command has been
+/// These states are used to build the status bytes presented after a command has been
 /// executed. The exact mapping between error conditions and status flags is uncertain...
 #[derive(Clone, Copy, Debug)]
 pub enum DriveError {
@@ -240,6 +184,14 @@ pub enum DriveError {
     DMAError,
 }
 
+pub struct OperationSpecifier {
+    pub chs: DiskChs,
+    pub sector_size: u8,
+    pub track_len: u8,
+    pub gap3_len: u8,
+    pub data_len: u8,
+}
+
 /// Classify operations - an Operation is intiated by any Command that does not immediately
 /// terminate, and is called on a repeated basis by the run() method until complete.
 ///
@@ -250,42 +202,6 @@ pub enum Operation {
     ReadSector(u8, u8, u8, u8, u8, u8, u8), // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
     WriteSector(u8, u8, u8, u8, u8, u8, u8), // cylinder, head, sector, sector_size, track_len, gap3_len, data_len
     FormatTrack(u8, u8, u8, u8),
-}
-
-pub struct DiskDrive {
-    error_signal: bool,
-    cylinder: u8,
-    head: u8,
-    sector: u8,
-    max_cylinders: u8,
-    max_heads: u8,
-    max_sectors: u8,
-    ready: bool,
-    motor_on: bool,
-    positioning: bool,
-    have_disk: bool,
-    write_protected: bool,
-    disk_image: Vec<u8>,
-}
-
-impl DiskDrive {
-    pub fn new() -> Self {
-        Self {
-            error_signal: false,
-            cylinder: 0,
-            head: 0,
-            sector: 0,
-            max_cylinders: 0,
-            max_heads: 0,
-            max_sectors: 0,
-            ready: false,
-            motor_on: false,
-            positioning: false,
-            have_disk: false,
-            write_protected: false,
-            disk_image: Vec::new(),
-        }
-    }
 }
 
 type CommandDispatchFn = fn(&mut FloppyController) -> Continuation;
@@ -323,7 +239,7 @@ pub struct FloppyController {
     data_register_in: VecDeque<u8>,
     format_buffer: VecDeque<u8>,
 
-    drives: [DiskDrive; 4],
+    drives: [FloppyDiskDrive; 4],
     drive_ct: usize,
     drive_select: usize,
 
@@ -400,7 +316,12 @@ impl Default for FloppyController {
             data_register_in: VecDeque::new(),
             format_buffer: VecDeque::new(),
 
-            drives: [DiskDrive::new(), DiskDrive::new(), DiskDrive::new(), DiskDrive::new()],
+            drives: [
+                FloppyDiskDrive::new(),
+                FloppyDiskDrive::new(),
+                FloppyDiskDrive::new(),
+                FloppyDiskDrive::new(),
+            ],
             drive_ct: 0,
             drive_select: 0,
 
@@ -436,16 +357,9 @@ impl FloppyController {
         self.mrq = true;
         self.dio = IoMode::FromCpu;
 
-        // Seek to first sector for each drive, but keep the currently loaded floppy image(s).
-        // After all, a reboot wouldn't eject your disks.
+        // Reset all drives.
         for drive in &mut self.drives.iter_mut() {
-            drive.head = 0;
-            drive.cylinder = 0;
-            drive.sector = 1;
-
-            drive.ready = drive.have_disk;
-            drive.motor_on = false;
-            drive.positioning = false;
+            drive.reset();
         }
 
         self.last_error = DriveError::NoError;
@@ -482,9 +396,9 @@ impl FloppyController {
 
         // Look up disk parameters based on image size
         if let Some(fmt) = DISK_FORMATS.get(&image_len) {
-            self.drives[drive_select].max_cylinders = fmt.cylinders;
-            self.drives[drive_select].max_heads = fmt.heads;
-            self.drives[drive_select].max_sectors = fmt.sectors;
+            self.drives[drive_select].max_cylinders = fmt.chs.c();
+            self.drives[drive_select].max_heads = fmt.chs.h();
+            self.drives[drive_select].max_sectors = fmt.chs.s();
         }
         else {
             // No image format found.
@@ -504,7 +418,8 @@ impl FloppyController {
         self.drives[drive_select].have_disk = true;
         self.drives[drive_select].disk_image = src_vec;
         log::debug!(
-            "Loaded floppy image, size: {} c: {} h: {} s: {}",
+            "Loaded floppy image, drive: {} size: {} c: {} h: {} s: {}",
+            drive_select,
             self.drives[drive_select].disk_image.len(),
             self.drives[drive_select].max_cylinders,
             self.drives[drive_select].max_heads,
@@ -528,9 +443,9 @@ impl FloppyController {
     pub fn unload_image(&mut self, drive_select: usize) {
         let drive = &mut self.drives[drive_select];
 
-        drive.cylinder = 0;
-        drive.head = 0;
-        drive.sector = 1;
+        drive.chs.set_c(0);
+        drive.chs.set_h(0);
+        drive.chs.set_s(1);
         drive.max_cylinders = 40;
         drive.max_heads = 1;
         drive.max_sectors = 8;
@@ -582,6 +497,10 @@ impl FloppyController {
         }
         self.drives[drive_select].motor_on = false;
         //self.drives[drive_select].ready = false;    // Breaks booting(?)
+    }
+
+    pub fn write_protect(&mut self, drive_select: usize, write_protected: bool) {
+        self.drives[drive_select].write_protected = write_protected;
     }
 
     pub fn handle_dor_write(&mut self, data: u8) {
@@ -645,7 +564,7 @@ impl FloppyController {
         st0 |= (drive_select as u8) & 0x03;
 
         // Set active head bit
-        if self.drives[drive_select].head == 1 {
+        if self.drives[drive_select].chs.h() == 1 {
             st0 |= ST0_HEAD_ACTIVE;
         }
 
@@ -676,10 +595,11 @@ impl FloppyController {
         let mut st1_byte = 0;
 
         // Set the "No Data" bit if we received an invalid request
-        match self.last_error {
-            DriveError::BadRead | DriveError::BadWrite | DriveError::BadSeek => st1_byte |= ST1_NODATA,
-            _ => {}
-        }
+        st1_byte |= match self.last_error {
+            DriveError::BadRead | DriveError::BadWrite | DriveError::BadSeek => ST1_NODATA,
+            DriveError::WriteProtect => ST1_WRITE_PROTECT | ST1_NO_ID,
+            _ => 0,
+        };
 
         // Based on DOS's behavior regarding the "Not ready error" it appears that
         // operations without a disk timeout instead of returning a particular error
@@ -703,14 +623,14 @@ impl FloppyController {
         let mut st3_byte = (drive_select & 0x03) as u8;
 
         // HDSEL signal: 1 == head 1 active
-        if self.drives[drive_select].head == 1 {
+        if self.drives[drive_select].chs.h() == 1 {
             st3_byte |= ST3_HEAD;
         }
 
         // DSDR signal - Is this active for a double sided drive, or only when a double-sided disk is present?
         st3_byte |= ST3_DOUBLESIDED;
 
-        if self.drives[drive_select].cylinder == 0 {
+        if self.drives[drive_select].chs.c() == 0 {
             st3_byte |= ST3_TRACK0;
         }
 
@@ -767,6 +687,7 @@ impl FloppyController {
     /// Returns whether the CHS address is valid for the specified drive
     pub fn is_id_valid(&self, drive_select: usize, c: u8, h: u8, s: u8) -> bool {
         if !self.drives[drive_select].have_disk {
+            log::debug!("is_id_valid(): false due to no disk: {}", drive_select);
             return false;
         }
 
@@ -777,7 +698,7 @@ impl FloppyController {
         {
             return true;
         }
-
+        log::debug!("is_id_valid(): false due to chs out of range");
         return false;
     }
 
@@ -957,7 +878,7 @@ impl FloppyController {
         self.data_register_out.push_back(cb0);
 
         // Send Current Cylinder to FIFO
-        let cb1 = self.drives[self.drive_select].cylinder;
+        let cb1 = self.drives[self.drive_select].chs.c();
         self.data_register_out.push_back(cb1);
 
         // We have data for CPU to read
@@ -1015,9 +936,7 @@ impl FloppyController {
         self.drive_select = drive_select;
 
         // Set CHS
-        self.drives[drive_select].cylinder = 0;
-        self.drives[drive_select].head = head_select;
-        self.drives[drive_select].sector = 1;
+        self.drives[drive_select].chs.seek(0, head_select, 1);
 
         log::trace!("command_calibrate_drive completed: {}", drive_select);
 
@@ -1051,15 +970,13 @@ impl FloppyController {
             return Continuation::CommandComplete;
         }
 
-        // Set CHS to new seeked values
-        self.drives[drive_select].cylinder = cylinder;
-        self.drives[drive_select].head = head_select;
-        self.drives[drive_select].sector = 1;
+        // Seek to values given in command
+        self.drives[drive_select].chs.seek(cylinder, head_select, 1);
 
         log::trace!(
-            "command_seek_head completed: {} cylinder: {}",
+            "command_seek_head completed: {} new chs: {}",
             drive_head_select,
-            cylinder
+            self.drives[drive_select].chs
         );
 
         self.last_error = DriveError::NoError;
@@ -1114,10 +1031,8 @@ impl FloppyController {
             return Continuation::CommandComplete;
         }
 
-        // "Seek" to values given in command
-        self.drives[drive_select].cylinder = cylinder;
-        self.drives[drive_select].head = head;
-        self.drives[drive_select].sector = sector;
+        // Seek to values given in command
+        self.drives[drive_select].chs.seek(cylinder, head, sector);
 
         // Start read operation
         self.operation = Operation::ReadSector(cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
@@ -1174,10 +1089,8 @@ impl FloppyController {
             log::warn!("command_write_sector: non-matching head specifiers");
         }
 
-        // Set CHS
-        self.drives[drive_select].cylinder = cylinder;
-        self.drives[drive_select].head = head;
-        self.drives[drive_select].sector = sector;
+        // Seek to values given in command
+        self.drives[drive_select].chs.seek(cylinder, head, sector);
 
         // Start write operation
         self.operation = Operation::WriteSector(cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
@@ -1296,7 +1209,14 @@ impl FloppyController {
         }
     }
 
-    fn send_results_phase(&mut self, result: InterruptCode, drive_select: usize, c: u8, h: u8, s: u8, sector_size: u8) {
+    fn send_results_phase(&mut self, result: InterruptCode, drive_select: usize, chs: DiskChs, sector_size: u8) {
+        /*
+        let (ir_result, wp_flag) = match result {
+            ControllerResult::Success(code) => (code, 0),
+            ControllerResult::GeneralFailure(code) => (code, 0),
+            ControllerResult::WriteProtectFailure => (InterruptCode::AbnormalTermination, 1),
+        };*/
+
         // Create the 3 status bytes. Most of these are error flags of some sort
         let st0_byte = self.make_st0_byte(result, drive_select, false);
         let st1_byte = self.make_st1_byte(drive_select);
@@ -1308,9 +1228,9 @@ impl FloppyController {
         self.data_register_out.push_back(st1_byte);
         self.data_register_out.push_back(st2_byte);
 
-        self.data_register_out.push_back(c);
-        self.data_register_out.push_back(h);
-        self.data_register_out.push_back(s);
+        self.data_register_out.push_back(chs.c());
+        self.data_register_out.push_back(chs.h());
+        self.data_register_out.push_back(chs.s());
         self.data_register_out.push_back(sector_size);
 
         self.send_data_register();
@@ -1423,29 +1343,24 @@ impl FloppyController {
             );
             //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
 
+            let new_chs = DiskChs::new(new_c, new_h, new_s);
+
             // Terminate normally by sending results registers
             self.send_results_phase(
                 InterruptCode::NormalTermination,
                 self.drive_select,
-                new_c,
-                new_h,
-                new_s,
+                new_chs,
                 sector_size,
             );
 
-            // Set new CHS
-            self.drives[self.drive_select].cylinder = new_c;
-            self.drives[self.drive_select].head = new_h;
-            self.drives[self.drive_select].sector = new_s;
+            // Seek to new CHS
+            self.drives[self.drive_select].chs.seek_to(&new_chs);
 
             log::trace!(
-                "operation_read_sector completed: new cylinder: {} head: {} sector: {}",
-                new_c,
-                new_h,
-                new_s
+                "operation_read_sector completed: new chs: {}",
+                &self.drives[self.drive_select].chs
             );
             // Finalize operation
-
             self.operation = Operation::NoOperation;
             self.send_interrupt = true;
         }
@@ -1455,14 +1370,25 @@ impl FloppyController {
         &mut self,
         dma: &mut dma::DMAController,
         bus: &mut BusInterface,
-        cylinder: u8,
-        head: u8,
-        sector: u8,
+        chs: DiskChs,
         sector_size: u8,
         _track_len: u8,
     ) {
         if !self.in_dma {
             log::error!("Error: WriteSector operation without DMA!");
+            self.operation = Operation::NoOperation;
+            return;
+        }
+
+        // Fail operation if disk is write protected
+        if self.drives[self.drive_select].write_protected {
+            log::warn!("WriteSector operation on write protected disk!");
+
+            // Terminate with WriteProtect error.
+            self.last_error = DriveError::WriteProtect;
+            self.send_results_phase(InterruptCode::AbnormalPolling, self.drive_select, chs, sector_size);
+
+            self.send_interrupt = true;
             self.operation = Operation::NoOperation;
             return;
         }
@@ -1491,7 +1417,7 @@ impl FloppyController {
 
             // Check if DMA is ready
             if dma.check_dma_ready(FDC_DMA) {
-                let base_address = self.get_image_address(self.drive_select, cylinder, head, sector);
+                let base_address = self.get_image_address(self.drive_select, chs.c(), chs.h(), chs.s());
                 let byte_address = base_address + self.dma_byte_count;
 
                 //log::trace!("Byte address for FDC write: {:04X}", byte_address);
@@ -1533,22 +1459,27 @@ impl FloppyController {
             self.dma_byte_count = 0;
             self.dma_bytes_left = 0;
 
-            let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
+            let (new_c, new_h, new_s) = self.get_chs_sector_offset(
+                self.drive_select,
+                self.xfer_completed_sectors + 1,
+                chs.c(),
+                chs.h(),
+                chs.s(),
+            );
+
+            //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, chs.c(), chs.h(), chs.s());
+            let new_chs = DiskChs::new(new_c, new_h, new_s);
 
             // Terminate normally by sending results registers
             self.send_results_phase(
                 InterruptCode::NormalTermination,
                 self.drive_select,
-                new_c,
-                new_h,
-                new_s,
+                new_chs,
                 sector_size,
             );
 
             // Set new CHS
-            self.drives[self.drive_select].cylinder = new_c;
-            self.drives[self.drive_select].head = new_h;
-            self.drives[self.drive_select].sector = new_s;
+            self.drives[self.drive_select].chs.seek_to(&new_chs);
 
             // Finalize operation
             self.operation = Operation::NoOperation;
@@ -1571,6 +1502,24 @@ impl FloppyController {
     ) {
         if !self.in_dma {
             log::error!("Error: Format Track operation without DMA!");
+            self.operation = Operation::NoOperation;
+            return;
+        }
+
+        // Fail operation if disk is write protected
+        if self.drives[self.drive_select].write_protected {
+            log::warn!("FormatTrack operation on write protected disk!");
+
+            // Terminate with WriteProtect error.
+            self.last_error = DriveError::WriteProtect;
+            self.send_results_phase(
+                InterruptCode::AbnormalPolling,
+                self.drive_select,
+                Default::default(),
+                sector_size,
+            );
+
+            self.send_interrupt = true;
             self.operation = Operation::NoOperation;
             return;
         }
@@ -1647,9 +1596,7 @@ impl FloppyController {
             self.send_results_phase(
                 InterruptCode::NormalTermination,
                 self.drive_select,
-                0,
-                0,
-                0,
+                Default::default(), // Default CHS
                 sector_size,
             );
 
@@ -1691,9 +1638,14 @@ impl FloppyController {
             Operation::ReadSector(cylinder, head, sector, sector_size, track_len, _gap3_len, _data_len) => {
                 self.operation_read_sector(dma, bus, cylinder, head, sector, sector_size, track_len)
             }
-            Operation::WriteSector(cylinder, head, sector, sector_size, track_len, _gap3_len, _data_len) => {
-                self.operation_write_sector(dma, bus, cylinder, head, sector, sector_size, track_len)
-            }
+            Operation::WriteSector(cylinder, head, sector, sector_size, track_len, _gap3_len, _data_len) => self
+                .operation_write_sector(
+                    dma,
+                    bus,
+                    DiskChs::from((cylinder, head, sector)),
+                    sector_size,
+                    track_len,
+                ),
             Operation::FormatTrack(sector_size, track_len, gap3_len, fill_byte) => {
                 self.operation_format_track(dma, bus, sector_size, track_len, gap3_len, fill_byte)
             }
