@@ -81,6 +81,7 @@ pub struct Emulator {
 }
 
 impl Emulator {
+    #[allow(dead_code)]
     pub fn validate_config(&self) -> Result<(), Error> {
         Ok(())
     }

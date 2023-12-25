@@ -31,6 +31,7 @@
 use config_toml_bpaf::ConfigFileParams;
 use frontend_common::floppy_manager::FloppyManager;
 
+#[allow(dead_code)]
 pub fn run_headless(_config: &ConfigFileParams, _floppy_manager: FloppyManager) {
 
     /*
