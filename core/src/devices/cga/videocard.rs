@@ -31,7 +31,7 @@
 */
 
 use super::*;
-use crate::devices::traits::videocard::*;
+use crate::device_traits::videocard::*;
 
 // Helper macro for pushing video card state entries.
 // For CGA, we put the decorator first as there is only one register file an we use it to show the register index.

@@ -30,7 +30,7 @@
 */
 
 use crate::{consts::*, resize::*};
-use marty_core::devices::implementations::cga;
+use marty_core::devices::cga;
 
 use super::*;
 

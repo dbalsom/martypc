@@ -34,7 +34,7 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::implementations::dma,
+    devices::dma,
 };
 
 pub const FDC_IRQ: u8 = 0x06;

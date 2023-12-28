@@ -72,12 +72,17 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     let dti = emu.dm.get_display_info(&emu.machine);
     emu.gui.update_display_info(dti);
 
-    // -- Update list of floppies
-    //let name_vec = emu.floppy_manager.get_floppy_names();
-    //emu.gui.set_floppy_names(name_vec);
+    // TODO: Building these trees is expensive. We should only do it when the
+    //       resource manager has changed.
 
+    // Update Floppy Disk Image tree
     if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
         emu.gui.set_floppy_tree(floppy_tree);
+    }
+
+    // Update VHD Image tree
+    if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
+        emu.gui.set_hdd_tree(hdd_tree);
     }
 
     // -- Update VHD Creator window
@@ -87,50 +92,6 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         }
         else {
             log::error!("Couldn't query available formats: No Hard Disk Controller present!");
-        }
-    }
-
-    // -- Update list of VHD images
-    let name_vec = emu.vhd_manager.get_vhd_names();
-    emu.gui.set_vhd_names(name_vec);
-
-    // -- Do we have a new VHD image to load?
-    for i in 0..machine::NUM_HDDS {
-        if let Some(new_vhd_name) = emu.gui.get_new_vhd_name(i) {
-            log::debug!("Releasing VHD slot: {}", i);
-            emu.vhd_manager.release_vhd(i as usize);
-
-            log::debug!("Load new VHD image: {:?} in device: {}", new_vhd_name, i);
-
-            match emu.vhd_manager.load_vhd_file(i as usize, &new_vhd_name) {
-                Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
-                    Ok(vhd) => {
-                        if let Some(hdc) = emu.machine.hdc() {
-                            match hdc.set_vhd(i as usize, vhd) {
-                                Ok(_) => {
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        new_vhd_name,
-                                        i
-                                    );
-                                }
-                                Err(err) => {
-                                    log::error!("Error mounting VHD: {}", err);
-                                }
-                            }
-                        }
-                        else {
-                            log::error!("No Hard Disk Controller present!");
-                        }
-                    }
-                    Err(err) => {
-                        log::error!("Error loading VHD: {}", err);
-                    }
-                },
-                Err(err) => {
-                    log::error!("Failed to load VHD image {:?}: {}", new_vhd_name, err);
-                }
-            }
         }
     }
 

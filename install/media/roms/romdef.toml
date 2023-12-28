@@ -93,7 +93,7 @@
 [[romset]]
 alias = "ibm5150_81_v1"
 priority = 1
-provides = ["ibm5150v64k"]
+provides = ["bios", "ibm5150v64k"]
 desc = "IBM 5150 BIOS v1 04/24/81"
 datestr = "04/24/81"
 rom = [
@@ -127,7 +127,7 @@ checkpoints = [
 [[romset]]
 alias = "ibm5150_81_v2"
 priority = 2
-provides = ["ibm5150v64k"]
+provides = ["bios", "ibm5150v64k"]
 desc = "IBM 5150 BIOS v2 10/19/81"
 datestr = "10/19/81"
 rom = [
@@ -137,7 +137,7 @@ rom = [
 [[romset]]
 alias = "ibm5150_82_v3"
 priority = 3
-provides = ["expansion", "ibm5150v64k", "ibm5150v256k"]
+provides = ["bios", "ibm5150v64k", "ibm5150v256k", "expansion"]
 desc = "IBM 5150 BIOS v3 10/27/82"
 datestr = "10/27/82"
 rom = [
@@ -152,7 +152,7 @@ rom = [
 alias = "ibm5160_82_v1_wbasic"
 datestr = "11/08/82"
 priority = 1
-provides = ["expansion", "ibm5160", "ibm_basic"]
+provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
 rom = [
     { md5 = "e816a89768a1bf4b8d52b454d5c9d1e1", addr = 0xF0000, size = 32768, chip = "basic+u19" },
     { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
@@ -190,7 +190,7 @@ checkpoints = [
 alias = "ibm5160_82_v1"
 datestr = "11/08/82"
 priority = 2
-provides = ["expansion", "ibm5160"]
+provides = ["bios", "ibm5160", "expansion"]
 rom = [
     { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xFE000, size = 8192,  chip = "u19" },
     { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
@@ -228,7 +228,7 @@ checkpoints = [
 alias = "ibm5160_86_v1_wbasic"
 datestr = "01/10/86"
 priority = 3
-provides = ["expansion", "ibm5160", "ibm_basic"]
+provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
 rom = [
     { md5 = "f051b4bbc3b60c3a14df94a0e4ee720f", addr = 0xF0000, chip = "basic+u19" },
     { md5 = "fd9ff9cbe0a8f154746ccb0a33f6d3e7", addr = 0xF8000, chip = "u18" },
@@ -238,7 +238,7 @@ rom = [
 alias = "ibm5160_86_v2_wbasic"
 datestr = "05/09/86"
 priority = 4
-provides = ["expansion", "ibm5160", "ibm_basic"]
+provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
 rom = [
     { md5 = "df9f29de490d7f269a6405df1fed69b7", addr = 0xF0000, chip = "basic+u19" },
     { md5 = "9696472098999c02217bf922786c1f4a", addr = 0xF8000, chip = "u18" },
@@ -381,8 +381,27 @@ rom = [
 [[romset]]
 alias = "supersoft_diags"
 priority = 0
-provides = ["ibm5150", "ibm5160", "diag"]
+provides = ["bios", "ibm5150v64k", "ibm5150v256k", "ibm5160", "diag"]
 rom = [
     { md5 = "3a0eacac07f1020b95ce06043982dfd1", addr = 0xFE000 }
 ]
 
+
+# ----------------------------------------------------------------------------
+# Generic XT System ROMs
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "award_xt_4000"
+priority = 1
+provides = ["bios", "ibm5160", "expansion"]
+rom = [
+    { md5 = "a8a1027cfa97e42a42d95a883e1c30c6", name = "Award_Turbo_4000.BIN", addr = 0xFE000, size = 8192 }, 
+]
+
+[[romset]]
+alias = "award_xt_2.05"
+priority = 1
+provides = ["bios", "ibm5160", "expansion"]
+rom = [
+    { md5 = "688da86aec830ac09fcd436f28cf9bca", name = "Award_XT_2.05_2764.bin", addr = 0xFE000, size = 8192 }, 
+]

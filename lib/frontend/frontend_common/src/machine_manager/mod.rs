@@ -32,7 +32,7 @@
 use crate::resource_manager::ResourceManager;
 use anyhow::Error;
 use marty_core::{
-    devices::traits::videocard::VideoType,
+    device_traits::videocard::VideoType,
     machine_config::{
         FloppyControllerConfig,
         HardDriveControllerConfig,
@@ -48,7 +48,7 @@ use marty_core::{
 
 use serde_derive::Deserialize;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     ffi::OsString,
     path::PathBuf,
 };
@@ -104,8 +104,8 @@ pub struct MachineManager {
     active_config: Option<MachineConfigFileEntry>,
     config_names: HashSet<String>,
     overlay_names: HashSet<String>,
-    configs: HashMap<String, MachineConfigFileEntry>,
-    overlays: HashMap<String, MachineConfigFileOverlayEntry>,
+    configs: BTreeMap<String, MachineConfigFileEntry>,
+    overlays: BTreeMap<String, MachineConfigFileOverlayEntry>,
     features_requested: HashSet<String>,
     features_provided: HashSet<String>,
     rom_sets_required: Vec<usize>,
@@ -117,8 +117,8 @@ impl Default for MachineManager {
             active_config: None,
             config_names: HashSet::new(),
             overlay_names: HashSet::new(),
-            configs: HashMap::new(),
-            overlays: HashMap::new(),
+            configs: BTreeMap::new(),
+            overlays: BTreeMap::new(),
             features_requested: HashSet::new(),
             features_provided: HashSet::new(),
             rom_sets_required: Vec::new(),
@@ -183,18 +183,20 @@ impl MachineManager {
         let toml_str = std::fs::read_to_string(toml_path)?;
         let config = toml::from_str::<MachineConfigFile>(&toml_str)?;
 
-        log::debug!("Rom definition file loaded: {:?}", toml_path);
+        //log::debug!("Machine definition file loaded: {:?}", toml_path);
         Ok(config)
     }
 
     fn print_config_stats(&mut self) {
-        println!("Have {} Machine Configurations:", self.configs.len());
+        println!("Found {} Machine Configurations:", self.configs.len());
         for (name, config) in self.configs.iter() {
             println!(" {}", name);
 
+            /*
             for (i, card) in config.video.as_ref().unwrap_or(&Vec::new()).iter().enumerate() {
                 println!("  videocard {}: type: {:?}", i, card.video_type,);
             }
+            */
         }
     }
 
@@ -264,18 +266,25 @@ impl MachineConfigFileEntry {
     /// Return a vector of strings representing the ROM feature requirements for this configuration
     pub fn get_rom_requirements(&self) -> Result<Vec<String>, Error> {
         let mut req_set: HashSet<String> = HashSet::new();
+        let mut req_vec: Vec<String> = Vec::new();
 
         if let Some(features) = marty_core::machine_config::get_base_rom_features(self.machine_type) {
             for feature in features {
-                req_set.insert(feature.to_string());
+                if req_set.insert(feature.to_string()) {
+                    req_vec.push(feature.to_string());
+                }
             }
         }
 
-        if let Some(hdc) = self.hdc.as_ref() {
+        if let Some(hdc) = &self.hdc {
             match hdc.hdc_type {
                 HardDiskControllerType::IbmXebec => {
-                    req_set.insert(String::from("expansion"));
-                    req_set.insert(String::from("ibm_xebec"));
+                    if req_set.insert(String::from("expansion")) {
+                        req_vec.push(String::from("expansion"));
+                    }
+                    if req_set.insert(String::from("ibm_xebec")) {
+                        req_vec.push(String::from("ibm_xebec"));
+                    }
                 }
             }
         }
@@ -283,22 +292,30 @@ impl MachineConfigFileEntry {
         if let Some(cards) = self.video.as_ref() {
             for card in cards {
                 match card.video_type {
+                    #[cfg(feature = "ega")]
                     VideoType::EGA => {
-                        req_set.insert(String::from("expansion"));
-                        req_set.insert(String::from("ibm_ega"));
+                        if req_set.insert(String::from("expansion")) {
+                            req_vec.push(String::from("expansion"));
+                        }
+                        if req_set.insert(String::from("ibm_ega")) {
+                            req_vec.push(String::from("ibm_ega"));
+                        }
                     }
+                    #[cfg(feature = "vga")]
                     VideoType::VGA => {
-                        req_set.insert(String::from("expansion"));
-                        req_set.insert(String::from("ibm_vga"));
+                        if req_set.insert(String::from("expansion")) {
+                            req_vec.push(String::from("expansion"));
+                        }
+                        if req_set.insert(String::from("ibm_vga")) {
+                            req_vec.push(String::from("ibm_vga"));
+                        }
                     }
                     _ => {}
                 }
             }
         }
 
-        let mut req_list = Vec::from_iter(req_set.into_iter());
-        req_list.sort();
-        Ok(req_list)
+        Ok(req_vec)
     }
 
     /// Apply a Machine Config Overlay to this configuration. Every option that is Some within the overlay is

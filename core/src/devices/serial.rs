@@ -40,7 +40,7 @@ use std::{collections::VecDeque, io::Read};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::implementations::pic,
+    devices::pic,
 };
 
 /*  1.8Mhz Oscillator.

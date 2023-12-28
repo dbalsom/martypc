@@ -79,7 +79,7 @@ use frontend_common::{
 };
 
 use marty_core::{
-    devices::traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId},
+    device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId},
     file_util,
     machine::Machine,
 };

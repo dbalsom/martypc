@@ -41,12 +41,12 @@ use frontend_common::{
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
+    vhd_manager::VhdManager,
 };
 use marty_core::{
     cpu_common::CpuOption,
     machine::{ExecutionControl, Machine, MachineState},
     vhd::VirtualHardDisk,
-    vhd_manager::VHDManager,
 };
 use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use videocard_renderer::AspectCorrectionMode;
@@ -74,7 +74,7 @@ pub struct Emulator {
     pub gui: GuiState,
     //context: &'a mut GuiRenderContext,
     pub floppy_manager: FloppyManager,
-    pub vhd_manager: VHDManager,
+    pub vhd_manager: VhdManager,
     pub hdd_path: PathBuf,
     //pub floppy_path: PathBuf,
     pub flags: EmuFlags,
@@ -239,7 +239,7 @@ impl Emulator {
         let mut vhd_idx: usize = 0;
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
             let vhd_os_name: OsString = vhd_name.into();
-            match self.vhd_manager.load_vhd_file(vhd_idx, &vhd_os_name) {
+            match self.vhd_manager.load_vhd_file_by_name(vhd_idx, &vhd_os_name) {
                 Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
                         if let Some(hdc) = self.machine.hdc() {
@@ -406,6 +406,9 @@ impl Emulator {
 
         // Set floppy drives.
         self.gui.set_floppy_drives(self.machine.bus().floppy_drive_ct());
+
+        // Set hard drives.
+        self.gui.set_hdds(self.machine.bus().hdd_ct());
     }
     pub fn start(&mut self) {
         self.machine.play_sound_buffer();

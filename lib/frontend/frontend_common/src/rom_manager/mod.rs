@@ -488,6 +488,8 @@ impl RomManager {
         Ok(())
     }
 
+    /// Resolve a ROM set. Resolving a ROM set involves checking that the ROM set is complete, that is, a ROM
+    /// matching the specified hash (if present) or name is present for each 'chip' defined in the ROM set.
     pub fn resolve_rom_set(&mut self, set_idx: usize) -> Result<(), Error> {
         let set = &mut self.rom_defs[set_idx];
 
@@ -563,6 +565,11 @@ impl RomManager {
         // Drop any ROMs that are not present.
         set.rom.retain(|rom| rom.present);
 
+        // If no ROMs are left in set, set is invalid.
+        if set.rom.is_empty() {
+            return Err(anyhow::anyhow!("ROM set {} is invalid: no ROMs found.", set.alias));
+        }
+
         // Add ROMs to a HashMap of ROMs by chip, on first-come first-serve basis. The first ROM
         // that satisfies a chip will be used.
         let mut chip_map: HashMap<String, RomDescriptor> = HashMap::new();
@@ -614,7 +621,11 @@ impl RomManager {
         }
 
         for feature in required.iter() {
-            log::debug!("Resolving feature: {}...", feature);
+            log::debug!(
+                "Features resolved: [{:?}] Resolving feature: {}...",
+                provided_features,
+                feature
+            );
 
             if provided_features.contains(feature) {
                 log::debug!("Feature {} already provided. Skipping.", feature);

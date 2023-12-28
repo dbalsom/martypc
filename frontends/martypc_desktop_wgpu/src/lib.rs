@@ -70,14 +70,13 @@ use crate::run_gentests::run_gentests;
 use crate::run_runtests::run_runtests;
 
 use marty_core::{
-    devices::implementations::keyboard::KeyboardModifiers,
+    devices::keyboard::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState},
     sound::SoundPlayer,
-    vhd_manager::VHDManager,
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
-use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager};
+use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager, vhd_manager::VhdManager};
 use marty_core::machine::MachineBuilder;
 
 use crate::event_loop::handle_event;
@@ -482,7 +481,7 @@ pub fn run() {
     }
 
     // Instantiate the VHD manager
-    let mut vhd_manager = VHDManager::new();
+    let mut vhd_manager = VhdManager::new();
 
     // Scan the HDD directory
     let hdd_path = resource_manager.get_resource_path("hdd").unwrap_or_else(|| {
@@ -490,7 +489,7 @@ pub fn run() {
         std::process::exit(1);
     });
 
-    if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
+    if let Err(e) = vhd_manager.scan_resource(&resource_manager) {
         eprintln!("Failed to read hdd path: {:?}", e);
         std::process::exit(1);
     }

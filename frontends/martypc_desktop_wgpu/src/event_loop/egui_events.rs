@@ -34,7 +34,7 @@ use display_manager_wgpu::DisplayManager;
 use marty_core::{
     breakpoints::BreakPointType,
     cpu_common::CpuOption,
-    devices::traits::videocard::ClockingMode,
+    device_traits::videocard::ClockingMode,
     machine::MachineState,
     vhd,
 };
@@ -42,6 +42,7 @@ use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, Gu
 use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
+use marty_core::vhd::VirtualHardDisk;
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, gui_event: &GuiEvent) {
@@ -112,7 +113,57 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 GuiVariableContext::Global => {}
             },
         },
+        GuiEvent::LoadVHD(drive_idx, image_idx) => {
+            log::debug!("Releasing VHD slot: {}", drive_idx);
+            emu.vhd_manager.release_vhd(*drive_idx);
 
+            let mut error_str = None;
+
+            match emu.vhd_manager.load_vhd_file(*drive_idx, *image_idx) {
+                Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
+                    Ok(vhd) => {
+                        if let Some(hdc) = emu.machine.hdc() {
+                            match hdc.set_vhd(*drive_idx, vhd) {
+                                Ok(_) => {
+                                    let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
+                                    log::info!(
+                                        "VHD image {:?} successfully loaded into virtual drive: {}",
+                                        vhd_name,
+                                        *drive_idx
+                                    );
+
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!("VHD loaded: {:?}", vhd_name))
+                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                                Err(err) => {
+                                    error_str = Some(format!("Error mounting VHD: {}", err));
+                                }
+                            }
+                        }
+                        else {
+                            error_str = Some("No Hard Disk Controller present!".to_string());
+                        }
+                    }
+                    Err(err) => {
+                        error_str = Some(format!("Error loading VHD: {}", err));
+                    }
+                },
+                Err(err) => {
+                    error_str = Some(format!("Failed to load VHD image index {}: {}", *image_idx, err));
+                }
+            }
+
+            // Handle errors.
+            if let Some(err_str) = error_str {
+                log::error!("{}", err_str);
+                emu.gui
+                    .toasts()
+                    .error(err_str)
+                    .set_duration(Some(LONG_NOTIFICATION_TIME));
+            }
+        }
         GuiEvent::CreateVHD(filename, fmt) => {
             log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
@@ -132,8 +183,8 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         .info(format!("Created VHD: {}", filename.to_string_lossy()))
                         .set_duration(Some(Duration::from_secs(5)));
 
-                    // Rescan dir to show new file in list
-                    if let Err(e) = emu.vhd_manager.scan_dir(&emu.hdd_path) {
+                    // Rescan resource paths to show new file in list
+                    if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
                         log::error!("Error scanning hdd directory: {}", e);
                     };
                 }
@@ -150,7 +201,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             if let Err(e) = emu.floppy_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning floppy directory: {}", e);
             }
-            if let Err(e) = emu.vhd_manager.scan_dir(&emu.hdd_path) {
+            if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning hdd directory: {}", e);
             };
         }

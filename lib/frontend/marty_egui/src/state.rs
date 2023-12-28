@@ -48,10 +48,8 @@ use frontend_common::{
     resource_manager::PathTreeNode,
 };
 use marty_core::{
-    devices::{
-        implementations::{pit::PitDisplayState, ppi::PpiStringState},
-        traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
-    },
+    device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
+    devices::{pit::PitDisplayState, ppi::PpiStringState},
     machine::{ExecutionControl, MachineState},
 };
 use serialport::SerialPortInfo;
@@ -96,6 +94,22 @@ impl GuiFloppyDriveInfo {
     }
 }
 
+pub struct GuiHddInfo {
+    pub(crate) idx: usize,
+    pub(crate) selected_idx: Option<usize>,
+    pub(crate) selected_path: Option<PathBuf>,
+    pub(crate) write_protected: bool,
+}
+
+impl GuiHddInfo {
+    pub fn filename(&self) -> Option<String> {
+        match &self.selected_path {
+            Some(path) => Some(path.to_string_lossy().to_string()),
+            None => None,
+        }
+    }
+}
+
 pub struct GuiState {
     pub(crate) event_queue: GuiEventQueue,
 
@@ -124,6 +138,8 @@ pub struct GuiState {
     pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
     pub(crate) floppy0_name:  Option<OsString>,
     pub(crate) floppy1_name:  Option<OsString>,
+
+    pub(crate) hdds: Vec<GuiHddInfo>,
 
     // VHD Images
     pub(crate) vhd_names: Vec<OsString>,
@@ -168,6 +184,7 @@ pub struct GuiState {
     pub text_mode_viewer: TextModeViewer,
 
     pub floppy_tree_menu: FileTreeMenu,
+    pub hdd_tree_menu:    FileTreeMenu,
 
     pub(crate) call_stack_string: String,
     pub(crate) global_zoom: f32,
@@ -242,6 +259,8 @@ impl GuiState {
             floppy0_name: Option::None,
             floppy1_name: Option::None,
 
+            hdds: Vec::new(),
+
             vhd_names: Vec::new(),
             new_vhd_name0: Option::None,
             vhd_name0: OsString::new(),
@@ -282,6 +301,7 @@ impl GuiState {
             call_stack_string: String::new(),
 
             floppy_tree_menu: FileTreeMenu::new(),
+            hdd_tree_menu: FileTreeMenu::new(),
 
             global_zoom: 1.0,
         }
@@ -397,8 +417,25 @@ impl GuiState {
         self.floppy_drives[drive].selected_path = name;
     }
 
-    pub fn set_vhd_names(&mut self, names: Vec<OsString>) {
-        self.vhd_names = names;
+    pub fn set_hdds(&mut self, drivect: usize) {
+        self.hdds.clear();
+        for idx in 0..drivect {
+            self.hdds.push(GuiHddInfo {
+                idx,
+                selected_idx: None,
+                selected_path: None,
+                write_protected: true,
+            });
+        }
+    }
+
+    pub fn set_hdd_tree(&mut self, tree: PathTreeNode) {
+        self.hdd_tree_menu.set_root(tree);
+    }
+
+    pub fn set_hdd_selection(&mut self, drive: usize, idx: Option<usize>, name: Option<PathBuf>) {
+        self.hdds[drive].selected_idx = idx;
+        self.hdds[drive].selected_path = name;
     }
 
     /// Set display apertures for the specified display. Should be called in a loop for each display

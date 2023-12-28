@@ -36,6 +36,7 @@
 
 #![allow(dead_code)]
 use anyhow::Error;
+use lazy_static::lazy_static;
 use std::{
     collections::{HashMap, VecDeque},
     fmt,
@@ -47,16 +48,14 @@ use ringbuf::Producer;
 use crate::{bytequeue::*, cpu_808x::*};
 
 use crate::{
-    devices::{
-        implementations::keyboard::KeyboardType,
-        traits::videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType},
-    },
+    device_traits::videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType},
+    devices::keyboard::KeyboardType,
     machine::KeybufferEntry,
     machine_config::MachineDescriptor,
     syntax_token::SyntaxToken,
 };
 
-use crate::devices::implementations::{
+use crate::devices::{
     dma::*,
     fdc::FloppyController,
     hdc::*,
@@ -71,16 +70,14 @@ use crate::devices::implementations::{
 use crate::tracelogger::TraceLogger;
 
 #[cfg(feature = "ega")]
-use crate::devices::implementations::ega::{self, EGACard};
+use crate::devices::ega::{self, EGACard};
 #[cfg(feature = "vga")]
-use crate::devices::implementations::vga::{self, VGACard};
+use crate::devices::vga::{self, VGACard};
 use crate::{
+    device_traits::videocard::{VideoCard, VideoCardDispatch},
     devices::{
-        implementations::{
-            cga::{self, CGACard},
-            mda::{self, MDACard},
-        },
-        traits::videocard::{VideoCard, VideoCardDispatch},
+        cga::{self, CGACard},
+        mda::{self, MDACard},
     },
     machine_config::{normalize_conventional_memory, MachineConfiguration},
     machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
@@ -106,10 +103,68 @@ pub const MEM_MMIO_BIT: u8 = 0b0000_0100; // Bit to signify that this address is
 
 pub const KB_UPDATE_RATE: f64 = 5000.0; // Keyboard device update rate in microseconds
 
+pub const TIMING_TABLE_LEN: usize = 512;
+
+#[derive(Copy, Clone, Debug)]
+pub struct TimingTableEntry {
+    pub sys_ticks: u32,
+    pub us: f64,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum ClockFactor {
     Divisor(u8),
     Multiplier(u8),
+}
+
+#[derive(Clone, Debug)]
+pub struct DeviceRunContext {
+    pub delta_ticks: u32,
+    pub delta_us: f64,
+    pub break_on: Option<DeviceId>,
+    pub events: VecDeque<DeviceEvent>,
+}
+
+impl Default for DeviceRunContext {
+    fn default() -> Self {
+        Self {
+            delta_ticks: 0,
+            delta_us: 0.0,
+            break_on: None,
+            events: VecDeque::with_capacity(16),
+        }
+    }
+}
+
+impl DeviceRunContext {
+    pub fn new(cpu_ticks: u32, factor: ClockFactor, sysclock: f64) -> Self {
+        let delta_ticks = match factor {
+            ClockFactor::Divisor(n) => (cpu_ticks + (n as u32) - 1) / (n as u32),
+            ClockFactor::Multiplier(n) => cpu_ticks * (n as u32),
+        };
+        let mhz = match factor {
+            ClockFactor::Divisor(n) => sysclock / (n as f64),
+            ClockFactor::Multiplier(n) => sysclock * (n as f64),
+        };
+        let delta_us = 1.0 / mhz * cpu_ticks as f64;
+
+        Self {
+            delta_ticks,
+            delta_us,
+            break_on: None,
+            events: VecDeque::with_capacity(16),
+        }
+    }
+
+    #[inline]
+    pub fn set_break_on(&mut self, device: DeviceId) {
+        self.break_on = Some(device);
+    }
+
+    #[inline]
+    pub fn add_event(&mut self, event: DeviceEvent) {
+        self.events.push_back(event);
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -118,6 +173,23 @@ pub enum DeviceRunTimeUnit {
     Microseconds(f64),
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum DeviceId {
+    None,
+    Ppi,
+    Pit,
+    DmaPrimary,
+    DmaSecondary,
+    PicPrimary,
+    PicSecondary,
+    SerialController,
+    FloppyController,
+    HardDiskController,
+    Mouse,
+    Video,
+}
+
+#[derive(Clone, Debug)]
 pub enum DeviceEvent {
     DramRefreshUpdate(u16, u16, u32),
     DramRefreshEnable(bool),
@@ -231,6 +303,7 @@ pub enum MmioDeviceType {
 // us to call them with bus as an argument.
 pub struct BusInterface {
     cpu_factor: ClockFactor,
+    timing_table: Box<[TimingTableEntry; TIMING_TABLE_LEN]>,
     machine_desc: Option<MachineDescriptor>,
     keyboard_type: KeyboardType,
     keyboard: Keyboard,
@@ -239,7 +312,7 @@ pub struct BusInterface {
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
     mmio_map: Vec<(MemRangeDescriptor, MmioDeviceType)>,
-    mmio_map_fast: [MmioDeviceType; 128],
+    mmio_map_fast: [MmioDeviceType; MMIO_MAP_LEN],
     mmio_data: MmioData,
     cursor: usize,
 
@@ -366,7 +439,7 @@ impl Default for BusInterface {
     fn default() -> Self {
         BusInterface {
             cpu_factor: ClockFactor::Divisor(3),
-
+            timing_table: Box::new([TimingTableEntry { sys_ticks: 0, us: 0.0 }; TIMING_TABLE_LEN]),
             machine_desc: None,
             keyboard_type: KeyboardType::ModelF,
             keyboard: Keyboard::new(KeyboardType::ModelF, false),
@@ -409,13 +482,52 @@ impl Default for BusInterface {
 
 impl BusInterface {
     pub fn new(cpu_factor: ClockFactor, machine_desc: MachineDescriptor, keyboard_type: KeyboardType) -> BusInterface {
+        let mut timing_table = Box::new([TimingTableEntry { sys_ticks: 0, us: 0.0 }; TIMING_TABLE_LEN]);
+        Self::update_timing_table(&mut timing_table, cpu_factor, machine_desc.system_crystal);
+
         BusInterface {
             cpu_factor,
+            timing_table,
             machine_desc: Some(machine_desc),
             keyboard_type,
             keyboard: Keyboard::new(keyboard_type, false),
             ..BusInterface::default()
         }
+    }
+
+    /// Update the bus timing table.
+    /// The bus keeps a timing table which is a lookup table of system ticks and microseconds for each possible CPU
+    /// instruction cycle count from 0 to TIMING_TABLE_LEN. This table needs to be updated whenever the clock divisor
+    /// or cpu crystal frequency changes.
+    pub fn update_timing_table(
+        timing_table: &mut [TimingTableEntry; TIMING_TABLE_LEN],
+        clock_factor: ClockFactor,
+        cpu_crystal: f64,
+    ) {
+        for cycles in 0..TIMING_TABLE_LEN {
+            let entry = &mut timing_table[cycles];
+
+            entry.sys_ticks = match clock_factor {
+                ClockFactor::Divisor(n) => ((cycles as u32) + (n as u32) - 1) / (n as u32),
+                ClockFactor::Multiplier(n) => (cycles as u32) * (n as u32),
+            };
+            let mhz = match clock_factor {
+                ClockFactor::Divisor(n) => cpu_crystal / (n as f64),
+                ClockFactor::Multiplier(n) => cpu_crystal * (n as f64),
+            };
+            entry.us = 1.0 / mhz * cycles as f64;
+        }
+    }
+
+    #[inline]
+    pub fn get_timings_for_cycles(&self, cycles: u32) -> &TimingTableEntry {
+        &self.timing_table[cycles as usize]
+    }
+
+    #[inline]
+    pub fn set_context_timings(&self, context: &mut DeviceRunContext, cycles: u32) {
+        context.delta_ticks = self.timing_table[cycles as usize].sys_ticks;
+        context.delta_us = self.timing_table[cycles as usize].us;
     }
 
     pub fn set_conventional_size(&mut self, size: usize) {
@@ -1363,7 +1475,7 @@ impl BusInterface {
             match hdc_config.hdc_type {
                 HardDiskControllerType::IbmXebec => {
                     // TODO: Get the correct drive type from the specified VHD...?
-                    let hdc = HardDiskController::new(DRIVE_TYPE2_DIP);
+                    let hdc = HardDiskController::new(2, DRIVE_TYPE2_DIP);
                     // Add HDC ports to io_map
                     let port_list = hdc.port_list();
                     self.io_map
@@ -1464,8 +1576,10 @@ impl BusInterface {
                     video_dispatch = VideoCardDispatch::Vga(vga)
                 }
                 _ => {
-                    // MDA not implemented
-                    todo!("MDA not implemented");
+                    panic!(
+                        "card type {:?} not implemented or feature not compiled",
+                        card.video_type
+                    );
                 }
             }
 
@@ -2174,6 +2288,15 @@ impl BusInterface {
     pub fn floppy_drive_ct(&self) -> usize {
         if let Some(fdc) = &self.fdc {
             fdc.drive_ct()
+        }
+        else {
+            0
+        }
+    }
+
+    pub fn hdd_ct(&self) -> usize {
+        if let Some(hdc) = &self.hdc {
+            hdc.drive_ct()
         }
         else {
             0

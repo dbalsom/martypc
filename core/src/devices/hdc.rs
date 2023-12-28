@@ -38,10 +38,10 @@ use core::fmt::Display;
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit},
-    devices::implementations::dma,
+    devices::dma,
 };
 //use crate::fdc::Operation;
-use crate::{bus::IoDevice, vhd::VirtualHardDisk};
+use crate::{bus::IoDevice, device_types::hdc::HardDiskFormat, vhd::VirtualHardDisk};
 
 // Public consts
 pub const HDC_IRQ: u8 = 0x05;
@@ -195,14 +195,6 @@ impl IoDevice for HardDiskController {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct HardDiskFormat {
-    pub max_cylinders: u16,
-    pub max_heads: u8,
-    pub max_sectors: u8,
-    pub desc: String,
-}
-
 pub struct HardDisk {
     cylinder: u16,
     head: u8,
@@ -284,6 +276,7 @@ pub struct DeviceControlBlock {
 #[allow(dead_code)]
 pub struct HardDiskController {
     drives: [HardDisk; 2],
+    drive_ct: usize,
     drive_select: usize,
 
     supported_formats: Vec<HardDiskFormat>,
@@ -316,14 +309,16 @@ pub struct HardDiskController {
 }
 
 impl HardDiskController {
-    pub fn new(drive_type_dip: u8) -> Self {
+    pub fn new(drive_ct: usize, drive_type_dip: u8) -> Self {
         Self {
             drives: [HardDisk::new(), HardDisk::new()],
+            drive_ct,
             drive_select: 0,
             supported_formats: vec![HardDiskFormat {
                 max_cylinders: 615,
                 max_heads: 4,
                 max_sectors: 17,
+                wpc: Some(300),
                 desc: "20MB, Type 2".to_string(),
             }],
             drive_type_dip,
@@ -368,6 +363,10 @@ impl HardDiskController {
         self.command = Command::None;
         self.command_fn = None;
         self.command_byte_n = 0;
+    }
+
+    pub fn drive_ct(&self) -> usize {
+        self.drive_ct
     }
 
     pub fn get_supported_formats(&self) -> Vec<HardDiskFormat> {

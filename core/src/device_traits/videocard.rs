@@ -65,10 +65,10 @@ use std::{collections::HashMap, path::Path, str::FromStr};
 use crate::bus::DeviceRunTimeUnit;
 
 #[cfg(feature = "ega")]
-use crate::devices::implementations::ega::EGACard;
+use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
-use crate::devices::implementations::vga::VGACard;
-use crate::devices::implementations::{cga::CGACard, mda::MDACard};
+use crate::devices::vga::VGACard;
+use crate::devices::{cga::CGACard, mda::MDACard};
 
 use serde::Deserialize;
 use serde_derive::Serialize;
@@ -77,16 +77,17 @@ use serde_derive::Serialize;
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Hash)]
 pub enum VideoType {
-    None,
     MDA,
     CGA,
+    #[cfg(feature = "ega")]
     EGA,
+    #[cfg(feature = "vga")]
     VGA,
 }
 
 impl Default for VideoType {
     fn default() -> Self {
-        VideoType::None
+        VideoType::MDA
     }
 }
 
@@ -97,10 +98,11 @@ impl FromStr for VideoType {
         Self: Sized,
     {
         match s {
-            "None" => Ok(VideoType::None),
             "MDA" => Ok(VideoType::MDA),
             "CGA" => Ok(VideoType::CGA),
+            #[cfg(feature = "ega")]
             "EGA" => Ok(VideoType::EGA),
+            #[cfg(feature = "vga")]
             "VGA" => Ok(VideoType::VGA),
             _ => Err("Bad value for videotype".to_string()),
         }

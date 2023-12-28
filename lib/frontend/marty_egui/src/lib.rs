@@ -66,10 +66,9 @@ mod widgets;
 mod windows;
 
 use marty_core::{
-    devices::{
-        implementations::{hdc::HardDiskFormat, pic::PicStringState, pit::PitDisplayState, ppi::PpiStringState},
-        traits::videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
-    },
+    device_traits::videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
+    device_types::hdc::HardDiskFormat,
+    devices::{pic::PicStringState, pit::PitDisplayState, ppi::PpiStringState},
     machine::{ExecutionControl, MachineState},
 };
 
@@ -154,7 +153,8 @@ type GuiEnumMap = HashMap<(GuiVariableContext, Discriminant<GuiEnum>), GuiEnum>;
 
 #[allow(dead_code)]
 pub enum GuiEvent {
-    LoadVHD(usize, OsString),
+    LoadVHD(usize, usize),
+    DetachVHD(usize),
     CreateVHD(OsString, HardDiskFormat),
     LoadFloppy(usize, usize),
     SaveFloppy(usize, usize),

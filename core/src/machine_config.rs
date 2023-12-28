@@ -46,10 +46,8 @@ use std::collections::HashMap;
 use crate::{
     bus::ClockFactor,
     cpu_common::CpuType,
-    devices::{
-        implementations::{keyboard::KeyboardType, pit::PitType},
-        traits::videocard::VideoType,
-    },
+    device_traits::videocard::VideoType,
+    devices::{keyboard::KeyboardType, pit::PitType},
     tracelogger::TraceLogger,
 };
 
@@ -118,6 +116,15 @@ lazy_static! {
         m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k", "ibm_basic"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k", "ibm_basic"]);
         m.insert(MachineType::Ibm5160, vec!["ibm5160", "ibm_basic"]);
+        m
+    };
+
+    static ref OPTIONAL_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
+        let mut m = HashMap::new();
+        m.insert(MachineType::Fuzzer8088, vec![]);
+        m.insert(MachineType::Ibm5150v64K, vec!["ibm_basic"]);
+        m.insert(MachineType::Ibm5150v256K, vec!["ibm_basic"]);
+        m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
         m
     };
 }

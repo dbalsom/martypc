@@ -47,7 +47,7 @@ use log;
 
 use crate::tracelogger::TraceLogger;
 
-use crate::devices::traits::videocard::*;
+use crate::device_traits::videocard::*;
 
 mod attribute_regs;
 mod crtc;
@@ -472,18 +472,18 @@ static EGA_FONTS: [EGAFont; 2] = [
         w:    8,
         h:    8,
         span: EGA_FONT_SPAN,
-        data: include_bytes!("../../../../../assets/ega_8by8.bin"),
+        data: include_bytes!("../../../../assets/ega_8by8.bin"),
     },
     EGAFont {
         w:    8,
         h:    14,
         span: EGA_FONT_SPAN,
-        data: include_bytes!("../../../../../assets/ega_8by14.bin"),
+        data: include_bytes!("../../../../assets/ega_8by14.bin"),
     },
 ];
 
-const EGA_FONT8: &'static [u8] = include_bytes!("../../../../../assets/ega_8by8.bin");
-const EGA_FONT14: &'static [u8] = include_bytes!("../../../../../assets/ega_8by14.bin");
+const EGA_FONT8: &'static [u8] = include_bytes!("../../../../assets/ega_8by8.bin");
+const EGA_FONT14: &'static [u8] = include_bytes!("../../../../assets/ega_8by14.bin");
 
 // Display apertures for each EGA clock
 // In 14Mhz mode, EGA apertures are similar to CGA apertures.

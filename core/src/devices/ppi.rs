@@ -38,7 +38,8 @@ use std::cell::Cell;
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
-    devices::{implementations::pic, traits::videocard::VideoType},
+    device_traits::videocard::VideoType,
+    devices::pic,
     machine_types::MachineType,
 };
 
@@ -225,7 +226,17 @@ impl Ppi {
             _ => (0, 0),
         };
 
-        let sw1_video_bits = if video_types.contains(&VideoType::VGA) || video_types.contains(&VideoType::EGA) {
+        let mut have_expansion = false;
+        #[cfg(feature = "ega")]
+        {
+            have_expansion |= video_types.contains(&VideoType::EGA);
+        }
+        #[cfg(feature = "vga")]
+        {
+            have_expansion |= video_types.contains(&VideoType::VGA);
+        }
+
+        let sw1_video_bits = if have_expansion {
             // We have a card that requires an expansion BIOs.
             SW1_HAVE_EXPANSION
         }

@@ -123,10 +123,8 @@ impl ResourceManager {
             items = items
                 .iter()
                 .filter_map(|item| {
-                    log::debug!("in filter_map()");
                     if item.full_path.is_file() {
                         if let Some(extension) = item.full_path.extension() {
-                            log::debug!("extension: {:?}", extension);
                             if extension_filter.contains(&extension.to_ascii_lowercase()) {
                                 return Some(item);
                             }

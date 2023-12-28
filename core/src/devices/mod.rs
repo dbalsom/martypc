@@ -24,11 +24,25 @@
 
     --------------------------------------------------------------------------
 
-    devices::mod.rs
+    devices::implementations::mod.rs
 
-    'Devices' module. Containts all device implementations, traits, and types.
+    Module to organize all device implementations
+
 */
 
-pub mod implementations;
-pub mod traits;
-pub mod types;
+pub mod cga;
+#[cfg(feature = "ega")]
+pub mod ega;
+pub mod mda;
+#[cfg(feature = "vga")]
+pub mod vga;
+
+pub mod dma;
+pub mod fdc;
+pub mod hdc;
+pub mod keyboard;
+pub mod mouse;
+pub mod pic;
+pub mod pit;
+pub mod ppi;
+pub mod serial;

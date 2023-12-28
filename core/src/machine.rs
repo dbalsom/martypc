@@ -50,18 +50,16 @@ use crate::{
     coreconfig::CoreConfig,
     cpu_808x::{Cpu, CpuAddress, CpuError, ServiceEvent, StepResult},
     cpu_common::{CpuOption, CpuType, TraceMode},
+    device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     devices::{
-        implementations::{
-            dma::DMAControllerStringState,
-            fdc::FloppyController,
-            hdc::HardDiskController,
-            keyboard::KeyboardModifiers,
-            mouse::Mouse,
-            pic::PicStringState,
-            pit::{self, PitDisplayState},
-            ppi::PpiStringState,
-        },
-        traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
+        dma::DMAControllerStringState,
+        fdc::FloppyController,
+        hdc::HardDiskController,
+        keyboard::KeyboardModifiers,
+        mouse::Mouse,
+        pic::PicStringState,
+        pit::{self, PitDisplayState},
+        ppi::PpiStringState,
     },
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
@@ -74,7 +72,7 @@ use ringbuf::{Consumer, Producer, RingBuffer};
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
-pub const NUM_HDDS: u32 = 2;
+//pub const NUM_HDDS: u32 = 2;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
@@ -93,6 +91,15 @@ pub enum MachineState {
     Resuming,
     Rebooting,
     Off,
+}
+
+impl MachineState {
+    pub fn is_on(&self) -> bool {
+        match self {
+            MachineState::Off => false,
+            _ => true,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]

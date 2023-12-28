@@ -513,9 +513,9 @@ impl Pic {
         // Return the highest priority vector not currently masked from the IRR
         let mut ir_bit: u8 = 0x01;
         for irq in 0..8 {
-            let have_request = ir_bit & self.irr != 0;
-            let is_masked = ir_bit & self.imr != 0;
-            let _is_in_service = ir_bit & self.isr != 0;
+            let have_request = self.irr & ir_bit != 0;
+            let is_masked = self.imr & ir_bit != 0;
+            let _is_in_service = self.isr & ir_bit != 0;
 
             if have_request && !is_masked {
                 // found highest priority IRR not masked
@@ -583,12 +583,13 @@ impl Pic {
         if !self.intr && !self.intr_scheduled {
             let mut ir_bit: u8 = 0x01;
             for _irq in 0..8 {
-                let have_request = ir_bit & self.irr != 0;
-                let is_not_masked = ir_bit & self.imr == 0;
-                let is_not_in_service = ir_bit & self.isr == 0;
+                let have_request = self.irr & ir_bit != 0;
+                let is_not_masked = self.imr & ir_bit == 0;
+                let is_not_in_service = self.isr & ir_bit == 0;
 
                 if have_request && is_not_masked && is_not_in_service {
                     self.schedule_intr(1);
+                    break;
                 }
 
                 ir_bit <<= 1;
