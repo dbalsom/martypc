@@ -48,7 +48,6 @@ speaker = true
         # Drives connected to controller. Maximum of 4.
         [[machine.fdc.drive]]
         type  = "360k"
-        image = "dos330.img"
         [[machine.fdc.drive]]
         type  = "360k"   
 
@@ -88,7 +87,6 @@ speaker = true
         # Drives connected to controller. Maximum of 4.
         [[machine.fdc.drive]]
         type  = "360k"
-        image = "dos330.img"
         [[machine.fdc.drive]]
         type  = "360k"   
 
@@ -142,10 +140,9 @@ speaker = true
         # Drives connected to controller. Maximum of 4.
         [[machine.fdc.drive]]
         type  = "360k"
-        image = "dos330.img"
         [[machine.fdc.drive]]
         type  = "360k"   
-
+        
     # Serial card
     [[machine.serial]]
     type = "IbmAsync"
@@ -182,7 +179,6 @@ speaker = true
         # Drives connected to controller. Maximum of 4.
         [[machine.fdc.drive]]
         type  = "360k"
-        image = "dos330.img"
         [[machine.fdc.drive]]
         type  = "360k"   
 
