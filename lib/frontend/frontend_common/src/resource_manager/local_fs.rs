@@ -234,6 +234,14 @@ impl ResourceManager {
         path.exists()
     }
 
+    /// Create the specified path if it does not exist.
+    pub fn create_path(path: &PathBuf) -> Result<(), Error> {
+        if !ResourceManager::path_exists(path) {
+            fs::create_dir_all(path)?;
+        }
+        Ok(())
+    }
+
     /// Returns whether the specified path is a directory.
     pub fn path_is_dir(path: &PathBuf) -> bool {
         let canonical_path = path.canonicalize();

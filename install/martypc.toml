@@ -34,9 +34,9 @@ paths = [
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
     { resource = "floppy", path = "$basedir$/media/floppies", recurse = true },
-    { resource = "dump", path = "$basedir$/output/dumps" },
-    { resource = "trace", path = "$basedir$/output/traces" },
-    { resource = "screenshot", path = "$basedir$/output/screenshots" },
+    { resource = "dump", path = "$basedir$/output/dumps", create = true },
+    { resource = "trace", path = "$basedir$/output/traces", create = true },
+    { resource = "screenshot", path = "$basedir$/output/screenshots", create = true },
 ]
 
 # Exclude any matching directories from recursion. Useful for temporarily

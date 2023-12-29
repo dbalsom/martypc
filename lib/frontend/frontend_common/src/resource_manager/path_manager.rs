@@ -45,6 +45,8 @@ pub struct PathConfigItem {
     pub resource: String,
     pub path: String,
     #[serde(default)]
+    pub create: bool,
+    #[serde(default)]
     pub recurse: bool,
 }
 
@@ -61,13 +63,19 @@ impl PathManager {
         }
     }
 
-    pub fn add_path(&mut self, resource_name: &str, path_str: &str) -> Result<(), Error> {
+    pub fn add_path(&mut self, resource_name: &str, path_str: &str, create: bool) -> Result<(), Error> {
         let resolved_path = self.resolve_path_internal(path_str)?;
+
         if !ResourceManager::path_is_dir(&resolved_path) {
-            return Err(anyhow::anyhow!(
-                "Path is not a directory: {}",
-                resolved_path.to_str().unwrap_or_default()
-            ));
+            if create {
+                ResourceManager::create_path(&resolved_path)?;
+            }
+            else {
+                return Err(anyhow::anyhow!(
+                    "Path is not a directory: {}",
+                    resolved_path.to_str().unwrap_or_default()
+                ));
+            }
         }
 
         self.paths
@@ -116,6 +124,17 @@ impl PathManager {
 
     pub fn get_base_path(&self) -> PathBuf {
         self.base_path.clone()
+    }
+
+    pub fn create_paths(&self) -> Result<(), Error> {
+        for (_, paths) in self.paths.iter() {
+            for path in paths.iter() {
+                if !ResourceManager::path_exists(path) {
+                    ResourceManager::create_path(path)?;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn dump_paths(&self) -> Vec<PathBuf> {
