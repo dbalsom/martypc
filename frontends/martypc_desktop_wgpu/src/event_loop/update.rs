@@ -45,6 +45,9 @@ use crate::{
 pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     emu.stat_counter.current_ups += 1;
 
+    // Throttle updates
+    std::thread::sleep(Duration::from_millis(1));
+
     // Calculate FPS
     let elapsed_ms = emu.stat_counter.last_second.elapsed().as_millis();
     if elapsed_ms > 1000 {
