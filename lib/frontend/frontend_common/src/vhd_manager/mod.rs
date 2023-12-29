@@ -42,7 +42,7 @@ const DRIVE_MAX: usize = 4;
 
 use crate::resource_manager::{PathTreeNode, ResourceItem, ResourceManager};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     ffi::OsString,
     fmt::Display,
     fs,
@@ -66,7 +66,7 @@ impl Display for VhdManagerError {
         match &*self {
             VhdManagerError::DirNotFound => write!(f, "The Vhd directory was not found."),
             VhdManagerError::FileNotFound => {
-                write!(f, "File not found error scanning Vhd directory.")
+                write!(f, "File not found scanning Vhd directory.")
             }
             VhdManagerError::FileReadError => {
                 write!(f, "File read error scanning Vhd directory.")
@@ -90,8 +90,9 @@ pub struct VhdFile {
 pub struct VhdManager {
     files: Vec<ResourceItem>,
     image_vec: Vec<VhdFile>,
-    image_map: HashMap<OsString, usize>,
-    images_loaded: BTreeMap<usize, OsString>,
+    image_map: HashMap<PathBuf, usize>,
+    drives_loaded: BTreeMap<usize, PathBuf>,
+    images_loaded: BTreeSet<PathBuf>,
     extensions: Vec<OsString>,
 }
 
@@ -101,7 +102,8 @@ impl VhdManager {
             files: Vec::new(),
             image_vec: Vec::new(),
             image_map: HashMap::new(),
-            images_loaded: BTreeMap::new(),
+            drives_loaded: BTreeMap::new(),
+            images_loaded: BTreeSet::new(),
             extensions: vec![OsString::from("vhd")],
         }
     }
@@ -116,12 +118,14 @@ impl VhdManager {
     }
 
     pub fn scan_resource(&mut self, rm: &ResourceManager) -> Result<bool, Error> {
+        // TODO: the *_loaded maps will be invalidated on scan, we should handle this properly.
+
         // Clear and rebuild image lists.
         self.image_vec.clear();
         self.image_map.clear();
 
         // Retrieve all items from the floppy resource paths.
-        let floppy_items = rm.enumerate_items("floppy", true, true, Some(self.extensions.clone()))?;
+        let floppy_items = rm.enumerate_items("hdd", true, true, Some(self.extensions.clone()))?;
 
         // Index mapping between 'files' vec and 'image_vec' should be maintained.
         for item in floppy_items.iter() {
@@ -133,8 +137,7 @@ impl VhdManager {
                 size: item.full_path.metadata().unwrap().len(),
             });
 
-            self.image_map
-                .insert(item.full_path.file_name().unwrap().to_os_string(), idx);
+            self.image_map.insert(item.full_path.clone(), idx);
         }
 
         self.files = floppy_items;
@@ -143,46 +146,14 @@ impl VhdManager {
     }
 
     pub fn make_tree(&mut self, rm: &ResourceManager) -> Result<PathTreeNode, Error> {
-        let tree = rm.items_to_tree("floppy", &self.files)?;
+        let tree = rm.items_to_tree("hdd", &self.files)?;
         Ok(tree)
-    }
-
-    pub fn scan_paths(&mut self, paths: Vec<PathBuf>) -> Result<bool, crate::floppy_manager::FloppyError> {
-        // Clear and rebuild image lists.
-        self.image_vec.clear();
-        self.image_map.clear();
-
-        // Scan through all entries in the directory and find all files with matching extension
-        for path in paths {
-            if path.is_file() {
-                if let Some(extension) = path.extension() {
-                    if self.extensions.contains(&extension.to_ascii_lowercase()) {
-                        println!(
-                            "Found floppy image: {:?} size: {}",
-                            path,
-                            path.metadata().unwrap().len()
-                        );
-
-                        let idx = self.image_vec.len();
-                        self.image_vec.push(VhdFile {
-                            idx,
-                            name: path.file_name().unwrap().to_os_string(),
-                            path: path.clone(),
-                            size: path.metadata().unwrap().len(),
-                        });
-
-                        self.image_map.insert(path.file_name().unwrap().to_os_string(), idx);
-                    }
-                }
-            }
-        }
-        Ok(true)
     }
 
     pub fn get_vhd_names(&self) -> Vec<OsString> {
         let mut vec: Vec<OsString> = Vec::new();
-        for (key, _val) in &self.image_map {
-            vec.push(key.clone());
+        for image in self.image_vec.iter() {
+            vec.push(image.name.clone());
         }
         //vec.sort_by(|a, b| a.to_ascii_uppercase().cmp(&b.to_ascii_uppercase()));
         vec
@@ -195,25 +166,49 @@ impl VhdManager {
         Some(self.image_vec[idx].name.clone())
     }
 
-    pub fn is_vhd_loaded(&self, name: &OsString) -> bool {
-        if let Some(_entry) = self.image_map.get(name).and_then(|idx| self.image_vec.get(*idx)) {
+    pub fn is_vhd_available(&self, name: &PathBuf) -> bool {
+        if let Some(entry) = self.image_map.get(name).and_then(|idx| self.image_vec.get(*idx)) {
+            log::debug!("is_vhd_loaded(): confirming entry {}", entry.name.to_string_lossy());
             return true;
         }
+        log::debug!("is_vhd_loaded(): vhd {} not loaded", name.to_string_lossy());
+        false
+    }
+
+    pub fn is_vhd_loaded(&self, name: &PathBuf) -> bool {
+        if self.images_loaded.contains(name) {
+            log::debug!("is_vhd_loaded(): confirming entry {}", name.to_string_lossy());
+            return true;
+        }
+        log::debug!("is_vhd_loaded(): vhd {:?} not loaded", name.file_name());
         false
     }
 
     pub fn is_drive_loaded(&self, drive: usize) -> bool {
-        if let Some(_entry) = self.images_loaded.get(&drive) {
+        if let Some(_entry) = self.drives_loaded.get(&drive) {
             return true;
         }
         false
     }
 
     pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<File, VhdManagerError> {
-        if let Some(vhd_idx) = self.image_map.get(name) {
-            return self.load_vhd_file(drive, *vhd_idx);
+        if let Some(path) = self.find_first_name(name.clone()) {
+            if let Some(vhd_idx) = self.image_map.get(&path) {
+                return self.load_vhd_file(drive, *vhd_idx);
+            }
         }
         Err(VhdManagerError::FileNotFound)
+    }
+
+    pub fn find_first_name(&mut self, name: OsString) -> Option<PathBuf> {
+        for path in self.image_map.keys() {
+            if let Some(filename) = path.file_name() {
+                if filename == name {
+                    return Some(path.clone());
+                }
+            }
+        }
+        None
     }
 
     pub fn load_vhd_file(&mut self, drive: usize, idx: usize) -> Result<File, VhdManagerError> {
@@ -229,12 +224,13 @@ impl VhdManager {
                         return Err(VhdManagerError::DriveAlreadyLoaded);
                     }
 
-                    if self.is_vhd_loaded(&vhd.name) {
+                    if self.is_vhd_loaded(&vhd.path) {
                         log::error!("VHD already associated with drive! Release drive first.");
                         return Err(VhdManagerError::DriveAlreadyLoaded);
                     }
 
-                    self.images_loaded.insert(drive, vhd.name.clone());
+                    self.drives_loaded.insert(drive, vhd.path.clone());
+                    self.images_loaded.insert(vhd.path.clone());
 
                     return Ok(file);
                 }
@@ -247,6 +243,9 @@ impl VhdManager {
     }
 
     pub fn release_vhd(&mut self, drive: usize) {
-        self.images_loaded.remove(&drive);
+        if let Some(image) = self.drives_loaded.remove(&drive) {
+            log::debug!("Releasing VHD {:?} from drive {}", image, drive);
+            self.images_loaded.remove(&image);
+        }
     }
 }

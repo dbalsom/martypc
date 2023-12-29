@@ -2277,6 +2277,7 @@ dependencies = [
 name = "martypc"
 version = "0.2.0"
 dependencies = [
+ "frontend_common",
  "marty_core",
  "marty_egui",
  "martypc_pixels_desktop",

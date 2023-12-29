@@ -28,4 +28,6 @@ toml = "0.5.11"
 serde_derive.workspace = true
 
 [features]
+ega = []
+vga = []
 use_wgpu = ["wgpu", "pixels"]
