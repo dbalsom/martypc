@@ -1402,11 +1402,17 @@ impl BusInterface {
         let conventional_memory = normalize_conventional_memory(machine_config)?;
         self.set_conventional_size(conventional_memory as usize);
 
+        // Set the expansion rom flag for DIP if there is anything besides a video card
+        // that needs an expansion ROM.
+        let mut have_expansion = { machine_config.hdc.is_some() };
+        have_expansion = false;
+
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
             self.ppi = Some(Ppi::new(
                 machine_desc.machine_type,
                 conventional_memory,
+                have_expansion,
                 video_types,
                 num_floppies,
             ));
@@ -1575,6 +1581,7 @@ impl BusInterface {
 
                     video_dispatch = VideoCardDispatch::Vga(vga)
                 }
+                #[allow(unreachable_patterns)]
                 _ => {
                     panic!(
                         "card type {:?} not implemented or feature not compiled",

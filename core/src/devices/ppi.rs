@@ -63,7 +63,7 @@ pub const SW1_HAS_FLOPPIES: u8 = 0b0000_0000;
 
 // SW2 ON:  8087 NOT installed
 // SW2 OFF: 8087 installed
-pub const SW1_HAVE_8087: u8 = 0b0000_0000;
+pub const SW1_HAVE_8087: u8 = 0b0000_0010;
 
 // SW4_3: ON,ON: Only bank 0 populated
 // SW4_3: ON, OFF: Only banks 0/1 populated
@@ -212,21 +212,25 @@ impl Ppi {
     pub fn new(
         machine_type: MachineType,
         conventional_mem: u32,
+        mut have_expansion: bool,
         video_types: Vec<VideoType>,
         num_floppies: u32,
     ) -> Self {
         // Creation of the PPI is primarily concerned with setting up the DIP switches.
-        let (sw1_bank_bits, sw2_ram_dip_bits) = Ppi::get_ram_dip(machine_type, conventional_mem);
-
+        let (sw2_ram_dip_bits, sw1_bank_bits) = Ppi::get_ram_dip(machine_type, conventional_mem);
+        log::debug!(
+            "Ppi::new(): Have {:06X} bytes of conventional memory: DIP2: {:08b}",
+            conventional_mem,
+            sw2_ram_dip_bits
+        );
         let (sw1_floppy_ct_bits, sw1_master_floppy_bit) = match num_floppies {
             1 => (SW1_ONE_FLOPPY, SW1_HAS_FLOPPIES),
             2 => (SW1_TWO_FLOPPIES, SW1_HAS_FLOPPIES),
             3 => (SW1_THREE_FLOPPIES, SW1_HAS_FLOPPIES),
             4 => (SW1_FOUR_FLOPPIES, SW1_HAS_FLOPPIES),
-            _ => (0, 0),
+            _ => (0, 1),
         };
 
-        let mut have_expansion = false;
         #[cfg(feature = "ega")]
         {
             have_expansion |= video_types.contains(&VideoType::EGA);
@@ -292,7 +296,7 @@ impl Ppi {
                     0
                 }
             },
-            dip_sw2: sw2_ram_dip_bits,
+            dip_sw2: !sw2_ram_dip_bits,
             timer_in: false,
             speaker_in: false,
         }
