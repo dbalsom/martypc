@@ -45,7 +45,7 @@ use marty_core::{
     machine_types::HardDiskControllerType,
 };
 
-use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem};
+use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem, MartyGuiTheme};
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
@@ -157,10 +157,9 @@ pub struct Emulator {
 pub struct Gui {
     #[serde(default)]
     pub disabled: bool,
+    pub theme: Option<MartyGuiTheme>,
+    pub menu_theme: Option<MartyGuiTheme>,
     pub zoom: Option<f32>,
-    #[serde(default)]
-    pub theme_dark: bool,
-    pub theme_color: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

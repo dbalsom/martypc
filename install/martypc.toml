@@ -1,5 +1,8 @@
 # martypc.toml
 # Main configuration file for the MartyPC emulator
+#
+# To set a specific machine type, see the [machine] section below.
+#
 [meta]
 file_type = "main_config"
 config_version = "0.2"
@@ -72,9 +75,6 @@ debug_warn = true
 # to the terminal.
 debug_keyboard = false
 
-# Don't load BIOS if true (not useful on its own)
-no_bios = false
-
 # Run the specified program instead of booting BIOS. The CPU reset vector will
 # be set to 'run_bin_seg:run_bin_ofs'
 #run_bin = "./program/a_effect.bin"
@@ -93,6 +93,9 @@ enabled = true
 [emulator.media]
 # Provide a list of file extensions to interpret as raw floppy sector images.
 raw_sector_image_extensions = [ "img", "ima", "dsk", "mnx" ]
+
+# Default state of write protection for newly loaded floppy images.
+write_protect_default = true
 
 [[emulator.media.vhd]]
 # VHD to mount into drive 0 (Typically C:)
@@ -339,28 +342,84 @@ aspect_ratio = { h=4, v=3 }
 # GUI options
 # ----------------------------------------------------------------------------
 [gui]
-# Disable the GUI entirely. Use autostart=true or you'll have no way to start
-# the machine.
-disabled = false
+
+# Select the color theme for the GUI.
+# Valid values are:
+#  - DefaultLight : default EGUI Light theme
+#  - Lilac        : light theme variant
+#  - DefaultDark  : default EGUI Dark theme (recommended)
+#  - Purple       : dark theme variant
+#  - Cobalt       : dark theme variant
+theme = "Purple"
+
+# Theme for the top menu can be defined independently
+menu_theme = "DefaultLight"
 
 # Global zoom level for GUI. Smaller numbers will make all the GUI elements 
 # smaller. Default: 1.0 Max: 1.0 Min: 0.1
 zoom = 1.0
-
-# Enable dark theme (Recommended)
-theme_dark = true
-
-# Specify the color modifier for the selected EGUI theme. Comment out for the
-# default color scheme. Theme colors only work properly with Dark mode.
-theme_color = 0x382D59  # Marty purple (for Dark theme)
-#theme_color = 0x2D4859  # Alt blue (for Dark theme)
 
 [input]
 # ----------------------------------------------------------------------------
 
 # Some platforms reverse the left and right mouse button id #'s. 
 # We try to detect this, but it can be overridden here.
-reverse_mouse_buttons = false
+# reverse_mouse_buttons = false
+
+# ----------------------------------------------------------------------------
+# Machine Options
+# ----------------------------------------------------------------------------
+[machine]
+# Specify the name of a machine configuration to load.
+config_name = "ibm5150_256k_hdd"
+#config_name = "generic_xt"
+#config_name = "generic_award_xt_hdd"
+#config_name = "generic_xt_hdd"
+#config_name = "ibm5160_hdd_ega"
+
+# Specify configuration overlays to load on top of machine configuration.
+# - See 'machine_config_overlays.toml' for examples, or define your own.
+#config_overlays = ["ega"]
+
+# Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
+prefer_oem = false
+
+# Don't load any ROMs if true. Default: false
+#no_roms = true
+
+# Turbo Button
+# ----------------------------------------------------------------------------
+# Change the clock divisor/multiplier for the CPU to run the CPU faster than 
+# normal. Other devices like the timer will continue to run at the same rate.
+#
+# On IBM PC/XT, turbo increases CPU clock from 4.77Mhz to 7.16Mhz.
+turbo = false
+
+# Emulate phase offset of PIT vs CPU. Don't change this if you don't know why 
+# you would want to do that.
+pit_phase = 0
+
+# Keyboard Type
+# ----------------------------------------------------------------------------
+# Valid options for keyboard_type are:
+# ModelF - This was the original 83-key keyboard shipped with the PC/XT
+#          (More keyboard types yet to be implemented)
+keyboard_type = "ModelF"
+
+# Keyboard layout. Used to load the appropriate keyboard translation file. 
+# MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+# where XX is the string specified by keyboard_layout.
+#
+# Certain scancodes have changed their meaning since the 1980's. Your help
+# would be appreciated in developing new translation files.
+keyboard_layout="US"
+
+# Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+typematic = true
+# Delay in milliseconds before typematic repeat begins.
+typematic_delay = 500.0
+# Delay in milliseconds between each scancode during typematic repeat.
+typematic_rate= 50.0
 
 # ----------------------------------------------------------------------------
 # CPU Options
@@ -413,51 +472,6 @@ trace_on = false
 #trace_mode = "Instruction"
 #trace_mode = "Cycle"
 #trace_file = "./traces/cycle_trace.log"
-
-# ----------------------------------------------------------------------------
-# Machine Options
-# ----------------------------------------------------------------------------
-[machine]
-# Specify the name of a machine configuration to load.
-config_name = "generic_xt"
-#config_name = "ibm5160_hdd_ega"
-
-# Specify configuration overlays to load on top of machine configuration.
-config_overlays = ["ega"]
-
-# Turbo Button
-# ----------------------------------------------------------------------------
-# Change the clock divisor/multiplier for the CPU to run the CPU faster than 
-# normal. Other devices like the timer will continue to run at the same rate.
-#
-# On IBM PC/XT, turbo increases CPU clock from 4.77Mhz to 7.16Mhz.
-turbo = false
-
-# Emulate phase offset of PIT vs CPU. Don't change this if you don't know why 
-# you would want to do that.
-pit_phase = 0
-
-# Keyboard Type
-# ----------------------------------------------------------------------------
-# Valid options for keyboard_type are:
-# ModelF - This was the original 83-key keyboard shipped with the PC/XT
-#          (More keyboard types yet to be implemented)
-keyboard_type = "ModelF"
-
-# Keyboard layout. Used to load the appropriate keyboard translation file. 
-# MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
-# where XX is the string specified by keyboard_layout.
-#
-# Certain scancodes have changed their meaning since the 1980's. Your help
-# would be appreciated in developing new translation files.
-keyboard_layout="US"
-
-# Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
-typematic = true
-# Delay in milliseconds before typematic repeat begins.
-typematic_delay = 500.0
-# Delay in milliseconds between each scancode during typematic repeat.
-typematic_rate= 50.0
 
 # ----------------------------------------------------------------------------
 # Benchmarking (not yet implemented - configs are placeholder)

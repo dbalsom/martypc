@@ -30,14 +30,23 @@
 
 */
 
-use crate::{color::*, *};
+use crate::{
+    color::*,
+    themes::{GuiTheme, ThemeBase},
+    *,
+};
+use frontend_common::color::MartyColor;
 
-pub struct GuiTheme {
+pub struct DarkTintedTheme {
     visuals: Visuals,
 }
 
-impl GuiTheme {
-    pub fn new(base: &egui::Visuals, color: Color32) -> Self {
+impl DarkTintedTheme {
+    pub fn purple() -> Self {
+        Self::tinted(&egui::Visuals::dark(), hex_to_c32(0x382D59))
+    }
+
+    pub fn tinted(base: &egui::Visuals, color: Color32) -> Self {
         let mut new_visuals = base.clone();
 
         new_visuals.window_fill = color;
@@ -63,8 +72,13 @@ impl GuiTheme {
 
         Self { visuals: new_visuals }
     }
+}
 
-    pub fn visuals(&self) -> &Visuals {
-        &self.visuals
+impl GuiTheme for DarkTintedTheme {
+    fn visuals(&self) -> Visuals {
+        self.visuals.clone()
+    }
+    fn base(&self) -> ThemeBase {
+        ThemeBase::Dark
     }
 }

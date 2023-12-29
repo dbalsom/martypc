@@ -24,12 +24,20 @@
 
    ---------------------------------------------------------------------------
 
-   frontend_common::types::mod.rs
+   frontend_common::types::gui.rs
 
-   Define common frontend types.
+   Define frontend types for GUI things.
 
 */
 
-pub mod display_target_dimensions;
-pub mod display_target_margins;
-pub mod gui;
+use serde_derive::Deserialize;
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub enum MartyGuiTheme {
+    DefaultLight,
+    #[default]
+    DefaultDark,
+    Lilac,
+    Purple,
+    Cobalt,
+}

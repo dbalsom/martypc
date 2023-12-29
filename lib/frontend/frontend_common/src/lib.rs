@@ -44,3 +44,4 @@ pub mod types;
 pub mod vhd_manager;
 
 pub type FileTreeNode = resource_manager::tree::TreeNode;
+pub type MartyGuiTheme = types::gui::MartyGuiTheme;

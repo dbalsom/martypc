@@ -33,13 +33,15 @@ use crate::{state::GuiState, GuiWindow};
 use egui::Context;
 
 impl GuiState {
-    /// Create the UI using egui.
-    pub fn ui(&mut self, ctx: &Context) {
+    pub fn menu_ui(&mut self, ctx: &Context) {
         // Draw top menu bar
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             self.draw_menu(ui);
         });
+    }
 
+    /// Create the UI using egui.
+    pub fn ui(&mut self, ctx: &Context) {
         self.toasts.show(ctx);
 
         egui::Window::new("About")

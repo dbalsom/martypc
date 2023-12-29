@@ -30,3 +30,4 @@ egui-winit.workspace = true
 egui_extras.workspace = true
 
 egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_24_2"}
+serde = { workspace = true, features = ["derive"] }

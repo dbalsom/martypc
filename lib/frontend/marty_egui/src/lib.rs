@@ -59,7 +59,7 @@ pub mod context;
 mod layouts;
 mod menu;
 pub mod state;
-mod theme;
+mod themes;
 mod token_listview;
 mod ui;
 mod widgets;

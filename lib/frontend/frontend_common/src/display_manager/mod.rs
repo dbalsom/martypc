@@ -43,6 +43,7 @@ pub use crate::types::display_target_dimensions::DisplayTargetDimensions;
 use crate::{
     display_scaler::{ScalerMode, ScalerPreset},
     types::display_target_margins::DisplayTargetMargins,
+    MartyGuiTheme,
 };
 use marty_core::device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
 use videocard_renderer::{RendererConfigParams, VideoRenderer};
@@ -88,8 +89,8 @@ pub struct DisplayInfo {
 
 pub struct DisplayManagerGuiOptions {
     pub enabled: bool,
-    pub theme_dark: bool,
-    pub theme_color: Option<u32>,
+    pub theme: Option<MartyGuiTheme>,
+    pub menu_theme: Option<MartyGuiTheme>,
     pub menubar_h: u32,
     pub zoom: f32,
     pub debug_drawing: bool,

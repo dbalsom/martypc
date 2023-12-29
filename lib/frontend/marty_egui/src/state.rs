@@ -56,7 +56,7 @@ use serialport::SerialPortInfo;
 use std::{cell::RefCell, collections::HashMap, ffi::OsString, mem::discriminant, path::PathBuf, rc::Rc};
 
 use crate::{
-    theme::GuiTheme,
+    themes::GuiTheme,
     // Use custom windows
     windows::about::AboutDialog,
     windows::composite_adjust::CompositeAdjustControl,
