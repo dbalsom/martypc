@@ -294,12 +294,7 @@ impl<'a> MachineBuilder<'a> {
     }
 
     pub fn build(self) -> Result<Machine, Error> {
-        if self.core_config.is_some() {
-            log::debug!("Not none!");
-        }
-
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
-
         let machine_config = self
             .machine_config
             .ok_or(anyhow!("No machine configuration specified"))?;
@@ -488,7 +483,7 @@ impl Machine {
         cpu.bus_mut().keyboard_mut().set_debug(core_config.get_keyboard_debug());
 
         // Load BIOS ROM images unless config option suppressed rom loading
-        if !core_config.get_machine_nobios() {
+        if !core_config.get_machine_noroms() {
             Machine::install_roms(cpu.bus_mut(), &rom_manifest);
 
             //rom_manager.copy_into_memory(cpu.bus_mut());
@@ -520,7 +515,7 @@ impl Machine {
             state: MachineState::On,
             sound_player,
             rom_manifest,
-            load_bios: !core_config.get_machine_nobios(),
+            load_bios: !core_config.get_machine_noroms(),
             cpu,
             speaker_buf_producer,
             pit_data,

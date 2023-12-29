@@ -201,9 +201,11 @@ pub struct Cpu {
 pub struct Machine {
     pub config_name: String,
     pub config_overlays: Option<Vec<String>>,
+    #[serde(default = "_default_true")]
+    pub prefer_oem: bool,
     //pub model: MachineType,
     #[serde(default)]
-    pub no_bios: bool,
+    pub no_roms: bool,
     #[serde(default)]
     pub raw_rom: bool,
     #[serde(default)]
@@ -222,6 +224,7 @@ pub struct Machine {
 
 #[derive(Debug, Deserialize)]
 pub struct Input {
+    #[serde(default)]
     pub reverse_mouse_buttons: bool,
 }
 #[derive(Debug, Deserialize)]
@@ -307,7 +310,7 @@ pub struct CmdLineArgs {
     pub debug_keyboard: bool,
 
     #[bpaf(long, switch)]
-    pub no_bios: bool,
+    pub no_roms: bool,
 
     //#[bpaf(long)]
     //pub video_type: Option<VideoType>,
@@ -351,7 +354,7 @@ impl ConfigFileParams {
         self.emulator.debug_mode |= shell_args.debug_mode;
         //self.emulator.video_frame_debug |= shell_args.video_frame_debug;
         self.emulator.debug_keyboard |= shell_args.debug_keyboard;
-        self.machine.no_bios |= shell_args.no_bios;
+        self.machine.no_roms |= shell_args.no_roms;
 
         /*
         if let Some(video) = shell_args.video_type {

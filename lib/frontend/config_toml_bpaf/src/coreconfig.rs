@@ -63,8 +63,8 @@ impl CoreConfig for ConfigFileParams {
     fn get_machine_type(&self) -> MachineType {
         MachineType::Ibm5160
     }
-    fn get_machine_nobios(&self) -> bool {
-        self.machine.no_bios
+    fn get_machine_noroms(&self) -> bool {
+        self.machine.no_roms
     }
     fn get_machine_turbo(&self) -> bool {
         self.machine.turbo
