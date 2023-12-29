@@ -362,7 +362,7 @@ impl GuiState {
         let floppy_name = match drive_idx {
             0 => "💾 Floppy Drive 0 (A:)".to_string(),
             1 => "💾 Floppy Drive 1 (B:)".to_string(),
-            _ => format!("Drive {}", drive_idx),
+            _ => format!("💾 Floppy Drive {}", drive_idx),
         };
 
         ui.menu_button(floppy_name, |ui| {
