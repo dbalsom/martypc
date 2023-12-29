@@ -189,7 +189,7 @@ impl MachineManager {
 
     fn print_config_stats(&mut self) {
         println!("Found {} Machine Configurations:", self.configs.len());
-        for (name, config) in self.configs.iter() {
+        for (name, _config) in self.configs.iter() {
             println!(" {}", name);
 
             /*
@@ -294,6 +294,7 @@ impl MachineConfigFileEntry {
                 match card.video_type {
                     #[cfg(feature = "ega")]
                     VideoType::EGA => {
+                        log::debug!("Adding EGA ROM requirements");
                         if req_set.insert(String::from("expansion")) {
                             req_vec.push(String::from("expansion"));
                         }
@@ -303,6 +304,7 @@ impl MachineConfigFileEntry {
                     }
                     #[cfg(feature = "vga")]
                     VideoType::VGA => {
+                        log::debug!("Adding VGA ROM requirements");
                         if req_set.insert(String::from("expansion")) {
                             req_vec.push(String::from("expansion"));
                         }
@@ -314,6 +316,9 @@ impl MachineConfigFileEntry {
                 }
             }
         }
+        else {
+            log::warn!("Config has no video cards specified. Skipping video ROM requirements.");
+        }
 
         Ok(req_vec)
     }
@@ -322,21 +327,27 @@ impl MachineConfigFileEntry {
     /// copied into this configuration.
     pub fn apply_overlay(&mut self, overlay: MachineConfigFileOverlayEntry) {
         if let Some(fdc) = overlay.fdc {
+            log::debug!("Applying FDC overlay: {:?}", fdc);
             self.fdc = Some(fdc);
         }
         if let Some(hdc) = overlay.hdc {
+            log::debug!("Applying HDC overlay: {:?}", hdc);
             self.hdc = Some(hdc);
         }
         if let Some(serial) = overlay.serial {
+            log::debug!("Applying serial overlay: {:?}", serial);
             self.serial = Some(serial);
         }
         if let Some(video) = overlay.video {
+            log::debug!("Applying video overlay: {:?}", video);
             self.video = Some(video);
         }
         if let Some(keyboard) = overlay.keyboard {
+            log::debug!("Applying keyboard overlay: {:?}", keyboard);
             self.keyboard = Some(keyboard);
         }
         if let Some(serial_mouse) = overlay.serial_mouse {
+            log::debug!("Applying serial mouse overlay: {:?}", serial_mouse);
             self.serial_mouse = Some(serial_mouse);
         }
     }
