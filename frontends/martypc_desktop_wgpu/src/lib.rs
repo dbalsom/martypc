@@ -338,7 +338,7 @@ pub fn run() {
     }
 
     // Instantiate the new rom manager to load roms
-    let mut nu_rom_manager = frontend_common::rom_manager::RomManager::new();
+    let mut nu_rom_manager = frontend_common::rom_manager::RomManager::new(config.machine.prefer_oem);
     if let Err(err) = nu_rom_manager.load_defs(&resource_manager) {
         eprintln!("Error loading ROM definition files: {}", err);
         std::process::exit(1);
