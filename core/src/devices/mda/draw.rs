@@ -111,18 +111,23 @@ impl MDACard {
         if self.mode.display_enable() {
             for hdot in 0..(MDA_CHAR_CLOCK - 1) {
                 let mut new_pixel = match MDACard::get_glyph_bit(self.cur_char, hdot, glyph_row) {
-                    true => glyph_on_color,
+                    true => {
+                        self.last_bit |= true;
+                        glyph_on_color
+                    }
                     false => self.cur_bg,
                 };
 
                 // Do cursor
                 if self.crtc.cursor() {
                     new_pixel = self.cur_fg;
+                    self.last_bit |= true;
                 }
 
                 // Do underline
                 if self.cur_ul && glyph_row == 12 {
                     new_pixel = self.cur_fg;
+                    self.last_bit |= true;
                     do_ul = true;
                 }
 
@@ -133,6 +138,7 @@ impl MDACard {
             if do_ul || self.cur_char & MDA_REPEAT_COL_MASK == MDA_REPEAT_COL_VAL {
                 // Underlines and characters 0xC0-0xDF have the last column repeated.
                 self.buf[self.back_buf][self.rba + (MDA_CHAR_CLOCK as usize) - 1] = last_pixel;
+                self.last_bit |= last_pixel != 0;
             }
             else {
                 self.buf[self.back_buf][self.rba + (MDA_CHAR_CLOCK as usize) - 1] = self.cur_bg;

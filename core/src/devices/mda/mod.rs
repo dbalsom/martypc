@@ -153,10 +153,8 @@ const CC_ALT_INTENSITY: u8 = 0b0000_1000;
 const CC_BRIGHT_BIT: u8 = 0b0001_0000; // Controls whether palette is high intensity
 const CC_PALETTE_BIT: u8 = 0b0010_0000; // Controls primary palette between magenta/cyan and red/green
 
-const STATUS_DISPLAY_ENABLE: u8 = 0b0000_0001;
-const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
-const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
-const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
+const STATUS_RETRACE: u8 = 0b0000_0001;
+const STATUS_VIDEO: u8 = 0b0000_1000;
 
 // Include the standard 8x8 CGA font.
 // TODO: Support alternate font with thinner glyphs? It was normally not accessable except
@@ -437,6 +435,7 @@ pub struct MDACard {
     cursor_blink_rate: f64,
     cursor_data: [bool; MDA_CURSOR_MAX],
     cursor_attr: u8,
+    last_bit: bool,
 
     crtc: Crtc6845,
 
@@ -594,6 +593,7 @@ impl Default for MDACard {
             cursor_blink_rate: MDA_DEFAULT_CURSOR_BLINK_RATE,
             cursor_data: [false; MDA_CURSOR_MAX],
             cursor_attr: 0,
+            last_bit: false,
 
             crtc: Crtc6845::new(TraceLogger::None),
 
@@ -841,42 +841,24 @@ impl MDACard {
     /// Handle a read from the MDA status register. This register has bits to indicate whether
     /// we are in vblank or if the display is in the active display area (enabled)
     fn handle_status_register_read(&mut self) -> u8 {
-        // Bit 1 of the status register is set when the CGA can be safely written to without snow.
-        // It is tied to the 'Display Enable' line from the CGA card, inverted.
-        // Thus it will be 1 when the CGA card is not currently scanning, IE during both horizontal
-        // and vertical refresh.
+        // Bit 1 of the status register is set when a pixel is being drawn on the screen at that moment.
+        // It is essentially similar to the video mux bits on the EGA. It is difficult to emulate this bit
+        // when clocking by character. We can record whether a pixel was drawn during the last character tick
+        // and use that value.  IBM diagnostics primarily use this bit, but draw a large white box on the screen
+        // to give the bit ample time to be detected toggling on and off.
 
-        // https://www.vogons.org/viewtopic.php?t=47052
+        // Bit 3 is set when the horizontal retrace is active.
+        let mut byte = 0xF0;
 
-        // Addendum: The DE line is from the MC6845, and actually includes anything outside of the
-        // active display area. This gives a much wider window to hit for scanline wait loops.
-
-        let mut byte = if self.crtc.vblank() {
-            0xF0 | STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
-        }
-        else if !self.crtc.den() {
-            0xF0 | STATUS_DISPLAY_ENABLE
-        }
-        else {
-            if self.crtc.border() {
-                log::warn!("in border but returning 0");
-            }
-            0xF0
+        if self.crtc.hblank() {
+            byte |= STATUS_RETRACE
         };
 
-        if self.crtc.vblank() {
-            //trace!(self, "in vblank: vsc: {:03}", self.vsc_c3h);
+        if self.last_bit {
+            byte |= STATUS_VIDEO
         }
 
         self.status_reads += 1;
-
-        if self.lightpen_latch {
-            //log::debug!("returning status read with trigger set");
-            byte |= STATUS_LIGHTPEN_TRIGGER_SET;
-        }
-
-        // This bit is logically reversed, i.e., 0 is switch on
-        //byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
 
         //trace_regs!(self);
         trace!(
@@ -1026,6 +1008,7 @@ impl MDACard {
     pub fn tick_hchar(&mut self) {
         self.cycles += MDA_CHAR_CLOCK as u64;
         self.cur_screen_cycles += MDA_CHAR_CLOCK as u64;
+        self.last_bit = false;
 
         // Only draw if render address is within display field
         if self.rba < (MDA_MAX_CLOCK - MDA_CHAR_CLOCK as usize) {
