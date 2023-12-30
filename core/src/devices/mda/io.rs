@@ -62,12 +62,7 @@ impl IoDevice for MDACard {
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Read is from CRTC register.
-            if port & 0x01 != 0 {
-                self.handle_crtc_register_read()
-            }
-            else {
-                0
-            }
+            self.crtc.port_read(port)
         }
         else {
             match port {
@@ -91,12 +86,7 @@ impl IoDevice for MDACard {
 
         if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Write is to CRTC register.
-            if port & 0x01 == 0 {
-                self.handle_crtc_register_select(data);
-            }
-            else {
-                self.handle_crtc_register_write(data);
-            }
+            self.crtc.port_write(port, data);
         }
         else {
             match port {

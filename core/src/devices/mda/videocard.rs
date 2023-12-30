@@ -60,10 +60,10 @@ macro_rules! push_reg_str_enum {
 impl VideoCard for MDACard {
     fn get_sync(&self) -> (bool, bool, bool, bool) {
         (
-            self.in_crtc_vblank,
-            self.in_crtc_hblank,
-            self.in_display_area,
-            self.hborder | self.vborder,
+            self.crtc.vblank(),
+            self.crtc.hblank(),
+            self.crtc.den(),
+            self.crtc.border(),
         )
     }
 
@@ -109,8 +109,8 @@ impl VideoCard for MDACard {
         // MDA supports a single fixed 8x14 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let width = self.crtc_horizontal_displayed as u32 * MDA_CHAR_CLOCK as u32;
-        let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
+        let width = self.crtc.reg[0] as u32 * MDA_CHAR_CLOCK as u32;
+        let height = self.crtc.reg[6] as u32 * (self.crtc.reg[9] as u32 + 1);
         (width, height)
     }
 
@@ -225,28 +225,20 @@ impl VideoCard for MDACard {
 
     /// Return the 16-bit value computed from the CRTC's pair of Page Address registers.
     fn get_start_address(&self) -> u16 {
-        return (self.crtc_start_address_ho as u16) << 8 | self.crtc_start_address_lo as u16;
+        return self.crtc.start_address();
     }
 
     fn get_cursor_info(&self) -> CursorInfo {
         let addr = self.get_cursor_address();
 
         match self.display_mode {
-            DisplayMode::Mode0TextBw40 | DisplayMode::Mode1TextCo40 => CursorInfo {
-                addr,
-                pos_x: (addr % 40) as u32,
-                pos_y: (addr / 40) as u32,
-                line_start: self.crtc_cursor_start_line,
-                line_end: self.crtc_cursor_end_line,
-                visible: self.get_cursor_status(),
-            },
             DisplayMode::Mode2TextBw80 | DisplayMode::Mode3TextCo80 => CursorInfo {
                 addr,
                 pos_x: (addr % 80) as u32,
                 pos_y: (addr / 80) as u32,
-                line_start: self.crtc_cursor_start_line,
-                line_end: self.crtc_cursor_end_line,
-                visible: self.get_cursor_status(),
+                line_start: self.crtc.cursor_extents().0,
+                line_end: self.crtc.cursor_extents().1,
+                visible: self.crtc.cursor_status(),
             },
             _ => {
                 // Not a valid text mode
@@ -275,7 +267,7 @@ impl VideoCard for MDACard {
     }
 
     fn get_character_height(&self) -> u8 {
-        self.crtc_maximum_scanline_address + 1
+        self.crtc.reg[9] + 1
     }
 
     /// Return the current palette number, intensity attribute bit, and alt color
@@ -333,46 +325,28 @@ impl VideoCard for MDACard {
         general_vec.push((format!("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
-        let mut crtc_vec = Vec::new();
-
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalTotal, "[R0]", self.crtc_horizontal_total);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalDisplayed, "[R1]", self.crtc_horizontal_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::HorizontalSyncPosition, "[R2]", self.crtc_horizontal_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::SyncWidth, "[R3]", self.crtc_sync_width);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotal, "[R4]", self.crtc_vertical_total);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalTotalAdjust, "[R5]", self.crtc_vertical_total_adjust);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayed, "[R6]", self.crtc_vertical_displayed);
-        push_reg_str!(crtc_vec, CRTCRegister::VerticalSync, "[R7]", self.crtc_vertical_sync_pos);
-        push_reg_str!(crtc_vec, CRTCRegister::InterlaceMode, "[R8]", self.crtc_interlace_mode);
-        push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLineAddress, "[R9]", self.crtc_maximum_scanline_address);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R10]", self.crtc_cursor_start_line);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R11]", self.crtc_cursor_end_line);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R12]", self.crtc_start_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "[R13]", self.crtc_start_address_lo);
-        crtc_vec.push(("Start Address".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.crtc_start_address))));
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "[R14]", self.crtc_cursor_address_ho);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorAddressL, "[R15]", self.crtc_cursor_address_lo);
+        let crtc_vec = self.crtc.get_reg_state();
         map.insert("CRTC".to_string(), crtc_vec);
 
         let mut internal_vec = Vec::new();
 
         internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
-        internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
-        internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
+        //internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
+        //internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
         internal_vec.push((format!("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
-        internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
-        internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
-        internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
+        //internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
+        //internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
+        //internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
         internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
-        internal_vec.push((format!("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
+        //internal_vec.push((format!("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
         internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
         internal_vec.push((format!("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
-        internal_vec.push((format!("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
-        internal_vec.push((format!("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
-        internal_vec.push((format!("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
+        internal_vec.push((format!("de:"), VideoCardStateEntry::String(format!("{}", self.crtc.den()))));
+        internal_vec.push((format!("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.crtc.hblank()))));
+        internal_vec.push((format!("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.crtc.vblank()))));
         internal_vec.push((format!("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
         internal_vec.push((format!("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
-        internal_vec.push((format!("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
+        internal_vec.push((format!("border:"), VideoCardStateEntry::String(format!("{}", self.crtc.border()))));
         internal_vec.push((format!("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
         internal_vec.push((format!("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
         internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
@@ -549,10 +523,10 @@ impl VideoCard for MDACard {
 
     fn get_text_mode_strings(&self) -> Vec<String> {
         let mut strings = Vec::new();
-        let start_addr = self.crtc_start_address;
-        let columns = self.crtc_horizontal_displayed as usize;
-        let rows = self.crtc_vertical_displayed as usize;
-        let mut row_addr = start_addr;
+        let start_addr = self.crtc.start_address();
+        let columns = self.crtc.reg[1] as usize;
+        let rows = self.crtc.reg[6] as usize;
+        let mut row_addr = start_addr as usize;
 
         for _ in 0..rows {
             let mut line = String::new();
@@ -566,7 +540,7 @@ impl VideoCard for MDACard {
                             0x80..=0xFF => 0x20,
                             _ => byte,
                         };
-                        Some(ascii_byte as char)
+                        Some(ascii_byte as u8 as char)
                     }),
             );
             row_addr += columns * 2;

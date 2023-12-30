@@ -65,10 +65,10 @@ impl MDACard {
     /// Draw a single character glyph column pixel in text mode, doubling the pixel if
     /// in 40 column mode.
     pub fn draw_text_mode_pixel(&mut self) {
-        let mut new_pixel = match MDACard::get_glyph_bit(self.cur_char, self.char_col, self.vlc_c9) {
+        let mut new_pixel = match MDACard::get_glyph_bit(self.cur_char, self.char_col, self.crtc.vlc()) {
             true => {
                 if self.cur_blink {
-                    if self.blink_state {
+                    if self.text_blink_state {
                         self.cur_fg
                     }
                     else {
@@ -83,11 +83,8 @@ impl MDACard {
         };
 
         // Do cursor
-        if (self.vma == self.crtc_cursor_address) && self.cursor_status && self.blink_state {
-            // This cell has the cursor address, cursor is enabled and not blinking
-            if self.cursor_data[(self.vlc_c9 & 0x1F) as usize] {
-                new_pixel = self.cur_fg;
-            }
+        if self.cursor_blink_state && self.crtc.cursor() {
+            new_pixel = self.cur_fg;
         }
 
         if !self.mode_enable {
@@ -101,10 +98,10 @@ impl MDACard {
         // The MDA font is only 8 pixels wide, despite the 9 dot character clock. Certain glyphs
         // have the last column repeated.
         for hdot in 0..(MDA_CHAR_CLOCK - 1) {
-            let mut new_pixel = match MDACard::get_glyph_bit(self.cur_char, hdot, self.vlc_c9) {
+            let mut new_pixel = match MDACard::get_glyph_bit(self.cur_char, hdot, self.crtc.vlc()) {
                 true => {
                     if self.cur_blink {
-                        if self.blink_state {
+                        if self.text_blink_state {
                             self.cur_fg
                         }
                         else {
@@ -119,11 +116,8 @@ impl MDACard {
             };
 
             // Do cursor
-            if (self.vma == self.crtc_cursor_address) && self.cursor_status && self.blink_state {
-                // This cell has the cursor address, cursor is enabled and not blinking
-                if self.cursor_data[(self.vlc_c9 & 0x1F) as usize] {
-                    new_pixel = self.cur_fg;
-                }
+            if self.crtc.cursor() {
+                new_pixel = self.cur_fg;
             }
 
             if !self.mode.display_enable() {
