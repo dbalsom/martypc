@@ -59,6 +59,8 @@ pub enum VhdManagerError {
     FileReadError,
     InvalidDrive,
     DriveAlreadyLoaded,
+    NameNotFound,
+    IndexNotFound,
 }
 impl std::error::Error for VhdManagerError {}
 impl Display for VhdManagerError {
@@ -75,6 +77,8 @@ impl Display for VhdManagerError {
             VhdManagerError::DriveAlreadyLoaded => {
                 write!(f, "Specified drive already loaded!")
             }
+            VhdManagerError::NameNotFound => write!(f, "Specified VHD name not found."),
+            VhdManagerError::IndexNotFound => write!(f, "Specified VHD index not found."),
         }
     }
 }
@@ -166,6 +170,13 @@ impl VhdManager {
         Some(self.image_vec[idx].name.clone())
     }
 
+    pub fn get_vhd_path(&self, idx: usize) -> Option<PathBuf> {
+        if idx >= self.image_vec.len() {
+            return None;
+        }
+        Some(self.image_vec[idx].path.clone())
+    }
+
     pub fn is_vhd_available(&self, name: &PathBuf) -> bool {
         if let Some(entry) = self.image_map.get(name).and_then(|idx| self.image_vec.get(*idx)) {
             log::debug!("is_vhd_loaded(): confirming entry {}", entry.name.to_string_lossy());
@@ -191,10 +202,42 @@ impl VhdManager {
         false
     }
 
-    pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<File, VhdManagerError> {
+    // pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<(File, usize), VhdManagerError> {
+    //     if let Some(path) = self.find_first_name(name.clone()) {
+    //         if let Some(vhd_idx) = self.image_map.get(&path) {
+    //             match self.load_vhd_file(drive, vhd_idx) {
+    //                 Ok(file) => {
+    //                     return Ok((file, vhd_idx));
+    //                 }
+    //                 Err(e) => {
+    //                     log::error!("Error loading VHD file: {}", e);
+    //                     return Err(e);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     Err(VhdManagerError::FileNotFound)
+    // }
+
+    pub fn load_vhd_file_by_name(&mut self, drive: usize, name: &OsString) -> Result<(File, usize), VhdManagerError> {
         if let Some(path) = self.find_first_name(name.clone()) {
+            let img_idx;
+
             if let Some(vhd_idx) = self.image_map.get(&path) {
-                return self.load_vhd_file(drive, *vhd_idx);
+                img_idx = *vhd_idx;
+            }
+            else {
+                return Err(VhdManagerError::IndexNotFound);
+            }
+
+            match self.load_vhd_file(drive, img_idx) {
+                Ok(file) => {
+                    return Ok((file, img_idx));
+                }
+                Err(e) => {
+                    log::error!("Error loading VHD file: {}", e);
+                    return Err(e);
+                }
             }
         }
         Err(VhdManagerError::FileNotFound)

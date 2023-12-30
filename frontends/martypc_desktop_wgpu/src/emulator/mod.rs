@@ -236,20 +236,25 @@ impl Emulator {
             vhd_names.push(Some(vhd.filename.clone()));
         }
 
-        let mut vhd_idx: usize = 0;
+        let mut config_drive_idx: usize = 0;
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
             let vhd_os_name: OsString = vhd_name.into();
-            match self.vhd_manager.load_vhd_file_by_name(vhd_idx, &vhd_os_name) {
-                Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
+            match self.vhd_manager.load_vhd_file_by_name(config_drive_idx, &vhd_os_name) {
+                Ok((vhd_file, vhd_idx)) => match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
                         if let Some(hdc) = self.machine.hdc() {
-                            match hdc.set_vhd(vhd_idx, vhd) {
+                            match hdc.set_vhd(config_drive_idx, vhd) {
                                 Ok(_) => {
                                     log::info!(
                                         "VHD image {:?} successfully loaded into virtual drive: {}",
                                         vhd_os_name,
-                                        vhd_idx
+                                        config_drive_idx
                                     );
+
+                                    if let Some(selection) = self.vhd_manager.get_vhd_path(vhd_idx) {
+                                        self.gui
+                                            .set_hdd_selection(config_drive_idx, Some(vhd_idx), Some(selection));
+                                    }
                                 }
                                 Err(err) => {
                                     log::error!("Error mounting VHD: {}", err);
@@ -268,7 +273,7 @@ impl Emulator {
                     log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
                 }
             }
-            vhd_idx += 1;
+            config_drive_idx += 1;
         }
         Ok(())
     }
