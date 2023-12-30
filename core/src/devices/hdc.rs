@@ -1164,6 +1164,50 @@ impl HardDiskController {
         self.state = State::HaveCommandStatus;
     }
 
+    /// Process the Read Sector Buffer operation.
+    /// This operation continues until the DMA transfer is complete.
+    fn opearation_read_sector_buffer(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
+        if self.dreq_active && dma.read_dma_acknowledge(HDC_DMA) {
+            if self.operation_status.dma_bytes_left > 0 {
+                let byte = self.drives[self.drive_select].sector_buf[self.operation_status.buffer_idx & 0x1FF];
+                self.operation_status.buffer_idx += 1;
+                // Bytes left to transfer
+                dma.do_dma_write_u8(bus, HDC_DMA, byte);
+                self.operation_status.dma_byte_count += 1;
+                self.operation_status.dma_bytes_left -= 1;
+
+                // See if we are done based on DMA controller
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if tc {
+                    log::trace!("DMA terminal count triggered end of ReadSectorBuffer command.");
+                    if self.operation_status.dma_bytes_left != 0 {
+                        log::warn!(
+                            "Incomplete DMA transfer on terminal count! Bytes remaining: {} count: {}",
+                            self.operation_status.dma_bytes_left,
+                            self.operation_status.dma_byte_count
+                        );
+                    }
+
+                    log::trace!("Completed ReadSectorBuffer command.");
+                    self.end_dma_command(0, false);
+                }
+            }
+            else {
+                // No more bytes left to transfer. Finalize operation
+                let tc = dma.check_terminal_count(HDC_DMA);
+                if !tc {
+                    log::warn!("ReadSectorBuffer complete without DMA terminal count.");
+                }
+
+                log::trace!("Completed ReadSectorBuffer command.");
+                self.end_dma_command(0, false);
+            }
+        }
+        else if !self.dreq_active {
+            log::error!("Error: WriteSectorBuffer command without DMA active!")
+        }
+    }
+
     /// Process the Write Sector Buffer operation.
     /// This operation continues until the DMA transfer is complete.
     fn opearation_write_sector_buffer(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface) {
@@ -1410,6 +1454,9 @@ impl HardDiskController {
         // Process any running Operations
         match self.state {
             State::ExecutingCommand => match self.command {
+                Command::ReadSectorBuffer => {
+                    self.opearation_read_sector_buffer(dma, bus);
+                }
                 Command::WriteSectorBuffer => {
                     self.opearation_write_sector_buffer(dma, bus);
                 }
