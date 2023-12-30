@@ -90,6 +90,9 @@ pub const MDA_MEM_APERTURE: usize = 0x8000;
 pub const MDA_MEM_SIZE: usize = 0x1000; // 4096 bytes
 pub const MDA_MEM_MASK: usize = 0x0FFF; // Applying this mask will implement memory mirror.
 
+pub const MDA_REPEAT_COL_MASK: u8 = 0b1110_0000;
+pub const MDA_REPEAT_COL_VAL: u8 = 0b1100_0000;
+
 // Sensible defaults for MDA CRTC registers. A real CRTC is probably uninitialized.
 const DEFAULT_HORIZONTAL_TOTAL: u8 = 97;
 const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 80;
@@ -457,6 +460,7 @@ pub struct MDACard {
     cur_fg:    u8,   // Current glyph fg color
     cur_bg:    u8,   // Current glyph bg color
     cur_blink: bool, // Current glyph blink attribute
+    cur_ul:    bool, // Current glyph underline attribute
     char_col:  u8,   // Column of character glyph being drawn
     hcc_c0:    u8,   // Horizontal character counter (x pos of character)
 
@@ -608,6 +612,7 @@ impl Default for MDACard {
             cur_fg: 0,
             cur_bg: 0,
             cur_blink: false,
+            cur_ul: false,
             char_col: 0,
             hcc_c0: 0,
 
@@ -922,6 +927,9 @@ impl MDACard {
         else {
             self.cur_blink = false;
         }
+        // Bits 0-2 determine underline status
+        self.cur_ul = self.cur_attr & 0x03 == 1;
+        // Look up fg/bg from attribute table as the logic isn't regular.
         (self.cur_fg, self.cur_bg) = MDA_ATTR_TABLE[self.cur_attr as usize];
     }
     /*

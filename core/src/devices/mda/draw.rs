@@ -97,37 +97,53 @@ impl MDACard {
     pub fn draw_text_mode_hchar_slow(&mut self) {
         // The MDA font is only 8 pixels wide, despite the 9 dot character clock. Certain glyphs
         // have the last column repeated.
-        for hdot in 0..(MDA_CHAR_CLOCK - 1) {
-            let mut new_pixel = match MDACard::get_glyph_bit(self.cur_char, hdot, self.crtc.vlc()) {
-                true => {
-                    if self.cur_blink {
-                        if self.text_blink_state {
-                            self.cur_fg
-                        }
-                        else {
-                            self.cur_bg
-                        }
-                    }
-                    else {
-                        self.cur_fg
-                    }
+
+        let glyph_on_color = match self.cur_blink {
+            true if self.text_blink_state => self.cur_fg,
+            true => self.cur_bg,
+            false => self.cur_fg,
+        };
+
+        let glyph_row = self.crtc.vlc();
+
+        let mut last_pixel = self.cur_fg;
+        let mut do_ul = false;
+        if self.mode.display_enable() {
+            for hdot in 0..(MDA_CHAR_CLOCK - 1) {
+                let mut new_pixel = match MDACard::get_glyph_bit(self.cur_char, hdot, glyph_row) {
+                    true => glyph_on_color,
+                    false => self.cur_bg,
+                };
+
+                // Do cursor
+                if self.crtc.cursor() {
+                    new_pixel = self.cur_fg;
                 }
-                false => self.cur_bg,
-            };
 
-            // Do cursor
-            if self.crtc.cursor() {
-                new_pixel = self.cur_fg;
+                // Do underline
+                if self.cur_ul && glyph_row == 12 {
+                    new_pixel = self.cur_fg;
+                    do_ul = true;
+                }
+
+                self.buf[self.back_buf][self.rba + hdot as usize] = new_pixel;
+                last_pixel = new_pixel;
             }
 
-            if !self.mode.display_enable() {
-                new_pixel = 0;
+            if do_ul || self.cur_char & MDA_REPEAT_COL_MASK == MDA_REPEAT_COL_VAL {
+                // Underlines and characters 0xC0-0xDF have the last column repeated.
+                self.buf[self.back_buf][self.rba + (MDA_CHAR_CLOCK as usize) - 1] = last_pixel;
             }
-
-            self.buf[self.back_buf][self.rba + hdot as usize] = new_pixel;
+            else {
+                self.buf[self.back_buf][self.rba + (MDA_CHAR_CLOCK as usize) - 1] = self.cur_bg;
+            }
         }
-        // TODO: Properly handle 9th column here.
-        self.buf[self.back_buf][self.rba + (MDA_CHAR_CLOCK as usize) - 1] = self.cur_bg;
+        else {
+            // When display is disabled, the MDA acts like VRAM is all 0.
+            for hdot in 0..MDA_CHAR_CLOCK {
+                self.buf[self.back_buf][self.rba + hdot as usize] = 0;
+            }
+        }
     }
 
     /*
