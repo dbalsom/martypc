@@ -81,10 +81,10 @@ impl IoDevice for MDACard {
             match port {
                 MDA_MODE_CONTROL_REGISTER => {
                     log::error!("CGA: Read from Mode control register!");
-                    0
+                    NO_IO_BYTE
                 }
                 MDA_STATUS_REGISTER => self.handle_status_register_read(),
-                _ => 0,
+                _ => NO_IO_BYTE,
             }
         }
     }

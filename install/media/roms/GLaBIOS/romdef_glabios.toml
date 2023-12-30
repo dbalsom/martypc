@@ -84,3 +84,14 @@ rom = [
     { filename = "GLABIOS_0.2.6_8XC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
 reload = true
+
+[[romset]]
+alias = "glabios_xt_turbo"
+desc = "GLaBIOS 0.2.6 for Generic Turbo XT (MartyPC)"
+priority = 15
+provides = ["bios", "ibm5160", "expansion"]
+oem_for = ["glabios_xt"]
+rom = [
+    { filename = "GLABIOS_0.2.6_8T.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+]
+reload = true

@@ -330,6 +330,8 @@ pub struct Machine {
     kb_buf: VecDeque<KeybufferEntry>,
     error: bool,
     error_str: Option<String>,
+    turbo_bit: bool,
+    turbo_button: bool,
     cpu_factor: ClockFactor,
     next_cpu_factor: ClockFactor,
     cpu_cycles: u64,
@@ -523,6 +525,8 @@ impl Machine {
             kb_buf: VecDeque::new(),
             error: false,
             error_str: None,
+            turbo_bit: false,
+            turbo_button: false,
             cpu_factor,
             next_cpu_factor: cpu_factor,
             cpu_cycles: 0,
@@ -678,6 +682,7 @@ impl Machine {
     /// We must be careful not to update this between step() and run_devices() or devices'
     /// advance_ticks may overflow device update ticks.
     pub fn set_turbo_mode(&mut self, state: bool) {
+        self.turbo_button = state;
         if state {
             self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
         }
@@ -685,7 +690,7 @@ impl Machine {
             self.next_cpu_factor = self.machine_desc.cpu_factor;
         }
         log::debug!(
-            "Set turbo mode to: {} New cpu factor is {:?}",
+            "Set turbo button to: {} New cpu factor is {:?}",
             state,
             self.next_cpu_factor
         );
@@ -1263,14 +1268,50 @@ impl Machine {
         timer_ticks as u32 * timer_multiplier
     }
 
-    /// Called to update machine once per frame.
-    /// Mostly used for serial passthrouh function to synchronize virtual
-    /// serial port with real serial port.
-    pub fn frame_update(&mut self) {
+    /// Called to update machine once per frame. This can be used to update the state of devices that don't require
+    /// immediate response to CPU cycles, such as the serial port.
+    /// We also check for toggle of the turbo button.
+    pub fn frame_update(&mut self) -> Vec<DeviceEvent> {
+        let mut device_events = Vec::new();
+
         // Update serial port, if present
         if let Some(spc) = self.cpu.bus_mut().serial_mut() {
             spc.update();
         }
+
+        match self.machine_type {
+            MachineType::Ibm5160 => {
+                // Turbo button overrides soft-turbo.
+                if !self.turbo_button {
+                    if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
+                        let turbo_bit = !ppi.turbo_bit();
+
+                        if turbo_bit != self.turbo_bit {
+                            // Turbo bit has changed.
+                            match turbo_bit {
+                                true => {
+                                    self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
+                                    device_events.push(DeviceEvent::TurboToggled(true));
+                                }
+                                false => {
+                                    self.next_cpu_factor = self.machine_desc.cpu_factor;
+                                    device_events.push(DeviceEvent::TurboToggled(false));
+                                }
+                            }
+                            log::debug!(
+                                "Set turbo state to: {} New cpu factor is {:?}",
+                                turbo_bit,
+                                self.next_cpu_factor
+                            );
+                        }
+                        self.turbo_bit = turbo_bit;
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        device_events
     }
 
     pub fn play_sound_buffer(&self) {

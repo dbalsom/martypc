@@ -477,7 +477,7 @@ pub struct MDACard {
     accumulated_us: f64,
     ticks_advanced: u32, // Number of ticks we have advanced mid-instruction via port or mmio access.
     pixel_clocks_owed: u32,
-    ticks_accum: u32,
+    ticks_accum: f64,
     clocks_accum: u32,
 
     mem: Box<[u8; MDA_MEM_SIZE]>,
@@ -631,7 +631,7 @@ impl Default for MDACard {
 
             accumulated_us: 0.0,
             ticks_advanced: 0,
-            ticks_accum: 0,
+            ticks_accum: 0.0,
             clocks_accum: 0,
             pixel_clocks_owed: 0,
 
@@ -834,6 +834,7 @@ impl MDACard {
     /// Handle a write to the MDA mode register. Two of the bits are basically useless (0 & 1)
     /// leaving bit 3, which enables or disables video, and Bit 5, which controls blinking.
     fn handle_mode_register(&mut self, mode_byte: u8) {
+        log::debug!("Write to MDA mode register: {:02X}", mode_byte);
         self.mode = MdaModeRegister::from_bytes([mode_byte]);
     }
 
@@ -1143,7 +1144,16 @@ impl MDACard {
         }
     }
 
-    /// Execute one CGA clock cycle.
+    pub fn do_ticks(&mut self, ticks: f64) {
+        self.ticks_accum += ticks;
+        // Drain the accumulator while emitting chars
+        while self.ticks_accum > self.char_clock as f64 {
+            self.tick_hchar();
+            self.ticks_accum -= self.char_clock as f64;
+        }
+    }
+
+    /// Execute one MDA clock cycle.
     pub fn tick(&mut self) {
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(1);
@@ -1151,11 +1161,6 @@ impl MDACard {
         }
         self.cycles += 1;
         self.cur_screen_cycles += 1;
-
-        // Don't execute odd cycles if we are in half-clock mode
-        if self.clock_divisor == 2 && (self.cycles & 0x01 == 1) {
-            return;
-        }
 
         let saved_rba = self.rba;
 

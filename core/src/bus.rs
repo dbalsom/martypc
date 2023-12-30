@@ -193,6 +193,7 @@ pub enum DeviceId {
 pub enum DeviceEvent {
     DramRefreshUpdate(u16, u16, u32),
     DramRefreshEnable(bool),
+    TurboToggled(bool),
 }
 
 pub trait MemoryMappedDevice {
@@ -709,6 +710,10 @@ impl BusInterface {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             match card_dispatch {
+                                VideoCardDispatch::Mda(mda) => {
+                                    let syswait = mda.get_read_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
+                                }
                                 VideoCardDispatch::Cga(cga) => {
                                     let syswait = cga.get_read_wait(address, system_ticks);
                                     return Ok(self.system_ticks_to_cpu_cycles(syswait));
@@ -1831,7 +1836,7 @@ impl BusInterface {
         for (_vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Mda(mda) => {
-                    mda.run(DeviceRunTimeUnit::SystemTicks(sys_ticks));
+                    mda.run(DeviceRunTimeUnit::Microseconds(us));
                 }
                 VideoCardDispatch::Cga(cga) => {
                     self.cga_tick_accum += sys_ticks;

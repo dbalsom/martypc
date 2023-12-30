@@ -252,11 +252,11 @@ impl Crtc6845 {
             16 => LightPenPositionH,
             _ => LightPenPositionL,
         };
-        log::debug!("CRTC register selected: {:?}", self.reg_select);
+        //log::trace!("CRTC register selected: {:?}", self.reg_select);
     }
 
     fn write_register(&mut self, byte: u8) {
-        log::warn!("crtc write register: {:02X}", byte);
+        //log::trace!("crtc write register: {:02X}", byte);
         match self.reg_select {
             CrtcRegister::HorizontalTotal => {
                 // (R0) 8 bit write only
@@ -451,15 +451,13 @@ impl Crtc6845 {
     /// Return the immediate cursor status as a tuple. Refle
     #[inline]
     pub fn cursor(&self) -> bool {
-        if let Some(_) = self.cursor_blink_rate {
-            self.cursor_enabled
-                && self.blink_state
-                && (self.vma == self.cursor_address)
-                && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
+        let mut cursor =
+            self.cursor_enabled && (self.vma == self.cursor_address) && self.cursor_data[(self.vlc_c9 & 0x1F) as usize];
+
+        if self.cursor_blink_rate.is_some() {
+            cursor &= self.blink_state;
         }
-        else {
-            self.cursor_enabled
-        }
+        cursor
     }
 
     #[inline]

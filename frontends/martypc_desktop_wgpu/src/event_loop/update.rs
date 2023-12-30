@@ -33,6 +33,8 @@ use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
+use frontend_common::constants::SHORT_NOTIFICATION_TIME;
+use marty_core::bus::DeviceEvent;
 use videocard_renderer::RendererEvent;
 
 use crate::{
@@ -260,7 +262,27 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         */
 
         // Do per-frame updates (Serial port emulation)
-        emu.machine.frame_update();
+        let events = emu.machine.frame_update();
+        for event in events {
+            match event {
+                DeviceEvent::TurboToggled(state) => {
+                    // Send notification
+                    if state {
+                        emu.gui
+                            .toasts()
+                            .info("Turbo mode enabled!".to_string())
+                            .set_duration(Some(SHORT_NOTIFICATION_TIME));
+                    }
+                    else {
+                        emu.gui
+                            .toasts()
+                            .info("Turbo mode disabled!".to_string())
+                            .set_duration(Some(SHORT_NOTIFICATION_TIME));
+                    }
+                }
+                _ => {}
+            }
+        }
 
         let render_start = Instant::now();
 

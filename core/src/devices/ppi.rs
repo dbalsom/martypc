@@ -366,7 +366,7 @@ impl IoDevice for Ppi {
             PPI_PORT_A => {
                 // Return dip switch block 1 or kb_byte depending on port mode
                 // 5160 will always return kb_byte.
-                // PPI PB7 supresses keyboard shift register output.
+                // PPI PB7 suppresses keyboard shift register output.
                 match self.port_a_mode {
                     PortAMode::SwitchBlock1 => self.dip_sw1,
                     PortAMode::KeyboardByte => {
@@ -392,7 +392,6 @@ impl IoDevice for Ppi {
                 // Read-only port
             }
             PPI_PORT_B => {
-                //log::trace!("PPI: Write to Port B: {:02X}", byte);
                 self.handle_portb_write(byte);
             }
             PPI_PORT_C => {
@@ -415,11 +414,20 @@ impl Ppi {
         log::trace!("PPI: Write to command port: {:02X}", byte);
     }
 
+    pub fn turbo_bit(&self) -> bool {
+        match self.machine_type {
+            MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => false,
+            MachineType::Ibm5160 => self.pb_byte & PORTB_SW2_SELECT != 0,
+            _ => panic!("turbo_bit(): Machine type has no PPI!"),
+        }
+    }
+
     pub fn handle_portb_read(&self) -> u8 {
         self.pb_byte
     }
 
     pub fn handle_portb_write(&mut self, byte: u8) {
+        //log::debug!("PPI: Write to Port B: {:02X}", byte);
         self.pb_byte = byte;
 
         match self.machine_type {
