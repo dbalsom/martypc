@@ -1529,7 +1529,7 @@ impl BusInterface {
             log::debug!("Creating video card of type: {:?}", card.video_type);
             match card.video_type {
                 VideoType::MDA => {
-                    let mda = MDACard::new(TraceLogger::None, clock_mode, video_frame_debug);
+                    let mda = MDACard::new(TraceLogger::None, clock_mode, true, video_frame_debug);
                     let port_list = mda.port_list();
                     self.io_map
                         .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));

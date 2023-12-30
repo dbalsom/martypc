@@ -368,7 +368,11 @@ macro_rules! trace_regs {
     };
 }
 
-use crate::devices::mc6845::{Crtc6845, CrtcStatus, HBlankCallback};
+use crate::devices::{
+    lpt_port::{ParallelControl, ParallelPort},
+    mc6845::{Crtc6845, CrtcStatus, HBlankCallback},
+    mda::io::LPT_DEFAULT_IO_BASE,
+};
 pub(crate) use trace_regs;
 
 #[bitfield]
@@ -494,6 +498,9 @@ pub struct MDACard {
     lightpen_addr:  usize,
 
     hblank_fn: Box<HBlankCallback>,
+
+    lpt_port_base: u16,
+    lpt: Option<ParallelPort>,
 }
 
 #[derive(Debug)]
@@ -654,12 +661,15 @@ impl Default for MDACard {
             lightpen_addr:  0,
 
             hblank_fn: Box::new(|| 10),
+
+            lpt_port_base: LPT_DEFAULT_IO_BASE,
+            lpt: None,
         }
     }
 }
 
 impl MDACard {
-    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool) -> Self {
+    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, lpt: bool, video_frame_debug: bool) -> Self {
         let mut mda = Self::default();
 
         mda.trace_logger = trace_logger;
@@ -672,6 +682,11 @@ impl MDACard {
             mda.clock_mode = clock_mode;
         }
 
+        if lpt {
+            // None IRQ will use default which is 7, correct for MDA LPT
+            mda.lpt = Some(ParallelPort::new(None, TraceLogger::None));
+        }
+
         // MDA does not need to cut hblank short for any reason, so always return a big value
         // for hsync width.
         mda.hblank_fn = Box::new(|| 100);
@@ -682,8 +697,8 @@ impl MDACard {
     /// Reset CGA state (on reboot, for example)
     fn reset_private(&mut self) {
         let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
-
         let hblank_fn = std::mem::replace(&mut self.hblank_fn, Box::new(|| 10));
+        let lpt = std::mem::replace(&mut self.lpt, None);
 
         // Save non-default values
         *self = Self {
@@ -693,9 +708,8 @@ impl MDACard {
             frame_count: self.frame_count, // Keep frame count as to not confuse frontend
             trace_logger,
             extents: self.extents.clone(),
-
             hblank_fn,
-
+            lpt,
             ..Self::default()
         }
     }
@@ -796,7 +810,7 @@ impl MDACard {
 
     fn set_lp_latch(&mut self) {
         if self.lightpen_latch == false {
-            // Low to high transaition of light pen latch, set latch addr.
+            // Low to high transition of light pen latch, set latch addr.
             log::debug!("Updating lightpen latch address");
             self.lightpen_addr = self.vma;
         }

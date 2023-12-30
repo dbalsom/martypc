@@ -117,7 +117,7 @@ pub type HBlankCallback = dyn FnMut() -> u8;
 pub struct CrtcStatus {
     pub hblank: bool,
     pub vblank: bool,
-    pub den: bool,
+    pub den: bool, // Display Enable. True if we are in counting in the display area, false otherwise
     pub hborder: bool,
     pub vborder: bool,
     pub cursor: bool,
@@ -141,8 +141,6 @@ pub struct Crtc6845 {
     blink_state: bool,
     cursor_blink_ct: u8,
     cursor_blink_rate: Option<u8>,
-
-    display_enable: bool, // True if we are in counting in the display area, false otherwise
 
     hcc_c0: u8,   // Horizontal character counter (x pos of character)
     char_col: u8, // Character column counter (x pos of bit in glyph)
@@ -180,8 +178,6 @@ impl Crtc6845 {
             blink_state: false,
             cursor_blink_ct: 0,
             cursor_blink_rate: Some(BLINK_FAST_RATE),
-
-            display_enable: false,
 
             hcc_c0: 0,
             char_col: 0,

@@ -31,7 +31,10 @@
 */
 
 use super::*;
-use crate::bus::IoDevice;
+use crate::bus::{IoDevice, NO_IO_BYTE};
+
+pub const LPT_DEFAULT_IO_BASE: u16 = 0x3BC;
+pub const LPT_PORT_MASK: u16 = !0x003;
 
 // CRTC registers are mirrored from 0x3D0 - 0x3D5 due to incomplete
 // address decoding.
@@ -46,7 +49,7 @@ pub const CRTC_REGISTER2: u16 = 0x3B5;
 pub const CRTC_REGISTER3: u16 = 0x3B7;
 
 pub const CRTC_REGISTER_BASE: u16 = 0x3B0;
-pub const CRTC_REGISTER_MASK: u16 = 0x007;
+pub const CRTC_REGISTER_MASK: u16 = !0x007;
 
 pub const MDA_MODE_CONTROL_REGISTER: u16 = 0x3B8;
 pub const MDA_STATUS_REGISTER: u16 = 0x3BA;
@@ -60,11 +63,21 @@ impl IoDevice for MDACard {
 
         //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
-        if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
+        if (port & CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Read is from CRTC register.
             self.crtc.port_read(port)
         }
+        else if (port & LPT_PORT_MASK) == LPT_DEFAULT_IO_BASE {
+            // Read is from LPT port.
+            if let Some(lpt) = &mut self.lpt {
+                lpt.port_read(port)
+            }
+            else {
+                NO_IO_BYTE
+            }
+        }
         else {
+            // Must be some other MDA register
             match port {
                 MDA_MODE_CONTROL_REGISTER => {
                     log::error!("CGA: Read from Mode control register!");
@@ -84,11 +97,18 @@ impl IoDevice for MDACard {
 
         //self.rw_op(ticks, data, port as u32, RwSlotType::Io);
 
-        if (port & !CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
+        if (port & CRTC_REGISTER_MASK) == CRTC_REGISTER_BASE {
             // Write is to CRTC register.
             self.crtc.port_write(port, data);
         }
+        else if (port & LPT_PORT_MASK) == LPT_DEFAULT_IO_BASE {
+            // Read is from LPT port.
+            if let Some(lpt) = &mut self.lpt {
+                lpt.port_write(port, data);
+            }
+        }
         else {
+            // Must be some other MDA register
             match port {
                 MDA_MODE_CONTROL_REGISTER => {
                     self.handle_mode_register(data);
@@ -99,7 +119,7 @@ impl IoDevice for MDACard {
     }
 
     fn port_list(&self) -> Vec<u16> {
-        vec![
+        let mut mda_ports = vec![
             CRTC_REGISTER_SELECT0,
             CRTC_REGISTER_SELECT1,
             CRTC_REGISTER_SELECT2,
@@ -110,6 +130,12 @@ impl IoDevice for MDACard {
             CRTC_REGISTER3,
             MDA_MODE_CONTROL_REGISTER,
             MDA_STATUS_REGISTER,
-        ]
+        ];
+
+        if self.lpt.is_some() {
+            log::debug!("Adding LPT ports to MDA port list");
+            mda_ports.extend([self.lpt_port_base, self.lpt_port_base + 1, self.lpt_port_base + 2].iter());
+        }
+        mda_ports
     }
 }

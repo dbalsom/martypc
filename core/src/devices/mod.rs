@@ -41,6 +41,7 @@ pub mod dma;
 pub mod fdc;
 pub mod hdc;
 pub mod keyboard;
+pub mod lpt_port;
 pub mod mc6845;
 pub mod mouse;
 pub mod pic;
