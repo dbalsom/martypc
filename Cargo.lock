@@ -1178,7 +1178,6 @@ dependencies = [
  "raw-window-handle 0.5.2",
  "smithay-clipboard",
  "web-time",
- "webbrowser",
  "winit 0.29.7",
 ]
 

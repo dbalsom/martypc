@@ -63,7 +63,8 @@ branch = "0_24_2_winit_0_29"
 [workspace.dependencies.egui-winit]
 git = "https://github.com/dbalsom/egui_martypc.git"
 branch = "0_24_2_winit_0_29"
-features = ["links"]
+default-features = false
+features = ["clipboard", "wayland", "x11"]
 
 [workspace.dependencies.egui_extras]
 git = "https://github.com/dbalsom/egui_martypc.git"
@@ -71,8 +72,13 @@ branch = "0_24_2_winit_0_29"
 features = ["all_loaders"]
 
 [profile.release]
-#lto = true
-#strip = true
+opt-level = 3
+
+[profile.release-lto]
+inherits = "release"
+lto = true
+strip = true
+opt-level = 3
 
 [profile.dev.package."*"]
 opt-level = 3
