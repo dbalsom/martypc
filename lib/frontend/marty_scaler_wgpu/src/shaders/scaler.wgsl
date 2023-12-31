@@ -143,7 +143,7 @@ fn do_monochrome(color: vec4<f32>, gamma: f32) -> vec4<f32> {
         brightness = 0.0;
     }
     let baseColor = scaler_opts.crt_params.mono_color;
-    let modulatedColor = baseColor * pow(brightness, gamma);
+    let modulatedColor = baseColor * pow(abs(brightness), gamma);
     return modulatedColor;
 }
 
