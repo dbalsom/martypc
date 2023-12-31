@@ -40,9 +40,10 @@
     * User-definable fonts not yet supported
 * #### MDA Video Card
   * Not quite as a flashy as EGA, but the MDA card type is now also supported, and moreover, you can install an MDA alongside a CGA or EGA card for a dual head display.
+  * 9th column rendering and underline attributes supported
+  * Includes the framework for a LPT port, which will now be detected
   * Known issues:
     * Needs optimization - due to the 9-dot character clock making 64-bit aligned writes impossible, MDA is currently slower to emulate than EGA.
-    * Video mux bit in status register unimplemented. Doing so properly would require cycle precision. 
 * #### New Keyboard System
   * MartyPC now performs low-level emulation of a Model F keyboard instead of directly translating OS input events to the core
     * Model M emulation to come
@@ -51,8 +52,8 @@
     * Translation files support all keycode names defined by w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
     * Translation files can define direct scancode mappings or full macros
 
-
-* New notification system courtesy of egui-notify crate. 
+* New themes courtesy of [egui-themer crate](https://github.com/grantshandy/egui-themer)
+* New notification system courtesy of [egui-notify crate](https://github.com/ItsEthra/egui-notify). 
   * Implemented success/error notifications for disk and file operations, screenshots, etc.
 * Improved VHD creator - should no longer be confusing to use
 * Text Mode Viewer - View ASCII contents of video memory, where you can select and copy to clipboard
@@ -68,6 +69,7 @@
 * Added debug_keyboard config flag - this will print keyboard event info to the console for support
 
 ### Bug Fixes
+* Xebec HDC: Implemented missing Read Sector Buffer command (Fixes panic in IBM diagnostics)
 * CPU: Fixed device ticks after interrupts
 * CPU: Improved Halt/Resume logic and cycle timings
 * CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView
