@@ -422,20 +422,16 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         GuiEvent::CtrlAltDel => {
             emu.machine.ctrl_alt_del();
         }
-        GuiEvent::CompositeAdjust(params) => {
+        GuiEvent::CompositeAdjust(dt_idx, params) => {
             //log::warn!("got composite params: {:?}", params);
-
-            if let Some(renderer) = emu.dm.get_primary_renderer() {
-                renderer.cga_direct_param_update(&params);
-            }
+            emu.dm.with_renderer(*dt_idx, |renderer| {
+                renderer.cga_direct_param_update(params);
+            });
         }
-        GuiEvent::ScalerAdjust(params) => {
-            log::warn!("Received ScalerAdjust event: {:?}", params);
-            if let Some(_renderer) = emu.dm.get_primary_renderer() {
-                /*
-                   renderer.set_scaler_params(&params);
-
-                */
+        GuiEvent::ScalerAdjust(dt_idx, params) => {
+            //log::warn!("Received ScalerAdjust event: {:?}", params);
+            if let Err(err) = emu.dm.apply_scaler_params(*dt_idx, params) {
+                log::error!("Failed to apply scaler params: {}", err);
             }
         }
         GuiEvent::ZoomChanged(zoom) => {

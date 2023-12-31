@@ -152,6 +152,7 @@ pub struct DisplayTargetContext<T> {
     pub(crate) backend: Option<T>,                // The graphics backend instance
     pub(crate) scaler:
         Option<Box<dyn DisplayScaler<Pixels, NativeTextureView = TextureView, NativeEncoder = CommandEncoder>>>, // The scaler pipeline
+    pub(crate) scaler_params: Option<ScalerParams>,
     pub(crate) card_scale: Option<f32>, // If Some, the card resolution is scaled by this factor
 }
 
@@ -482,18 +483,21 @@ impl DisplayTargetContext<PixelsBackend> {
         }
     }
 
-    pub fn apply_scaler_params(&mut self, preset: &ScalerParams) {
+    pub fn apply_scaler_params(&mut self, params: &ScalerParams) {
         // We must have a backend and scaler to continue...
         if !self.backend.is_some() || !self.scaler.is_some() {
             return;
         }
 
+        // Update params on dt
+        self.scaler_params = Some(params.clone());
+
         let mut scaler_update = Vec::new();
 
         scaler_update.push(ScalerOption::Geometry {
-            h_curvature:   preset.crt_barrel_distortion,
-            v_curvature:   preset.crt_barrel_distortion,
-            corner_radius: preset.crt_corner_radius,
+            h_curvature:   params.crt_barrel_distortion,
+            v_curvature:   params.crt_barrel_distortion,
+            corner_radius: params.crt_corner_radius,
         });
 
         scaler_update.push(ScalerOption::Adjustment {
@@ -501,27 +505,27 @@ impl DisplayTargetContext<PixelsBackend> {
             s: 1.0,
             c: 1.0,
             b: 1.0,
-            g: preset.gamma,
+            g: params.gamma,
         });
 
-        scaler_update.push(ScalerOption::Filtering(preset.filter));
+        scaler_update.push(ScalerOption::Filtering(params.filter));
 
         if let Some(renderer) = &self.renderer {
-            let params = renderer.get_params();
+            let rparams = renderer.get_params();
 
-            let lines = if params.line_double {
-                params.render.h / 2
+            let lines = if rparams.line_double {
+                rparams.render.h / 2
             }
             else {
-                params.render.h
+                rparams.render.h
             };
             log::debug!(
                 "Setting scaler scanlines to {}, doublescan: {}",
                 lines,
-                params.line_double
+                rparams.line_double
             );
             scaler_update.push(ScalerOption::Scanlines {
-                enabled: Some(preset.crt_scanlines),
+                enabled: Some(params.crt_scanlines),
                 lines: Some(lines),
                 intensity: Some(0.3),
             });
@@ -535,7 +539,7 @@ impl DisplayTargetContext<PixelsBackend> {
             });
         }
 
-        match preset.crt_phosphor_type {
+        match params.crt_phosphor_type {
             PhosphorType::Color => scaler_update.push(ScalerOption::Mono {
                 enabled: false,
                 r: 1.0,
@@ -785,6 +789,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                     aspect_ratio: scaler_preset.renderer.aspect_ratio.unwrap_or_default(),
                     backend: Some(pb),              // The graphics backend instance
                     scaler: Some(Box::new(scaler)), // The scaler pipeline
+                    scaler_params: Some(ScalerParams::from(scaler_preset.clone())),
                     card_scale,
                 };
 
@@ -840,6 +845,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 name: vt.name.clone(),
                 renderer: renderer_params,
                 scaler_mode,
+                scaler_params: vt.scaler_params,
             })
         }
 
@@ -888,7 +894,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
             .get(&wid)
             .and_then(|idx| self.targets[*idx].gui_ctx.as_mut())
             .or_else(|| {
-                log::warn!("get_gui_by_window_id(): No gui context for window id: {:?}", wid);
+                //log::warn!("get_gui_by_window_id(): No gui context for window id: {:?}", wid);
                 None
             })
     }
@@ -1312,6 +1318,17 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         }
     }
 
+    fn with_renderer<F>(&mut self, dt_idx: usize, mut f: F)
+    where
+        F: FnMut(&mut VideoRenderer),
+    {
+        if dt_idx < self.targets.len() {
+            if let Some(renderer) = &mut self.targets[dt_idx].renderer {
+                f(renderer)
+            }
+        }
+    }
+
     /// Add the specified scaler preset to the Display Manager.
     fn add_scaler_preset(&mut self, preset: ScalerPreset) {
         let hash_key = preset.name.clone();
@@ -1329,6 +1346,16 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
         if dt_idx < self.targets.len() {
             let preset = self.get_scaler_preset(name).unwrap().clone();
             self.targets[dt_idx].apply_scaler_preset(&preset);
+        }
+        else {
+            return Err(anyhow!("Display target out of range!"));
+        }
+        Ok(())
+    }
+
+    fn apply_scaler_params(&mut self, dt_idx: usize, params: &ScalerParams) -> Result<(), Error> {
+        if dt_idx < self.targets.len() {
+            self.targets[dt_idx].apply_scaler_params(params);
         }
         else {
             return Err(anyhow!("Display target out of range!"));

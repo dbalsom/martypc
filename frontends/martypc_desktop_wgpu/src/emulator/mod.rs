@@ -305,6 +305,9 @@ impl Emulator {
             }
         }
 
+        // Sort vid_list by index
+        vid_list.sort_by(|a, b| a.idx.cmp(&b.idx));
+
         // Build list of cards to set in UI.
         let mut card_strs = Vec::new();
         for vid in vid_list.iter() {

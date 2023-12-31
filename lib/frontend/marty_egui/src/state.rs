@@ -450,6 +450,7 @@ impl GuiState {
     }
 
     /// Provide the list of graphics cards to all windows that need them.
+    /// TODO: We can create this from update_display_info, no need for a separate method..
     pub fn set_card_list(&mut self, cards: Vec<String>) {
         self.text_mode_viewer.set_cards(cards.clone());
     }
@@ -514,6 +515,18 @@ impl GuiState {
         // Build a vector of enums to set to avoid borrowing twice.
         let mut enum_vec = Vec::new();
 
+        // Create a list of display target strings to give to the composite and scaler adjustment windows.
+        let mut dt_descs = Vec::new();
+        for (idx, display) in self.display_info.iter().enumerate() {
+            let mut dt_str = format!("Display {}", idx);
+            if let Some(vid) = display.vid {
+                dt_str.push_str(&format!(" Card: {} [{:?}]", vid.idx, vid.vtype));
+            }
+            dt_descs.push(dt_str);
+        }
+        self.scaler_adjust.set_dt_list(dt_descs.clone());
+        self.composite_adjust.set_dt_list(dt_descs.clone());
+
         for (idx, display) in self.display_info.iter().enumerate() {
             if let Some(renderer) = &display.renderer {
                 enum_vec.push((
@@ -531,11 +544,17 @@ impl GuiState {
                 ));
             }
 
+            // Create GuiEnums for each display scaler mode.
             if let Some(scaler_mode) = &display.scaler_mode {
                 enum_vec.push((
                     GuiEnum::DisplayScalerMode(*scaler_mode),
                     Some(GuiVariableContext::Display(idx)),
                 ));
+            }
+
+            // Set the initial scaler params for the Scaler Adjustments window if we have them.
+            if let Some(scaler_params) = &display.scaler_params {
+                self.scaler_adjust.set_params(idx, scaler_params.clone());
             }
         }
 

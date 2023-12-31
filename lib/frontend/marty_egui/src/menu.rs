@@ -169,11 +169,6 @@ impl GuiState {
                         });
                     }
                 }
-
-                if ui.button("Text Viewer").clicked() {
-                    *self.window_flag(GuiWindow::TextModeViewer) = true;
-                    ui.close_menu();
-                }
             });
 
             ui.menu_button("Debug", |ui| {
@@ -473,6 +468,7 @@ impl GuiState {
 
         if ui.button("Scaler Adjustments...").clicked() {
             *self.window_flag(GuiWindow::ScalerAdjust) = true;
+            self.scaler_adjust.select_card(display_idx);
             ui.close_menu();
         }
 
@@ -557,8 +553,15 @@ impl GuiState {
 
             if ui.button("Composite Adjustments...").clicked() {
                 *self.window_flag(GuiWindow::CompositeAdjust) = true;
+                self.composite_adjust.select_card(display_idx);
                 ui.close_menu();
             }
+        }
+
+        if ui.button("Text Viewer").clicked() {
+            *self.window_flag(GuiWindow::TextModeViewer) = true;
+            self.text_mode_viewer.select_card(display_idx);
+            ui.close_menu();
         }
 
         ui.separator();
