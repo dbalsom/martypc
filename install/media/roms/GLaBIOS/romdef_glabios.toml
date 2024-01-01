@@ -92,6 +92,6 @@ priority = 15
 provides = ["bios", "ibm5160", "expansion"]
 oem_for = ["glabios_xt"]
 rom = [
-    { filename = "GLABIOS_0.2.6_8T.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
+    { filename = "GLABIOS_0.2.6_8TC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
 reload = true
