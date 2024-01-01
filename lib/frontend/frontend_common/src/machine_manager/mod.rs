@@ -73,6 +73,7 @@ pub struct MachineConfigFileEntry {
     memory: MemoryConfig,
     #[serde(default)]
     speaker: bool,
+    ppi_turbo: Option<bool>, // This bool is an option so that it is three state - missing means no turbo feature, true means ppi high = turbo, false means ppi low = turbo.
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
@@ -355,6 +356,7 @@ impl MachineConfigFileEntry {
     pub fn to_machine_config(&self) -> MachineConfiguration {
         MachineConfiguration {
             speaker: self.speaker,
+            ppi_turbo: self.ppi_turbo,
             machine_type: self.machine_type,
             memory: self.memory.clone(),
             fdc: self.fdc.clone(),

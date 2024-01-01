@@ -267,15 +267,25 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             }
         }
-        GuiEvent::SaveFloppy(drive_select, filename) => {
-            log::debug!("Save floppy image: {:?} into drive: {}", filename, drive_select);
+        */
+        GuiEvent::SaveFloppy(drive_select, image_idx) => {
+            log::debug!(
+                "Received SaveFloppy event image index: {}, drive: {}",
+                image_idx,
+                drive_select
+            );
 
             if let Some(fdc) = emu.machine.fdc() {
                 let floppy = fdc.get_image_data(*drive_select);
                 if let Some(floppy_image) = floppy {
-                    match emu.floppy_manager.save_floppy_data(floppy_image, &filename) {
-                        Ok(()) => {
-                            log::info!("Floppy image successfully saved: {:?}", filename);
+                    match emu.floppy_manager.save_floppy_data(floppy_image, *image_idx, &emu.rm) {
+                        Ok(path) => {
+                            log::info!("Floppy image successfully saved: {:?}", path);
+
+                            emu.gui
+                                .toasts()
+                                .info(format!("Floppy saved: {:?}", path.file_name()))
+                                .set_duration(Some(SHORT_NOTIFICATION_TIME));
                         }
                         Err(err) => {
                             log::warn!("Floppy image failed to save: {}", err);
@@ -284,7 +294,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             }
         }
-        */
         GuiEvent::EjectFloppy(drive_select) => {
             log::info!("Ejecting floppy in drive: {}", drive_select);
             if let Some(fdc) = emu.machine.fdc() {
@@ -398,13 +407,19 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             match state {
                 MachineState::Off | MachineState::Rebooting => {
                     // Clear the screen if rebooting or turning off
-
                     emu.dm.for_each_renderer(|renderer, _card_id, buf| {
                         renderer.clear();
                         buf.fill(0);
                     });
+
+                    if emu.config.machine.reload_roms {
+                        // Tell the Machine to wait on execution until ROMs are reloaded
+                        emu.machine.set_reload_pending(true);
+                    }
                 }
-                _ => {}
+                _ => {
+                    emu.machine.set_reload_pending(false);
+                }
             }
             emu.machine.change_state(*state);
         }

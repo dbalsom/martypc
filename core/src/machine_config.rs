@@ -303,6 +303,7 @@ pub struct HardDriveConfig {
 #[derive(Clone, Debug)]
 pub struct MachineConfiguration {
     pub speaker: bool,
+    pub ppi_turbo: Option<bool>,
     pub machine_type: MachineType,
     pub memory: MemoryConfig,
     pub keyboard: Option<KeyboardConfig>,

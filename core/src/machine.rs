@@ -332,6 +332,7 @@ impl<'a> MachineBuilder<'a> {
 pub struct Machine {
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
+    machine_config: MachineConfiguration,
     state: MachineState,
     sound_player: Option<SoundPlayer>,
     rom_manifest: MachineRomManifest,
@@ -352,6 +353,7 @@ pub struct Machine {
     checkpoint_map: HashMap<u32, usize>,
     patch_map: HashMap<u32, usize>,
     events: Vec<MachineEvent>,
+    reload_pending: bool,
 }
 
 impl Machine {
@@ -532,6 +534,7 @@ impl Machine {
         Machine {
             machine_type,
             machine_desc,
+            machine_config,
             state: MachineState::On,
             sound_player,
             rom_manifest,
@@ -552,6 +555,7 @@ impl Machine {
             checkpoint_map,
             patch_map,
             events: Vec::new(),
+            reload_pending: false,
         }
     }
 
@@ -582,6 +586,8 @@ impl Machine {
         }
 
         self.rom_manifest = rom_manifest;
+        // Allow machine to run again
+        self.reload_pending = false;
         Ok(())
     }
 
@@ -903,6 +909,10 @@ impl Machine {
         self.events.push(MachineEvent::Reset);
     }
 
+    pub fn set_reload_pending(&mut self, state: bool) {
+        self.reload_pending = state;
+    }
+
     #[inline]
     /// Convert a count of CPU cycles to microseconds based on the current CPU clock
     /// divisor and system crystal speed.
@@ -954,6 +964,11 @@ impl Machine {
         let new_factor = self.next_cpu_factor;
         self.cpu_factor = new_factor;
         self.bus_mut().set_cpu_factor(new_factor);
+
+        // Don't run this iteration if we're pending a ROM reload
+        if self.reload_pending {
+            return 0;
+        }
 
         // Was reset requested?
         if let ExecutionOperation::Reset = exec_control.peek_op() {
@@ -1337,30 +1352,33 @@ impl Machine {
 
         match self.machine_type {
             MachineType::Ibm5160 => {
-                // Turbo button overrides soft-turbo.
-                if !self.turbo_button {
-                    if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
-                        let turbo_bit = !ppi.turbo_bit();
+                // Only do turbo if there is a ppi_turbo option.
+                if let Some(ppi_turbo) = self.machine_config.ppi_turbo {
+                    // Turbo button overrides soft-turbo.
+                    if !self.turbo_button {
+                        if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
+                            let turbo_bit = ppi_turbo == ppi.turbo_bit();
 
-                        if turbo_bit != self.turbo_bit {
-                            // Turbo bit has changed.
-                            match turbo_bit {
-                                true => {
-                                    self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
-                                    device_events.push(DeviceEvent::TurboToggled(true));
+                            if turbo_bit != self.turbo_bit {
+                                // Turbo bit has changed.
+                                match turbo_bit {
+                                    true => {
+                                        self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
+                                        device_events.push(DeviceEvent::TurboToggled(true));
+                                    }
+                                    false => {
+                                        self.next_cpu_factor = self.machine_desc.cpu_factor;
+                                        device_events.push(DeviceEvent::TurboToggled(false));
+                                    }
                                 }
-                                false => {
-                                    self.next_cpu_factor = self.machine_desc.cpu_factor;
-                                    device_events.push(DeviceEvent::TurboToggled(false));
-                                }
+                                log::debug!(
+                                    "Set turbo state to: {} New cpu factor is {:?}",
+                                    turbo_bit,
+                                    self.next_cpu_factor
+                                );
                             }
-                            log::debug!(
-                                "Set turbo state to: {} New cpu factor is {:?}",
-                                turbo_bit,
-                                self.next_cpu_factor
-                            );
+                            self.turbo_bit = turbo_bit;
                         }
-                        self.turbo_bit = turbo_bit;
                     }
                 }
             }

@@ -381,10 +381,13 @@ impl GuiState {
 
             ui.horizontal(|ui| {
                 if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
-                    ui.add_enabled(
-                        !self.floppy_drives[drive_idx].write_protected,
-                        egui::Button::new(format!("Save image: {}", floppy_name)),
-                    );
+                    ui.add_enabled_ui(!self.floppy_drives[drive_idx].write_protected, |ui| {
+                        if ui.button(format!("Save image: {}", floppy_name)).clicked() {
+                            if let Some(floppy_idx) = self.floppy_drives[drive_idx].selected_idx {
+                                self.event_queue.send(GuiEvent::SaveFloppy(drive_idx, floppy_idx));
+                            }
+                        }
+                    });
                 }
                 else {
                     ui.add_enabled(false, egui::Button::new("Save image: <No Disk>"));
@@ -574,12 +577,12 @@ impl GuiState {
 
     pub fn draw_status_widgets(&mut self, ui: &mut egui::Ui) {
         // Can we put stuff on the right hand side of the menu bar?
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-            ui.label("💾");
-        });
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-            ui.label("🐢");
-        });
+        // ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+        //     ui.label("💾");
+        // });
+        //
+        // ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+        //     ui.label("🐢");
+        // });
     }
 }
