@@ -625,6 +625,8 @@ pub fn run() {
         .get_main_gui_mut()
         .expect("Couldn't get main gui context!");
 
+    let machine_events = Vec::new();
+
     // Put everything we want to handle in event loop into an Emulator struct
     let mut emu = Emulator {
         rm: resource_manager,
@@ -632,6 +634,7 @@ pub fn run() {
         romm: nu_rom_manager,
         config,
         machine,
+        machine_events,
         exec_control,
         mouse_data,
         kb_data,

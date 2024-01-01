@@ -79,6 +79,7 @@ use crate::{
         cga::{self, CGACard},
         mda::{self, MDACard},
     },
+    machine::MachineCheckpoint,
     machine_config::{normalize_conventional_memory, MachineConfiguration},
     machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
     memerror::MemError,
@@ -529,6 +530,19 @@ impl BusInterface {
     pub fn set_context_timings(&self, context: &mut DeviceRunContext, cycles: u32) {
         context.delta_ticks = self.timing_table[cycles as usize].sys_ticks;
         context.delta_us = self.timing_table[cycles as usize].us;
+    }
+
+    /// Set the checkpoint bit in memory flags for all checkpoints provided.
+    pub fn install_checkpoints(&mut self, checkpoints: &Vec<MachineCheckpoint>) {
+        for checkpoint in checkpoints.iter() {
+            self.memory_mask[checkpoint.addr as usize & 0xFFFFF] |= MEM_CP_BIT;
+        }
+    }
+
+    pub fn clear_checkpoints(&mut self) {
+        for byte_ref in &mut self.memory_mask {
+            *byte_ref &= !MEM_CP_BIT;
+        }
     }
 
     pub fn set_conventional_size(&mut self, size: usize) {

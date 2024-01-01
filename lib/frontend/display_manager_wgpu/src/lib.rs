@@ -347,7 +347,7 @@ impl WgpuDisplayManagerBuilder {
         let mut card_string = String::new();
 
         if let Some(w_card_id) = resolved_def.card_id {
-            if w_card_id < cards.len() + 1 {
+            if w_card_id < cards.len() {
                 card_id_opt = Some(cards[w_card_id]);
                 card_string.push_str(&format!("{:?}", cards[w_card_id].vtype))
             }

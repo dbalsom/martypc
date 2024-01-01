@@ -45,7 +45,7 @@ use frontend_common::{
 };
 use marty_core::{
     cpu_common::CpuOption,
-    machine::{ExecutionControl, Machine, MachineState},
+    machine::{ExecutionControl, Machine, MachineEvent, MachineState},
     vhd::VirtualHardDisk,
 };
 use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
@@ -67,6 +67,7 @@ pub struct Emulator {
     pub romm: RomManager,
     pub config: ConfigFileParams,
     pub machine: Machine,
+    pub machine_events: Vec<MachineEvent>,
     pub exec_control: Rc<RefCell<ExecutionControl>>,
     pub mouse_data: MouseData,
     pub kb_data: KeyboardData,

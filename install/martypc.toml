@@ -108,6 +108,15 @@ filename = "dos330.vhd"
 #filename = "hdd1.vhd"
 
 # ----------------------------------------------------------------------------
+# Debugger Options
+# ----------------------------------------------------------------------------
+[emulator.debugger]
+# Create toast notifications for ROM checkpoints at this level.
+checkpoint_notify_level = 0
+# Create a toast notification when breakpoint hit
+breakpoint_notify = true
+
+# ----------------------------------------------------------------------------
 # Emulator Window Options
 #
 # MartyPC will always have a main window, unless run headless. The main
@@ -371,7 +380,7 @@ zoom = 1.0
 # ----------------------------------------------------------------------------
 [machine]
 # Specify the name of a machine configuration to load.
-config_name = "ibm5150_256k_hdd"
+config_name = "ibm5160_hdd"
 #config_name = "generic_xt"
 #config_name = "generic_award_xt_hdd"
 #config_name = "generic_xt_hdd"
@@ -382,7 +391,7 @@ config_name = "ibm5150_256k_hdd"
 #config_overlays = ["ega"]
 
 # Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
-prefer_oem = false
+prefer_oem = true
 
 # Don't load any ROMs if true. Default: false
 #no_roms = true

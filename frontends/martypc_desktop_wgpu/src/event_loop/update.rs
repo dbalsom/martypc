@@ -33,8 +33,8 @@ use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
-use frontend_common::constants::SHORT_NOTIFICATION_TIME;
-use marty_core::bus::DeviceEvent;
+use frontend_common::constants::{NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
+use marty_core::{bus::DeviceEvent, machine::MachineEvent};
 use videocard_renderer::RendererEvent;
 
 use crate::{
@@ -173,9 +173,11 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         }
 
         let emulation_start = Instant::now();
-        emu.stat_counter.instr_count += emu
-            .machine
-            .run(emu.stat_counter.cycle_target, &mut emu.exec_control.borrow_mut());
+        emu.stat_counter.instr_count += emu.machine.run(
+            emu.stat_counter.cycle_target,
+            &mut emu.exec_control.borrow_mut(),
+            &mut emu.machine_events,
+        );
         emu.stat_counter.emulation_time = Instant::now() - emulation_start;
 
         // Add instructions to IPS counter
@@ -261,6 +263,36 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         );
         */
 
+        // Drain machine events
+        while let Some(event) = emu.machine_events.pop() {
+            match event {
+                MachineEvent::CheckpointHit(checkpoint, pri) => {
+                    log::info!(
+                        "CHECKPOINT: {}",
+                        emu.machine
+                            .get_checkpoint_string(checkpoint)
+                            .unwrap_or("ERROR".to_string())
+                    );
+
+                    if let Some(pri_level) = emu.config.emulator.debugger.checkpoint_notify_level {
+                        if pri <= pri_level {
+                            // Send notification
+
+                            emu.gui
+                                .toasts()
+                                .info(format!(
+                                    "CHECKPOINT: {}",
+                                    emu.machine
+                                        .get_checkpoint_string(checkpoint)
+                                        .unwrap_or("ERROR".to_string())
+                                ))
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                    }
+                }
+            }
+        }
+
         // Do per-frame updates (Serial port emulation)
         let events = emu.machine.frame_update();
         for event in events {
@@ -310,7 +342,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
                     RendererEvent::ScreenshotSaved => {
                         emu.gui
                             .toasts()
-                            .info(format!("Screenshot saved!"))
+                            .info("Screenshot saved!".to_string())
                             .set_duration(Some(Duration::from_secs(5)));
                     }
                 }

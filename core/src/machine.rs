@@ -38,7 +38,7 @@ use log;
 use anyhow::{anyhow, Error};
 use std::{
     cell::Cell,
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
@@ -82,6 +82,11 @@ pub struct KeybufferEntry {
     pub pressed:   bool,
     pub modifiers: KeyboardModifiers,
     pub translate: bool,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum MachineEvent {
+    CheckpointHit(usize, u32),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -217,6 +222,7 @@ pub struct MachineRomEntry {
 #[derive(Clone, Default, Debug)]
 pub struct MachineCheckpoint {
     pub addr: u32,
+    pub lvl:  u32,
     pub desc: String,
 }
 
@@ -237,6 +243,20 @@ pub struct MachineRomManifest {
 impl MachineRomManifest {
     pub fn new() -> Self {
         Default::default()
+    }
+    pub fn checkpoint_map(&self) -> HashMap<u32, usize> {
+        let mut map = HashMap::new();
+        for (idx, cp) in self.checkpoints.iter().enumerate() {
+            map.insert(cp.addr, idx);
+        }
+        map
+    }
+    pub fn patch_map(&self) -> HashMap<u32, usize> {
+        let mut map = HashMap::new();
+        for (idx, patch) in self.patches.iter().enumerate() {
+            map.insert(patch.trigger, idx);
+        }
+        map
     }
 }
 
@@ -337,6 +357,8 @@ pub struct Machine {
     cpu_cycles: u64,
     system_ticks: u64,
     reset_callback: Option<MachineResetCallback>,
+    checkpoint_map: HashMap<u32, usize>,
+    patch_map: HashMap<u32, usize>,
 }
 
 impl Machine {
@@ -492,6 +514,7 @@ impl Machine {
 
             // Load checkpoint flags into memory
             //rom_manager.install_checkpoints(cpu.bus_mut());
+            cpu.bus_mut().install_checkpoints(&rom_manifest.checkpoints);
 
             // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
 
@@ -510,6 +533,9 @@ impl Machine {
 
         cpu.emit_header();
         cpu.reset();
+
+        let checkpoint_map = rom_manifest.checkpoint_map();
+        let patch_map = rom_manifest.patch_map();
 
         Machine {
             machine_type,
@@ -532,6 +558,8 @@ impl Machine {
             cpu_cycles: 0,
             system_ticks: 0,
             reset_callback,
+            checkpoint_map,
+            patch_map,
         }
     }
 
@@ -900,7 +928,21 @@ impl Machine {
         }
     }
 
-    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) -> u64 {
+    pub fn get_checkpoint_string(&self, idx: usize) -> Option<String> {
+        if idx < self.rom_manifest.checkpoints.len() {
+            Some(self.rom_manifest.checkpoints[idx].desc.clone())
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn run(
+        &mut self,
+        cycle_target: u32,
+        exec_control: &mut ExecutionControl,
+        machine_events: &mut Vec<MachineEvent>,
+    ) -> u64 {
         let mut kb_event_processed = false;
         let mut skip_breakpoint = false;
         let mut instr_count = 0;
@@ -1023,6 +1065,16 @@ impl Machine {
 
             // Match checkpoints
             if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
+                if let Some(cp) = self.checkpoint_map.get(&flat_address) {
+                    log::debug!(
+                        "ROM CHECKPOINT: [{:05X}] {}",
+                        flat_address,
+                        self.rom_manifest.checkpoints[*cp].desc
+                    );
+
+                    machine_events.push(MachineEvent::CheckpointHit(*cp, self.rom_manifest.checkpoints[*cp].lvl));
+                }
+
                 /*
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
                     log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);

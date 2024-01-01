@@ -111,6 +111,13 @@ pub struct Audio {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Debugger {
+    pub checkpoint_notify_level: Option<u32>,
+    #[serde(default)]
+    pub breakpoint_notify: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Emulator {
     pub basedir: PathBuf,
     pub paths: Vec<PathConfigItem>,
@@ -136,6 +143,7 @@ pub struct Emulator {
     #[serde(default)]
     pub debug_keyboard: bool,
     pub media: Media,
+    pub debugger: Debugger,
     pub audio: Audio,
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,

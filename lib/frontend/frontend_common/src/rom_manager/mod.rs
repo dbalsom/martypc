@@ -31,7 +31,7 @@
 
 use crate::resource_manager::ResourceManager;
 use anyhow::Error;
-use marty_core::machine::{MachineRomEntry, MachineRomManifest};
+use marty_core::machine::{MachineCheckpoint, MachineRomEntry, MachineRomManifest};
 use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
@@ -106,6 +106,7 @@ pub struct RomPatch {
 #[derive(Clone, Debug, Deserialize)]
 pub struct RomCheckpoint {
     addr: u32,
+    lvl:  u32,
     desc: String,
 }
 
@@ -204,7 +205,7 @@ impl RomManager {
         let toml_defs: Vec<_> = items
             .iter()
             .filter_map(|item| {
-                log::debug!("item: {:?}", item.full_path);
+                //log::debug!("item: {:?}", item.full_path);
                 if item.full_path.extension().is_some_and(|ext| ext == "toml") {
                     return Some(item);
                 }
@@ -236,7 +237,13 @@ impl RomManager {
         let toml_str = std::fs::read_to_string(toml_path)?;
         let romdef = toml::from_str::<RomDefinitionFile>(&toml_str)?;
 
-        log::debug!("Rom definition file loaded: {:?}", toml_path);
+        log::debug!(
+            "Rom definition file loaded: {:?} ROMS: {} Checkpoints: {} Patches: {}",
+            toml_path,
+            romdef.romset.len(),
+            romdef.romset.iter().filter(|r| r.checkpoint.is_some()).count(),
+            romdef.romset.iter().filter(|r| r.patch.is_some()).count()
+        );
         Ok(romdef)
     }
 
@@ -834,6 +841,18 @@ impl RomManager {
                             rom_desc.md5.as_ref().unwrap()
                         ))
                     }
+                }
+            }
+
+            // Add checkpoints to manifest
+            if let Some(checkpoints) = &rom_set_def.checkpoint {
+                for checkpoint in checkpoints.iter() {
+                    let new_checkpoint = MachineCheckpoint {
+                        addr: checkpoint.addr,
+                        lvl:  checkpoint.lvl,
+                        desc: checkpoint.desc.clone(),
+                    };
+                    new_manifest.checkpoints.push(new_checkpoint);
                 }
             }
         }
