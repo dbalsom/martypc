@@ -1423,15 +1423,15 @@ impl BusInterface {
 
         // Set the expansion rom flag for DIP if there is anything besides a video card
         // that needs an expansion ROM.
-        let mut have_expansion = { machine_config.hdc.is_some() };
-        have_expansion = false;
+        //let mut have_expansion = { machine_config.hdc.is_some() };
+        //have_expansion = false;
 
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
             self.ppi = Some(Ppi::new(
                 machine_desc.machine_type,
                 conventional_memory,
-                have_expansion,
+                false,
                 video_types,
                 num_floppies,
             ));
