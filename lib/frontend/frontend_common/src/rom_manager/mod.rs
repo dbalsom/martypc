@@ -811,7 +811,8 @@ impl RomManager {
                             md5:  rom_desc.md5.clone().unwrap(),
                             addr: rom_desc.addr,
                             data: rom_vec,
-                        })
+                        });
+                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     Some(RomOrganization::Reversed) => {
                         rom_vec.reverse();
@@ -832,7 +833,8 @@ impl RomManager {
                             md5:  rom_desc.md5.clone().unwrap(),
                             addr: rom_desc.addr,
                             data: rom_vec,
-                        })
+                        });
+                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     _ => {
                         return Err(anyhow::anyhow!(

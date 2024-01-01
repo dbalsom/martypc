@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
-use frontend_common::constants::{NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
+use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
 use marty_core::{bus::DeviceEvent, machine::MachineEvent};
 use videocard_renderer::RendererEvent;
 
@@ -173,11 +173,9 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         }
 
         let emulation_start = Instant::now();
-        emu.stat_counter.instr_count += emu.machine.run(
-            emu.stat_counter.cycle_target,
-            &mut emu.exec_control.borrow_mut(),
-            &mut emu.machine_events,
-        );
+        emu.stat_counter.instr_count += emu
+            .machine
+            .run(emu.stat_counter.cycle_target, &mut emu.exec_control.borrow_mut());
         emu.stat_counter.emulation_time = Instant::now() - emulation_start;
 
         // Add instructions to IPS counter
@@ -264,7 +262,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         */
 
         // Drain machine events
-        while let Some(event) = emu.machine_events.pop() {
+        while let Some(event) = emu.machine.get_event() {
             match event {
                 MachineEvent::CheckpointHit(checkpoint, pri) => {
                     log::info!(
@@ -287,6 +285,41 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
                                         .unwrap_or("ERROR".to_string())
                                 ))
                                 .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                    }
+                }
+                MachineEvent::Reset => {
+                    // Send notification
+                    emu.gui
+                        .toasts()
+                        .info("Machine reset!".to_string())
+                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                    if emu.config.machine.reload_roms {
+                        // Reload ROMs from the saved list of ROM sets.
+                        match emu.romm.create_manifest(emu.romsets.clone(), &emu.rm) {
+                            Ok(manifest) => match emu.machine.reinstall_roms(manifest) {
+                                Ok(_) => {
+                                    emu.gui
+                                        .toasts()
+                                        .info("ROMs reloaded!".to_string())
+                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                                Err(err) => {
+                                    log::error!("Error reloading ROMs: {}", err);
+                                    emu.gui
+                                        .toasts()
+                                        .error(format!("Failed to reload ROMs: {}", err))
+                                        .set_duration(Some(LONG_NOTIFICATION_TIME));
+                                }
+                            },
+                            Err(err) => {
+                                log::error!("Error creating ROM manifest: {}", err);
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Failed to reload ROMs: {}", err))
+                                    .set_duration(Some(LONG_NOTIFICATION_TIME));
+                            }
                         }
                     }
                 }

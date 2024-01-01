@@ -356,6 +356,7 @@ aspect_ratio = { h=4, v=3 }
 # Valid values are:
 #  - DefaultLight : default EGUI Light theme
 #  - Lilac        : light theme variant
+#  - Hal          : light theme variant
 #  - DefaultDark  : default EGUI Dark theme (recommended)
 #  - Purple       : dark theme variant
 #  - Cobalt       : dark theme variant
@@ -391,7 +392,10 @@ config_name = "ibm5160_hdd"
 #config_overlays = ["ega"]
 
 # Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
-prefer_oem = true
+prefer_oem = false
+
+# Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
+reload_roms = true
 
 # Don't load any ROMs if true. Default: false
 #no_roms = true

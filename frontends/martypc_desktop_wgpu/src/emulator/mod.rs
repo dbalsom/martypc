@@ -65,6 +65,7 @@ pub struct Emulator {
     pub rm: ResourceManager,
     pub dm: WgpuDisplayManager,
     pub romm: RomManager,
+    pub romsets: Vec<String>,
     pub config: ConfigFileParams,
     pub machine: Machine,
     pub machine_events: Vec<MachineEvent>,
@@ -419,6 +420,7 @@ impl Emulator {
         // Set hard drives.
         self.gui.set_hdds(self.machine.bus().hdd_ct());
     }
+
     pub fn start(&mut self) {
         self.machine.play_sound_buffer();
     }

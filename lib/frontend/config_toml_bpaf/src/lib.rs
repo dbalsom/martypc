@@ -212,6 +212,8 @@ pub struct Machine {
     pub prefer_oem: bool,
     //pub model: MachineType,
     #[serde(default)]
+    pub reload_roms: bool,
+    #[serde(default)]
     pub no_roms: bool,
     #[serde(default)]
     pub raw_rom: bool,

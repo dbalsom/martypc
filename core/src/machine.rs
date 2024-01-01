@@ -87,6 +87,7 @@ pub struct KeybufferEntry {
 #[derive(Copy, Clone, Debug)]
 pub enum MachineEvent {
     CheckpointHit(usize, u32),
+    Reset,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -238,6 +239,7 @@ pub struct MachineRomManifest {
     pub checkpoints: Vec<MachineCheckpoint>,
     pub patches: Vec<MachinePatch>,
     pub roms: Vec<MachineRomEntry>,
+    pub rom_paths: Vec<PathBuf>,
 }
 
 impl MachineRomManifest {
@@ -260,8 +262,6 @@ impl MachineRomManifest {
     }
 }
 
-pub type MachineResetCallback = Box<dyn Fn(&mut MachineRomManifest)>;
-
 #[derive(Default)]
 pub struct MachineBuilder<'a> {
     mtype: Option<MachineType>,
@@ -271,7 +271,6 @@ pub struct MachineBuilder<'a> {
     rom_manifest: Option<MachineRomManifest>,
     trace_mode: TraceMode,
     sound_player: Option<SoundPlayer>,
-    reset_callback: Option<MachineResetCallback>,
 }
 
 impl<'a> MachineBuilder<'a> {
@@ -308,11 +307,6 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn with_reload_callback(mut self, callback: Option<MachineResetCallback>) -> Self {
-        self.reset_callback = callback;
-        self
-    }
-
     pub fn build(self) -> Result<Machine, Error> {
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
         let machine_config = self
@@ -330,7 +324,6 @@ impl<'a> MachineBuilder<'a> {
             self.trace_mode,
             self.sound_player,
             rom_manifest,
-            self.reset_callback,
         ))
     }
 }
@@ -356,9 +349,9 @@ pub struct Machine {
     next_cpu_factor: ClockFactor,
     cpu_cycles: u64,
     system_ticks: u64,
-    reset_callback: Option<MachineResetCallback>,
     checkpoint_map: HashMap<u32, usize>,
     patch_map: HashMap<u32, usize>,
+    events: Vec<MachineEvent>,
 }
 
 impl Machine {
@@ -370,7 +363,6 @@ impl Machine {
         trace_mode: TraceMode,
         sound_player: Option<SoundPlayer>,
         rom_manifest: MachineRomManifest,
-        reset_callback: Option<MachineResetCallback>,
         //rom_manager: RomManager,
     ) -> Machine {
         //let mut io_bus = IoBusInterface::new();
@@ -557,9 +549,9 @@ impl Machine {
             next_cpu_factor: cpu_factor,
             cpu_cycles: 0,
             system_ticks: 0,
-            reset_callback,
             checkpoint_map,
             patch_map,
+            events: Vec::new(),
         }
     }
 
@@ -574,6 +566,23 @@ impl Machine {
                 }
             }
         }
+    }
+
+    pub fn reinstall_roms(&mut self, rom_manifest: MachineRomManifest) -> Result<(), Error> {
+        for rom in rom_manifest.roms.iter() {
+            match self.cpu.bus_mut().copy_from(&rom.data, rom.addr as usize, 0, true) {
+                Ok(_) => {
+                    log::debug!("Mounted rom at location {:06X}", rom.addr);
+                }
+                Err(e) => {
+                    log::debug!("Failed to mount rom at location {:06X}: {}", rom.addr, e);
+                    return Err(anyhow!("Failed to mount rom at location {:06X}: {}", rom.addr, e));
+                }
+            }
+        }
+
+        self.rom_manifest = rom_manifest;
+        Ok(())
     }
 
     pub fn change_state(&mut self, new_state: MachineState) {
@@ -606,6 +615,10 @@ impl Machine {
 
     pub fn get_state(&self) -> MachineState {
         self.state
+    }
+
+    pub fn get_event(&mut self) -> Option<MachineEvent> {
+        self.events.pop()
     }
 
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
@@ -877,12 +890,6 @@ impl Machine {
         // Clear RAM
         self.cpu.bus_mut().clear();
 
-        // Call the reset callback - this gives the front end an opportunity to reload
-        // ROMs specified for hot reloading
-        if let Some(cb) = &self.reset_callback {
-            cb(&mut self.rom_manifest);
-        }
-
         // Reload BIOS ROM images
         if self.load_bios {
             Machine::install_roms(self.cpu.bus_mut(), &self.rom_manifest);
@@ -893,6 +900,7 @@ impl Machine {
 
         // Reset all installed devices.
         self.cpu.bus_mut().reset_devices();
+        self.events.push(MachineEvent::Reset);
     }
 
     #[inline]
@@ -937,12 +945,7 @@ impl Machine {
         }
     }
 
-    pub fn run(
-        &mut self,
-        cycle_target: u32,
-        exec_control: &mut ExecutionControl,
-        machine_events: &mut Vec<MachineEvent>,
-    ) -> u64 {
+    pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) -> u64 {
         let mut kb_event_processed = false;
         let mut skip_breakpoint = false;
         let mut instr_count = 0;
@@ -1072,7 +1075,8 @@ impl Machine {
                         self.rom_manifest.checkpoints[*cp].desc
                     );
 
-                    machine_events.push(MachineEvent::CheckpointHit(*cp, self.rom_manifest.checkpoints[*cp].lvl));
+                    self.events
+                        .push(MachineEvent::CheckpointHit(*cp, self.rom_manifest.checkpoints[*cp].lvl));
                 }
 
                 /*

@@ -38,7 +38,6 @@ use marty_core::{
     machine,
     syntax_token::SyntaxToken,
     util,
-    vhd::VirtualHardDisk,
 };
 use marty_egui::{GuiWindow, PerformanceStats};
 

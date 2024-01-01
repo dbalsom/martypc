@@ -411,7 +411,7 @@ pub fn run() {
 
     // Create the ROM manifest
     let rom_manifest = nu_rom_manager
-        .create_manifest(rom_sets_resolved, &resource_manager)
+        .create_manifest(rom_sets_resolved.clone(), &resource_manager)
         .unwrap_or_else(|err| {
             eprintln!("Error loading ROM set: {}", err);
             std::process::exit(1);
@@ -632,7 +632,8 @@ pub fn run() {
         rm: resource_manager,
         dm: display_manager,
         romm: nu_rom_manager,
-        config,
+        romsets: rom_sets_resolved.clone(),
+        config: config,
         machine,
         machine_events,
         exec_control,
@@ -696,4 +697,6 @@ pub fn run() {
         log::error!("Failed to start event loop!");
         std::process::exit(1);
     }
+
+    std::process::exit(0);
 }

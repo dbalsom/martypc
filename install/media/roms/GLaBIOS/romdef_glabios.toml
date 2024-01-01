@@ -13,7 +13,6 @@ oem_for = ["glabios_pc"]
 rom = [
     { filename = "GLABIOS_0.2.5_8PC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
 
 [[romset]]
 alias = "glabios_xt_0.2.5"
@@ -24,7 +23,6 @@ oem_for = ["glabios_xt"]
 rom = [
     { filename = "GLABIOS_0.2.5_8XC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
 
 [[romset]]
 alias = "glabios_xt_0.2.5_lp"
@@ -35,8 +33,6 @@ oem_for = ["glabios_xt"]
 rom = [
     { filename = "GLABIOS_0.2.5_8TC_PEN.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
-
 
 [[romset]]
 alias = "glabios_pc_0.2.6"
@@ -47,8 +43,6 @@ oem_for = ["glabios_pc"]
 rom = [
     { filename = "GLABIOS_0.2.6_8P.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
-
 
 [[romset]]
 alias = "glabios_xt_0.2.6"
@@ -59,8 +53,6 @@ oem_for = ["glabios_xt"]
 rom = [
     { filename = "GLABIOS_0.2.6_8X.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
-
 
 [[romset]]
 alias = "glabios_pc"
@@ -71,8 +63,6 @@ oem_for = ["glabios_pc"]
 rom = [
     { filename = "GLABIOS_0.2.6_8PC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
-
 
 [[romset]]
 alias = "glabios_xt"
@@ -83,15 +73,13 @@ oem_for = ["glabios_xt"]
 rom = [
     { filename = "GLABIOS_0.2.6_8XC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
 
 [[romset]]
 alias = "glabios_xt_turbo"
 desc = "GLaBIOS 0.2.6 for Generic Turbo XT (MartyPC)"
-priority = 15
+priority = 0
 provides = ["bios", "ibm5160", "expansion"]
 oem_for = ["glabios_xt"]
 rom = [
     { filename = "GLABIOS_0.2.6_8TC.ROM", addr = 0xFE000, size = 8192, chip = "glabios" }
 ]
-reload = true
