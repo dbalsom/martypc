@@ -105,6 +105,7 @@ pub struct VideoParams {
     pub line_double: bool,       // Whether to double rows when rendering into the internal buffer.
     pub aspect_correction: AspectCorrectionMode, // Determines how to handle aspect correction.
     pub aperture: DisplayApertureType, // Selected display aperture for renderer
+    pub debug_aperture: bool,
     pub composite_params: CompositeParams, // Parameters used for composite emulation.
     pub bpp: RenderBpp,
 }
@@ -119,6 +120,7 @@ impl Default for VideoParams {
             line_double: false,
             aspect_correction: AspectCorrectionMode::None,
             aperture: DisplayApertureType::Cropped,
+            debug_aperture: false,
             composite_params: Default::default(),
             bpp: Default::default(),
         }
@@ -323,6 +325,10 @@ impl VideoRenderer {
         log::debug!("Setting renderer aperture to {:?}", aperture);
         self.params.aperture = aperture;
         self.aperture_dirty = true;
+    }
+
+    pub fn set_debug(&mut self, state: bool) {
+        self.params.debug_aperture = state;
     }
 
     pub fn set_line_double(&mut self, state: bool) {

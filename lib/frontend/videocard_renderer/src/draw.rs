@@ -527,10 +527,19 @@ impl VideoRenderer {
         w: u32,
         h: u32,
         dbuf: &[u8],
-        aperture: DisplayApertureType,
+        aperture_type: DisplayApertureType,
         extents: &DisplayExtents,
     ) {
-        let aperture = &extents.apertures[aperture as usize];
+        let index_mask = if let DisplayApertureType::Debug = aperture_type {
+            // Allow all 16 colors for debug drawing
+            0x0F
+        }
+        else {
+            // Limit to 4 colors.
+            0x03
+        };
+
+        let aperture = &extents.apertures[aperture_type as usize];
 
         let mut horiz_adjust = aperture.x;
         let mut vert_adjust = aperture.y;
@@ -553,7 +562,7 @@ impl VideoRenderer {
             for x in 0..max_x {
                 let fo0 = frame_row0_offset + x as usize;
                 let dbo = dbuf_row_offset + (x + horiz_adjust) as usize;
-                frame_u32[fo0] = MDA_RGBA_COLORS_U32[(dbuf[dbo] & 0x0F) as usize];
+                frame_u32[fo0] = MDA_RGBA_COLORS_U32[(dbuf[dbo] & index_mask) as usize];
             }
         }
     }

@@ -199,12 +199,9 @@ const CGA_PALETTES: [[u8; 4]; 6] = [
     [0, 11, 12, 15], // Red / Cyan / White High Intensity
 ];
 
-const CGA_DEBUG_COLOR: u8 = CgaColor::Magenta as u8;
-const CGA_DEBUG2_COLOR: u8 = CgaColor::RedBright as u8;
-const CGA_HBLANK_DEBUG_COLOR: u8 = CgaColor::BlueBright as u8;
-const CGA_VBLANK_DEBUG_COLOR: u8 = CgaColor::Yellow as u8;
-const CGA_DISABLE_DEBUG_COLOR: u8 = CgaColor::Green as u8;
-const CGA_OVERSCAN_DEBUG_COLOR: u8 = CgaColor::Green as u8;
+const MDA_DEBUG_COLOR: u8 = 12;
+const MDA_HBLANK_DEBUG_COLOR: u8 = 8;
+const MDA_VBLANK_DEBUG_COLOR: u8 = 4;
 
 /*
 const CGA_FILL_COLOR: u8 = 4;
@@ -500,6 +497,8 @@ pub struct MDACard {
 
     lpt_port_base: u16,
     lpt: Option<ParallelPort>,
+
+    tmp_color: u8,
 }
 
 #[derive(Debug)]
@@ -664,6 +663,8 @@ impl Default for MDACard {
 
             lpt_port_base: LPT_DEFAULT_IO_BASE,
             lpt: None,
+
+            tmp_color: 0,
         }
     }
 }
@@ -1012,27 +1013,27 @@ impl MDACard {
 
         // Only draw if render address is within display field
         if self.rba < (MDA_MAX_CLOCK - MDA_CHAR_CLOCK as usize) {
-            if true || self.crtc.den() {
+            if self.crtc.den() {
                 self.draw_text_mode_hchar_slow();
             }
             else if self.crtc.hblank() {
                 // Draw hblank in debug color
                 if self.debug_draw {
-                    self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
+                    self.draw_solid_hchar(MDA_HBLANK_DEBUG_COLOR);
                 }
             }
             else if self.crtc.vblank() {
                 // Draw vblank in debug color
                 if self.debug_draw {
-                    self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
+                    self.draw_solid_hchar(MDA_VBLANK_DEBUG_COLOR);
                 }
             }
             else if self.crtc.border() {
                 // Draw overscan
-                self.draw_solid_hchar(self.cc_overscan_color);
+                self.draw_solid_hchar(0);
             }
             else {
-                self.draw_solid_hchar(CGA_DEBUG2_COLOR);
+                self.draw_solid_hchar(MDA_DEBUG_COLOR);
             }
         }
 
@@ -1059,11 +1060,7 @@ impl MDACard {
         }
          */
 
-        //self.tick_crtc_char();
-
         self.handle_crtc_tick();
-
-        //self.update_clock();
     }
 
     /// Handle the CRTC status after ticking.
@@ -1102,7 +1099,7 @@ impl MDACard {
         let saved_rba = self.rba;
 
         if self.rba < (MDA_MAX_CLOCK - self.clock_divisor as usize) {
-            self.draw_pixel(CGA_DEBUG_COLOR);
+            self.draw_pixel(MDA_DEBUG_COLOR);
         }
 
         // Update position to next pixel and character column.
@@ -1155,28 +1152,22 @@ impl MDACard {
             else if self.crtc.hblank() {
                 // Draw hblank in debug color
                 if self.debug_draw {
-                    self.buf[self.back_buf][self.rba] = CGA_HBLANK_DEBUG_COLOR;
+                    self.buf[self.back_buf][self.rba] = MDA_HBLANK_DEBUG_COLOR;
                 }
             }
             else if self.crtc.vblank() {
                 // Draw vblank in debug color
                 if self.debug_draw {
-                    self.buf[self.back_buf][self.rba] = CGA_VBLANK_DEBUG_COLOR;
+                    self.buf[self.back_buf][self.rba] = MDA_VBLANK_DEBUG_COLOR;
                 }
             }
             else if self.crtc.border() {
                 // Draw overscan
-                if self.debug_draw {
-                    //self.draw_pixel(CGA_OVERSCAN_COLOR);
-                    self.draw_pixel(CGA_OVERSCAN_DEBUG_COLOR);
-                }
-                else {
-                    self.draw_overscan_pixel();
-                }
+                self.draw_overscan_pixel();
             }
             else {
                 //log::warn!("tick(): invalid display state...");
-                self.draw_pixel(CGA_DEBUG2_COLOR);
+                self.draw_pixel(MDA_DEBUG_COLOR);
             }
         }
 
@@ -1255,6 +1246,8 @@ impl MDACard {
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
+
+        self.tmp_color = (self.tmp_color + 1) & 0x0F;
 
         if self.cycles_per_vsync > 400000 {
             log::warn!(

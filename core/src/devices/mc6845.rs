@@ -533,11 +533,11 @@ impl Crtc6845 {
                     // If we are in vblank, advance Vertical Sync Counter
                     self.vsc_c3h += 1;
                     if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
-                        // We are leaving vblank period. Call the vsync callback to generate a frame.
+                        // We are leaving vblank period. Return a vsync status of true to generate a vsync
                         self.in_last_vblank_line = true;
                         self.vsc_c3h = 0;
                         self.status.vsync = true;
-                        return (&self.status, self.vma);
+                        //return (&self.status, self.vma);
                     }
                 }
 
