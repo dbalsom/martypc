@@ -38,6 +38,7 @@ pub enum MartyGuiTheme {
     #[default]
     DefaultDark,
     Lilac,
+    Hal,
     Purple,
     Cobalt,
 }

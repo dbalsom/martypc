@@ -31,10 +31,11 @@
 */
 
 mod cobalt;
+mod hal;
 mod lilac;
 mod purple;
 
-use crate::themes::{cobalt::CobaltTheme, lilac::LilacTheme, purple::DarkTintedTheme};
+use crate::themes::{cobalt::CobaltTheme, hal::HalTheme, lilac::LilacTheme, purple::DarkTintedTheme};
 use egui::Visuals;
 use frontend_common::MartyGuiTheme;
 
@@ -53,6 +54,7 @@ pub fn make_theme(theme: MartyGuiTheme) -> Box<dyn GuiTheme> {
         MartyGuiTheme::DefaultLight => Box::new(DefaultLightTheme::new()),
         MartyGuiTheme::DefaultDark => Box::new(DefaultDarkTheme::new()),
         MartyGuiTheme::Lilac => Box::new(LilacTheme::new()),
+        MartyGuiTheme::Hal => Box::new(HalTheme::new()),
         MartyGuiTheme::Purple => Box::new(DarkTintedTheme::purple()),
         MartyGuiTheme::Cobalt => Box::new(CobaltTheme::new()),
     }
