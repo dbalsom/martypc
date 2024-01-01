@@ -292,17 +292,18 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         //framework.gui.update_disassembly_view(disassembly_string);
         emu.gui.disassembly_viewer.set_content(listview_vec);
+    }
 
-        if emu.gui.is_window_open(GuiWindow::TextModeViewer) {
-            emu.dm.for_each_card(|vid| {
-                emu.gui.text_mode_viewer.set_content(
-                    vid.idx,
-                    emu.machine
-                        .bus()
-                        .video(vid)
-                        .map_or(Vec::new(), |v| v.get_text_mode_strings()),
-                );
-            });
-        }
+    // Update text mode viewer.
+    if emu.gui.is_window_open(GuiWindow::TextModeViewer) {
+        emu.dm.for_each_card(|vid| {
+            emu.gui.text_mode_viewer.set_content(
+                vid.idx,
+                emu.machine
+                    .bus()
+                    .video(vid)
+                    .map_or(Vec::new(), |v| v.get_text_mode_strings()),
+            );
+        });
     }
 }
