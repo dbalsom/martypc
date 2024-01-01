@@ -77,7 +77,7 @@ rom = [
 [[romset]]
 alias = "glabios_xt_turbo"
 desc = "GLaBIOS 0.2.6 for Generic Turbo XT (MartyPC)"
-priority = 0
+priority = 15
 provides = ["bios", "ibm5160", "expansion"]
 oem_for = ["glabios_xt"]
 rom = [
