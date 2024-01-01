@@ -418,7 +418,10 @@ impl Ppi {
         match self.machine_type {
             MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => false,
             MachineType::Ibm5160 => self.pb_byte & PORTB_SW2_SELECT != 0,
-            _ => panic!("turbo_bit(): Machine type has no PPI!"),
+            _ => {
+                log::error!("turbo_bit(): Machine type has no PPI!");
+                false
+            }
         }
     }
 
