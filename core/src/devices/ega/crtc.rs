@@ -321,7 +321,7 @@ impl EGACard {
         self.cur_char = self.planes[0].buf[addr];
         self.cur_attr = self.planes[0].buf[addr + 1];
 
-        self.cur_fg = self.cur_attr & 0x0F;
+        self.cur_fg = self.attribute_palette_registers[(self.cur_attr & 0x0F) as usize].four_to_six;
 
         // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors
         // are available.

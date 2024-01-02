@@ -496,6 +496,11 @@ const EGA14_APERTURE_CROPPED_H: u32 = 200;
 const EGA14_APERTURE_CROPPED_X: u32 = 96;
 const EGA14_APERTURE_CROPPED_Y: u32 = 4;
 
+const EGA14_APERTURE_ACCURATE_W: u32 = 704;
+const EGA14_APERTURE_ACCURATE_H: u32 = 224;
+const EGA14_APERTURE_ACCURATE_X: u32 = 48;
+const EGA14_APERTURE_ACCURATE_Y: u32 = 0;
+
 const EGA14_APERTURE_FULL_W: u32 = 768;
 const EGA14_APERTURE_FULL_H: u32 = 236;
 const EGA14_APERTURE_FULL_X: u32 = 48;
@@ -522,10 +527,10 @@ const EGA_APERTURES: [[DisplayAperture; 4]; 2] = [
         },
         // 14Mhz ACCURATE aperture
         DisplayAperture {
-            w: EGA14_APERTURE_CROPPED_W,
-            h: EGA14_APERTURE_CROPPED_H,
-            x: EGA14_APERTURE_CROPPED_X,
-            y: EGA14_APERTURE_CROPPED_Y,
+            w: EGA14_APERTURE_ACCURATE_W,
+            h: EGA14_APERTURE_ACCURATE_H,
+            x: EGA14_APERTURE_ACCURATE_X,
+            y: EGA14_APERTURE_ACCURATE_Y,
             debug: false,
         },
         // 14Mhz FULL aperture
@@ -554,12 +559,12 @@ const EGA_APERTURES: [[DisplayAperture; 4]; 2] = [
             y: EGA16_APERTURE_CROPPED_Y,
             debug: false,
         },
-        // 14Mhz ACCURATE aperture
+        // 16Mhz ACCURATE aperture
         DisplayAperture {
-            w: EGA14_APERTURE_CROPPED_W,
-            h: EGA14_APERTURE_CROPPED_H,
-            x: EGA14_APERTURE_CROPPED_X,
-            y: EGA14_APERTURE_CROPPED_Y,
+            w: EGA16_APERTURE_CROPPED_W,
+            h: EGA16_APERTURE_CROPPED_H,
+            x: EGA16_APERTURE_CROPPED_X,
+            y: EGA16_APERTURE_CROPPED_Y,
             debug: false,
         },
         // 16Mhz FULL aperture
@@ -570,7 +575,7 @@ const EGA_APERTURES: [[DisplayAperture; 4]; 2] = [
             y: EGA16_APERTURE_FULL_Y,
             debug: false,
         },
-        // 14Mhz DEBUG aperture
+        // 16Mhz DEBUG aperture
         DisplayAperture {
             w: EGA16_MAX_RASTER_X,
             h: EGA16_MAX_RASTER_Y,
@@ -1462,7 +1467,7 @@ impl EGACard {
                     self.draw_solid_hchar_6bpp(EgaDefaultColor6Bpp::Green as u8);
                 }
                 else {
-                    self.draw_solid_hchar_6bpp(0);
+                    self.draw_solid_hchar_6bpp(self.attribute_overscan_color.into_bytes()[0]);
                 }
             }
             else {
@@ -1539,7 +1544,7 @@ impl EGACard {
                     self.draw_solid_lchar(EgaDefaultColor6Bpp::Green as u8);
                 }
                 else {
-                    self.draw_solid_lchar(0);
+                    self.draw_solid_lchar_6bpp(self.attribute_overscan_color.into_bytes()[0]);
                 }
             }
             else {

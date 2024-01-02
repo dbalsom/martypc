@@ -67,7 +67,7 @@ impl EGACard {
     pub fn draw_solid_lchar_6bpp(&mut self, color: u8) {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
-        let attr_color = EGA_COLORS_6BPP_U64[self.attribute_palette_registers[(color & 0x3F) as usize].six as usize];
+        let attr_color = EGA_COLORS_6BPP_U64[self.attribute_palette_registers[(color & 0x0F) as usize].six as usize];
         frame_u64[self.rba >> 3] = attr_color;
         frame_u64[(self.rba >> 3) + 1] = attr_color;
     }
