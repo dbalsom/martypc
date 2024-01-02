@@ -307,6 +307,7 @@ impl Crtc6845 {
             CrtcRegister::MaximumScanlineAddress => {
                 // (R9) 5 bit write only
                 self.reg[9] = byte & 0x1F;
+                self.update_cursor_data();
             }
             CrtcRegister::CursorStartLine => {
                 // (R10) 7 bit bitfield. Write only.
@@ -410,10 +411,16 @@ impl Crtc6845 {
         self.cursor_address = (self.reg[14] as u16) << 8 | self.reg[15] as u16
     }
 
-    /// Update the cursor data array based on the values of cursor_start_line and cursor_end_line.
+    /// Update the cursor data array based on the values of R9, R10 and R11.
     fn update_cursor_data(&mut self) {
         // Reset cursor data to 0.
         self.cursor_data.fill(false);
+
+        if self.reg[10] > self.reg[9] {
+            // R10 CursorStartLine must be hit during row scan-out to start drawing a cursor.
+            // Therefore if R10 is > R9, the cursor will never be drawn.
+            return;
+        }
 
         if self.reg[10] <= self.reg[11] {
             // Normal cursor definition. Cursor runs from R10 CursorStartLine to R11 CursorEndLine

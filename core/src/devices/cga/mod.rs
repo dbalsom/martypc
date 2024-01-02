@@ -901,10 +901,17 @@ impl CGACard {
         (self.crtc_cursor_start_line, self.crtc_cursor_end_line)
     }
 
-    /// Update the cursor data array based on the values of cursor_start_line and cursor_end_line.
+    /// Update the cursor data array based on the values of cursor_start_line, cursor_end_line, and
+    /// crtc_maximum_scanline_address.
     fn update_cursor_data(&mut self) {
         // Reset cursor data to 0.
         self.cursor_data.fill(false);
+
+        // Start line must be reached when iterating through character rows to draw a cursor at all.
+        // Therefore if start_line > maximum_scanline, the cursor is disabled.
+        if self.crtc_cursor_start_line > self.crtc_maximum_scanline_address {
+            return;
+        }
 
         if self.crtc_cursor_start_line <= self.crtc_cursor_end_line {
             // Normal cursor definition. Cursor runs from start_line to end_line.
@@ -1038,7 +1045,10 @@ impl CGACard {
             CRTCRegister::InterlaceMode => {
                 self.crtc_interlace_mode = byte;
             }
-            CRTCRegister::MaximumScanLineAddress => self.crtc_maximum_scanline_address = byte,
+            CRTCRegister::MaximumScanLineAddress => {
+                self.crtc_maximum_scanline_address = byte;
+                self.update_cursor_data();
+            }
             CRTCRegister::CursorStartLine => {
                 self.crtc_cursor_start_line = byte & CURSOR_LINE_MASK;
                 self.cursor_attr = (byte & CURSOR_ATTR_MASK) >> 5;
