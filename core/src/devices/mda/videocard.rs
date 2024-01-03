@@ -26,7 +26,7 @@
 
     devices::mda::videocard.rs
 
-    Implementats the VideoCard trait for the IBM MDA card.
+    Implements the VideoCard trait for the IBM MDA card.
 
 */
 use super::*;
@@ -165,14 +165,7 @@ impl VideoCard for MDACard {
 
     #[inline]
     fn get_overscan_color(&self) -> u8 {
-        if self.mode_hires_gfx {
-            // In highres mode, the color control register controls the foreground color, not overscan
-            // so overscan must be black.
-            0
-        }
-        else {
-            self.cc_altcolor
-        }
+        0
     }
 
     /// Get the current scanline being rendered.
@@ -270,47 +263,51 @@ impl VideoCard for MDACard {
         self.crtc.reg[9] + 1
     }
 
-    /// Return the current palette number, intensity attribute bit, and alt color
     fn get_cga_palette(&self) -> (CGAPalette, bool) {
-        let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
-
-        // Get background color
-        let alt_color = match self.cc_register & 0x0F {
-            0b0000 => CGAColor::Black,
-            0b0001 => CGAColor::Blue,
-            0b0010 => CGAColor::Green,
-            0b0011 => CGAColor::Cyan,
-            0b0100 => CGAColor::Red,
-            0b0101 => CGAColor::Magenta,
-            0b0110 => CGAColor::Brown,
-            0b0111 => CGAColor::White,
-            0b1000 => CGAColor::BlackBright,
-            0b1001 => CGAColor::BlueBright,
-            0b1010 => CGAColor::GreenBright,
-            0b1011 => CGAColor::CyanBright,
-            0b1100 => CGAColor::RedBright,
-            0b1101 => CGAColor::MagentaBright,
-            0b1110 => CGAColor::Yellow,
-            _ => CGAColor::WhiteBright,
-        };
-
-        // Are we in high res mode?
-        if self.mode_hires_gfx {
-            return (CGAPalette::Monochrome(alt_color), true);
-        }
-
-        let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
-            true => CGAPalette::MagentaCyanWhite(alt_color),
-            false => CGAPalette::RedGreenYellow(alt_color),
-        };
-
-        // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
-        if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
-            palette = CGAPalette::RedCyanWhite(alt_color);
-        }
-
-        (palette, intensity)
+        (Default::default(), false)
     }
+
+    // /// Return the current palette number, intensity attribute bit, and alt color
+    // fn get_cga_palette(&self) -> (CGAPalette, bool) {
+    //     let intensity = self.cc_register & CC_BRIGHT_BIT != 0;
+    //
+    //     // Get background color
+    //     let alt_color = match self.cc_register & 0x0F {
+    //         0b0000 => CGAColor::Black,
+    //         0b0001 => CGAColor::Blue,
+    //         0b0010 => CGAColor::Green,
+    //         0b0011 => CGAColor::Cyan,
+    //         0b0100 => CGAColor::Red,
+    //         0b0101 => CGAColor::Magenta,
+    //         0b0110 => CGAColor::Brown,
+    //         0b0111 => CGAColor::White,
+    //         0b1000 => CGAColor::BlackBright,
+    //         0b1001 => CGAColor::BlueBright,
+    //         0b1010 => CGAColor::GreenBright,
+    //         0b1011 => CGAColor::CyanBright,
+    //         0b1100 => CGAColor::RedBright,
+    //         0b1101 => CGAColor::MagentaBright,
+    //         0b1110 => CGAColor::Yellow,
+    //         _ => CGAColor::WhiteBright,
+    //     };
+    //
+    //     // Are we in high res mode?
+    //     if self.mode_hires_gfx {
+    //         return (CGAPalette::Monochrome(alt_color), true);
+    //     }
+    //
+    //     let mut palette = match self.cc_register & CC_PALETTE_BIT != 0 {
+    //         true => CGAPalette::MagentaCyanWhite(alt_color),
+    //         false => CGAPalette::RedGreenYellow(alt_color),
+    //     };
+    //
+    //     // Check for 'hidden' palette - Black & White mode bit in lowres graphics selects Red/Cyan palette
+    //     if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
+    //         palette = CGAPalette::RedCyanWhite(alt_color);
+    //     }
+    //
+    //     (palette, intensity)
+    // }
 
     #[rustfmt::skip]
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>> {

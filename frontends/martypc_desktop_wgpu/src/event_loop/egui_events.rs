@@ -38,7 +38,15 @@ use marty_core::{
     machine::MachineState,
     vhd,
 };
-use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
+use marty_egui::{
+    DeviceSelection,
+    GuiBoolean,
+    GuiEnum,
+    GuiEvent,
+    GuiVariable,
+    GuiVariableContext,
+    InputFieldChangeSource,
+};
 use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
@@ -362,16 +370,22 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             // The address bar for the memory viewer was updated. We need to
             // evaluate the expression and set a new row value for the control.
             // The memory contents will be updated in the normal frame update.
-            let mem_dump_addr_str = emu.gui.memory_viewer.get_address();
-            // Show address 0 if expression evail fails
-            let mem_dump_addr: u32 = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
-                Some(i) => {
-                    let addr: u32 = i.into();
-                    addr & !0x0F
-                }
-                None => 0,
-            };
-            emu.gui.memory_viewer.set_row(mem_dump_addr as usize);
+            let (mem_dump_addr_str, source) = emu.gui.memory_viewer.get_address();
+
+            if let InputFieldChangeSource::UserInput = source {
+                // Only evaluate expression if the address box was changed by user input.
+                let mem_dump_addr: u32 = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
+                    Some(i) => {
+                        let addr: u32 = i.into();
+                        addr & !0x0F
+                    }
+                    None => {
+                        // Show address 0 if expression eval fails
+                        0
+                    }
+                };
+                emu.gui.memory_viewer.set_address(mem_dump_addr as usize);
+            }
         }
         GuiEvent::TokenHover(addr) => {
             // Hovered over a token in a TokenListView.

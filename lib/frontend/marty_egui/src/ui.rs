@@ -145,12 +145,12 @@ impl GuiState {
                 self.disassembly_viewer.draw(ui, &mut self.event_queue);
             });
 
-        egui::Window::new("IVR Viewer")
-            .open(self.window_open_flags.get_mut(&GuiWindow::IvrViewer).unwrap())
+        egui::Window::new("IVT Viewer")
+            .open(self.window_open_flags.get_mut(&GuiWindow::IvtViewer).unwrap())
             .resizable(true)
             .default_width(400.0)
             .show(ctx, |ui| {
-                self.ivr_viewer.draw(ui, &mut self.event_queue);
+                self.ivt_viewer.draw(ui, &mut self.event_queue);
             });
 
         egui::Window::new("CPU State")

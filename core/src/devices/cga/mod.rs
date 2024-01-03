@@ -321,9 +321,9 @@ const CGA_APERTURE_NORMAL_X: u32 = 80;
 const CGA_APERTURE_NORMAL_Y: u32 = 10;
 
 const CGA_APERTURE_FULL_W: u32 = 768;
-const CGA_APERTURE_FULL_H: u32 = 236;
+const CGA_APERTURE_FULL_H: u32 = 235;
 const CGA_APERTURE_FULL_X: u32 = 48;
-const CGA_APERTURE_FULL_Y: u32 = 0;
+const CGA_APERTURE_FULL_Y: u32 = 1;
 
 const CGA_APERTURE_DEBUG_W: u32 = 912;
 const CGA_APERTURE_DEBUG_H: u32 = 262;
@@ -603,7 +603,7 @@ impl Default for CGACard {
     fn default() -> Self {
         Self {
             debug: false,
-            debug_draw: false,
+            debug_draw: true,
             cycles: 0,
             last_vsync_cycles: 0,
             cur_screen_cycles: 0,
@@ -1695,8 +1695,8 @@ impl CGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.debug_draw {
-                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
-                    self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
+                    self.draw_solid_hchar(self.cc_overscan_color);
+                    //self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
                 }
                 else {
                     self.draw_solid_hchar(self.cc_overscan_color);
@@ -1788,8 +1788,8 @@ impl CGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.debug_draw {
-                    //self.draw_solid_hchar(CGA_OVERSCAN_COLOR);
-                    self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
+                    self.draw_solid_hchar(self.cc_overscan_color);
+                    //self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
                 }
                 else {
                     self.draw_solid_lchar(self.cc_overscan_color);
@@ -1910,8 +1910,8 @@ impl CGACard {
             else if self.vborder | self.hborder {
                 // Draw overscan
                 if self.debug_draw {
-                    //self.draw_pixel(CGA_OVERSCAN_COLOR);
-                    self.draw_pixel(CGA_OVERSCAN_DEBUG_COLOR);
+                    self.draw_overscan_pixel();
+                    //self.draw_pixel(CGA_OVERSCAN_DEBUG_COLOR);
                 }
                 else {
                     self.draw_overscan_pixel();
@@ -2043,7 +2043,6 @@ impl CGACard {
                 if self.in_crtc_vblank {
                     //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
                     if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
-                        self.in_last_vblank_line = true;
                         // We are leaving vblank period. Generate a frame.
 
                         // Previously, we generated frames upon reaching vertical total. This was convenient as
@@ -2052,10 +2051,9 @@ impl CGACard {
                         // However, CRTC tricks like 8088mph rewrite vertical total; this causes multiple
                         // 'screens' per frame in between vsyncs. To enable these tricks to work, we must marty_render
                         // like a monitor would.
-
+                        self.in_last_vblank_line = true;
                         self.vsc_c3h = 0;
                         self.do_vsync();
-                        return;
                     }
                 }
 

@@ -276,8 +276,8 @@ impl GuiState {
                     *self.window_flag(GuiWindow::DisassemblyViewer) = true;
                     ui.close_menu();
                 }
-                if ui.button("IVR...").clicked() {
-                    *self.window_flag(GuiWindow::IvrViewer) = true;
+                if ui.button("IVT Viewer...").clicked() {
+                    *self.window_flag(GuiWindow::IvtViewer) = true;
                     ui.close_menu();
                 }
                 #[cfg(feature = "devtools")]

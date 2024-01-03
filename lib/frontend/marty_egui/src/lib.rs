@@ -85,7 +85,7 @@ pub enum GuiWindow {
     ScalerAdjust,
     CpuStateViewer,
     HistoryViewer,
-    IvrViewer,
+    IvtViewer,
     DelayAdjust,
     DeviceControl,
     DisassemblyViewer,
@@ -99,6 +99,13 @@ pub enum GuiWindow {
     VHDCreator,
     CycleTraceViewer,
     TextModeViewer,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum InputFieldChangeSource {
+    None,
+    ScrollEvent,
+    UserInput,
 }
 
 pub enum GuiVariable {

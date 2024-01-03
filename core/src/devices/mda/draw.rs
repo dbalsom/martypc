@@ -34,7 +34,7 @@ use super::*;
 
 impl MDACard {
     pub fn draw_overscan_pixel(&mut self) {
-        self.buf[self.back_buf][self.rba] = self.cc_overscan_color;
+        self.buf[self.back_buf][self.rba] = 0;
     }
 
     pub fn draw_pixel(&mut self, color: u8) {

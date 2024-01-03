@@ -42,6 +42,8 @@
 use marty_core::devices::cga;
 use std::{collections::VecDeque, mem::size_of, path::Path};
 
+use web_time::Duration;
+
 use image;
 use log;
 
@@ -222,6 +224,7 @@ pub struct VideoRenderer {
     screenshot_path: Option<std::path::PathBuf>,
     screenshot_requested: bool,
 
+    last_render_time: Duration,
     event_queue: VecDeque<RendererEvent>,
 }
 
@@ -270,6 +273,7 @@ impl VideoRenderer {
             screenshot_path: None,
             screenshot_requested: false,
 
+            last_render_time: Duration::from_secs(0),
             event_queue: VecDeque::new(),
         }
     }
@@ -280,6 +284,10 @@ impl VideoRenderer {
 
     pub fn send_event(&mut self, event: RendererEvent) {
         self.event_queue.push_back(event);
+    }
+
+    pub fn get_last_render_time(&self) -> Duration {
+        self.last_render_time
     }
 
     pub fn set_config_params(&mut self, cfg: &RendererConfigParams) {

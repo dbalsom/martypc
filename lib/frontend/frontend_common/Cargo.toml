@@ -26,6 +26,7 @@ pixels = { workspace = true, optional = true }
 log = "0.4.20"
 toml = "0.5.11"
 serde_derive.workspace = true
+web-time.workspace = true
 
 [features]
 ega = []

@@ -33,34 +33,49 @@
 use crate::{token_listview::*, *};
 use marty_core::syntax_token::*;
 
-pub struct IvrViewerControl {
+const DEFAULT_ROWS: usize = 24;
+
+pub struct IvtViewerControl {
     tlv: TokenListView,
     row: usize,
+    rows: usize,
+    content: Vec<Vec<SyntaxToken>>,
+    scrolling: bool,
 }
 
-impl IvrViewerControl {
+impl IvtViewerControl {
     pub fn new() -> Self {
         let mut tlv = TokenListView::new();
         tlv.set_capacity(256);
-        tlv.set_visible(32);
+        tlv.set_visible(DEFAULT_ROWS);
 
-        Self { tlv, row: 0 }
+        Self {
+            tlv,
+            row: 0,
+            rows: DEFAULT_ROWS,
+            content: Vec::new(),
+            scrolling: false,
+        }
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         let mut new_row = self.row;
         ui.horizontal(|ui| {
-            self.tlv.draw(ui, events, &mut new_row);
+            self.tlv.draw(ui, events, &mut new_row, &mut |scrolled_to, sevents| {});
         });
 
         // TLV viewport was scrolled, update address
         if self.row != new_row {
-            log::debug!("update address to: {:05X}", new_row);
+            log::debug!("update address to: {}", new_row);
             self.row = new_row;
+            self.scrolling = true;
         }
     }
 
-    pub fn set_content(&mut self, mem: Vec<Vec<SyntaxToken>>) {
-        self.tlv.set_contents(mem);
+    pub fn set_content(&mut self, ivt: Vec<Vec<SyntaxToken>>) {
+        self.content = ivt;
+        self.tlv
+            .set_contents(self.content[self.row..self.row + DEFAULT_ROWS].to_vec(), self.scrolling);
+        self.scrolling = false;
     }
 }

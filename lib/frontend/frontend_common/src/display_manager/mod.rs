@@ -37,6 +37,7 @@ use std::{
     fmt::{Display, Formatter},
     path::PathBuf,
 };
+use web_time::Duration;
 
 pub use crate::types::display_target_dimensions::DisplayTargetDimensions;
 
@@ -84,6 +85,9 @@ pub struct DisplayInfo {
     pub vid: Option<VideoCardId>,
     pub name: String,
     pub renderer: Option<RendererConfigParams>,
+    pub render_time: Duration,
+    pub has_gui: bool,
+    pub gui_render_time: Duration,
     pub scaler_mode: Option<ScalerMode>,
     pub scaler_params: Option<ScalerParams>,
 }

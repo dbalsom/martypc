@@ -31,6 +31,7 @@
 
 use crate::{consts::*, resize::*};
 use marty_core::devices::cga;
+use web_time::{Duration, Instant};
 
 use super::*;
 
@@ -38,6 +39,10 @@ impl VideoRenderer {
     pub fn clear(&mut self) {
         self.buf.fill(0);
     }
+
+    /// Draw the direct (indexed) framebuffer created by a Videocard to the specified output buffer, given
+    /// the specified display extents. This base method will call the appropriate drawing routine based on
+    /// video card type. Optionally, the raster beam position can be visualized if 'beam_pos' is specified.
     pub fn draw(
         &mut self,
         input_buf: &[u8],
@@ -45,6 +50,8 @@ impl VideoRenderer {
         extents: &DisplayExtents,
         beam_pos: Option<(u32, u32)>,
     ) {
+        let render_start = Instant::now();
+
         let do_software_aspect = matches!(self.params.aspect_correction, AspectCorrectionMode::Software);
         let mut screenshot_taken = false;
 
@@ -186,6 +193,9 @@ impl VideoRenderer {
         if screenshot_taken {
             self.send_event(RendererEvent::ScreenshotSaved);
         }
+
+        self.last_render_time = render_start.elapsed();
+        //log::debug!("render time: {}", self.last_render_time.as_secs_f64());
     }
 
     pub fn draw_horizontal_xor_line_2x(&mut self, frame: &mut [u8], w: u32, span: u32, h: u32, y: u32) {

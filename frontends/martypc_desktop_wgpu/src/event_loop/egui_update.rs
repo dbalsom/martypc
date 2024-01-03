@@ -124,15 +124,18 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
     // -- Update memory viewer window if open
     if emu.gui.is_window_open(GuiWindow::MemoryViewer) {
-        let mem_dump_addr_str = emu.gui.memory_viewer.get_address();
-        // Show address 0 if expression evail fails
+        let (mem_dump_addr_str, source) = emu.gui.memory_viewer.get_address();
+
         let (addr, mem_dump_addr) = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
             Some(i) => {
                 let addr: u32 = i.into();
                 // Dump at 16 byte block boundaries
                 (addr, addr & !0x0F)
             }
-            None => (0, 0),
+            None => {
+                // Show address 0 if expression eval fails
+                (0, 0)
+            }
         };
 
         let mem_dump_vec = emu
@@ -141,13 +144,15 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
             .dump_flat_tokens_ex(mem_dump_addr as usize, addr as usize, 256);
 
         //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
+
+        emu.gui.memory_viewer.set_address(addr as usize);
         emu.gui.memory_viewer.set_memory(mem_dump_vec);
     }
 
     // -- Update IVR viewer window if open
-    if emu.gui.is_window_open(GuiWindow::IvrViewer) {
+    if emu.gui.is_window_open(GuiWindow::IvtViewer) {
         let vec = emu.machine.bus_mut().dump_ivr_tokens();
-        emu.gui.ivr_viewer.set_content(vec);
+        emu.gui.ivt_viewer.set_content(vec);
     }
 
     // -- Update register viewer window

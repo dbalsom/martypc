@@ -47,6 +47,7 @@ image = "0.24.1"
 log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
+web-time = "0.2.4"
 
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"

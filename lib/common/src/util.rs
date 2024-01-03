@@ -24,13 +24,31 @@
 
    ---------------------------------------------------------------------------
 
-   common::lib.rs
+   common::util.rs
 
    Common emulator library.
-   Define types and methods common to both frontend and backend libraries.
+   Define utility methods.
 */
 
-pub mod types;
-pub mod util;
+use web_time::Duration;
 
-pub use crate::types::video_dimensions::VideoDimensions;
+/// Format the provided Duration using the most appropriate unit given the magnitude of the Duration.
+pub fn format_duration(duration: Duration) -> String {
+    let secs = duration.as_secs_f64();
+    let millis = duration.as_millis();
+    let micros = duration.as_micros();
+    let nanos = duration.as_nanos();
+
+    if nanos < 1_000 {
+        format!("{}ns", nanos)
+    }
+    else if micros < 1_000 {
+        format!("{}µs", micros)
+    }
+    else if millis < 1_000 {
+        format!("{}ms", millis)
+    }
+    else {
+        format!("{:.3}s", secs)
+    }
+}

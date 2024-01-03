@@ -2150,8 +2150,8 @@ impl Cpu {
                         cycles: self.instr_cycle as u16,
                         i: self.i,
                     });
-                    self.instruction_count += 1;
                 }
+                self.instruction_count += 1;
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
@@ -2172,8 +2172,8 @@ impl Cpu {
                         cycles: self.instr_cycle as u16,
                         i: self.i,
                     });
-                    self.instruction_count += 1;
                 }
+                self.instruction_count += 1;
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
@@ -2317,7 +2317,7 @@ impl Cpu {
 
                 // Query the PIC to get the interrupt vector.
                 // This is a bit artificial as we don't actually read the IV during the 2nd
-                // INTA cycle like the CPU does, instead we save the value now and simualate it later.
+                // INTA cycle like the CPU does, instead we save the value now and simulate it later.
                 // TODO: Think about changing this to query during INTA
                 if let Some(pic) = self.bus.pic_mut().as_mut() {
                     // Is INTR active? TODO: Could combine these calls (return Option<iv>) on query?
@@ -2380,7 +2380,7 @@ impl Cpu {
                     let cpu_address = self.get_linear_ip() as usize;
 
                     if let Some(ref mut validator) = self.validator {
-                        // If validator unininitalized, set register state now and move into running state.
+                        // If validator uninitialized, set register state now and move into running state.
                         if self.validator_state == CpuValidatorState::Uninitialized {
                             // This resets the validator CPU
                             log::debug!("Validator Uninitialized. Resetting validator and setting registers...");
@@ -2546,8 +2546,10 @@ impl Cpu {
                         *ip,
                         format!("{:04X}:{:04X}", cs, ip),
                     ));
-                    i_token_vec.push(SyntaxToken::Text(format!("{}", *cycles)));
+                    i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "".to_string())));
                     i_token_vec.extend(i.tokenize());
+                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
+                    i_token_vec.push(SyntaxToken::Text(format!("{}", *cycles)));
                 }
             }
             history_vec.push(i_token_vec);
@@ -2975,7 +2977,6 @@ impl Cpu {
 
     pub fn dump_cs(&self, path: &Path) {
         let mut filename = path.to_path_buf();
-        filename.push("cs.bin");
 
         let len = 0x10000;
         let address = (self.cs as usize) << 4;

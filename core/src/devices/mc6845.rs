@@ -258,23 +258,23 @@ impl Crtc6845 {
     fn write_register(&mut self, byte: u8) {
         //log::trace!("crtc write register: {:02X}", byte);
         match self.reg_select {
-            CrtcRegister::HorizontalTotal => {
+            HorizontalTotal => {
                 // (R0) 8 bit write only
                 self.reg[0] = byte;
             }
-            CrtcRegister::HorizontalDisplayed => {
+            HorizontalDisplayed => {
                 // (R1) 8 bit write only
                 self.reg[1] = byte;
             }
-            CrtcRegister::HorizontalSyncPosition => {
+            HorizontalSyncPosition => {
                 // (R2) 8 bit write only
                 self.reg[2] = byte;
             }
-            CrtcRegister::SyncWidth => {
+            SyncWidth => {
                 // (R3) 8 bit write only
                 self.reg[3] = byte;
             }
-            CrtcRegister::VerticalTotal => {
+            VerticalTotal => {
                 // (R4) 7 bit write only
                 self.reg[4] = byte & 0x7F;
 
@@ -285,31 +285,31 @@ impl Crtc6845 {
                     self.reg[4]
                 )
             }
-            CrtcRegister::VerticalTotalAdjust => {
+            VerticalTotalAdjust => {
                 // (R5) 5 bit write only
                 self.reg[5] = byte & 0x1F;
             }
-            CrtcRegister::VerticalDisplayed => {
+            VerticalDisplayed => {
                 // (R6) 7 bit write only
                 self.reg[6] = byte & 0x7F;
             }
-            CrtcRegister::VerticalSync => {
+            VerticalSync => {
                 // (R7) 7 bit write only
                 self.reg[7] = byte & 0x7F;
 
                 trace_regs!(self);
                 trace!(self, "CRTC Register Write (07h): VerticalSync updated: {}", self.reg[7])
             }
-            CrtcRegister::InterlaceMode => {
+            InterlaceMode => {
                 // (R8) 2 bit write only
                 self.reg[8] = byte & 0x03;
             }
-            CrtcRegister::MaximumScanlineAddress => {
+            MaximumScanlineAddress => {
                 // (R9) 5 bit write only
                 self.reg[9] = byte & 0x1F;
                 self.update_cursor_data();
             }
-            CrtcRegister::CursorStartLine => {
+            CursorStartLine => {
                 // (R10) 7 bit bitfield. Write only.
                 self.reg[10] = byte & 0x7F;
 
@@ -337,39 +337,39 @@ impl Crtc6845 {
                 }
                 self.update_cursor_data();
             }
-            CrtcRegister::CursorEndLine => {
+            CursorEndLine => {
                 // (R11) 5 bit write only
                 self.reg[11] = byte & 0x1F;
                 self.update_cursor_data();
             }
-            CrtcRegister::StartAddressH => {
+            StartAddressH => {
                 // (R12) 6 bit write only
                 self.reg[12] = byte & 0x3F;
                 trace_regs!(self);
                 trace!(self, "CRTC Register Write (0Ch): StartAddressH updated: {:02X}", byte);
                 self.update_start_address();
             }
-            CrtcRegister::StartAddressL => {
+            StartAddressL => {
                 // (R13) 8 bit write only
                 self.reg[13] = byte;
                 trace_regs!(self);
                 trace!(self, "CRTC Register Write (0Dh): StartAddressL updated: {:02X}", byte);
                 self.update_start_address();
             }
-            CrtcRegister::CursorAddressH => {
+            CursorAddressH => {
                 // (R14) 6 bit read/write
                 self.reg[14] = byte & 0x3F;
                 self.update_cursor_address();
             }
-            CrtcRegister::CursorAddressL => {
+            CursorAddressL => {
                 // (R15) 8 bit read/write
                 self.reg[15] = byte;
                 self.update_cursor_address();
             }
-            CrtcRegister::LightPenPositionH => {
+            LightPenPositionH => {
                 // (R16) 6 bit read only
             }
-            CrtcRegister::LightPenPositionL => {
+            LightPenPositionL => {
                 // (R17) 8 bit read only
             }
         }
@@ -551,15 +551,6 @@ impl Crtc6845 {
                 // We are leaving horizontal blanking period.
                 self.char_col = 0;
                 self.status.hsync = true;
-
-                // self.scanline += 1;
-                // // Reset beam to left of screen if we haven't already
-                // if self.beam_x > 0 {
-                //     self.beam_y += 1;
-                // }
-                // self.beam_x = 0;
-                // let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
-                // self.rba = new_rba;
             }
 
             // End horizontal blank when we reach R3 (SyncWidth)

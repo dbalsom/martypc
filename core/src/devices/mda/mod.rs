@@ -31,7 +31,6 @@
 
 */
 
-#![allow(dead_code)]
 use super::mda::attr::*;
 
 use const_format::formatcp;
@@ -146,13 +145,6 @@ const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
 const CURSOR_ENABLE_MASK: u8 = 0b0010_0000;
 
-// Color control register bits.
-// Alt color = Overscan in Text mode, BG color in 320x200 graphics, FG color in 640x200 graphics
-const CC_ALT_COLOR_MASK: u8 = 0b0000_0111;
-const CC_ALT_INTENSITY: u8 = 0b0000_1000;
-const CC_BRIGHT_BIT: u8 = 0b0001_0000; // Controls whether palette is high intensity
-const CC_PALETTE_BIT: u8 = 0b0010_0000; // Controls primary palette between magenta/cyan and red/green
-
 const STATUS_RETRACE: u8 = 0b0000_0001;
 const STATUS_VIDEO: u8 = 0b0000_1000;
 
@@ -189,15 +181,6 @@ pub enum CgaColor {
     Yellow = 14,
     WhiteBright = 15,
 }
-
-const CGA_PALETTES: [[u8; 4]; 6] = [
-    [0, 2, 4, 6],    // Red / Green / Brown
-    [0, 10, 12, 14], // Red / Green / Brown High Intensity
-    [0, 3, 5, 7],    // Cyan / Magenta / White
-    [0, 11, 13, 15], // Cyan / Magenta / White High Intensity
-    [0, 3, 4, 7],    // Red / Cyan / White
-    [0, 11, 12, 15], // Red / Cyan / White High Intensity
-];
 
 const MDA_DEBUG_COLOR: u8 = 12;
 const MDA_HBLANK_DEBUG_COLOR: u8 = 8;
@@ -309,8 +292,8 @@ const MDA_APERTURES: [DisplayAperture; 4] = [
     DisplayAperture {
         w: MDA_APERTURE_DEBUG_W,
         h: MDA_APERTURE_DEBUG_H,
-        x: 0,
-        y: 0,
+        x: MDA_APERTURE_DEBUG_X,
+        y: MDA_APERTURE_DEBUG_Y,
         debug: true,
     },
 ];
@@ -364,7 +347,7 @@ macro_rules! trace_regs {
 }
 
 use crate::devices::{
-    lpt_port::{ParallelControl, ParallelPort},
+    lpt_port::ParallelPort,
     mc6845::{Crtc6845, CrtcStatus, HBlankCallback},
     mda::io::LPT_DEFAULT_IO_BASE,
 };
@@ -416,9 +399,6 @@ pub struct MDACard {
     mode_hires_gfx: bool,
     mode_hires_txt: bool,
     mode_blinking: bool,
-    cc_palette: usize,
-    cc_altcolor: u8,
-    cc_overscan_color: u8,
     scanline_us: f64,
     frame_us: f64,
 
@@ -436,7 +416,6 @@ pub struct MDACard {
 
     crtc: Crtc6845,
 
-    cc_register:   u8,
     clock_divisor: u8, // Clock divisor is 1 in high resolution text mode, 2 in all other modes
     clock_mode:    ClockingMode,
     char_clock:    u32,
@@ -576,9 +555,6 @@ impl Default for MDACard {
             mode_hires_gfx: false,
             mode_hires_txt: true,
             mode_blinking: true,
-            cc_palette: 0,
-            cc_altcolor: 0,
-            cc_overscan_color: 0,
             frame_us: 0.0,
 
             cursor_frames: 0,
@@ -595,8 +571,6 @@ impl Default for MDACard {
             last_bit: false,
 
             crtc: Crtc6845::new(TraceLogger::None),
-
-            cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
             clock_divisor: DEFAULT_CLOCK_DIVISOR,
             clock_mode: ClockingMode::Character,

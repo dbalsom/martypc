@@ -40,7 +40,7 @@ pub mod delay_adjust;
 pub mod device_control;
 pub mod dma_viewer;
 pub mod instruction_history_viewer;
-pub mod ivr_viewer;
+pub mod ivt_viewer;
 pub mod memory_viewer;
 pub mod performance_viewer;
 pub mod pic_viewer;

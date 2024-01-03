@@ -476,7 +476,6 @@ impl Machine {
         }
 
         // Load keyboard translation file if specified.
-
         if let Some(kb_string) = &core_config.get_keyboard_layout() {
             let mut kb_translation_path = PathBuf::new();
             kb_translation_path.push(core_config.get_base_dir().clone());

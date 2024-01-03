@@ -38,7 +38,7 @@
    - A file (for screenshots)
 */
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 pub use display_backend_pixels::{
     BufferDimensions,
@@ -826,7 +826,9 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 vtype = machine.bus().video(&vid).and_then(|card| Some(card.get_video_type()));
             }
 
+            let mut render_time = Duration::from_secs(0);
             let renderer_params = if let Some(renderer) = &vt.renderer {
+                render_time = renderer.get_last_render_time();
                 Some(renderer.get_config_params().clone())
             }
             else {
@@ -838,12 +840,22 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 scaler_mode = Some(scaler.get_mode());
             }
 
+            let mut has_gui = false;
+            let mut gui_render_time = Duration::ZERO;
+            if let Some(gui_ctx) = &vt.gui_ctx {
+                has_gui = true;
+                gui_render_time = gui_ctx.get_render_time();
+            }
+
             info_vec.push(DisplayInfo {
                 dtype: vt.ttype,
                 vtype,
                 vid: vt.card_id,
                 name: vt.name.clone(),
                 renderer: renderer_params,
+                render_time,
+                has_gui,
+                gui_render_time,
                 scaler_mode,
                 scaler_params: vt.scaler_params,
             })

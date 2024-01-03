@@ -1497,6 +1497,7 @@ dependencies = [
  "serde_derive",
  "toml",
  "videocard_renderer",
+ "web-time",
  "wgpu 0.18.0",
 ]
 
@@ -2175,6 +2176,7 @@ name = "marty_common"
 version = "0.2.0"
 dependencies = [
  "serde",
+ "web-time",
 ]
 
 [[package]]
@@ -2216,12 +2218,14 @@ dependencies = [
  "frontend_common",
  "image",
  "log",
+ "marty_common",
  "marty_core",
  "pixels 0.13.0 (git+https://github.com/dbalsom/pixels_martypc.git?branch=marty_update_deps)",
  "regex",
  "serde",
  "serialport",
  "videocard_renderer",
+ "web-time",
  "wgpu 0.18.0",
  "winit 0.29.7",
 ]
@@ -4138,6 +4142,7 @@ dependencies = [
  "marty_core",
  "rand",
  "serde",
+ "web-time",
 ]
 
 [[package]]

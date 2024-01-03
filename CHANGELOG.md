@@ -65,6 +65,9 @@ advantage of this new system, and so now you can organize your media directories
     * Translation files can define direct scancode mappings or full macros
 
 
+* Memory Viewer: disassembly popup now uses fixed-width font
+* IVT Viewer: IVT entries now animated on change
+* Instruction History - fields now align with Disassembly View, and cycle counts have been moved to the right
 * New themes courtesy of [egui-themer crate](https://github.com/grantshandy/egui-themer)
 * New notification system courtesy of [egui-notify crate](https://github.com/ItsEthra/egui-notify). 
   * Implemented success/error notifications for disk and file operations, screenshots, etc.
@@ -82,7 +85,9 @@ advantage of this new system, and so now you can organize your media directories
 * Added debug_keyboard config flag - this will print keyboard event info to the console for support
 
 ### Bug Fixes
+* DEBUGGER: Scrolling fixed in Memory Viewer and IVT Viewer 
 * Xebec HDC: Implemented missing Read Sector Buffer command (Fixes panic in IBM diagnostics)
+* CPU: Instruction counts properly increment even when instruction history is off
 * CPU: Fixed device ticks after interrupts
 * CPU: Improved Halt/Resume logic and cycle timings
 * CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView

@@ -221,7 +221,7 @@ impl fmt::Display for MemoryDebug {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ADDR: {}\nBYTE: {}\nWORD: {}\nDWORD: {}\nINSTR: {}",
+            " ADDR: {}\n BYTE: {}\n WORD: {}\nDWORD: {}\nINSTR: {}",
             self.addr, self.byte, self.word, self.dword, self.instr
         )
     }
@@ -1317,7 +1317,6 @@ impl BusInterface {
 
     pub fn dump_mem(&self, path: &Path) {
         let mut filename = path.to_path_buf();
-        filename.push("mem.bin");
 
         let len = 0x100000;
         let address = 0;
@@ -1343,11 +1342,32 @@ impl BusInterface {
 
             ivr_vec.push(SyntaxToken::Text(format!("{:03}", v)));
             ivr_vec.push(SyntaxToken::Colon);
-            ivr_vec.push(SyntaxToken::MemoryAddressSeg16(
+            ivr_vec.push(SyntaxToken::OpenBracket);
+            ivr_vec.push(SyntaxToken::StateMemoryAddressSeg16(
                 cs,
                 ip,
-                format!("[{:04X}]:[{:04X}]", cs, ip),
+                format!("{:04X}:{:04X}", cs, ip),
+                255,
             ));
+            ivr_vec.push(SyntaxToken::CloseBracket);
+            // TODO: The bus should eventually register IRQs, and then we would query the bus for the device identifier
+            //       for each IRQ.
+            match v {
+                0 => ivr_vec.push(SyntaxToken::Text("Divide Error".to_string())),
+                1 => ivr_vec.push(SyntaxToken::Text("Single Step".to_string())),
+                2 => ivr_vec.push(SyntaxToken::Text("NMI".to_string())),
+                3 => ivr_vec.push(SyntaxToken::Text("Breakpoint".to_string())),
+                4 => ivr_vec.push(SyntaxToken::Text("Overflow".to_string())),
+                8 => ivr_vec.push(SyntaxToken::Text("Timer".to_string())),
+                9 => ivr_vec.push(SyntaxToken::Text("Keyboard".to_string())),
+                //10 => ivr_vec.push(SyntaxToken::Text("Slave PIC".to_string())),
+                11 => ivr_vec.push(SyntaxToken::Text("Serial Port 2".to_string())),
+                12 => ivr_vec.push(SyntaxToken::Text("Serial Port 1".to_string())),
+                13 => ivr_vec.push(SyntaxToken::Text("HDC".to_string())),
+                14 => ivr_vec.push(SyntaxToken::Text("FDC".to_string())),
+                15 => ivr_vec.push(SyntaxToken::Text("Parallel Port 1".to_string())),
+                _ => {}
+            }
             vec.push(ivr_vec);
         }
         vec

@@ -251,9 +251,16 @@ pub enum CGAPalette {
     RedCyanWhite(CGAColor), // "Hidden" CGA palette
 }
 
+impl Default for CGAPalette {
+    fn default() -> Self {
+        CGAPalette::MagentaCyanWhite(CGAColor::Black)
+    }
+}
+
 #[repr(u8)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub enum CGAColor {
+    #[default]
     Black,
     Blue,
     Green,
