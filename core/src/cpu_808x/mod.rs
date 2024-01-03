@@ -850,6 +850,7 @@ pub struct CpuStringState {
     pub ds: String,
     pub ss: String,
     pub es: String,
+    pub pc: String,
     pub ip: String,
     pub flags: String,
     //odiszapc
@@ -1704,6 +1705,7 @@ impl Cpu {
             ss:   format!("{:04x}", self.ss),
             es:   format!("{:04x}", self.es),
             ip:   format!("{:04x}", self.ip),
+            pc:   format!("{:04x}", self.ip),
             c_fl: {
                 let fl = self.flags & CPU_FLAG_CARRY > 0;
                 format!("{:1}", fl as u8)
