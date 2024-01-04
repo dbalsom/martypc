@@ -143,7 +143,7 @@ fn do_monochrome(color: vec4<f32>, gamma: f32) -> vec4<f32> {
         brightness = 0.0;
     }
     let baseColor = scaler_opts.crt_params.mono_color;
-    let modulatedColor = baseColor * pow(brightness, gamma);
+    let modulatedColor = baseColor * pow(abs(brightness), gamma);
     return modulatedColor;
 }
 
@@ -183,7 +183,8 @@ fn fs_main(@location(0) tex_coord: vec2<f32>) -> @location(0) vec4<f32> {
     var color = textureSample(r_tex_color, r_tex_sampler, curved_tex_coord);
 
     if (is_outside || !is_inside_corner) {
-        discard;
+        if (true) { discard; } // trick naga DX12 backend into thinking we return a color from each control path
+        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     } else {
 
         let gamma = scaler_opts.crt_params.gamma;

@@ -37,6 +37,7 @@
 use crate::*;
 use core::fmt;
 use egui::CollapsingHeader;
+use marty_common::util::format_duration;
 use videocard_renderer::VideoParams;
 
 pub struct PerformanceViewerControl {
@@ -77,21 +78,27 @@ impl PerformanceViewerControl {
                 ui.end_row();
 
                 for (i, dt) in self.stats.dti.iter().enumerate() {
-                    CollapsingHeader::new(&format!("Display {}: {}", i, dt.name))
+                    CollapsingHeader::new(&format!("Display {}: {} ({})", i, dt.name, dt.dtype))
                         .default_open(true)
                         .show(ui, |ui| {
                             egui::Grid::new("displays").striped(false).show(ui, |ui| {
-                                ui.label("Type: ");
-                                ui.label(egui::RichText::new(format!("{}", dt.dtype)));
+                                // ui.label("Type: ");
+                                // ui.label(egui::RichText::new(format!("{}", dt.dtype)));
+                                // ui.end_row();
+                                // ui.label("Video Type: ");
+                                // ui.label(egui::RichText::new(format!("{:?}", DisplayOption(dt.vtype))));
+                                // ui.end_row();
+                                // ui.label("Card ID: ");
+                                // ui.label(egui::RichText::new(format!(
+                                //     "{:?}",
+                                //     DisplayOption(dt.vid.and_then(|vid| { Some(vid.idx) }))
+                                // )));
+                                // ui.end_row();
+                                ui.label("SW Render Time: ");
+                                ui.label(egui::RichText::new(format_duration(dt.render_time)));
                                 ui.end_row();
-                                ui.label("Video Type: ");
-                                ui.label(egui::RichText::new(format!("{:?}", DisplayOption(dt.vtype))));
-                                ui.end_row();
-                                ui.label("Card ID: ");
-                                ui.label(egui::RichText::new(format!(
-                                    "{:?}",
-                                    DisplayOption(dt.vid.and_then(|vid| { Some(vid.idx) }))
-                                )));
+                                ui.label("GUI Render Time: ");
+                                ui.label(egui::RichText::new(format_duration(dt.gui_render_time)));
                                 ui.end_row();
                             })
                         });
@@ -152,10 +159,7 @@ impl PerformanceViewerControl {
                 )));
                 ui.end_row();
                 ui.label("Gui Render time: ");
-                ui.label(egui::RichText::new(format!(
-                    "{}",
-                    ((self.stats.gui_time.as_micros() as f64) / 1000.0)
-                )));
+                ui.label(egui::RichText::new(format_duration(self.stats.gui_time)));
                 ui.end_row();
             });
     }

@@ -31,7 +31,7 @@
 */
 use crate::{constants::*, *};
 #[allow(dead_code)]
-use marty_core::devices::implementations::dma::DMAControllerStringState;
+use marty_core::devices::dma::DMAControllerStringState;
 
 pub struct DmaViewerControl {
     dma_state: DMAControllerStringState,

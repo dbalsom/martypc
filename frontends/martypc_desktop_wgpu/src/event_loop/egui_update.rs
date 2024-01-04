@@ -38,7 +38,6 @@ use marty_core::{
     machine,
     syntax_token::SyntaxToken,
     util,
-    vhd::VirtualHardDisk,
 };
 use marty_egui::{GuiWindow, PerformanceStats};
 
@@ -72,12 +71,17 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     let dti = emu.dm.get_display_info(&emu.machine);
     emu.gui.update_display_info(dti);
 
-    // -- Update list of floppies
-    //let name_vec = emu.floppy_manager.get_floppy_names();
-    //emu.gui.set_floppy_names(name_vec);
+    // TODO: Building these trees is expensive. We should only do it when the
+    //       resource manager has changed.
 
+    // Update Floppy Disk Image tree
     if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
         emu.gui.set_floppy_tree(floppy_tree);
+    }
+
+    // Update VHD Image tree
+    if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
+        emu.gui.set_hdd_tree(hdd_tree);
     }
 
     // -- Update VHD Creator window
@@ -87,50 +91,6 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         }
         else {
             log::error!("Couldn't query available formats: No Hard Disk Controller present!");
-        }
-    }
-
-    // -- Update list of VHD images
-    let name_vec = emu.vhd_manager.get_vhd_names();
-    emu.gui.set_vhd_names(name_vec);
-
-    // -- Do we have a new VHD image to load?
-    for i in 0..machine::NUM_HDDS {
-        if let Some(new_vhd_name) = emu.gui.get_new_vhd_name(i) {
-            log::debug!("Releasing VHD slot: {}", i);
-            emu.vhd_manager.release_vhd(i as usize);
-
-            log::debug!("Load new VHD image: {:?} in device: {}", new_vhd_name, i);
-
-            match emu.vhd_manager.load_vhd_file(i as usize, &new_vhd_name) {
-                Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
-                    Ok(vhd) => {
-                        if let Some(hdc) = emu.machine.hdc() {
-                            match hdc.set_vhd(i as usize, vhd) {
-                                Ok(_) => {
-                                    log::info!(
-                                        "VHD image {:?} successfully loaded into virtual drive: {}",
-                                        new_vhd_name,
-                                        i
-                                    );
-                                }
-                                Err(err) => {
-                                    log::error!("Error mounting VHD: {}", err);
-                                }
-                            }
-                        }
-                        else {
-                            log::error!("No Hard Disk Controller present!");
-                        }
-                    }
-                    Err(err) => {
-                        log::error!("Error loading VHD: {}", err);
-                    }
-                },
-                Err(err) => {
-                    log::error!("Failed to load VHD image {:?}: {}", new_vhd_name, err);
-                }
-            }
         }
     }
 
@@ -164,15 +124,18 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
     // -- Update memory viewer window if open
     if emu.gui.is_window_open(GuiWindow::MemoryViewer) {
-        let mem_dump_addr_str = emu.gui.memory_viewer.get_address();
-        // Show address 0 if expression evail fails
+        let (mem_dump_addr_str, source) = emu.gui.memory_viewer.get_address();
+
         let (addr, mem_dump_addr) = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
             Some(i) => {
                 let addr: u32 = i.into();
                 // Dump at 16 byte block boundaries
                 (addr, addr & !0x0F)
             }
-            None => (0, 0),
+            None => {
+                // Show address 0 if expression eval fails
+                (0, 0)
+            }
         };
 
         let mem_dump_vec = emu
@@ -181,13 +144,15 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
             .dump_flat_tokens_ex(mem_dump_addr as usize, addr as usize, 256);
 
         //framework.gui.memory_viewer.set_row(mem_dump_addr as usize);
+
+        emu.gui.memory_viewer.set_address(addr as usize);
         emu.gui.memory_viewer.set_memory(mem_dump_vec);
     }
 
     // -- Update IVR viewer window if open
-    if emu.gui.is_window_open(GuiWindow::IvrViewer) {
+    if emu.gui.is_window_open(GuiWindow::IvtViewer) {
         let vec = emu.machine.bus_mut().dump_ivr_tokens();
-        emu.gui.ivr_viewer.set_content(vec);
+        emu.gui.ivt_viewer.set_content(vec);
     }
 
     // -- Update register viewer window
@@ -331,17 +296,18 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         //framework.gui.update_disassembly_view(disassembly_string);
         emu.gui.disassembly_viewer.set_content(listview_vec);
+    }
 
-        if emu.gui.is_window_open(GuiWindow::TextModeViewer) {
-            emu.dm.for_each_card(|vid| {
-                emu.gui.text_mode_viewer.set_content(
-                    vid.idx,
-                    emu.machine
-                        .bus()
-                        .video(vid)
-                        .map_or(Vec::new(), |v| v.get_text_mode_strings()),
-                );
-            });
-        }
+    // Update text mode viewer.
+    if emu.gui.is_window_open(GuiWindow::TextModeViewer) {
+        emu.dm.for_each_card(|vid| {
+            emu.gui.text_mode_viewer.set_content(
+                vid.idx,
+                emu.machine
+                    .bus()
+                    .video(vid)
+                    .map_or(Vec::new(), |v| v.get_text_mode_strings()),
+            );
+        });
     }
 }

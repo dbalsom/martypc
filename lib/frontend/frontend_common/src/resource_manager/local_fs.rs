@@ -123,10 +123,8 @@ impl ResourceManager {
             items = items
                 .iter()
                 .filter_map(|item| {
-                    log::debug!("in filter_map()");
                     if item.full_path.is_file() {
                         if let Some(extension) = item.full_path.extension() {
-                            log::debug!("extension: {:?}", extension);
                             if extension_filter.contains(&extension.to_ascii_lowercase()) {
                                 return Some(item);
                             }
@@ -234,6 +232,14 @@ impl ResourceManager {
     /// Return whether the specified path exists.
     pub fn path_exists(path: &PathBuf) -> bool {
         path.exists()
+    }
+
+    /// Create the specified path if it does not exist.
+    pub fn create_path(path: &PathBuf) -> Result<(), Error> {
+        if !ResourceManager::path_exists(path) {
+            fs::create_dir_all(path)?;
+        }
+        Ok(())
     }
 
     /// Returns whether the specified path is a directory.

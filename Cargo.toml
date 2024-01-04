@@ -33,6 +33,7 @@ path = "frontends/martypc_desktop_wgpu/src/main.rs"
 marty_core = { path = "core"}
 videocard_renderer = { path = "lib/frontend/videocard_renderer" }
 marty_egui = { path = "lib/frontend/marty_egui" }
+frontend_common = { path = "lib/frontend/frontend_common" }
 martypc_pixels_desktop = { path = "frontends/martypc_desktop_wgpu" }
 
 [workspace.dependencies]
@@ -46,6 +47,7 @@ image = "0.24.1"
 log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
+web-time = "0.2.4"
 
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"
@@ -62,7 +64,8 @@ branch = "0_24_2_winit_0_29"
 [workspace.dependencies.egui-winit]
 git = "https://github.com/dbalsom/egui_martypc.git"
 branch = "0_24_2_winit_0_29"
-features = ["links"]
+default-features = false
+features = ["clipboard", "wayland", "x11"]
 
 [workspace.dependencies.egui_extras]
 git = "https://github.com/dbalsom/egui_martypc.git"
@@ -70,8 +73,13 @@ branch = "0_24_2_winit_0_29"
 features = ["all_loaders"]
 
 [profile.release]
-#lto = true
-#strip = true
+opt-level = 3
+
+[profile.release-lto]
+inherits = "release"
+lto = true
+strip = true
+opt-level = 3
 
 [profile.dev.package."*"]
 opt-level = 3
@@ -80,8 +88,8 @@ opt-level = 3
 devtools = ["martypc_pixels_desktop/devtools"]
 arduino_validator = ["marty_core/arduino_validator", "martypc_pixels_desktop/arduino_validator"]
 cpu_validator = ["marty_core/cpu_validator", "martypc_pixels_desktop/cpu_validator"]
-ega = ["marty_core/ega"]
-vga = ["marty_core/vga"]
+ega = ["marty_core/ega", "frontend_common/ega"]
+vga = ["marty_core/vga", "frontend_common/vga"]
 
 [build-dependencies]
 winres = "0.1"

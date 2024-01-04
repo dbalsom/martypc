@@ -39,8 +39,10 @@
 #![allow(dead_code)]
 #![allow(clippy::identity_op)] // Adding 0 lines things up nicely for formatting.
 
-use marty_core::devices::implementations::cga;
+use marty_core::devices::cga;
 use std::{collections::VecDeque, mem::size_of, path::Path};
+
+use web_time::Duration;
 
 use image;
 use log;
@@ -48,7 +50,7 @@ use log;
 use composite_new::{ReCompositeBuffers, ReCompositeContext};
 pub use display_backend_trait::DisplayBackend;
 use marty_common::VideoDimensions;
-use marty_core::devices::traits::videocard::{
+use marty_core::device_traits::videocard::{
     BufferSelect,
     CGAColor,
     CGAPalette,
@@ -105,6 +107,7 @@ pub struct VideoParams {
     pub line_double: bool,       // Whether to double rows when rendering into the internal buffer.
     pub aspect_correction: AspectCorrectionMode, // Determines how to handle aspect correction.
     pub aperture: DisplayApertureType, // Selected display aperture for renderer
+    pub debug_aperture: bool,
     pub composite_params: CompositeParams, // Parameters used for composite emulation.
     pub bpp: RenderBpp,
 }
@@ -119,6 +122,7 @@ impl Default for VideoParams {
             line_double: false,
             aspect_correction: AspectCorrectionMode::None,
             aperture: DisplayApertureType::Cropped,
+            debug_aperture: false,
             composite_params: Default::default(),
             bpp: Default::default(),
         }
@@ -220,6 +224,7 @@ pub struct VideoRenderer {
     screenshot_path: Option<std::path::PathBuf>,
     screenshot_requested: bool,
 
+    last_render_time: Duration,
     event_queue: VecDeque<RendererEvent>,
 }
 
@@ -268,6 +273,7 @@ impl VideoRenderer {
             screenshot_path: None,
             screenshot_requested: false,
 
+            last_render_time: Duration::from_secs(0),
             event_queue: VecDeque::new(),
         }
     }
@@ -278,6 +284,10 @@ impl VideoRenderer {
 
     pub fn send_event(&mut self, event: RendererEvent) {
         self.event_queue.push_back(event);
+    }
+
+    pub fn get_last_render_time(&self) -> Duration {
+        self.last_render_time
     }
 
     pub fn set_config_params(&mut self, cfg: &RendererConfigParams) {
@@ -323,6 +333,10 @@ impl VideoRenderer {
         log::debug!("Setting renderer aperture to {:?}", aperture);
         self.params.aperture = aperture;
         self.aperture_dirty = true;
+    }
+
+    pub fn set_debug(&mut self, state: bool) {
+        self.params.debug_aperture = state;
     }
 
     pub fn set_line_double(&mut self, state: bool) {

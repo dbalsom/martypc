@@ -41,6 +41,7 @@ pub trait SyntaxTokenize {
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub enum SyntaxFormatType {
     Space,
+    Tab,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
@@ -55,6 +56,7 @@ pub enum SyntaxToken {
     // Memory viewer tokens
     ErrorString(String),
     MemoryAddressSeg16(u16, u16, String),
+    StateMemoryAddressSeg16(u16, u16, String, u8),
     MemoryAddressFlat(u32, String),
     MemoryByteHexValue(u32, u8, String, bool, u8),
     MemoryByteAsciiValue(u32, u8, String, u8),
@@ -91,6 +93,7 @@ impl fmt::Display for SyntaxToken {
             SyntaxToken::StateString(s, ..) => write!(f, "{}", s),
             SyntaxToken::ErrorString(s) => write!(f, "{}", s),
             SyntaxToken::MemoryAddressSeg16(seg, off, _) => write!(f, "{:04X}:{:04X}", seg, off),
+            SyntaxToken::StateMemoryAddressSeg16(seg, off, ..) => write!(f, "{:04X}:{:04X}", seg, off),
             SyntaxToken::MemoryAddressFlat(addr, _) => write!(f, "{:05X}", addr),
             SyntaxToken::MemoryByteHexValue(_, val, ..) => write!(f, "{:02}", val),
             SyntaxToken::MemoryByteAsciiValue(_, val, ..) => write!(f, "{:02}", val),
@@ -111,6 +114,7 @@ impl fmt::Display for SyntaxToken {
 
             SyntaxToken::Formatter(fmt_type) => match fmt_type {
                 SyntaxFormatType::Space => write!(f, " "),
+                SyntaxFormatType::Tab => write!(f, "\t"),
             },
         }
     }

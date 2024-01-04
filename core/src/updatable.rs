@@ -23,21 +23,26 @@
     DEALINGS IN THE SOFTWARE.
 
     ---------------------------------------------------------------------------
-    syntax_token.rs
+    core::updatable.rs
 
-    Defines token enums for visual formatting of debugging output
-    including disassembly and memory views. A corresponding egui control
-    TokenListView can use these tokens to format output with syntax coloring.
+    Defines the Updatable type which is used to hold values that are intended
+    to update a Debug display. A Dirty variant can hold a value that can be
+    'dirty' or not. DirtyAging adds an u8 frame age parameter. Aging8 does not
+    keep a dirty flag but has a u8 frame age parameter.
+
+    Typically, a debug display implementation will decrement an Updatable's
+    internal frame age counter as each frame passes without the value becoming
+    dirty. The frame age can be used to colorize text used to display the
+    Updatable as a visual representation of how 'fresh' the data is.
+
 */
 #[rustfmt::skip]
 use std::ops::{Deref, DerefMut};
 
 /// A generic enum type that can hold values that are intended to update a
 /// Debug display. A Dirty variant can hold a value that can be dirty or not
-/// DirtyAging8 adds an u8 frame age parameter.
-/// DirtyAgging adds a u16 frame age parameter.
+/// DirtyAging adds a u8 frame age parameter.
 /// Aging8 has a u8 frame age parameter.
-/// Aging16 has a u16 frame age parameter.
 #[allow(dead_code)]
 #[derive(Debug)]
 pub enum Updatable<T> {

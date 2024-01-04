@@ -41,12 +41,12 @@ use frontend_common::{
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
+    vhd_manager::VhdManager,
 };
 use marty_core::{
     cpu_common::CpuOption,
-    machine::{ExecutionControl, Machine, MachineState},
+    machine::{ExecutionControl, Machine, MachineEvent, MachineState},
     vhd::VirtualHardDisk,
-    vhd_manager::VHDManager,
 };
 use marty_egui::{state::GuiState, GuiBoolean, GuiWindow};
 use videocard_renderer::AspectCorrectionMode;
@@ -65,8 +65,10 @@ pub struct Emulator {
     pub rm: ResourceManager,
     pub dm: WgpuDisplayManager,
     pub romm: RomManager,
+    pub romsets: Vec<String>,
     pub config: ConfigFileParams,
     pub machine: Machine,
+    pub machine_events: Vec<MachineEvent>,
     pub exec_control: Rc<RefCell<ExecutionControl>>,
     pub mouse_data: MouseData,
     pub kb_data: KeyboardData,
@@ -74,7 +76,7 @@ pub struct Emulator {
     pub gui: GuiState,
     //context: &'a mut GuiRenderContext,
     pub floppy_manager: FloppyManager,
-    pub vhd_manager: VHDManager,
+    pub vhd_manager: VhdManager,
     pub hdd_path: PathBuf,
     //pub floppy_path: PathBuf,
     pub flags: EmuFlags,
@@ -236,20 +238,25 @@ impl Emulator {
             vhd_names.push(Some(vhd.filename.clone()));
         }
 
-        let mut vhd_idx: usize = 0;
+        let mut config_drive_idx: usize = 0;
         for vhd_name in vhd_names.into_iter().filter_map(|x| x) {
             let vhd_os_name: OsString = vhd_name.into();
-            match self.vhd_manager.load_vhd_file(vhd_idx, &vhd_os_name) {
-                Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
+            match self.vhd_manager.load_vhd_file_by_name(config_drive_idx, &vhd_os_name) {
+                Ok((vhd_file, vhd_idx)) => match VirtualHardDisk::from_file(vhd_file) {
                     Ok(vhd) => {
                         if let Some(hdc) = self.machine.hdc() {
-                            match hdc.set_vhd(vhd_idx, vhd) {
+                            match hdc.set_vhd(config_drive_idx, vhd) {
                                 Ok(_) => {
                                     log::info!(
                                         "VHD image {:?} successfully loaded into virtual drive: {}",
                                         vhd_os_name,
-                                        vhd_idx
+                                        config_drive_idx
                                     );
+
+                                    if let Some(selection) = self.vhd_manager.get_vhd_path(vhd_idx) {
+                                        self.gui
+                                            .set_hdd_selection(config_drive_idx, Some(vhd_idx), Some(selection));
+                                    }
                                 }
                                 Err(err) => {
                                     log::error!("Error mounting VHD: {}", err);
@@ -268,7 +275,7 @@ impl Emulator {
                     log::error!("Failed to load VHD image {:?}: {}", vhd_os_name, err);
                 }
             }
-            vhd_idx += 1;
+            config_drive_idx += 1;
         }
         Ok(())
     }
@@ -299,6 +306,9 @@ impl Emulator {
                 }
             }
         }
+
+        // Sort vid_list by index
+        vid_list.sort_by(|a, b| a.idx.cmp(&b.idx));
 
         // Build list of cards to set in UI.
         let mut card_strs = Vec::new();
@@ -406,7 +416,11 @@ impl Emulator {
 
         // Set floppy drives.
         self.gui.set_floppy_drives(self.machine.bus().floppy_drive_ct());
+
+        // Set hard drives.
+        self.gui.set_hdds(self.machine.bus().hdd_ct());
     }
+
     pub fn start(&mut self) {
         self.machine.play_sound_buffer();
     }

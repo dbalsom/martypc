@@ -50,6 +50,9 @@ icon.png
 /install/media/roms/*
 /install/media/floppies/*
 /install/media/hdds/*
+/install/output/screenshots/*
+/install/output/traces/*
+/install/output/dumps/*
 
 # Files to include for distribution
 !/install/media/roms/readme.md

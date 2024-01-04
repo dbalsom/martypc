@@ -56,7 +56,7 @@ impl DisassemblyControl {
         ui.horizontal(|ui| {
             ui.label("Address: ");
             if ui.text_edit_singleline(&mut self.address).changed() {
-                events.send(GuiEvent::MemoryUpdate);
+                //events.send(GuiEvent::MemoryUpdate);
             }
         });
         ui.separator();
@@ -66,12 +66,14 @@ impl DisassemblyControl {
 
         let mut new_row = self.row;
         ui.horizontal(|ui| {
-            self.tlv.draw(ui, events, &mut new_row);
+            self.tlv.draw(ui, events, &mut new_row, &mut |scrolled_to, sevents| {
+                //events.send(GuiEvent::MemoryUpdate);
+            });
         });
     }
 
     pub fn set_content(&mut self, mem: Vec<Vec<SyntaxToken>>) {
-        self.tlv.set_contents(mem);
+        self.tlv.set_contents(mem, false);
     }
 
     #[allow(dead_code)]

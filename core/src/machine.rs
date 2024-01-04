@@ -38,7 +38,7 @@ use log;
 use anyhow::{anyhow, Error};
 use std::{
     cell::Cell,
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     fs::File,
     io::{BufWriter, Write},
     path::PathBuf,
@@ -50,18 +50,16 @@ use crate::{
     coreconfig::CoreConfig,
     cpu_808x::{Cpu, CpuAddress, CpuError, ServiceEvent, StepResult},
     cpu_common::{CpuOption, CpuType, TraceMode},
+    device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     devices::{
-        implementations::{
-            dma::DMAControllerStringState,
-            fdc::FloppyController,
-            hdc::HardDiskController,
-            keyboard::KeyboardModifiers,
-            mouse::Mouse,
-            pic::PicStringState,
-            pit::{self, PitDisplayState},
-            ppi::PpiStringState,
-        },
-        traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
+        dma::DMAControllerStringState,
+        fdc::FloppyController,
+        hdc::HardDiskController,
+        keyboard::KeyboardModifiers,
+        mouse::Mouse,
+        pic::PicStringState,
+        pit::{self, PitDisplayState},
+        ppi::PpiStringState,
     },
     keys::MartyKey,
     machine_config::{get_machine_descriptor, MachineConfiguration, MachineDescriptor},
@@ -74,7 +72,7 @@ use ringbuf::{Consumer, Producer, RingBuffer};
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
-pub const NUM_HDDS: u32 = 2;
+//pub const NUM_HDDS: u32 = 2;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
@@ -87,12 +85,27 @@ pub struct KeybufferEntry {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub enum MachineEvent {
+    CheckpointHit(usize, u32),
+    Reset,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub enum MachineState {
     On,
     Paused,
     Resuming,
     Rebooting,
     Off,
+}
+
+impl MachineState {
+    pub fn is_on(&self) -> bool {
+        match self {
+            MachineState::Off => false,
+            _ => true,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -210,6 +223,7 @@ pub struct MachineRomEntry {
 #[derive(Clone, Default, Debug)]
 pub struct MachineCheckpoint {
     pub addr: u32,
+    pub lvl:  u32,
     pub desc: String,
 }
 
@@ -225,15 +239,28 @@ pub struct MachineRomManifest {
     pub checkpoints: Vec<MachineCheckpoint>,
     pub patches: Vec<MachinePatch>,
     pub roms: Vec<MachineRomEntry>,
+    pub rom_paths: Vec<PathBuf>,
 }
 
 impl MachineRomManifest {
     pub fn new() -> Self {
         Default::default()
     }
+    pub fn checkpoint_map(&self) -> HashMap<u32, usize> {
+        let mut map = HashMap::new();
+        for (idx, cp) in self.checkpoints.iter().enumerate() {
+            map.insert(cp.addr, idx);
+        }
+        map
+    }
+    pub fn patch_map(&self) -> HashMap<u32, usize> {
+        let mut map = HashMap::new();
+        for (idx, patch) in self.patches.iter().enumerate() {
+            map.insert(patch.trigger, idx);
+        }
+        map
+    }
 }
-
-pub type MachineResetCallback = Box<dyn Fn(&mut MachineRomManifest)>;
 
 #[derive(Default)]
 pub struct MachineBuilder<'a> {
@@ -244,7 +271,6 @@ pub struct MachineBuilder<'a> {
     rom_manifest: Option<MachineRomManifest>,
     trace_mode: TraceMode,
     sound_player: Option<SoundPlayer>,
-    reset_callback: Option<MachineResetCallback>,
 }
 
 impl<'a> MachineBuilder<'a> {
@@ -281,18 +307,8 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn with_reload_callback(mut self, callback: Option<MachineResetCallback>) -> Self {
-        self.reset_callback = callback;
-        self
-    }
-
     pub fn build(self) -> Result<Machine, Error> {
-        if self.core_config.is_some() {
-            log::debug!("Not none!");
-        }
-
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
-
         let machine_config = self
             .machine_config
             .ok_or(anyhow!("No machine configuration specified"))?;
@@ -308,7 +324,6 @@ impl<'a> MachineBuilder<'a> {
             self.trace_mode,
             self.sound_player,
             rom_manifest,
-            self.reset_callback,
         ))
     }
 }
@@ -317,6 +332,7 @@ impl<'a> MachineBuilder<'a> {
 pub struct Machine {
     machine_type: MachineType,
     machine_desc: MachineDescriptor,
+    machine_config: MachineConfiguration,
     state: MachineState,
     sound_player: Option<SoundPlayer>,
     rom_manifest: MachineRomManifest,
@@ -328,11 +344,16 @@ pub struct Machine {
     kb_buf: VecDeque<KeybufferEntry>,
     error: bool,
     error_str: Option<String>,
+    turbo_bit: bool,
+    turbo_button: bool,
     cpu_factor: ClockFactor,
     next_cpu_factor: ClockFactor,
     cpu_cycles: u64,
     system_ticks: u64,
-    reset_callback: Option<MachineResetCallback>,
+    checkpoint_map: HashMap<u32, usize>,
+    patch_map: HashMap<u32, usize>,
+    events: Vec<MachineEvent>,
+    reload_pending: bool,
 }
 
 impl Machine {
@@ -344,7 +365,6 @@ impl Machine {
         trace_mode: TraceMode,
         sound_player: Option<SoundPlayer>,
         rom_manifest: MachineRomManifest,
-        reset_callback: Option<MachineResetCallback>,
         //rom_manager: RomManager,
     ) -> Machine {
         //let mut io_bus = IoBusInterface::new();
@@ -456,7 +476,6 @@ impl Machine {
         }
 
         // Load keyboard translation file if specified.
-
         if let Some(kb_string) = &core_config.get_keyboard_layout() {
             let mut kb_translation_path = PathBuf::new();
             kb_translation_path.push(core_config.get_base_dir().clone());
@@ -481,13 +500,14 @@ impl Machine {
         cpu.bus_mut().keyboard_mut().set_debug(core_config.get_keyboard_debug());
 
         // Load BIOS ROM images unless config option suppressed rom loading
-        if !core_config.get_machine_nobios() {
+        if !core_config.get_machine_noroms() {
             Machine::install_roms(cpu.bus_mut(), &rom_manifest);
 
             //rom_manager.copy_into_memory(cpu.bus_mut());
 
             // Load checkpoint flags into memory
             //rom_manager.install_checkpoints(cpu.bus_mut());
+            cpu.bus_mut().install_checkpoints(&rom_manifest.checkpoints);
 
             // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
 
@@ -507,13 +527,17 @@ impl Machine {
         cpu.emit_header();
         cpu.reset();
 
+        let checkpoint_map = rom_manifest.checkpoint_map();
+        let patch_map = rom_manifest.patch_map();
+
         Machine {
             machine_type,
             machine_desc,
+            machine_config,
             state: MachineState::On,
             sound_player,
             rom_manifest,
-            load_bios: !core_config.get_machine_nobios(),
+            load_bios: !core_config.get_machine_noroms(),
             cpu,
             speaker_buf_producer,
             pit_data,
@@ -521,11 +545,16 @@ impl Machine {
             kb_buf: VecDeque::new(),
             error: false,
             error_str: None,
+            turbo_bit: false,
+            turbo_button: false,
             cpu_factor,
             next_cpu_factor: cpu_factor,
             cpu_cycles: 0,
             system_ticks: 0,
-            reset_callback,
+            checkpoint_map,
+            patch_map,
+            events: Vec::new(),
+            reload_pending: false,
         }
     }
 
@@ -540,6 +569,25 @@ impl Machine {
                 }
             }
         }
+    }
+
+    pub fn reinstall_roms(&mut self, rom_manifest: MachineRomManifest) -> Result<(), Error> {
+        for rom in rom_manifest.roms.iter() {
+            match self.cpu.bus_mut().copy_from(&rom.data, rom.addr as usize, 0, true) {
+                Ok(_) => {
+                    log::debug!("Mounted rom at location {:06X}", rom.addr);
+                }
+                Err(e) => {
+                    log::debug!("Failed to mount rom at location {:06X}: {}", rom.addr, e);
+                    return Err(anyhow!("Failed to mount rom at location {:06X}: {}", rom.addr, e));
+                }
+            }
+        }
+
+        self.rom_manifest = rom_manifest;
+        // Allow machine to run again
+        self.reload_pending = false;
+        Ok(())
     }
 
     pub fn change_state(&mut self, new_state: MachineState) {
@@ -572,6 +620,10 @@ impl Machine {
 
     pub fn get_state(&self) -> MachineState {
         self.state
+    }
+
+    pub fn get_event(&mut self) -> Option<MachineEvent> {
+        self.events.pop()
     }
 
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
@@ -676,6 +728,7 @@ impl Machine {
     /// We must be careful not to update this between step() and run_devices() or devices'
     /// advance_ticks may overflow device update ticks.
     pub fn set_turbo_mode(&mut self, state: bool) {
+        self.turbo_button = state;
         if state {
             self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
         }
@@ -683,7 +736,7 @@ impl Machine {
             self.next_cpu_factor = self.machine_desc.cpu_factor;
         }
         log::debug!(
-            "Set turbo mode to: {} New cpu factor is {:?}",
+            "Set turbo button to: {} New cpu factor is {:?}",
             state,
             self.next_cpu_factor
         );
@@ -842,12 +895,6 @@ impl Machine {
         // Clear RAM
         self.cpu.bus_mut().clear();
 
-        // Call the reset callback - this gives the front end an opportunity to reload
-        // ROMs specified for hot reloading
-        if let Some(cb) = &self.reset_callback {
-            cb(&mut self.rom_manifest);
-        }
-
         // Reload BIOS ROM images
         if self.load_bios {
             Machine::install_roms(self.cpu.bus_mut(), &self.rom_manifest);
@@ -858,6 +905,11 @@ impl Machine {
 
         // Reset all installed devices.
         self.cpu.bus_mut().reset_devices();
+        self.events.push(MachineEvent::Reset);
+    }
+
+    pub fn set_reload_pending(&mut self, state: bool) {
+        self.reload_pending = state;
     }
 
     #[inline]
@@ -893,6 +945,15 @@ impl Machine {
         }
     }
 
+    pub fn get_checkpoint_string(&self, idx: usize) -> Option<String> {
+        if idx < self.rom_manifest.checkpoints.len() {
+            Some(self.rom_manifest.checkpoints[idx].desc.clone())
+        }
+        else {
+            None
+        }
+    }
+
     pub fn run(&mut self, cycle_target: u32, exec_control: &mut ExecutionControl) -> u64 {
         let mut kb_event_processed = false;
         let mut skip_breakpoint = false;
@@ -902,6 +963,11 @@ impl Machine {
         let new_factor = self.next_cpu_factor;
         self.cpu_factor = new_factor;
         self.bus_mut().set_cpu_factor(new_factor);
+
+        // Don't run this iteration if we're pending a ROM reload
+        if self.reload_pending {
+            return 0;
+        }
 
         // Was reset requested?
         if let ExecutionOperation::Reset = exec_control.peek_op() {
@@ -1016,6 +1082,17 @@ impl Machine {
 
             // Match checkpoints
             if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
+                if let Some(cp) = self.checkpoint_map.get(&flat_address) {
+                    log::debug!(
+                        "ROM CHECKPOINT: [{:05X}] {}",
+                        flat_address,
+                        self.rom_manifest.checkpoints[*cp].desc
+                    );
+
+                    self.events
+                        .push(MachineEvent::CheckpointHit(*cp, self.rom_manifest.checkpoints[*cp].lvl));
+                }
+
                 /*
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
                     log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
@@ -1261,14 +1338,53 @@ impl Machine {
         timer_ticks as u32 * timer_multiplier
     }
 
-    /// Called to update machine once per frame.
-    /// Mostly used for serial passthrouh function to synchronize virtual
-    /// serial port with real serial port.
-    pub fn frame_update(&mut self) {
+    /// Called to update machine once per frame. This can be used to update the state of devices that don't require
+    /// immediate response to CPU cycles, such as the serial port.
+    /// We also check for toggle of the turbo button.
+    pub fn frame_update(&mut self) -> Vec<DeviceEvent> {
+        let mut device_events = Vec::new();
+
         // Update serial port, if present
         if let Some(spc) = self.cpu.bus_mut().serial_mut() {
             spc.update();
         }
+
+        match self.machine_type {
+            MachineType::Ibm5160 => {
+                // Only do turbo if there is a ppi_turbo option.
+                if let Some(ppi_turbo) = self.machine_config.ppi_turbo {
+                    // Turbo button overrides soft-turbo.
+                    if !self.turbo_button {
+                        if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
+                            let turbo_bit = ppi_turbo == ppi.turbo_bit();
+
+                            if turbo_bit != self.turbo_bit {
+                                // Turbo bit has changed.
+                                match turbo_bit {
+                                    true => {
+                                        self.next_cpu_factor = self.machine_desc.cpu_turbo_factor;
+                                        device_events.push(DeviceEvent::TurboToggled(true));
+                                    }
+                                    false => {
+                                        self.next_cpu_factor = self.machine_desc.cpu_factor;
+                                        device_events.push(DeviceEvent::TurboToggled(false));
+                                    }
+                                }
+                                log::debug!(
+                                    "Set turbo state to: {} New cpu factor is {:?}",
+                                    turbo_bit,
+                                    self.next_cpu_factor
+                                );
+                            }
+                            self.turbo_bit = turbo_bit;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        device_events
     }
 
     pub fn play_sound_buffer(&self) {

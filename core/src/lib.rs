@@ -32,8 +32,6 @@
 
 extern crate core;
 
-pub mod devices;
-
 pub mod breakpoints;
 pub mod bus;
 pub mod bytebuf;
@@ -41,6 +39,9 @@ pub mod bytequeue;
 pub mod coreconfig;
 pub mod cpu_808x;
 pub mod cpu_common;
+pub mod device_traits;
+pub mod device_types;
+pub mod devices;
 pub mod file_util;
 pub mod interrupt;
 pub mod keys;
@@ -54,7 +55,6 @@ pub mod tracelogger;
 pub mod updatable;
 pub mod util;
 pub mod vhd;
-pub mod vhd_manager;
 
 pub mod cpu_validator; // CpuValidator trait
 

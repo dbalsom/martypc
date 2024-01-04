@@ -33,13 +33,15 @@ use crate::{state::GuiState, GuiWindow};
 use egui::Context;
 
 impl GuiState {
-    /// Create the UI using egui.
-    pub fn ui(&mut self, ctx: &Context) {
+    pub fn menu_ui(&mut self, ctx: &Context) {
         // Draw top menu bar
         egui::TopBottomPanel::top("menubar_container").show(ctx, |ui| {
             self.draw_menu(ui);
         });
+    }
 
+    /// Create the UI using egui.
+    pub fn ui(&mut self, ctx: &Context) {
         self.toasts.show(ctx);
 
         egui::Window::new("About")
@@ -143,12 +145,12 @@ impl GuiState {
                 self.disassembly_viewer.draw(ui, &mut self.event_queue);
             });
 
-        egui::Window::new("IVR Viewer")
-            .open(self.window_open_flags.get_mut(&GuiWindow::IvrViewer).unwrap())
+        egui::Window::new("IVT Viewer")
+            .open(self.window_open_flags.get_mut(&GuiWindow::IvtViewer).unwrap())
             .resizable(true)
             .default_width(400.0)
             .show(ctx, |ui| {
-                self.ivr_viewer.draw(ui, &mut self.event_queue);
+                self.ivt_viewer.draw(ui, &mut self.event_queue);
             });
 
         egui::Window::new("CPU State")

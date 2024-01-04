@@ -5,7 +5,7 @@
 # all toml files found in the rom directory.
 # 
 # If you find ROM variants that should be here, please let me know!
-
+#
 # ----------------------------------------------------------------------------
 # Defining a ROM set
 # ----------------------------------------------------------------------------
@@ -19,35 +19,73 @@
 #  "ibm_basic"
 #  "expansion"
 #  "ibm_ega"
-#  "xebec"
+#  "ibm_xebec"
 # 
 # ROM sets advertise what features they provide in their "provides" field. 
 # MartyPC will load ROM sets that provide the requested features. If more than
 # one ROM set provides the same feature, the set with the highest 'priority'
 # value will be used.
 #
+#
 # The following fiels are required for each ROM set:
 # alias    - Defines a name for this ROM set that may be referenced specifically
 #            (ie, in the rom_override config setting)
-# priority - Breaks ties between valid ROM sets (higher is better)
 # desc     - A human-readable string describing this ROM set.
+# priority - Breaks ties between matching, complete ROM sets (higher is better)
 # provides - An array of strings describing what features this ROM set provides
+# oem      - If true, marks the ROM set as OEM for all its features. (see below)
+# oem_for  - A list of features for which the ROM set will be marked as OEM.
+#
+# OEM selection:
+# The 'oem' and 'oem_for' fields may be used to influence ROM set priority. 
+# Setting oem = true will set the ROM as OEM for all its features.
+#
+# Using oem_for = ["feature1", "feature2"] will mark the ROM as OEM for only
+# the specified features. 
+#
+# If the 'use_oem' option in main config is set, ROMs that are marked OEM are
+# strongly preferred before any other ROM set. Currently this is implemented 
+# by a +100 offset to ROM priority per feature.
 #
 # ----------------------------------------------------------------------------
 # Other fields
 # ----------------------------------------------------------------------------
-# checkpoints - These are a list of addresses and strings. When the CPU 
-#               executes an instruction at the given address, the string is 
-#               logged to the console.  This can be useful to watch the POST
-#               process. Be careful that you don't create a checkpoint that is
-#               reached too often or you will flood the console and ruin 
-#               performance.
+# checkpoints - These are a list of addresses, levels and strings. When the
+#               CPU executes an instruction at the given address, the string is 
+#               logged to the console, or optionally, the notification system
+#               (depending on specified level) 
+#               This can be useful to watch the POST process. Be careful that 
+#               you don't create a checkpoint that is reached too often or you
+#               will flood the console and take a big performance hit.
 #               (you must have RUST_LOG=marty_core::cpu::debug set to see log
 #               messages)
+#               Checkpoints are implemented with memory flags so are fairly
+#               performant to set, although obviously hitting one has a 
+#               performance hit if they are logged.
+# 
+#               There are five defined 'levels', roughly analagoys to Rust log
+#               levels:
+#               0 - Error.  Intended for checkpoints you should never reach.
+#                           Will be logged as an Error.
+#               1 - Warning Intended for checkpoints you with to alert on. Will
+#                           be logged as a Warning.
+#               2 - Debug   Checkpoints you want to see normally but nothing 
+#                           special, just passing through. Will be logged as 
+#                           Debug.
+#               3 - Info    Checkpoints that are in normal control flow and
+#                           would be noisy to display always. Logged as Info.
+#               4 - Trace   Checkpoints that are in normal control flow and 
+#                           would be very noisy. Logged as Trace.
 #
-# patches     - When the 'trigger_addr' is reached, the specified bytes will
-#               be written to the specified address, even if it is ROM.
+#               The default checkpoint level, if not provided, is Debug.
+#
+# patches     - When the 'trigger' address is reached, the specified bytes will
+#               be written to the specified 'addr', even if it is ROM.
 #               'addr' may be anywhere in memory.
+#               A 'reset' address can be specified, that when reached will
+#               restore the original bytes at 'addr'. This is useful for
+#               patching code that is verified by CRC or checksum later.
+#
 #               ROM Patching must be enabled in the main configuration for 
 #               this to have any effect.
 #
@@ -92,42 +130,44 @@
 # ----------------------------------------------------------------------------
 [[romset]]
 alias = "ibm5150_81_v1"
-priority = 1
-provides = ["ibm5150v64k"]
 desc = "IBM 5150 BIOS v1 04/24/81"
+priority = 1
+provides = ["bios", "ibm5150v64k"]
+oem = true
 datestr = "04/24/81"
 rom = [
     { md5 = "6338a9808445de12109a2389b71ee2eb", addr = 0xFE000, size = 8192, chip = "u33" }
 ]
-checkpoints = [
-    { addr = 0xfe01a, desc = "RAM Check Routine" },
-    { addr = 0xfe05b, desc = "8088 Processor Test" },
-    { addr = 0xfe0b0, desc = "ROS Checksum" },
-    { addr = 0xfe0da, desc = "8237 DMA Initialization Test" },
-    { addr = 0xfe117, desc = "DMA Controller test"},
-    { addr = 0xfe158, desc = "Base 16K Read/Write Test"},
-    { addr = 0xfe235, desc = "8249 Interrupt Controller Test"},
-    { addr = 0xfe285, desc = "8253 Timer Checkout"},
-    { addr = 0xfe33b, desc = "ROS Checksum II"},
-    { addr = 0xfe352, desc = "Initialize CRTC Controller"},
-    { addr = 0xfe3af, desc = "Video Line Test"},
-    { addr = 0xfe3c0, desc = "CRT Interface Lines Test"},
-    { addr = 0xfe3f8, desc = "Additional R/W Storage Test"},
-    { addr = 0xfe630, desc = "Error Beep"},
-    { addr = 0xfe666, desc = "Beep"},
-    { addr = 0xfe688, desc = "Keyboard Reset"},
-    { addr = 0xfe6b2, desc = "Blink LED Interrupt"},
-    { addr = 0xfe6ca, desc = "Print Message"},
-    { addr = 0xfe6f2, desc = "Bootstrap Loader"},
-    { addr = 0xFEF33, desc = "FDC Wait for Interrupt"},
-    { addr = 0xFEF47, desc = "FDC Interrupt Timeout"},
-    { addr = 0xf6000, desc = "ROM BASIC"},
+checkpoint = [
+    { addr = 0xfe01a, lvl = 2, desc = "RAM Check Routine" },
+    { addr = 0xfe05b, lvl = 2, desc = "8088 Processor Test" },
+    { addr = 0xfe0b0, lvl = 2, desc = "ROS Checksum" },
+    { addr = 0xfe0da, lvl = 2, desc = "8237 DMA Initialization Test" },
+    { addr = 0xfe117, lvl = 2, desc = "DMA Controller test"},
+    { addr = 0xfe158, lvl = 2, desc = "Base 16K Read/Write Test"},
+    { addr = 0xfe235, lvl = 2, desc = "8249 Interrupt Controller Test"},
+    { addr = 0xfe285, lvl = 2, desc = "8253 Timer Checkout"},
+    { addr = 0xfe33b, lvl = 2, desc = "ROS Checksum II"},
+    { addr = 0xfe352, lvl = 2, desc = "Initialize CRTC Controller"},
+    { addr = 0xfe3af, lvl = 2, desc = "Video Line Test"},
+    { addr = 0xfe3c0, lvl = 2, desc = "CRT Interface Lines Test"},
+    { addr = 0xfe3f8, lvl = 2, desc = "Additional R/W Storage Test"},
+    { addr = 0xfe630, lvl = 0, desc = "Error Beep"},
+    { addr = 0xfe666, lvl = 3, desc = "Beep"},
+    { addr = 0xfe688, lvl = 2, desc = "Keyboard Reset"},
+    { addr = 0xfe6b2, lvl = 3, desc = "Blink LED Interrupt"},
+    { addr = 0xfe6ca, lvl = 3, desc = "Print Message"},
+    { addr = 0xfe6f2, lvl = 2, desc = "Bootstrap Loader"},
+    { addr = 0xFEF33, lvl = 3, desc = "FDC Wait for Interrupt"},
+    { addr = 0xFEF47, lvl = 3, desc = "FDC Interrupt Timeout"},
+    { addr = 0xf6000, lvl = 2, desc = "ROM BASIC"},
 ]
 
 [[romset]]
 alias = "ibm5150_81_v2"
 priority = 2
-provides = ["ibm5150v64k"]
+provides = ["bios", "ibm5150v64k"]
+oem = true
 desc = "IBM 5150 BIOS v2 10/19/81"
 datestr = "10/19/81"
 rom = [
@@ -137,7 +177,8 @@ rom = [
 [[romset]]
 alias = "ibm5150_82_v3"
 priority = 3
-provides = ["expansion", "ibm5150v64k", "ibm5150v256k"]
+provides = ["bios", "ibm5150v64k", "ibm5150v256k", "expansion"]
+oem = true
 desc = "IBM 5150 BIOS v3 10/27/82"
 datestr = "10/27/82"
 rom = [
@@ -152,25 +193,26 @@ rom = [
 alias = "ibm5160_82_v1_wbasic"
 datestr = "11/08/82"
 priority = 1
-provides = ["expansion", "ibm5160", "ibm_basic"]
+provides = ["bios", "ibm5160", "ibm_basic", "expansion"]
+oem = true
 rom = [
     { md5 = "e816a89768a1bf4b8d52b454d5c9d1e1", addr = 0xF0000, size = 32768, chip = "basic+u19" },
     { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
 ]
-checkpoints = [
-    { addr = 0xFE01A, desc = "RAM Check Routine" },
-    { addr = 0xFE05B, desc = "8088 Processor Test" },
-    { addr = 0xFE0AE, desc = "ROS Checksum Test I" },
-    { addr = 0xFE0D9, desc = "8237 DMA Initialization Test" },
-    { addr = 0xFE135, desc = "Start DRAM Refresh" },
-    { addr = 0xFE166, desc = "Base 16K RAM Test" },
-    { addr = 0xFE242, desc = "Initialize CRTC Controller" },
-    { addr = 0xFE329, desc = "8259 Interrupt Controller Test" },
-    { addr = 0xFE35D, desc = "8253 Timer Checkout" },
-    { addr = 0xFE3A2, desc = "Keyboard Test" },
-    { addr = 0xFE3DE, desc = "Setup Interrupt Vector Table" },
-    { addr = 0xFE418, desc = "Expansion I/O Box Test" },
-    { addr = 0xFE46A, desc = "Additional R/W Storage Test" },
+checkpoint = [
+    { addr = 0xFE01A, lvl = 3, desc = "RAM Check Routine" },
+    { addr = 0xFE05B, lvl = 3, desc = "8088 Processor Test" },
+    { addr = 0xFE0AE, lvl = 3, desc = "ROS Checksum Test I" },
+    { addr = 0xFE0D9, lvl = 3, desc = "8237 DMA Initialization Test" },
+    { addr = 0xFE135, lvl = 3, desc = "Start DRAM Refresh" },
+    { addr = 0xFE166, lvl = 3, desc = "Base 16K RAM Test" },
+    { addr = 0xFE242, lvl = 3, desc = "Initialize CRTC Controller" },
+    { addr = 0xFE329, lvl = 3, desc = "8259 Interrupt Controller Test" },
+    { addr = 0xFE35D, lvl = 3, desc = "8253 Timer Checkout" },
+    { addr = 0xFE3A2, lvl = 3, desc = "Keyboard Test" },
+    { addr = 0xFE3DE, lvl = 3, desc = "Setup Interrupt Vector Table" },
+    { addr = 0xFE418, lvl = 3, desc = "Expansion I/O Box Test" },
+    { addr = 0xFE46A, lvl = 3, desc = "Additional R/W Storage Test" },
 ]
     [[romset.patch]]
     desc = "Patch ROS checksum routine"
@@ -190,25 +232,26 @@ checkpoints = [
 alias = "ibm5160_82_v1"
 datestr = "11/08/82"
 priority = 2
-provides = ["expansion", "ibm5160"]
+provides = ["bios", "ibm5160", "expansion"]
+oem = true
 rom = [
     { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xFE000, size = 8192,  chip = "u19" },
     { md5 = "1a2ac1ae0fe0f7783197e78da8b3126c", addr = 0xF8000, size = 32768, chip = "u18" },
 ]
-checkpoints = [
-    { addr = 0xFE01A, desc = "RAM Check Routine" },
-    { addr = 0xFE05B, desc = "8088 Processor Test" },
-    { addr = 0xFE0AE, desc = "ROS Checksum Test I" },
-    { addr = 0xFE0D9, desc = "8237 DMA Initialization Test" },
-    { addr = 0xFE135, desc = "Start DRAM Refresh" },
-    { addr = 0xFE166, desc = "Base 16K RAM Test" },
-    { addr = 0xFE242, desc = "Initialize CRTC Controller" },
-    { addr = 0xFE329, desc = "8259 Interrupt Controller Test" },
-    { addr = 0xFE35D, desc = "8253 Timer Checkout" },
-    { addr = 0xFE3A2, desc = "Keyboard Test" },
-    { addr = 0xFE3DE, desc = "Setup Interrupt Vector Table" },
-    { addr = 0xFE418, desc = "Expansion I/O Box Test" },
-    { addr = 0xFE46A, desc = "Additional R/W Storage Test" },
+checkpoint = [
+    { addr = 0xFE01A, lvl = 3, desc = "RAM Check Routine" },
+    { addr = 0xFE05B, lvl = 3, desc = "8088 Processor Test" },
+    { addr = 0xFE0AE, lvl = 3, desc = "ROS Checksum Test I" },
+    { addr = 0xFE0D9, lvl = 3, desc = "8237 DMA Initialization Test" },
+    { addr = 0xFE135, lvl = 3, desc = "Start DRAM Refresh" },
+    { addr = 0xFE166, lvl = 3, desc = "Base 16K RAM Test" },
+    { addr = 0xFE242, lvl = 3, desc = "Initialize CRTC Controller" },
+    { addr = 0xFE329, lvl = 3, desc = "8259 Interrupt Controller Test" },
+    { addr = 0xFE35D, lvl = 3, desc = "8253 Timer Checkout" },
+    { addr = 0xFE3A2, lvl = 3, desc = "Keyboard Test" },
+    { addr = 0xFE3DE, lvl = 3, desc = "Setup Interrupt Vector Table" },
+    { addr = 0xFE418, lvl = 3, desc = "Expansion I/O Box Test" },
+    { addr = 0xFE46A, lvl = 3, desc = "Additional R/W Storage Test" },
 ]
     [[romset.patch]]
     desc = "Patch ROS checksum routine"
@@ -228,7 +271,7 @@ checkpoints = [
 alias = "ibm5160_86_v1_wbasic"
 datestr = "01/10/86"
 priority = 3
-provides = ["expansion", "ibm5160", "ibm_basic"]
+provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
 rom = [
     { md5 = "f051b4bbc3b60c3a14df94a0e4ee720f", addr = 0xF0000, chip = "basic+u19" },
     { md5 = "fd9ff9cbe0a8f154746ccb0a33f6d3e7", addr = 0xF8000, chip = "u18" },
@@ -238,10 +281,31 @@ rom = [
 alias = "ibm5160_86_v2_wbasic"
 datestr = "05/09/86"
 priority = 4
-provides = ["expansion", "ibm5160", "ibm_basic"]
+provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
+oem = true
 rom = [
     { md5 = "df9f29de490d7f269a6405df1fed69b7", addr = 0xF0000, chip = "basic+u19" },
     { md5 = "9696472098999c02217bf922786c1f4a", addr = 0xF8000, chip = "u18" },
+]
+checkpoint = [
+    { addr = 0xfe01a, lvl = 3, desc = "RAM Check Routine" },
+    { addr = 0xfe05b, lvl = 3, desc = "8088 Processor Test" },
+    { addr = 0xFE0AC, lvl = 3, desc = "ROS Checksum Test I" },
+    { addr = 0xFE0D7, lvl = 3, desc = "8237 DMA Initialization Test" },
+    { addr = 0xFE136, lvl = 3, desc = "Start DRAM Refresh" },
+    { addr = 0xFE166, lvl = 3, desc = "Base 16K RAM Test" },
+    { addr = 0xFE1DA, lvl = 3, desc = "Initialize 8259 PIC" },
+    { addr = 0xFE20B, lvl = 3, desc = "Determine Configuration and Mfg Mode" },
+    { addr = 0xFE261, lvl = 3, desc = "Initialize CRTC Controller" },
+    { addr = 0xFE2EE, lvl = 3, desc = "Video Line Test" },
+    { addr = 0xFE35C, lvl = 3, desc = "8259 Interrupt Controller Test" },
+    { addr = 0xFE38F, lvl = 3, desc = "8253 Timer Checkout" },
+    { addr = 0xFE3D4, lvl = 3, desc = "Keyboard Test" },
+    { addr = 0xFE40F, lvl = 3, desc = "Setup Interrupt Vector Table" },
+    { addr = 0xFE448, lvl = 3, desc = "Expansion I/O Box Test" },
+    { addr = 0xFE499, lvl = 3, desc = "Additional R/W Storage Test" },
+    { addr = 0xFE53C, lvl = 3, desc = "Optional ROM Scan" },
+    { addr = 0xFE55B, lvl = 3, desc = "Diskette Attachment Test" },
 ]
     [[romset.patch]]
     desc = "Patch ROS checksum routine"
@@ -254,28 +318,6 @@ rom = [
     trigger = 0xFE499
     addr = 0xFE4EA
     bytes = [ 0x90, 0x90, 0x90, 0x90, 0x90]
-
-checkpoints = [
-    { addr = 0xfe01a, desc = "RAM Check Routine" },
-    { addr = 0xfe05b, desc = "8088 Processor Test" },
-    { addr = 0xFE0AC, desc = "ROS Checksum Test I" },
-    { addr = 0xFE0D7, desc = "8237 DMA Initialization Test" },
-    { addr = 0xFE136, desc = "Start DRAM Refresh" },
-    { addr = 0xFE166, desc = "Base 16K RAM Test" },
-    { addr = 0xFE1DA, desc = "Initialize 8259 PIC" },
-    { addr = 0xFE20B, desc = "Determine Configuration and Mfg Mode" },
-    { addr = 0xFE261, desc = "Initialize CRTC Controller" },
-    { addr = 0xFE2EE, desc = "Video Line Test" },
-    { addr = 0xFE35C, desc = "8259 Interrupt Controller Test" },
-    { addr = 0xFE38F, desc = "8253 Timer Checkout" },
-    { addr = 0xFE3D4, desc = "Keyboard Test" },
-    { addr = 0xFE40F, desc = "Setup Interrupt Vector Table" },
-    { addr = 0xFE448, desc = "Expansion I/O Box Test" },
-    { addr = 0xFE499, desc = "Additional R/W Storage Test" },
-    { addr = 0xFE53C, desc = "Optional ROM Scan" },
-    { addr = 0xFE55B, desc = "Diskette Attachment Test" },
-]
-
 # ----------------------------------------------------------------------------
 # Device ROMS
 # ----------------------------------------------------------------------------
@@ -284,50 +326,53 @@ checkpoints = [
 alias = "ibm_xebec"
 priority = 1
 provides = ["ibm_xebec"]
+oem = true
 requires = ["expansion"]
 rom = [
     { md5 = "66631d1a095d8d0d54cc917fbdece684", addr = 0xC8000, size = 4096 }
 ]
-checkpoints = [
-    { addr = 0xC8003, desc = "HDC Expansion Init" },
-    { addr = 0xC8117, desc = "HDC Disk Reset" },
-    { addr = 0xC8596, desc = "HDC Status Timeout" },
-    { addr = 0xC8192, desc = "HDC Bootstrap Loader" },
-    { addr = 0xC81FF, desc = "HDC Boot From Fixed Disk" },
+checkpoint = [
+    { addr = 0xC8003, lvl = 3, desc = "HDC Expansion Init" },
+    { addr = 0xC8117, lvl = 3, desc = "HDC Disk Reset" },
+    { addr = 0xC8596, lvl = 3, desc = "HDC Status Timeout" },
+    { addr = 0xC8192, lvl = 3, desc = "HDC Bootstrap Loader" },
+    { addr = 0xC81FF, lvl = 3, desc = "HDC Boot From Fixed Disk" },
 ]
 
 [[romset]]
 alias = "ibm_ega"
 priority = 1
 provides = ["ibm_ega"]
+oem = true
 requires = ["expansion"]
 rom = [
     { md5 = "528455ed0b701722c166c6536ba4ff46", addr = 0xC0000, size = 16384, chip = "1", org = "Normal" },
     { md5 = "0636f46316f3e15cb287ce3da6ba43a1", addr = 0xC0000, size = 16384, chip = "1", org = "Reversed" }
 ]
-checkpoints = [
-    { addr = 0xC0003, desc = "EGA Expansion Init" },
-    { addr = 0xC009B, desc = "EGA DIP Switch Sense" },
-    { addr = 0xC0205, desc = "EGA CD Presence Test" },
-    { addr = 0xC037C, desc = "EGA VBlank Bit Test" },
-    { addr = 0xC0D20, desc = "EGA Error Beep" },
-    { addr = 0xC03F6, desc = "EGA Diagnostic Dot Test" },
-    { addr = 0xC0480, desc = "EGA Mem Test" },
-    { addr = 0xC068F, desc = "EGA How Big Test" },
+checkpoint = [
+    { addr = 0xC0003, lvl = 3, desc = "EGA Expansion Init" },
+    { addr = 0xC009B, lvl = 3, desc = "EGA DIP Switch Sense" },
+    { addr = 0xC0205, lvl = 3, desc = "EGA CD Presence Test" },
+    { addr = 0xC037C, lvl = 3, desc = "EGA VBlank Bit Test" },
+    { addr = 0xC0D20, lvl = 3, desc = "EGA Error Beep" },
+    { addr = 0xC03F6, lvl = 3, desc = "EGA Diagnostic Dot Test" },
+    { addr = 0xC0480, lvl = 3, desc = "EGA Mem Test" },
+    { addr = 0xC068F, lvl = 3, desc = "EGA How Big Test" },
 ]
 
 [[romset]]
 alias = "ibm_vga"
 priority = 1
 provides = ["ibm_vga"]
+oem = true
 requires = ["expansion"]
 rom = [
     { md5 = "2057a38cb472300205132fb9c01d9d85", addr = 0xC0000, offset = 0x2000, size = 32768, chip = "1" },
     { md5 = "2c8a4e1db93d2cbe148b66122747e4f2", addr = 0xC0000, offset = 0, size = 24576, chip = "1" }
 ]
 checkpoints = [
-    { addr = 0xC203B, desc = "VGA Expansion Init" },
-    { addr = 0xC21F9, desc = "VGA Vblank Test" },
+    { addr = 0xC203B, lvl = 3, desc = "VGA Expansion Init" },
+    { addr = 0xC21F9, lvl = 3, desc = "VGA Vblank Test" },
 ]
             
 # ----------------------------------------------------------------------------
@@ -338,16 +383,20 @@ checkpoints = [
 
 [[romset]]
 alias = "ibmbasic_v1_32k"
+desc = "IBM Cassette Basic C1.0"
 priority = 2
 provides = ["ibm_basic"]
+oem = true
 rom = [
     { md5 = "2ad31da203a49b504fad3a34af0c719f", addr = 0xF6000, size = 32768 },
 ]
 
 [[romset]]
 alias = "ibmbasic_v1_8k"
+desc = "IBM Cassette Basic C1.0"
 priority = 1
 provides = ["ibm_basic"]
+oem = true
 rom = [
     { md5 = "2ac2e97eddb3f344641cdd9dc3747f8e", addr = 0xF6000, size = 8192 }, 
     { md5 = "8b2a0f2ea97d0adb9c1c834387aad5d9", addr = 0xF8000, size = 8192}, 
@@ -357,16 +406,20 @@ rom = [
 
 [[romset]]
 alias = "ibmbasic_v11_32k"
+desc = "IBM Cassette Basic C1.10"
 priority = 2
 provides = ["ibm_basic"]
+oem = true
 rom = [
     { md5 = "2ad31da203a49b504fad3a34af0c719f", addr = 0xF6000, size = 32768 },
 ]
 
 [[romset]]
 alias = "ibmbasic_v11_8k"
+desc = "IBM Cassette Basic C1.10"
 priority = 1
 provides = ["ibm_basic"]
+oem = true
 rom = [
     { md5 = "69e2bd1d08c893cbf841607c8749d5bd", addr = 0xF6000, size = 8192 }, 
     { md5 = "5f85ff5ea352c1ec11b084043fbb549e", addr = 0xF8000, size = 8192 }, 
@@ -380,9 +433,31 @@ rom = [
 
 [[romset]]
 alias = "supersoft_diags"
+desc = "SuperSoft Diagnostic ROM for PC/XT"
 priority = 0
-provides = ["ibm5150", "ibm5160", "diag"]
+provides = ["bios", "ibm5150v64k", "ibm5150v256k", "ibm5160", "diag"]
 rom = [
     { md5 = "3a0eacac07f1020b95ce06043982dfd1", addr = 0xFE000 }
 ]
 
+
+# ----------------------------------------------------------------------------
+# Generic XT System ROMs
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "award_xt_4000"
+priority = 1
+provides = ["bios", "ibm5160", "expansion"]
+oem = false
+rom = [
+    { md5 = "a8a1027cfa97e42a42d95a883e1c30c6", name = "Award_Turbo_4000.BIN", addr = 0xFE000, size = 8192 }, 
+]
+
+[[romset]]
+alias = "award_xt_2.05"
+priority = 1
+provides = ["bios", "ibm5160", "expansion"]
+oem = false
+rom = [
+    { md5 = "688da86aec830ac09fcd436f28cf9bca", name = "Award_XT_2.05_2764.bin", addr = 0xFE000, size = 8192 }, 
+]

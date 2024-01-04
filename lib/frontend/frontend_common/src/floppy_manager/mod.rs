@@ -249,21 +249,36 @@ impl FloppyManager {
         Ok(floppy_vec)
     }*/
 
-    pub fn save_floppy_data(&self, data: &[u8], name: &OsString) -> Result<(), FloppyError> {
-        if let Some(idx) = self.image_map.get(name) {
-            if *idx >= self.image_vec.len() {
-                return Err(FloppyError::ImageNotFound);
-            }
-            let floppy_path = self.image_vec[*idx].path.clone();
-            match std::fs::write(&floppy_path, data) {
-                Ok(_) => Ok(()),
-                Err(_e) => {
-                    return Err(FloppyError::FileWriteError);
-                }
-            }
+    // pub fn save_floppy_data(&self, data: &[u8], name: &OsString) -> Result<(), FloppyError> {
+    //     if let Some(idx) = self.image_map.get(name) {
+    //         if *idx >= self.image_vec.len() {
+    //             return Err(FloppyError::ImageNotFound);
+    //         }
+    //         let floppy_path = self.image_vec[*idx].path.clone();
+    //         match std::fs::write(&floppy_path, data) {
+    //             Ok(_) => Ok(()),
+    //             Err(_e) => {
+    //                 return Err(FloppyError::FileWriteError);
+    //             }
+    //         }
+    //     }
+    //     else {
+    //         Err(FloppyError::ImageNotFound)
+    //     }
+    // }
+
+    pub fn save_floppy_data(&self, data: &[u8], idx: usize, rm: &ResourceManager) -> Result<PathBuf, FloppyError> {
+        if idx >= self.image_vec.len() {
+            return Err(FloppyError::ImageNotFound);
         }
-        else {
-            Err(FloppyError::ImageNotFound)
+
+        let floppy_path = self.image_vec[idx].path.clone();
+        // TODO: Implement write through resource manager instead of direct file access.
+        match std::fs::write(&floppy_path, data) {
+            Ok(_) => Ok(floppy_path.clone()),
+            Err(_e) => {
+                return Err(FloppyError::FileWriteError);
+            }
         }
     }
 }

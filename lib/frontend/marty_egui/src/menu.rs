@@ -32,7 +32,7 @@
 
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 
-use marty_core::devices::traits::videocard::VideoType;
+use marty_core::device_traits::videocard::VideoType;
 use std::time::Duration;
 
 use marty_core::machine::MachineState;
@@ -132,13 +132,6 @@ impl GuiState {
             });
 
             let media_response = ui.menu_button("Media", |ui| {
-                let (is_on, _is_paused) = match self.machine_state {
-                    MachineState::On => (true, false),
-                    MachineState::Paused => (true, true),
-                    MachineState::Off => (false, false),
-                    _ => (false, false),
-                };
-
                 //ui.set_min_size(egui::vec2(240.0, 0.0));
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
 
@@ -147,103 +140,9 @@ impl GuiState {
                     self.draw_floppy_menu(ui, i);
                 }
 
-                /*
-                ui.menu_button("💾 Load Floppy in Drive A:...", |ui| {
-                    for name in &self.floppy_names {
-                        ui.set_min_size(egui::vec2(200.0, 0.0));
-
-                        if ui.button(name.to_str().unwrap()).clicked() {
-                            log::debug!("Selected floppy filename: {:?}", name);
-
-                            self.floppy0_name = Some(name.clone());
-                            self.event_queue.send(GuiEvent::LoadFloppy(0, name.clone()));
-                            ui.close_menu();
-                        }
-                    }
-                });
-
-                ui.menu_button("💾 Load Floppy in Drive B:...", |ui| {
-                    for name in &self.floppy_names {
-                        ui.set_min_size(egui::vec2(200.0, 0.0));
-
-                        if ui.button(name.to_str().unwrap()).clicked() {
-                            log::debug!("Selected floppy filename: {:?}", name);
-
-                            self.floppy1_name = Some(name.clone());
-                            self.event_queue.send(GuiEvent::LoadFloppy(1, name.clone()));
-                            ui.close_menu();
-                        }
-                    }
-                });
-
-                ui.add_enabled_ui(self.floppy0_name.is_some(), |ui| {
-                    if ui.button("💾 Save changes to Floppy in Drive A:").clicked() {
-                        log::debug!("Saving floppy filename: {:?}", self.floppy0_name);
-
-                        if let Some(name) = &self.floppy0_name {
-                            self.event_queue.send(GuiEvent::SaveFloppy(0, name.clone()));
-                        }
-                        ui.close_menu();
-                    }
-                });
-
-                ui.add_enabled_ui(self.floppy1_name.is_some(), |ui| {
-                    if ui.button("💾 Save changes to Floppy in Drive B:").clicked() {
-                        log::debug!("Saving floppy filename: {:?}", self.floppy1_name);
-
-                        if let Some(name) = &self.floppy1_name {
-                            self.event_queue.send(GuiEvent::SaveFloppy(1, name.clone()));
-                        }
-                        ui.close_menu();
-                    }
-                });
-
-                if ui.button("⏏ Eject Floppy in Drive A:").clicked() {
-                    self.event_queue.send(GuiEvent::EjectFloppy(0));
-                    self.floppy0_name = None;
-                    ui.close_menu();
-                };
-
-                if ui.button("⏏ Eject Floppy in Drive B:").clicked() {
-                    self.event_queue.send(GuiEvent::EjectFloppy(1));
-                    self.floppy1_name = None;
-                    ui.close_menu();
-                };
-
-                 */
-
-                // Only enable VHD loading if machine is off to prevent corruption to VHD.
-                ui.add_enabled_ui(!is_on, |ui| {
-                    ui.menu_button("🖴 Load VHD in Drive 0:...", |ui| {
-                        for name in &self.vhd_names {
-                            if ui
-                                .radio_value(&mut self.vhd_name0, name.clone(), name.to_str().unwrap())
-                                .clicked()
-                            {
-                                log::debug!("Selected VHD filename: {:?}", name);
-
-                                self.event_queue.send(GuiEvent::LoadVHD(0, name.clone()));
-                                self.new_vhd_name0 = Some(name.clone());
-                                ui.close_menu();
-                            }
-                        }
-                    });
-
-                    ui.menu_button("🖴 Load VHD in Drive 1:...", |ui| {
-                        for name in &self.vhd_names {
-                            if ui
-                                .radio_value(&mut self.vhd_name1, name.clone(), name.to_str().unwrap())
-                                .clicked()
-                            {
-                                log::debug!("Selected VHD filename: {:?}", name);
-
-                                self.event_queue.send(GuiEvent::LoadVHD(0, name.clone()));
-                                self.new_vhd_name1 = Some(name.clone());
-                                ui.close_menu();
-                            }
-                        }
-                    });
-                });
+                for i in 0..self.hdds.len() {
+                    self.draw_hdd_menu(ui, i);
+                }
 
                 if ui.button("🖹 Create new VHD...").clicked() {
                     *self.window_flag(GuiWindow::VHDCreator) = true;
@@ -269,11 +168,6 @@ impl GuiState {
                             self.draw_display_menu(ui, i);
                         });
                     }
-                }
-
-                if ui.button("Text Viewer").clicked() {
-                    *self.window_flag(GuiWindow::TextModeViewer) = true;
-                    ui.close_menu();
                 }
             });
 
@@ -382,8 +276,8 @@ impl GuiState {
                     *self.window_flag(GuiWindow::DisassemblyViewer) = true;
                     ui.close_menu();
                 }
-                if ui.button("IVR...").clicked() {
-                    *self.window_flag(GuiWindow::IvrViewer) = true;
+                if ui.button("IVT Viewer...").clicked() {
+                    *self.window_flag(GuiWindow::IvtViewer) = true;
                     ui.close_menu();
                 }
                 #[cfg(feature = "devtools")]
@@ -463,7 +357,7 @@ impl GuiState {
         let floppy_name = match drive_idx {
             0 => "💾 Floppy Drive 0 (A:)".to_string(),
             1 => "💾 Floppy Drive 1 (B:)".to_string(),
-            _ => format!("Drive {}", drive_idx),
+            _ => format!("💾 Floppy Drive {}", drive_idx),
         };
 
         ui.menu_button(floppy_name, |ui| {
@@ -487,10 +381,13 @@ impl GuiState {
 
             ui.horizontal(|ui| {
                 if let Some(floppy_name) = &self.floppy_drives[drive_idx].filename() {
-                    ui.add_enabled(
-                        !self.floppy_drives[drive_idx].write_protected,
-                        egui::Button::new(format!("Save image: {}", floppy_name)),
-                    );
+                    ui.add_enabled_ui(!self.floppy_drives[drive_idx].write_protected, |ui| {
+                        if ui.button(format!("Save image: {}", floppy_name)).clicked() {
+                            if let Some(floppy_idx) = self.floppy_drives[drive_idx].selected_idx {
+                                self.event_queue.send(GuiEvent::SaveFloppy(drive_idx, floppy_idx));
+                            }
+                        }
+                    });
                 }
                 else {
                     ui.add_enabled(false, egui::Button::new("Save image: <No Disk>"));
@@ -508,6 +405,42 @@ impl GuiState {
             }
         });
         ui.end_row();
+    }
+
+    pub fn draw_hdd_menu(&mut self, ui: &mut egui::Ui, drive_idx: usize) {
+        let hdd_name = format!("🖴 Hard Disk {}", drive_idx);
+
+        // Only enable VHD loading if machine is off to prevent corruption to VHD.
+        ui.menu_button(hdd_name, |ui| {
+            if self.machine_state.is_on() {
+                // set 'color' to the appropriate warning color for current egui visuals
+                let error_color = ui.visuals().error_fg_color;
+                ui.horizontal(|ui| {
+                    ui.add(egui::Label::new(
+                        egui::RichText::new("Machine must be off to make changes").color(error_color),
+                    ));
+                });
+            }
+            ui.add_enabled_ui(!self.machine_state.is_on(), |ui| {
+                ui.menu_button("Load image", |ui| {
+                    self.hdd_tree_menu.draw(ui, drive_idx, &mut |image_idx| {
+                        log::debug!("Clicked closure called with image_idx {}", image_idx);
+                        self.event_queue.send(GuiEvent::LoadVHD(drive_idx, image_idx));
+                    });
+                });
+
+                let (have_vhd, detatch_string) = match &self.hdds[drive_idx].filename() {
+                    Some(name) => (true, format!("Detach image: {}", name)),
+                    None => (false, "Detach: <No Disk>".to_string()),
+                };
+
+                ui.add_enabled_ui(have_vhd, |ui| {
+                    if ui.button(detatch_string).clicked() {
+                        self.event_queue.send(GuiEvent::DetachVHD(drive_idx));
+                    }
+                });
+            });
+        });
     }
 
     pub fn draw_display_menu(&mut self, ui: &mut egui::Ui, display_idx: usize) {
@@ -546,6 +479,7 @@ impl GuiState {
 
         if ui.button("Scaler Adjustments...").clicked() {
             *self.window_flag(GuiWindow::ScalerAdjust) = true;
+            self.scaler_adjust.select_card(display_idx);
             ui.close_menu();
         }
 
@@ -630,8 +564,15 @@ impl GuiState {
 
             if ui.button("Composite Adjustments...").clicked() {
                 *self.window_flag(GuiWindow::CompositeAdjust) = true;
+                self.composite_adjust.select_card(display_idx);
                 ui.close_menu();
             }
+        }
+
+        if ui.button("Text Viewer").clicked() {
+            *self.window_flag(GuiWindow::TextModeViewer) = true;
+            self.text_mode_viewer.select_card(display_idx);
+            ui.close_menu();
         }
 
         ui.separator();
@@ -644,12 +585,12 @@ impl GuiState {
 
     pub fn draw_status_widgets(&mut self, ui: &mut egui::Ui) {
         // Can we put stuff on the right hand side of the menu bar?
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-            ui.label("💾");
-        });
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-            ui.label("🐢");
-        });
+        // ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+        //     ui.label("💾");
+        // });
+        //
+        // ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+        //     ui.label("🐢");
+        // });
     }
 }

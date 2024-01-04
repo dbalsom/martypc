@@ -34,9 +34,9 @@ paths = [
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
     { resource = "floppy", path = "$basedir$/media/floppies", recurse = true },
-    { resource = "dump", path = "$basedir$/output/dumps" },
-    { resource = "trace", path = "$basedir$/output/traces" },
-    { resource = "screenshot", path = "$basedir$/output/screenshots" },
+    { resource = "dump", path = "$basedir$/output/dumps", create = true },
+    { resource = "trace", path = "$basedir$/output/traces", create = true },
+    { resource = "screenshot", path = "$basedir$/output/screenshots", create = true },
 ]
 
 # Exclude any matching directories from recursion. Useful for temporarily
@@ -75,9 +75,6 @@ debug_warn = true
 # to the terminal.
 debug_keyboard = false
 
-# Don't load BIOS if true (not useful on its own)
-no_bios = false
-
 # Run the specified program instead of booting BIOS. The CPU reset vector will
 # be set to 'run_bin_seg:run_bin_ofs'
 #run_bin = "./program/a_effect.bin"
@@ -109,6 +106,15 @@ filename = "dos330.vhd"
 # VHD to mount into drive 1 (Typically D:)
 #drive = 1
 #filename = "hdd1.vhd"
+
+# ----------------------------------------------------------------------------
+# Debugger Options
+# ----------------------------------------------------------------------------
+[emulator.debugger]
+# Create toast notifications for ROM checkpoints at this level.
+checkpoint_notify_level = 0
+# Create a toast notification when breakpoint hit
+breakpoint_notify = true
 
 # ----------------------------------------------------------------------------
 # Emulator Window Options
@@ -349,41 +355,50 @@ aspect_ratio = { h=4, v=3 }
 # Select the color theme for the GUI.
 # Valid values are:
 #  - DefaultLight : default EGUI Light theme
-#  - Lilac        : Light theme variant
+#  - Lilac        : light theme variant
+#  - Hal          : light theme variant
 #  - DefaultDark  : default EGUI Dark theme (recommended)
 #  - Purple       : dark theme variant
 #  - Cobalt       : dark theme variant
 theme = "Purple"
 
+# Theme for the top menu can be defined independently
+menu_theme = "DefaultLight"
+
 # Global zoom level for GUI. Smaller numbers will make all the GUI elements 
 # smaller. Default: 1.0 Max: 1.0 Min: 0.1
 zoom = 1.0
-
-# Enable dark theme (Recommended)
-theme_dark = true
-
-# Specify the color modifier for the selected EGUI theme. Comment out for the
-# default color scheme. Theme colors only work properly with Dark mode.
-theme_color = 0x382D59  # Marty purple (for Dark theme)
-#theme_color = 0x2D4859  # Alt blue (for Dark theme)
 
 [input]
 # ----------------------------------------------------------------------------
 
 # Some platforms reverse the left and right mouse button id #'s. 
 # We try to detect this, but it can be overridden here.
-reverse_mouse_buttons = false
+# reverse_mouse_buttons = false
 
 # ----------------------------------------------------------------------------
 # Machine Options
 # ----------------------------------------------------------------------------
 [machine]
 # Specify the name of a machine configuration to load.
-config_name = "generic_xt"
+config_name = "ibm5160_hdd"
+#config_name = "generic_xt"
+#config_name = "generic_award_xt_hdd"
+#config_name = "generic_xt_hdd"
 #config_name = "ibm5160_hdd_ega"
 
 # Specify configuration overlays to load on top of machine configuration.
-# config_overlays = ["ega"]
+# - See 'machine_config_overlays.toml' for examples, or define your own.
+#config_overlays = ["ega"]
+
+# Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
+prefer_oem = false
+
+# Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
+reload_roms = true
+
+# Don't load any ROMs if true. Default: false
+#no_roms = true
 
 # Turbo Button
 # ----------------------------------------------------------------------------

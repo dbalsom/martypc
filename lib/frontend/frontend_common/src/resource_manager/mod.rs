@@ -90,8 +90,9 @@ impl ResourceManager {
     pub fn from_config(base_path: PathBuf, config: &[PathConfigItem]) -> Result<Self, Error> {
         let mut rm = Self::new(base_path);
         for item in config {
-            rm.pm.add_path(&item.resource, &item.path)?;
+            rm.pm.add_path(&item.resource, &item.path, item.create)?;
         }
+        //rm.pm.create_paths()?;
         Ok(rm)
     }
 

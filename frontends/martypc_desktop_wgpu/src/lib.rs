@@ -70,14 +70,13 @@ use crate::run_gentests::run_gentests;
 use crate::run_runtests::run_runtests;
 
 use marty_core::{
-    devices::implementations::keyboard::KeyboardModifiers,
+    devices::keyboard::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState},
     sound::SoundPlayer,
-    vhd_manager::VHDManager,
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
-use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager};
+use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager, vhd_manager::VhdManager};
 use marty_core::machine::MachineBuilder;
 
 use crate::event_loop::handle_event;
@@ -339,7 +338,7 @@ pub fn run() {
     }
 
     // Instantiate the new rom manager to load roms
-    let mut nu_rom_manager = frontend_common::rom_manager::RomManager::new();
+    let mut nu_rom_manager = frontend_common::rom_manager::RomManager::new(config.machine.prefer_oem);
     if let Err(err) = nu_rom_manager.load_defs(&resource_manager) {
         eprintln!("Error loading ROM definition files: {}", err);
         std::process::exit(1);
@@ -412,7 +411,7 @@ pub fn run() {
 
     // Create the ROM manifest
     let rom_manifest = nu_rom_manager
-        .create_manifest(rom_sets_resolved, &resource_manager)
+        .create_manifest(rom_sets_resolved.clone(), &resource_manager)
         .unwrap_or_else(|err| {
             eprintln!("Error loading ROM set: {}", err);
             std::process::exit(1);
@@ -482,7 +481,7 @@ pub fn run() {
     }
 
     // Instantiate the VHD manager
-    let mut vhd_manager = VHDManager::new();
+    let mut vhd_manager = VhdManager::new();
 
     // Scan the HDD directory
     let hdd_path = resource_manager.get_resource_path("hdd").unwrap_or_else(|| {
@@ -490,7 +489,7 @@ pub fn run() {
         std::process::exit(1);
     });
 
-    if let Err(e) = vhd_manager.scan_dir(&hdd_path) {
+    if let Err(e) = vhd_manager.scan_resource(&resource_manager) {
         eprintln!("Failed to read hdd path: {:?}", e);
         std::process::exit(1);
     }
@@ -596,8 +595,8 @@ pub fn run() {
 
     let gui_options = DisplayManagerGuiOptions {
         enabled: !config.gui.disabled,
-        theme_color: config.gui.theme_color,
-        theme_dark: config.gui.theme_dark,
+        theme: config.gui.theme,
+        menu_theme: config.gui.menu_theme,
         menubar_h: 24, // TODO: Dynamically measure the height of the egui menu bar somehow
         zoom: config.gui.zoom.unwrap_or(1.0),
         debug_drawing: false,
@@ -626,13 +625,17 @@ pub fn run() {
         .get_main_gui_mut()
         .expect("Couldn't get main gui context!");
 
+    let machine_events = Vec::new();
+
     // Put everything we want to handle in event loop into an Emulator struct
     let mut emu = Emulator {
         rm: resource_manager,
         dm: display_manager,
         romm: nu_rom_manager,
-        config,
+        romsets: rom_sets_resolved.clone(),
+        config: config,
         machine,
+        machine_events,
         exec_control,
         mouse_data,
         kb_data,
@@ -694,4 +697,6 @@ pub fn run() {
         log::error!("Failed to start event loop!");
         std::process::exit(1);
     }
+
+    std::process::exit(0);
 }

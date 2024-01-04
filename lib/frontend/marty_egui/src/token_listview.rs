@@ -40,11 +40,15 @@ use crate::{color::*, constants::*, *};
 use egui::*;
 use marty_core::syntax_token::*;
 
+pub const TOKEN_TAB_STOPS: u32 = 64;
+
 pub struct TokenListView {
     pub row: usize,
+    pub row_offset: Option<usize>,
     pub previous_row: usize,
     pub visible_rows: usize,
     pub max_rows: usize,
+    row_span: usize,
     pub contents: Vec<Vec<SyntaxToken>>,
     pub visible_rect: Rect,
 
@@ -58,9 +62,11 @@ impl TokenListView {
     pub fn new() -> Self {
         Self {
             row: 0,
+            row_offset: None,
             previous_row: 0,
             visible_rows: 16,
             max_rows: 0,
+            row_span: 1,
             contents: Vec::new(),
             visible_rect: Rect::NOTHING,
 
@@ -79,17 +85,26 @@ impl TokenListView {
         self.max_rows = size;
     }
 
-    pub fn set_contents(&mut self, mut contents: Vec<Vec<SyntaxToken>>) {
+    pub fn set_row_span(&mut self, span: usize) {
+        self.row_span = span;
+    }
+
+    pub fn set_scroll_pos(&mut self, pos: usize) {
+        self.row_offset = Some(pos);
+    }
+
+    pub fn set_contents(&mut self, mut contents: Vec<Vec<SyntaxToken>>, scrolling: bool) {
         if self.contents.len() != contents.len() {
             // Size of contents is changing. Assume these are all new bytes.
 
             for row in &mut contents {
                 for mut token in row {
                     match &mut token {
-                        SyntaxToken::MemoryByteHexValue(_, _, _, _, new_age) => {
+                        SyntaxToken::MemoryByteHexValue(.., new_age) => {
                             *new_age = TOKEN_MAX_AGE;
                         }
-                        SyntaxToken::MemoryByteAsciiValue(_, _, _, new_age) => *new_age = TOKEN_MAX_AGE,
+                        SyntaxToken::MemoryByteAsciiValue(.., new_age) => *new_age = TOKEN_MAX_AGE,
+                        SyntaxToken::StateMemoryAddressSeg16(.., new_age) => *new_age = TOKEN_MAX_AGE,
                         _ => {}
                     }
                 }
@@ -139,6 +154,37 @@ impl TokenListView {
                                 *new_age = 255;
                             }
                         }
+                        (
+                            SyntaxToken::StateMemoryAddressSeg16(new_seg, new_off, .., new_age),
+                            SyntaxToken::StateMemoryAddressSeg16(old_seg, old_off, .., old_age),
+                        ) => {
+                            if old_seg == new_seg && old_off == new_off {
+                                // This is the same address as before. Update age.
+                                *new_age = old_age.saturating_add(2);
+                            }
+                            else {
+                                // Different address in this position. Reset age if not scrolling.
+                                if !scrolling {
+                                    *new_age = 0;
+                                }
+                                else {
+                                    *new_age = 255;
+                                }
+                            }
+                        }
+                        (
+                            SyntaxToken::StateString(new_s, new_dirty, new_age),
+                            SyntaxToken::StateString(old_s, old_dirty, old_age),
+                        ) => {
+                            if old_s == new_s && old_dirty == new_dirty {
+                                // This is the same address as before. Update age.
+                                *new_age = old_age.saturating_add(2);
+                            }
+                            else {
+                                // Different byte address in this position. Set age to maximum so it doesn't flash.
+                                *new_age = 255;
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -171,7 +217,13 @@ impl TokenListView {
         r
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue, new_row: &mut usize) {
+    pub fn draw(
+        &mut self,
+        ui: &mut egui::Ui,
+        events: &mut GuiEventQueue,
+        new_row: &mut usize,
+        scroll_callback: &mut dyn FnMut(usize, &mut GuiEventQueue),
+    ) {
         let font_id = egui::TextStyle::Monospace.resolve(ui.style());
         let mut row_height = 0.0;
         ui.fonts(|f| row_height = f.row_height(&font_id) + ui.spacing().item_spacing.y);
@@ -186,203 +238,236 @@ impl TokenListView {
         ui.painter()
             .rect_filled(ui.max_rect(), egui::Rounding::default(), egui::Color32::BLACK);
 
-        egui::ScrollArea::vertical()
-            .auto_shrink([false; 2])
-            .show_viewport(ui, |ui, viewport| {
-                ui.set_height(row_height * num_rows as f32);
+        let mut scroll_area = ScrollArea::vertical().auto_shrink([false; 2]);
 
-                //log::debug!("viewport.min.y: {}", viewport.min.y);
-                let mut first_item = (viewport.min.y / row_height).floor().at_least(0.0) as usize;
-                let last_item = (viewport.max.y / row_height).ceil() as usize + 1;
-                let last_item = last_item.at_most(num_rows - show_rows);
+        if let Some(row_offset) = self.row_offset {
+            scroll_area = scroll_area.vertical_scroll_offset(row_height * row_offset as f32);
+        }
 
-                if first_item > last_item {
-                    first_item = last_item;
+        scroll_area.show_viewport(ui, |ui, viewport| {
+            ui.set_height(row_height * num_rows as f32);
+            //log::debug!("viewport.min.y: {}", viewport.min.y);
+            let mut first_item = (viewport.min.y / row_height).floor().at_least(0.0) as usize;
+            let last_item = (viewport.max.y / row_height).ceil() as usize + 1;
+            let last_item = last_item.at_most(num_rows - show_rows);
+
+            if first_item > last_item {
+                first_item = last_item;
+            }
+
+            self.row = first_item;
+
+            if self.row != self.previous_row {
+                // View was scrolled, update address
+
+                *new_row = self.row / self.row_span;
+                self.previous_row = self.row;
+
+                // Only call the callback if the scroll offset wasn't set this draw. This avoids a loop between an
+                // external scroll address and the scroll callback.
+                if self.row_offset.is_none() {
+                    scroll_callback(*new_row, events);
                 }
 
-                self.row = first_item;
+                //events.send(GuiEvent::MemoryUpdate);
+            }
 
-                if self.row != self.previous_row {
-                    // View was scrolled, update address
+            self.row_offset = None;
 
-                    *new_row = self.row & !0x0F;
-                    self.previous_row = self.row;
+            //let start_y = ui.min_rect().top() + (first_item as f32) * row_height;
+            let start_y = viewport.min.y + ui.min_rect().top();
 
-                    events.send(GuiEvent::MemoryUpdate);
-                }
+            // Constrain visible rows if we don't have enough rows in contents
+            let show_rows = usize::min(show_rows, self.contents.len());
 
-                //let start_y = ui.min_rect().top() + (first_item as f32) * row_height;
-                let start_y = viewport.min.y + ui.min_rect().top();
+            // Measure the size of a byte token label.
+            let label_rect = self.measure_token(
+                ui,
+                &SyntaxToken::MemoryByteHexValue(0, 0, "00".to_string(), false, 0),
+                font_id.clone(),
+            );
 
-                // Constrain visible rows if we don't have enough rows in contents
-                let show_rows = usize::min(show_rows, self.contents.len());
+            let l_bracket = "[".to_string();
+            let r_bracket = "]".to_string();
+            let colon = ":".to_string();
+            let comma = ",".to_string();
+            let plus = "+".to_string();
+            let null = "[missing token!]".to_string();
 
-                // Measure the size of a byte token label.
-                let label_rect = self.measure_token(
-                    ui,
-                    &SyntaxToken::MemoryByteHexValue(0, 0, "00".to_string(), false, 0),
-                    font_id.clone(),
-                );
+            for (i, row) in self.contents[0..show_rows].iter().enumerate() {
+                let x = ui.min_rect().left() + self.l_margin;
+                let y = start_y + ((i as f32) * row_height) + self.t_margin;
 
-                let l_bracket = "[".to_string();
-                let r_bracket = "]".to_string();
-                let colon = ":".to_string();
-                let comma = ",".to_string();
-                let plus = "+".to_string();
-                let null = "[missing token!]".to_string();
+                let mut token_x = x;
 
-                for (i, row) in self.contents[0..show_rows].iter().enumerate() {
-                    let x = ui.min_rect().left() + self.l_margin;
-                    let y = start_y + ((i as f32) * row_height) + self.t_margin;
+                let mut column_select = 32; // Initial value out of range to not highlight anything
+                for (j, token) in row.iter().enumerate() {
+                    let mut text_rect;
 
-                    let mut token_x = x;
-
-                    let mut column_select = 32; // Initial value out of range to not highlight anything
-                    for (j, token) in row.iter().enumerate() {
-                        let mut text_rect;
-
-                        let drawn;
-                        match token {
-                            SyntaxToken::MemoryAddressFlat(_addr, s) => {
-                                text_rect = ui.painter().text(
-                                    egui::pos2(token_x, y),
-                                    egui::Align2::LEFT_TOP,
-                                    s,
-                                    font_id.clone(),
-                                    Color32::LIGHT_GRAY,
-                                );
-                                token_x = text_rect.max.x + 10.0;
-                                used_rect = used_rect.union(text_rect);
-                                drawn = true;
-                            }
-                            SyntaxToken::MemoryByteHexValue(addr, _, s, cursor, age) => {
-                                if ui
-                                    .put(
-                                        Rect {
-                                            min: egui::pos2(token_x, y),
-                                            max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
-                                        },
-                                        egui::Label::new(
-                                            egui::RichText::new(s).text_style(egui::TextStyle::Monospace).color(
-                                                fade_c32(Color32::GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
-                                            ),
-                                        ),
-                                    )
-                                    .on_hover_text(format!("{}", self.hover_text))
-                                    .hovered()
-                                {
-                                    column_select = j;
-                                    events.send(GuiEvent::TokenHover(*addr as usize));
-                                }
-
-                                if *cursor {
-                                    ui.painter().rect(
-                                        Rect {
-                                            min: egui::pos2(token_x, y),
-                                            max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
-                                        },
-                                        egui::Rounding::ZERO,
-                                        Color32::TRANSPARENT,
-                                        egui::Stroke::new(1.0, Color32::WHITE),
-                                    );
-                                }
-
-                                token_x += label_rect.max.x + 7.0;
-                                drawn = true;
-                                /*
-                                text_rect = ui.painter().text(
-                                    egui::pos2(token_x, y),
-                                    egui::Align2::LEFT_TOP,
-                                    s,
-                                    font_id.clone(),
-                                    Color32::LIGHT_BLUE,
-                                );
-                                token_x = text_rect.max.x + 7.0;
-                                used_rect = used_rect.union(text_rect);
-                                */
-                            }
-                            SyntaxToken::MemoryByteAsciiValue(_addr, _, s, age) => {
-                                text_rect = ui.painter().text(
-                                    egui::pos2(token_x, y),
-                                    egui::Align2::LEFT_TOP,
-                                    s,
-                                    font_id.clone(),
-                                    fade_c32(Color32::LIGHT_GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
-                                );
-
-                                // If previous hex byte was hovered, show a rectangle around this ascii byte
-                                // TODO: Rather than rely on hex bytes directly preceding the ascii bytes,
-                                // use an 'index' field in the enum?
-                                if (j - 16) == column_select {
-                                    ui.painter().rect(
-                                        text_rect.expand(2.0),
-                                        egui::Rounding::ZERO,
-                                        Color32::TRANSPARENT,
-                                        egui::Stroke::new(1.0, COLOR32_CYAN),
-                                    );
-                                }
-
-                                token_x = text_rect.max.x + 2.0;
-                                used_rect = used_rect.union(text_rect);
-                                drawn = true;
-                            }
-                            SyntaxToken::Mnemonic(s) => {
-                                text_rect = ui.painter().text(
-                                    egui::pos2(token_x, y),
-                                    egui::Align2::LEFT_TOP,
-                                    s,
-                                    font_id.clone(),
-                                    Color32::from_rgb(128, 255, 158),
-                                );
-                                token_x = text_rect.min.x + 45.0;
-                                used_rect = used_rect.union(text_rect);
-                                drawn = true;
-                            }
-                            SyntaxToken::Formatter(_fmt) => {
+                    let drawn;
+                    match token {
+                        SyntaxToken::Formatter(fmt) => match fmt {
+                            SyntaxFormatType::Tab => {
+                                token_x = ((token_x / TOKEN_TAB_STOPS as f32).floor() + 1.0) * TOKEN_TAB_STOPS as f32;
                                 drawn = true;
                             }
                             _ => {
-                                drawn = false;
+                                drawn = true;
                             }
-                        }
-
-                        if !drawn {
-                            let (token_color, token_text, token_padding) = match token {
-                                SyntaxToken::MemoryAddressSeg16(_, _, s) => (Color32::LIGHT_GRAY, s, 10.0),
-                                SyntaxToken::InstructionBytes(s) => (Color32::from_rgb(6, 152, 255), s, 1.0),
-                                SyntaxToken::Prefix(s) => (Color32::from_rgb(116, 228, 227), s, 2.0),
-                                SyntaxToken::Register(s) => (Color32::from_rgb(245, 138, 52), s, 1.0),
-                                SyntaxToken::OpenBracket => (Color32::from_rgb(228, 214, 116), &l_bracket, 1.0),
-                                SyntaxToken::CloseBracket => (Color32::from_rgb(228, 214, 116), &r_bracket, 2.0),
-                                SyntaxToken::Colon => (Color32::LIGHT_GRAY, &colon, 1.0),
-                                SyntaxToken::Comma => (Color32::LIGHT_GRAY, &comma, 6.0),
-                                SyntaxToken::PlusSign => (Color32::LIGHT_GRAY, &plus, 1.0),
-                                SyntaxToken::Displacement(s) | SyntaxToken::HexValue(s) => {
-                                    (Color32::from_rgb(96, 200, 210), s, 2.0)
-                                }
-                                SyntaxToken::Segment(s) => (Color32::from_rgb(245, 138, 52), s, 1.0),
-                                SyntaxToken::Text(s) => (Color32::LIGHT_GRAY, s, 2.0),
-                                SyntaxToken::ErrorString(s) => (Color32::RED, s, 2.0),
-                                _ => (Color32::WHITE, &null, 2.0),
-                            };
-
+                        },
+                        SyntaxToken::MemoryAddressFlat(_addr, s) => {
                             text_rect = ui.painter().text(
                                 egui::pos2(token_x, y),
                                 egui::Align2::LEFT_TOP,
-                                token_text,
+                                s,
                                 font_id.clone(),
-                                token_color,
+                                Color32::LIGHT_GRAY,
                             );
-                            token_x = text_rect.max.x + token_padding;
+                            token_x = text_rect.max.x + 10.0;
                             used_rect = used_rect.union(text_rect);
+                            drawn = true;
+                        }
+                        SyntaxToken::MemoryByteHexValue(addr, _, s, cursor, age) => {
+                            if ui
+                                .put(
+                                    Rect {
+                                        min: egui::pos2(token_x, y),
+                                        max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
+                                    },
+                                    egui::Label::new(
+                                        egui::RichText::new(s)
+                                            .text_style(egui::TextStyle::Monospace)
+                                            .color(fade_c32(Color32::GRAY, Color32::from_rgb(0, 255, 255), 255 - *age)),
+                                    ),
+                                )
+                                .on_hover_ui(|ui| {
+                                    ui.add(egui::Label::new(
+                                        egui::RichText::new(&self.hover_text).text_style(egui::TextStyle::Monospace),
+                                    ));
+                                })
+                                .hovered()
+                            {
+                                column_select = j;
+                                events.send(GuiEvent::TokenHover(*addr as usize));
+                            }
+
+                            if *cursor {
+                                ui.painter().rect(
+                                    Rect {
+                                        min: egui::pos2(token_x, y),
+                                        max: egui::pos2(token_x + label_rect.max.x + 1.0, y + label_rect.max.y),
+                                    },
+                                    egui::Rounding::ZERO,
+                                    Color32::TRANSPARENT,
+                                    egui::Stroke::new(1.0, Color32::WHITE),
+                                );
+                            }
+
+                            token_x += label_rect.max.x + 7.0;
+                            drawn = true;
+                            /*
+                            text_rect = ui.painter().text(
+                                egui::pos2(token_x, y),
+                                egui::Align2::LEFT_TOP,
+                                s,
+                                font_id.clone(),
+                                Color32::LIGHT_BLUE,
+                            );
+                            token_x = text_rect.max.x + 7.0;
+                            used_rect = used_rect.union(text_rect);
+                            */
+                        }
+                        SyntaxToken::MemoryByteAsciiValue(_addr, _, s, age) => {
+                            text_rect = ui.painter().text(
+                                egui::pos2(token_x, y),
+                                egui::Align2::LEFT_TOP,
+                                s,
+                                font_id.clone(),
+                                fade_c32(Color32::LIGHT_GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
+                            );
+
+                            // If previous hex byte was hovered, show a rectangle around this ascii byte
+                            // TODO: Rather than rely on hex bytes directly preceding the ascii bytes,
+                            // use an 'index' field in the enum?
+                            if (j - 16) == column_select {
+                                ui.painter().rect(
+                                    text_rect.expand(2.0),
+                                    egui::Rounding::ZERO,
+                                    Color32::TRANSPARENT,
+                                    egui::Stroke::new(1.0, COLOR32_CYAN),
+                                );
+                            }
+
+                            token_x = text_rect.max.x + 2.0;
+                            used_rect = used_rect.union(text_rect);
+                            drawn = true;
+                        }
+                        SyntaxToken::Mnemonic(s) => {
+                            text_rect = ui.painter().text(
+                                egui::pos2(token_x, y),
+                                egui::Align2::LEFT_TOP,
+                                s,
+                                font_id.clone(),
+                                Color32::from_rgb(128, 255, 158),
+                            );
+                            token_x = text_rect.min.x + 45.0;
+                            used_rect = used_rect.union(text_rect);
+                            drawn = true;
+                        }
+                        SyntaxToken::StateMemoryAddressSeg16(_, _, s, age) => {
+                            text_rect = ui.painter().text(
+                                egui::pos2(token_x, y),
+                                egui::Align2::LEFT_TOP,
+                                s,
+                                font_id.clone(),
+                                fade_c32(Color32::LIGHT_GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
+                            );
+                            token_x = text_rect.max.x;
+                            used_rect = used_rect.union(text_rect);
+                            drawn = true;
+                        }
+                        _ => {
+                            drawn = false;
                         }
                     }
+
+                    if !drawn {
+                        let (token_color, token_text, token_padding) = match token {
+                            SyntaxToken::MemoryAddressSeg16(_, _, s) => (Color32::LIGHT_GRAY, s, 10.0),
+                            SyntaxToken::InstructionBytes(s) => (Color32::from_rgb(6, 152, 255), s, 1.0),
+                            SyntaxToken::Prefix(s) => (Color32::from_rgb(116, 228, 227), s, 2.0),
+                            SyntaxToken::Register(s) => (Color32::from_rgb(245, 138, 52), s, 1.0),
+                            SyntaxToken::OpenBracket => (Color32::from_rgb(228, 214, 116), &l_bracket, 1.0),
+                            SyntaxToken::CloseBracket => (Color32::from_rgb(228, 214, 116), &r_bracket, 2.0),
+                            SyntaxToken::Colon => (Color32::LIGHT_GRAY, &colon, 1.0),
+                            SyntaxToken::Comma => (Color32::LIGHT_GRAY, &comma, 6.0),
+                            SyntaxToken::PlusSign => (Color32::LIGHT_GRAY, &plus, 1.0),
+                            SyntaxToken::Displacement(s) | SyntaxToken::HexValue(s) => {
+                                (Color32::from_rgb(96, 200, 210), s, 2.0)
+                            }
+                            SyntaxToken::Segment(s) => (Color32::from_rgb(245, 138, 52), s, 1.0),
+                            SyntaxToken::Text(s) => (Color32::LIGHT_GRAY, s, 2.0),
+                            SyntaxToken::ErrorString(s) => (Color32::RED, s, 2.0),
+                            _ => (Color32::WHITE, &null, 2.0),
+                        };
+
+                        text_rect = ui.painter().text(
+                            egui::pos2(token_x, y),
+                            egui::Align2::LEFT_TOP,
+                            token_text,
+                            font_id.clone(),
+                            token_color,
+                        );
+                        token_x = text_rect.max.x + token_padding;
+                        used_rect = used_rect.union(text_rect);
+                    }
                 }
+            }
 
-                //egui::TextEdit::multiline(&mut format!("hi!"))
-                //    .font(egui::TextStyle::Monospace);
+            //egui::TextEdit::multiline(&mut format!("hi!"))
+            //    .font(egui::TextStyle::Monospace);
 
-                ui.allocate_rect(used_rect, egui::Sense::hover());
-            });
+            ui.allocate_rect(used_rect, egui::Sense::hover());
+        });
     }
 }

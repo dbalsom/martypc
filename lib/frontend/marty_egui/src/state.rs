@@ -48,17 +48,15 @@ use frontend_common::{
     resource_manager::PathTreeNode,
 };
 use marty_core::{
-    devices::{
-        implementations::{pit::PitDisplayState, ppi::PpiStringState},
-        traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
-    },
+    device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
+    devices::{pit::PitDisplayState, ppi::PpiStringState},
     machine::{ExecutionControl, MachineState},
 };
 use serialport::SerialPortInfo;
 use std::{cell::RefCell, collections::HashMap, ffi::OsString, mem::discriminant, path::PathBuf, rc::Rc};
 
 use crate::{
-    theme::GuiTheme,
+    themes::GuiTheme,
     // Use custom windows
     windows::about::AboutDialog,
     windows::composite_adjust::CompositeAdjustControl,
@@ -70,7 +68,7 @@ use crate::{
     windows::disassembly_viewer::DisassemblyControl,
     windows::dma_viewer::DmaViewerControl,
     windows::instruction_history_viewer::InstructionHistoryControl,
-    windows::ivr_viewer::IvrViewerControl,
+    windows::ivt_viewer::IvtViewerControl,
     windows::memory_viewer::MemoryViewerControl,
     windows::performance_viewer::PerformanceViewerControl,
     windows::pic_viewer::PicViewerControl,
@@ -88,6 +86,22 @@ pub struct GuiFloppyDriveInfo {
 }
 
 impl GuiFloppyDriveInfo {
+    pub fn filename(&self) -> Option<String> {
+        match &self.selected_path {
+            Some(path) => Some(path.to_string_lossy().to_string()),
+            None => None,
+        }
+    }
+}
+
+pub struct GuiHddInfo {
+    pub(crate) idx: usize,
+    pub(crate) selected_idx: Option<usize>,
+    pub(crate) selected_path: Option<PathBuf>,
+    pub(crate) write_protected: bool,
+}
+
+impl GuiHddInfo {
     pub fn filename(&self) -> Option<String> {
         match &self.selected_path {
             Some(path) => Some(path.to_string_lossy().to_string()),
@@ -124,6 +138,8 @@ pub struct GuiState {
     pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
     pub(crate) floppy0_name:  Option<OsString>,
     pub(crate) floppy1_name:  Option<OsString>,
+
+    pub(crate) hdds: Vec<GuiHddInfo>,
 
     // VHD Images
     pub(crate) vhd_names: Vec<OsString>,
@@ -162,12 +178,13 @@ pub struct GuiState {
     pub trace_viewer: InstructionHistoryControl,
     pub composite_adjust: CompositeAdjustControl,
     pub scaler_adjust: ScalerAdjustControl,
-    pub ivr_viewer: IvrViewerControl,
+    pub ivt_viewer: IvtViewerControl,
     pub device_control: DeviceControl,
     pub vhd_creator: VhdCreator,
     pub text_mode_viewer: TextModeViewer,
 
     pub floppy_tree_menu: FileTreeMenu,
+    pub hdd_tree_menu:    FileTreeMenu,
 
     pub(crate) call_stack_string: String,
     pub(crate) global_zoom: f32,
@@ -186,7 +203,7 @@ impl GuiState {
             (GuiWindow::ScalerAdjust, false),
             (GuiWindow::CpuStateViewer, false),
             (GuiWindow::HistoryViewer, false),
-            (GuiWindow::IvrViewer, false),
+            (GuiWindow::IvtViewer, false),
             (GuiWindow::DelayAdjust, false),
             (GuiWindow::DeviceControl, false),
             (GuiWindow::DisassemblyViewer, false),
@@ -242,6 +259,8 @@ impl GuiState {
             floppy0_name: Option::None,
             floppy1_name: Option::None,
 
+            hdds: Vec::new(),
+
             vhd_names: Vec::new(),
             new_vhd_name0: Option::None,
             vhd_name0: OsString::new(),
@@ -275,13 +294,14 @@ impl GuiState {
             trace_viewer: InstructionHistoryControl::new(),
             composite_adjust: CompositeAdjustControl::new(),
             scaler_adjust: ScalerAdjustControl::new(),
-            ivr_viewer: IvrViewerControl::new(),
+            ivt_viewer: IvtViewerControl::new(),
             device_control: DeviceControl::new(),
             vhd_creator: VhdCreator::new(),
             text_mode_viewer: TextModeViewer::new(),
             call_stack_string: String::new(),
 
             floppy_tree_menu: FileTreeMenu::new(),
+            hdd_tree_menu: FileTreeMenu::new(),
 
             global_zoom: 1.0,
         }
@@ -401,8 +421,25 @@ impl GuiState {
         self.floppy_drives[drive].selected_path = name;
     }
 
-    pub fn set_vhd_names(&mut self, names: Vec<OsString>) {
-        self.vhd_names = names;
+    pub fn set_hdds(&mut self, drivect: usize) {
+        self.hdds.clear();
+        for idx in 0..drivect {
+            self.hdds.push(GuiHddInfo {
+                idx,
+                selected_idx: None,
+                selected_path: None,
+                write_protected: true,
+            });
+        }
+    }
+
+    pub fn set_hdd_tree(&mut self, tree: PathTreeNode) {
+        self.hdd_tree_menu.set_root(tree);
+    }
+
+    pub fn set_hdd_selection(&mut self, drive: usize, idx: Option<usize>, name: Option<PathBuf>) {
+        self.hdds[drive].selected_idx = idx;
+        self.hdds[drive].selected_path = name;
     }
 
     /// Set display apertures for the specified display. Should be called in a loop for each display
@@ -417,6 +454,7 @@ impl GuiState {
     }
 
     /// Provide the list of graphics cards to all windows that need them.
+    /// TODO: We can create this from update_display_info, no need for a separate method..
     pub fn set_card_list(&mut self, cards: Vec<String>) {
         self.text_mode_viewer.set_cards(cards.clone());
     }
@@ -481,6 +519,18 @@ impl GuiState {
         // Build a vector of enums to set to avoid borrowing twice.
         let mut enum_vec = Vec::new();
 
+        // Create a list of display target strings to give to the composite and scaler adjustment windows.
+        let mut dt_descs = Vec::new();
+        for (idx, display) in self.display_info.iter().enumerate() {
+            let mut dt_str = format!("Display {}", idx);
+            if let Some(vid) = display.vid {
+                dt_str.push_str(&format!(" Card: {} [{:?}]", vid.idx, vid.vtype));
+            }
+            dt_descs.push(dt_str);
+        }
+        self.scaler_adjust.set_dt_list(dt_descs.clone());
+        self.composite_adjust.set_dt_list(dt_descs.clone());
+
         for (idx, display) in self.display_info.iter().enumerate() {
             if let Some(renderer) = &display.renderer {
                 enum_vec.push((
@@ -498,11 +548,17 @@ impl GuiState {
                 ));
             }
 
+            // Create GuiEnums for each display scaler mode.
             if let Some(scaler_mode) = &display.scaler_mode {
                 enum_vec.push((
                     GuiEnum::DisplayScalerMode(*scaler_mode),
                     Some(GuiVariableContext::Display(idx)),
                 ));
+            }
+
+            // Set the initial scaler params for the Scaler Adjustments window if we have them.
+            if let Some(scaler_params) = &display.scaler_params {
+                self.scaler_adjust.set_params(idx, scaler_params.clone());
             }
         }
 

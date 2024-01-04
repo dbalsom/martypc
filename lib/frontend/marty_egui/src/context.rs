@@ -29,13 +29,16 @@
     EGUI Render context
 */
 
-use crate::{state::GuiState, theme::GuiTheme};
+use crate::{
+    state::GuiState,
+    themes::{make_theme, GuiTheme},
+};
 use egui::{ClippedPrimitive, Context, TexturesDelta, ViewportId, Visuals};
 use egui_extras::install_image_loaders;
 use egui_wgpu::{renderer::ScreenDescriptor, Renderer};
-use frontend_common::display_manager::DisplayManagerGuiOptions;
+use frontend_common::{display_manager::DisplayManagerGuiOptions, MartyGuiTheme};
 use pixels::{wgpu, PixelsContext};
-use std::time::Instant;
+use web_time::{Duration, Instant};
 use winit::window::Window;
 
 /// Manages all state required for rendering egui over `Pixels`.
@@ -48,6 +51,9 @@ pub struct GuiRenderContext {
     renderer: Renderer,
     paint_jobs: Vec<ClippedPrimitive>,
     textures: TexturesDelta,
+    main_theme: Box<dyn GuiTheme>,
+    menu_theme: Box<dyn GuiTheme>,
+    render_time: Duration,
 }
 
 impl GuiRenderContext {
@@ -103,10 +109,11 @@ impl GuiRenderContext {
         let renderer = Renderer::new(pixels.device(), pixels.render_texture_format(), None, 1);
         let textures = TexturesDelta::default();
 
-        let visuals = match gui_options.theme_dark {
-            true => Visuals::dark(),
-            false => Visuals::light(),
-        };
+        // Resolve themes.
+        let gui_theme_enum = gui_options.theme.unwrap_or_default();
+        let menu_theme_enum = gui_options.menu_theme.unwrap_or(gui_theme_enum);
+        let main_theme = make_theme(gui_theme_enum);
+        let menu_theme = make_theme(menu_theme_enum);
 
         // Make header smaller.
         use egui::{FontFamily::Proportional, FontId, TextStyle::*};
@@ -118,13 +125,15 @@ impl GuiRenderContext {
 
         egui_ctx.set_style(style);
 
-        if let Some(color) = gui_options.theme_color {
-            let theme = GuiTheme::new(&visuals, crate::color::hex_to_c32(color));
-            egui_ctx.set_visuals(theme.visuals().clone());
-        }
-        else {
-            egui_ctx.set_visuals(visuals);
-        }
+        // if let Some(color) = gui_options.theme_color {
+        //     let theme = GuiTheme::new(&visuals, crate::color::hex_to_c32(color));
+        //     egui_ctx.set_visuals(theme.visuals().clone());
+        // }
+        // else {
+        //     egui_ctx.set_visuals(visuals);
+        // }
+
+        egui_ctx.set_visuals(main_theme.visuals());
 
         #[cfg(debug_assertions)]
         if gui_options.debug_drawing {
@@ -139,10 +148,17 @@ impl GuiRenderContext {
             renderer,
             paint_jobs: Vec::new(),
             textures,
+            main_theme,
+            menu_theme,
+            render_time: Duration::ZERO,
         };
 
         //slf.resize(width, height);
         slf
+    }
+
+    pub fn get_render_time(&self) -> Duration {
+        self.render_time
     }
 
     pub fn set_zoom_factor(&mut self, zoom: f32) {
@@ -213,15 +229,19 @@ impl GuiRenderContext {
         // Run the egui frame and create all paint jobs to prepare for rendering.
         #[cfg(not(target_arch = "wasm32"))]
         {
+            let gui_start = Instant::now();
+
             let ctx = self.egui_ctx.clone();
             let vpi = self.viewport_mut();
             egui_winit::update_viewport_info(vpi, &ctx, window);
             let raw_input = self.egui_state.take_egui_input(window);
-            let gui_start = Instant::now();
 
             let mut ran = false;
             let output = self.egui_ctx.run(raw_input, |egui_ctx| {
                 // Draw the application.
+                self.egui_ctx.set_visuals(self.menu_theme.visuals());
+                state.menu_ui(egui_ctx);
+                self.egui_ctx.set_visuals(self.main_theme.visuals());
                 state.ui(egui_ctx);
                 ran = true;
             });
@@ -232,10 +252,10 @@ impl GuiRenderContext {
 
                 //let ppp = output.pixels_per_point;
                 let ppp = egui_winit::pixels_per_point(&ctx, window);
-                //log::debug!("Tesselate with ppp: {}", ppp);
+                //log::debug!("Tessellate with ppp: {}", ppp);
                 self.paint_jobs = self.egui_ctx.tessellate(output.shapes, ppp);
+                state.perf_stats.gui_time = gui_start.elapsed();
             }
-            state.perf_stats.gui_time = Instant::now() - gui_start;
         }
     }
 
@@ -246,6 +266,8 @@ impl GuiRenderContext {
         render_target: &wgpu::TextureView,
         context: &PixelsContext,
     ) {
+        let gui_render_start = Instant::now();
+
         // Upload all resources to the GPU.
         for (id, image_delta) in &self.textures.set {
             self.renderer
@@ -286,5 +308,7 @@ impl GuiRenderContext {
         for id in &textures.free {
             self.renderer.free_texture(id);
         }
+
+        self.render_time = gui_render_start.elapsed();
     }
 }

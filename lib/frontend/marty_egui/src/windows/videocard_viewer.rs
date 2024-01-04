@@ -33,7 +33,7 @@
 use egui::CollapsingHeader;
 
 use crate::{state::GuiState, widgets::color_swatch::color_swatch, *};
-use marty_core::devices::traits::videocard::{VideoCardState, VideoCardStateEntry};
+use marty_core::device_traits::videocard::{VideoCardState, VideoCardStateEntry};
 
 // rustfmt just has no idea how to handle this
 #[rustfmt::skip]
@@ -330,6 +330,9 @@ impl GuiState {
                                                         VideoCardStateEntry::String(str) => {
                                                             ui.label(egui::RichText::new(str).text_style(egui::TextStyle::Monospace));
                                                         },
+                                                        VideoCardStateEntry::Color(_str, r, g, b) => {
+                                                            color_swatch(ui, egui::Color32::from_rgb(*r, *g, *b), true);
+                                                        }
                                                         _=> {
                                                             ui.label("unsupported entry type");
                                                         }

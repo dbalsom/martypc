@@ -32,6 +32,13 @@ name = "cga"
     snow = false
 
 [[overlay]]
+name = "mda"
+    # Video card
+    [[overlay.video]]               
+    type = "MDA"
+    clock_mode = "Default"
+
+[[overlay]]
 name = "ega"
     # Video card
     [[overlay.video]]               
@@ -48,3 +55,26 @@ name = "cga_and_mda"
     [[overlay.video]]               
     type = "MDA"
     clock_mode = "Default"
+    
+#[[overlay]]
+#name = "ram_expansion"
+#    [[overlay.ram_expansion]]
+#    type = "Conventional"
+#    size = 0x60000  # 394K
+#    speed_ns = 200
+#    wait_states = 0
+    
+[[overlay]]
+name = "four_floppies"
+    # Floppy disk controller
+    [overlay.fdc]
+    type = "IbmNec"
+        # Drives connected to controller. Maximum of 4.
+        [[overlay.fdc.drive]]
+        type  = "360k"
+        [[overlay.fdc.drive]]
+        type  = "360k"   
+        [[overlay.fdc.drive]]
+        type  = "360k"
+        [[overlay.fdc.drive]]
+        type  = "360k"       

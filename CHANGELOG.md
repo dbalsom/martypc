@@ -2,7 +2,8 @@
 ## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0) (2023-XX-XX)
 
 ### New Features
-* #### New "Display Manager" Framework
+
+* #### New Display Manager Framework
   * New graphics backend abstraction layer will eventually allow frontends built for other graphics backends such as SDL
   * New scaling modes: Choose from Fixed, Integer, Fit and Stretch scaling options
   * Display Apertures: Choose how much of the emulated display field you wish to see:
@@ -15,7 +16,7 @@
     * Multiple windows can display the same video card, with different display options
     * Windows can be set to a fixed size or scale factor, or made completely resizable
     * Windows can be pinned 'always on top'
-    * Windows can toggled full-screen via CONTROL-ALT-ENTER hotkey 
+    * Windows can be toggled full-screen via CONTROL-ALT-ENTER hotkey 
   * Shader support: A basic CRT shader is built into the new display scaler
     * Internal shader features:
       * Barrel distortion
@@ -23,14 +24,23 @@
       * Monochrome phosphor simulation
       * Scanline emulation synchronized to emulated video resolution  
     * Presets for the internal scaler can be defined in configuration and applied to different windows
+
 * #### New ROM Definition Framework
   * ROM set definitions are no longer hardcoded. They will be read from ROM set definition TOML files in the ROM directory.
   * Add your own custom ROM sets or contribute missing ROM definitions to MartyPC!
+
 * #### New Machine Configuration Framework
   * Define multiple Machine hardware configurations, name them, select them in the main config or via command line argument.
   * Configure the amount of conventional memory, the number and type of floppy drives, video cards, serial ports and more!
+
+* #### New Resource Manager Framework
+  * Paths are to 'resource ids' are now fully configurable, and facilities to build file trees are provided. 
+    MartyPC can create needed directories on startup. The Floppy and VHD browsers have been rewritten to take
+advantage of this new system, and so now you can organize your media directories into subdirectories for convenience.
+  
 * #### EGA Video Card
-  * EGA is back! A character-clocked EGA implementation is here, although it may still be a bit rough around the edges. EGA will continue to be polished in upcoming releases.
+  * EGA is back! A character-clocked EGA implementation is here, although it may still be a bit rough around the edges. 
+    EGA will continue to be polished in upcoming releases.
   * Known issues:
     * No CGA emulation 
     * Not all registers properly emulated 
@@ -38,11 +48,14 @@
     * Aperture defintions / adjustments not final
     * Jerky scrolling in Commander Keen 1-3
     * User-definable fonts not yet supported
+    
 * #### MDA Video Card
-  * Not quite as a flashy as EGA, but the MDA card type is now also supported, and moreover, you can install an MDA alongside a CGA or EGA card for a dual head display.
+  * Not quite as a flashy as EGA, but the MDA card type is now also supported, and moreover, you can install an MDA 
+    alongside a CGA or EGA card for a dual head display.
+  * 9th column rendering and underline attributes supported
+  * Includes the framework for a LPT port, which will now be detected
   * Known issues:
     * Needs optimization - due to the 9-dot character clock making 64-bit aligned writes impossible, MDA is currently slower to emulate than EGA.
-    * Video mux bit in status register unimplemented. Doing so properly would require cycle precision. 
 * #### New Keyboard System
   * MartyPC now performs low-level emulation of a Model F keyboard instead of directly translating OS input events to the core
     * Model M emulation to come
@@ -50,12 +63,14 @@
   * International keyboard layouts are now supported via translation files.
     * Translation files support all keycode names defined by w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
     * Translation files can define direct scancode mappings or full macros
-* #### New Notification system
-  * Courtesy of [egui-notify](https://github.com/ItsEthra/egui-notify) crate.
+
+
+* Memory Viewer: disassembly popup now uses fixed-width font
+* IVT Viewer: IVT entries now animated on change
+* Instruction History - fields now align with Disassembly View, and cycle counts have been moved to the right
+* New themes courtesy of [egui-themer crate](https://github.com/grantshandy/egui-themer)
+* New notification system courtesy of [egui-notify crate](https://github.com/ItsEthra/egui-notify). 
   * Implemented success/error notifications for disk and file operations, screenshots, etc.
-
-
-### General Improvements
 * Floppy browser now supports subdirectories
 * Write protection can be toggled for floppy drives
 * Sound initialization now optional
@@ -73,6 +88,9 @@
 * Added debug_keyboard config flag - this will print keyboard event info to the console for support
 
 ### Bug Fixes
+* DEBUGGER: Scrolling fixed in Memory Viewer and IVT Viewer 
+* Xebec HDC: Implemented missing Read Sector Buffer command (Fixes panic in IBM diagnostics)
+* CPU: Instruction counts properly increment even when instruction history is off
 * CPU: Fixed device ticks after interrupts
 * CPU: Improved Halt/Resume logic and cycle timings
 * CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView
@@ -87,11 +105,10 @@
 * CPU: Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
 * CPU: Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
 * PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
+* CGA: Properly disable cursor if cursor start > maximum scanline
 * CGA: Reverted color palette entry for black from dark gray to true black
 * CGA: Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
 * CGA: Don't recalculate composite parameters if mode change was enable bit only
-
-
 
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-07-06)
 

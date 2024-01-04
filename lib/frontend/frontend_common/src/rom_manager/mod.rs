@@ -31,7 +31,7 @@
 
 use crate::resource_manager::ResourceManager;
 use anyhow::Error;
-use marty_core::machine::{MachineRomEntry, MachineRomManifest};
+use marty_core::machine::{MachineCheckpoint, MachineRomEntry, MachineRomManifest};
 use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
@@ -106,6 +106,7 @@ pub struct RomPatch {
 #[derive(Clone, Debug, Deserialize)]
 pub struct RomCheckpoint {
     addr: u32,
+    lvl:  u32,
     desc: String,
 }
 
@@ -114,6 +115,9 @@ pub struct RomSetDefinition {
     alias: String,
     priority: u32,
     provides: Vec<String>,
+    #[serde(default)]
+    oem: bool,
+    oem_for: Option<Vec<String>>,
     rom: Vec<RomDescriptor>,
     patch: Option<Vec<RomPatch>>,
     checkpoint: Option<Vec<RomCheckpoint>>,
@@ -136,10 +140,11 @@ pub struct RomFileCandidate {
 pub type NameMap = HashMap<String, (String, PathBuf)>; // Rom names resolve to md5sums
 
 pub struct RomManager {
+    prefer_oem:  bool,
     rom_defs:    Vec<RomSetDefinition>,
     rom_def_map: HashMap<String, usize>,
 
-    rom_sets_complete: Vec<String>,
+    rom_sets_complete: HashSet<String>,
     rom_set_active:    Option<String>,
 
     rom_sets_by_feature: HashMap<String, Vec<String>>,
@@ -159,10 +164,11 @@ pub struct RomManager {
 impl Default for RomManager {
     fn default() -> Self {
         Self {
+            prefer_oem:  true,
             rom_defs:    Vec::new(),
             rom_def_map: HashMap::new(),
 
-            rom_sets_complete: Vec::new(),
+            rom_sets_complete: HashSet::new(),
             rom_set_active:    None,
 
             rom_sets_by_feature: HashMap::new(),
@@ -182,10 +188,11 @@ impl Default for RomManager {
 }
 
 impl RomManager {
-    pub fn new() -> Self {
-        let slf = Self::default();
-
-        slf
+    pub fn new(prefer_oem: bool) -> Self {
+        Self {
+            prefer_oem,
+            ..Default::default()
+        }
     }
 
     pub fn load_defs(&mut self, rm: &ResourceManager) -> Result<(), Error> {
@@ -198,7 +205,7 @@ impl RomManager {
         let toml_defs: Vec<_> = items
             .iter()
             .filter_map(|item| {
-                log::debug!("item: {:?}", item.full_path);
+                //log::debug!("item: {:?}", item.full_path);
                 if item.full_path.extension().is_some_and(|ext| ext == "toml") {
                     return Some(item);
                 }
@@ -230,10 +237,21 @@ impl RomManager {
         let toml_str = std::fs::read_to_string(toml_path)?;
         let romdef = toml::from_str::<RomDefinitionFile>(&toml_str)?;
 
-        log::debug!("Rom definition file loaded: {:?}", toml_path);
+        log::debug!(
+            "Rom definition file loaded: {:?} ROMS: {} Checkpoints: {} Patches: {}",
+            toml_path,
+            romdef.romset.len(),
+            romdef.romset.iter().filter(|r| r.checkpoint.is_some()).count(),
+            romdef.romset.iter().filter(|r| r.patch.is_some()).count()
+        );
         Ok(romdef)
     }
 
+    /// Store each ROM set definition to a HashMap keyed by feature string. This allows us to
+    /// easily retrieve ROM sets that could resolve a given feature. Multiple ROM sets might
+    /// resolve the same feature, so we keep the vector of ROM sets sorted by the 'priority'
+    /// field. This allows certain ROM sets (usually newer revisions) to be preferred over
+    /// others.
     fn sort_by_feature(&mut self) {
         for def in self.rom_defs.iter() {
             for feature in def.provides.iter() {
@@ -248,13 +266,35 @@ impl RomManager {
 
         // Now that all the rom sets have been added to the feature map, we need
         // to sort the feature map vectors by set priority.
-        for (_feature, rom_set_vec) in self.rom_sets_by_feature.iter_mut() {
+        for (feature, rom_set_vec) in self.rom_sets_by_feature.iter_mut() {
             rom_set_vec.sort_by(|a, b| {
                 let a_set_idx = self.rom_def_map.get(a).unwrap();
                 let b_set_idx = self.rom_def_map.get(b).unwrap();
                 let a_set = &self.rom_defs[*a_set_idx];
                 let b_set = &self.rom_defs[*b_set_idx];
-                b_set.priority.cmp(&a_set.priority)
+
+                // Adjust priorities for sets tagged as OEM overall or OEM for the current feature.
+                let (b_pri, a_pri) = if self.prefer_oem {
+                    let b_pri = b_set.priority
+                        + if b_set.oem || b_set.oem_for.as_ref().is_some_and(|of| of.contains(&feature)) {
+                            100
+                        }
+                        else {
+                            0
+                        };
+                    let a_pri = a_set.priority
+                        + if a_set.oem || a_set.oem_for.as_ref().is_some_and(|of| of.contains(&feature)) {
+                            100
+                        }
+                        else {
+                            0
+                        };
+                    (b_pri, a_pri)
+                }
+                else {
+                    (b_set.priority, a_set.priority)
+                };
+                b_pri.cmp(&a_pri)
             });
         }
     }
@@ -302,18 +342,30 @@ impl RomManager {
         }
     }
 
+    /// Return the the best, complete ROM set for the specified feature. If no complete ROM set
+    /// can be found for the feature, return None.
+    fn find_best_set_for_feature(&self, feature: &str) -> Option<String> {
+        if let Some(rom_set_vec) = self.rom_sets_by_feature.get(feature) {
+            for rom_set in rom_set_vec.iter() {
+                if self.rom_sets_complete.contains(rom_set) {
+                    return Some(rom_set.clone());
+                }
+            }
+        }
+        None
+    }
+
     /// Rescan the ROM specified by filename part for changes.
     /// Some ROMs may be expected to change (ie, during active ROM development) and when we reload
     /// the machine we need to reload the ROM, but the md5 may have changed. Calling this allows us to
-    /// accomodate such ROM file changes.
+    /// accommodate such ROM file changes.
     pub fn refresh_filename(&mut self, filename: String) -> Result<(), Error> {
         // Look up the old filename in the name map
-
         let mut rom_candidate;
         let rom_candidate_md5;
 
         if let Some((md5, _path)) = self.rom_candidate_name_map.remove(&filename) {
-            // Take the old entry from the canddiate map.
+            // Take the old entry from the candidate map.
             rom_candidate = self.rom_candidates.remove(&md5).unwrap();
             rom_candidate_md5 = md5;
         }
@@ -445,6 +497,9 @@ impl RomManager {
         Ok(())
     }
 
+    /// Resolve all ROM sets. Resolving a ROM set involves checking that the ROM set is complete, that is, a ROM
+    /// matching the specified hash (if present) or name is present for each 'chip' defined in the ROM set.
+    /// This function calls resolve_rom_set() on the list of ROM set definitions.
     pub fn resolve_rom_sets(&mut self) -> Result<(), Error> {
         if self.rom_candidates.is_empty() {
             return Err(anyhow::anyhow!("No ROMs have been scanned."));
@@ -457,37 +512,21 @@ impl RomManager {
         // Clear list of complete ROM sets.
         self.rom_sets_complete.clear();
 
-        // Process the list of rom defs. We process by index to avoid borrowing issues
-        // from using an iterator.
+        // Process the list of ROM set defs. We process by index to avoid borrowing issues
+        // from using an iterator. For each ROM set that resolves, ie, is complete with
+        // the specified ROMs (ignoring chip duplicates) we add it to the set of complete
+        // ROM sets.
         for i in 0..self.rom_defs.len() {
             if let Ok(_) = self.resolve_rom_set(i) {
-                self.rom_sets_complete.push(self.rom_defs[i].alias.clone());
+                self.rom_sets_complete.insert(self.rom_defs[i].alias.clone());
             }
         }
-
-        /*
-        // Now we need to resolve rom sets by feature. For each complete rom set,
-        // we enumerate the features it provides, and add it into the feature map.
-        for rom_alias in self.rom_sets_complete.iter() {
-            if let Some(rom_set_idx) = self.rom_def_map.get(rom_alias) {
-                let rom_set = &self.rom_defs[*rom_set_idx];
-                for feature in rom_set.provides.iter() {
-                    log::warn!("Adding rom set {} to feature map for feature {}.", rom_alias, feature);
-                    self.rom_sets_by_feature
-                        .entry(feature.clone())
-                        .and_modify(|e| {
-                            e.push(rom_alias.clone());
-                        })
-                        .or_insert(vec![rom_alias.clone()]);
-                }
-            }
-        }
-
-         */
 
         Ok(())
     }
 
+    /// Resolve a ROM set. Resolving a ROM set involves checking that the ROM set is complete, that is, a ROM
+    /// matching the specified hash (if present) or name is present for each 'chip' defined in the ROM set.
     pub fn resolve_rom_set(&mut self, set_idx: usize) -> Result<(), Error> {
         let set = &mut self.rom_defs[set_idx];
 
@@ -563,6 +602,11 @@ impl RomManager {
         // Drop any ROMs that are not present.
         set.rom.retain(|rom| rom.present);
 
+        // If no ROMs are left in set, set is invalid.
+        if set.rom.is_empty() {
+            return Err(anyhow::anyhow!("ROM set {} is invalid: no ROMs found.", set.alias));
+        }
+
         // Add ROMs to a HashMap of ROMs by chip, on first-come first-serve basis. The first ROM
         // that satisfies a chip will be used.
         let mut chip_map: HashMap<String, RomDescriptor> = HashMap::new();
@@ -585,7 +629,7 @@ impl RomManager {
         Ok(())
     }
 
-    /// Given a vector of ROM requirements, return a vector of ROM set names that satisfy the requirements.
+    /// Given a vector of ROM feature requirements, return a vector of ROM set names that satisfy the requirements.
     /// The logic here has the potential to be quite complex in certain situations, but the limited number
     /// of sets we support at the moment should permit a simple implementation.
     pub fn resolve_requirements(
@@ -614,15 +658,53 @@ impl RomManager {
         }
 
         for feature in required.iter() {
-            log::debug!("Resolving feature: {}...", feature);
+            log::debug!(
+                "Features resolved: [{:?}] Resolving feature: {}...",
+                provided_features,
+                feature
+            );
 
             if provided_features.contains(feature) {
                 log::debug!("Feature {} already provided. Skipping.", feature);
                 continue;
             }
 
-            if let Some(feature_vec) = self.rom_sets_by_feature.get(feature) {
-                if feature_vec.is_empty() {
+            if let Some(rom_set) = self.find_best_set_for_feature(feature) {
+                log::debug!("Found rom set for feature {}: {}", feature, rom_set);
+                let rom_set_idx = self.rom_def_map.get(&rom_set).unwrap();
+                let rom_set = &self.rom_defs[*rom_set_idx];
+
+                // Only add the rom set if NONE of its features are already provided.
+                let mut add_rom_set = true;
+                for feature in rom_set.provides.iter() {
+                    if provided_features.contains(feature) {
+                        log::debug!(
+                            "Rom set {} provides feature {} which is already provided. Skipping.",
+                            rom_set.alias,
+                            feature
+                        );
+                        add_rom_set = false;
+                        continue;
+                    }
+                }
+
+                if add_rom_set {
+                    for feature in rom_set.provides.iter() {
+                        provided_features.insert(feature.clone());
+                    }
+                    //log::trace!("Adding ROM: {}", rom);
+                    romset_vec.push(rom_set.alias.clone());
+                }
+            }
+            else {
+                return Err(anyhow::anyhow!(
+                    "No ROM sets found for feature requirement: {}",
+                    feature
+                ));
+            }
+
+            if let Some(rom_set_vec) = self.rom_sets_by_feature.get(feature) {
+                if rom_set_vec.is_empty() {
                     return Err(anyhow::anyhow!(
                         "No ROM sets found for feature requirement: {}",
                         feature
@@ -630,9 +712,12 @@ impl RomManager {
                 }
                 else {
                     // Get the list of provided features for the first rom set in the feature vector.
-
-                    for rom in feature_vec.iter() {
-                        log::debug!("Found rom set for feature {}: {}", feature, rom);
+                    for rom in rom_set_vec.iter() {
+                        if !self.rom_sets_complete.contains(rom) {
+                            log::debug!("Rom set {} is not complete. Skipping.", rom);
+                            continue;
+                        }
+                        log::debug!("Found complete rom set for feature {}: {}", feature, rom);
                         let rom_set_idx = self.rom_def_map.get(rom).unwrap();
                         let rom_set = &self.rom_defs[*rom_set_idx];
 
@@ -642,7 +727,7 @@ impl RomManager {
                             if provided_features.contains(feature) {
                                 log::debug!(
                                     "Rom set {} provides feature {} which is already provided. Skipping.",
-                                    feature_vec[0],
+                                    rom_set_vec[0],
                                     feature
                                 );
                                 add_rom_set = false;
@@ -726,7 +811,8 @@ impl RomManager {
                             md5:  rom_desc.md5.clone().unwrap(),
                             addr: rom_desc.addr,
                             data: rom_vec,
-                        })
+                        });
+                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     Some(RomOrganization::Reversed) => {
                         rom_vec.reverse();
@@ -747,7 +833,8 @@ impl RomManager {
                             md5:  rom_desc.md5.clone().unwrap(),
                             addr: rom_desc.addr,
                             data: rom_vec,
-                        })
+                        });
+                        new_manifest.rom_paths.push(rom_file.path.clone());
                     }
                     _ => {
                         return Err(anyhow::anyhow!(
@@ -756,6 +843,18 @@ impl RomManager {
                             rom_desc.md5.as_ref().unwrap()
                         ))
                     }
+                }
+            }
+
+            // Add checkpoints to manifest
+            if let Some(checkpoints) = &rom_set_def.checkpoint {
+                for checkpoint in checkpoints.iter() {
+                    let new_checkpoint = MachineCheckpoint {
+                        addr: checkpoint.addr,
+                        lvl:  checkpoint.lvl,
+                        desc: checkpoint.desc.clone(),
+                    };
+                    new_manifest.checkpoints.push(new_checkpoint);
                 }
             }
         }

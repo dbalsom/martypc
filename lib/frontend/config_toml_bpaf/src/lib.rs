@@ -41,11 +41,11 @@ use marty_core::{
     coreconfig::VideoCardDefinition,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::implementations::keyboard::KeyboardType,
+    devices::keyboard::KeyboardType,
     machine_types::HardDiskControllerType,
 };
 
-use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem};
+use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem, MartyGuiTheme};
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
@@ -113,6 +113,13 @@ pub struct Audio {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Debugger {
+    pub checkpoint_notify_level: Option<u32>,
+    #[serde(default)]
+    pub breakpoint_notify: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Emulator {
     pub basedir: PathBuf,
     pub paths: Vec<PathConfigItem>,
@@ -138,6 +145,7 @@ pub struct Emulator {
     #[serde(default)]
     pub debug_keyboard: bool,
     pub media: Media,
+    pub debugger: Debugger,
     pub audio: Audio,
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
@@ -159,10 +167,9 @@ pub struct Emulator {
 pub struct Gui {
     #[serde(default)]
     pub disabled: bool,
+    pub theme: Option<MartyGuiTheme>,
+    pub menu_theme: Option<MartyGuiTheme>,
     pub zoom: Option<f32>,
-    #[serde(default)]
-    pub theme_dark: bool,
-    pub theme_color: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -203,9 +210,13 @@ pub struct Cpu {
 pub struct Machine {
     pub config_name: String,
     pub config_overlays: Option<Vec<String>>,
+    #[serde(default = "_default_true")]
+    pub prefer_oem: bool,
     //pub model: MachineType,
     #[serde(default)]
-    pub no_bios: bool,
+    pub reload_roms: bool,
+    #[serde(default)]
+    pub no_roms: bool,
     #[serde(default)]
     pub raw_rom: bool,
     #[serde(default)]
@@ -224,6 +235,7 @@ pub struct Machine {
 
 #[derive(Debug, Deserialize)]
 pub struct Input {
+    #[serde(default)]
     pub reverse_mouse_buttons: bool,
 }
 #[derive(Debug, Deserialize)]
@@ -309,7 +321,7 @@ pub struct CmdLineArgs {
     pub debug_keyboard: bool,
 
     #[bpaf(long, switch)]
-    pub no_bios: bool,
+    pub no_roms: bool,
 
     //#[bpaf(long)]
     //pub video_type: Option<VideoType>,
@@ -353,7 +365,7 @@ impl ConfigFileParams {
         self.emulator.debug_mode |= shell_args.debug_mode;
         //self.emulator.video_frame_debug |= shell_args.video_frame_debug;
         self.emulator.debug_keyboard |= shell_args.debug_keyboard;
-        self.machine.no_bios |= shell_args.no_bios;
+        self.machine.no_roms |= shell_args.no_roms;
 
         /*
         if let Some(video) = shell_args.video_type {

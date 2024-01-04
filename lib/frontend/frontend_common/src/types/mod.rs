@@ -32,3 +32,4 @@
 
 pub mod display_target_dimensions;
 pub mod display_target_margins;
+pub mod gui;

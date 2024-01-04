@@ -31,5 +31,6 @@
 */
 
 pub mod types;
+pub mod util;
 
 pub use crate::types::video_dimensions::VideoDimensions;

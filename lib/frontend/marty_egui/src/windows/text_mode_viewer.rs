@@ -37,6 +37,7 @@ pub struct TextModeViewer {
     card_descs: Vec<String>,
     empty: String,
     card_idx: usize,
+    updates: Vec<u64>,
 }
 
 impl TextModeViewer {
@@ -46,12 +47,16 @@ impl TextModeViewer {
             card_descs: Vec::new(),
             empty: String::new(),
             card_idx: 0,
+            updates: Vec::new(),
         }
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
         if self.card_idx < self.card_descs.len() {
             MartyLayout::new(layouts::Layout::KeyValue, "text-mode-card-grid").show(ui, |ui| {
+                MartyLayout::kv_row(ui, "Updates", None, |ui| {
+                    ui.label(self.updates[self.card_idx].to_string());
+                });
                 MartyLayout::kv_row(ui, "Card", None, |ui| {
                     egui::ComboBox::from_id_source("text-mode-card-select")
                         .selected_text(format!("{}", self.card_descs[self.card_idx]))
@@ -83,9 +88,15 @@ impl TextModeViewer {
 
     pub fn set_cards(&mut self, cards: Vec<String>) {
         self.card_descs = cards;
+        for _ in self.card_descs.iter() {
+            self.updates.push(0);
+        }
     }
 
     pub fn set_content(&mut self, card_id: usize, content: Vec<String>) {
-        self.content_strs.insert(card_id, content.join("\n"));
+        if card_id < self.card_descs.len() {
+            self.content_strs.insert(card_id, content.join("\n"));
+            self.updates[card_id] += 1;
+        }
     }
 }

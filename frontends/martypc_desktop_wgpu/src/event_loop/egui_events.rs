@@ -34,14 +34,23 @@ use display_manager_wgpu::DisplayManager;
 use marty_core::{
     breakpoints::BreakPointType,
     cpu_common::CpuOption,
-    devices::traits::videocard::ClockingMode,
+    device_traits::videocard::ClockingMode,
     machine::MachineState,
     vhd,
 };
-use marty_egui::{DeviceSelection, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext};
+use marty_egui::{
+    DeviceSelection,
+    GuiBoolean,
+    GuiEnum,
+    GuiEvent,
+    GuiVariable,
+    GuiVariableContext,
+    InputFieldChangeSource,
+};
 use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
+use marty_core::vhd::VirtualHardDisk;
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, gui_event: &GuiEvent) {
@@ -112,7 +121,57 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 GuiVariableContext::Global => {}
             },
         },
+        GuiEvent::LoadVHD(drive_idx, image_idx) => {
+            log::debug!("Releasing VHD slot: {}", drive_idx);
+            emu.vhd_manager.release_vhd(*drive_idx);
 
+            let mut error_str = None;
+
+            match emu.vhd_manager.load_vhd_file(*drive_idx, *image_idx) {
+                Ok(vhd_file) => match VirtualHardDisk::from_file(vhd_file) {
+                    Ok(vhd) => {
+                        if let Some(hdc) = emu.machine.hdc() {
+                            match hdc.set_vhd(*drive_idx, vhd) {
+                                Ok(_) => {
+                                    let vhd_name = emu.vhd_manager.get_vhd_name(*image_idx).unwrap();
+                                    log::info!(
+                                        "VHD image {:?} successfully loaded into virtual drive: {}",
+                                        vhd_name,
+                                        *drive_idx
+                                    );
+
+                                    emu.gui
+                                        .toasts()
+                                        .info(format!("VHD loaded: {:?}", vhd_name))
+                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                                Err(err) => {
+                                    error_str = Some(format!("Error mounting VHD: {}", err));
+                                }
+                            }
+                        }
+                        else {
+                            error_str = Some("No Hard Disk Controller present!".to_string());
+                        }
+                    }
+                    Err(err) => {
+                        error_str = Some(format!("Error loading VHD: {}", err));
+                    }
+                },
+                Err(err) => {
+                    error_str = Some(format!("Failed to load VHD image index {}: {}", *image_idx, err));
+                }
+            }
+
+            // Handle errors.
+            if let Some(err_str) = error_str {
+                log::error!("{}", err_str);
+                emu.gui
+                    .toasts()
+                    .error(err_str)
+                    .set_duration(Some(LONG_NOTIFICATION_TIME));
+            }
+        }
         GuiEvent::CreateVHD(filename, fmt) => {
             log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
@@ -132,8 +191,8 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         .info(format!("Created VHD: {}", filename.to_string_lossy()))
                         .set_duration(Some(Duration::from_secs(5)));
 
-                    // Rescan dir to show new file in list
-                    if let Err(e) = emu.vhd_manager.scan_dir(&emu.hdd_path) {
+                    // Rescan resource paths to show new file in list
+                    if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
                         log::error!("Error scanning hdd directory: {}", e);
                     };
                 }
@@ -150,7 +209,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             if let Err(e) = emu.floppy_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning floppy directory: {}", e);
             }
-            if let Err(e) = emu.vhd_manager.scan_dir(&emu.hdd_path) {
+            if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning hdd directory: {}", e);
             };
         }
@@ -225,15 +284,25 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             }
         }
-        GuiEvent::SaveFloppy(drive_select, filename) => {
-            log::debug!("Save floppy image: {:?} into drive: {}", filename, drive_select);
+        */
+        GuiEvent::SaveFloppy(drive_select, image_idx) => {
+            log::debug!(
+                "Received SaveFloppy event image index: {}, drive: {}",
+                image_idx,
+                drive_select
+            );
 
             if let Some(fdc) = emu.machine.fdc() {
                 let floppy = fdc.get_image_data(*drive_select);
                 if let Some(floppy_image) = floppy {
-                    match emu.floppy_manager.save_floppy_data(floppy_image, &filename) {
-                        Ok(()) => {
-                            log::info!("Floppy image successfully saved: {:?}", filename);
+                    match emu.floppy_manager.save_floppy_data(floppy_image, *image_idx, &emu.rm) {
+                        Ok(path) => {
+                            log::info!("Floppy image successfully saved: {:?}", path);
+
+                            emu.gui
+                                .toasts()
+                                .info(format!("Floppy saved: {:?}", path.file_name()))
+                                .set_duration(Some(SHORT_NOTIFICATION_TIME));
                         }
                         Err(err) => {
                             log::warn!("Floppy image failed to save: {}", err);
@@ -242,7 +311,6 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             }
         }
-        */
         GuiEvent::EjectFloppy(drive_select) => {
             log::info!("Ejecting floppy in drive: {}", drive_select);
             if let Some(fdc) = emu.machine.fdc() {
@@ -317,16 +385,22 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             // The address bar for the memory viewer was updated. We need to
             // evaluate the expression and set a new row value for the control.
             // The memory contents will be updated in the normal frame update.
-            let mem_dump_addr_str = emu.gui.memory_viewer.get_address();
-            // Show address 0 if expression evail fails
-            let mem_dump_addr: u32 = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
-                Some(i) => {
-                    let addr: u32 = i.into();
-                    addr & !0x0F
-                }
-                None => 0,
-            };
-            emu.gui.memory_viewer.set_row(mem_dump_addr as usize);
+            let (mem_dump_addr_str, source) = emu.gui.memory_viewer.get_address();
+
+            if let InputFieldChangeSource::UserInput = source {
+                // Only evaluate expression if the address box was changed by user input.
+                let mem_dump_addr: u32 = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
+                    Some(i) => {
+                        let addr: u32 = i.into();
+                        addr & !0x0F
+                    }
+                    None => {
+                        // Show address 0 if expression eval fails
+                        0
+                    }
+                };
+                emu.gui.memory_viewer.set_address(mem_dump_addr as usize);
+            }
         }
         GuiEvent::TokenHover(addr) => {
             // Hovered over a token in a TokenListView.
@@ -362,13 +436,19 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             match state {
                 MachineState::Off | MachineState::Rebooting => {
                     // Clear the screen if rebooting or turning off
-
                     emu.dm.for_each_renderer(|renderer, _card_id, buf| {
                         renderer.clear();
                         buf.fill(0);
                     });
+
+                    if emu.config.machine.reload_roms {
+                        // Tell the Machine to wait on execution until ROMs are reloaded
+                        emu.machine.set_reload_pending(true);
+                    }
                 }
-                _ => {}
+                _ => {
+                    emu.machine.set_reload_pending(false);
+                }
             }
             emu.machine.change_state(*state);
         }
@@ -386,20 +466,16 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         GuiEvent::CtrlAltDel => {
             emu.machine.ctrl_alt_del();
         }
-        GuiEvent::CompositeAdjust(params) => {
+        GuiEvent::CompositeAdjust(dt_idx, params) => {
             //log::warn!("got composite params: {:?}", params);
-
-            if let Some(renderer) = emu.dm.get_primary_renderer() {
-                renderer.cga_direct_param_update(&params);
-            }
+            emu.dm.with_renderer(*dt_idx, |renderer| {
+                renderer.cga_direct_param_update(params);
+            });
         }
-        GuiEvent::ScalerAdjust(params) => {
-            log::warn!("Received ScalerAdjust event: {:?}", params);
-            if let Some(_renderer) = emu.dm.get_primary_renderer() {
-                /*
-                   renderer.set_scaler_params(&params);
-
-                */
+        GuiEvent::ScalerAdjust(dt_idx, params) => {
+            //log::warn!("Received ScalerAdjust event: {:?}", params);
+            if let Err(err) = emu.dm.apply_scaler_params(*dt_idx, params) {
+                log::error!("Failed to apply scaler params: {}", err);
             }
         }
         GuiEvent::ZoomChanged(zoom) => {

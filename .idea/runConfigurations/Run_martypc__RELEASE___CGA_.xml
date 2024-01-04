@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run martypc [RELEASE] [CGA]" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="run -r --features devtools,ega -- --configfile martypc.toml --machine-config-overlays=cga,xebec" />
+    <option name="command" value="run -r --features devtools,ega -- --configfile martypc.toml --machine-config-overlays=cga" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />

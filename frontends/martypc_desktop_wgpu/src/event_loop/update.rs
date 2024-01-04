@@ -33,6 +33,8 @@ use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
+use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
+use marty_core::{bus::DeviceEvent, machine::MachineEvent};
 use videocard_renderer::RendererEvent;
 
 use crate::{
@@ -44,6 +46,9 @@ use crate::{
 
 pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     emu.stat_counter.current_ups += 1;
+
+    // Throttle updates
+    std::thread::sleep(Duration::from_millis(1));
 
     // Calculate FPS
     let elapsed_ms = emu.stat_counter.last_second.elapsed().as_millis();
@@ -256,8 +261,93 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         );
         */
 
+        // Drain machine events
+        while let Some(event) = emu.machine.get_event() {
+            match event {
+                MachineEvent::CheckpointHit(checkpoint, pri) => {
+                    log::info!(
+                        "CHECKPOINT: {}",
+                        emu.machine
+                            .get_checkpoint_string(checkpoint)
+                            .unwrap_or("ERROR".to_string())
+                    );
+
+                    if let Some(pri_level) = emu.config.emulator.debugger.checkpoint_notify_level {
+                        if pri <= pri_level {
+                            // Send notification
+
+                            emu.gui
+                                .toasts()
+                                .info(format!(
+                                    "CHECKPOINT: {}",
+                                    emu.machine
+                                        .get_checkpoint_string(checkpoint)
+                                        .unwrap_or("ERROR".to_string())
+                                ))
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                    }
+                }
+                MachineEvent::Reset => {
+                    // Send notification
+                    emu.gui
+                        .toasts()
+                        .info("Machine reset!".to_string())
+                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                    if emu.config.machine.reload_roms {
+                        // Reload ROMs from the saved list of ROM sets.
+                        match emu.romm.create_manifest(emu.romsets.clone(), &emu.rm) {
+                            Ok(manifest) => match emu.machine.reinstall_roms(manifest) {
+                                Ok(_) => {
+                                    emu.gui
+                                        .toasts()
+                                        .info("ROMs reloaded!".to_string())
+                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                }
+                                Err(err) => {
+                                    log::error!("Error reloading ROMs: {}", err);
+                                    emu.gui
+                                        .toasts()
+                                        .error(format!("Failed to reload ROMs: {}", err))
+                                        .set_duration(Some(LONG_NOTIFICATION_TIME));
+                                }
+                            },
+                            Err(err) => {
+                                log::error!("Error creating ROM manifest: {}", err);
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Failed to reload ROMs: {}", err))
+                                    .set_duration(Some(LONG_NOTIFICATION_TIME));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Do per-frame updates (Serial port emulation)
-        emu.machine.frame_update();
+        let events = emu.machine.frame_update();
+        for event in events {
+            match event {
+                DeviceEvent::TurboToggled(state) => {
+                    // Send notification
+                    if state {
+                        emu.gui
+                            .toasts()
+                            .info("Turbo mode enabled!".to_string())
+                            .set_duration(Some(SHORT_NOTIFICATION_TIME));
+                    }
+                    else {
+                        emu.gui
+                            .toasts()
+                            .info("Turbo mode disabled!".to_string())
+                            .set_duration(Some(SHORT_NOTIFICATION_TIME));
+                    }
+                }
+                _ => {}
+            }
+        }
 
         let render_start = Instant::now();
 
@@ -285,7 +375,7 @@ pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
                     RendererEvent::ScreenshotSaved => {
                         emu.gui
                             .toasts()
-                            .info(format!("Screenshot saved!"))
+                            .info("Screenshot saved!".to_string())
                             .set_duration(Some(Duration::from_secs(5)));
                     }
                 }

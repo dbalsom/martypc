@@ -37,14 +37,16 @@ use std::{
     fmt::{Display, Formatter},
     path::PathBuf,
 };
+use web_time::Duration;
 
 pub use crate::types::display_target_dimensions::DisplayTargetDimensions;
 
 use crate::{
-    display_scaler::{ScalerMode, ScalerPreset},
+    display_scaler::{ScalerMode, ScalerParams, ScalerPreset},
     types::display_target_margins::DisplayTargetMargins,
+    MartyGuiTheme,
 };
-use marty_core::devices::traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
+use marty_core::device_traits::videocard::{DisplayApertureType, DisplayExtents, VideoCardId, VideoType};
 use videocard_renderer::{RendererConfigParams, VideoRenderer};
 
 #[derive(Copy, Clone)]
@@ -83,13 +85,17 @@ pub struct DisplayInfo {
     pub vid: Option<VideoCardId>,
     pub name: String,
     pub renderer: Option<RendererConfigParams>,
+    pub render_time: Duration,
+    pub has_gui: bool,
+    pub gui_render_time: Duration,
     pub scaler_mode: Option<ScalerMode>,
+    pub scaler_params: Option<ScalerParams>,
 }
 
 pub struct DisplayManagerGuiOptions {
     pub enabled: bool,
-    pub theme_dark: bool,
-    pub theme_color: Option<u32>,
+    pub theme: Option<MartyGuiTheme>,
+    pub menu_theme: Option<MartyGuiTheme>,
     pub menubar_h: u32,
     pub zoom: f32,
     pub debug_drawing: bool,
@@ -236,14 +242,19 @@ pub trait DisplayManager<B, G, Wi, W> {
     where
         F: FnMut(&W);
 
-    /// Conditionally execute the provided closure receiving a DisplayTarget, condtional on
+    /// Execute a closure that is passed a reference to the renderer for the specified display target.
+    fn with_renderer<F>(&mut self, dt_idx: usize, f: F)
+    where
+        F: FnMut(&mut VideoRenderer);
+
+    /// Conditionally execute the provided closure receiving a DisplayTarget, conditional on
     /// resolution of a DisplayTarget for the specified Window ID.
     fn with_target_by_wid<F>(&mut self, wid: Wi, f: F)
     where
         F: FnMut(&mut Self::ImplDisplayTarget);
 
     /// Conditionally execute the provided closure receiving a reference to the Gui context
-    /// and associated Window, condtional on resolution of a DisplayTarget for the specified
+    /// and associated Window, conditional on resolution of a DisplayTarget for the specified
     /// Window ID.
     fn with_gui_by_wid<F>(&mut self, wid: Wi, f: F)
     where
@@ -256,8 +267,11 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// Retrieve the scaler preset by name.
     fn get_scaler_preset(&mut self, name: String) -> Option<&ScalerPreset>;
 
-    /// Apply the named scaler preset to the specificed display target.
+    /// Apply the named scaler preset to the specified display target.
     fn apply_scaler_preset(&mut self, dt_idx: usize, name: String) -> Result<(), Error>;
+
+    /// Apply the specified scaler parameters to the specified display target.
+    fn apply_scaler_params(&mut self, dt_idx: usize, params: &ScalerParams) -> Result<(), Error>;
 
     /// Set the desired Display Aperture for the specified display target.
     /// Returns the associated VideoCardId, as the card will need to be resized when the aperture

@@ -4,8 +4,9 @@
 
 ## Code Contributors
 
-Composite color conversion algorithm by Andrew Jenner aka [reenigne](https://www.reenigne.org/blog/)
-wgpu backend and scaler code adapted from Pixels by Jay Oster aka [parasyte](https://github.com/parasyte/)
+ * Composite color conversion algorithm by Andrew Jenner aka [reenigne](https://www.reenigne.org/blog/)
+ * wgpu backend and scaler code adapted from Pixels by Jay Oster aka [parasyte](https://github.com/parasyte/)
+ * GUI themes generated with egui_themer by [Grant Handy](https://github.com/grantshandy/egui-themer)
 
 ## 3rd Party Software
 

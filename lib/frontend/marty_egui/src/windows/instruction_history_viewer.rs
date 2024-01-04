@@ -57,12 +57,12 @@ impl InstructionHistoryControl {
 
         let mut new_row = self.row;
         ui.horizontal(|ui| {
-            self.tlv.draw(ui, events, &mut new_row);
+            self.tlv.draw(ui, events, &mut new_row, &mut |scrolled_to, sevents| {});
         });
     }
 
     pub fn set_content(&mut self, mem: Vec<Vec<SyntaxToken>>) {
-        self.tlv.set_contents(mem);
+        self.tlv.set_contents(mem, false);
     }
 
     #[allow(dead_code)]

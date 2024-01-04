@@ -36,6 +36,7 @@
 
 #![allow(dead_code)]
 use anyhow::Error;
+use lazy_static::lazy_static;
 use std::{
     collections::{HashMap, VecDeque},
     fmt,
@@ -47,16 +48,14 @@ use ringbuf::Producer;
 use crate::{bytequeue::*, cpu_808x::*};
 
 use crate::{
-    devices::{
-        implementations::keyboard::KeyboardType,
-        traits::videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType},
-    },
+    device_traits::videocard::{ClockingMode, VideoCardId, VideoCardInterface, VideoType},
+    devices::keyboard::KeyboardType,
     machine::KeybufferEntry,
     machine_config::MachineDescriptor,
     syntax_token::SyntaxToken,
 };
 
-use crate::devices::implementations::{
+use crate::devices::{
     dma::*,
     fdc::FloppyController,
     hdc::*,
@@ -71,17 +70,16 @@ use crate::devices::implementations::{
 use crate::tracelogger::TraceLogger;
 
 #[cfg(feature = "ega")]
-use crate::devices::implementations::ega::{self, EGACard};
+use crate::devices::ega::{self, EGACard};
 #[cfg(feature = "vga")]
-use crate::devices::implementations::vga::{self, VGACard};
+use crate::devices::vga::{self, VGACard};
 use crate::{
+    device_traits::videocard::{VideoCard, VideoCardDispatch},
     devices::{
-        implementations::{
-            cga::{self, CGACard},
-            mda::{self, MDACard},
-        },
-        traits::videocard::{VideoCard, VideoCardDispatch},
+        cga::{self, CGACard},
+        mda::{self, MDACard},
     },
+    machine::MachineCheckpoint,
     machine_config::{normalize_conventional_memory, MachineConfiguration},
     machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
     memerror::MemError,
@@ -106,10 +104,68 @@ pub const MEM_MMIO_BIT: u8 = 0b0000_0100; // Bit to signify that this address is
 
 pub const KB_UPDATE_RATE: f64 = 5000.0; // Keyboard device update rate in microseconds
 
+pub const TIMING_TABLE_LEN: usize = 512;
+
+#[derive(Copy, Clone, Debug)]
+pub struct TimingTableEntry {
+    pub sys_ticks: u32,
+    pub us: f64,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum ClockFactor {
     Divisor(u8),
     Multiplier(u8),
+}
+
+#[derive(Clone, Debug)]
+pub struct DeviceRunContext {
+    pub delta_ticks: u32,
+    pub delta_us: f64,
+    pub break_on: Option<DeviceId>,
+    pub events: VecDeque<DeviceEvent>,
+}
+
+impl Default for DeviceRunContext {
+    fn default() -> Self {
+        Self {
+            delta_ticks: 0,
+            delta_us: 0.0,
+            break_on: None,
+            events: VecDeque::with_capacity(16),
+        }
+    }
+}
+
+impl DeviceRunContext {
+    pub fn new(cpu_ticks: u32, factor: ClockFactor, sysclock: f64) -> Self {
+        let delta_ticks = match factor {
+            ClockFactor::Divisor(n) => (cpu_ticks + (n as u32) - 1) / (n as u32),
+            ClockFactor::Multiplier(n) => cpu_ticks * (n as u32),
+        };
+        let mhz = match factor {
+            ClockFactor::Divisor(n) => sysclock / (n as f64),
+            ClockFactor::Multiplier(n) => sysclock * (n as f64),
+        };
+        let delta_us = 1.0 / mhz * cpu_ticks as f64;
+
+        Self {
+            delta_ticks,
+            delta_us,
+            break_on: None,
+            events: VecDeque::with_capacity(16),
+        }
+    }
+
+    #[inline]
+    pub fn set_break_on(&mut self, device: DeviceId) {
+        self.break_on = Some(device);
+    }
+
+    #[inline]
+    pub fn add_event(&mut self, event: DeviceEvent) {
+        self.events.push_back(event);
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -118,9 +174,27 @@ pub enum DeviceRunTimeUnit {
     Microseconds(f64),
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum DeviceId {
+    None,
+    Ppi,
+    Pit,
+    DmaPrimary,
+    DmaSecondary,
+    PicPrimary,
+    PicSecondary,
+    SerialController,
+    FloppyController,
+    HardDiskController,
+    Mouse,
+    Video,
+}
+
+#[derive(Clone, Debug)]
 pub enum DeviceEvent {
     DramRefreshUpdate(u16, u16, u32),
     DramRefreshEnable(bool),
+    TurboToggled(bool),
 }
 
 pub trait MemoryMappedDevice {
@@ -147,7 +221,7 @@ impl fmt::Display for MemoryDebug {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "ADDR: {}\nBYTE: {}\nWORD: {}\nDWORD: {}\nINSTR: {}",
+            " ADDR: {}\n BYTE: {}\n WORD: {}\nDWORD: {}\nINSTR: {}",
             self.addr, self.byte, self.word, self.dword, self.instr
         )
     }
@@ -231,6 +305,7 @@ pub enum MmioDeviceType {
 // us to call them with bus as an argument.
 pub struct BusInterface {
     cpu_factor: ClockFactor,
+    timing_table: Box<[TimingTableEntry; TIMING_TABLE_LEN]>,
     machine_desc: Option<MachineDescriptor>,
     keyboard_type: KeyboardType,
     keyboard: Keyboard,
@@ -239,7 +314,7 @@ pub struct BusInterface {
     memory_mask: Vec<u8>,
     desc_vec: Vec<MemRangeDescriptor>,
     mmio_map: Vec<(MemRangeDescriptor, MmioDeviceType)>,
-    mmio_map_fast: [MmioDeviceType; 128],
+    mmio_map_fast: [MmioDeviceType; MMIO_MAP_LEN],
     mmio_data: MmioData,
     cursor: usize,
 
@@ -366,7 +441,7 @@ impl Default for BusInterface {
     fn default() -> Self {
         BusInterface {
             cpu_factor: ClockFactor::Divisor(3),
-
+            timing_table: Box::new([TimingTableEntry { sys_ticks: 0, us: 0.0 }; TIMING_TABLE_LEN]),
             machine_desc: None,
             keyboard_type: KeyboardType::ModelF,
             keyboard: Keyboard::new(KeyboardType::ModelF, false),
@@ -409,12 +484,64 @@ impl Default for BusInterface {
 
 impl BusInterface {
     pub fn new(cpu_factor: ClockFactor, machine_desc: MachineDescriptor, keyboard_type: KeyboardType) -> BusInterface {
+        let mut timing_table = Box::new([TimingTableEntry { sys_ticks: 0, us: 0.0 }; TIMING_TABLE_LEN]);
+        Self::update_timing_table(&mut timing_table, cpu_factor, machine_desc.system_crystal);
+
         BusInterface {
             cpu_factor,
+            timing_table,
             machine_desc: Some(machine_desc),
             keyboard_type,
             keyboard: Keyboard::new(keyboard_type, false),
             ..BusInterface::default()
+        }
+    }
+
+    /// Update the bus timing table.
+    /// The bus keeps a timing table which is a lookup table of system ticks and microseconds for each possible CPU
+    /// instruction cycle count from 0 to TIMING_TABLE_LEN. This table needs to be updated whenever the clock divisor
+    /// or cpu crystal frequency changes.
+    pub fn update_timing_table(
+        timing_table: &mut [TimingTableEntry; TIMING_TABLE_LEN],
+        clock_factor: ClockFactor,
+        cpu_crystal: f64,
+    ) {
+        for cycles in 0..TIMING_TABLE_LEN {
+            let entry = &mut timing_table[cycles];
+
+            entry.sys_ticks = match clock_factor {
+                ClockFactor::Divisor(n) => ((cycles as u32) + (n as u32) - 1) / (n as u32),
+                ClockFactor::Multiplier(n) => (cycles as u32) * (n as u32),
+            };
+            let mhz = match clock_factor {
+                ClockFactor::Divisor(n) => cpu_crystal / (n as f64),
+                ClockFactor::Multiplier(n) => cpu_crystal * (n as f64),
+            };
+            entry.us = 1.0 / mhz * cycles as f64;
+        }
+    }
+
+    #[inline]
+    pub fn get_timings_for_cycles(&self, cycles: u32) -> &TimingTableEntry {
+        &self.timing_table[cycles as usize]
+    }
+
+    #[inline]
+    pub fn set_context_timings(&self, context: &mut DeviceRunContext, cycles: u32) {
+        context.delta_ticks = self.timing_table[cycles as usize].sys_ticks;
+        context.delta_us = self.timing_table[cycles as usize].us;
+    }
+
+    /// Set the checkpoint bit in memory flags for all checkpoints provided.
+    pub fn install_checkpoints(&mut self, checkpoints: &Vec<MachineCheckpoint>) {
+        for checkpoint in checkpoints.iter() {
+            self.memory_mask[checkpoint.addr as usize & 0xFFFFF] |= MEM_CP_BIT;
+        }
+    }
+
+    pub fn clear_checkpoints(&mut self) {
+        for byte_ref in &mut self.memory_mask {
+            *byte_ref &= !MEM_CP_BIT;
         }
     }
 
@@ -597,6 +724,10 @@ impl BusInterface {
                     MmioDeviceType::Video(vid) => {
                         if let Some(card_dispatch) = self.videocards.get_mut(&vid) {
                             match card_dispatch {
+                                VideoCardDispatch::Mda(mda) => {
+                                    let syswait = mda.get_read_wait(address, system_ticks);
+                                    return Ok(self.system_ticks_to_cpu_cycles(syswait));
+                                }
                                 VideoCardDispatch::Cga(cga) => {
                                     let syswait = cga.get_read_wait(address, system_ticks);
                                     return Ok(self.system_ticks_to_cpu_cycles(syswait));
@@ -1186,7 +1317,6 @@ impl BusInterface {
 
     pub fn dump_mem(&self, path: &Path) {
         let mut filename = path.to_path_buf();
-        filename.push("mem.bin");
 
         let len = 0x100000;
         let address = 0;
@@ -1212,11 +1342,32 @@ impl BusInterface {
 
             ivr_vec.push(SyntaxToken::Text(format!("{:03}", v)));
             ivr_vec.push(SyntaxToken::Colon);
-            ivr_vec.push(SyntaxToken::MemoryAddressSeg16(
+            ivr_vec.push(SyntaxToken::OpenBracket);
+            ivr_vec.push(SyntaxToken::StateMemoryAddressSeg16(
                 cs,
                 ip,
-                format!("[{:04X}]:[{:04X}]", cs, ip),
+                format!("{:04X}:{:04X}", cs, ip),
+                255,
             ));
+            ivr_vec.push(SyntaxToken::CloseBracket);
+            // TODO: The bus should eventually register IRQs, and then we would query the bus for the device identifier
+            //       for each IRQ.
+            match v {
+                0 => ivr_vec.push(SyntaxToken::Text("Divide Error".to_string())),
+                1 => ivr_vec.push(SyntaxToken::Text("Single Step".to_string())),
+                2 => ivr_vec.push(SyntaxToken::Text("NMI".to_string())),
+                3 => ivr_vec.push(SyntaxToken::Text("Breakpoint".to_string())),
+                4 => ivr_vec.push(SyntaxToken::Text("Overflow".to_string())),
+                8 => ivr_vec.push(SyntaxToken::Text("Timer".to_string())),
+                9 => ivr_vec.push(SyntaxToken::Text("Keyboard".to_string())),
+                //10 => ivr_vec.push(SyntaxToken::Text("Slave PIC".to_string())),
+                11 => ivr_vec.push(SyntaxToken::Text("Serial Port 2".to_string())),
+                12 => ivr_vec.push(SyntaxToken::Text("Serial Port 1".to_string())),
+                13 => ivr_vec.push(SyntaxToken::Text("HDC".to_string())),
+                14 => ivr_vec.push(SyntaxToken::Text("FDC".to_string())),
+                15 => ivr_vec.push(SyntaxToken::Text("Parallel Port 1".to_string())),
+                _ => {}
+            }
             vec.push(ivr_vec);
         }
         vec
@@ -1290,11 +1441,17 @@ impl BusInterface {
         let conventional_memory = normalize_conventional_memory(machine_config)?;
         self.set_conventional_size(conventional_memory as usize);
 
+        // Set the expansion rom flag for DIP if there is anything besides a video card
+        // that needs an expansion ROM.
+        //let mut have_expansion = { machine_config.hdc.is_some() };
+        //have_expansion = false;
+
         // Create PPI if PPI is defined for this machine type
         if machine_desc.have_ppi {
             self.ppi = Some(Ppi::new(
                 machine_desc.machine_type,
                 conventional_memory,
+                false,
                 video_types,
                 num_floppies,
             ));
@@ -1363,7 +1520,7 @@ impl BusInterface {
             match hdc_config.hdc_type {
                 HardDiskControllerType::IbmXebec => {
                     // TODO: Get the correct drive type from the specified VHD...?
-                    let hdc = HardDiskController::new(DRIVE_TYPE2_DIP);
+                    let hdc = HardDiskController::new(2, DRIVE_TYPE2_DIP);
                     // Add HDC ports to io_map
                     let port_list = hdc.port_list();
                     self.io_map
@@ -1411,7 +1568,7 @@ impl BusInterface {
             log::debug!("Creating video card of type: {:?}", card.video_type);
             match card.video_type {
                 VideoType::MDA => {
-                    let mda = MDACard::new(TraceLogger::None, clock_mode, video_frame_debug);
+                    let mda = MDACard::new(TraceLogger::None, clock_mode, true, video_frame_debug);
                     let port_list = mda.port_list();
                     self.io_map
                         .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
@@ -1463,9 +1620,12 @@ impl BusInterface {
 
                     video_dispatch = VideoCardDispatch::Vga(vga)
                 }
+                #[allow(unreachable_patterns)]
                 _ => {
-                    // MDA not implemented
-                    todo!("MDA not implemented");
+                    panic!(
+                        "card type {:?} not implemented or feature not compiled",
+                        card.video_type
+                    );
                 }
             }
 
@@ -1710,7 +1870,7 @@ impl BusInterface {
         for (_vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Mda(mda) => {
-                    mda.run(DeviceRunTimeUnit::SystemTicks(sys_ticks));
+                    mda.run(DeviceRunTimeUnit::Microseconds(us));
                 }
                 VideoCardDispatch::Cga(cga) => {
                     self.cga_tick_accum += sys_ticks;
@@ -2174,6 +2334,15 @@ impl BusInterface {
     pub fn floppy_drive_ct(&self) -> usize {
         if let Some(fdc) = &self.fdc {
             fdc.drive_ct()
+        }
+        else {
+            0
+        }
+    }
+
+    pub fn hdd_ct(&self) -> usize {
+        if let Some(hdc) = &self.hdc {
+            hdc.drive_ct()
         }
         else {
             0
