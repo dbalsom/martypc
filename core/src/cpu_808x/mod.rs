@@ -2292,11 +2292,16 @@ impl Cpu {
         self.int_elapsed = 0;
         self.device_cycles = 0;
 
-        // Fetch next instruction byte, if applicable.
-        if (!self.intr || !self.interrupts_enabled()) && !self.halted {
-            // Do not fetch if there's an active interrupt (and interrupts are enabled)
-            // Do not fetch if we are halted.
-            self.biu_fetch_next();
+        if self.nmi && self.bus.nmi_enabled() && !self.nmi_triggered {
+            // NMI takes priority over trap and INTR.
+            if self.halted {
+                // Resume from halt on interrupt
+                self.resume();
+            }
+            log::debug!("Triggered NMI!");
+            self.nmi_triggered = true;
+            self.int2();
+            step_result = StepResult::Call(CpuAddress::Segmented(self.cs, self.ip));
         }
         else if self.intr && self.interrupts_enabled() {
             // An interrupt needs to be processed.
@@ -2342,110 +2347,129 @@ impl Cpu {
                 self.biu_fetch_next();
             }
         }
+        else if self.trap_enabled() {
+            // Trap has lowest priority.
+            if self.halted {
+                // Resume from halt on trap
+                self.resume();
+            }
+            self.int1();
+            step_result = StepResult::Call(CpuAddress::Segmented(self.cs, self.ip));
+        }
+        else if !self.halted {
+            // We didn't have NMI, INTR, or TRAP condition. Fetch the next instruction if not halted.
+            self.biu_fetch_next();
+        }
 
-        // If a CPU validator is configured, validate the executed instruction.
+        // If a CPU validator is enabled, validate the executed instruction.
         #[cfg(feature = "cpu_validator")]
         {
-            match self.exec_result {
-                ExecutionResult::Okay
-                | ExecutionResult::OkayJump
-                | ExecutionResult::ExceptionError(CpuException::DivideError) => {
-                    let mut v_flags = 0;
+            self.validate_instruction()?;
+        }
 
-                    if let ExecutionResult::ExceptionError(CpuException::DivideError) = self.exec_result {
-                        // In the case of a divide exception, undefined flags get pushed to the stack.
-                        // So until we figure out the actual logic behind setting those undefined flags,
-                        // we can't validate writes. Also the cycle timing seems to vary a little when
-                        // executing int0, so allow a one cycle variance.
-                        v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_ALLOW_ONE;
+        Ok(step_result)
+    }
+
+    #[cfg(feature = "cpu_validator")]
+    pub fn validate_instruction(&mut self) -> Result<(), CpuError> {
+        match self.exec_result {
+            ExecutionResult::Okay
+            | ExecutionResult::OkayJump
+            | ExecutionResult::ExceptionError(CpuException::DivideError) => {
+                let mut v_flags = 0;
+
+                if let ExecutionResult::ExceptionError(CpuException::DivideError) = self.exec_result {
+                    // In the case of a divide exception, undefined flags get pushed to the stack.
+                    // So until we figure out the actual logic behind setting those undefined flags,
+                    // we can't validate writes. Also the cycle timing seems to vary a little when
+                    // executing int0, so allow a one cycle variance.
+                    v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_ALLOW_ONE;
+                }
+
+                match self.i.mnemonic {
+                    Mnemonic::DIV => {
+                        // There's a one cycle variance in my DIV instructions somewhere.
+                        // I just want to get these tests out the door, so allow it.
+                        v_flags |= VAL_ALLOW_ONE;
+                    }
+                    Mnemonic::IDIV => {
+                        v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_NO_CYCLES;
+                    }
+                    _ => {}
+                }
+
+                // End validation of current instruction
+                let vregs = self.get_vregisters();
+
+                if self.i.size == 0 {
+                    log::error!("Invalid length: [{:05X}] {}", self.instruction_address, self.i);
+                }
+
+                let cpu_address = self.get_linear_ip() as usize;
+
+                if let Some(ref mut validator) = self.validator {
+                    // If validator uninitialized, set register state now and move into running state.
+                    if self.validator_state == CpuValidatorState::Uninitialized {
+                        // This resets the validator CPU
+                        log::debug!("Validator Uninitialized. Resetting validator and setting registers...");
+                        validator.set_regs();
+                        self.validator_state = CpuValidatorState::Running;
                     }
 
-                    match self.i.mnemonic {
-                        Mnemonic::DIV => {
-                            // There's a one cycle variance in my DIV instructions somewhere.
-                            // I just want to get these tests out the door, so allow it.
-                            v_flags |= VAL_ALLOW_ONE;
-                        }
-                        Mnemonic::IDIV => {
-                            v_flags |= VAL_NO_WRITES | VAL_NO_FLAGS | VAL_NO_CYCLES;
-                        }
-                        _ => {}
-                    }
+                    if self.validator_state == CpuValidatorState::Running {
+                        log::debug!("Validating opcode: {:02X}", self.i.opcode);
+                        match validator.validate_instruction(
+                            self.i.to_string(),
+                            &self.instr_slice,
+                            v_flags,
+                            self.peek_fetch as u16,
+                            self.i.flags & I_HAS_MODRM != 0,
+                            0,
+                            &vregs,
+                            &self.cycle_states,
+                        ) {
+                            Ok(result) => {
+                                match result {
+                                    ValidatorResult::Ok => {}
+                                    ValidatorResult::OkEnd => {
+                                        if self.validator_end == cpu_address {
+                                            self.validator_state = CpuValidatorState::Ended;
 
-                    // End validation of current instruction
-                    let vregs = self.get_vregisters();
-
-                    if self.i.size == 0 {
-                        log::error!("Invalid length: [{:05X}] {}", self.instruction_address, self.i);
-                    }
-
-                    let cpu_address = self.get_linear_ip() as usize;
-
-                    if let Some(ref mut validator) = self.validator {
-                        // If validator uninitialized, set register state now and move into running state.
-                        if self.validator_state == CpuValidatorState::Uninitialized {
-                            // This resets the validator CPU
-                            log::debug!("Validator Uninitialized. Resetting validator and setting registers...");
-                            validator.set_regs();
-                            self.validator_state = CpuValidatorState::Running;
-                        }
-
-                        if self.validator_state == CpuValidatorState::Running {
-                            log::debug!("Validating opcode: {:02X}", self.i.opcode);
-                            match validator.validate_instruction(
-                                self.i.to_string(),
-                                &self.instr_slice,
-                                v_flags,
-                                self.peek_fetch as u16,
-                                self.i.flags & I_HAS_MODRM != 0,
-                                0,
-                                &vregs,
-                                &self.cycle_states,
-                            ) {
-                                Ok(result) => {
-                                    match result {
-                                        ValidatorResult::Ok => {}
-                                        ValidatorResult::OkEnd => {
-                                            if self.validator_end == cpu_address {
+                                            // Validation has reached program end address
+                                            if let Err(e) = validator.validate_regs(&vregs) {
+                                                log::warn!("Register validation failure: {} Halting execution.", e);
+                                                self.is_running = false;
+                                                self.is_error = true;
+                                                return Err(CpuError::CpuHaltedError(self.instruction_address));
+                                            }
+                                            else {
+                                                log::debug!("Registers validated. Validation ended successfully.");
                                                 self.validator_state = CpuValidatorState::Ended;
-
-                                                // Validation has reached program end address
-                                                if let Err(e) = validator.validate_regs(&vregs) {
-                                                    log::warn!("Register validation failure: {} Halting execution.", e);
-                                                    self.is_running = false;
-                                                    self.is_error = true;
-                                                    return Err(CpuError::CpuHaltedError(self.instruction_address));
-                                                }
-                                                else {
-                                                    log::debug!("Registers validated. Validation ended successfully.");
-                                                    self.validator_state = CpuValidatorState::Ended;
-                                                    self.trace_flush();
-                                                }
+                                                self.trace_flush();
                                             }
                                         }
-                                        _ => {
-                                            log::warn!("Validation failure: Halting execution.");
-                                            self.is_running = false;
-                                            self.is_error = true;
-                                            return Err(CpuError::CpuHaltedError(self.instruction_address));
-                                        }
+                                    }
+                                    _ => {
+                                        log::warn!("Validation failure: Halting execution.");
+                                        self.is_running = false;
+                                        self.is_error = true;
+                                        return Err(CpuError::CpuHaltedError(self.instruction_address));
                                     }
                                 }
-                                Err(e) => {
-                                    log::warn!("Validation failure: {} Halting execution.", e);
-                                    self.is_running = false;
-                                    self.is_error = true;
-                                    return Err(CpuError::CpuHaltedError(self.instruction_address));
-                                }
+                            }
+                            Err(e) => {
+                                log::warn!("Validation failure: {} Halting execution.", e);
+                                self.is_running = false;
+                                self.is_error = true;
+                                return Err(CpuError::CpuHaltedError(self.instruction_address));
                             }
                         }
                     }
                 }
-                _ => {}
             }
+            _ => {}
         }
-
-        Ok(step_result)
+        Ok(())
     }
 
     /// Set a terminating code address for the CPU. This is mostly used in conjunction with the

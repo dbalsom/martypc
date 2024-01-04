@@ -2158,7 +2158,7 @@ impl Cpu {
             unreachable!("Invalid opcode!");
             //ExecutionResult::UnsupportedOpcode(self.i.opcode)
         }
-        else if self.halted && !self.get_flag(Flag::Interrupt) {
+        else if self.halted && !self.get_flag(Flag::Interrupt) && !self.get_flag(Flag::Trap) {
             // CPU was halted with interrupts disabled - will not continue
             ExecutionResult::Halt
         }
