@@ -24,12 +24,36 @@
 
     --------------------------------------------------------------------------
 
-    devices::types::mod.rs
+    marty_egui::widgets::bitfield.rs
 
-    Module to organize all device types
+    Implements a custom control that displays a bitfield, with the bit values
+    on top and the field descriptors beneath.
 
 */
 
-pub mod chs;
-pub mod fdc;
-pub mod hdc;
+use egui::Response;
+
+pub struct BitFieldElement {
+    pub label: String,
+    pub value: u16,
+    pub len:   u16,
+}
+
+pub struct BitFieldWidget {
+    pub fields: Vec<BitFieldElement>,
+}
+
+impl BitFieldWidget {
+    pub fn draw(&self, ui: &mut egui::Ui, fields: Vec<BitFieldElement>) -> Response {
+        egui::Grid::new("scaler_adjust").striped(false).show(ui, |ui| {
+            for field in &fields {
+                ui.vertical(|ui| {
+                    let mut label_str = String::new();
+                    ui.label(write!(&label_str, "{:0width$b}", number, width = field.len as usize));
+                    ui.label(egui::RichText::new(field.label.clone()).text_style(egui::TextStyle::Monospace));
+                });
+            }
+            ui.end_row();
+        })
+    }
+}

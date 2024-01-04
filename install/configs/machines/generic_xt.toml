@@ -36,6 +36,7 @@ name = "generic_xt_base"
 type = "Ibm5160"
 rom_set = "glabios_xt"
 speaker = true
+ppi_turbo = true
 
     [machine.memory]
     conventional.size = 0x10000
@@ -55,6 +56,7 @@ name = "generic_xt"
 type = "Ibm5160"
 rom_set = "glabios_xt"
 speaker = true
+ppi_turbo = false
 
     [machine.memory]
     conventional.size = 0xA0000
@@ -97,8 +99,9 @@ speaker = true
 [[machine]]
 name = "generic_xt_hdd"
 type = "Ibm5160"
-rom_set = "glabios_xt"
+rom_set = "glabios_xt_turbo"
 speaker = true
+ppi_turbo = false
 
     [machine.memory]
     conventional.size = 0xA0000
@@ -158,6 +161,7 @@ name = "generic_xt_hdd_ega"
 type = "Ibm5160"
 rom_set = "glabios_xt"
 speaker = true
+ppi_turbo = false
 
     [machine.memory]
     conventional.size = 0xA0000
@@ -212,3 +216,63 @@ speaker = true
     type = "Microsoft"
     port = 0
     
+
+[[machine]]
+name = "generic_award_xt_hdd"
+type = "Ibm5160"
+rom_set = "award_xt_4000"
+speaker = true
+ppi_turbo = true
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Floppy disk controller
+    [machine.fdc]
+    type = "IbmNec"
+    
+        # Drives connected to controller. Maximum of 4.
+        [[machine.fdc.drive]]
+        type  = "360k"
+        image = "dos330.img"
+        [[machine.fdc.drive]]
+        type  = "360k"   
+
+    # Hard disk controller
+    [machine.hdc]
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        type = "Mfm"
+        vhd = "dos330.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #type = "Mfm"
+        #vhd = "games.vhd"
+
+    # Serial card
+    [[machine.serial]]
+    type = "IbmAsync"
+        [[machine.serial.port]]
+        io_base = 0x3F8
+        irq = 4
+        [[machine.serial.port]]
+        io_base = 0x2F8
+        irq = 3
+    
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Default"
+    
+    [machine.keyboard]
+    type = "ModelF"
+    layout = "US"    
+    
+    [machine.serialmouse]
+    type = "Microsoft"
+    port = 0    

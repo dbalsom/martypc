@@ -101,6 +101,8 @@ pub struct VhdConfigEntry {
 #[derive(Debug, Deserialize)]
 pub struct Media {
     pub raw_sector_image_extensions: Option<Vec<String>>,
+    #[serde(default)]
+    pub write_protect_default: bool,
     pub vhd: Option<Vec<VhdConfigEntry>>,
 }
 

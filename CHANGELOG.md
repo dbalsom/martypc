@@ -71,6 +71,9 @@ advantage of this new system, and so now you can organize your media directories
 * New themes courtesy of [egui-themer crate](https://github.com/grantshandy/egui-themer)
 * New notification system courtesy of [egui-notify crate](https://github.com/ItsEthra/egui-notify). 
   * Implemented success/error notifications for disk and file operations, screenshots, etc.
+* Floppy browser now supports subdirectories
+* Write protection can be toggled for floppy drives
+* Sound initialization now optional
 * Improved VHD creator - should no longer be confusing to use
 * Text Mode Viewer - View ASCII contents of video memory, where you can select and copy to clipboard
 * Preliminary CGA snow emulation. Not yet 100% accurate

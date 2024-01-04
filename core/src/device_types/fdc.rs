@@ -28,3 +28,61 @@
 
     Defines types common to implementations of a Floppy Disk Controller
 */
+
+use crate::devices::types::chs::DiskChs;
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+
+pub struct DiskFormat {
+    pub chs: DiskChs,
+}
+
+lazy_static! {
+    pub static ref DISK_FORMATS: HashMap<usize, DiskFormat> = {
+        let map = HashMap::from([
+            (
+                163_840,
+                DiskFormat {
+                    chs: DiskChs::new(40, 1, 8),
+                },
+            ),
+            (
+                184_320,
+                DiskFormat {
+                    chs: DiskChs::new(40, 1, 9),
+                },
+            ),
+            (
+                327_680,
+                DiskFormat {
+                    chs: DiskChs::new(40, 2, 8),
+                },
+            ),
+            (
+                368_640,
+                DiskFormat {
+                    chs: DiskChs::new(40, 2, 9),
+                },
+            ),
+            (
+                737_280,
+                DiskFormat {
+                    chs: DiskChs::new(80, 2, 9),
+                },
+            ),
+            (
+                1_228_800,
+                DiskFormat {
+                    chs: DiskChs::new(80, 2, 15),
+                },
+            ),
+            (
+                1_474_560,
+                DiskFormat {
+                    chs: DiskChs::new(80, 2, 18),
+                },
+            ),
+        ]);
+        map
+    };
+}
