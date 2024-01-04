@@ -29,7 +29,7 @@
     Defines types common to implementations of a Floppy Disk Controller
 */
 
-use crate::devices::types::chs::DiskChs;
+use crate::device_types::chs::DiskChs;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 

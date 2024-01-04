@@ -29,9 +29,9 @@
     Implements a floppy drive
 */
 
-use crate::devices::{
-    implementations::fdc::{FDC_MAX_DRIVES, SECTOR_SIZE},
-    types::{chs::DiskChs, fdc::DISK_FORMATS},
+use crate::{
+    device_types::{chs::DiskChs, fdc::DISK_FORMATS},
+    devices::fdc::SECTOR_SIZE,
 };
 use anyhow::{anyhow, Error};
 

@@ -30,6 +30,9 @@
 */
 
 use lazy_static::lazy_static;
+use std::fmt::{Display, Formatter};
+
+pub const HDC_SECTOR_SIZE: usize = 512;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct HardDiskFormat {
@@ -38,6 +41,32 @@ pub struct HardDiskFormat {
     pub max_sectors: u8,
     pub wpc: Option<u16>,
     pub desc: String,
+}
+
+impl HardDiskFormat {
+    pub fn get_size(&self) -> usize {
+        (self.max_cylinders as usize) * (self.max_heads as usize) * (self.max_sectors as usize) * HDC_SECTOR_SIZE
+    }
+}
+
+impl Display for HardDiskFormat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let size = self.get_size() as f32;
+        let size_in_mb = size / 1024.0 / 1024.0;
+
+        write!(
+            f,
+            "c:{} h:{} s:{} wpc:{} ({:.1})",
+            self.max_cylinders,
+            self.max_heads,
+            self.max_sectors,
+            match self.wpc {
+                Some(wpc) => wpc.to_string(),
+                None => "N/A".to_string(),
+            },
+            size_in_mb
+        )
+    }
 }
 
 lazy_static! {

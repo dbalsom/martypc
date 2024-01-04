@@ -39,11 +39,8 @@ use std::{
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
-    devices::{
-        dma,
-        floppy_drive::FloppyDiskDrive,
-        types::{chs::DiskChs, fdc::DISK_FORMATS},
-    },
+    device_types::{chs::DiskChs, fdc::DISK_FORMATS},
+    devices::{dma, floppy_drive::FloppyDiskDrive},
 };
 
 pub const FDC_IRQ: u8 = 0x06;

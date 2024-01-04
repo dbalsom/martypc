@@ -39,6 +39,7 @@ pub mod vga;
 
 pub mod dma;
 pub mod fdc;
+pub mod floppy_drive;
 pub mod hdc;
 pub mod keyboard;
 pub mod lpt_port;
