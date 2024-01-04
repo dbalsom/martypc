@@ -104,6 +104,7 @@ impl VideoRenderer {
                     )
                 }
             }
+            #[cfg(feature = "ega")]
             VideoType::EGA => VideoRenderer::draw_ega_direct_u32(
                 first_pass_buf,
                 self.params.render.w,
