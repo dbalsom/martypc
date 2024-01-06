@@ -1,12 +1,12 @@
 [package]
-name = "martypc_pixels_desktop"
+name = "martypc_desktop_wgpu"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
 [lib]
-name = "martypc_pixels_desktop"
+name = "martypc_desktop_wgpu"
 path = "src/lib.rs"
 crate-type = ["cdylib", "rlib"]
 

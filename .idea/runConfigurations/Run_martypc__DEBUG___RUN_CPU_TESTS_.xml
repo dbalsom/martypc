@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run martypc [DEBUG] [DEV] [CGA]" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
-    <option name="command" value="run --features devtools,ega -- --configfile martypc-dev.toml" />
+  <configuration default="false" name="Run martypc [DEBUG] [RUN CPU TESTS]" type="CargoCommandRunConfiguration" factoryName="Cargo Command">
+    <option name="command" value="run --features devtools,ega,cpu_validator,arduino_validator -- --configfile martypc-dev.toml" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />
@@ -10,7 +10,7 @@
     <option name="buildTarget" value="REMOTE" />
     <option name="backtrace" value="SHORT" />
     <envs>
-      <env name="RUST_LOG" value="debug,naga=error,wgpu_core=error,marty_core=debug" />
+      <env name="RUST_LOG" value="warn,naga=error,wgpu_core=error,marty_core=warn" />
     </envs>
     <option name="isRedirectInput" value="false" />
     <option name="redirectInputPath" value="" />

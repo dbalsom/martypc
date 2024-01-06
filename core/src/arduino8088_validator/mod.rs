@@ -809,6 +809,9 @@ impl CpuValidator for ArduinoValidator {
 
                 return Err(ValidatorError::MemOpMismatch);
             }
+            else {
+                log::trace!("Memops validated!");
+            }
         }
 
         if (flags & VAL_NO_CYCLES == 0) && (emu_states.len() > 0) {

@@ -2283,13 +2283,13 @@ dependencies = [
  "frontend_common",
  "marty_core",
  "marty_egui",
- "martypc_pixels_desktop",
+ "martypc_desktop_wgpu",
  "videocard_renderer",
  "winres",
 ]
 
 [[package]]
-name = "martypc_pixels_desktop"
+name = "martypc_desktop_wgpu"
 version = "0.2.0"
 dependencies = [
  "anyhow",

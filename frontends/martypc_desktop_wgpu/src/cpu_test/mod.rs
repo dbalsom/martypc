@@ -32,23 +32,11 @@ use marty_core::cpu_validator::{CycleState, VRegisters};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TestState {
-    pub regs:  VRegisters,
-    pub ram:   Vec<[u32; 2]>,
-    pub queue: Vec<u8>,
-}
+#[macro_use]
+pub mod common;
 
-#[derive(Serialize, Deserialize)]
-pub struct CpuTest {
-    pub name:  String,  // Human readable name (disassembly)
-    pub bytes: Vec<u8>, // Instruction bytes
-
-    #[serde(rename = "initial")]
-    pub initial_state: TestState, // Initial state of CPU before test execution
-
-    #[serde(rename = "final")]
-    pub final_state: TestState, // Final state of CPU after test execution
-
-    pub cycles: Vec<CycleState>,
-}
+#[cfg(feature = "arduino_validator")]
+pub mod gen_tests;
+pub mod process_tests;
+#[cfg(feature = "arduino_validator")]
+pub mod run_tests;

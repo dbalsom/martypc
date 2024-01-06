@@ -34,7 +34,7 @@
 use log;
 use serialport::ClearBuffer;
 
-pub const ARD8088_BAUD: u32 = 1000000;
+pub const ARD8088_BAUD: u32 = 2000000;
 //pub const ARD8088_BAUD: u32 = 460800;
 
 #[derive(Copy, Clone)]
@@ -251,7 +251,9 @@ impl CpuClient {
                 let cmd: [u8; 1] = [1];
                 let mut buf: [u8; 100] = [0; 100];
                 match new_port.write(&cmd) {
-                    Ok(_) => {}
+                    Ok(_) => {
+                        log::debug!("try_port: Sent discovery command.");
+                    }
                     Err(_) => {
                         log::error!("try_port: Write error");
                         return None;
@@ -285,7 +287,7 @@ impl CpuClient {
                     return Some(new_port);
                 }
                 else {
-                    log::trace!(
+                    log::warn!(
                         "Invalid response from discovery command. Read {} bytes (Expected 9).",
                         bytes_read
                     );

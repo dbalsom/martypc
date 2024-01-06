@@ -186,6 +186,7 @@ pub struct Tests {
     pub test_mode: Option<TestMode>,
     pub test_seed: Option<u64>,
     pub test_dir: Option<String>,
+    pub test_output_dir: Option<String>,
     pub test_opcode_range: Option<Vec<u8>>,
     pub test_extension_range: Option<Vec<u8>>,
     pub test_opcode_exclude_list: Option<Vec<u8>>,

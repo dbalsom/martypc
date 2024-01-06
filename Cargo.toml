@@ -34,7 +34,7 @@ marty_core = { path = "core"}
 videocard_renderer = { path = "lib/frontend/videocard_renderer" }
 marty_egui = { path = "lib/frontend/marty_egui" }
 frontend_common = { path = "lib/frontend/frontend_common" }
-martypc_pixels_desktop = { path = "frontends/martypc_desktop_wgpu" }
+martypc_desktop_wgpu = { path = "frontends/martypc_desktop_wgpu" }
 
 [workspace.dependencies]
 winit = "0.29.4"
@@ -85,9 +85,9 @@ opt-level = 3
 opt-level = 3
 
 [features]
-devtools = ["martypc_pixels_desktop/devtools"]
-arduino_validator = ["marty_core/arduino_validator", "martypc_pixels_desktop/arduino_validator"]
-cpu_validator = ["marty_core/cpu_validator", "martypc_pixels_desktop/cpu_validator"]
+devtools = ["martypc_desktop_wgpu/devtools"]
+arduino_validator = ["marty_core/arduino_validator", "martypc_desktop_wgpu/arduino_validator"]
+cpu_validator = ["marty_core/cpu_validator", "martypc_desktop_wgpu/cpu_validator"]
 ega = ["marty_core/ega", "frontend_common/ega"]
 vga = ["marty_core/vga", "frontend_common/vga"]
 

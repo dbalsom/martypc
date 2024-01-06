@@ -38,7 +38,7 @@ use std::{
     time::Instant,
 };
 
-use bpaf_toml_config::ConfigFileParams;
+use config_toml_bpaf::ConfigFileParams;
 
 use marty_core::{
     arduino8088_validator::ArduinoValidator,
@@ -50,7 +50,7 @@ use marty_core::{
     tracelogger::TraceLogger,
 };
 
-use crate::cpu_test::{CpuTest, TestState};
+use crate::cpu_test::common::{CpuTest, TestState};
 
 use serde::{Deserialize, Serialize};
 
@@ -59,7 +59,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
     // Create the cpu trace file, if specified
     let mut cpu_trace = TraceLogger::None;
-    if let Some(trace_filename) = &config.emulator.trace_file {
+    if let Some(trace_filename) = &config.machine.cpu.trace_file {
         cpu_trace = TraceLogger::from_filename(&trace_filename);
     }
 
@@ -72,9 +72,11 @@ pub fn run_gentests(config: &ConfigFileParams) {
     #[cfg(feature = "cpu_validator")]
     use marty_core::cpu_validator::ValidatorMode;
 
+    let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
+
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
-        config.emulator.trace_mode,
+        trace_mode,
         cpu_trace,
         #[cfg(feature = "cpu_validator")]
         config.validator.vtype.unwrap(),
@@ -305,7 +307,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 }
 
                 cpu.set_option(CpuOption::EnableWaitStates(false));
-                cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+                cpu.set_option(CpuOption::TraceLoggingEnabled(config.machine.cpu.trace_on));
 
                 let mut rep = false;
 

@@ -36,50 +36,42 @@
 #![allow(clippy::too_many_arguments)]
 #![forbid(unsafe_code)]
 
+mod cpu_test;
+mod emulator;
+mod event_loop;
+mod input;
+mod run_headless;
+
+#[cfg(feature = "arduino_validator")]
+mod run_fuzzer;
+
 use std::{
     cell::RefCell,
     rc::Rc,
     time::{Duration, Instant},
 };
 
-mod cpu_test;
-mod emulator;
-mod event_loop;
-mod input;
 #[cfg(feature = "arduino_validator")]
-mod run_fuzzer;
-#[cfg(feature = "arduino_validator")]
-mod run_gentests;
-#[cfg(feature = "arduino_validator")]
-mod run_runtests;
+use crate::{cpu_test::gen_tests::run_gentests, cpu_test::run_tests, run_fuzzer::run_fuzzer};
 
-mod run_headless;
-mod run_processtests;
-
-use crate::emulator::{EmuFlags, Emulator};
-
-use marty_egui::state::GuiState;
-
-#[cfg(feature = "arduino_validator")]
-use crate::run_fuzzer::run_fuzzer;
-
-#[cfg(feature = "arduino_validator")]
-use crate::run_gentests::run_gentests;
-
-#[cfg(feature = "arduino_validator")]
-use crate::run_runtests::run_runtests;
+use config_toml_bpaf::TestMode;
 
 use marty_core::{
+    cpu_validator::ValidatorType,
     devices::keyboard::KeyboardModifiers,
-    machine::{ExecutionControl, ExecutionState},
+    machine::{ExecutionControl, ExecutionState, MachineBuilder},
     sound::SoundPlayer,
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
 use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager, vhd_manager::VhdManager};
-use marty_core::machine::MachineBuilder;
+use marty_egui::state::GuiState;
 
-use crate::event_loop::handle_event;
+use crate::{
+    cpu_test::{process_tests::run_processtests, run_tests::run_runtests},
+    emulator::{EmuFlags, Emulator},
+    event_loop::handle_event,
+};
 
 pub const FPS_TARGET: f64 = 60.0;
 const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
@@ -506,6 +498,12 @@ pub fn run() {
 
     log::debug!("Test mode: {:?}", config.tests.test_mode);
 
+    // If fuzzer mode was specified, run the emulator in fuzzer mode now
+    #[cfg(feature = "cpu_validator")]
+    if config.emulator.fuzzer {
+        return run_fuzzer(&config);
+    }
+
     // If test generate mode was specified, run the emulator in test generation mode now
     #[cfg(feature = "cpu_validator")]
     match config.tests.test_mode {
@@ -514,11 +512,12 @@ pub fn run() {
         Some(TestMode::Process) => return run_processtests(config),
         Some(TestMode::None) | None => {}
     }
-
-    // If fuzzer mode was specified, run the emulator in fuzzer mode now
-    #[cfg(feature = "cpu_validator")]
-    if config.emulator.fuzzer {
-        //return run_fuzzer(&config, rom_manager, floppy_manager);
+    #[cfg(not(feature = "cpu_validator"))]
+    {
+        if let Some(TestMode::Run) = config.tests.test_mode {
+            eprintln!("Test generation mode not supported in this build.");
+            std::process::exit(1);
+        }
     }
 
     // If headless mode was specified, run the emulator in headless mode now

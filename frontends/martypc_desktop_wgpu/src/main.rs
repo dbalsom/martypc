@@ -32,7 +32,7 @@
 
 */
 
-use martypc_pixels_desktop::run;
+use martypc_desktop_wgpu::run;
 
 pub fn main() {
     run();

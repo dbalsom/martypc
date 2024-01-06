@@ -35,19 +35,18 @@ use std::{
     rc::Rc,
 };
 
-use bpaf_toml_config::ConfigFileParams;
+use config_toml_bpaf::ConfigFileParams;
+use frontend_common::{floppy_manager::FloppyManager, rom_manager::RomManager};
 
 use marty_core::{
     bytequeue::ByteQueue,
     cpu_808x::{mnemonic::Mnemonic, Cpu, *},
     cpu_common::{CpuOption, CpuType, TraceMode},
     devices::pic::Pic,
-    floppy_manager::FloppyManager,
-    rom_manager::RomManager,
     tracelogger::TraceLogger,
 };
 
-pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_manager: FloppyManager) {
+pub fn run_fuzzer(config: &ConfigFileParams) {
     /*
     let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
     if config.emulator.trace_mode != TraceMode::None {
@@ -70,7 +69,7 @@ pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_m
 
     // Create the cpu trace file, if specified
     let mut cpu_trace = TraceLogger::None;
-    if let Some(trace_filename) = &config.emulator.trace_file {
+    if let Some(trace_filename) = &config.machine.cpu.trace_file {
         cpu_trace = TraceLogger::from_filename(&trace_filename);
     }
 
@@ -80,12 +79,14 @@ pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_m
         validator_trace = TraceLogger::from_filename(&trace_filename);
     }
 
+    let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
+
     #[cfg(feature = "cpu_validator")]
     use marty_core::cpu_validator::ValidatorMode;
 
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
-        config.emulator.trace_mode,
+        trace_mode,
         cpu_trace,
         #[cfg(feature = "cpu_validator")]
         config.validator.vtype.unwrap(),
@@ -113,6 +114,11 @@ pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_m
             continue;
         }
 
+        if Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP)) > 0xFFFF0 {
+            // Avoid address space wrapping
+            continue;
+        }
+
         // Generate specific opcodes (optional)
 
         // ALU ops
@@ -136,7 +142,7 @@ pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_m
 
         //cpu.random_inst_from_opcodes(&[0x06, 0x07, 0x0E, 0x0F, 0x16, 0x17, 0x1E, 0x1F]); // PUSH/POP - completed 5000 tests
         //cpu.random_inst_from_opcodes(&[0x27, 0x2F, 0x37, 0x3F]); // DAA, DAS, AAA, AAS
-        cpu.random_inst_from_opcodes(&[0x37]);
+        //cpu.random_inst_from_opcodes(&[0x37]);
 
         //cpu.random_inst_from_opcodes(&[0x37]);
 
@@ -237,8 +243,8 @@ pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_m
         //cpu.random_grp_instruction(0xF6, &[4, 5]); // 8 bit MUL & IMUL
         //cpu.random_grp_instruction(0xF7, &[4, 5]); // 16 bit MUL & IMUL
 
-        //cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
-        //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
+        cpu.random_grp_instruction(0xF6, &[6, 7]); // 8 bit DIV & IDIV
+                                                   //cpu.random_grp_instruction(0xF7, &[6, 7]); // 16 bit DIV & IDIV
 
         //cpu.random_inst_from_opcodes(&[0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD]); // CLC, STC, CLI, STI, CLD, STD
 
@@ -275,7 +281,7 @@ pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_m
         }
 
         cpu.set_option(CpuOption::EnableWaitStates(false));
-        cpu.set_option(CpuOption::TraceLoggingEnabled(config.emulator.trace_on));
+        cpu.set_option(CpuOption::TraceLoggingEnabled(config.machine.cpu.trace_on));
 
         match i.opcode {
             0xFE | 0xD2 | 0xD3 | 0x8F => {
@@ -372,6 +378,21 @@ pub fn run_fuzzer(config: &ConfigFileParams, _rom_manager: RomManager, _floppy_m
             match cpu.step(false) {
                 Ok((_, cycles)) => {
                     log::trace!("Instruction reported {} cycles", cycles);
+
+                    if rep & cpu.in_rep() {
+                        continue;
+                    }
+                }
+                Err(err) => {
+                    log::error!("CPU Error: {}\n", err);
+                    cpu.trace_flush();
+                    break 'testloop;
+                }
+            }
+
+            match cpu.step_finish() {
+                Ok(_) => {
+                    //log::trace!("Instruction reported {} cycles", cycles);
 
                     if rep & cpu.in_rep() {
                         continue;

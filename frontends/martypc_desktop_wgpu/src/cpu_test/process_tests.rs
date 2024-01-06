@@ -30,6 +30,17 @@
 
 #![allow(warnings, unused)]
 
+use crate::cpu_test::{
+    common::{
+        is_prefix_in_vec,
+        opcode_extension_from_path,
+        opcode_from_path,
+        read_tests_from_file,
+        write_tests_to_file,
+        TestFileLoad,
+    },
+    gen_tests::write_tests_to_file as other_write_tests_to_file,
+};
 use std::{
     collections::{HashMap, LinkedList},
     ffi::OsString,
@@ -51,100 +62,11 @@ use marty_core::{
 
 use config_toml_bpaf::{ConfigFileParams, TestMode};
 
-use crate::cpu_test::{CpuTest, TestState};
+use crate::cpu_test::common::{CpuTest, TestState};
 
 use colored::*;
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
-
-pub enum FailType {
-    CycleMismatch,
-    MemMismatch,
-    RegMismatch,
-}
-
-pub struct TestFileLoad {
-    path:  PathBuf,
-    tests: LinkedList<CpuTest>,
-}
-
-pub struct TestFailItem {
-    num:    u32,
-    name:   String,
-    reason: FailType,
-}
-
-pub struct TestResult {
-    pass: bool,
-    duration: Duration,
-    passed: u32,
-    failed: u32,
-    cycle_mismatch: u32,
-    mem_mismatch: u32,
-    reg_mismatch: u32,
-    failed_tests: LinkedList<TestFailItem>,
-}
-
-pub struct TestResultSummary {
-    results: HashMap<OsString, TestResult>,
-}
-
-#[derive(Deserialize, Debug)]
-struct InnerObject {
-    pub status: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub flags: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub flags_mask: Option<u32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reg: Option<HashMap<String, InnerObject>>,
-}
-
-type Metadata = HashMap<String, InnerObject>;
-
-macro_rules! trace_error {
-    ($wr:expr, $($t:tt)*) => {{
-        let formatted_message = format!($($t)*);
-        log::error!("{}", &formatted_message);
-
-        // Assuming you want to write the message to the BufWriter as well.
-        writeln!($wr, "{}", &formatted_message).expect("Failed to write to BufWriter");
-        _ = $wr.flush();
-    }};
-}
-
-fn opcode_from_path(path: &PathBuf) -> Option<u8> {
-    path.file_stem() // Get the filename without the extension
-        .and_then(|os_str| os_str.to_str()) // Convert OsStr to &str
-        .and_then(|filename| {
-            let hex_str = &filename[0..2]; // Take the first two characters
-            u8::from_str_radix(hex_str, 16).ok() // Parse as hexadecimal
-        })
-}
-
-fn opcode_extension_from_path(path: &PathBuf) -> Option<u8> {
-    path.file_stem() // Get the filename without the final extension
-        .and_then(|os_str| os_str.to_str()) // Convert OsStr to &str
-        .and_then(|filename| {
-            // Split the filename on '.' to separate potential opcode and extension
-            let parts: Vec<&str> = filename.split('.').collect();
-
-            if parts.len() == 2 {
-                // If there are two parts, take the second one as the extension
-                u8::from_str_radix(parts[1], 16).ok()
-            }
-            else {
-                None
-            }
-        })
-}
-
-fn is_prefix_in_vec(path: &PathBuf, vec: &Vec<String>) -> bool {
-    path.file_stem() // Get filename without extension
-        .and_then(|os_str| os_str.to_str()) // Convert OsStr to &str
-        .map(|s| s.chars().take(2).collect::<String>().to_uppercase()) // Take first two chars and convert to uppercase
-        .map_or(false, |prefix| vec.contains(&prefix)) // Check if the prefix exists in the vec
-}
 
 pub fn run_processtests(config: ConfigFileParams) {
     let mut test_path = "./tests".to_string();
@@ -386,128 +308,4 @@ fn process_tests(
     }
 
     modified
-}
-
-pub fn write_tests_to_file(path: PathBuf, tests: &LinkedList<CpuTest>) {
-    let file_opt: Option<File>;
-
-    if path.exists() {
-        file_opt = match OpenOptions::new().write(true).truncate(true).open(path.clone()) {
-            Ok(file) => Some(file),
-            Err(e) => {
-                eprintln!("Couldn't reopen output file {:?} for writing: {:?}", path, e);
-                None
-            }
-        };
-    }
-    else {
-        file_opt = match OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .truncate(true)
-            .open(path.clone())
-        {
-            Ok(file) => Some(file),
-            Err(e) => {
-                eprintln!("Couldn't create output file {:?}: {:?}", path, e);
-                None
-            }
-        }
-    }
-
-    if let None = file_opt {
-        panic!("Couldn't open or create output file!");
-    }
-
-    let mut file = file_opt.unwrap();
-
-    file.seek(SeekFrom::Start(0)).expect("Couldn't seek file.");
-    file.set_len(0).expect("Couldn't truncate file");
-
-    let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &tests).expect("Couldn't write JSON to output file!");
-}
-
-pub fn read_tests_from_file(test_path: PathBuf) -> Option<LinkedList<CpuTest>> {
-    let test_file_opt = match File::open(test_path.clone()) {
-        Ok(file) => {
-            println!("Opened test file: {:?}", test_path);
-            Some(file)
-        }
-        Err(error) => {
-            match error.kind() {
-                ErrorKind::NotFound => {
-                    println!("File not found error: {:?}", test_path);
-                }
-                error => {
-                    println!("Failed to open the file due to: {:?}", error);
-                }
-            }
-            None
-        }
-    };
-
-    if test_file_opt.is_none() {
-        return None;
-    }
-
-    let result;
-
-    {
-        let mut file = test_file_opt.unwrap();
-        let mut file_string = String::new();
-
-        // Is file gzipped?
-        match test_path.extension().and_then(std::ffi::OsStr::to_str) {
-            Some("gz") => {
-                let mut decoder = GzDecoder::new(BufReader::new(file));
-
-                decoder
-                    .read_to_string(&mut file_string)
-                    .expect("Failed to decompress gzip archive.");
-            }
-            Some("json") => {
-                file.read_to_string(&mut file_string)
-                    .expect("Error reading in JSON file to string!");
-            }
-            _ => {
-                log::error!("Bad extension!");
-                return None;
-            }
-        }
-
-        /*
-        // using BufReader & from_reader with serde-json is slow, see:
-        // https://docs.rs/serde_json/latest/serde_json/fn.from_reader.html
-        // Scope for BufReader
-        let json_reader = BufReader::new(file);
-
-
-        result = match serde_json::from_reader(json_reader) {
-            Ok(json_obj) => Some(json_obj),
-            Err(e) if e.is_eof() => {
-                println!("File {:?} is empty. Creating new vector.", test_path);
-                Some(Vec::new())
-            }
-            Err(e) => {
-                eprintln!("Failed to read json from file: {:?}: {:?}", test_path, e);
-                None
-            }
-        }
-        */
-
-        result = match serde_json::from_str(&file_string) {
-            Ok(json_obj) => Some(json_obj),
-            Err(e) if e.is_eof() => {
-                println!("JSON file {:?} is empty. Creating new vector.", test_path);
-                Some(LinkedList::new())
-            }
-            Err(e) => {
-                eprintln!("Failed to read json from file: {:?}: {:?}", test_path, e);
-                None
-            }
-        }
-    }
-
-    result
 }

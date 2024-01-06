@@ -1653,6 +1653,10 @@ impl Cpu {
         Cpu::calc_linear_address(self.cs, self.ip)
     }
 
+    pub fn get_linear_sp(&self) -> u32 {
+        Cpu::calc_linear_address(self.ss, self.sp)
+    }
+
     pub fn get_state(&self) -> CpuRegisterState {
         CpuRegisterState {
             ah:    self.ah,
