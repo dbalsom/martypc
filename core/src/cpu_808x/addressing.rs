@@ -388,7 +388,7 @@ impl Cpu {
                 let offset = self.ea_opr;
                 let (_segment_val, segment, ea_offset) =
                     self.calc_effective_address(mode, seg_override);
-                let segment = self.biu_read_u16(segment, ea_offset + 2, flag);
+                let segment = self.biu_read_u16(segment, ea_offset.wrapping_add(2), flag);
                 Some((segment, offset))
             }
             OperandType::Register16(_) => {
