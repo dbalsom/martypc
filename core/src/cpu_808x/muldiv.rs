@@ -54,7 +54,7 @@ macro_rules! impl_cord {
                 let mut carry_sub;
 
                 // 188:           | SUBT tmpa
-                (_, carry, _, _) = tmpa.alu_sub(tmpb as Self as u16);
+                (_, carry, _, _) = (tmpa as Self).alu_sub(tmpb as Self);
                 // 189: SIGMA->.  | MAXC
                 internal_counter = Self::BITS;
 
@@ -247,7 +247,7 @@ macro_rules! impl_cor_negate {
         impl CorNegate for $prim {
             /// Implementation of the Microcode NEGATE co-routine used by signed multiplication and division.
             /// Accepts tmpa (self), tmpb, tmpc, neg_flag (passed in first time by f1 flag), and skip which
-            /// effecitvely enters the NEGATE routine at line 7 (for division)
+            /// effectively enters the NEGATE routine at line 7 (for division)
             ///
             /// Returns tmpa, tmpb, tmpc, carry and negate flag.
             fn cor_negate(
@@ -595,6 +595,7 @@ impl Cpu {
         let mut tmpb = divisor as u16; // 162
 
         let mut sigma16: u16;
+        let sigma_next8: u8;
         let sigma_next16: u16;
 
         let mut carry: bool;
@@ -620,12 +621,12 @@ impl Cpu {
                 // Dividend is positive
                 // Jump into NEGATE @ 7 (skip == true)
                 self.cycle_i(MC_JUMP);
-                (tmpa, tmpb, tmpc, carry, negate) = (tmpa as u8).cor_negate(self, tmpb, tmpc, negate, true);
+                (tmpa, tmpb, tmpc, _, negate) = (tmpa as u8).cor_negate(self, tmpb, tmpc, negate, true);
             }
             else {
                 // Dividend is negative
                 // Fall through to NEGATE
-                (tmpa, tmpb, tmpc, carry, negate) = (tmpa as u8).cor_negate(self, tmpb, tmpc, negate, false);
+                (tmpa, tmpb, tmpc, _, negate) = (tmpa as u8).cor_negate(self, tmpb, tmpc, negate, false);
             }
 
             //log::debug!("  div8: post-negate: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
@@ -635,7 +636,9 @@ impl Cpu {
         self.cycles_i(2, &[0x163, MC_JUMP]);
         (tmpc, tmpa, carry) = match (tmpa as u8).cord(self, tmpa, tmpb, tmpc) {
             Ok((tmpc, tmpa, carry)) => (tmpc, tmpa, carry),
-            Err(_) => return Err(false),
+            Err(_) => {
+                return Err(false);
+            }
         };
 
         // 164         | COM1 tmpc
@@ -660,8 +663,11 @@ impl Cpu {
             // 1c5:
             (_, carry) = (tmpb as u8).alu_rcl(1, false);
             // 1c6:
-            //sigma16 = sigma8 as u16;
+
+            //(sigma_next8, _, _, _) = (tmpa as u8).alu_neg();
+            //sigma_next16 = sigma_next8 as u16;
             (sigma_next16, _, _, _) = tmpa.alu_neg();
+
             // 1c7:
 
             self.cycles_i(3, &[0x1c5, 0x1c6, 0x1c7]);
@@ -680,7 +686,7 @@ impl Cpu {
             }
 
             // 1c9              | INC tmpc
-            sigma16 = (tmpc as u8).wrapping_add(1) as u16;
+            sigma16 = tmpc.wrapping_add(1) as u16;
 
             self.cycles_i(2, &[0x1c9, 0x1ca]);
             // 1ca              | F1 8
@@ -753,7 +759,6 @@ impl Cpu {
             Ok((tmpc, tmpa, carry)) => (tmpc, tmpa, carry),
             Err(_) => return Err(false),
         };
-        //sigma16 = tmpa;
 
         // 16c        | COM1 tmpc
         sigma16 = !tmpc;

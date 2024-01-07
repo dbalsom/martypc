@@ -880,20 +880,19 @@ impl Cpu {
                     // Check for REP end condition #1 (CX==0)
                     if self.in_rep {
 
-                        self.cycle_i(MC_JUMP); // Jump to 131
+                        self.cycles_i(2, &[MC_JUMP, 0x131]); // Jump to 131
                         self.decrement_register16(Register16::CX); // 131
 
                         // Check for interrupt
                         if self.intr_pending {
-                            self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
+                            self.cycle_i(MC_JUMP); // Jump to RPTI
                             self.rep_interrupt();
-                            
                         }
                         else {
-                            self.cycles_i(2, &[0x131, 0x132]);
+                            self.cycle_i(0x132);
 
                             if self.cx == 0 {
-                                // Fall through to 133, RNI
+                                // Fall through to 133/1f9, RNI
                                 self.rep_end();
                             }
                             else {
@@ -901,6 +900,7 @@ impl Cpu {
                             }
                         }
                     }
+                    // Non-prefixed LODSx ends with RNI
                 }
             }
             0xB0..=0xB7 => {
@@ -1545,9 +1545,6 @@ impl Cpu {
                                 
                                 self.ip = self.ip.wrapping_add(self.i.size as u16);
                                 self.int0();
-                                
-                                //jump = true;    
-
                                 exception = CpuException::DivideError;
                             }
                         }
@@ -1569,21 +1566,18 @@ impl Cpu {
                             }
                             Err(_) => {
 
-                                self.set_szp_flags_from_result_u8(0);
+                                self.set_szp_flags_from_result_u8(self.ah);
+                                //self.set_flag(Flag::Zero);
+                                //self.clear_flag(Flag::Sign);                                
                                 self.clear_flag(Flag::AuxCarry);
                                 self.clear_flag(Flag::Carry);
                                 self.clear_flag(Flag::Overflow);
-                                self.clear_flag(Flag::Parity);
 
                                 // Don't include REP prefix as part of instruction size
                                 //let size_adj = if self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2) != 0 { 1 } else { 0 };
 
                                 self.ip = self.ip.wrapping_add((self.i.size) as u16);
-                                
-                                self.cycle_i(MC_JUMP);
                                 self.int0();
-                                
-                                //jump = true;                                  
                                 exception = CpuException::DivideError;
                             }
                         }
@@ -1717,7 +1711,6 @@ impl Cpu {
 
                                 self.ip = self.ip.wrapping_add((self.i.size) as u16);
                                 self.int0();
-
                                 exception = CpuException::DivideError;
                             }
                         }                        
