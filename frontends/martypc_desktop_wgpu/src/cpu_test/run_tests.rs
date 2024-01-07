@@ -445,6 +445,7 @@ fn run_tests(
         cpu.set_end_address(end_address as usize);
 
         let mut flags_on_stack = false;
+        let mut debug_mnemonic = false;
 
         match i.mnemonic {
             Mnemonic::MOVSB
@@ -465,6 +466,7 @@ fn run_tests(
                 // Divide exceptions possible - set a flag to ignore undefined flag state when
                 // doing memory comparison (Since flags will be pushed to stack)
                 flags_on_stack = true;
+                debug_mnemonic = true;
             }
             _ => {}
         }
@@ -503,6 +505,7 @@ fn run_tests(
 
         // Validate final register state.
         let vregs = cpu.get_vregisters();
+
         if validate_registers(
             &metadata,
             opcode,
@@ -513,6 +516,20 @@ fn run_tests(
             log,
         ) {
             //println!("{}| Registers validated against final state.", opcode_string);
+            if debug_mnemonic {
+                _ = writeln!(
+                    log,
+                    "Test registers:\n{}\nCPU registers:\n{}\n",
+                    test.final_state.regs, vregs
+                );
+            }
+            else {
+                _ = writeln!(
+                    log,
+                    "{}| Test {:05}: Test registers match CPU registers",
+                    opcode_string, n
+                );
+            }
 
             _ = writeln!(
                 log,
@@ -521,13 +538,36 @@ fn run_tests(
             );
         }
         else {
-            trace_error!(log, "{}| Test {:05} Register validation failed", opcode_string, n);
+            trace_error!(log, "{}| Test {:05}: Register validation failed", opcode_string, n);
             trace_error!(log, "Test specified:");
             trace_error!(log, "{}", test.final_state.regs);
             trace_error!(log, "{}", Cpu::flags_string(test.final_state.regs.flags));
             trace_error!(log, "CPU reported:");
             trace_error!(log, "{}", vregs);
             trace_error!(log, "{}", Cpu::flags_string(cpu.get_flags()));
+
+            if test.cycles.len() != cpu_cycles.len() {
+                _ = writeln!(
+                    log,
+                    "{}| Test {:05}:{} Additionally, test cycles {} do not match CPU cycles: {}",
+                    opcode_string,
+                    n,
+                    &test.name,
+                    test.cycles.len(),
+                    cpu_cycles.len()
+                );
+
+                print_cycle_diff(log, &test.cycles, &cpu_cycles);
+                cpu.trace_flush();
+            }
+
+            trace_error!(
+                log,
+                "{}| Test {:05}: Test hash {} failed.",
+                opcode_string,
+                n,
+                &test.test_hash
+            );
 
             let item = TestFailItem {
                 num:    n as u32,
@@ -572,6 +612,14 @@ fn run_tests(
             print_cycle_diff(log, &test.cycles, &cpu_cycles);
             cpu.trace_flush();
 
+            trace_error!(
+                log,
+                "{}| Test {:05}: Test hash {} failed.",
+                opcode_string,
+                n,
+                &test.test_hash
+            );
+
             let item = TestFailItem {
                 num:    n as u32,
                 name:   test.name.clone(),
@@ -599,8 +647,8 @@ fn run_tests(
                 cpu_cycles.len()
             );
 
-            print_cycle_diff(log, &test.cycles, &cpu_cycles);
-            cpu.trace_flush();
+            //print_cycle_diff(log, &test.cycles, &cpu_cycles);
+            //cpu.trace_flush();
 
             let item = TestFailItem {
                 num:    n as u32,

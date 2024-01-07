@@ -67,8 +67,11 @@ use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOpti
 use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager, vhd_manager::VhdManager};
 use marty_egui::state::GuiState;
 
+#[cfg(feature = "cpu_validator")]
+use run_tests::run_runtests;
+
 use crate::{
-    cpu_test::{process_tests::run_processtests, run_tests::run_runtests},
+    cpu_test::process_tests::run_processtests,
     emulator::{EmuFlags, Emulator},
     event_loop::handle_event,
 };

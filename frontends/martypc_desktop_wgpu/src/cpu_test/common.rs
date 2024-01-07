@@ -62,6 +62,8 @@ pub struct CpuTest {
     pub final_state: TestState, // Final state of CPU after test execution
 
     pub cycles: Vec<CycleState>,
+
+    pub test_hash: String,
 }
 
 pub enum FailType {

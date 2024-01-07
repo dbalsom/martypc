@@ -30,16 +30,13 @@
 
 #![allow(warnings, unused)]
 
-use crate::cpu_test::{
-    common::{
-        is_prefix_in_vec,
-        opcode_extension_from_path,
-        opcode_from_path,
-        read_tests_from_file,
-        write_tests_to_file,
-        TestFileLoad,
-    },
-    gen_tests::write_tests_to_file as other_write_tests_to_file,
+use crate::cpu_test::common::{
+    is_prefix_in_vec,
+    opcode_extension_from_path,
+    opcode_from_path,
+    read_tests_from_file,
+    write_tests_to_file,
+    TestFileLoad,
 };
 use std::{
     collections::{HashMap, LinkedList},

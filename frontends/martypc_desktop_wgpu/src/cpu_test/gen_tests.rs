@@ -24,13 +24,13 @@
 
     ---------------------------------------------------------------------------
 
-    run_gentests.rs - Implement the main procedure for JSON test generation mode.
-                      Requires CPU validator feature.
+    gen_tests.rs - Implement the main procedure for JSON test generation mode.
+                   Requires CPU validator feature.
 */
 
 use std::{
     cell::RefCell,
-    collections::HashMap,
+    collections::{HashMap, LinkedList},
     fs::{File, OpenOptions},
     io::{BufReader, BufWriter, ErrorKind, Seek, SeekFrom, Write},
     path::PathBuf,
@@ -50,7 +50,7 @@ use marty_core::{
     tracelogger::TraceLogger,
 };
 
-use crate::cpu_test::common::{CpuTest, TestState};
+use crate::cpu_test::common::{clean_cycle_states, write_tests_to_file, CpuTest, TestState};
 
 use serde::{Deserialize, Serialize};
 
@@ -182,7 +182,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
             log::debug!("Using filename: {:?}", test_path);
 
             let mut test_file_opt: Option<File> = None;
-            let mut tests: Vec<CpuTest>;
+            let mut tests: LinkedList<CpuTest>;
 
             let mut advance_rng_ct = 0;
 
@@ -244,12 +244,12 @@ pub fn run_gentests(config: &ConfigFileParams) {
                         .expect("Failed to read tests from JSON file.");
                 }
                 else {
-                    tests = Vec::new();
+                    tests = LinkedList::new();
                 }
             }
             else {
                 // Not appending tests. Just create an empty test vec.
-                tests = Vec::new();
+                tests = LinkedList::new();
             }
 
             // We should have a vector of tests now.
@@ -380,11 +380,14 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     }
                 }
 
+                // Finalize instruction.
+                _ = cpu.step_finish();
+
                 let validator = cpu.get_validator().as_ref().unwrap();
 
                 let cpu_test = get_test_info(validator);
 
-                tests.push(cpu_test);
+                tests.push_front(cpu_test);
 
                 // Write every 1000 tests to file.
                 if tests.len() % 1000 == 0 {
@@ -408,15 +411,15 @@ pub fn run_gentests(config: &ConfigFileParams) {
     //std::process::exit(0);
 }
 
-pub fn read_tests_from_file(file: &File, path: PathBuf) -> Option<Vec<CpuTest>> {
+pub fn read_tests_from_file(file: &File, path: PathBuf) -> Option<LinkedList<CpuTest>> {
     // Scope for BufReader
     let json_reader = BufReader::new(file);
 
     let tests = match serde_json::from_reader(json_reader) {
         Ok(json_obj) => Some(json_obj),
         Err(e) if e.is_eof() => {
-            println!("File is empty. Creating new vector.");
-            Some(Vec::new())
+            println!("File is empty. Creating new LinkedList.");
+            Some(LinkedList::new())
         }
         Err(e) => {
             eprintln!("Failed to read json from file: {:?}: {:?}", path, e);
@@ -425,46 +428,6 @@ pub fn read_tests_from_file(file: &File, path: PathBuf) -> Option<Vec<CpuTest>> 
     };
 
     tests
-}
-
-pub fn write_tests_to_file(path: PathBuf, tests: &Vec<CpuTest>) {
-    let mut file_opt: Option<File>;
-
-    if path.exists() {
-        file_opt = match OpenOptions::new().write(true).truncate(true).open(path.clone()) {
-            Ok(file) => Some(file),
-            Err(e) => {
-                eprintln!("Couldn't reopen output file {:?} for writing: {:?}", path, e);
-                None
-            }
-        };
-    }
-    else {
-        file_opt = match OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .truncate(true)
-            .open(path.clone())
-        {
-            Ok(file) => Some(file),
-            Err(e) => {
-                eprintln!("Couldn't create output file {:?}: {:?}", path, e);
-                None
-            }
-        }
-    }
-
-    if let None = file_opt {
-        panic!("Couldn't open or create output file!");
-    }
-
-    let mut file = file_opt.unwrap();
-
-    file.seek(SeekFrom::Start(0)).expect("Couldn't seek file.");
-    file.set_len(0).expect("Couldn't truncate file");
-
-    let writer = BufWriter::new(file);
-    serde_json::to_writer_pretty(writer, &tests).expect("Couldn't write JSON to output file!");
 }
 
 pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
@@ -487,7 +450,9 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
     let final_ram = final_state_from_ops(initial_state, cpu_ops);
 
     let mut cycle_states = validator.cycle_states().clone();
-
+    if cycle_states.is_empty() {
+        panic!("Got 0 cycles from instruction!");
+    }
     let initial_queue = cycle_states[0].queue_vec();
     let mut final_queue = cycle_states[cycle_states.len() - 1].queue_vec();
 
@@ -518,6 +483,7 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
             queue: final_queue,
         },
         cycles: cycle_states,
+        test_hash: String::new(),
     }
 }
 
@@ -707,57 +673,4 @@ pub fn final_state_from_ops(initial_state: HashMap<u32, u8>, all_ops: Vec<BusOp>
     ram_vec.sort_by(|a, b| a[0].cmp(&b[0]));
 
     ram_vec
-}
-
-pub fn clean_cycle_states(states: &mut Vec<CycleState>) {
-    let pre_clean_len = states.len();
-
-    // Drop all states before first Fetch
-    let mut found = false;
-    states.retain(|state| {
-        if matches!(state.q_op, QueueOp::First) {
-            found = true;
-        }
-        found
-    });
-
-    let trimmed_ct = pre_clean_len - states.len();
-
-    log::debug!("Clean: Deleted {} cycle states", trimmed_ct);
-
-    for mut state in states {
-        // Set address bus to 0 if no ALE signal.
-        if !state.ale {
-            //state.addr = 0;
-        }
-
-        // Set t-cycle to Ti if t-cycle is T1 and bus status PASV.
-        if let BusCycle::T1 = state.t_state {
-            if let BusState::PASV = state.b_state {
-                // If we are in T1 but PASV bus, this is really a Ti state.
-                state.t_state = BusCycle::Ti;
-            }
-        }
-
-        // Set queue read byte to 0 if no queue op.
-        if let QueueOp::Idle = state.q_op {
-            state.q_byte = 0;
-        }
-
-        // Set data bus to 0 if no read or write op.
-        if !state.mrdc || !state.mwtc || !state.iorc || !state.iowc {
-            // Active read or write. Allow data bus value through if T3.
-            if let BusCycle::T3 | BusCycle::Tw = state.t_state {
-                // do nothing
-            }
-            else {
-                // Data bus isn't active this cycle.
-                state.data_bus = 0;
-            }
-        }
-        else {
-            // No active read or write.
-            state.data_bus = 0;
-        }
-    }
 }
