@@ -273,7 +273,7 @@ impl CpuClient {
                     let ver_text = str::from_utf8(&buf).unwrap();
                     if ver_text.contains("ard8088") {
                         let proto_ver = buf[7];
-                        log::trace!(
+                        log::info!(
                             "Found an Arduino8088 server, protocol verison: {} on port {}",
                             proto_ver,
                             port_info.port_name
@@ -283,8 +283,10 @@ impl CpuClient {
                             log::error!("Unsupported protocol version.");
                             return None;
                         }
+                        return Some(new_port);
                     }
-                    return Some(new_port);
+                    log::warn!("Invalid response from discovery command.",);
+                    return None;
                 }
                 else {
                     log::warn!(
