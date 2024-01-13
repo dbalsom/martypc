@@ -9,7 +9,7 @@ license.workspace = true
 [lib]
 name = "videocard_renderer"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 marty_common = { path = "../../common" }
@@ -19,7 +19,7 @@ bytemuck = { workspace=true, features = ["derive"] }
 cgmath = "0.18.0"
 glam = "0.24"
 fast_image_resize = "2.7.3"
-image = { version = "0.24.2", default-features = false, features = ["png"] }
+image = { workspace = true, default-features = false, features = ["png"] }
 rand = "0.8.5"
 log = "0.4"
 serde = { workspace = true, features = ["derive"] }

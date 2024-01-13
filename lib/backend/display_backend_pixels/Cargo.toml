@@ -6,7 +6,7 @@ edition = "2021"
 [lib]
 name = "display_backend_pixels"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 display_backend_trait = { path = "../display_backend_trait" }

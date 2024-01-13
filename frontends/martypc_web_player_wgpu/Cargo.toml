@@ -7,7 +7,7 @@ license = "MIT"
 [lib]
 name = "marty_pixels_wasm32_player"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 marty_core = { path = "../../core/"}

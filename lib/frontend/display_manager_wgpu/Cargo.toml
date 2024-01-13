@@ -8,7 +8,7 @@ authors.workspace = true
 [lib]
 name = "display_manager_wgpu"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 marty_common = { path = "../../common" }

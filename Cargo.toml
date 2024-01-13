@@ -43,11 +43,16 @@ bytemuck = "1.14"
 raw-window-handle = "0.5.0"
 thiserror = "1.0.37"
 anyhow = "1.0"
-image = "0.24.1"
 log = "0.4.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_derive = "1.0"
 web-time = "0.2.4"
+toml = "0.8"
+
+[workspace.dependencies.image]
+version = "0.24"
+default-features = false
+features = ["png"]
 
 [workspace.dependencies.pixels]
 git = "https://github.com/dbalsom/pixels_martypc.git"
@@ -70,7 +75,7 @@ features = ["clipboard", "wayland", "x11"]
 [workspace.dependencies.egui_extras]
 git = "https://github.com/dbalsom/egui_martypc.git"
 branch = "0_24_2_winit_0_29"
-features = ["all_loaders"]
+features = ["image"]
 
 [profile.release]
 opt-level = 3
@@ -85,6 +90,7 @@ opt-level = 3
 opt-level = 3
 
 [features]
+default = ["ega"]
 devtools = ["martypc_desktop_wgpu/devtools"]
 arduino_validator = ["marty_core/arduino_validator", "martypc_desktop_wgpu/arduino_validator"]
 cpu_validator = ["marty_core/cpu_validator", "martypc_desktop_wgpu/cpu_validator"]

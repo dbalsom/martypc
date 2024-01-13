@@ -7,7 +7,7 @@ edition = "2021"
 [lib]
 name = "marty_core"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 anyhow = "1.0.58"

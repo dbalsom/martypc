@@ -7,7 +7,7 @@ license = "MIT"
 [lib]
 name = "marty_pixels_scaler"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 frontend_common = { path = "../frontend_common", features = ["use_wgpu"] }

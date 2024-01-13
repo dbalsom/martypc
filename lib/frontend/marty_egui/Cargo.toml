@@ -6,7 +6,7 @@ edition = "2021"
 [lib]
 name = "marty_egui"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 frontend_common = { path = "../frontend_common", features=["use_wgpu"] }
@@ -19,12 +19,16 @@ pixels.workspace = true
 #egui-wgpu = "0.24"
 #egui-winit = { version = "0.24", default-features = false, features = ["links"] }
 #egui_extras = { version = "*", features = ["all_loaders"] }
-image = { version = "0.24", features = ["png"] }
+image = { workspace = true, default-features = false, features = ["png"] }
 wgpu = {  workspace = true, optional = true }
 serialport = "4.2"
 regex = "1.10"
 log = "0.4"
 web-time.workspace = true
+strum = "0.25"
+strum_macros = "0.25"
+toml.workspace = true
+anyhow.workspace = true
 
 egui.workspace = true
 egui-wgpu.workspace = true
@@ -33,3 +37,4 @@ egui_extras.workspace = true
 
 egui-notify = { git = "https://github.com/dbalsom/egui-notify_martypc.git", branch = "egui_0_24_2"}
 serde = { workspace = true, features = ["derive"] }
+lazy_static = "1.4.0"

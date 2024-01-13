@@ -8,7 +8,7 @@ authors.workspace = true
 [lib]
 name = "martypc_desktop_wgpu"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 display_backend_pixels = { path = "../../lib/backend/display_backend_pixels" }

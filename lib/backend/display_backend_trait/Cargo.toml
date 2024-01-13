@@ -6,7 +6,7 @@ edition = "2021"
 [lib]
 name = "display_backend_trait"
 path = "src/lib.rs"
-crate-type = ["cdylib", "rlib"]
+crate-type = ["lib"]
 
 [dependencies]
 thiserror = "1.0"
