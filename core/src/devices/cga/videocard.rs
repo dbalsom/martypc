@@ -26,7 +26,7 @@
 
     devices::cga::videocard.rs
 
-    Implementats the VideoCard trait for the IBM CGA card.
+    Implements the VideoCard trait for the IBM CGA card.
 
 */
 
