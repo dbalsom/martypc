@@ -33,6 +33,7 @@ marty*.toml
 *.exe
 /frontends/martypc_web_player_wgpu/wasm/
 icon.png
+*.crt
 
 # Allow tests/tools directory
 !/tests/tools
