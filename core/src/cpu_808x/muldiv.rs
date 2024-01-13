@@ -595,7 +595,6 @@ impl Cpu {
         let mut tmpb = divisor as u16; // 162
 
         let mut sigma16: u16;
-        let sigma_next8: u8;
         let sigma_next16: u16;
 
         let mut carry: bool;
