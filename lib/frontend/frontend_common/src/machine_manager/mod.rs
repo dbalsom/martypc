@@ -264,15 +264,25 @@ impl MachineConfigFileEntry {
         Some(self.rom_set.clone())
     }
 
-    /// Return a vector of strings representing the ROM feature requirements for this configuration
-    pub fn get_rom_requirements(&self) -> Result<Vec<String>, Error> {
+    /// Returns a a tuple of vectors of strings representing the required and optional ROM features for this
+    /// configuration
+    pub fn get_rom_requirements(&self) -> Result<(Vec<String>, Vec<String>), Error> {
         let mut req_set: HashSet<String> = HashSet::new();
         let mut req_vec: Vec<String> = Vec::new();
+        let mut opt_vec: Vec<String> = Vec::new();
 
         if let Some(features) = marty_core::machine_config::get_base_rom_features(self.machine_type) {
             for feature in features {
                 if req_set.insert(feature.to_string()) {
                     req_vec.push(feature.to_string());
+                }
+            }
+        }
+
+        if let Some(features) = marty_core::machine_config::get_optional_rom_features(self.machine_type) {
+            for feature in features {
+                if req_set.insert(feature.to_string()) {
+                    opt_vec.push(feature.to_string());
                 }
             }
         }
@@ -321,7 +331,7 @@ impl MachineConfigFileEntry {
             log::warn!("Config has no video cards specified. Skipping video ROM requirements.");
         }
 
-        Ok(req_vec)
+        Ok((req_vec, opt_vec))
     }
 
     /// Apply a Machine Config Overlay to this configuration. Every option that is Some within the overlay is

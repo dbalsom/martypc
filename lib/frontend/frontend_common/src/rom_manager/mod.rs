@@ -448,8 +448,7 @@ impl RomManager {
             new_candidate.filename = rom_item
                 .filename_only
                 .clone()
-                .unwrap()
-                .into_os_string()
+                .unwrap_or_default()
                 .into_string()
                 .unwrap_or_default();
 
@@ -635,6 +634,7 @@ impl RomManager {
     pub fn resolve_requirements(
         &mut self,
         required: Vec<String>,
+        optional: Vec<String>,
         specified: Option<String>,
     ) -> Result<Vec<String>, Error> {
         let mut romset_vec = Vec::new();
@@ -657,7 +657,10 @@ impl RomManager {
             }
         }
 
-        for feature in required.iter() {
+        let mut requested_features = required.clone();
+        requested_features.append(&mut optional.clone());
+
+        for feature in requested_features.iter() {
             log::debug!(
                 "Features resolved: [{:?}] Resolving feature: {}...",
                 provided_features,

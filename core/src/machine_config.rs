@@ -113,12 +113,14 @@ lazy_static! {
     static ref BASE_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
         let mut m = HashMap::new();
         m.insert(MachineType::Fuzzer8088, vec![]);
-        m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k", "ibm_basic"]);
-        m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k", "ibm_basic"]);
-        m.insert(MachineType::Ibm5160, vec!["ibm5160", "ibm_basic"]);
+        m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k"]);
+        m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k"]);
+        m.insert(MachineType::Ibm5160, vec!["ibm5160"]);
         m
     };
 
+    /// This hashmap defines optional ROM feature requirements for the base machine types.
+    /// Missing optional features will not stop machine creation.
     static ref OPTIONAL_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
         let mut m = HashMap::new();
         m.insert(MachineType::Fuzzer8088, vec![]);
@@ -131,6 +133,10 @@ lazy_static! {
 
 pub fn get_base_rom_features(machine_type: MachineType) -> Option<&'static Vec<&'static str>> {
     BASE_ROM_FEATURES.get(&machine_type)
+}
+
+pub fn get_optional_rom_features(machine_type: MachineType) -> Option<&'static Vec<&'static str>> {
+    OPTIONAL_ROM_FEATURES.get(&machine_type)
 }
 
 /// Defines the basic architecture of a machine. These are the fixed components on a machine's motherboard or otherwise

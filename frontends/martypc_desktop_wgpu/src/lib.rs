@@ -353,7 +353,7 @@ pub fn run() {
             machine_manager.get_config(&config.machine.config_name).unwrap()
         }
     };
-    let rom_requirements = machine_config_file.get_rom_requirements().unwrap_or_else(|e| {
+    let (required_features, optional_features) = machine_config_file.get_rom_requirements().unwrap_or_else(|e| {
         eprintln!("Error getting ROM requirements for machine: {}", e);
         std::process::exit(1);
     });
@@ -381,7 +381,15 @@ pub fn run() {
         "Selected machine config {} requires the following ROM features:",
         config.machine.config_name
     );
-    for rom_feature in &rom_requirements {
+    for rom_feature in &required_features {
+        println!("  {}", rom_feature);
+    }
+
+    println!(
+        "Selected machine config {} optionally requests the following ROM features:",
+        config.machine.config_name
+    );
+    for rom_feature in &optional_features {
         println!("  {}", rom_feature);
     }
 
@@ -390,7 +398,7 @@ pub fn run() {
 
     // Resolve the ROM requirements for the requested ROM features
     let rom_sets_resolved = nu_rom_manager
-        .resolve_requirements(rom_requirements, specified_rom_set)
+        .resolve_requirements(required_features, optional_features, specified_rom_set)
         .unwrap_or_else(|err| {
             eprintln!("Error resolving ROM sets for machine: {}", err);
             std::process::exit(1);
@@ -567,10 +575,22 @@ pub fn run() {
 
     let machine_config = machine_config_file.to_machine_config();
 
+    let trace_file_base = resource_manager.get_resource_path("trace").unwrap_or_else(|| {
+        eprintln!("Failed to retrieve 'trace' resource path.");
+        std::process::exit(1);
+    });
+
+    let mut trace_file_path = None;
+    if let Some(trace_file) = &config.machine.cpu.trace_file {
+        trace_file_path = Some(trace_file_base.join(trace_file));
+    }
+
     let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(&config))
         .with_machine_config(machine_config)
         .with_roms(rom_manifest)
+        .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
+        .with_trace_log(trace_file_path)
         .with_sound_player(sound_player_opt);
 
     let machine = machine_builder.build().unwrap_or_else(|e| {
@@ -635,7 +655,7 @@ pub fn run() {
         dm: display_manager,
         romm: nu_rom_manager,
         romsets: rom_sets_resolved.clone(),
-        config: config,
+        config,
         machine,
         machine_events,
         exec_control,
