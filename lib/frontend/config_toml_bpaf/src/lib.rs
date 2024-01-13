@@ -407,14 +407,13 @@ where
     let mut toml_args: ConfigFileParams;
 
     // Allow configuration file path to be overridden by command line argument 'configfile'
-
     if let Some(configfile_path) = shell_args.configfile.as_ref() {
-        let toml_slice = std::fs::read(configfile_path)?;
-        toml_args = toml::from_slice(&toml_slice)?;
+        let toml_string = std::fs::read_to_string(configfile_path)?;
+        toml_args = toml::from_str(&toml_string)?;
     }
     else {
-        let toml_slice = std::fs::read(default_path)?;
-        toml_args = toml::from_slice(&toml_slice)?;
+        let toml_string = std::fs::read_to_string(default_path)?;
+        toml_args = toml::from_str(&toml_string)?;
     }
 
     //log::debug!("toml_config: {:?}", toml_args);
