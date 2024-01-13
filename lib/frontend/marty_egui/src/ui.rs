@@ -44,23 +44,6 @@ impl GuiState {
     pub fn ui(&mut self, ctx: &Context) {
         self.toasts.show(ctx);
 
-        egui::Window::new("About")
-            .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())
-            .show(ctx, |ui| {
-                self.about_dialog.draw(ui, ctx, &mut self.event_queue);
-            });
-
-        //let video_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
-        //        ctx.load_texture(
-        //            "video_mem",
-        //            self.video_mem,
-        //        )
-        //    });
-
-        egui::Window::new("Video Mem")
-            .open(self.window_open_flags.get_mut(&GuiWindow::VideoMemViewer).unwrap())
-            .show(ctx, |_ui| {});
-
         egui::Window::new("Warning")
             .open(&mut self.warning_dialog_open)
             .show(ctx, |ui| {
@@ -87,17 +70,31 @@ impl GuiState {
                 });
             });
 
+        self.draw_workspace(ctx);
+
+        /*        egui::Window::new("About")
+            .open(self.window_open_flags.get_mut(&GuiWindow::About).unwrap())
+            .show(ctx, |ui| {
+                self.about_dialog.draw(ui, ctx, &mut self.event_queue);
+            });
+
         egui::Window::new("Performance")
             .open(self.window_open_flags.get_mut(&GuiWindow::PerfViewer).unwrap())
             .show(ctx, |ui| {
                 self.perf_viewer.draw(ui, &mut self.event_queue);
             });
 
-        egui::Window::new("CPU Control")
+        let foo = egui::Window::new("CPU Control")
             .open(self.window_open_flags.get_mut(&GuiWindow::CpuControl).unwrap())
             .show(ctx, |ui| {
                 self.cpu_control.draw(ui, &mut self.option_flags, &mut self.event_queue);
+                let window_position = ui.min_rect().min;
+                //log::debug!("CPU Control window position: {:?}", window_position);
             });
+        if let Some(ireponse) = foo {
+            let min = ireponse.response.rect.min;
+            log::debug!("CPU Control window position: {:?}", min);
+        }
 
         egui::Window::new("Memory View")
             .open(self.window_open_flags.get_mut(&GuiWindow::MemoryViewer).unwrap())
@@ -108,7 +105,11 @@ impl GuiState {
             });
 
         egui::Window::new("Instruction History")
-            .open(self.window_open_flags.get_mut(&GuiWindow::HistoryViewer).unwrap())
+            .open(
+                self.window_open_flags
+                    .get_mut(&GuiWindow::InstructionHistoryViewer)
+                    .unwrap(),
+            )
             .resizable(true)
             .default_width(540.0)
             .show(ctx, |ui| {
@@ -118,7 +119,7 @@ impl GuiState {
         egui::Window::new("Cycle Trace")
             .open(self.window_open_flags.get_mut(&GuiWindow::CycleTraceViewer).unwrap())
             .resizable(true)
-            .default_width(540.0)
+            //.default_width(540.0)
             .show(ctx, |ui| {
                 self.cycle_trace_viewer.draw(ui, &mut self.event_queue);
             });
@@ -199,67 +200,7 @@ impl GuiState {
             .resizable(true)
             .default_width(600.0)
             .show(ctx, |ui| {
-                egui::Grid::new("ppi_view")
-                    .num_columns(2)
-                    .striped(true)
-                    .spacing([40.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label(egui::RichText::new("Port A Mode:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_a_mode)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
 
-                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_bin)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port B Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_b_value_bin)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Keyboard resets:").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.kb_resets_counter)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port C Mode:  ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_c_mode)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-
-                        ui.label(egui::RichText::new("Port C Value: ").text_style(egui::TextStyle::Monospace));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.ppi_state.port_c_value)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        ui.end_row();
-                    });
             });
 
         egui::Window::new("DMA View")
@@ -308,6 +249,6 @@ impl GuiState {
             .default_width(600.0)
             .show(ctx, |ui| {
                 self.text_mode_viewer.draw(ui, &mut self.event_queue);
-            });
+            });*/
     }
 }

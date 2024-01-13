@@ -22,32 +22,39 @@
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
 
-    --------------------------------------------------------------------------
+    ---------------------------------------------------------------------------
 
-    egui::src::windows::mod.rs
+    egui::call_stack_viewer.rs
 
-    Various gui windows
 */
 
-pub mod composite_adjust;
-pub mod cpu_control;
-pub mod disassembly_viewer;
-// Bring in submodules
-pub mod about;
-pub mod call_stack_viewer;
-pub mod cpu_state_viewer;
-pub mod cycle_trace_viewer;
-pub mod delay_adjust;
-pub mod device_control;
-pub mod dma_viewer;
-pub mod instruction_history_viewer;
-pub mod ivt_viewer;
-pub mod memory_viewer;
-pub mod performance_viewer;
-pub mod pic_viewer;
-pub mod pit_viewer;
-pub mod ppi_viewer;
-pub mod scaler_adjust;
-pub mod text_mode_viewer;
-pub mod vhd_creator;
-pub mod videocard_viewer;
+use crate::GuiEventQueue;
+
+pub struct CallStackViewer {
+    content: String,
+}
+
+impl CallStackViewer {
+    pub fn new() -> Self {
+        Self {
+            content: Default::default(),
+        }
+    }
+
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                ui.available_size(),
+                egui::TextEdit::multiline(&mut self.content).font(egui::TextStyle::Monospace),
+            );
+            ui.end_row()
+        });
+    }
+
+    pub fn set_content(&mut self, content: String) {
+        self.content = content;
+    }
+}
+
+
+

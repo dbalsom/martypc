@@ -337,18 +337,41 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 let dump_path = emu.rm.get_resource_path("dump").unwrap();
                 video_card.dump_mem(&dump_path);
             }
+
+            // TODO: A video card dump may be multiple files (one file per plane). We can't create
+            //       a single unique filename in this case.
+            // if let Some(video_card) = emu.machine.primary_videocard() {
+            //     let base_name = format!("{:?}_mem", video_card.get_video_type());
+            //
+            //     emu.rm
+            //         .get_available_filename("dump", &base_name, Some("bin"))
+            //         .ok()
+            //         .map(|path| video_card.dump_mem(&path))
+            //         .or_else(|| {
+            //             log::error!("Failed to get available filename for memory dump!");
+            //             None
+            //         });
+            // }
         }
         GuiEvent::DumpCS => {
             emu.rm
                 .get_available_filename("dump", "cs_dump", Some("bin"))
                 .ok()
-                .map(|path| emu.machine.cpu().dump_cs(&path));
+                .map(|path| emu.machine.cpu().dump_cs(&path))
+                .or_else(|| {
+                    log::error!("Failed to get available filename for memory dump!");
+                    None
+                });
         }
         GuiEvent::DumpAllMem => {
             emu.rm
                 .get_available_filename("dump", "memdump", Some("bin"))
                 .ok()
-                .map(|path| emu.machine.bus().dump_mem(&path));
+                .map(|path| emu.machine.bus().dump_mem(&path))
+                .or_else(|| {
+                    log::error!("Failed to get available filename for memory dump!");
+                    None
+                });
         }
         GuiEvent::EditBreakpoint => {
             // Get breakpoints from GUI

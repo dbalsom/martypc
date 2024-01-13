@@ -270,6 +270,7 @@ pub struct MachineBuilder<'a> {
     machine_config: Option<MachineConfiguration>,
     rom_manifest: Option<MachineRomManifest>,
     trace_mode: TraceMode,
+    trace_logger: TraceLogger,
     sound_player: Option<SoundPlayer>,
 }
 
@@ -307,6 +308,24 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
+    pub fn with_trace_log(mut self, trace_filename: Option<PathBuf>) -> Self {
+
+        match trace_filename {
+            Some(filename) => {
+                log::debug!("Creating CPU trace log file: {:?}", filename);
+                self.trace_logger = TraceLogger::from_filename(filename.clone());
+                if let TraceLogger::None = self.trace_logger {
+                    log::error!("Failed to create trace log file: {:?}", filename);
+                }
+            }
+            None => {
+                self.trace_logger = TraceLogger::None;
+            }
+        }
+
+        self
+    }
+
     pub fn build(self) -> Result<Machine, Error> {
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
         let machine_config = self
@@ -315,6 +334,7 @@ impl<'a> MachineBuilder<'a> {
         let machine_type = self.mtype.ok_or(anyhow!("No machine type specified"))?;
         let machine_desc = self.descriptor.ok_or(anyhow!("Failed to get machine description"))?;
         let rom_manifest = self.rom_manifest.ok_or(anyhow!("No ROM manifest specified!"))?;
+        let trace_logger = self.trace_logger;
 
         Ok(Machine::new(
             *core_config,
@@ -322,6 +342,7 @@ impl<'a> MachineBuilder<'a> {
             machine_type,
             machine_desc,
             self.trace_mode,
+            trace_logger,
             self.sound_player,
             rom_manifest,
         ))
@@ -363,30 +384,11 @@ impl Machine {
         machine_type: MachineType,
         machine_desc: MachineDescriptor,
         trace_mode: TraceMode,
+        trace_logger: TraceLogger,
         sound_player: Option<SoundPlayer>,
         rom_manifest: MachineRomManifest,
         //rom_manager: RomManager,
     ) -> Machine {
-        //let mut io_bus = IoBusInterface::new();
-
-        //let mut trace_file_option: Box<dyn Write + 'a> = Box::new(std::io::stdout());
-
-        let mut trace_logger = TraceLogger::None;
-
-        match core_config.get_cpu_trace_mode() {
-            Some(TraceMode::None) => {
-                // Open the trace file if specified
-                if let Some(filename) = &core_config.get_cpu_trace_file() {
-                    trace_logger = TraceLogger::from_filename(filename);
-
-                    if !trace_logger.is_some() {
-                        log::error!("Couldn't create specified CPU tracelog file: {:?}", filename);
-                        eprintln!("Couldn't create specified CPU tracelog file: {:?}", filename);
-                    }
-                }
-            }
-            _ => {}
-        }
 
         // Create PIT output log file if specified
         let pit_output_file_option = None;

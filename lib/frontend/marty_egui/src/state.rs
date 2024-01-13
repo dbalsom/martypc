@@ -53,7 +53,16 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
 };
 use serialport::SerialPortInfo;
-use std::{cell::RefCell, collections::HashMap, ffi::OsString, mem::discriminant, path::PathBuf, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, HashMap},
+    ffi::OsString,
+    mem::discriminant,
+    path::PathBuf,
+    rc::Rc,
+};
+use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 
 use crate::{
     themes::GuiTheme,
@@ -77,6 +86,8 @@ use crate::{
     windows::vhd_creator::VhdCreator,
 };
 use crate::{widgets::file_tree_menu::FileTreeMenu, windows::text_mode_viewer::TextModeViewer};
+use crate::windows::call_stack_viewer::CallStackViewer;
+use crate::windows::ppi_viewer::PpiViewerControl;
 
 pub struct GuiFloppyDriveInfo {
     pub(crate) idx: usize,
@@ -110,6 +121,29 @@ impl GuiHddInfo {
     }
 }
 
+#[derive (Clone, Serialize, Deserialize)]
+pub struct WorkspaceWindowState {
+    pub open: bool,
+    pub resizable: bool,
+    pub initial_pos: Option<egui::Pos2>,
+    pub pos: egui::Pos2,
+    pub initial_size: Option<egui::Vec2>,
+    pub size: egui::Vec2,
+}
+
+impl Default for WorkspaceWindowState {
+    fn default() -> Self {
+        Self {
+            open: false,
+            resizable: false,
+            initial_pos: None,
+            pos: egui::Pos2::new(0.0, 0.0),
+            initial_size: None,
+            size: egui::Vec2::new(0.0, 0.0),
+        }
+    }
+}
+
 pub struct GuiState {
     pub(crate) event_queue: GuiEventQueue,
 
@@ -117,8 +151,9 @@ pub struct GuiState {
     media_tray: MediaTrayState,
 
     /// Only show the associated window when true.
-    pub(crate) window_open_flags:   HashMap<GuiWindow, bool>,
-    pub(crate) error_dialog_open:   bool,
+    pub(crate) window_open_flags: HashMap<GuiWindow, bool>,
+    pub(crate) window_state: BTreeMap<GuiWindow, WorkspaceWindowState>,
+    pub(crate) error_dialog_open: bool,
     pub(crate) warning_dialog_open: bool,
 
     pub(crate) option_flags: HashMap<GuiBoolean, bool>,
@@ -168,7 +203,7 @@ pub struct GuiState {
 
     pub pit_viewer: PitViewerControl,
     pub pic_viewer: PicViewerControl,
-    pub ppi_state:  PpiStringState,
+    pub ppi_viewer:  PpiViewerControl,
 
     pub videocard_state: VideoCardState,
     pub display_info:    Vec<DisplayInfo>,
@@ -182,11 +217,11 @@ pub struct GuiState {
     pub device_control: DeviceControl,
     pub vhd_creator: VhdCreator,
     pub text_mode_viewer: TextModeViewer,
+    pub call_stack_viewer: CallStackViewer,
 
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
 
-    pub(crate) call_stack_string: String,
     pub(crate) global_zoom: f32,
 }
 
@@ -194,7 +229,18 @@ impl GuiState {
     /// Create a struct representing the state of the GUI.
     pub fn new(exec_control: Rc<RefCell<ExecutionControl>>) -> Self {
         // Set default values for window open flags
-        let window_open_flags: HashMap<GuiWindow, bool> = [
+
+        let mut window_open_flags = HashMap::new();
+        for window in GuiWindow::iter() {
+            window_open_flags.insert(window, false);
+        }
+
+        let mut window_state = BTreeMap::new();
+        for window in GuiWindow::iter() {
+            window_state.insert(window, WorkspaceWindowState::default());
+        }
+
+        /*        let window_open_flags: HashMap<GuiWindow, bool> = [
             (GuiWindow::About, false),
             (GuiWindow::CpuControl, false),
             (GuiWindow::PerfViewer, false),
@@ -218,7 +264,7 @@ impl GuiState {
             (GuiWindow::CycleTraceViewer, false),
             (GuiWindow::TextModeViewer, false),
         ]
-        .into();
+        .into();*/
 
         let option_flags: HashMap<GuiBoolean, bool> = [
             //(GuiBoolean::CompositeDisplay, false),
@@ -240,6 +286,7 @@ impl GuiState {
             media_tray: Default::default(),
 
             window_open_flags,
+            window_state,
             error_dialog_open: false,
             warning_dialog_open: false,
 
@@ -285,7 +332,7 @@ impl GuiState {
             delay_adjust: DelayAdjustControl::new(),
             pit_viewer: PitViewerControl::new(),
             pic_viewer: PicViewerControl::new(),
-            ppi_state: Default::default(),
+            ppi_viewer: PpiViewerControl::new(),
 
             videocard_state: Default::default(),
             display_info: Vec::new(),
@@ -298,7 +345,7 @@ impl GuiState {
             device_control: DeviceControl::new(),
             vhd_creator: VhdCreator::new(),
             text_mode_viewer: TextModeViewer::new(),
-            call_stack_string: String::new(),
+            call_stack_viewer: CallStackViewer::new(),
 
             floppy_tree_menu: FileTreeMenu::new(),
             hdd_tree_menu: FileTreeMenu::new(),
@@ -313,23 +360,6 @@ impl GuiState {
 
     pub fn get_event(&mut self) -> Option<GuiEvent> {
         self.event_queue.pop()
-    }
-
-    pub fn window_flag(&mut self, window: GuiWindow) -> &mut bool {
-        self.window_open_flags.get_mut(&window).unwrap()
-    }
-
-    pub fn is_window_open(&self, window: GuiWindow) -> bool {
-        if let Some(status) = self.window_open_flags.get(&window) {
-            *status
-        }
-        else {
-            false
-        }
-    }
-
-    pub fn set_window_open(&mut self, window: GuiWindow, state: bool) {
-        *self.window_open_flags.get_mut(&window).unwrap() = state;
     }
 
     pub fn set_option(&mut self, option: GuiBoolean, state: bool) {
@@ -494,14 +524,6 @@ impl GuiState {
 
     pub fn update_pit_state(&mut self, state: &PitDisplayState) {
         self.pit_viewer.update_state(state);
-    }
-
-    pub fn update_call_stack_state(&mut self, call_stack_string: String) {
-        self.call_stack_string = call_stack_string;
-    }
-
-    pub fn update_ppi_state(&mut self, state: PpiStringState) {
-        self.ppi_state = state;
     }
 
     pub fn update_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {

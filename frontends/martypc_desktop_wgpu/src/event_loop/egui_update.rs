@@ -41,6 +41,7 @@ use marty_core::{
 };
 use marty_egui::{GuiWindow, PerformanceStats};
 
+use marty_core::cpu_common::TraceMode;
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
@@ -180,7 +181,7 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     if emu.gui.is_window_open(GuiWindow::PpiViewer) {
         let ppi_state_opt = emu.machine.ppi_state();
         if let Some(ppi_state) = ppi_state_opt {
-            emu.gui.update_ppi_state(ppi_state);
+            emu.gui.ppi_viewer.set_state(ppi_state);
             // TODO: If no PPI, disable debug window
         }
     }
@@ -200,7 +201,7 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     }
 
     // -- Update Instruction Trace window
-    if emu.gui.is_window_open(GuiWindow::HistoryViewer) {
+    if emu.gui.is_window_open(GuiWindow::InstructionHistoryViewer) {
         let trace = emu.machine.cpu().dump_instruction_history_tokens();
         emu.gui.trace_viewer.set_content(trace);
     }
@@ -208,14 +209,23 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     // -- Update Call Stack window
     if emu.gui.is_window_open(GuiWindow::CallStack) {
         let stack = emu.machine.cpu().dump_call_stack();
-        emu.gui.update_call_stack_state(stack);
+        emu.gui.call_stack_viewer.set_content(stack);
     }
 
     // -- Update cycle trace viewer window
     if emu.gui.is_window_open(GuiWindow::CycleTraceViewer) {
         if emu.machine.get_cpu_option(CpuOption::TraceLoggingEnabled(true)) {
-            let trace_vec = emu.machine.cpu().get_cycle_trace();
-            emu.gui.cycle_trace_viewer.update(trace_vec);
+            match emu.config.machine.cpu.trace_mode {
+                Some(TraceMode::CycleText) => {
+                    let trace_vec = emu.machine.cpu().get_cycle_trace();
+                    emu.gui.cycle_trace_viewer.update(trace_vec);
+                }
+                Some(TraceMode::CycleCsv) => {
+                    let trace_vec = emu.machine.cpu().get_cycle_trace_tokens();
+                    emu.gui.cycle_trace_viewer.update_tokens(trace_vec);
+                }
+                _ => {}
+            }
         }
     }
 

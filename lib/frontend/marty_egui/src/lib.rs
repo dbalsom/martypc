@@ -33,7 +33,7 @@ extern crate core;
 
 use std::{
     cell::RefCell,
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     ffi::OsString,
     hash::Hash,
     mem::{discriminant, Discriminant},
@@ -43,6 +43,7 @@ use std::{
 
 use egui::{Color32, ColorImage, Context, Visuals};
 use egui_notify::{Anchor, Toasts};
+use lazy_static::lazy_static;
 
 use frontend_common::{
     display_manager::DisplayInfo,
@@ -64,6 +65,7 @@ mod token_listview;
 mod ui;
 mod widgets;
 mod windows;
+mod workspace;
 
 use marty_core::{
     device_traits::videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
@@ -72,10 +74,11 @@ use marty_core::{
     machine::{ExecutionControl, MachineState},
 };
 
-use crate::windows::text_mode_viewer::TextModeViewer;
+use serde::{Deserialize, Serialize};
+use strum_macros::EnumIter;
 use videocard_renderer::CompositeParams;
 
-#[derive(PartialEq, Eq, Hash)]
+#[derive(Clone, EnumIter, PartialEq, Eq, Hash, Serialize, Deserialize, Ord, PartialOrd, Debug)]
 pub enum GuiWindow {
     About,
     CpuControl,
@@ -84,7 +87,7 @@ pub enum GuiWindow {
     CompositeAdjust,
     ScalerAdjust,
     CpuStateViewer,
-    HistoryViewer,
+    InstructionHistoryViewer,
     IvtViewer,
     DelayAdjust,
     DeviceControl,
@@ -235,4 +238,238 @@ pub struct MediaTrayState {
     pub floppy: u8,
     pub hdd:    u8,
     pub turtle: u8,
+}
+
+pub struct WorkspaceWindowDef {
+    pub id: GuiWindow,
+    pub title: &'static str,
+    pub menu: &'static str,
+    pub width: f32,
+    pub resizable: bool,
+}
+
+lazy_static! {
+    static ref WORKSPACE_WINDOWS: BTreeMap<GuiWindow, WorkspaceWindowDef> = [
+        (
+            GuiWindow::About,
+            WorkspaceWindowDef {
+                id: GuiWindow::About,
+                title: "About",
+                menu: "About",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::PerfViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::PerfViewer,
+                title: "Performance",
+                menu: "Performance Viewer",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::CpuControl,
+            WorkspaceWindowDef {
+                id: GuiWindow::CpuControl,
+                title: "CPU Control",
+                menu: "CPU Control",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::MemoryViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::MemoryViewer,
+                title: "Memory Viewer",
+                menu: "Memory",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::CompositeAdjust,
+            WorkspaceWindowDef {
+                id: GuiWindow::CompositeAdjust,
+                title: "Composite Adjustment",
+                menu: "Composite Adjustment",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::ScalerAdjust,
+            WorkspaceWindowDef {
+                id: GuiWindow::ScalerAdjust,
+                title: "Scaler Adjustment",
+                menu: "Scaler Adjustment",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::CpuStateViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::CpuStateViewer,
+                title: "CPU State Viewer",
+                menu: "CPU State",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::InstructionHistoryViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::InstructionHistoryViewer,
+                title: "Instruction History",
+                menu: "Instruction History",
+                width: 540.0,
+                resizable: true,
+            },
+        ),
+        (
+            GuiWindow::CycleTraceViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::CycleTraceViewer,
+                title: "Cycle Trace",
+                menu: "Cycle Trace",
+                width: 600.0,
+                resizable: true,
+            },
+        ),
+        (
+            GuiWindow::CallStack,
+            WorkspaceWindowDef {
+                id: GuiWindow::CallStack,
+                title: "Call Stack",
+                menu: "Call Stack",
+                width: 540.0,
+                resizable: true,
+            },
+        ),
+        (
+            GuiWindow::IvtViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::IvtViewer,
+                title: "IVT Viewer",
+                menu: "IVT",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::DelayAdjust,
+            WorkspaceWindowDef {
+                id: GuiWindow::DelayAdjust,
+                title: "Delay Adjust",
+                menu: "Delay Adjust",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::DeviceControl,
+            WorkspaceWindowDef {
+                id: GuiWindow::DeviceControl,
+                title: "Device Control",
+                menu: "Device Control",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::DisassemblyViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::DisassemblyViewer,
+                title: "Disassembly Viewer",
+                menu: "Disassembly",
+                width: 540.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::PitViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::PitViewer,
+                title: "PIT Viewer",
+                menu: "PIT",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::PicViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::PicViewer,
+                title: "PIC Viewer",
+                menu: "PIC",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::PpiViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::PpiViewer,
+                title: "PPI Viewer",
+                menu: "PPI",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::DmaViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::DmaViewer,
+                title: "DMA Viewer",
+                menu: "DMA",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::VideoCardViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::VideoCardViewer,
+                title: "Video Card Viewer",
+                menu: "Video Card",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::VHDCreator,
+            WorkspaceWindowDef {
+                id: GuiWindow::VHDCreator,
+                title: "VHD Creator",
+                menu: "Create VHD",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::VideoMemViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::VideoMemViewer,
+                title: "Video Memory Viewer",
+                menu: "Video Memory",
+                width: 400.0,
+                resizable: false,
+            },
+        ),
+        (
+            GuiWindow::TextModeViewer,
+            WorkspaceWindowDef {
+                id: GuiWindow::TextModeViewer,
+                title: "Text Mode Viewer",
+                menu: "Text Mode Viewer",
+                width: 600.0,
+                resizable: false,
+            },
+        ),
+    ]
+    .into();
 }

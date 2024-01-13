@@ -202,6 +202,14 @@ impl Emulator {
             self.config.emulator.warpspeed = false;
         }
 
+        // Set up cycle trace viewer
+        self.gui
+            .cycle_trace_viewer
+            .set_mode(self.config.machine.cpu.trace_mode.unwrap_or_default());
+        self.gui
+            .cycle_trace_viewer
+            .set_header(self.machine.cpu().cycle_trace_header());
+
         // Debug mode on?
         if self.config.emulator.debug_mode {
             // Open default debug windows

@@ -213,7 +213,7 @@ impl Cpu {
         // Perform cycle tracing, if enabled
         if self.trace_enabled {
             match self.trace_mode {
-                TraceMode::Cycle => {
+                TraceMode::CycleText => {
                     // Get value of timer channel #1 for DMA printout
                     let mut dma_count = 0;
 
@@ -228,7 +228,22 @@ impl Cpu {
                     self.trace_comment.clear();
                     self.trace_instr = MC_NONE;
                 }
-                TraceMode::Sigrok => {
+                TraceMode::CycleCsv => {
+                    // Get value of timer channel #1 for DMA printout
+                    let mut dma_count = 0;
+
+                    if let Some(pit) = self.bus.pit_mut().as_mut() {
+                        (_, dma_count) = pit.get_channel_count(1);
+                    }
+
+                    let token_vec = self.cycle_state_tokens(dma_count, false);
+                    //self.trace_print(&state_str);
+                    self.trace_token_vec.push(token_vec);
+
+                    self.trace_comment.clear();
+                    self.trace_instr = MC_NONE;
+                }
+                TraceMode::CycleSigrok => {
                     self.trace_csv_line();
                 }
                 _ => {}

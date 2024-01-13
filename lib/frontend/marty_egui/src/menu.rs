@@ -172,157 +172,129 @@ impl GuiState {
             });
 
             ui.menu_button("Debug", |ui| {
-                ui.menu_button("Dump Memory", |ui| {
-                    if ui.button("Video Memory").clicked() {
-                        self.event_queue.send(GuiEvent::DumpVRAM);
-                        ui.close_menu();
-                    }
-                    if ui.button("Code Segment").clicked() {
-                        self.event_queue.send(GuiEvent::DumpCS);
-                        ui.close_menu();
-                    }
-                    if ui.button("All Memory").clicked() {
-                        self.event_queue.send(GuiEvent::DumpAllMem);
-                        ui.close_menu();
-                    }
+                ui.menu_button("Memory", |ui| {
+                    self.workspace_window_open_button(ui, GuiWindow::MemoryViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::IvtViewer, true);
+
+                    ui.menu_button("Dump Memory", |ui| {
+                        if ui.button("Video Memory").clicked() {
+                            self.event_queue.send(GuiEvent::DumpVRAM);
+                            ui.close_menu();
+                        }
+                        if ui.button("Code Segment").clicked() {
+                            self.event_queue.send(GuiEvent::DumpCS);
+                            ui.close_menu();
+                        }
+                        if ui.button("All Memory").clicked() {
+                            self.event_queue.send(GuiEvent::DumpAllMem);
+                            ui.close_menu();
+                        }
+                    });
                 });
-                if ui.button("CPU Control...").clicked() {
-                    *self.window_flag(GuiWindow::CpuControl) = true;
-                    ui.close_menu();
-                }
-                if ui.button("CPU State...").clicked() {
-                    *self.window_flag(GuiWindow::CpuStateViewer) = true;
-                    ui.close_menu();
-                }
-                ui.menu_button("CPU Debug Options", |ui| {
-                    if ui
-                        .checkbox(
-                            &mut self.get_option_mut(GuiBoolean::CpuEnableWaitStates),
-                            "Enable Wait States",
-                        )
-                        .clicked()
-                    {
-                        let new_opt = self.get_option(GuiBoolean::CpuEnableWaitStates).unwrap();
 
-                        self.event_queue.send(GuiEvent::VariableChanged(
-                            GuiVariableContext::Global,
-                            GuiVariable::Bool(GuiBoolean::CpuEnableWaitStates, new_opt),
-                        ));
-                        ui.close_menu();
-                    }
-                    if ui
-                        .checkbox(
-                            &mut self.get_option_mut(GuiBoolean::CpuInstructionHistory),
-                            "Instruction History",
-                        )
-                        .clicked()
-                    {
-                        let new_opt = self.get_option(GuiBoolean::CpuInstructionHistory).unwrap();
+                ui.menu_button("CPU", |ui| {
+                    self.workspace_window_open_button(ui, GuiWindow::CpuControl, true);
+                    self.workspace_window_open_button(ui, GuiWindow::CpuStateViewer, true);
 
-                        self.event_queue.send(GuiEvent::VariableChanged(
-                            GuiVariableContext::Global,
-                            GuiVariable::Bool(GuiBoolean::CpuInstructionHistory, new_opt),
-                        ));
-                        ui.close_menu();
-                    }
-                    if ui
-                        .checkbox(
-                            &mut self.get_option_mut(GuiBoolean::CpuTraceLoggingEnabled),
-                            "Trace Logging Enabled",
-                        )
-                        .clicked()
-                    {
-                        let new_opt = self.get_option(GuiBoolean::CpuTraceLoggingEnabled).unwrap();
+                    ui.menu_button("CPU Debug Options", |ui| {
+                        if ui
+                            .checkbox(
+                                &mut self.get_option_mut(GuiBoolean::CpuEnableWaitStates),
+                                "Enable Wait States",
+                            )
+                            .clicked()
+                        {
+                            let new_opt = self.get_option(GuiBoolean::CpuEnableWaitStates).unwrap();
 
-                        self.event_queue.send(GuiEvent::VariableChanged(
-                            GuiVariableContext::Global,
-                            GuiVariable::Bool(GuiBoolean::CpuTraceLoggingEnabled, new_opt),
-                        ));
-                        ui.close_menu();
-                    }
+                            self.event_queue.send(GuiEvent::VariableChanged(
+                                GuiVariableContext::Global,
+                                GuiVariable::Bool(GuiBoolean::CpuEnableWaitStates, new_opt),
+                            ));
+                            ui.close_menu();
+                        }
+                        if ui
+                            .checkbox(
+                                &mut self.get_option_mut(GuiBoolean::CpuInstructionHistory),
+                                "Instruction History",
+                            )
+                            .clicked()
+                        {
+                            let new_opt = self.get_option(GuiBoolean::CpuInstructionHistory).unwrap();
+
+                            self.event_queue.send(GuiEvent::VariableChanged(
+                                GuiVariableContext::Global,
+                                GuiVariable::Bool(GuiBoolean::CpuInstructionHistory, new_opt),
+                            ));
+                            ui.close_menu();
+                        }
+                        if ui
+                            .checkbox(
+                                &mut self.get_option_mut(GuiBoolean::CpuTraceLoggingEnabled),
+                                "Trace Logging Enabled",
+                            )
+                            .clicked()
+                        {
+                            let new_opt = self.get_option(GuiBoolean::CpuTraceLoggingEnabled).unwrap();
+
+                            self.event_queue.send(GuiEvent::VariableChanged(
+                                GuiVariableContext::Global,
+                                GuiVariable::Bool(GuiBoolean::CpuTraceLoggingEnabled, new_opt),
+                            ));
+                            ui.close_menu();
+                        }
+                        #[cfg(feature = "devtools")]
+                        if ui.button("Delays...").clicked() {
+                            *self.window_flag(GuiWindow::DelayAdjust) = true;
+                            ui.close_menu();
+                        }
+
+                        if ui.button("Trigger NMI").clicked() {
+                            self.event_queue.send(GuiEvent::SetNMI(true));
+                            ui.close_menu();
+                        }
+
+                        if ui.button("Clear NMI").clicked() {
+                            self.event_queue.send(GuiEvent::SetNMI(false));
+                            ui.close_menu();
+                        }
+                    });
+
+                    self.workspace_window_open_button(ui, GuiWindow::InstructionHistoryViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::CycleTraceViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::CallStack, true);
+                    self.workspace_window_open_button(ui, GuiWindow::DisassemblyViewer, true);
+                });
+
+                ui.menu_button("Devices", |ui| {
                     #[cfg(feature = "devtools")]
-                    if ui.button("Delays...").clicked() {
-                        *self.window_flag(GuiWindow::DelayAdjust) = true;
+                    if ui.button("Device control...").clicked() {
+                        *self.window_flag(GuiWindow::DeviceControl) = true;
                         ui.close_menu();
                     }
+                    self.workspace_window_open_button(ui, GuiWindow::PicViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::PitViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::PpiViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::DmaViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::VideoCardViewer, true);
 
-                    if ui.button("Trigger NMI").clicked() {
-                        self.event_queue.send(GuiEvent::SetNMI(true));
-                        ui.close_menu();
-                    }
+                    /*
+                    if ui
+                        .checkbox(
+                            &mut self.get_option_mut(GuiBoolean::ShowBackBuffer),
+                            "Debug back buffer",
+                        )
+                        .clicked()
+                    {
+                        let new_opt = self.get_option(GuiBoolean::ShowBackBuffer).unwrap();
 
-                    if ui.button("Clear NMI").clicked() {
-                        self.event_queue.send(GuiEvent::SetNMI(false));
+                        self.event_queue.send(GuiEvent::VariableChanged(
+                            GuiVariableContext::Global,
+                            GuiVariable::Bool(GuiBoolean::ShowBackBuffer, new_opt),
+                        ));
                         ui.close_menu();
                     }
+                     */
                 });
-                if ui.button("Memory...").clicked() {
-                    *self.window_flag(GuiWindow::MemoryViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("Instruction History...").clicked() {
-                    *self.window_flag(GuiWindow::HistoryViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("Instruction Cycle Trace...").clicked() {
-                    *self.window_flag(GuiWindow::CycleTraceViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("Call Stack...").clicked() {
-                    *self.window_flag(GuiWindow::CallStack) = true;
-                    ui.close_menu();
-                }
-                if ui.button("Disassembly...").clicked() {
-                    *self.window_flag(GuiWindow::DisassemblyViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("IVT Viewer...").clicked() {
-                    *self.window_flag(GuiWindow::IvtViewer) = true;
-                    ui.close_menu();
-                }
-                #[cfg(feature = "devtools")]
-                if ui.button("Device control...").clicked() {
-                    *self.window_flag(GuiWindow::DeviceControl) = true;
-                    ui.close_menu();
-                }
-                if ui.button("PIC...").clicked() {
-                    *self.window_flag(GuiWindow::PicViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("PIT...").clicked() {
-                    *self.window_flag(GuiWindow::PitViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("PPI...").clicked() {
-                    *self.window_flag(GuiWindow::PpiViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("DMA...").clicked() {
-                    *self.window_flag(GuiWindow::DmaViewer) = true;
-                    ui.close_menu();
-                }
-                if ui.button("Video Card...").clicked() {
-                    *self.window_flag(GuiWindow::VideoCardViewer) = true;
-                    ui.close_menu();
-                }
-
-                /*
-                if ui
-                    .checkbox(
-                        &mut self.get_option_mut(GuiBoolean::ShowBackBuffer),
-                        "Debug back buffer",
-                    )
-                    .clicked()
-                {
-                    let new_opt = self.get_option(GuiBoolean::ShowBackBuffer).unwrap();
-
-                    self.event_queue.send(GuiEvent::VariableChanged(
-                        GuiVariableContext::Global,
-                        GuiVariable::Bool(GuiBoolean::ShowBackBuffer, new_opt),
-                    ));
-                    ui.close_menu();
-                }
-                 */
 
                 if ui.button("Flush Trace Logs").clicked() {
                     self.event_queue.send(GuiEvent::FlushLogs);
@@ -569,11 +541,9 @@ impl GuiState {
             }
         }
 
-        if ui.button("Text Viewer").clicked() {
-            *self.window_flag(GuiWindow::TextModeViewer) = true;
-            self.text_mode_viewer.select_card(display_idx);
-            ui.close_menu();
-        }
+        self.workspace_window_open_button_with(ui, GuiWindow::TextModeViewer, true, |state| {
+            state.text_mode_viewer.select_card(display_idx);
+        });
 
         ui.separator();
 

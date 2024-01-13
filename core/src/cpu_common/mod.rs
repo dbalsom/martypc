@@ -49,11 +49,18 @@ pub enum CpuType {
     Intel8086,
 }
 
+pub enum CycleTraceMode {
+    Text,
+    Csv,
+    Sigrok,
+}
+
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub enum TraceMode {
     None,
-    Cycle,
-    Sigrok,
+    CycleText,
+    CycleCsv,
+    CycleSigrok,
     Instruction,
 }
 
@@ -65,8 +72,9 @@ impl FromStr for TraceMode {
     {
         match s.to_lowercase().as_str() {
             "none" => Ok(TraceMode::None),
-            "cycle" => Ok(TraceMode::Cycle),
-            "sigrok" => Ok(TraceMode::Sigrok),
+            "cycletext" => Ok(TraceMode::CycleText),
+            "cyclecsv" => Ok(TraceMode::CycleCsv),
+            "cyclesigrok" => Ok(TraceMode::CycleSigrok),
             "instruction" => Ok(TraceMode::Instruction),
             _ => Err("Bad value for tracemode".to_string()),
         }
