@@ -300,10 +300,6 @@ impl Emulator {
             vid_list.push(vid.clone());
         });
 
-        if vid_list.len() != self.config.machine.videocard.as_ref().unwrap_or(&Vec::new()).len() {
-            log::error!("Number of videocards installed does not match number of cards in config!");
-        }
-
         for vid in vid_list.iter() {
             if let Some(card) = self.machine.bus().video(vid) {
                 let extents = card.get_display_extents();

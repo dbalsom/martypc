@@ -223,7 +223,6 @@ pub struct Machine {
     #[serde(default)]
     pub turbo: bool,
     pub cpu: Cpu,
-    pub videocard: Option<Vec<VideoCardDefinition>>,
     pub pit_phase: Option<u32>,
     pub keyboard_type: Option<KeyboardType>,
     pub keyboard_layout: Option<String>,
