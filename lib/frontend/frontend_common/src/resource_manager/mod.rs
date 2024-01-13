@@ -46,7 +46,7 @@ pub use tree::TreeNode as PathTreeNode;
 
 use anyhow::Error;
 use regex::Regex;
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, ffi::OsString, path::PathBuf};
 
 const BASEDIR_TOKEN: &'static str = "$basedir$";
 
@@ -70,7 +70,7 @@ pub struct ResourceItem {
     rtype: ResourceItemType,
     pub(crate) full_path: PathBuf,
     pub(crate) relative_path: Option<PathBuf>,
-    pub(crate) filename_only: Option<PathBuf>,
+    pub(crate) filename_only: Option<OsString>,
     flags: u32,
 }
 
@@ -121,40 +121,68 @@ impl ResourceManager {
         let re = Regex::new(r"(\d+)").unwrap();
         let mut largest_num = 0;
 
+        log::debug!("Finding unique filename in: {:?}", path);
+
         // First, generate a map of all items starting with 'base_name'
-        let mut existing_basenames: HashSet<PathBuf> = HashSet::new();
-        if let Ok(items) = self.enumerate_items(resource, false, false, None) {
-            for item in items {
-                if let Some(filename) = item.filename_only.clone() {
-                    if filename.starts_with(base_name) {
-                        // Extract any number sequence from the filename
-                        re.captures(
-                            filename
-                                .to_str()
-                                .ok_or(anyhow::anyhow!("Failed to convert filename to string"))?,
-                        )
-                        .and_then(|caps| caps.get(1))
-                        .and_then(|match_| match_.as_str().parse::<u32>().ok())
-                        .map(|num| {
-                            if num > largest_num {
-                                largest_num = num
-                            }
-                        });
-                        existing_basenames.insert(filename);
+        let mut existing_basenames: HashSet<OsString> = HashSet::new();
+        match self.enumerate_items(resource, false, false, None) {
+            Ok(items) => {
+                for item in items {
+                    //log::debug!("Item: {:?}", item);
+                    if let Some(filename) = item.filename_only.clone() {
+                        if filename.to_string_lossy().contains(base_name) {
+                            //log::debug!("Found matching basename: {:?}", filename);
+
+                            // Extract any number sequence from the filename
+                            re.captures(
+                                filename
+                                    .to_str()
+                                    .ok_or(anyhow::anyhow!("Failed to convert filename to string"))?,
+                            )
+                            .and_then(|caps| caps.get(1))
+                            .and_then(|match_| match_.as_str().parse::<u32>().ok())
+                            .map(|num| {
+                                if num > largest_num {
+                                    largest_num = num
+                                }
+                            });
+                            existing_basenames.insert(filename);
+                        }
                     }
                 }
+            }
+            Err(err) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to enumerate items in resource '{}': {}",
+                    resource,
+                    err
+                ));
             }
         }
 
         // Generate unique names and check them against the map. We can start searching at
         // 'largest_num'
         let mut i = largest_num;
-        let mut test_name = PathBuf::from(format!("{}{:04}", base_name, i));
+        let mut test_name_path = PathBuf::from(format!("{}{:04}", base_name, i));
+        if let Some(ext) = extension {
+            test_name_path.set_extension(ext);
+        }
+        let mut test_name = test_name_path.into_os_string();
+
+        // for name in existing_basenames.iter() {
+        //     log::debug!("Existing name: {} largest num: {}", name.to_str().unwrap(), largest_num);
+        // }
 
         while existing_basenames.contains(&test_name) {
-            test_name = PathBuf::from(format!("{}{:04}", base_name, i));
             i += 1;
+            test_name_path = PathBuf::from(format!("{}{:04}", base_name, i));
+            if let Some(ext) = extension {
+                test_name_path.set_extension(ext);
+            }
+            test_name = test_name_path.into_os_string();
         }
+
+        log::debug!("Found unique filename: {}", test_name.to_str().unwrap());
 
         path.push(test_name.clone());
         if let Some(ext) = extension {
@@ -164,6 +192,10 @@ impl ResourceManager {
         // We should have a unique filename now. Check that the file exists before we return it
         // as one last sanity check.
         if ResourceManager::path_exists(&path) {
+            log::error!(
+                "Failed to create unique filename: File already exists: {}",
+                path.to_str().unwrap()
+            );
             return Err(anyhow::anyhow!(
                 "Failed to create unique filename: File already exists: {}",
                 path.to_str().unwrap()

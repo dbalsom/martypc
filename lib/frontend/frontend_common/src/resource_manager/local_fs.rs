@@ -92,27 +92,40 @@ impl ResourceManager {
                 paths.truncate(1);
             }
 
+            if paths.is_empty() {
+                return Err(anyhow::anyhow!("No paths defined for resource: {}", resource));
+            }
+
             for path in paths.iter() {
                 let mut path = path.clone();
-                path.push(resource);
                 let path = path.canonicalize()?;
-                if path.is_dir() {
-                    items.push(ResourceItem {
-                        rtype: ResourceItemType::Directory,
-                        full_path: path.clone(),
-                        relative_path: None,
-                        filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
-                        flags: 0,
-                    });
-                }
-                else {
-                    items.push(ResourceItem {
-                        rtype: ResourceItemType::LocalFile,
-                        full_path: path.clone(),
-                        relative_path: None,
-                        filename_only: Some(PathBuf::from(path.file_name().unwrap_or_default())),
-                        flags: 0,
-                    });
+
+                for entry in fs::read_dir(path.clone())? {
+                    match entry {
+                        Ok(entry) => {
+                            if entry.path().is_dir() {
+                                items.push(ResourceItem {
+                                    rtype: ResourceItemType::Directory,
+                                    full_path: entry.path().clone(),
+                                    relative_path: None,
+                                    filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                                    flags: 0,
+                                });
+                            }
+                            else {
+                                items.push(ResourceItem {
+                                    rtype: ResourceItemType::LocalFile,
+                                    full_path: entry.path().clone(),
+                                    relative_path: None,
+                                    filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
+                                    flags: 0,
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            log::error!("Error reading directory entry: {}", e);
+                        }
+                    }
                 }
             }
             items
@@ -144,6 +157,16 @@ impl ResourceManager {
 
         ResourceManager::set_relative_paths_for_items(path_prefix, &mut items);
 
+        if items.is_empty() {
+            log::warn!("No items found for resource: {}", resource);
+            return Err(anyhow::anyhow!("No items found for resource: {}", resource));
+        }
+
+        log::debug!(
+            "enumerate_items(): Found {} items for resource: {}",
+            items.len(),
+            resource
+        );
         Ok(items)
     }
 
@@ -164,6 +187,10 @@ impl ResourceManager {
             roots.truncate(1);
         }
 
+        if roots.is_empty() {
+            return Err(anyhow::anyhow!("No paths defined for resource: {}", resource));
+        }
+
         let mut items: Vec<ResourceItem> = Vec::new();
         let mut visited = HashSet::new();
 
@@ -174,7 +201,7 @@ impl ResourceManager {
                     rtype: ResourceItemType::LocalFile,
                     full_path: entry.path(),
                     relative_path: None,
-                    filename_only: Some(PathBuf::from(entry.path().file_name().unwrap_or_default())),
+                    filename_only: Some(entry.path().file_name().unwrap_or_default().to_os_string()),
                     flags: 0,
                 });
             })?
