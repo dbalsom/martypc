@@ -1,11 +1,130 @@
 # martypc.toml
 # Main configuration file for the MartyPC emulator
 #
-# To set a specific machine type, see the [machine] section below.
-#
 [meta]
 file_type = "main_config"
 config_version = "0.2"
+
+# ----------------------------------------------------------------------------
+# Machine Options
+#
+# Items specific to machine configuration are listed here first for 
+# convenience, as they are usually the first thing people want to change.
+#
+# General emulator options are given in [emulator] below.
+# ----------------------------------------------------------------------------
+[machine]
+# Specify the name of a machine configuration to load. Valid config_names
+# are defined via machine configuration profiles in the /configs/machines
+# directory.
+config_name = "ibm5160"
+#config_name = "generic_xt"
+#config_name = "generic_award_xt_hdd"
+#config_name = "generic_xt_hdd"
+#config_name = "ibm5160_hdd_ega"
+
+# Specify configuration overlays to load on top of machine configuration.
+# Config overlays are a convenient way to swap or add to a base config. 
+# The 'ega' overlay will add an EGA card to a system that defaults to 
+# MDA or CGA, for example.
+#
+# - See 'machine_config_overlays.toml' for more examples, or define your own.
+#config_overlays = ["ega"]
+
+# Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
+prefer_oem = false
+
+# Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
+reload_roms = true
+
+# Don't load any ROMs if true. Default: false
+#no_roms = true
+
+# Turbo Button
+# ----------------------------------------------------------------------------
+# Change the clock divisor/multiplier for the CPU to run the CPU faster than 
+# normal. Other devices like the timer will continue to run at the same rate.
+#
+# On IBM PC/XT, turbo increases CPU clock from 4.77Mhz to 7.16Mhz.
+turbo = false
+
+# Emulate phase offset of PIT vs CPU. Don't change this if you don't know why 
+# you would want to do that.
+pit_phase = 0
+
+# Keyboard Type
+# ----------------------------------------------------------------------------
+# Valid options for keyboard_type are:
+# ModelF - This was the original 83-key keyboard shipped with the PC/XT
+#          (More keyboard types yet to be implemented)
+keyboard_type = "ModelF"
+
+# Keyboard layout. Used to load the appropriate keyboard translation file. 
+# MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+# where XX is the string specified by keyboard_layout.
+#
+# Certain scancodes have changed their meaning since the 1980's. Your help
+# would be appreciated in developing new translation files.
+keyboard_layout="US"
+
+# Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+typematic = true
+# Delay in milliseconds before typematic repeat begins.
+typematic_delay = 500.0
+# Delay in milliseconds between each scancode during typematic repeat.
+typematic_rate= 50.0
+
+# ----------------------------------------------------------------------------
+# CPU Options
+# ----------------------------------------------------------------------------
+[machine.cpu]
+
+# Enable CPU wait states. This includes wait states from DMA, memory access
+# and device IO. Setting this to false may speed up the CPU, but reduce 
+# accuracy (Area 5150 will break)
+wait_states = true
+
+# Attempt to detect when the CPU is executing invalid instructions and halt.
+# May need to disable for certain test programs like acid88
+off_rails_detection = false
+
+# What to do when the CPU has entered an unrecoverable halt condition. 
+# Valid options are:
+#  Continue - Do nothing; just keep running
+#  Stop     - Stop the system and display a warning notification
+#  Warn     - Keep running, but display a warning notification
+on_halt = "Warn"
+
+# Enable instruction history. This slows down the emulator a modest amount 
+# when enabled. Only enable if debugging.
+instruction_history = false
+
+# Enable MartyPC's internal emulator serivce interrupt at 0xFC. You may need
+# to disable this if conflicts arise. 'mdebug.com' requires this to be set 
+# true.
+service_interrupt = true
+
+# CPU Tracing Options
+# ----------------------------------------------------------------------------
+# CPU tracing may be enabled by specifying trace_mode
+# Tracing does not begin unless trace_on == true or set in GUI
+#
+# Valid values for trace_mode:
+#  Instruction  - Output per-instruction traces (slow, big)
+#  CycleText    - Output per-cycle traces, text format (very slow, huge)
+#  CycleCsv     - Output per-cycle traces, text/csv format (recommended)
+#  CycleSigrok  - Output per-cycle traces, sigrok csv format (very slow, huge)
+#                 Designed for import into sigrok PulseView for debugging.
+#                 Use an import string of t,x20,l,l,x2,x3,l,l,l,l,l,l
+
+# >>> WARNING: Any of these options will quickly make multi-gigabyte files <<<
+#
+# Additionally, a valid value for trace_file must be supplied.
+#
+trace_on = false
+#trace_mode = "Instruction"
+trace_mode = "CycleSigrok"
+trace_file = "cycle_trace.log"
 
 # ----------------------------------------------------------------------------
 # Emulator paths
@@ -161,8 +280,7 @@ resizable = true
 # If this field is present, the window will display the specified card in its
 # client area. If you do not want the window to display a card, comment this
 # out.
-# card_id is the numeric index of cards defined under the Machine section in
-# [[videocard]] blocks. A standard PC will likely only have at most 0 and 1.
+# card_id is the numeric index of cards defined in a Machine configuration.
 card_id = 0
 
 # Size the initial window dimensions to the specified card's aperture size
@@ -376,115 +494,9 @@ zoom = 1.0
 # We try to detect this, but it can be overridden here.
 # reverse_mouse_buttons = false
 
-# ----------------------------------------------------------------------------
-# Machine Options
-# ----------------------------------------------------------------------------
-[machine]
-# Specify the name of a machine configuration to load.
-config_name = "ibm5160_hdd"
-#config_name = "generic_xt"
-#config_name = "generic_award_xt_hdd"
-#config_name = "generic_xt_hdd"
-#config_name = "ibm5160_hdd_ega"
 
-# Specify configuration overlays to load on top of machine configuration.
-# - See 'machine_config_overlays.toml' for examples, or define your own.
-#config_overlays = ["ega"]
 
-# Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
-prefer_oem = false
 
-# Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
-reload_roms = true
-
-# Don't load any ROMs if true. Default: false
-#no_roms = true
-
-# Turbo Button
-# ----------------------------------------------------------------------------
-# Change the clock divisor/multiplier for the CPU to run the CPU faster than 
-# normal. Other devices like the timer will continue to run at the same rate.
-#
-# On IBM PC/XT, turbo increases CPU clock from 4.77Mhz to 7.16Mhz.
-turbo = false
-
-# Emulate phase offset of PIT vs CPU. Don't change this if you don't know why 
-# you would want to do that.
-pit_phase = 0
-
-# Keyboard Type
-# ----------------------------------------------------------------------------
-# Valid options for keyboard_type are:
-# ModelF - This was the original 83-key keyboard shipped with the PC/XT
-#          (More keyboard types yet to be implemented)
-keyboard_type = "ModelF"
-
-# Keyboard layout. Used to load the appropriate keyboard translation file. 
-# MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
-# where XX is the string specified by keyboard_layout.
-#
-# Certain scancodes have changed their meaning since the 1980's. Your help
-# would be appreciated in developing new translation files.
-keyboard_layout="US"
-
-# Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
-typematic = true
-# Delay in milliseconds before typematic repeat begins.
-typematic_delay = 500.0
-# Delay in milliseconds between each scancode during typematic repeat.
-typematic_rate= 50.0
-
-# ----------------------------------------------------------------------------
-# CPU Options
-# ----------------------------------------------------------------------------
-[machine.cpu]
-
-# Enable CPU wait states. This includes wait states from DMA, memory access
-# and device IO. Setting this to false may speed up the CPU, but reduce 
-# accuracy (Area 5150 will break)
-wait_states = true
-
-# Attempt to detect when the CPU is executing invalid instructions and halt.
-# May need to disable for certain test programs like acid88
-off_rails_detection = false
-
-# What to do when the CPU has entered an unrecoverable halt condition. 
-# Valid options are:
-#  Continue - Do nothing; just keep running
-#  Stop     - Stop the system and display a warning notification
-#  Warn     - Keep running, but display a warning notification
-on_halt = "Warn"
-
-# Enable instruction history. This slows down the emulator a modest amount 
-# when enabled. Only enable if debugging.
-instruction_history = false
-
-# Enable MartyPC's internal emulator serivce interrupt at 0xFC. You may need
-# to disable this if conflicts arise. 'mdebug.com' requires this to be set 
-# true.
-service_interrupt = true
-
-# ----------------------------------------------------------------------------
-# CPU Tracing Options
-# ----------------------------------------------------------------------------
-# CPU tracing may be enabled by specifying trace_mode
-# Tracing does not begin unless trace_on == true or set in GUI
-#
-# Valid values for trace_mode:
-#  Instruction  - Output per-instruction traces (slow, big)
-#  Cycle        - Output per-cycle traces, text format (very slow, huge)
-#  Sigrok       - Output per-cycle traces, csv format (very slow, huge)
-#                 Designed for import into sigrok PulseView for debugging.
-#                 Use an import string of t,x20,l,l,x2,x3,l,l,l,l,l,l
-#
-# >>> WARNING: Any of these options will quickly make multi-gigabyte files <<<
-#
-# Additionally, a valid value for trace_file must be supplied.
-#
-trace_on = false
-#trace_mode = "Instruction"
-#trace_mode = "Cycle"
-#trace_file = "./traces/cycle_trace.log"
 
 # ----------------------------------------------------------------------------
 # Benchmarking (not yet implemented - configs are placeholder)
