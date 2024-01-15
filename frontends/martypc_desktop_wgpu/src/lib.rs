@@ -582,6 +582,7 @@ pub fn run() {
 
     let mut trace_file_path = None;
     if let Some(trace_file) = &config.machine.cpu.trace_file {
+        log::info!("Using CPU trace log file: {:?}", trace_file);
         trace_file_path = Some(trace_file_base.join(trace_file));
     }
 
