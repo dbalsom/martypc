@@ -81,9 +81,9 @@ impl CoreConfig for ConfigFileParams {
     //fn get_video_type(&self) -> Option<VideoType> { self.machine.primary_video }
     //fn get_video_clockingmode(&self) -> Option<ClockingMode> { self.machine.clocking_mode }
     //fn get_video_debug(&self) -> bool { self.emulator.video_frame_debug }
-    fn get_hdc_type(&self) -> Option<HardDiskControllerType> {
-        self.machine.hdc
-    }
+    // fn get_hdc_type(&self) -> Option<HardDiskControllerType> {
+    //     self.machine.hdc
+    // }
     fn get_validator_type(&self) -> Option<ValidatorType> {
         self.validator.vtype
     }

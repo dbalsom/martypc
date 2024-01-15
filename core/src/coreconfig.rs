@@ -65,7 +65,7 @@ pub trait CoreConfig {
     //fn get_video_type(&self) -> Option<VideoType>;
     //fn get_video_clockingmode(&self) -> Option<ClockingMode>;
     //fn get_video_debug(&self) -> bool;
-    fn get_hdc_type(&self) -> Option<HardDiskControllerType>;
+    //fn get_hdc_type(&self) -> Option<HardDiskControllerType>;
     fn get_validator_type(&self) -> Option<ValidatorType>;
     fn get_validator_trace_file(&self) -> Option<PathBuf>;
     fn get_validator_baud(&self) -> Option<u32>;

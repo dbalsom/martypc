@@ -226,11 +226,6 @@ pub struct Machine {
     pub pit_phase: Option<u32>,
     pub keyboard_type: Option<KeyboardType>,
     pub keyboard_layout: Option<String>,
-    pub hdc: Option<HardDiskControllerType>,
-    pub drive0: Option<String>,
-    pub drive1: Option<String>,
-    pub floppy0: Option<String>,
-    pub floppy1: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
