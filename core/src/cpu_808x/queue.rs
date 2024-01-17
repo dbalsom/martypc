@@ -71,6 +71,11 @@ impl InstructionQueue {
         self.len
     }
 
+    #[inline]
+    pub fn len_p(&self) -> usize {
+        self.len + if self.preload.is_some() { 1 } else { 0 }
+    }
+
     #[allow(dead_code)]
     #[inline]
     pub fn is_full(&self) -> bool {
@@ -86,12 +91,7 @@ impl InstructionQueue {
 
     #[inline]
     pub fn has_preload(&self) -> bool {
-        if let Some(_) = self.preload {
-            true
-        }
-        else {
-            false
-        }
+        self.preload.is_some()
     }
 
     #[inline]

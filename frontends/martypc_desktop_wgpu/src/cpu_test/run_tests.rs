@@ -285,10 +285,11 @@ fn run_tests(
     log: &mut BufWriter<File>,
 ) -> TestResult {
     // Create the cpu trace file, if specified
-    let mut cpu_trace = TraceLogger::None;
+    let mut cpu_trace_log = TraceLogger::None;
+
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
-        log::debug!("Using instruction trace log: {:?}", trace_filename);
-        cpu_trace = TraceLogger::from_filename(&trace_filename);
+        log::warn!("Using CPU trace log: {:?}", trace_filename);
+        cpu_trace_log = TraceLogger::from_filename(&trace_filename);
     }
 
     // Create the validator trace file, if specified
@@ -307,7 +308,7 @@ fn run_tests(
     let mut cpu = Cpu::new(
         CpuType::Intel8088,
         trace_mode,
-        cpu_trace,
+        cpu_trace_log,
         #[cfg(feature = "cpu_validator")]
         ValidatorType::None,
         #[cfg(feature = "cpu_validator")]
@@ -317,6 +318,10 @@ fn run_tests(
         #[cfg(feature = "cpu_validator")]
         config.validator.baud_rate.unwrap_or(1_000_000),
     );
+
+    if config.machine.cpu.trace_on {
+        cpu.set_option(CpuOption::TraceLoggingEnabled(true));
+    }
 
     // We should have a vector of tests now.
 
@@ -365,7 +370,7 @@ fn run_tests(
         cpu.set_register16(Register16::CS, test.initial_state.regs.cs);
         cpu.set_register16(Register16::SS, test.initial_state.regs.ss);
         cpu.set_register16(Register16::DS, test.initial_state.regs.ds);
-        cpu.set_register16(Register16::IP, test.initial_state.regs.ip);
+        cpu.set_register16(Register16::PC, test.initial_state.regs.ip);
         cpu.set_flags(test.initial_state.regs.flags);
 
         // Set up memory to initial state.
@@ -382,8 +387,7 @@ fn run_tests(
         }
 
         // Decode this instruction
-        let instruction_address =
-            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
+        let instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
 
         cpu.bus_mut().seek(instruction_address as usize);
 
@@ -436,10 +440,8 @@ fn run_tests(
         );*/
 
         // Set terminating address for CPU validator.
-        let end_address = Cpu::calc_linear_address(
-            cpu.get_register16(Register16::CS),
-            cpu.get_register16(Register16::IP).wrapping_add(i.size as u16),
-        );
+        let end_address =
+            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip().wrapping_add(i.size as u16));
 
         //log::debug!("Setting end address: {:05X}", end_address);
         cpu.set_end_address(end_address as usize);

@@ -34,6 +34,7 @@ use crate::{
     cpu_808x::{biu::*, *},
     util,
 };
+use std::arch::x86_64::_mm256_i64gather_pd;
 
 /*
 macro_rules! read_operand {
@@ -81,7 +82,7 @@ impl Cpu {
     /// fetched and decoded any prefixes, the opcode byte, modrm and any displacement
     /// and populated an Instruction struct.
     ///
-    /// Additionallly, if an EA was to be loaded, the load has already been performed.
+    /// Additionally, if an EA was to be loaded, the load has already been performed.
     ///
     /// For each opcode, we execute cycles equivalent to the microcode routine for
     /// that function. Microcode line numbers are usually provided for cycle tracing.
@@ -128,7 +129,7 @@ impl Cpu {
         self.mc_pc = MICROCODE_ADDRESS_8088[self.i.opcode as usize];
 
         // Check if this address is a return from a CALL or INT
-        let flat_addr = self.get_linear_ip();
+        let flat_addr = self.flat_ip();
         if self.bus.get_flags(flat_addr as usize) & MEM_RET_BIT != 0 {
             // This address is a return address, rewind the stack
             self.rewind_call_stack(flat_addr);
@@ -166,7 +167,7 @@ impl Cpu {
                         "REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].",
                         self.i.mnemonic,
                         self.cs,
-                        self.ip
+                        self.ip(),
                     );
                 }
             }
@@ -420,9 +421,7 @@ impl Cpu {
                 self.cycle_i(0x0e9);
 
                 if jump {
-                    //log::trace!(">>> Calculating jump to new IP: {:04X} + size:{} + rel8:{}", self.ip, self.i.size, rel8);
-                    let new_ip = util::relative_offset_u16(self.ip, rel8 as i8 as i16 + self.i.size as i16 );
-                    self.reljmp(new_ip, true);
+                    self.reljmp2(rel8 as i8 as i16, true);
                 }
                 /*
                 else {
@@ -626,36 +625,20 @@ impl Cpu {
                 // CALLF - Call Far addr16:16
                 // This instruction reads a direct FAR address from the instruction queue. (See 0xEA for its twin JMPF)
                 let (segment, offset) = self.read_operand_faraddr();
-
-                self.ip = self.ip.wrapping_add(self.i.size as u16);
-                let next_i = self.ip;
-
                 self.farcall(segment, offset, true);
 
-                /* 
-                // Jump to FARCALL
-                self.cycle_i(MC_JUMP);
-                self.biu_suspend_fetch();
-                self.cycles_i(3, &[0x06b, 0x06c, MC_CORR]);
-
-                // Push return address of next instruction
-                self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-                
-                self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]);
-                */
-
                 // Save next address if we step over this CALL.
-                self.step_over_target = Some(CpuAddress::Segmented(self.cs, next_i));
+                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
 
                 self.push_call_stack(
                     CallStackEntry::CallF {
                         ret_cs: self.cs,
-                        ret_ip: next_i,
+                        ret_ip: self.ip(),
                         call_cs: segment,
                         call_ip: offset
                     },
                     self.cs,
-                    next_i
+                    self.ip(),
                 );
 
                 /*
@@ -927,8 +910,8 @@ impl Cpu {
 
                 let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::None).unwrap();
                 self.cycle_i(MC_JUMP); // JMP to FARRET
-                let new_ip = self.pop_u16();
-                self.ip = new_ip;
+                let new_pc = self.pop_u16();
+                self.pc = new_pc;
                 
                 self.biu_suspend_fetch();
                 self.cycles_i(2, &[0x0c3, 0x0c4]);
@@ -947,8 +930,8 @@ impl Cpu {
                 // 0xC1 undocumented alias for 0xC3
                 // Flags: None
                 // Effectively, this instruction is pop ip
-                let new_ip = self.pop_u16();
-                self.ip = new_ip;
+                let new_pc = self.pop_u16();
+                self.pc = new_pc;
                 self.biu_suspend_fetch();
                 self.cycle_i(0x0bd);
                 self.biu_queue_flush();
@@ -1031,10 +1014,9 @@ impl Cpu {
             0xCC => {
                 // INT 3 - Software Interrupt 3
                 // This is a special form of INT which assumes IRQ 3 always. Most assemblers will not generate this form
-                self.ip = self.ip.wrapping_add(self.i.size as u16);
 
                 // Save next address if we step over this INT.
-                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip));
+                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
 
                 self.int3();
                 jump = true;    
@@ -1042,11 +1024,10 @@ impl Cpu {
             0xCD => {
                 // INT imm8 - Software Interrupt
                 // The Interrupt flag does not affect the handling of non-maskable interrupts (NMIs) or software interrupts
-                // generated by the INT instruction. 
-                self.ip = self.ip.wrapping_add(self.i.size as u16);
+                // generated by the INT instruction.
 
                 // Save next address if we step over this INT.
-                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip));
+                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
 
                 // Get interrupt number (immediate operand)
                 let irq = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
@@ -1057,16 +1038,11 @@ impl Cpu {
             0xCE => {
                 // INTO - Call Overflow Interrupt Handler
                 if self.get_flag(Flag::Overflow) {
-
                     self.cycles_i(4, &[0x1ac, 0x1ad, MC_JUMP, 0x1af]);
-
-                    self.ip = self.ip.wrapping_add(self.i.size as u16);
-
+                    
                     // Save next address if we step over this INT.
-                    self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip));
-
+                    self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
                     self.sw_interrupt(4);
-            
                     jump = true;
                 }
                 else {
@@ -1081,7 +1057,6 @@ impl Cpu {
             }
             0xD0 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m8, 0x01
-
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, 1);
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
@@ -1153,12 +1128,10 @@ impl Cpu {
                 let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
                 
                 if !self.aam(op1_value) {
-
                     self.set_szp_flags_from_result_u8(0);
                     self.clear_flag(Flag::AuxCarry);
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::Overflow);
-                    self.ip = self.ip.wrapping_add(self.i.size as u16);
                     self.int0();
                     jump = true;    
                     exception = CpuException::DivideError;
@@ -1216,8 +1189,7 @@ impl Cpu {
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
                 if self.cx != 0 && zero_condition {
-                    let new_ip = util::relative_offset_u16(self.ip, rel8 as i8 as i16 + self.i.size as i16 );
-                    self.reljmp(new_ip, true);
+                    self.reljmp2(rel8 as i8 as i16, true);
                     jump = true;
                 }
                 else {
@@ -1234,8 +1206,7 @@ impl Cpu {
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
                 if self.cx != 0 {
-                    let new_ip = util::relative_offset_u16(self.ip, rel8 as i8 as i16 + self.i.size as i16 );
-                    self.reljmp(new_ip, true);
+                    self.reljmp2(rel8 as i8 as i16, true);
                     jump = true;
                 }
                 if !jump {
@@ -1252,8 +1223,7 @@ impl Cpu {
                 self.cycle_i(0x13b);
 
                 if self.cx == 0 {
-                    let new_ip = util::relative_offset_u16(self.ip, rel8 as i8 as i16 + self.i.size as i16 );
-                    self.reljmp(new_ip, true);
+                    self.reljmp2(rel8 as i8 as i16, true);
                     jump = true;
                 }
                 else {
@@ -1310,57 +1280,53 @@ impl Cpu {
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
                 self.biu_suspend_fetch(); // 0x07E
-                self.cycles_i(4, &[0x07e, 0x07f, MC_CORR, 0x080]);
-                
-                // Calculate offset of next instruction
-                let cs = self.get_register16(Register16::CS);
-                let ip = self.get_register16(Register16::IP);
-                let next_i = ip.wrapping_add(self.i.size as u16);
+                self.cycles_i(2, &[0x07e, 0x07f]);
+                self.corr();
+                self.cycle_i(0x080);
                 
                 // Save next address if we step over this CALL.
-                self.step_over_target = Some(CpuAddress::Segmented(self.cs, next_i));
+                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.pc));
 
-                // Add rel16 to ip
-                let new_ip = util::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
+                let ret_addr = self.pc;
+                // Add rel16 to pc
+                let new_pc = util::relative_offset_u16(self.pc, rel16 as i16);
 
                 // Add to call stack
                 self.push_call_stack(
                     CallStackEntry::Call {
-                        ret_cs: cs,
-                        ret_ip: next_i,
-                        call_ip: new_ip
+                        ret_cs: self.cs,
+                        ret_ip: self.pc,
+                        call_ip: new_pc
                     },
-                    cs,
-                    next_i
+                    self.cs,
+                    self.pc
                 );
 
                 // Set new IP
-                self.ip = new_ip;
+                self.pc = new_pc;
                 self.biu_queue_flush();
                 self.cycles_i(3, &[0x081, 0x082, MC_JUMP]); 
 
-                // Push offset of next instruction
-                self.push_u16(next_i, ReadWriteFlag::RNI);
+                // Push return address
+                self.push_u16(ret_addr, ReadWriteFlag::RNI);
                 jump = true;
             }
             0xE9 => {
                 // JMP rel16
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                let new_ip = Cpu::relative_offset_u16(self.ip, rel16 as i16 + self.i.size as i16 );
 
                 // We fall through to reljmp, so no jump
-                self.reljmp(new_ip, false);
+                self.reljmp2(rel16 as i16, false);
                 jump = true;
             }
             0xEA => {
                 // JMP FAR [addr16:16]
                 // This instruction reads a direct FAR address from the instruction queue. (See 0x9A for its twin CALLF)
                 let (segment, offset) = self.read_operand_faraddr();
-                self.cs = segment;
-                self.ip = offset;
-                
                 self.biu_suspend_fetch();
                 self.cycles_i(2, &[0x0e4, 0x0e5]);
+                self.cs = segment;
+                self.pc = offset;
                 self.biu_queue_flush();
                 self.cycle_i(0x0e6); // Doesn't hurt to run this RNI as we have to re-fill queue
                 jump = true;
@@ -1368,9 +1334,7 @@ impl Cpu {
             0xEB => {
                 // JMP rel8
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let new_ip = Cpu::relative_offset_u16(self.ip, rel8 as i8 as i16 + self.i.size as i16 );
-
-                self.reljmp(new_ip, true); // We jump directly into reljmp
+                self.reljmp2(rel8 as i8 as i16, true); // We jump directly into reljmp
                 jump = true
             }
             0xEC => {
@@ -1438,12 +1402,12 @@ impl Cpu {
 
                 if self.intr {
                     // If an intr is pending now, execute it without actually halting.
-                    log::trace!("Halt overriden at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
+                    log::trace!("Halt overriden at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip()));
                     self.halt_not_hold = false;
                 }
                 else {
                     // Actually halt
-                    log::trace!("Halt at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip));
+                    log::trace!("Halt at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip()));
                     self.halted = true;
                     self.biu_halt();
                 }
@@ -1542,8 +1506,6 @@ impl Cpu {
                                 self.clear_flag(Flag::AuxCarry);
                                 self.clear_flag(Flag::Carry);
                                 self.clear_flag(Flag::Overflow);
-                                
-                                self.ip = self.ip.wrapping_add(self.i.size as u16);
                                 self.int0();
                                 exception = CpuException::DivideError;
                             }
@@ -1575,8 +1537,6 @@ impl Cpu {
 
                                 // Don't include REP prefix as part of instruction size
                                 //let size_adj = if self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2) != 0 { 1 } else { 0 };
-
-                                self.ip = self.ip.wrapping_add((self.i.size) as u16);
                                 self.int0();
                                 exception = CpuException::DivideError;
                             }
@@ -1674,8 +1634,6 @@ impl Cpu {
                                 self.clear_flag(Flag::AuxCarry);
                                 self.clear_flag(Flag::Carry);
                                 self.clear_flag(Flag::Overflow);
-                                
-                                self.ip = self.ip.wrapping_add(self.i.size as u16);
                                 self.int0();
 
                                 exception = CpuException::DivideError;
@@ -1705,11 +1663,6 @@ impl Cpu {
                                 self.clear_flag(Flag::AuxCarry);
                                 self.clear_flag(Flag::Carry);
                                 self.clear_flag(Flag::Overflow);
-                                
-                                // Don't include REP prefix as part of instruction size
-                                //let size_adj = if self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2) != 0 { 1 } else { 0 };
-
-                                self.ip = self.ip.wrapping_add((self.i.size) as u16);
                                 self.int0();
                                 exception = CpuException::DivideError;
                             }
@@ -1750,8 +1703,9 @@ impl Cpu {
             }
             0xFE => {
                 // INC/DEC r/m8
-                // Technically only the INC and DEC froms of this group are valid. However, the other operands do 8 bit sorta-broken versions
-                // of CALL, JMP and PUSH. The behavior implemented here was derived from experimentation with a real 8088 CPU.
+                // Technically only the INC and DEC forms of this group are valid. However, the other operands do 8 bit 
+                // sorta-broken versions of CALL, JMP and PUSH. The behavior implemented here was derived from 
+                // experimentation with a real 8088 CPU.
                 match self.i.mnemonic {
                     // INC/DEC r/m16
                     Mnemonic::INC | Mnemonic::DEC => {
@@ -1771,7 +1725,7 @@ impl Cpu {
                             let ptr8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                             
                             // Push only 8 bits of next IP onto stack
-                            let next_i = self.ip + (self.i.size as u16);
+                            let next_i = self.ip();
 
                             // We do not allow stepping over 0xFE call here as it is unlikely to lead to a valid location or return.
 
@@ -1783,12 +1737,12 @@ impl Cpu {
                             self.biu_queue_flush();
 
                             // Set only lower 8 bits of IP, upper bits FF
-                            self.ip = 0xFF00 | ptr8 as u16;
+                            self.pc = 0xFF00 | ptr8 as u16;
                         }
                         else if let OperandType::Register8(reg) = self.i.operand1_type {
                             
                             // Push only 8 bits of next IP onto stack
-                            let next_i = self.ip + (self.i.size as u16);
+                            let next_i = self.ip() + (self.i.size as u16);
                             self.push_u8((next_i & 0xFF) as u8, ReadWriteFlag::Normal);
 
                             // temporary timings
@@ -1797,7 +1751,7 @@ impl Cpu {
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to IP.
-                            self.ip = self.get_register16(Cpu::reg8to16(reg));
+                            self.pc = self.get_register16(Cpu::reg8to16(reg));
                         }
                         jump = true;
                     }
@@ -1819,12 +1773,11 @@ impl Cpu {
     
                             // Push low byte of CS
                             self.push_u8((self.cs & 0x00FF) as u8, ReadWriteFlag::Normal);
-                            let next_i = self.ip.wrapping_add(self.i.size as u16);
-
-                            // We do not allow stepping over 0xFE call here as it is unlikely to lead to a valid location or return.
-
+                            
+                            let next_i = self.ip();
+                            // We do not handle stepping over 0xFE call here as it is unlikely to lead to a valid location or return.
                             self.cs = 0xFF00 | segment as u16;
-                            self.ip = 0xFF00 | offset as u16;
+                            self.pc = 0xFF00 | offset as u16;
                             
                             self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
                             self.biu_queue_flush();
@@ -1832,8 +1785,6 @@ impl Cpu {
 
                             // Push low byte of next IP
                             self.push_u8((next_i & 0x00FF) as u8, ReadWriteFlag::RNI);
-    
-
                             jump = true;
                         }
                         else if let OperandType::Register8(reg) = self.i.operand1_type {
@@ -1843,17 +1794,16 @@ impl Cpu {
 
                             // Push low byte of CS
                             self.push_u8((self.cs & 0x00FF) as u8, ReadWriteFlag::Normal);
-                            let next_i = self.ip.wrapping_add(self.i.size as u16);
                             // Push low byte of next IP
-                            self.push_u8((next_i & 0x00FF) as u8, ReadWriteFlag::Normal);
+                            self.push_u8((self.ip() & 0x00FF) as u8, ReadWriteFlag::Normal);
 
                             // temporary timings
                             self.biu_suspend_fetch();
                             self.cycles(4);
                             self.biu_queue_flush();
                             
-                            // If this form uses a register operand, the full 16 bits are copied to IP.
-                            self.ip = self.get_register16(Cpu::reg8to16(reg));
+                            // If this form uses a register operand, the full 16 bits are copied to PC.
+                            self.pc = self.get_register16(Cpu::reg8to16(reg));
                         }
                     }
                     // Jump to memory r/m16
@@ -1861,8 +1811,8 @@ impl Cpu {
                         // Reads only 8 bit operand from modrm.
                         let ptr8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                        // Set only lower 8 bits of IP, upper bits FF
-                        self.ip = 0xFF00 | ptr8 as u16;
+                        // Set only lower 8 bits of PC, upper bits FF
+                        self.pc = 0xFF00 | ptr8 as u16;
 
                         self.biu_suspend_fetch();
                         self.cycles(4);
@@ -1883,7 +1833,7 @@ impl Cpu {
                             self.biu_queue_flush();
 
                             self.cs = 0xFF00 | segment as u16;
-                            self.ip = 0xFF00 | offset as u16;
+                            self.pc = 0xFF00 | offset as u16;
                             jump = true;                     
                         }
                         else if let OperandType::Register8(reg) = self.i.operand1_type {
@@ -1896,8 +1846,8 @@ impl Cpu {
                             self.cycles(4);
                             self.biu_queue_flush();
                             
-                            // If this form uses a register operand, the full 16 bits are copied to IP.
-                            self.ip = self.get_register16(Cpu::reg8to16(reg));
+                            // If this form uses a register operand, the full 16 bits are copied to PC.
+                            self.pc = self.get_register16(Cpu::reg8to16(reg));
                         }
                     }
                     // Push Byte onto stack
@@ -1936,38 +1886,41 @@ impl Cpu {
                             self.biu_suspend_fetch();
                             self.cycles_i(4, &[0x074, 0x075, MC_CORR, 0x076]);
 
-                            let next_i = self.ip + (self.i.size as u16);
-
                             // Save next address if we step over this CALL.
-                            self.step_over_target = Some(CpuAddress::Segmented(self.cs, next_i));
+                            self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
 
+                            let return_ip = self.ip();
+                            
                             // Add to call stack
                             self.push_call_stack(
                                 CallStackEntry::Call {
                                     ret_cs: self.cs,
-                                    ret_ip: next_i,
+                                    ret_ip: return_ip,
                                     call_ip: ptr16
                                 },
                                 self.cs,
-                                next_i
+                                return_ip
                             );
 
-                            self.ip = ptr16;
+                            
+                            self.pc = ptr16;
                             self.biu_queue_flush();
                             self.cycles_i(3, &[0x077, 0x078, 0x079]);
 
                             // Push return address (next instruction offset) onto stack
-                            self.push_u16(next_i, ReadWriteFlag::RNI);
+                            self.push_u16(return_ip, ReadWriteFlag::RNI);
                             
                         }
                         else if let OperandType::Register16(reg) = self.i.operand1_type {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
                             // We model the odd behavior of this invalid form here.
                             self.biu_suspend_fetch();
-                            self.cycles_i(4, &[0x074, 0x075, MC_CORR, 0x076]);
-
-                            let next_i = self.ip + (self.i.size as u16);
-                            self.ip = self.get_register16(reg); // Value of IP becomes value of register operand
+                            self.cycles_i(2, &[0x074, 0x075]);
+                            self.corr();
+                            self.cycle_i(0x076);
+                            
+                            let next_i = self.pc; // PC already corrected above
+                            self.pc = self.get_register16(reg); // Value of IP becomes value of register operand
                             self.biu_queue_flush();
                             self.cycles_i(3, &[0x077, 0x078, 0x079]);
 
@@ -1980,26 +1933,11 @@ impl Cpu {
                     Mnemonic::CALLF => {
                         // CALL FAR r/mFarPtr
                         if let OperandType::AddressingMode(_mode) = self.i.operand1_type {
-
                             self.cycle_i(0x068);
                             let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override, ReadWriteFlag::Normal).unwrap();
-
-                            self.ip = self.ip.wrapping_add(self.i.size as u16);
-                            let next_i = self.ip;
+                            let next_i = self.ip();
             
                             self.farcall(segment, offset, true);
-
-                            /*
-                            //log::debug!("CALLF: jump to [{:04X}:{:04X}]", segment, offset);
-                            self.cycle_i(0x06a);
-
-                            // Fall through to FARCALL
-                            self.biu_suspend_fetch();
-                            self.cycles_i(3, &[0x06b, 0x06c, MC_NONE]);
-
-                            self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-                            let next_i = self.ip + (self.i.size as u16);
-                            */
 
                             // Save next address if we step over this CALL.
                             self.step_over_target = Some(CpuAddress::Segmented(self.cs, next_i));
@@ -2015,17 +1953,6 @@ impl Cpu {
                                 self.cs,
                                 next_i
                             );
-
-                            /*
-                            self.cs = segment;
-                            self.ip = offset;
-                            self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
-                            // NEARCALL
-                            self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
-                            // Push return IP of next instruction
-                            self.push_u16(next_i, ReadWriteFlag::RNI);
-                            */
                         }
                         else if let OperandType::Register16(_) = self.i.operand1_type {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
@@ -2044,14 +1971,13 @@ impl Cpu {
 
                             self.cycle_i(0x06a);
                             self.biu_suspend_fetch();
-                            self.cycles_i(3, &[0x06b, 0x06c, MC_CORR]);
+                            self.cycles_i(3, &[0x06b, 0x06c]);
+                            self.corr();
 
                             // Push CS
                             self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-                            let next_i = self.ip.wrapping_add(self.i.size as u16);
-
+                            let next_i = self.pc; // PC already corrected above
                             self.cs = segment;
-
                             //self.ip = self.last_ea; // I am not sure where IP gets its value.
 
                             self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]);
@@ -2069,7 +1995,7 @@ impl Cpu {
 
                         self.biu_suspend_fetch();
                         self.cycle_i(0x0d8);
-                        self.ip = ptr16;
+                        self.pc = ptr16;
                         self.biu_queue_flush();
                         jump = true;
                     }
@@ -2086,7 +2012,7 @@ impl Cpu {
                             let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override, ReadWriteFlag::Normal).unwrap();
 
                             self.cs = segment;
-                            self.ip = offset;
+                            self.pc = offset;
                             self.biu_queue_flush();                                
                         }
                         else {
@@ -2138,11 +2064,6 @@ impl Cpu {
         // run when executing the instruction.
         if !self.in_rep {
             self.rep_init = false;
-
-            // If we are not in a REP and didn't jump, update IP
-            if !jump {
-                self.ip = self.ip.wrapping_add(self.i.size as u16);
-            }
         }
 
         if unhandled {

@@ -43,7 +43,8 @@ impl ByteQueue for Cpu {
 
     fn tell(&self) -> usize {
         //log::trace!("pc: {:05X} qlen: {}", self.pc, self.queue.len());
-        self.pc as usize - (self.queue.len() + (self.queue.has_preload() as usize))
+        //self.pc as usize - (self.queue.len() + (self.queue.has_preload() as usize))
+        self.pc as usize - (self.queue.len_p())
     }
 
     fn wait(&mut self, cycles: u32) {
@@ -85,27 +86,27 @@ impl ByteQueue for Cpu {
     }
 
     fn q_peek_u8(&mut self) -> u8 {
-        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len(), 0).unwrap();
+        let (byte, _cost) = self.bus.read_u8(self.flat_ip() as usize, 0).unwrap();
         byte
     }
 
     fn q_peek_i8(&mut self) -> i8 {
-        let (byte, _cost) = self.bus.read_u8(self.pc as usize - self.queue.len(), 0).unwrap();
+        let (byte, _cost) = self.bus.read_u8(self.flat_ip() as usize, 0).unwrap();
         byte as i8
     }
 
     fn q_peek_u16(&mut self) -> u16 {
-        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len(), 0).unwrap();
+        let (word, _cost) = self.bus.read_u16(self.flat_ip() as usize, 0).unwrap();
         word
     }
 
     fn q_peek_i16(&mut self) -> i16 {
-        let (word, _cost) = self.bus.read_u16(self.pc as usize - self.queue.len(), 0).unwrap();
+        let (word, _cost) = self.bus.read_u16(self.flat_ip() as usize, 0).unwrap();
         word as i16
     }
 
     fn q_peek_farptr16(&mut self) -> (u16, u16) {
-        let read_offset = self.pc as usize - self.queue.len();
+        let read_offset = self.flat_ip() as usize;
 
         let (offset, _cost) = self.bus.read_u16(read_offset, 0).unwrap();
         let (segment, _cost) = self.bus.read_u16(read_offset + 2, 0).unwrap();
@@ -390,11 +391,11 @@ impl Cpu {
     */
 
     pub fn biu_queue_flush(&mut self) {
-        self.pc -= self.queue.len() as u32;
+        // We now explicitly correct PC with biu_corr(), so this is no longer needed.
+        //self.pc -= self.queue.len() as u32;
         self.queue.flush();
         self.queue_op = QueueOp::Flush;
         self.trace_comment("FLUSH");
-        self.biu_update_pc();
 
         //trace_print!("Fetch state to idle");
         self.fetch_state = FetchState::Idle;
@@ -404,20 +405,20 @@ impl Cpu {
         self.biu_change_state(BiuStateNew::Prefetch);
     }
 
-    pub fn biu_update_pc(&mut self) {
-        //log::debug!("Resetting PC to CS:IP: {:04X}:{:04X}", self.cs, self.ip);
-        self.pc = Cpu::calc_linear_address(self.cs, self.ip);
-    }
+    /*    pub fn biu_update_pc(&mut self) {
+            //log::debug!("Resetting PC to CS:IP: {:04X}:{:04X}", self.cs, self.ip);
+            self.pc = Cpu::calc_linear_address(self.cs, self.ip);
+        }
+    */
+    /*    /// Don't adjust the relative PC position, but update the pc for a new value of cs.
+        /// This is used to support worthless instructions like pop cs and mov cs, r/m16.
+        pub fn biu_update_cs(&mut self, new_cs: u16) {
+            let pc_offset = (self.pc.wrapping_sub((self.cs as u32) << 4)) as u16;
 
-    /// Don't adjust the relative PC position, but update the pc for a new value of cs.  
-    /// This is used to support worthless instructions like pop cs and mov cs, r/m16.
-    pub fn biu_update_cs(&mut self, new_cs: u16) {
-        let pc_offset = (self.pc.wrapping_sub((self.cs as u32) << 4)) as u16;
-
-        self.pc = Cpu::calc_linear_address(new_cs, pc_offset);
-        self.cs = new_cs;
-    }
-
+            self.pc = Cpu::calc_linear_address(new_cs, pc_offset);
+            self.cs = new_cs;
+        }
+    */
     pub fn biu_queue_has_room(&mut self) -> bool {
         match self.cpu_type {
             CpuType::Intel8088 => self.queue.len() < 4,

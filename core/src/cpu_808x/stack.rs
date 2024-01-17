@@ -70,7 +70,7 @@ impl Cpu {
             Register16::DS => self.ds,
             Register16::SS => self.ss,
             Register16::ES => self.es,
-            Register16::IP => self.ip,
+            Register16::PC => self.pc,
             _ => panic!("Invalid register"),
         };
 
@@ -93,9 +93,7 @@ impl Cpu {
             Register16::BP => self.bp = data,
             Register16::SI => self.si = data,
             Register16::DI => self.di = data,
-            Register16::CS => {
-                self.biu_update_cs(data);
-            }
+            Register16::CS => self.cs = data,
             Register16::DS => self.ds = data,
             Register16::SS => {
                 self.ss = data;
@@ -103,7 +101,7 @@ impl Cpu {
                 self.interrupt_inhibit = true
             }
             Register16::ES => self.es = data,
-            Register16::IP => self.ip = data,
+            Register16::PC => self.pc = data,
             _ => panic!("Invalid register"),
         };
         // Stack pointer grows downwards

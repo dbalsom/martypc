@@ -264,8 +264,7 @@ fn process_tests(
         }
 
         // Decode this instruction
-        let instruction_address =
-            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
+        let instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
 
         cpu.bus_mut().seek(instruction_address as usize);
 
