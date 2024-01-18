@@ -26,7 +26,7 @@
 
     devices::hdc.rs
 
-    Implements the IBM/Xebec 20Mbit Fixed Disk Adapter
+    Implements the IBM/Xebec 20MB Fixed Disk Adapter
 
 */
 
@@ -79,6 +79,8 @@ const ERR_SECTOR_NOT_FOUND: u8 = 0b01_0100;
 const ERR_SEEK_ERROR: u8 = 0b01_0101;
 const ERR_INVALID_COMMAND: u8 = 0b10_0000;
 const ERR_ILLEGAL_ACCESS: u8 = 0b10_0001;
+
+const RESET_DELAY_US: f64 = 200_000.0; // 200ms
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
@@ -306,13 +308,15 @@ pub struct HardDiskController {
     send_dreq: bool,
     clear_dreq: bool,
     dreq_active: bool,
+
+    state_accumulator: f64,
 }
 
-impl HardDiskController {
-    pub fn new(drive_ct: usize, drive_type_dip: u8) -> Self {
+impl Default for HardDiskController {
+    fn default() -> Self {
         Self {
             drives: [HardDisk::new(), HardDisk::new()],
-            drive_ct,
+            drive_ct: 1,
             drive_select: 0,
             supported_formats: vec![HardDiskFormat {
                 max_cylinders: 615,
@@ -321,7 +325,7 @@ impl HardDiskController {
                 wpc: Some(300),
                 desc: "20MB, Type 2".to_string(),
             }],
-            drive_type_dip,
+            drive_type_dip: 0,
             state: State::Reset,
             last_error: OperationError::NoError,
             last_error_drive: 0,
@@ -343,6 +347,18 @@ impl HardDiskController {
             send_dreq: false,
             clear_dreq: false,
             dreq_active: false,
+
+            state_accumulator: 0.0,
+        }
+    }
+}
+
+impl HardDiskController {
+    pub fn new(drive_ct: usize, drive_type_dip: u8) -> Self {
+        Self {
+            drive_ct,
+            drive_type_dip,
+            ..Default::default()
         }
     }
 
@@ -358,6 +374,7 @@ impl HardDiskController {
         self.send_interrupt = false;
         self.send_dreq = false;
         self.state = State::Reset;
+        self.state_accumulator = 0.0;
 
         self.receiving_dcb = false;
         self.command = Command::None;
@@ -719,7 +736,10 @@ impl HardDiskController {
         let mut out_byte;
 
         out_byte = match self.state {
-            State::Reset => 0,
+            State::Reset => {
+                //log::trace!("Status read after reset: Returning 0");
+                0
+            }
             State::HaveCommandStatus => {
                 // Present mask 0b0000_1111
                 R1_STATUS_REQ | R1_STATUS_IOMODE | R1_STATUS_BUS | R1_STATUS_BUSY
@@ -758,7 +778,7 @@ impl HardDiskController {
             out_byte |= R1_STATUS_INT;
         }
 
-        //log::trace!("Read status register: {:02}", out_byte);
+        log::trace!("Read status register: {:02X}", out_byte);
         out_byte
     }
 
@@ -771,7 +791,7 @@ impl HardDiskController {
         self.drives[drive_n].vhd.is_some()
     }
 
-    /// Perform the Sensee Status command
+    /// Perform the Sense Status command
     fn command_sense_status(&mut self, _bus: &mut BusInterface) -> Continuation {
         let dcb = self.read_dcb();
         self.data_register_in.clear();
@@ -1125,7 +1145,7 @@ impl HardDiskController {
         Continuation::CommandComplete
     }
 
-    /// Perform the Controller RAM Diagonstic Command.
+    /// Perform the Controller RAM Diagnostic Command.
     /// This command will never produce an error code.
     fn command_ram_diagnostic(&mut self, _bus: &mut BusInterface) -> Continuation {
         self.last_error = OperationError::NoError;
@@ -1134,7 +1154,7 @@ impl HardDiskController {
         Continuation::CommandComplete
     }
 
-    /// Perform the Drive Diagonstic Command.
+    /// Perform the Drive Diagnostic Command.
     /// Should this fail when a VHD is not attached?
     fn command_drive_diagnostic(&mut self, _bus: &mut BusInterface) -> Continuation {
         self.last_error = OperationError::NoError;
@@ -1143,7 +1163,7 @@ impl HardDiskController {
         Continuation::CommandComplete
     }
 
-    /// Perform the Controller Diagonstic Command.
+    /// Perform the Controller Diagnostic Command.
     /// This command will never produce an error code.
     fn command_controller_diagnostic(&mut self, _bus: &mut BusInterface) -> Continuation {
         self.last_error = OperationError::NoError;
@@ -1417,7 +1437,7 @@ impl HardDiskController {
     }
 
     /// Run the HDC device.
-    pub fn run(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface, _us: f64) {
+    pub fn run(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface, us: f64) {
         // Handle interrupts
         if self.send_interrupt {
             if self.irq_enabled {
@@ -1451,8 +1471,21 @@ impl HardDiskController {
             self.dreq_active = false;
         }
 
+        self.state_accumulator += us;
+
         // Process any running Operations
         match self.state {
+            State::Reset => {
+                // We need to remain in the reset state for a minimum amount of time before moving to to
+                // WaitingForCommand state. IBM BIOS/DOS does not check for this, but Minix does.
+                if self.state_accumulator >= RESET_DELAY_US {
+                    // TODO: We will still move into other states if a command is received. Should we refuse commands
+                    //       until reset completes?
+                    log::debug!("HDC Reset Complete, moving to WaitingForCommand");
+                    self.state = State::WaitingForCommand;
+                    self.state_accumulator = 0.0;
+                }
+            }
             State::ExecutingCommand => match self.command {
                 Command::ReadSectorBuffer => {
                     self.opearation_read_sector_buffer(dma, bus);
