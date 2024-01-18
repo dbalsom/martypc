@@ -40,11 +40,41 @@ use crate::{
         QueueOp,
         Segment,
         TCycle,
+        CPU_FLAG_AUX_CARRY,
+        CPU_FLAG_CARRY,
+        CPU_FLAG_DIRECTION,
+        CPU_FLAG_INT_ENABLE,
+        CPU_FLAG_OVERFLOW,
+        CPU_FLAG_PARITY,
+        CPU_FLAG_SIGN,
+        CPU_FLAG_TRAP,
+        CPU_FLAG_ZERO,
     },
     syntax_token::SyntaxToken,
 };
 
 impl Cpu {
+    pub fn instruction_state_string(&self, last_cs: u16, last_ip: u16) -> String {
+        let mut instr_str = String::new();
+
+        instr_str.push_str(&format!("{:04x}:{:04x} {}\n", last_cs, last_ip, self.i));
+        instr_str.push_str(&format!(
+            "AX: {:04x} BX: {:04x} CX: {:04x} DX: {:04x}\n",
+            self.ax, self.bx, self.cx, self.dx
+        ));
+        instr_str.push_str(&format!(
+            "SP: {:04x} BP: {:04x} SI: {:04x} DI: {:04x}\n",
+            self.sp, self.bp, self.si, self.di
+        ));
+        instr_str.push_str(&format!(
+            "CS: {:04x} DS: {:04x} ES: {:04x} SS: {:04x}\n",
+            self.cs, self.ds, self.es, self.ss
+        ));
+        instr_str.push_str(&format!("IP: {:04x} FLAGS: {:04x}", self.ip(), self.flags));
+
+        instr_str
+    }
+
     pub fn trace_csv_line(&mut self) {
         let q = self.last_queue_op as u8;
         let s = self.bus_status as u8;
@@ -231,7 +261,10 @@ impl Cpu {
 
         if self.last_queue_op == QueueOp::First {
             // First byte of opcode read from queue. Decode the full instruction
-            instr_str = format!("[{:04X}:{:04X}] {} ({}) ", self.cs, self.ip, self.i, self.i.size);
+            instr_str = format!(
+                "[{:04X}:{:04X}] {} ({}) ",
+                self.cs, self.instruction_ip, self.i, self.i.size
+            );
         }
 
         //let mut microcode_str = "   ".to_string();
@@ -286,7 +319,7 @@ impl Cpu {
                 "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
-                self.address_bus,
+                self.address_latch,
                 seg_str,
                 ready_chr,
                 self.wait_states,
@@ -312,7 +345,7 @@ impl Cpu {
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
-                self.address_bus,
+                self.address_latch,
                 seg_str,
                 ready_chr,
                 self.wait_states,
@@ -473,7 +506,10 @@ impl Cpu {
 
         if self.last_queue_op == QueueOp::First {
             // First byte of opcode read from queue. Decode the full instruction
-            instr_str = format!("[{:04X}:{:04X}] {} ({}) ", self.cs, self.ip, self.i, self.i.size);
+            instr_str = format!(
+                "[{:04X}:{:04X}] {} ({}) ",
+                self.cs, self.instruction_ip, self.i, self.i.size
+            );
         }
         let instr_str_token = SyntaxToken::Text(instr_str.to_string());
 
@@ -590,5 +626,22 @@ impl Cpu {
             "Instr                   ".to_string(),
             "Comments".to_string(),
         ]
+    }
+
+    pub fn flags_string(f: u16) -> String {
+        let c_chr = if CPU_FLAG_CARRY & f != 0 { 'C' } else { 'c' };
+        let p_chr = if CPU_FLAG_PARITY & f != 0 { 'P' } else { 'p' };
+        let a_chr = if CPU_FLAG_AUX_CARRY & f != 0 { 'A' } else { 'a' };
+        let z_chr = if CPU_FLAG_ZERO & f != 0 { 'Z' } else { 'z' };
+        let s_chr = if CPU_FLAG_SIGN & f != 0 { 'S' } else { 's' };
+        let t_chr = if CPU_FLAG_TRAP & f != 0 { 'T' } else { 't' };
+        let i_chr = if CPU_FLAG_INT_ENABLE & f != 0 { 'I' } else { 'i' };
+        let d_chr = if CPU_FLAG_DIRECTION & f != 0 { 'D' } else { 'd' };
+        let o_chr = if CPU_FLAG_OVERFLOW & f != 0 { 'O' } else { 'o' };
+
+        format!(
+            "1111{}{}{}{}{}{}0{}0{}1{}",
+            o_chr, d_chr, i_chr, t_chr, s_chr, z_chr, a_chr, p_chr, c_chr
+        )
     }
 }

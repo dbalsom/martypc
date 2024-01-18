@@ -338,6 +338,16 @@ pub fn validate_registers(
     if test_regs.di != cpu_regs.di {
         regs_validate = false;
     }
+    if test_regs.ip != cpu_regs.ip {
+        log::warn!(
+            "IP mismatch: {:04X}[{}] vs {:04X}[{}]",
+            test_regs.ip,
+            test_regs.ip,
+            cpu_regs.ip,
+            cpu_regs.ip
+        );
+        regs_validate = false;
+    }
 
     let opcode_key = format!("{:02X}", opcode);
 
@@ -456,7 +466,7 @@ pub fn validate_memory(
     let mut ignore_next_ops = 0;
 
     // Calculate stack address for flags
-    let flat_stack_addr = cpu.get_linear_sp();
+    let flat_stack_addr = cpu.flat_sp();
     // Flags should be 6 bytes behind the top of the stack
     let flags_addr = flat_stack_addr.wrapping_add(4);
 

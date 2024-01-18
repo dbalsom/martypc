@@ -198,9 +198,7 @@ impl Cpu {
                         // If we just completed a code fetch, make the byte available in the queue.
                         if let BusStatus::CodeFetch = self.bus_status_latch {
                             self.queue.push8(self.data_bus as u8);
-
-                            //self.pc = (self.pc + 1) & 0xFFFFFu32;
-                            self.inc_pc();
+                            self.pc = self.pc.wrapping_add(1);
                         }
                     }
                 }
@@ -476,7 +474,7 @@ impl Cpu {
         self.last_queue_len = self.queue.len();
     }
 
-    /// Temporary function to increment pc. Needed to handle wraparound
+    /*    /// Temporary function to increment pc. Needed to handle wraparound
     /// of code segment.  This should be unnecessary once pc is converted to u16.
     pub fn inc_pc(&mut self) {
         // pc shouldn't be less than cs:00
@@ -496,7 +494,7 @@ impl Cpu {
 
         // Calculate new 'linear' pc
         self.pc = Cpu::calc_linear_address(self.cs, real_pc);
-    }
+    }*/
 
     pub fn do_bus_transfer(&mut self) {
         let byte;
@@ -622,6 +620,7 @@ impl Cpu {
         if let BiuStateNew::Prefetch | BiuStateNew::ToPrefetch(_) = self.biu_state_new {
             //trace_print!(self, "scheduling fetch: {}", self.queue.len());
 
+            let addr = Cpu::calc_linear_address(self.cs, self.pc);
             if self.biu_queue_has_room() {
                 //trace_print!(self, "Setting address bus to PC: {:05X}", self.pc);
                 self.fetch_state = FetchState::InProgress;
@@ -629,8 +628,8 @@ impl Cpu {
                 self.bus_status_latch = BusStatus::CodeFetch;
                 self.bus_segment = Segment::CS;
                 self.t_cycle = TCycle::T1;
-                self.address_bus = self.pc;
-                self.address_latch = self.pc;
+                self.address_bus = addr;
+                self.address_latch = addr;
                 self.i8288.ale = true;
                 self.data_bus = 0;
                 self.transfer_size = self.fetch_size;

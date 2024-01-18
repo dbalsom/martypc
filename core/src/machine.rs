@@ -309,7 +309,6 @@ impl<'a> MachineBuilder<'a> {
     }
 
     pub fn with_trace_log(mut self, trace_filename: Option<PathBuf>) -> Self {
-
         match trace_filename {
             Some(filename) => {
                 log::debug!("Creating CPU trace log file: {:?}", filename);
@@ -389,7 +388,6 @@ impl Machine {
         rom_manifest: MachineRomManifest,
         //rom_manager: RomManager,
     ) -> Machine {
-
         // Create PIT output log file if specified
         let pit_output_file_option = None;
         /*
@@ -1080,7 +1078,7 @@ impl Machine {
                 break;
             }
 
-            let flat_address = self.cpu.get_linear_ip();
+            let flat_address = self.cpu.flat_ip();
 
             // Match checkpoints
             if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {

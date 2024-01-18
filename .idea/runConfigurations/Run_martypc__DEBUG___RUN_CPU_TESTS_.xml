@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run martypc [DEBUG] [RUN CPU TESTS]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="DEV [DEBUG]">
-    <option name="command" value="run --features devtools,ega,cpu_validator,arduino_validator -- --configfile martypc-dev.toml" />
+    <option name="command" value="run --features devtools,ega,cpu_validator,arduino_validator -- --configfile martypc-tests.toml" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
     <envs>
       <env name="RUST_LOG" value="warn,naga=error,wgpu_core=error,marty_core=warn" />

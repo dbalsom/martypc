@@ -61,9 +61,9 @@ impl Cpu {
     #[allow(dead_code)]
     pub fn randomize_regs(&mut self) {
         self.cs = get_rand!(self);
-        self.ip = get_rand!(self);
+        self.pc = get_rand!(self);
 
-        self.set_reset_vector(CpuAddress::Segmented(self.cs, self.ip));
+        self.set_reset_vector(CpuAddress::Segmented(self.cs, self.pc));
         self.reset();
 
         for i in 0..REGISTER16_LUT.len() {
@@ -71,8 +71,6 @@ impl Cpu {
             self.set_register16(REGISTER16_LUT[i], n);
         }
 
-        // Adjust pc
-        self.pc = Cpu::calc_linear_address(self.cs, self.ip);
         // Flush queue
         self.queue.flush();
 
@@ -256,7 +254,7 @@ impl Cpu {
         }
 
         // Copy instruction to memory at CS:IP
-        let addr = Cpu::calc_linear_address(self.cs, self.ip);
+        let addr = Cpu::calc_linear_address(self.cs, self.pc);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false)
@@ -361,7 +359,7 @@ impl Cpu {
         }
 
         // Copy instruction to memory at CS:IP
-        let addr = Cpu::calc_linear_address(self.cs, self.ip);
+        let addr = Cpu::calc_linear_address(self.cs, self.pc);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), addr as usize, 0, false)

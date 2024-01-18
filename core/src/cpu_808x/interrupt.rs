@@ -60,7 +60,7 @@ impl Cpu {
                     self.cycles(4);
 
                     self.cs = self.bx;
-                    self.ip = self.cx;
+                    self.pc = self.cx;
 
                     // Set execution segments
                     self.ds = self.cs;
@@ -91,7 +91,7 @@ impl Cpu {
         self.push_call_stack(
             CallStackEntry::Interrupt {
                 ret_cs: self.cs,
-                ret_ip: self.ip,
+                ret_ip: self.ip(),
                 call_cs: new_cs,
                 call_ip: new_ip,
                 itype: InterruptType::Software,
@@ -99,7 +99,7 @@ impl Cpu {
                 ah: self.ah,
             },
             self.cs,
-            self.ip,
+            self.ip(),
         );
 
         self.biu_suspend_fetch(); // 1a3 SUSP
@@ -107,72 +107,58 @@ impl Cpu {
         self.push_flags(ReadWriteFlag::Normal);
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
-
-        // TODO: Call these functions instead of reimplementing
-        // FARCALL2
-        self.cycles_i(4, &[0x1a6, MC_JUMP, 0x06c, MC_CORR]);
-        // Push return segment
-        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
-        self.cs = new_cs;
-        self.cycle_i(0x06e);
-
-        // NEARCALL
-        let old_ip = self.ip;
-        self.cycles_i(2, &[0x06f, MC_JUMP]);
-        self.ip = new_ip;
-        self.biu_queue_flush();
-        self.cycles_i(3, &[0x077, 0x078, 0x079]);
-        // Finally, push return address
-        self.push_u16(old_ip, ReadWriteFlag::RNI);
+        self.cycle_i(0x1a6);
+        self.farcall2(new_cs, new_ip);
         self.int_count += 1;
     }
 
-    /// Handle a CPU exception
-    pub fn handle_exception(&mut self, exception: u8) {
-        self.push_flags(ReadWriteFlag::Normal);
+    /*
+        /// Handle a CPU exception
+        pub fn handle_exception(&mut self, exception: u8) {
+            self.push_flags(ReadWriteFlag::Normal);
 
-        // Push return address of next instruction onto stack
-        self.push_register16(Register16::CS, ReadWriteFlag::Normal);
+            // Push return address of next instruction onto stack
+            self.push_register16(Register16::CS, ReadWriteFlag::Normal);
 
-        // Don't push address of next instruction
-        self.push_u16(self.ip, ReadWriteFlag::Normal);
+            // Don't push address of next instruction
+            self.push_u16(self.ip, ReadWriteFlag::Normal);
 
-        if exception == 0x0 {
-            log::trace!(
-                "CPU Exception: {:02X} Saving return: {:04X}:{:04X}",
-                exception,
+            if exception == 0x0 {
+                log::trace!(
+                    "CPU Exception: {:02X} Saving return: {:04X}:{:04X}",
+                    exception,
+                    self.cs,
+                    self.ip
+                );
+            }
+            // Read the IVT
+            let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
+            let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize, 0).unwrap();
+            let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize, 0).unwrap();
+
+            // Add interrupt to call stack
+            self.push_call_stack(
+                CallStackEntry::Interrupt {
+                    ret_cs: self.cs,
+                    ret_ip: self.ip,
+                    call_cs: new_cs,
+                    call_ip: new_ip,
+                    itype: InterruptType::Exception,
+                    number: exception,
+                    ah: self.ah,
+                },
                 self.cs,
-                self.ip
+                self.ip,
             );
+
+            self.ip = new_ip;
+            self.cs = new_cs;
+
+            // Flush queue
+            self.biu_queue_flush();
+            self.biu_update_pc();
         }
-        // Read the IVT
-        let ivt_addr = Cpu::calc_linear_address(0x0000, (exception as usize * INTERRUPT_VEC_LEN) as u16);
-        let (new_ip, _cost) = self.bus.read_u16(ivt_addr as usize, 0).unwrap();
-        let (new_cs, _cost) = self.bus.read_u16((ivt_addr + 2) as usize, 0).unwrap();
-
-        // Add interrupt to call stack
-        self.push_call_stack(
-            CallStackEntry::Interrupt {
-                ret_cs: self.cs,
-                ret_ip: self.ip,
-                call_cs: new_cs,
-                call_ip: new_ip,
-                itype: InterruptType::Exception,
-                number: exception,
-                ah: self.ah,
-            },
-            self.cs,
-            self.ip,
-        );
-
-        self.ip = new_ip;
-        self.cs = new_cs;
-
-        // Flush queue
-        self.biu_queue_flush();
-        self.biu_update_pc();
-    }
-
+    */
     #[allow(dead_code)]
     pub fn log_interrupt(&self, interrupt: u8) {
         match interrupt {
@@ -246,7 +232,7 @@ impl Cpu {
         self.push_call_stack(
             CallStackEntry::Interrupt {
                 ret_cs: self.cs,
-                ret_ip: self.ip,
+                ret_ip: self.ip(),
                 call_cs: new_cs,
                 call_ip: new_ip,
                 itype,
@@ -254,7 +240,7 @@ impl Cpu {
                 ah: self.ah,
             },
             self.cs,
-            self.ip,
+            self.ip(),
         );
 
         self.biu_suspend_fetch(); // 1a3 SUSP

@@ -109,12 +109,12 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         test_num += 1;
         cpu.randomize_regs();
 
-        if cpu.get_register16(Register16::IP) > 0xFFF0 {
+        if cpu.ip() > 0xFFF0 {
             // Avoid IP wrapping issues for now
             continue;
         }
 
-        if Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP)) > 0xFFFF0 {
+        if Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip()) > 0xFFFF0 {
             // Avoid address space wrapping
             continue;
         }
@@ -259,8 +259,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
-        let instruction_address =
-            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
+        let instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
 
         cpu.bus_mut().seek(instruction_address as usize);
         let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
@@ -363,11 +362,8 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         );
 
         // Set terminating address for CPU validator.
-
-        let end_address = Cpu::calc_linear_address(
-            cpu.get_register16(Register16::CS),
-            cpu.get_register16(Register16::IP).wrapping_add(i.size as u16),
-        );
+        let end_address =
+            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip().wrapping_add(i.size as u16));
 
         cpu.set_end_address(end_address as usize);
         log::trace!("Setting end address: {:05X}", end_address);

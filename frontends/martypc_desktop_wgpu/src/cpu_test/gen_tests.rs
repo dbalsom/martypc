@@ -263,16 +263,12 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 cpu.randomize_mem();
                 cpu.randomize_regs();
 
-                let mut instruction_address =
-                    Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
+                let mut instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
 
-                while (cpu.get_register16(Register16::IP) > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
+                while (cpu.ip() > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
                     // Avoid IP wrapping issues for now
                     cpu.randomize_regs();
-                    instruction_address = Cpu::calc_linear_address(
-                        cpu.get_register16(Register16::CS),
-                        cpu.get_register16(Register16::IP),
-                    );
+                    instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
                 }
 
                 test_num += 1;
@@ -286,8 +282,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 }
 
                 // Decode this instruction
-                instruction_address =
-                    Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_register16(Register16::IP));
+                instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
 
                 cpu.bus_mut().seek(instruction_address as usize);
                 let opcode = cpu.bus().peek_u8(instruction_address as usize).expect("mem err");
@@ -319,11 +314,8 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 );
 
                 // Set terminating address for CPU validator.
-
-                let end_address = Cpu::calc_linear_address(
-                    cpu.get_register16(Register16::CS),
-                    cpu.get_register16(Register16::IP).wrapping_add(i.size as u16),
-                );
+                let end_address =
+                    Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip().wrapping_add(i.size as u16));
 
                 cpu.set_end_address(end_address as usize);
                 log::trace!("Setting end address: {:05X}", end_address);
