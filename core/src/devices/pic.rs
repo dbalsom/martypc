@@ -42,7 +42,7 @@ pub const PIC_COMMAND_PORT: u16 = 0x20;
 pub const PIC_DATA_PORT: u16 = 0x21;
 
 const ICW1_ICW4_NEEDED: u8 = 0b0000_0001; // Bit set if a 4th control world is required (not supported)
-const ICW1_SINGLE_MODE: u8 = 0b0000_0010; // Bit is set if PIC is operating in signle mode (only supported configuration)
+const ICW1_SINGLE_MODE: u8 = 0b0000_0010; // Bit is set if PIC is operating in single mode (only supported configuration)
 const ICW1_ADI: u8 = 0b0000_0100; // Bit is set if PIC is using a call address interval of 4, otherwise 8
 const ICW1_LTIM: u8 = 0b0000_1000; // Bit is set if PIC is in Level Triggered Mode
 const ICW1_IS_ICW1: u8 = 0b0001_0000; // Bit determines if input is ICW1
@@ -60,6 +60,8 @@ const OCW2_NONSPECIFIC_EOI: u8 = 0b0010_0000;
 const OCW2_SPECIFIC_EOI: u8 = 0b0110_0000;
 const OCW3_POLL_COMMAND: u8 = 0b0000_0100;
 const OCW3_RR_COMMAND: u8 = 0b0000_0011;
+
+const SPURIOUS_INTERRUPT: u8 = 7;
 
 pub enum InitializationState {
     Normal,        // Normal operation, can receive an ICW1 at any point
@@ -217,7 +219,7 @@ impl Pic {
     }
 
     pub fn handle_command_register_write(&mut self, byte: u8) {
-        // Specific bit set inidicates an Initialization Command Word 1 (ICW1) (actually a byte)
+        // Specific bit set indicates an Initialization Command Word 1 (ICW1) (actually a byte)
         if byte & ICW1_IS_ICW1 != 0 {
             // Parse Initialization Command Word
             if let InitializationState::Normal = self.init_state {
@@ -482,8 +484,7 @@ impl Pic {
             self.interrupt_stats[interrupt as usize].isr_masked_count += 1;
         }
         else {
-            // Interrupt is not masked or already in service, process it...
-            // (Set INT request line high)
+            // Interrupt is not masked or already in service, elevate it...
             self.intr = true;
             self.interrupt_stats[interrupt as usize].serviced_count += 1;
         }
@@ -505,32 +506,39 @@ impl Pic {
         self.intr
     }
 
-    /// Represents the PIC's response to the 2nd INTA 'pulse'. The PIC will put the
-    /// highest-priority interrupt vector onto the bus.
+    /// Represents the PIC's response to the 2nd INTA pulse. The PIC will put the
+    /// highest-priority interrupt vector onto the bus. If there is no pending IRR
+    /// bit set, it will return the spurious interrupt #7.
     pub fn get_interrupt_vector(&mut self) -> Option<u8> {
         //log::trace!("Getting interrupt vector, auto-eoi: {:?}.", self.auto_eoi);
+        if !self.intr {
+            log::warn!("get_interrupt_vector() called when INTR is not asserted");
+            return None;
+        }
 
-        // Return the highest priority vector not currently masked from the IRR
+        // Return the highest priority vector. The mask register does not affect this,
+        // as the IMR can be set after INTR asserts.
         let mut ir_bit: u8 = 0x01;
         for irq in 0..8 {
             let have_request = self.irr & ir_bit != 0;
-            let is_masked = self.imr & ir_bit != 0;
-            let _is_in_service = self.isr & ir_bit != 0;
+            let in_service = self.isr & ir_bit != 0;
 
-            if have_request && !is_masked {
-                // found highest priority IRR not masked
+            // TODO: Can an interrupt vector be delivered while in service? We assume not for now.
+            if have_request && !in_service {
+                // Found highest priority IRR not in service
 
                 // Clear its bit in the IR...
                 self.irr &= !ir_bit;
-                // ...and set it in ISR being serviced
+                // ...and set it in ISR being serviced. This technically occurs during the first INTA pulse.
                 self.isr |= ir_bit;
-                // ...unless Auto-EOI is on
+                // If Auto-EOI is enabled, the ISR bit is cleared during the second INTA pulse.
                 if self.auto_eoi {
                     //log::trace!("Executing Auto-EOI");
                     self.isr &= !ir_bit;
                 }
                 self.irq = irq;
-                // INT line low
+
+                // Finally, set INTR line low
                 self.intr = false;
 
                 return Some(irq | self.int_offset);
@@ -538,7 +546,10 @@ impl Pic {
             ir_bit <<= 1;
         }
 
-        None
+        // If no bit in the IRR was found to be set, then a spurious interrupt occurs.
+        // Note that in the event of a spurious interrupt, no bit in the ISR is set to indicate an interrupt is being
+        // serviced. This provides a method of determining whether an IR7 is spurious or real.
+        Some(SPURIOUS_INTERRUPT)
     }
 
     pub fn get_string_state(&self) -> PicStringState {
@@ -588,7 +599,7 @@ impl Pic {
                 let is_not_in_service = self.isr & ir_bit == 0;
 
                 if have_request && is_not_masked && is_not_in_service {
-                    self.schedule_intr(1);
+                    self.schedule_intr(100);
                     break;
                 }
 
