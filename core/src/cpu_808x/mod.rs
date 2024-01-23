@@ -2104,7 +2104,7 @@ impl Cpu {
     }
 
     pub fn dump_cs(&self, path: &Path) {
-        let mut filename = path.to_path_buf();
+        let filename = path.to_path_buf();
 
         let len = 0x10000;
         let address = (self.cs as usize) << 4;

@@ -34,7 +34,7 @@ use crate::{
     cpu_808x::{biu::*, *},
     util,
 };
-use std::arch::x86_64::_mm256_i64gather_pd;
+
 
 /*
 macro_rules! read_operand {

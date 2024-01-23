@@ -375,7 +375,7 @@ impl Cpu {
         cycle_str
     }
 
-    pub fn cycle_state_tokens(&self, dma_count: u16, short: bool) -> Vec<SyntaxToken> {
+    pub fn cycle_state_tokens(&self, dma_count: u16, _short: bool) -> Vec<SyntaxToken> {
         let ale_str = match self.i8288.ale {
             true => "A",
             false => " ",
@@ -404,7 +404,7 @@ impl Cpu {
         };
         let q_op_token = SyntaxToken::Text(q_op_chr.to_string());
 
-        let q_preload_char = match self.queue.has_preload() {
+        let _q_preload_char = match self.queue.has_preload() {
             true => '*',
             false => ' ',
         };
@@ -559,7 +559,7 @@ impl Cpu {
                 _ => "S?",
             }, //DmaState::DmaWait(..) => "DMAW"
         };
-        let dma_str_token = SyntaxToken::Text(dma_str.to_string());
+        let _dma_str_token = SyntaxToken::Text(dma_str.to_string());
 
         let mut comment_str = String::new();
         for c in &self.trace_comment {
@@ -571,7 +571,7 @@ impl Cpu {
             rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr
         ));
 
-        let mut token_vec = vec![
+        let token_vec = vec![
             SyntaxToken::Text(format!("{:04}", self.cycle_num)),
             SyntaxToken::Text(format!("{:04}", self.instr_cycle)),
             ale_token,

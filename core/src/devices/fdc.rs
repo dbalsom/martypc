@@ -30,11 +30,10 @@
 */
 
 #![allow(dead_code)]
-use lazy_static::lazy_static;
+
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{VecDeque},
     default::Default,
-    fmt::Display,
 };
 
 use crate::{

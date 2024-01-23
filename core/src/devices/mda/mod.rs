@@ -351,7 +351,7 @@ use crate::devices::{
     mc6845::{Crtc6845, CrtcStatus, HBlankCallback},
     mda::io::LPT_DEFAULT_IO_BASE,
 };
-pub(crate) use trace_regs;
+
 
 #[bitfield]
 #[derive(Copy, Clone)]

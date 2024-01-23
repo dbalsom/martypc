@@ -36,7 +36,7 @@
 
 #![allow(dead_code)]
 use anyhow::Error;
-use lazy_static::lazy_static;
+
 use std::{
     collections::{HashMap, VecDeque},
     fmt,
@@ -1316,7 +1316,7 @@ impl BusInterface {
     }
 
     pub fn dump_mem(&self, path: &Path) {
-        let mut filename = path.to_path_buf();
+        let filename = path.to_path_buf();
 
         let len = 0x100000;
         let address = 0;

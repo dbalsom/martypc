@@ -29,7 +29,7 @@
     Defines the CHS type to be used by FDC and HDC implementations
 */
 
-use serde_derive::Deserialize;
+
 use std::fmt::Display;
 
 #[derive(Copy, Clone, Debug)]
@@ -137,7 +137,7 @@ impl DiskChs {
     }
 
     pub fn seek_forward(&mut self, sectors: u32, geom: &DiskChs) -> &mut Self {
-        for i in 0..sectors {
+        for _i in 0..sectors {
             *self = self.get_next_sector(geom);
         }
         self
