@@ -2133,7 +2133,7 @@ impl Cpu {
                 self.instruction_history_on = state;
             }
             CpuOption::SimulateDramRefresh(state, cycle_target, cycles) => {
-                log::debug!(
+                log::trace!(
                     "Setting SimulateDramRefresh to: {:?} ({},{})",
                     state,
                     cycle_target,

@@ -1756,7 +1756,7 @@ impl BusInterface {
         let (pit_dirty, pit_counting, pit_ticked) = pit.is_dirty(1);
 
         if pit_dirty {
-            log::debug!("Pit is dirty! counting: {} ticked: {}", pit_counting, pit_ticked);
+            log::trace!("Pit is dirty! counting: {} ticked: {}", pit_counting, pit_ticked);
         }
 
         if pit_counting && pit_dirty {
@@ -1769,7 +1769,7 @@ impl BusInterface {
             // this represents two CPU cycles, so we need to adjust the scheduler by that much.
             let dma_add_ticks = pit.get_timer_accum();
 
-            log::debug!(
+            log::trace!(
                 "pit dirty and counting! count register: {} counting element: {} ",
                 dma_count_register,
                 dma_counting_element
@@ -1778,7 +1778,7 @@ impl BusInterface {
             if dma_counting_element <= dma_count_register {
                 // DRAM refresh DMA counter has changed. If the counting element is in range,
                 // update the CPU's DRAM refresh simulation.
-                log::debug!(
+                log::trace!(
                     "DRAM refresh DMA counter updated: {}, {}, +{}",
                     dma_count_register,
                     dma_counting_element,
