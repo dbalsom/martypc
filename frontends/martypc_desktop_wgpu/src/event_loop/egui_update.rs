@@ -72,19 +72,6 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
     let dti = emu.dm.get_display_info(&emu.machine);
     emu.gui.update_display_info(dti);
 
-    // TODO: Building these trees is expensive. We should only do it when the
-    //       resource manager has changed.
-
-    // Update Floppy Disk Image tree
-    if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
-        emu.gui.set_floppy_tree(floppy_tree);
-    }
-
-    // Update VHD Image tree
-    if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
-        emu.gui.set_hdd_tree(hdd_tree);
-    }
-
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
         if let Some(hdc) = emu.machine.hdc() {

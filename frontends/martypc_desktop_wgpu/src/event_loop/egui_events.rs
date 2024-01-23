@@ -212,7 +212,15 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
             if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning hdd directory: {}", e);
-            };
+            }
+            // Update Floppy Disk Image tree
+            if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
+                emu.gui.set_floppy_tree(floppy_tree);
+            }
+            // Update VHD Image tree
+            if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
+                emu.gui.set_hdd_tree(hdd_tree);
+            }
         }
         GuiEvent::LoadFloppy(drive_select, item_idx) => {
             log::debug!("Load floppy image: {:?} into drive: {}", item_idx, drive_select);
