@@ -41,6 +41,7 @@ use frontend_common::{
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     rom_manager::RomManager,
+    timestep_manager::PerfSnapshot,
     vhd_manager::VhdManager,
 };
 use marty_core::{
@@ -74,12 +75,10 @@ pub struct Emulator {
     pub kb_data: KeyboardData,
     pub stat_counter: Counter,
     pub gui: GuiState,
-    //context: &'a mut GuiRenderContext,
     pub floppy_manager: FloppyManager,
     pub vhd_manager: VhdManager,
-    pub hdd_path: PathBuf,
-    //pub floppy_path: PathBuf,
     pub flags: EmuFlags,
+    pub perf: PerfSnapshot,
 }
 
 impl Emulator {
@@ -117,7 +116,7 @@ impl Emulator {
             self.config.machine.cpu.service_interrupt.unwrap_or(false),
         ));
 
-        // TODO: Reenable these
+        // TODO: Re-enable these
         //gui.set_option(GuiBoolean::EnableSnow, config.machine.cga_snow.unwrap_or(false));
         //machine.set_video_option(VideoOption::EnableSnow(config.machine.cga_snow.unwrap_or(false)));
         //gui.set_option(GuiBoolean::CorrectAspect, config.emulator.scaler_aspect_correction);

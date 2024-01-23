@@ -104,23 +104,14 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
         let dti = emu.dm.get_display_info(&emu.machine);
 
         //emu.gui.perf_viewer.update_video_data(*video.params());
-        emu.gui.perf_viewer.update_stats(&PerformanceStats {
+        emu.gui.perf_viewer.update(
             //adapter: adapter_name_str.clone(),
             //backend: backend_str.clone(),
-            adapter: "fixme".to_string(),
-            backend: "fixme".to_string(),
+            "fixme".to_string(),
+            "fixme".to_string(),
             dti,
-            current_ups: emu.stat_counter.ups,
-            current_fps: emu.stat_counter.fps,
-            emulated_fps: emu.stat_counter.emulated_fps,
-            cycle_target: emu.stat_counter.cycle_target,
-            current_cps: emu.stat_counter.current_cps,
-            current_tps: emu.stat_counter.current_sys_tps,
-            current_ips: emu.stat_counter.current_ips,
-            emulation_time: emu.stat_counter.emulation_time,
-            render_time: emu.stat_counter.render_time,
-            gui_time: Default::default(),
-        })
+            &emu.perf,
+        )
     }
 
     // -- Update memory viewer window if open

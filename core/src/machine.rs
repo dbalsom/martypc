@@ -369,6 +369,7 @@ pub struct Machine {
     cpu_factor: ClockFactor,
     next_cpu_factor: ClockFactor,
     cpu_cycles: u64,
+    cpu_instructions: u64,
     system_ticks: u64,
     checkpoint_map: HashMap<u32, usize>,
     patch_map: HashMap<u32, usize>,
@@ -550,6 +551,7 @@ impl Machine {
             cpu_factor,
             next_cpu_factor: cpu_factor,
             cpu_cycles: 0,
+            cpu_instructions: 0,
             system_ticks: 0,
             checkpoint_map,
             patch_map,
@@ -752,6 +754,10 @@ impl Machine {
 
     pub fn cpu_cycles(&self) -> u64 {
         self.cpu_cycles
+    }
+
+    pub fn cpu_instructions(&self) -> u64 {
+        self.cpu_instructions
     }
 
     pub fn system_ticks(&self) -> u64 {
@@ -1249,6 +1255,7 @@ impl Machine {
 
         //log::debug!("cycles_elapsed: {}", cycles_elapsed);
 
+        self.cpu_instructions += instr_count;
         instr_count
     }
 

@@ -35,18 +35,18 @@ use web_time::Duration;
 /// Format the provided Duration using the most appropriate unit given the magnitude of the Duration.
 pub fn format_duration(duration: Duration) -> String {
     let secs = duration.as_secs_f64();
-    let millis = duration.as_millis();
-    let micros = duration.as_micros();
-    let nanos = duration.as_nanos();
+    let millis = secs * 1_000.0;
+    let micros = millis * 1_000.0;
+    let nanos = micros * 1_000.0;
 
-    if nanos < 1_000 {
-        format!("{}ns", nanos)
+    if nanos < 1_000.0 {
+        format!("{:.0}ns", nanos)
     }
-    else if micros < 1_000 {
-        format!("{}µs", micros)
+    else if micros < 1_000.0 {
+        format!("{:.3}µs", micros)
     }
-    else if millis < 1_000 {
-        format!("{}ms", millis)
+    else if millis < 1_000.0 {
+        format!("{:.3}ms", millis)
     }
     else {
         format!("{:.3}s", secs)
