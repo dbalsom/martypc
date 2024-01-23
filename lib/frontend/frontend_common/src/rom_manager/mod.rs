@@ -700,18 +700,29 @@ impl RomManager {
                 }
             }
             else {
-                return Err(anyhow::anyhow!(
-                    "No ROM sets found for feature requirement: {}",
-                    feature
-                ));
-            }
-
-            if let Some(rom_set_vec) = self.rom_sets_by_feature.get(feature) {
-                if rom_set_vec.is_empty() {
+                if required.contains(feature) {
                     return Err(anyhow::anyhow!(
                         "No ROM sets found for feature requirement: {}",
                         feature
                     ));
+                }
+                else {
+                    continue;
+                }
+            }
+
+            if let Some(rom_set_vec) = self.rom_sets_by_feature.get(feature) {
+                if rom_set_vec.is_empty() {
+                    // Only error if feature is required
+                    if required.contains(feature) {
+                        return Err(anyhow::anyhow!(
+                            "No complete ROM sets found for feature requirement: {}",
+                            feature
+                        ));
+                    }
+                    else {
+                        continue;
+                    }
                 }
                 else {
                     // Get the list of provided features for the first rom set in the feature vector.
@@ -754,7 +765,7 @@ impl RomManager {
         for required_feature in required.iter() {
             if !provided_features.contains(required_feature) {
                 return Err(anyhow::anyhow!(
-                    "No ROM sets found for feature requirement: {}",
+                    "Unable to resolve ROM set for feature requirement: {}",
                     required_feature
                 ));
             }
