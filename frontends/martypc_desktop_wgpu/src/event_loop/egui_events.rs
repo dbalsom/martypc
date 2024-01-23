@@ -175,7 +175,8 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         GuiEvent::CreateVHD(filename, fmt) => {
             log::info!("Got CreateVHD event: {:?}, {:?}", filename, fmt);
 
-            let vhd_path = emu.hdd_path.join(filename);
+            let mut vhd_path = emu.rm.get_resource_path("hdd").unwrap();
+            vhd_path.push(filename);
 
             match vhd::create_vhd(
                 vhd_path.into_os_string(),

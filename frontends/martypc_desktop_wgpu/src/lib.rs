@@ -64,7 +64,12 @@ use marty_core::{
 };
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
-use frontend_common::{floppy_manager::FloppyManager, resource_manager::ResourceManager, vhd_manager::VhdManager};
+use frontend_common::{
+    floppy_manager::FloppyManager,
+    resource_manager::ResourceManager,
+    timestep_manager::TimestepManager,
+    vhd_manager::VhdManager,
+};
 use marty_egui::state::GuiState;
 
 #[cfg(feature = "cpu_validator")]
@@ -599,22 +604,22 @@ pub fn run() {
         std::process::exit(1);
     });
 
-    /*
-    // Instantiate the main Machine data struct
-    // Machine coordinates all the parts of the emulated computer
-    let mut machine = Machine::new(
-        &config,
-        config.machine.model,
-        *machine_desc_opt.unwrap(),
-        config.machine.cpu.trace_mode.unwrap_or_default(),
-        video_type.unwrap_or_default(),
-        sp,
-        rom_manager,
-    );
-    */
-
     // Get a list of video devices from machine.
     let cardlist = machine.bus().enumerate_videocards();
+
+    let mut highest_rate = 50;
+    for card in cardlist.iter() {
+        let rate = machine.bus().video(&card).unwrap().get_refresh_rate();
+        if rate > highest_rate {
+            highest_rate = rate;
+        }
+    }
+
+    // Create Timestep Manager
+    let mut timestep_manager = TimestepManager::new();
+    timestep_manager.set_cpu_mhz(machine.get_cpu_mhz());
+    timestep_manager.set_emu_update_rate(highest_rate);
+    timestep_manager.set_emu_render_rate(highest_rate);
 
     let gui_options = DisplayManagerGuiOptions {
         enabled: !config.gui.disabled,
@@ -666,7 +671,7 @@ pub fn run() {
         gui,
         floppy_manager,
         vhd_manager,
-        hdd_path,
+        perf: Default::default(),
         flags: EmuFlags {
             render_gui: render_egui,
             debug_keyboard: false,
@@ -715,7 +720,7 @@ pub fn run() {
 
     // Run the winit event loop
     if let Err(_e) = event_loop.run(move |event, elwt| {
-        handle_event(&mut emu, event, elwt);
+        handle_event(&mut emu, &mut timestep_manager, event, elwt);
     }) {
         log::error!("Failed to start event loop!");
         std::process::exit(1);

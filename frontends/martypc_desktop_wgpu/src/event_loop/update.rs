@@ -33,7 +33,10 @@ use std::time::{Duration, Instant};
 use winit::event_loop::EventLoopWindowTarget;
 
 use display_manager_wgpu::DisplayManager;
-use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
+use frontend_common::{
+    constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME},
+    timestep_manager::{MachinePerfStats, TimestepManager},
+};
 use marty_core::{bus::DeviceEvent, machine::MachineEvent};
 use videocard_renderer::RendererEvent;
 
@@ -44,342 +47,182 @@ use crate::{
     MICROS_PER_FRAME,
 };
 
-pub fn process_update(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
-    emu.stat_counter.current_ups += 1;
-
-    // Throttle updates
-    std::thread::sleep(Duration::from_millis(1));
-
-    // Calculate FPS
-    let elapsed_ms = emu.stat_counter.last_second.elapsed().as_millis();
-    if elapsed_ms > 1000 {
-        // One second elapsed, calculate FPS/CPS
-        let pit_ticks = emu.machine.pit_cycles();
-        let cpu_cycles = emu.machine.cpu_cycles();
-        let system_ticks = emu.machine.system_ticks();
-
-        emu.stat_counter.current_cpu_cps = cpu_cycles - emu.stat_counter.last_cpu_cycles;
-        emu.stat_counter.last_cpu_cycles = cpu_cycles;
-
-        emu.stat_counter.current_pit_tps = pit_ticks - emu.stat_counter.last_pit_ticks;
-        emu.stat_counter.last_pit_ticks = pit_ticks;
-
-        emu.stat_counter.current_sys_tps = system_ticks - emu.stat_counter.last_system_ticks;
-        emu.stat_counter.last_system_ticks = system_ticks;
-
-        //println!("fps: {} | cps: {} | pit tps: {}",
-        //    stat_counter.current_fps,
-        //    stat_counter.current_cpu_cps,
-        //    stat_counter.current_pit_tps);
-
-        emu.stat_counter.ups = emu.stat_counter.current_ups;
-        emu.stat_counter.current_ups = 0;
-        emu.stat_counter.fps = emu.stat_counter.current_fps;
-        emu.stat_counter.current_fps = 0;
-
-        // Update IPS and reset instruction count for next second
-
-        emu.stat_counter.current_cps = emu.stat_counter.cycle_count;
-        emu.stat_counter.cycle_count = 0;
-
-        emu.stat_counter.emulated_fps = emu.stat_counter.current_emulated_frames as u32;
-        emu.stat_counter.current_emulated_frames = 0;
-
-        emu.stat_counter.current_ips = emu.stat_counter.instr_count;
-        emu.stat_counter.instr_count = 0;
-        emu.stat_counter.last_second = Instant::now();
-    }
-
-    // Decide whether to draw a frame
-    let elapsed_us = emu.stat_counter.last_frame.elapsed().as_micros();
-    emu.stat_counter.last_frame = Instant::now();
-
-    emu.stat_counter.accumulated_us += elapsed_us;
-
-    while emu.stat_counter.accumulated_us > MICROS_PER_FRAME as u128 {
-        emu.stat_counter.accumulated_us -= MICROS_PER_FRAME as u128;
-        emu.stat_counter.last_frame = Instant::now();
-        emu.stat_counter.frame_count += 1;
-        emu.stat_counter.current_fps += 1;
-        //println!("frame: {} elapsed: {}", world.current_fps, elapsed_us);
-
-        // Get single step flag from GUI and either step or run CPU
-        // TODO: This logic is messy, figure out a better way to control CPU state
-        //       via gui
-
-        //if framework.gui.get_cpu_single_step() {
-        //    if framework.gui.get_cpu_step_flag() {
-        //        machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), 0);
-        //    }
-        //}
-        //else {
-        //    machine.run(CYCLES_PER_FRAME, &exec_control.borrow(), bp_addr);
-        //    // Check for breakpoint
-        //    if machine.cpu().get_flat_address() == bp_addr && bp_addr != 0 {
-        //        log::debug!("Breakpoint hit at {:06X}", bp_addr);
-        //        framework.gui.set_cpu_single_step();
-        //    }
-        //}
-
-        if let Some(mouse) = emu.machine.mouse_mut() {
-            // Send any pending mouse update to machine if mouse is captured
-            if emu.mouse_data.is_captured && emu.mouse_data.have_update {
-                mouse.update(
-                    emu.mouse_data.l_button_was_pressed,
-                    emu.mouse_data.r_button_was_pressed,
-                    emu.mouse_data.frame_delta_x,
-                    emu.mouse_data.frame_delta_y,
-                );
-
-                // Handle release event
-                let l_release_state = if emu.mouse_data.l_button_was_released {
-                    false
-                }
-                else {
-                    emu.mouse_data.l_button_was_pressed
-                };
-
-                let r_release_state = if emu.mouse_data.r_button_was_released {
-                    false
-                }
-                else {
-                    emu.mouse_data.r_button_was_pressed
-                };
-
-                if emu.mouse_data.l_button_was_released || emu.mouse_data.r_button_was_released {
-                    // Send release event
-                    mouse.update(l_release_state, r_release_state, 0.0, 0.0);
-                }
-
-                // Reset mouse for next frame
-                emu.mouse_data.reset();
+pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &EventLoopWindowTarget<()>) {
+    tm.wm_update(
+        emu,
+        |emuc| {
+            // Per second freq
+            MachinePerfStats {
+                cpu_mhz: emuc.machine.get_cpu_mhz(),
+                cpu_cycles: emuc.machine.cpu_cycles(),
+                cpu_instructions: emuc.machine.cpu_instructions(),
+                system_ticks: emuc.machine.system_ticks(),
+                emu_frames: None,
             }
-        }
+        },
+        |emuc, cycles| {
+            // Per emu update freq
 
-        // Emulate a frame worth of instructions
-        // ---------------------------------------------------------------------------
+            emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
+        },
+        |emuc, &perf| {
+            emuc.perf = perf;
 
-        // Recalculate cycle target based on current CPU speed if it has changed (or uninitialized)
-        let mhz = emu.machine.get_cpu_mhz();
-        if mhz != emu.stat_counter.cpu_mhz {
-            emu.stat_counter.cycles_per_frame = (emu.machine.get_cpu_mhz() * 1000000.0 / FPS_TARGET) as u32;
-            emu.stat_counter.cycle_target = emu.stat_counter.cycles_per_frame;
-            log::info!(
-                "CPU clock has changed to {}Mhz; new cycle target: {}",
-                mhz,
-                emu.stat_counter.cycle_target
-            );
-            emu.stat_counter.cpu_mhz = mhz;
-        }
-
-        let emulation_start = Instant::now();
-        emu.stat_counter.instr_count += emu
-            .machine
-            .run(emu.stat_counter.cycle_target, &mut emu.exec_control.borrow_mut());
-        emu.stat_counter.emulation_time = Instant::now() - emulation_start;
-
-        // Add instructions to IPS counter
-        emu.stat_counter.cycle_count += emu.stat_counter.cycle_target as u64;
-
-        // Add emulated frames from video card device to emulated frame counter
-        let mut frame_count = 0;
-        if let Some(video_card) = emu.machine.primary_videocard() {
-            // We have a video card to query
-            frame_count = video_card.get_frame_count()
-        }
-        let elapsed_frames = frame_count - emu.stat_counter.emulated_frames;
-        emu.stat_counter.emulated_frames += elapsed_frames;
-        emu.stat_counter.current_emulated_frames += elapsed_frames;
-
-        // Emulation time budget is 16ms - marty_render time in ms - fudge factor
-        let render_time = emu.stat_counter.render_time.as_micros();
-        let emulation_time = emu.stat_counter.emulation_time.as_micros();
-
-        let mut emulation_time_allowed_us = 15667;
-        if render_time < 15667 {
-            // Rendering time has left us some emulation headroom
-            emulation_time_allowed_us = 15667_u128.saturating_sub(render_time);
-        }
-        else {
-            // Rendering is too long to run at 60fps. Just ignore marty_render time for now.
-        }
-
-        // If emulation time took too long, reduce CYCLE_TARGET
-        if emulation_time > emulation_time_allowed_us {
-            // Emulation running slower than 60fps
-            let factor: f64 = (emu.stat_counter.emulation_time.as_micros() as f64) / emulation_time_allowed_us as f64;
-            // Decrease speed by half of scaling factor
-
-            let old_target = emu.stat_counter.cycle_target;
-            let new_target = (emu.stat_counter.cycle_target as f64 / factor) as u32;
-            emu.stat_counter.cycle_target -= (old_target - new_target) / 2;
-
-            /*
-            log::trace!("Emulation speed slow: ({}ms > {}ms). Reducing cycle target: {}->{}",
-                emulation_time,
-                emulation_time_allowed_ms,
-                old_target,
-                stat_counter.cycle_target
-            );
-            */
-        }
-        else if (emulation_time > 0) && (emulation_time < emulation_time_allowed_us) {
-            // Emulation could run faster
-
-            // Increase speed by half of scaling factor
-            let factor: f64 = (emu.stat_counter.emulation_time.as_micros() as f64) / emulation_time_allowed_us as f64;
-
-            let old_target = emu.stat_counter.cycle_target;
-            let new_target = (emu.stat_counter.cycle_target as f64 / factor) as u32;
-            emu.stat_counter.cycle_target += (new_target - old_target) / 2;
-
-            if emu.stat_counter.cycle_target > emu.stat_counter.cycles_per_frame {
-                // Warpspeed runs entire emulator as fast as possible
-                // TODO: Limit cycle target based on marty_render/gui time to maintain 60fps GUI updates
-                if !emu.config.emulator.warpspeed {
-                    emu.stat_counter.cycle_target = emu.stat_counter.cycles_per_frame;
-                }
-            }
-            else {
-                /*
-                log::trace!("Emulation speed recovering. ({}ms < {}ms). Increasing cycle target: {}->{}" ,
-                    emulation_time,
-                    emulation_time_allowed_ms,
-                    old_target,
-                    stat_counter.cycle_target
-                );
-                */
-            }
-        }
-
-        /*
-        log::debug!(
-            "Cycle target: {} emulation time: {} allowed_ms: {}",
-            stat_counter.cycle_target,
-            emulation_time,
-            emulation_time_allowed_ms
-        );
-        */
-
-        // Drain machine events
-        while let Some(event) = emu.machine.get_event() {
-            match event {
-                MachineEvent::CheckpointHit(checkpoint, pri) => {
-                    log::info!(
-                        "CHECKPOINT: {}",
-                        emu.machine
-                            .get_checkpoint_string(checkpoint)
-                            .unwrap_or("ERROR".to_string())
+            // Per frame freq
+            if let Some(mouse) = emuc.machine.mouse_mut() {
+                // Send any pending mouse update to machine if mouse is captured
+                if emuc.mouse_data.is_captured && emuc.mouse_data.have_update {
+                    mouse.update(
+                        emuc.mouse_data.l_button_was_pressed,
+                        emuc.mouse_data.r_button_was_pressed,
+                        emuc.mouse_data.frame_delta_x,
+                        emuc.mouse_data.frame_delta_y,
                     );
 
-                    if let Some(pri_level) = emu.config.emulator.debugger.checkpoint_notify_level {
-                        if pri <= pri_level {
-                            // Send notification
+                    // Handle release event
+                    let l_release_state = if emuc.mouse_data.l_button_was_released {
+                        false
+                    }
+                    else {
+                        emuc.mouse_data.l_button_was_pressed
+                    };
 
-                            emu.gui
-                                .toasts()
-                                .info(format!(
-                                    "CHECKPOINT: {}",
-                                    emu.machine
-                                        .get_checkpoint_string(checkpoint)
-                                        .unwrap_or("ERROR".to_string())
-                                ))
-                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                    let r_release_state = if emuc.mouse_data.r_button_was_released {
+                        false
+                    }
+                    else {
+                        emuc.mouse_data.r_button_was_pressed
+                    };
+
+                    if emuc.mouse_data.l_button_was_released || emuc.mouse_data.r_button_was_released {
+                        // Send release event
+                        mouse.update(l_release_state, r_release_state, 0.0, 0.0);
+                    }
+
+                    // Reset mouse for next frame
+                    emuc.mouse_data.reset();
+                }
+            }
+
+            // Drain machine events
+            while let Some(event) = emuc.machine.get_event() {
+                match event {
+                    MachineEvent::CheckpointHit(checkpoint, pri) => {
+                        log::info!(
+                            "CHECKPOINT: {}",
+                            emuc.machine
+                                .get_checkpoint_string(checkpoint)
+                                .unwrap_or("ERROR".to_string())
+                        );
+
+                        if let Some(pri_level) = emuc.config.emulator.debugger.checkpoint_notify_level {
+                            if pri <= pri_level {
+                                // Send notification
+
+                                emuc.gui
+                                    .toasts()
+                                    .info(format!(
+                                        "CHECKPOINT: {}",
+                                        emuc.machine
+                                            .get_checkpoint_string(checkpoint)
+                                            .unwrap_or("ERROR".to_string())
+                                    ))
+                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
                         }
                     }
-                }
-                MachineEvent::Reset => {
-                    // Send notification
-                    emu.gui
-                        .toasts()
-                        .info("Machine reset!".to_string())
-                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                    MachineEvent::Reset => {
+                        // Send notification
+                        emuc.gui
+                            .toasts()
+                            .info("Machine reset!".to_string())
+                            .set_duration(Some(NORMAL_NOTIFICATION_TIME));
 
-                    if emu.config.machine.reload_roms {
-                        // Reload ROMs from the saved list of ROM sets.
-                        match emu.romm.create_manifest(emu.romsets.clone(), &emu.rm) {
-                            Ok(manifest) => match emu.machine.reinstall_roms(manifest) {
-                                Ok(_) => {
-                                    emu.gui
-                                        .toasts()
-                                        .info("ROMs reloaded!".to_string())
-                                        .set_duration(Some(NORMAL_NOTIFICATION_TIME));
-                                }
+                        if emuc.config.machine.reload_roms {
+                            // Reload ROMs from the saved list of ROM sets.
+                            match emuc.romm.create_manifest(emuc.romsets.clone(), &emuc.rm) {
+                                Ok(manifest) => match emuc.machine.reinstall_roms(manifest) {
+                                    Ok(_) => {
+                                        emuc.gui
+                                            .toasts()
+                                            .info("ROMs reloaded!".to_string())
+                                            .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                                    }
+                                    Err(err) => {
+                                        log::error!("Error reloading ROMs: {}", err);
+                                        emuc.gui
+                                            .toasts()
+                                            .error(format!("Failed to reload ROMs: {}", err))
+                                            .set_duration(Some(LONG_NOTIFICATION_TIME));
+                                    }
+                                },
                                 Err(err) => {
-                                    log::error!("Error reloading ROMs: {}", err);
-                                    emu.gui
+                                    log::error!("Error creating ROM manifest: {}", err);
+                                    emuc.gui
                                         .toasts()
                                         .error(format!("Failed to reload ROMs: {}", err))
                                         .set_duration(Some(LONG_NOTIFICATION_TIME));
                                 }
-                            },
-                            Err(err) => {
-                                log::error!("Error creating ROM manifest: {}", err);
-                                emu.gui
-                                    .toasts()
-                                    .error(format!("Failed to reload ROMs: {}", err))
-                                    .set_duration(Some(LONG_NOTIFICATION_TIME));
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Do per-frame updates (Serial port emulation)
-        let events = emu.machine.frame_update();
-        for event in events {
-            match event {
-                DeviceEvent::TurboToggled(state) => {
-                    // Send notification
-                    if state {
-                        emu.gui
-                            .toasts()
-                            .info("Turbo mode enabled!".to_string())
-                            .set_duration(Some(SHORT_NOTIFICATION_TIME));
-                    }
-                    else {
-                        emu.gui
-                            .toasts()
-                            .info("Turbo mode disabled!".to_string())
-                            .set_duration(Some(SHORT_NOTIFICATION_TIME));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        let render_start = Instant::now();
-
-        // Check if any videocard has resized and handle it
-        emu.machine.for_each_videocard(|vci| {
-            let extents = vci.card.get_display_extents();
-            // Resize the card.
-            if let Err(_) = emu.dm.on_card_resized(&vci.id, &extents) {
-                log::error!("Error resizing videocard");
-            }
-        });
-        emu.stat_counter.render_time = Instant::now() - render_start;
-
-        // Update egui data
-        update_egui(emu, elwt);
-
-        // Render the current frame for all window display targets.
-        render_frame(emu);
-
-        // Handle renderer events
-
-        emu.dm.for_each_renderer(|renderer, _vid, _backend_buf| {
-            while let Some(event) = renderer.get_event() {
+            // Do per-frame updates (Serial port emulation)
+            let events = emuc.machine.frame_update();
+            for event in events {
                 match event {
-                    RendererEvent::ScreenshotSaved => {
-                        emu.gui
-                            .toasts()
-                            .info("Screenshot saved!".to_string())
-                            .set_duration(Some(Duration::from_secs(5)));
+                    DeviceEvent::TurboToggled(state) => {
+                        // Send notification
+                        if state {
+                            emuc.gui
+                                .toasts()
+                                .info("Turbo mode enabled!".to_string())
+                                .set_duration(Some(SHORT_NOTIFICATION_TIME));
+                        }
+                        else {
+                            emuc.gui
+                                .toasts()
+                                .info("Turbo mode disabled!".to_string())
+                                .set_duration(Some(SHORT_NOTIFICATION_TIME));
+                        }
                     }
+                    _ => {}
                 }
             }
-        });
-    }
+
+            let render_start = Instant::now();
+
+            // Check if any videocard has resized and handle it
+            emuc.machine.for_each_videocard(|vci| {
+                let extents = vci.card.get_display_extents();
+                // Resize the card.
+                if let Err(_) = emuc.dm.on_card_resized(&vci.id, &extents) {
+                    log::error!("Error resizing videocard");
+                }
+            });
+            emuc.stat_counter.render_time = Instant::now() - render_start;
+
+            // Update egui data
+            update_egui(emuc, elwt);
+
+            // Render the current frame for all window display targets.
+            render_frame(emuc);
+
+            // Handle renderer events
+            emuc.dm.for_each_renderer(|renderer, _vid, _backend_buf| {
+                while let Some(event) = renderer.get_event() {
+                    match event {
+                        RendererEvent::ScreenshotSaved => {
+                            emuc.gui
+                                .toasts()
+                                .info("Screenshot saved!".to_string())
+                                .set_duration(Some(Duration::from_secs(5)));
+                        }
+                    }
+                }
+            });
+        },
+    );
 }

@@ -39,7 +39,7 @@ mod update;
 
 use keyboard::handle_modifiers;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::{
     event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
     event_loop::EventLoopWindowTarget,
@@ -52,8 +52,9 @@ use crate::{
     Emulator,
 };
 use display_manager_wgpu::DisplayManager;
+use frontend_common::timestep_manager::TimestepManager;
 
-pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindowTarget<()>) {
+pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<()>, elwt: &EventLoopWindowTarget<()>) {
     match event {
         Event::NewEvents(StartCause::Init) => {
             // Initialization stuff here?
@@ -139,7 +140,7 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
                     pass_to_egui = !handle_key_event(emu, window_id, key_event);
                 }
                 WindowEvent::RedrawRequested => {
-                    process_update(emu, elwt);
+                    process_update(emu, tm, elwt);
                 }
                 WindowEvent::Focused(state) => match state {
                     true => {
@@ -177,6 +178,8 @@ pub fn handle_event(emu: &mut Emulator, event: Event<()>, elwt: &EventLoopWindow
         // so can run millions of times per second. So we will instead request a redraw here and
         // move emulator logic to RedrawRequested.
         Event::AboutToWait => {
+            // Throttle updates to maximum of 1000Hz
+            //std::thread::sleep(Duration::from_millis(1));
             emu.dm.for_each_window(|window| {
                 window.request_redraw();
             });

@@ -37,11 +37,15 @@
 use crate::*;
 use core::fmt;
 use egui::CollapsingHeader;
+use frontend_common::timestep_manager::PerfSnapshot;
 use marty_common::util::format_duration;
 use videocard_renderer::VideoParams;
 
 pub struct PerformanceViewerControl {
-    stats: PerformanceStats,
+    adapter: String,
+    backend: String,
+    dti: Vec<DisplayInfo>,
+    perf: PerfSnapshot,
     video_data: VideoParams,
 }
 
@@ -56,10 +60,30 @@ impl<T: fmt::Debug> fmt::Debug for DisplayOption<T> {
     }
 }
 
+pub fn format_freq_counter(ct: u32) -> String {
+    let mut ct = ct as f64;
+    let mut suffix = "";
+    if ct > 1_000_000.0 {
+        ct /= 1_000_000.0;
+        suffix = "MHz";
+    }
+    else if ct > 1_000.0 {
+        ct /= 1_000.0;
+        suffix = "KHz";
+    }
+    else {
+        suffix = "Hz";
+    }
+    format!("{:.2}{}", ct, suffix)
+}
+
 impl PerformanceViewerControl {
     pub fn new() -> Self {
         Self {
-            stats: Default::default(),
+            adapter: String::new(),
+            backend: String::new(),
+            dti: Vec::new(),
+            perf: Default::default(),
             video_data: Default::default(),
         }
     }
@@ -70,14 +94,14 @@ impl PerformanceViewerControl {
             .min_col_width(100.0)
             .show(ui, |ui| {
                 ui.label("Adapter: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.adapter)));
+                ui.label(egui::RichText::new(format!("{}", self.adapter)));
                 ui.end_row();
 
                 ui.label("Backend: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.backend)));
+                ui.label(egui::RichText::new(format!("{}", self.backend)));
                 ui.end_row();
 
-                for (i, dt) in self.stats.dti.iter().enumerate() {
+                for (i, dt) in self.dti.iter().enumerate() {
                     CollapsingHeader::new(&format!("Display {}: {} ({})", i, dt.name, dt.dtype))
                         .default_open(true)
                         .show(ui, |ui| {
@@ -107,9 +131,9 @@ impl PerformanceViewerControl {
 
                 ui.label("Build: ");
                 #[cfg(debug_assertions)]
-                ui.label(egui::RichText::new(format!("DEBUG")));
+                ui.label(egui::RichText::new("DEBUG".to_string()));
                 #[cfg(not(debug_assertions))]
-                ui.label(egui::RichText::new(format!("Release")));
+                ui.label(egui::RichText::new("Release".to_string()));
                 ui.end_row();
 
                 ui.label("Internal resolution: ");
@@ -125,41 +149,40 @@ impl PerformanceViewerControl {
                 )));
                 ui.end_row();
 
-                ui.label("UPS: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.current_ups)));
+                ui.label("Window Manager UPS: ");
+                ui.label(egui::RichText::new(format!("{}", self.perf.wm_ups)));
                 ui.end_row();
-                ui.label("FPS: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.current_fps)));
+                ui.label("Window Manager FPS: ");
+                ui.label(egui::RichText::new(format!("{}", self.perf.wm_fps)));
                 ui.end_row();
                 ui.label("Emulated FPS: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.emulated_fps)));
+                ui.label(egui::RichText::new(format!("{}", self.perf.emu_fps)));
+                ui.end_row();
+                ui.label("Effective CPU Freq: ");
+                ui.label(egui::RichText::new(format_freq_counter(self.perf.cpu_cycles)));
+                ui.end_row();
+                ui.label("Effective Sys Freq: ");
+                ui.label(egui::RichText::new(format_freq_counter(self.perf.sys_ticks)));
                 ui.end_row();
                 ui.label("IPS: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.current_ips)));
+                ui.label(egui::RichText::new(format!("{}", self.perf.cpu_instructions)));
                 ui.end_row();
+
                 ui.label("Cycle Target: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.cycle_target)));
+                ui.label(egui::RichText::new(format!("{}", 0)));
                 ui.end_row();
-                ui.label("CPS: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.current_cps)));
-                ui.end_row();
-                ui.label("TPS: ");
-                ui.label(egui::RichText::new(format!("{}", self.stats.current_tps)));
-                ui.end_row();
+
                 ui.label("Emulation time: ");
-                ui.label(egui::RichText::new(format!(
-                    "{}",
-                    ((self.stats.emulation_time.as_micros() as f64) / 1000.0)
-                )));
+                ui.label(egui::RichText::new(format_duration(self.perf.emu_time)));
                 ui.end_row();
-                ui.label("Framebuffer time: ");
-                ui.label(egui::RichText::new(format!(
-                    "{}",
-                    ((self.stats.render_time.as_micros() as f64) / 1000.0)
-                )));
+                ui.label("SW Render time: ");
+                ui.label(egui::RichText::new(format_duration(self.perf.render_time)));
                 ui.end_row();
                 ui.label("Gui Render time: ");
-                ui.label(egui::RichText::new(format_duration(self.stats.gui_time)));
+                ui.label(egui::RichText::new(format_duration(self.perf.gui_time)));
+                ui.end_row();
+                ui.label("Total Frame time: ");
+                ui.label(egui::RichText::new(format_duration(self.perf.frame_time)));
                 ui.end_row();
             });
     }
@@ -168,9 +191,10 @@ impl PerformanceViewerControl {
         self.video_data = video_data.clone();
     }
 
-    pub fn update_stats(&mut self, stats: &PerformanceStats) {
-        let save_gui_time = self.stats.gui_time;
-        self.stats = stats.clone();
-        self.stats.gui_time = save_gui_time;
+    pub fn update(&mut self, adapter: String, backend: String, dti: Vec<DisplayInfo>, perf: &PerfSnapshot) {
+        self.adapter = adapter;
+        self.backend = backend;
+        self.dti = dti;
+        self.perf = *perf;
     }
 }

@@ -83,18 +83,15 @@ pub fn render_frame(emu: &mut Emulator) {
     // Prepare guis for rendering.
     emu.dm.for_each_gui(|gui, window| gui.prepare(window, &mut emu.gui));
 
+    // Inform window manager that we are about to present
+    emu.dm.for_each_window(|window| {
+        window.pre_present_notify();
+    });
+
     // Next, render each backend
     emu.dm.for_each_backend(|backend, scaler, gui_opt| {
         if let Err(e) = backend.render(Some(scaler), gui_opt) {
             log::error!("Failed to render backend: {}", e);
         }
     });
-
-    // Notify each window of presentation
-    // Note: Doing this seems to cause more wgpu validation errors...
-    /*
-    emu.dm.for_each_window(|window| {
-        window.pre_present_notify();
-    });
-    */
 }
