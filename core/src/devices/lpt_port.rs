@@ -61,6 +61,7 @@ pub struct ParallelControl {
     pub unused2: B3,
 }
 
+#[allow(dead_code)]
 pub struct ParallelPort {
     data: u8,
     status: ParallelStatus,
