@@ -1,5 +1,5 @@
 
-## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0) (2023-XX-XX)
+## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0) (2024-XX-XX)
 
 ### New Features
 
@@ -64,36 +64,35 @@ advantage of this new system, and so now you can organize your media directories
     * Translation files support all keycode names defined by w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
     * Translation files can define direct scancode mappings or full macros
 
-
-* Memory Viewer: disassembly popup now uses fixed-width font
-* IVT Viewer: IVT entries now animated on change
+### Debugger/GUI Improvements
+* Reorganized Debug menu
+* Improved appearance of CPU State display
+* Instruction Trace: In Csv trace mode, instruction trace now has a scrolling table with optional columns
+* Memory Viewer: Fixed scrolling issues, disassembly popup now uses fixed-width font
+* IVT Viewer: Fixed scrolling, IVT entries now animate on change, added annotations
 * Instruction History - fields now align with Disassembly View, and cycle counts have been moved to the right
+* Memory Viewer will now show values for memory mapped regions
+* Improved VHD creator - should no longer be confusing to use
+* Text Mode Viewer - View ASCII contents of video memory, which you can select and copy to clipboard
 * New themes courtesy of [egui-themer crate](https://github.com/grantshandy/egui-themer)
 * New notification system courtesy of [egui-notify crate](https://github.com/ItsEthra/egui-notify). 
   * Implemented success/error notifications for disk and file operations, screenshots, etc.
-* Floppy browser now supports subdirectories
+
+### Frontend Bug Fixes / Improvements
+* Floppy and HDD browsers now support subdirectories
 * Write protection can be toggled for floppy drives
-* Sound initialization now optional
-* Improved VHD creator - should no longer be confusing to use
-* Text Mode Viewer - View ASCII contents of video memory, where you can select and copy to clipboard
-* Preliminary CGA snow emulation. Not yet 100% accurate
+* Sound initialization is now optional
 * Added 8088 JSON CPU test generator and validator 
   * Used to create the first [comprehensive test suite for the Intel 8088](https://github.com/TomHarte/ProcessorTests/tree/main/8088)
-* Memory Viewer will now show values for memory mapped regions
-* Major dependency updates:
-  * wgpu to 0.18 (latest)
-  * egui to 0.24.2 (latest, forked)
-  * pixels to 0.13 (latest, forked)
-  * winit to 0.29.4 (latest)
 * Added debug_keyboard config flag - this will print keyboard event info to the console for support
 
-### Bug Fixes
-* DEBUGGER: Scrolling fixed in Memory Viewer and IVT Viewer 
-* Xebec HDC: Implemented missing Read Sector Buffer command (Fixes panic in IBM diagnostics)
+### Core Bug Fixes / Improvements
+
+* CPU: Refactor PC from u32 to u16 to address segment wrapping issues, implement ip() in terms of PC
 * CPU: Instruction counts properly increment even when instruction history is off
 * CPU: Fixed device ticks after interrupts
 * CPU: Improved Halt/Resume logic and cycle timings
-* CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView
+* CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView logic analyzer
 * CPU: Updated disassembler to normalize output against iced-x86. Now resolves negative immediates and displacements.
 * CPU: Fixed typo for 'bp+di+DISP' in both disassemblers (Thanks Tom Harte)
 * CPU: Brand new, simplified BIU state logic
@@ -104,11 +103,22 @@ advantage of this new system, and so now you can organize your media directories
 * CPU: Fixed CPU cycle timings for LES and LDS instructions
 * CPU: Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
 * CPU: Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
+* PIC: Ignore IMR during INTA pulse
+* PIC: Handle multiple IRR bits unmaksed at the same time
 * PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
+* CGA: Preliminary CGA snow emulation. Not yet 100% accurate
 * CGA: Properly disable cursor if cursor start > maximum scanline
 * CGA: Reverted color palette entry for black from dark gray to true black
 * CGA: Fully reset the CGA device on reboot. May(?) fix issue with black screens in 8088MPH. (Thanks hirudov)
 * CGA: Don't recalculate composite parameters if mode change was enable bit only
+* Xebec HDC: Proceed from Reset state to WaitngForCommand after delay
+* Xebec HDC: Implemented missing Read Sector Buffer command (Fixes panic in IBM diagnostics)
+
+### Major dependency updates:
+  * wgpu to 0.18 (latest)
+  * egui to 0.24.2 (latest, forked)
+  * pixels to 0.13 (latest, forked)
+  * winit to 0.29.4 (latest)
 
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-07-06)
 
