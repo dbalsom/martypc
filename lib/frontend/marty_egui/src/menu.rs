@@ -134,8 +134,12 @@ impl GuiState {
             let media_response = ui.menu_button("Media", |ui| {
                 //ui.set_min_size(egui::vec2(240.0, 0.0));
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
-
                 ui.set_width_range(egui::Rangef { min: 100.0, max: 240.0 });
+
+                if ui.button("⟲ Rescan Media Folders").clicked() {
+                    self.event_queue.send(GuiEvent::RescanMediaFolders);
+                }
+
                 for i in 0..self.floppy_drives.len() {
                     self.draw_floppy_menu(ui, i);
                 }
@@ -149,10 +153,6 @@ impl GuiState {
                     ui.close_menu();
                 };
             });
-
-            if media_response.response.clicked() {
-                self.event_queue.send(GuiEvent::RescanMediaFolders);
-            }
 
             ui.menu_button("Display", |ui| {
                 ui.set_min_size(egui::vec2(240.0, 0.0));
@@ -172,26 +172,6 @@ impl GuiState {
             });
 
             ui.menu_button("Debug", |ui| {
-                ui.menu_button("Memory", |ui| {
-                    self.workspace_window_open_button(ui, GuiWindow::MemoryViewer, true);
-                    self.workspace_window_open_button(ui, GuiWindow::IvtViewer, true);
-
-                    ui.menu_button("Dump Memory", |ui| {
-                        if ui.button("Video Memory").clicked() {
-                            self.event_queue.send(GuiEvent::DumpVRAM);
-                            ui.close_menu();
-                        }
-                        if ui.button("Code Segment").clicked() {
-                            self.event_queue.send(GuiEvent::DumpCS);
-                            ui.close_menu();
-                        }
-                        if ui.button("All Memory").clicked() {
-                            self.event_queue.send(GuiEvent::DumpAllMem);
-                            ui.close_menu();
-                        }
-                    });
-                });
-
                 ui.menu_button("CPU", |ui| {
                     self.workspace_window_open_button(ui, GuiWindow::CpuControl, true);
                     self.workspace_window_open_button(ui, GuiWindow::CpuStateViewer, true);
@@ -263,6 +243,26 @@ impl GuiState {
                     self.workspace_window_open_button(ui, GuiWindow::CycleTraceViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::CallStack, true);
                     self.workspace_window_open_button(ui, GuiWindow::DisassemblyViewer, true);
+                });
+
+                ui.menu_button("Memory", |ui| {
+                    self.workspace_window_open_button(ui, GuiWindow::MemoryViewer, true);
+                    self.workspace_window_open_button(ui, GuiWindow::IvtViewer, true);
+
+                    ui.menu_button("Dump Memory", |ui| {
+                        if ui.button("Video Memory").clicked() {
+                            self.event_queue.send(GuiEvent::DumpVRAM);
+                            ui.close_menu();
+                        }
+                        if ui.button("Code Segment").clicked() {
+                            self.event_queue.send(GuiEvent::DumpCS);
+                            ui.close_menu();
+                        }
+                        if ui.button("All Memory").clicked() {
+                            self.event_queue.send(GuiEvent::DumpAllMem);
+                            ui.close_menu();
+                        }
+                    });
                 });
 
                 ui.menu_button("Devices", |ui| {

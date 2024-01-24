@@ -52,6 +52,7 @@ use marty_core::{
     devices::{pit::PitDisplayState, ppi::PpiStringState},
     machine::{ExecutionControl, MachineState},
 };
+use serde::{Deserialize, Serialize};
 use serialport::SerialPortInfo;
 use std::{
     cell::RefCell,
@@ -61,7 +62,6 @@ use std::{
     path::PathBuf,
     rc::Rc,
 };
-use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::{
@@ -85,9 +85,10 @@ use crate::{
     windows::scaler_adjust::ScalerAdjustControl,
     windows::vhd_creator::VhdCreator,
 };
-use crate::{widgets::file_tree_menu::FileTreeMenu, windows::text_mode_viewer::TextModeViewer};
-use crate::windows::call_stack_viewer::CallStackViewer;
-use crate::windows::ppi_viewer::PpiViewerControl;
+use crate::{
+    widgets::file_tree_menu::FileTreeMenu,
+    windows::{call_stack_viewer::CallStackViewer, ppi_viewer::PpiViewerControl, text_mode_viewer::TextModeViewer},
+};
 
 pub struct GuiFloppyDriveInfo {
     pub(crate) idx: usize,
@@ -121,7 +122,7 @@ impl GuiHddInfo {
     }
 }
 
-#[derive (Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct WorkspaceWindowState {
     pub open: bool,
     pub resizable: bool,
@@ -203,7 +204,7 @@ pub struct GuiState {
 
     pub pit_viewer: PitViewerControl,
     pub pic_viewer: PicViewerControl,
-    pub ppi_viewer:  PpiViewerControl,
+    pub ppi_viewer: PpiViewerControl,
 
     pub videocard_state: VideoCardState,
     pub display_info:    Vec<DisplayInfo>,
@@ -352,6 +353,11 @@ impl GuiState {
 
             global_zoom: 1.0,
         }
+    }
+
+    /// Allow the GUI to send events to the frontend to request initialization.
+    pub fn initialize(&mut self) {
+        self.event_queue.send(GuiEvent::RescanMediaFolders);
     }
 
     pub fn toasts(&mut self) -> &mut Toasts {

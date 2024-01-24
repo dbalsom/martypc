@@ -422,6 +422,9 @@ impl Emulator {
 
         // Set hard drives.
         self.gui.set_hdds(self.machine.bus().hdd_ct());
+
+        // Request initial events from GUI.
+        self.gui.initialize();
     }
 
     pub fn start(&mut self) {
