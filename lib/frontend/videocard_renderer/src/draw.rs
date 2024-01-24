@@ -31,7 +31,7 @@
 
 use crate::{consts::*, resize::*};
 use marty_core::devices::cga;
-use web_time::{Duration, Instant};
+use web_time::Instant;
 
 use super::*;
 
