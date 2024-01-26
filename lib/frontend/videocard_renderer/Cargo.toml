@@ -29,6 +29,9 @@ web-time.workspace = true
 criterion = "0.5"
 bytemuck = { version = "1.13.1", features = ["derive"] }
 
+[features]
+ega = []
+
 [[bench]]
 name = "render_bench"
 harness = false
