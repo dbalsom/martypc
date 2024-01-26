@@ -31,10 +31,7 @@
 
 #![allow(dead_code)]
 
-use std::{
-    collections::{VecDeque},
-    default::Default,
-};
+use std::{collections::VecDeque, default::Default};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
@@ -723,6 +720,7 @@ impl FloppyController {
             match command {
                 COMMAND_READ_TRACK => {
                     log::trace!("Received Read Track command: {:02}", command);
+                    log::error!("Command unimplemented");
                 }
                 COMMAND_WRITE_SECTOR => {
                     log::trace!("Received Write Sector command: {:02}", command);
@@ -734,9 +732,11 @@ impl FloppyController {
                 }
                 COMMAND_WRITE_DELETED_SECTOR => {
                     log::trace!("Received Write Deleted Sector command: {:02}", command);
+                    log::error!("Command unimplemented");
                 }
                 COMMAND_READ_DELETED_SECTOR => {
                     log::trace!("Received Read Deleted Sector command: {:02}", command);
+                    log::error!("Command unimplemented");
                 }
                 COMMAND_FORMAT_TRACK => {
                     log::trace!("Received Format Track command: {:02}", command);
@@ -765,6 +765,7 @@ impl FloppyController {
                 }
                 COMMAND_READ_SECTOR_ID => {
                     log::trace!("Received Read Sector ID command: {:02}", command);
+                    self.set_command(Command::ReadSectorID, 1, FloppyController::command_read_sector_id);
                 }
                 COMMAND_SEEK_HEAD => {
                     log::trace!("Received Seek/Park Head command: {:02}", command);
@@ -1162,6 +1163,24 @@ impl FloppyController {
 
         // Keep running command until DMA transfer completes
         Continuation::ContinueAsOperation
+    }
+
+    /// Perform the Read Sector ID Command
+    pub fn command_read_sector_id(&mut self) -> Continuation {
+        let drive_head_select = self.data_register_in.pop_front().unwrap();
+
+        let drive_select = (drive_head_select & 0x03) as usize;
+        let _head_select = (drive_head_select >> 2) & 0x01;
+
+        self.send_results_phase(
+            InterruptCode::NormalTermination,
+            drive_select,
+            self.drives[drive_select].chs,
+            0x02,
+        );
+
+        self.send_interrupt = true;
+        Continuation::CommandComplete
     }
 
     /// Return a byte offset given a CHS (Cylinder, Head, Sector) address
