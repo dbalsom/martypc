@@ -192,6 +192,27 @@ pub enum StopBits {
     Two,
 }
 
+#[derive(Debug)]
+pub enum IntrAction {
+    None,
+    Raise,
+    Lower,
+}
+
+pub struct SerialPortDebuggerState {
+    name: String,
+    irq: u8,
+    line_control_reg: u8,
+    line_status_reg: u8,
+    ii_reg: u8,
+    interrupts_active: u8,
+    interrupt_enable_reg: u8,
+    modem_control_reg: u8,
+    modem_status_reg: u8,
+    rx_byte: u8,
+    tx_byte: u8,
+}
+
 pub struct SerialPort {
     name: String,
     irq: u8,
@@ -204,17 +225,18 @@ pub struct SerialPort {
     line_status_reg: u8,
     interrupts_active: u8,
     interrupt_enable_reg: u8,
-    raise_interrupt: bool,
-    lower_interrupt: bool,
+    intr_action: IntrAction,
     modem_control_reg: u8,
     loopback: bool,
     modem_status_reg: u8,
     rx_byte: u8,
+    rx_count: usize,
     rx_was_read: bool,
     tx_holding_reg: u8,
     tx_holding_empty: bool,
     rx_queue: VecDeque<u8>,
     rx_timer: f64,
+    tx_count: usize,
     tx_queue: VecDeque<u8>,
     tx_timer: f64,
     us_per_byte: f64,
@@ -224,39 +246,59 @@ pub struct SerialPort {
     bridge_buf:  Vec<u8>,
 }
 
-impl SerialPort {
-    pub fn new(name: String, irq: u8) -> Self {
+impl Default for SerialPort {
+    fn default() -> Self {
         Self {
-            name,
-            irq,
+            name: String::new(),
+            irq: 4,
             line_control_reg: 0,
             word_length: 8,
             stop_bits: StopBits::One,
             parity_enable: false,
             divisor_latch_access: false,
             divisor: 12, // 9600 baud
-            line_status_reg: STATUS_TRANSMIT_EMPTY,
+            line_status_reg: crate::devices::serial::STATUS_TRANSMIT_EMPTY,
             interrupts_active: 0,
             interrupt_enable_reg: 0,
-            raise_interrupt: false,
-            lower_interrupt: false,
+            intr_action: IntrAction::None,
             modem_control_reg: 0,
             loopback: false,
             modem_status_reg: 0,
             rx_byte: 0,
+            rx_count: 0,
             rx_was_read: false,
             tx_holding_reg: 0,
             tx_holding_empty: true,
             rx_queue: VecDeque::new(),
             rx_timer: 0.0,
+            tx_count: 0,
             tx_queue: VecDeque::new(),
             tx_timer: 0.0,
             us_per_byte: 833.333, // 9600 baud
 
             bridge_port: None,
-            bridge_buf: vec![0; 1000],
+            bridge_buf:  vec![0; 1000],
         }
     }
+}
+
+impl SerialPort {
+    pub fn new(name: String, irq: u8) -> Self {
+        Self {
+            name,
+            irq,
+            ..Default::default()
+        }
+    }
+
+    pub fn reset(&mut self) {
+        *self = Self {
+            name: self.name.clone(),
+            irq: self.irq,
+            ..Default::default()
+        }
+    }
+
     /// Convert the integer divisor value into baud rate
     fn divisor_to_baud(divisor: u16) -> u16 {
         return ((SERIAL_CLOCK * 1_000_000.0) / divisor as f64 / 16.0) as u16;
@@ -395,7 +437,7 @@ impl SerialPort {
         self.interrupt_enable_reg = mask & 0x0F;
 
         // COMTEST from ctmouse suite seems to indicate that a TX Holding Register Empty interrupt
-        // will be triggered immediatately after it is enabled.
+        // will be triggered immediately after it is enabled.
         if mask & INTERRUPT_TX_EMPTY != 0 && (old_enable_reg & INTERRUPT_TX_EMPTY == 0) && self.tx_holding_empty {
             self.raise_interrupt_type(INTERRUPT_TX_EMPTY);
         }
@@ -423,7 +465,19 @@ impl SerialPort {
     ///
     /// The Interrupt ID Register returns a value representing the highest priority interrupt
     /// currently active.
-    fn interrupt_id_read(&self) -> u8 {
+    fn interrupt_id_read(&mut self) -> u8 {
+        let mut byte = self.calc_irr();
+
+        if self.interrupts_active & INTERRUPT_TX_EMPTY != 0 {
+            // IBM Docs state that reading the IRR clears this interrupt
+            self.lower_interrupt_type(INTERRUPT_TX_EMPTY);
+        }
+
+        log::debug!("{}: Read Interrupt ID Register: {:04b}", self.name, byte);
+        byte
+    }
+
+    fn calc_irr(&self) -> u8 {
         let mut byte = 0;
 
         // Set bit 0 to 1 if interrupt is NOT pending
@@ -514,10 +568,10 @@ impl SerialPort {
             self.interrupts_active |= interrupt_flag;
 
             // IBM: To allow the communications adapter to send interrupts to the system,
-            // bit 3 of the modem control regsister must be set to 1
+            // bit 3 of the modem control resister must be set to 1
             if self.modem_control_reg & MODEM_CONTROL_OUT2 != 0 {
                 //log::trace!("Sending interrupt. Interrupts active: {:04b}", self.interrupts_active);
-                self.raise_interrupt = true;
+                self.intr_action = IntrAction::Raise;
             }
         }
     }
@@ -528,7 +582,7 @@ impl SerialPort {
 
         // Any remaining interrupts active? Deassert IRQ if no.
         if self.interrupts_active == 0 {
-            self.lower_interrupt = true;
+            self.intr_action = IntrAction::Lower;
         }
     }
 
@@ -568,6 +622,28 @@ impl SerialPortController {
         }
     }
 
+    pub fn get_debug_state(&self) -> Vec<SerialPortDebuggerState> {
+        let mut state = Vec::new();
+
+        for port in &self.port {
+            state.push(SerialPortDebuggerState {
+                name: port.name.clone(),
+                irq: port.irq,
+                line_control_reg: port.line_control_reg,
+                line_status_reg: port.line_status_reg,
+                ii_reg: port.calc_irr(),
+                interrupt_enable_reg: port.interrupt_enable_reg,
+                interrupts_active: port.interrupts_active,
+                modem_control_reg: port.modem_control_reg,
+                modem_status_reg: port.modem_status_reg,
+                rx_byte: port.rx_byte,
+                tx_byte: port.tx_holding_reg,
+            });
+        }
+
+        state
+    }
+
     /// Get status of specified serial port's RTS line
     pub fn get_rts(&self, port: usize) -> bool {
         self.port[port].modem_control_reg & MODEM_CONTROL_RTS != 0
@@ -592,18 +668,19 @@ impl SerialPortController {
     /// Run the serial ports for the specified number of microseconds
     pub fn run(&mut self, pic: &mut pic::Pic, us: f64) {
         for port in self.port.iter_mut() {
-            // Raise interrupt if pending
-            if port.raise_interrupt {
-                //log::trace!("asserting irq: {}", port.irq);
-                pic.request_interrupt(port.irq);
-                port.raise_interrupt = false;
+            // Handle pending interrupt action
+            match port.intr_action {
+                IntrAction::Raise => {
+                    //log::trace!("asserting irq: {}", port.irq);
+                    pic.request_interrupt(port.irq);
+                }
+                IntrAction::Lower => {
+                    //log::trace!("deasserting irq: {}", port.irq);
+                    pic.clear_interrupt(port.irq);
+                }
+                IntrAction::None => {}
             }
-            // Lower interrupt if pending
-            if port.lower_interrupt {
-                //log::trace!("deasserting irq: {}", port.irq);
-                pic.clear_interrupt(port.irq);
-                port.lower_interrupt = false;
-            }
+            port.intr_action = IntrAction::None;
 
             // Receive bytes from queue
             port.rx_timer += us;
