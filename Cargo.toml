@@ -94,7 +94,7 @@ default = ["ega"]
 devtools = ["martypc_desktop_wgpu/devtools"]
 arduino_validator = ["marty_core/arduino_validator", "martypc_desktop_wgpu/arduino_validator"]
 cpu_validator = ["marty_core/cpu_validator", "martypc_desktop_wgpu/cpu_validator"]
-ega = ["marty_core/ega", "frontend_common/ega"]
+ega = ["marty_core/ega", "frontend_common/ega", "videocard_renderer/ega"]
 vga = ["marty_core/vga", "frontend_common/vga"]
 
 [build-dependencies]
