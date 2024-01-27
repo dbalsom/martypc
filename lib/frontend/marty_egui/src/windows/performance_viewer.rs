@@ -37,7 +37,8 @@
 use crate::*;
 use core::fmt;
 use egui::CollapsingHeader;
-use frontend_common::timestep_manager::PerfSnapshot;
+use egui_plot::{Line, Plot, PlotPoints};
+use frontend_common::timestep_manager::{FrameEntry, PerfSnapshot};
 use marty_common::util::format_duration;
 use videocard_renderer::VideoParams;
 
@@ -47,6 +48,7 @@ pub struct PerformanceViewerControl {
     dti: Vec<DisplayInfo>,
     perf: PerfSnapshot,
     video_data: VideoParams,
+    frame_history: Vec<FrameEntry>,
 }
 
 struct DisplayOption<T>(Option<T>);
@@ -85,6 +87,7 @@ impl PerformanceViewerControl {
             dti: Vec::new(),
             perf: Default::default(),
             video_data: Default::default(),
+            frame_history: Vec::new(),
         }
     }
 
@@ -185,16 +188,47 @@ impl PerformanceViewerControl {
                 ui.label(egui::RichText::new(format_duration(self.perf.frame_time)));
                 ui.end_row();
             });
+
+        ui.end_row();
+        ui.horizontal(|ui| {
+            let points: PlotPoints = self
+                .frame_history
+                .iter()
+                .enumerate()
+                .map(|(i, fe)| [i as f64, fe.frame_time.as_secs_f64() * 1000.0])
+                .collect();
+
+            let line = Line::new(points);
+            let x_mag = self.frame_history.len();
+            Plot::new("frame_time_plot")
+                .height(96.0)
+                .y_axis_width(2)
+                .x_axis_formatter(|x, _, range| format!("{:.0}", range.end() - x))
+                .show(ui, |plot_ui| {
+                    plot_ui.set_plot_bounds(egui_plot::PlotBounds::from_min_max([0.0, 0.0], [60.0, 16.0]));
+
+                    //plot_ui.set_auto_bounds(egui::Vec2b::new(true, false));
+                    plot_ui.line(line);
+                });
+        });
     }
 
     pub fn update_video_data(&mut self, video_data: &VideoParams) {
         self.video_data = video_data.clone();
     }
 
-    pub fn update(&mut self, adapter: String, backend: String, dti: Vec<DisplayInfo>, perf: &PerfSnapshot) {
+    pub fn update(
+        &mut self,
+        adapter: String,
+        backend: String,
+        dti: Vec<DisplayInfo>,
+        perf: &PerfSnapshot,
+        frame_history: Vec<FrameEntry>,
+    ) {
         self.adapter = adapter;
         self.backend = backend;
         self.dti = dti;
         self.perf = *perf;
+        self.frame_history = frame_history;
     }
 }

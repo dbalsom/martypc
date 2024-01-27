@@ -41,10 +41,11 @@ use marty_core::{
 };
 use marty_egui::{GuiWindow, PerformanceStats};
 
+use frontend_common::timestep_manager::TimestepManager;
 use marty_core::cpu_common::TraceMode;
 use winit::event_loop::EventLoopWindowTarget;
 
-pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
+pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWindowTarget<()>) {
     // Is the machine in an error state? If so, display an error dialog.
     if let Some(err) = emu.machine.get_error_str() {
         emu.gui.show_error(err);
@@ -90,6 +91,8 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
 
         let dti = emu.dm.get_display_info(&emu.machine);
 
+        let (_, frame_history) = tm.get_perf_stats();
+
         //emu.gui.perf_viewer.update_video_data(*video.params());
         emu.gui.perf_viewer.update(
             //adapter: adapter_name_str.clone(),
@@ -98,6 +101,7 @@ pub fn update_egui(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>) {
             "fixme".to_string(),
             dti,
             &emu.perf,
+            frame_history,
         )
     }
 

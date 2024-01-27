@@ -77,6 +77,10 @@ git = "https://github.com/dbalsom/egui_martypc.git"
 branch = "0_24_2_winit_0_29"
 features = ["image"]
 
+[workspace.dependencies.egui_plot]
+git = "https://github.com/dbalsom/egui_martypc.git"
+branch = "0_24_2_winit_0_29"
+
 [profile.release]
 opt-level = 3
 

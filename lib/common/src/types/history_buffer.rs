@@ -31,7 +31,10 @@
 
 */
 
-pub struct HistoryBuffer<T> {
+pub struct HistoryBuffer<T>
+where
+    T: Clone,
+{
     buffer: Vec<T>,
     capacity: usize,
     start: usize,
@@ -39,7 +42,10 @@ pub struct HistoryBuffer<T> {
     full: bool,
 }
 
-impl<T> HistoryBuffer<T> {
+impl<T> HistoryBuffer<T>
+where
+    T: Clone,
+{
     pub fn new(capacity: usize) -> Self {
         HistoryBuffer {
             buffer: Vec::with_capacity(capacity),
@@ -75,6 +81,10 @@ impl<T> HistoryBuffer<T> {
             .iter()
             .chain(self.buffer[..self.start].iter())
             .take(self.len())
+    }
+
+    pub fn as_vec(&self) -> Vec<T> {
+        self.iter().map(|x| x.clone()).collect()
     }
 
     pub fn len(&self) -> usize {

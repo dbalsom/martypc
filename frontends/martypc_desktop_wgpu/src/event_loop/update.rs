@@ -65,7 +65,7 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
 
             emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
         },
-        |emuc, &perf| {
+        |emuc, tmc, &perf| {
             emuc.perf = perf;
 
             // Per frame freq
@@ -205,7 +205,7 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
             emuc.stat_counter.render_time = Instant::now() - render_start;
 
             // Update egui data
-            update_egui(emuc, elwt);
+            update_egui(emuc, tmc, elwt);
 
             // Render the current frame for all window display targets.
             render_frame(emuc);

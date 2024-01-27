@@ -39,11 +39,10 @@ const UPS_MIN_DURATION: Duration = Duration::from_millis(1000 / UPS_CAP as u64);
 const DEFAULT_EMU_FPS_TARGET: u32 = 60; // Default rendering FPS for the emulator
 const FRAME_HISTORY_LEN: usize = 60; // Number of frames of history to keep
 
+#[derive(Copy, Clone, Default)]
 pub struct FrameEntry {
-    emu_fps:    u32,      // Actual rendering FPS for the emulator
-    cpu_cycles: f32,      // CPU cycles per frame
-    emu_time:   Duration, // Time spent in the emulator core per frame
-    frame_time: Duration, // All time spent rendering the frame
+    pub emu_time:   Duration, // Time spent in the emulator core per frame
+    pub frame_time: Duration, // All time spent rendering the frame
 }
 
 #[derive(Copy, Clone, Default)]
@@ -258,7 +257,7 @@ impl TimestepManager {
     ) where
         F: FnOnce(&mut E) -> MachinePerfStats,
         G: FnMut(&mut E, u32),
-        H: FnMut(&mut E, &PerfSnapshot),
+        H: FnMut(&mut E, &TimestepManager, &PerfSnapshot),
     {
         if !self.init {
             self.start();
@@ -287,9 +286,14 @@ impl TimestepManager {
         // Handle emu frame render
         if self.emu_render_rate.tick(elapsed) {
             let snapshot = self.perf_stats.snapshot();
-            emu_render_callback(emu, &snapshot);
+            emu_render_callback(emu, &self, &snapshot);
             self.perf_stats.emu_fps.tick();
             self.perf_stats.frame_time = self.last_frame_instant.elapsed();
+
+            self.frame_history.push(FrameEntry {
+                emu_time:   self.perf_stats.emu_time,
+                frame_time: self.perf_stats.frame_time,
+            });
         }
 
         self.last_instant = self.current_instant;
@@ -359,7 +363,7 @@ impl TimestepManager {
         self.gui_update_rate.set(fps);
     }
 
-    pub fn get_perf_stats(&self) -> &PerfStats {
-        &self.perf_stats
+    pub fn get_perf_stats(&self) -> (&PerfStats, Vec<FrameEntry>) {
+        (&self.perf_stats, self.frame_history.as_vec())
     }
 }
