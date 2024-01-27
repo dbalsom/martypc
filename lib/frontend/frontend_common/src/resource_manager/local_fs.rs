@@ -159,14 +159,15 @@ impl ResourceManager {
 
         if items.is_empty() {
             log::warn!("No items found for resource: {}", resource);
-            return Err(anyhow::anyhow!("No items found for resource: {}", resource));
+        }
+        else {
+            log::debug!(
+                "enumerate_items(): Found {} items for resource: {}",
+                items.len(),
+                resource
+            );
         }
 
-        log::debug!(
-            "enumerate_items(): Found {} items for resource: {}",
-            items.len(),
-            resource
-        );
         Ok(items)
     }
 
