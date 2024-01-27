@@ -67,6 +67,22 @@ struct CrtParamUniform {
     mono_color: [f32; 4],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Vertex {
+    /// Logical pixel coordinates
+    /// (0,0) is the top left corner of the screen
+    pub pos: [f32; 2], // 64 bit
+
+    /// sRGBA with premultiplied alpha
+    //pub color: u32, // 32 bit
+
+    /// Normalized texture coordinates.
+    /// (0, 0) is the top left corner of the texture
+    /// (1, 1) is the bottom right corner of the texture
+    pub uv: [f32; 2],
+}
+
 impl Default for CrtParamUniform {
     fn default() -> Self {
         Self {
@@ -253,15 +269,22 @@ impl MartyScaler {
         // Create vertex buffer; array-of-array of position and texture coordinates
         // One full-screen triangle
         // See: https://github.com/parasyte/pixels/issues/180
-        /*
-        let vertex_data: [[f32; 2]; 3] = [
-            [-1.0, -1.0],
-            [3.0, -1.0],
-            [-1.0, 3.0],
+        let vertex_data: [Vertex; 3] = [
+            Vertex {
+                pos: [-1.0, -1.0],
+                uv:  [0.0, 0.0],
+            },
+            Vertex {
+                pos: [3.0, -1.0],
+                uv:  [2.0, 0.0],
+            },
+            Vertex {
+                pos: [-1.0, 3.0],
+                uv:  [0.0, 2.0],
+            },
         ];
-        */
 
-        let vertex_data: [[f32; 2]; 6] = [
+        /*        let vertex_data: [[f32; 2]; 6] = [
             // First triangle
             [-1.0, -1.0], // Bottom left
             [1.0, -1.0],  // Bottom right
@@ -270,7 +293,7 @@ impl MartyScaler {
             [1.0, -1.0], // Bottom right
             [-1.0, 1.0], // Top left
             [1.0, 1.0],  // Top right
-        ];
+        ];*/
 
         let vertex_data_slice = bytemuck::cast_slice(&vertex_data);
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -279,13 +302,9 @@ impl MartyScaler {
             usage:    wgpu::BufferUsages::VERTEX,
         });
         let vertex_buffer_layout = wgpu::VertexBufferLayout {
-            array_stride: (vertex_data_slice.len() / vertex_data.len()) as wgpu::BufferAddress,
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
             step_mode:    wgpu::VertexStepMode::Vertex,
-            attributes:   &[wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Float32x2,
-                offset: 0,
-                shader_location: 0,
-            }],
+            attributes:   &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
         };
 
         // Create uniform buffer for vertex shader
@@ -383,6 +402,10 @@ impl MartyScaler {
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[],
         });
+
+        let mut primitive = wgpu::PrimitiveState::default();
+        primitive.cull_mode = None;
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("marty_renderer_pipeline"),
             layout: Some(&pipeline_layout),
@@ -391,7 +414,7 @@ impl MartyScaler {
                 entry_point: "vs_main",
                 buffers: &[vertex_buffer_layout],
             },
-            primitive: wgpu::PrimitiveState::default(),
+            primitive,
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             fragment: Some(wgpu::FragmentState {
@@ -731,7 +754,7 @@ impl DisplayScaler<pixels::Pixels> for MartyScaler {
         */
 
         //rpass.draw(0..3, 0..1);
-        rpass.draw(0..6, 0..1);
+        rpass.draw(0..3, 0..1);
     }
 
     fn resize(

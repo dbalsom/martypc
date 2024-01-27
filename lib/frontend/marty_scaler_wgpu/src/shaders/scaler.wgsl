@@ -70,14 +70,31 @@ struct ScalerOptionsUniform {
 @group(0) @binding(2) var<uniform> r_locals: VertexUniform;
 @group(0) @binding(3) var<uniform> scaler_opts: ScalerOptionsUniform;
 
-@vertex
+/*@vertex
 fn vs_main(
     @location(0) position: vec2<f32>,
+    @location(1) a_tex_coord: vec2<f32>,
 ) -> VertexOutput {
     var out: VertexOutput;
     out.tex_coord = fma(position, vec2<f32>(0.5, -0.5), vec2<f32>(0.5, 0.5));
     out.position = r_locals.transform * vec4<f32>(position, 0.0, 1.0);
     return out;
+}*/
+
+@vertex
+fn vs_main(@builtin(vertex_index) vidx: u32) -> VertexOutput {
+
+    var positions = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 3.0, -1.0),
+        vec2<f32>(-1.0,  3.0)
+    );
+
+    var output : VertexOutput;
+    output.position = r_locals.transform * vec4<f32>(positions[vidx].x, positions[vidx].y, 0.0, 1.0);
+    output.tex_coord = fma(positions[vidx], vec2<f32>(0.5, -0.5), vec2<f32>(0.5, 0.5));
+
+    return output;
 }
 
 fn brightness(color: vec4<f32>) -> f32 {
