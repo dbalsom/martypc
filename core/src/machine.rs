@@ -1274,7 +1274,7 @@ impl Machine {
 
         // Process a keyboard event once per frame.
         // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
-        // they then appear to happen instantenously. The PPI has no buffer, so one scancode gets lost.
+        // they then appear to happen instantaneously. The PPI has no buffer, so one scancode gets lost.
         //
         // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
         // fast typist and this method seems to work fine.
