@@ -46,14 +46,6 @@ impl GuiState {
                     ui.close_menu();
                 }
 
-                ui.menu_button("GUI", |ui| {
-                    if ui.button("Toast!").clicked() {
-                        self.toasts
-                            .info("Hello world!")
-                            .set_duration(Some(Duration::from_secs(5)));
-                    }
-                });
-
                 if ui.button("❓ About...").clicked() {
                     *self.window_flag(GuiWindow::About) = true;
                     ui.close_menu();
