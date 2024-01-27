@@ -45,7 +45,7 @@ impl AboutDialog {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, _ctx: &Context, _events: &mut GuiEventQueue) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, ctx: &Context, _events: &mut GuiEventQueue) {
         /*
         let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
             ctx.load_texture(
@@ -58,34 +58,43 @@ impl AboutDialog {
 
         //ui.image(about_texture, about_texture.size_vec2());
         ui.add(
-            egui::Image::new(egui::include_image!("../../../../../assets/marty_logo_about.png"))
-                .fit_to_original_size(1.0),
+            egui::Image::new(egui::include_image!("../../../../../assets/marty_logo_about.png")), //        .fit_to_original_size(1.0),
         );
 
         ui.separator();
         ui.vertical(|ui| {
             ui.label(format!("MartyPC Version {}", env!("CARGO_PKG_VERSION")));
             ui.label("MartyPC is free software licensed under the MIT License.");
-            ui.label("©2023 Daniel Balsom (GloriousCow)");
+            ui.label("©2024 Daniel Balsom (GloriousCow)");
 
-            ui.label("Github:");
-            ui.hyperlink("https://github.com/dbalsom/martypc");
+            ui.horizontal(|ui| {
+                ui.label("Github:");
+                ui.hyperlink("https://github.com/dbalsom/martypc");
+            });
         });
 
         ui.separator();
         ui.vertical(|ui| {
-            ui.label("Shoutouts to:");
+            ui.label("Made possible by the work of:");
+            ui.label(
+                egui::RichText::new("reenigne, Ken Shirriff, modem7, phix")
+                    .color(ui.visuals().strong_text_color())
+                    .font(egui::FontId::proportional(16.0)),
+            );
+            ui.label("Special thanks to:");
             ui.label(
                 egui::RichText::new(
-                    "reenigne, modem7, phix, Bigbass, iqon, xkevio, google0101, raphnet, Artlav, cngsoft, 640KB, \
-                    i509VCB, qeeg, Kelpsy, phire, VileR, Scali, UtterChaos, Alkaid, kado, peach.bot, Dillon, velocity, \
-                    EMMIR, ThomW, Ratalon, Blackcat9, DianeOfTheMoon, Halen, TFO, DigitalSkunk, Heck",
+                    "640KB, BigBass, VileR, Scali, Trixter, UtterChaos, n0p, raphnet, everyone on VOGONS and /r/emudev",
                 )
-                .color(egui::Color32::WHITE)
-                .font(egui::FontId::proportional(20.0)),
+                .color(ui.visuals().strong_text_color())
+                .font(egui::FontId::proportional(16.0)),
+            );
+            ui.label("Dedicated to:");
+            ui.label(
+                egui::RichText::new("Near")
+                    .color(ui.visuals().strong_text_color())
+                    .font(egui::FontId::proportional(16.0)),
             );
         });
-        ui.separator();
-        ui.label("Dedicated to Near.");
     }
 }
