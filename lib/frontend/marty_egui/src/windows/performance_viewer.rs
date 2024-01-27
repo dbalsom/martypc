@@ -37,14 +37,12 @@
 use crate::*;
 use core::fmt;
 use egui::CollapsingHeader;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{GridMark, Line, Plot, PlotPoints};
 use frontend_common::timestep_manager::{FrameEntry, PerfSnapshot};
 use marty_common::util::format_duration;
 use videocard_renderer::VideoParams;
 
 pub struct PerformanceViewerControl {
-    adapter: String,
-    backend: String,
     dti: Vec<DisplayInfo>,
     perf: PerfSnapshot,
     video_data: VideoParams,
@@ -82,8 +80,6 @@ pub fn format_freq_counter(ct: u32) -> String {
 impl PerformanceViewerControl {
     pub fn new() -> Self {
         Self {
-            adapter: String::new(),
-            backend: String::new(),
             dti: Vec::new(),
             perf: Default::default(),
             video_data: Default::default(),
@@ -96,31 +92,15 @@ impl PerformanceViewerControl {
             .striped(true)
             .min_col_width(100.0)
             .show(ui, |ui| {
-                ui.label("Adapter: ");
-                ui.label(egui::RichText::new(format!("{}", self.adapter)));
-                ui.end_row();
-
-                ui.label("Backend: ");
-                ui.label(egui::RichText::new(format!("{}", self.backend)));
-                ui.end_row();
-
                 for (i, dt) in self.dti.iter().enumerate() {
                     CollapsingHeader::new(&format!("Display {}: {} ({})", i, dt.name, dt.dtype))
                         .default_open(true)
                         .show(ui, |ui| {
                             egui::Grid::new("displays").striped(false).show(ui, |ui| {
-                                // ui.label("Type: ");
-                                // ui.label(egui::RichText::new(format!("{}", dt.dtype)));
-                                // ui.end_row();
-                                // ui.label("Video Type: ");
-                                // ui.label(egui::RichText::new(format!("{:?}", DisplayOption(dt.vtype))));
-                                // ui.end_row();
-                                // ui.label("Card ID: ");
-                                // ui.label(egui::RichText::new(format!(
-                                //     "{:?}",
-                                //     DisplayOption(dt.vid.and_then(|vid| { Some(vid.idx) }))
-                                // )));
-                                // ui.end_row();
+                                ui.label("Backend: ");
+                                ui.label(egui::RichText::new(dt.backend_name.clone()));
+                                ui.end_row();
+
                                 ui.label("SW Render Time: ");
                                 ui.label(egui::RichText::new(format_duration(dt.render_time)));
                                 ui.end_row();
@@ -159,7 +139,7 @@ impl PerformanceViewerControl {
                 ui.label(egui::RichText::new(format!("{}", self.perf.wm_fps)));
                 ui.end_row();
                 ui.label("Emulated FPS: ");
-                ui.label(egui::RichText::new(format!("{}", self.perf.emu_fps)));
+                ui.label(egui::RichText::new(format!("{}", self.perf.emu_frames)));
                 ui.end_row();
                 ui.label("Effective CPU Freq: ");
                 ui.label(egui::RichText::new(format_freq_counter(self.perf.cpu_cycles)));
@@ -172,18 +152,13 @@ impl PerformanceViewerControl {
                 ui.end_row();
 
                 ui.label("Cycle Target: ");
-                ui.label(egui::RichText::new(format!("{}", 0)));
+                ui.label(egui::RichText::new(format!("{}", self.perf.cpu_cycle_update_target)));
                 ui.end_row();
 
                 ui.label("Emulation time: ");
                 ui.label(egui::RichText::new(format_duration(self.perf.emu_time)));
                 ui.end_row();
-                ui.label("SW Render time: ");
-                ui.label(egui::RichText::new(format_duration(self.perf.render_time)));
-                ui.end_row();
-                ui.label("Gui Render time: ");
-                ui.label(egui::RichText::new(format_duration(self.perf.gui_time)));
-                ui.end_row();
+
                 ui.label("Total Frame time: ");
                 ui.label(egui::RichText::new(format_duration(self.perf.frame_time)));
                 ui.end_row();
@@ -202,10 +177,22 @@ impl PerformanceViewerControl {
             let x_mag = self.frame_history.len();
             Plot::new("frame_time_plot")
                 .height(96.0)
+                .allow_scroll(false)
+                .allow_drag(false)
+                .allow_zoom(false)
                 .y_axis_width(2)
+                .y_grid_spacer(|spacer| {
+                    vec![
+                        // 100s
+                        GridMark {
+                            value: 16.7,
+                            step_size: 16.7,
+                        },
+                    ]
+                })
                 .x_axis_formatter(|x, _, range| format!("{:.0}", range.end() - x))
                 .show(ui, |plot_ui| {
-                    plot_ui.set_plot_bounds(egui_plot::PlotBounds::from_min_max([0.0, 0.0], [60.0, 16.0]));
+                    plot_ui.set_plot_bounds(egui_plot::PlotBounds::from_min_max([0.0, 0.0], [60.0, 20.0]));
 
                     //plot_ui.set_auto_bounds(egui::Vec2b::new(true, false));
                     plot_ui.line(line);
@@ -217,16 +204,7 @@ impl PerformanceViewerControl {
         self.video_data = video_data.clone();
     }
 
-    pub fn update(
-        &mut self,
-        adapter: String,
-        backend: String,
-        dti: Vec<DisplayInfo>,
-        perf: &PerfSnapshot,
-        frame_history: Vec<FrameEntry>,
-    ) {
-        self.adapter = adapter;
-        self.backend = backend;
+    pub fn update(&mut self, dti: Vec<DisplayInfo>, perf: &PerfSnapshot, frame_history: Vec<FrameEntry>) {
         self.dti = dti;
         self.perf = *perf;
         self.frame_history = frame_history;

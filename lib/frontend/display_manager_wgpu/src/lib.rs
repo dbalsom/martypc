@@ -847,7 +847,16 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
                 gui_render_time = gui_ctx.get_render_time();
             }
 
+            let mut backend_name = String::new();
+            if let Some(backend) = &vt.backend {
+                backend_name = backend
+                    .get_adapter_info()
+                    .map(|info| format!("{:?} ({})", info.backend, info.name))
+                    .unwrap_or_default();
+            }
+
             info_vec.push(DisplayInfo {
+                backend_name,
                 dtype: vt.ttype,
                 vtype,
                 vid: vt.card_id,

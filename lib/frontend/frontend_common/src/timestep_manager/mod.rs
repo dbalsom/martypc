@@ -125,7 +125,6 @@ pub struct PerfStats {
     pub wm_ups: PerfCounter,  // Number of updates per second from the window manager
     pub wm_fps: PerfCounter,  // Number of frames per second calculated from wm updates
     pub emu_ups: PerfCounter, // Number of updates per second performed by emulator core
-    pub emu_fps: PerfCounter, // Number of frames per second rendered by emulator core
     pub cpu_cycles: CycleFrameCounter,
     pub cpu_instructions: CycleFrameCounter,
     pub sys_ticks: CycleFrameCounter,
@@ -141,7 +140,6 @@ pub struct PerfSnapshot {
     pub wm_ups: u32,
     pub wm_fps: u32,
     pub emu_ups: u32,
-    pub emu_fps: u32,
     pub cpu_cycles: u32,
     pub cpu_instructions: u32,
     pub sys_ticks: u32,
@@ -150,15 +148,15 @@ pub struct PerfSnapshot {
     pub render_time: Duration,
     pub gui_time: Duration,
     pub frame_time: Duration,
+    pub cpu_cycle_update_target: u32,
 }
 
 impl PerfStats {
-    pub fn snapshot(&self) -> PerfSnapshot {
+    pub fn snapshot(&self, cpu_cycle_update_target: u32) -> PerfSnapshot {
         PerfSnapshot {
             wm_ups: self.wm_ups.total,
             wm_fps: self.wm_fps.total,
             emu_ups: self.emu_ups.total,
-            emu_fps: self.emu_fps.total,
             cpu_cycles: self.cpu_cycles.cycles_per() as u32,
             cpu_instructions: self.cpu_instructions.cycles_per() as u32,
             sys_ticks: self.sys_ticks.cycles_per() as u32,
@@ -167,6 +165,7 @@ impl PerfStats {
             render_time: self.render_time,
             gui_time: self.gui_time,
             frame_time: self.frame_time,
+            cpu_cycle_update_target,
         }
     }
 }
@@ -285,9 +284,9 @@ impl TimestepManager {
 
         // Handle emu frame render
         if self.emu_render_rate.tick(elapsed) {
-            let snapshot = self.perf_stats.snapshot();
+            let snapshot = self.perf_stats.snapshot(self.cpu_cycle_update_target);
             emu_render_callback(emu, &self, &snapshot);
-            self.perf_stats.emu_fps.tick();
+            self.perf_stats.wm_fps.tick();
             self.perf_stats.frame_time = self.last_frame_instant.elapsed();
 
             self.frame_history.push(FrameEntry {
@@ -323,7 +322,7 @@ impl TimestepManager {
         self.perf_stats.wm_ups.mark_interval();
         self.perf_stats.wm_fps.mark_interval();
         self.perf_stats.emu_ups.mark_interval();
-        self.perf_stats.emu_fps.mark_interval();
+        //self.perf_stats.emu_fps.mark_interval();
 
         // If the CPU Mhz has changed, update the cycle target
         if cpu_mhz != self.cpu_mhz {

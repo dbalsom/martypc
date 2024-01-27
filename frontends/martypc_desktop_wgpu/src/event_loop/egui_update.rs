@@ -94,15 +94,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         let (_, frame_history) = tm.get_perf_stats();
 
         //emu.gui.perf_viewer.update_video_data(*video.params());
-        emu.gui.perf_viewer.update(
-            //adapter: adapter_name_str.clone(),
-            //backend: backend_str.clone(),
-            "fixme".to_string(),
-            "fixme".to_string(),
-            dti,
-            &emu.perf,
-            frame_history,
-        )
+        emu.gui.perf_viewer.update(dti, &emu.perf, frame_history)
     }
 
     // -- Update memory viewer window if open

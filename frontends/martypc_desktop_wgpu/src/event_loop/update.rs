@@ -57,7 +57,7 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
                 cpu_cycles: emuc.machine.cpu_cycles(),
                 cpu_instructions: emuc.machine.cpu_instructions(),
                 system_ticks: emuc.machine.system_ticks(),
-                emu_frames: None,
+                emu_frames: emuc.machine.primary_videocard().map(|vc| vc.get_frame_count()),
             }
         },
         |emuc, cycles| {

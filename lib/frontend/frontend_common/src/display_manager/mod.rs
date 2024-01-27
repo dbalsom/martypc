@@ -80,6 +80,7 @@ impl Display for DisplayTargetType {
 
 #[derive(Clone)]
 pub struct DisplayInfo {
+    pub backend_name: String,
     pub dtype: DisplayTargetType,
     pub vtype: Option<VideoType>,
     pub vid: Option<VideoCardId>,
