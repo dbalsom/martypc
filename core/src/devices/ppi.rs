@@ -176,6 +176,7 @@ pub struct Ppi {
     kb_resets_counter: u32,
     pb_byte: u8,
     kb_byte: u8,
+    kb_byte_last: u8,
     keyboard_clear_scheduled: bool,
     ksr_cleared: bool,
     kb_enabled: bool,
@@ -203,6 +204,7 @@ pub struct PpiStringState {
     pub port_a_value_hex: String,
     pub port_b_value_bin: String,
     pub kb_byte_value_hex: String,
+    pub kb_last_byte_value_hex: String,
     pub kb_resets_counter: String,
     pub port_c_mode: String,
     pub port_c_value: String,
@@ -277,6 +279,7 @@ impl Ppi {
             kb_resets_counter: 0,
             pb_byte: 0,
             kb_byte: 0,
+            kb_byte_last: 0,
             keyboard_clear_scheduled: false,
             ksr_cleared: true,
             kb_enabled: true,
@@ -561,6 +564,7 @@ impl Ppi {
             port_a_value_hex: format!("{:02X}", port_a_value),
             port_b_value_bin: format!("{:08b}", port_b_value),
             kb_byte_value_hex: format!("{:02X}", self.kb_byte),
+            kb_last_byte_value_hex: format!("{:02X}", self.kb_byte_last),
             kb_resets_counter: format!("{}", self.kb_resets_counter),
             port_c_mode: format!("{:?}", self.port_c_mode),
             port_c_value: format!("{:08b}", port_c_value),
@@ -598,6 +602,7 @@ impl Ppi {
         if self.keyboard_clear_scheduled {
             self.keyboard_clear_scheduled = false;
             self.ksr_cleared = true;
+            self.kb_byte_last = self.kb_byte;
             self.kb_byte = 0;
             pic.clear_interrupt(1);
             //log::trace!("PPI: Clearing keyboard");

@@ -28,8 +28,8 @@
 
 */
 
-use marty_core::devices::ppi::PpiStringState;
 use crate::GuiEventQueue;
+use marty_core::devices::ppi::PpiStringState;
 
 pub struct PpiViewerControl {
     ppi_state: PpiStringState,
@@ -49,59 +49,52 @@ impl PpiViewerControl {
             .spacing([40.0, 4.0])
             .show(ui, |ui| {
                 ui.label(egui::RichText::new("Port A Mode:  ").text_style(egui::TextStyle::Monospace));
+                ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_a_mode).font(egui::TextStyle::Monospace));
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.port_a_mode)
-                        .font(egui::TextStyle::Monospace),
+                    egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_bin).font(egui::TextStyle::Monospace),
                 );
                 ui.end_row();
 
                 ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_bin)
-                        .font(egui::TextStyle::Monospace),
-                );
-                ui.end_row();
-
-                ui.label(egui::RichText::new("Port A Value: ").text_style(egui::TextStyle::Monospace));
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex)
-                        .font(egui::TextStyle::Monospace),
+                    egui::TextEdit::singleline(&mut self.ppi_state.port_a_value_hex).font(egui::TextStyle::Monospace),
                 );
                 ui.end_row();
 
                 ui.label(egui::RichText::new("Port B Value: ").text_style(egui::TextStyle::Monospace));
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.port_b_value_bin)
+                    egui::TextEdit::singleline(&mut self.ppi_state.port_b_value_bin).font(egui::TextStyle::Monospace),
+                );
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Keyboard Byte:").text_style(egui::TextStyle::Monospace));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex).font(egui::TextStyle::Monospace),
+                );
+                ui.end_row();
+
+                ui.label(egui::RichText::new("Last Keyboard Byte:").text_style(egui::TextStyle::Monospace));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.ppi_state.kb_last_byte_value_hex)
                         .font(egui::TextStyle::Monospace),
                 );
                 ui.end_row();
 
-                ui.label(egui::RichText::new("Keyboard byte:").text_style(egui::TextStyle::Monospace));
+                ui.label(egui::RichText::new("Keyboard Resets:").text_style(egui::TextStyle::Monospace));
                 ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.kb_byte_value_hex)
-                        .font(egui::TextStyle::Monospace),
-                );
-                ui.end_row();
-
-                ui.label(egui::RichText::new("Keyboard resets:").text_style(egui::TextStyle::Monospace));
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.kb_resets_counter)
-                        .font(egui::TextStyle::Monospace),
+                    egui::TextEdit::singleline(&mut self.ppi_state.kb_resets_counter).font(egui::TextStyle::Monospace),
                 );
                 ui.end_row();
 
                 ui.label(egui::RichText::new("Port C Mode:  ").text_style(egui::TextStyle::Monospace));
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.port_c_mode)
-                        .font(egui::TextStyle::Monospace),
-                );
+                ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_mode).font(egui::TextStyle::Monospace));
                 ui.end_row();
 
                 ui.label(egui::RichText::new("Port C Value: ").text_style(egui::TextStyle::Monospace));
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.ppi_state.port_c_value)
-                        .font(egui::TextStyle::Monospace),
-                );
+                ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_value).font(egui::TextStyle::Monospace));
                 ui.end_row();
             });
     }
@@ -110,6 +103,3 @@ impl PpiViewerControl {
         self.ppi_state = state;
     }
 }
-
-
-
