@@ -57,8 +57,12 @@ use frontend_common::timestep_manager::TimestepManager;
 pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<()>, elwt: &EventLoopWindowTarget<()>) {
     match event {
         Event::NewEvents(StartCause::Init) => {
-            // Initialization stuff here?
+            // Initialization stuff here
             emu.stat_counter.last_second = Instant::now();
+
+            // -- Update display info
+            let dti = emu.dm.get_display_info(&emu.machine);
+            emu.gui.init_display_info(dti);
         }
 
         Event::DeviceEvent { event, .. } => {

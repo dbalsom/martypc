@@ -111,7 +111,7 @@ impl CompositeAdjustControl {
 
                 ui.label(egui::RichText::new("Phase Offset:").text_style(egui::TextStyle::Monospace));
                 if ui
-                    .add(egui::Slider::new(&mut self.temp_phase[self.dt_idx], 0.0..=270.0))
+                    .add(egui::Slider::new(&mut self.temp_phase[self.dt_idx], 0.0..=270.0).step_by(90.0))
                     .changed()
                 {
                     update = true;

@@ -541,7 +541,7 @@ impl GuiState {
     }
 
     /// Initialize GUI Display enum state given a vector of DisplayInfo fields.  
-    pub fn update_display_info(&mut self, vci: Vec<DisplayInfo>) {
+    pub fn init_display_info(&mut self, vci: Vec<DisplayInfo>) {
         self.display_info = vci.clone();
 
         // Build a vector of enums to set to avoid borrowing twice.
