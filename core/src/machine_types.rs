@@ -140,8 +140,9 @@ impl FromStr for HardDiskControllerType {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
-pub enum HardDriveType {
+pub enum HardDriveFormat {
     Mfm,
+    Rll,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]

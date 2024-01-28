@@ -34,7 +34,7 @@ use crate::machine_types::{
     FdcType,
     FloppyDriveType,
     HardDiskControllerType,
-    HardDriveType,
+    HardDriveFormat,
     MachineType,
     SerialControllerType,
     SerialMouseType,
@@ -302,7 +302,8 @@ pub struct HardDriveControllerConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct HardDriveConfig {
     #[serde(rename = "type")]
-    pub hd_type: HardDriveType,
+    pub hd_type: Option<u32>,
+    pub format: Option<HardDriveFormat>,
     pub vhd: Option<String>,
 }
 

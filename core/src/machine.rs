@@ -285,11 +285,11 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn with_machine_config(mut self, config: MachineConfiguration) -> Self {
+    pub fn with_machine_config(mut self, config: &MachineConfiguration) -> Self {
         let mtype = config.machine_type;
         self.mtype = Some(mtype);
         self.descriptor = Some(get_machine_descriptor(mtype).unwrap().clone());
-        self.machine_config = Some(config);
+        self.machine_config = Some(config.clone());
         self
     }
 
@@ -686,6 +686,10 @@ impl Machine {
 
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
+    }
+
+    pub fn config(&self) -> &MachineConfiguration {
+        &self.machine_config
     }
 
     /// Set a CPU option. Avoids needing to borrow CPU.

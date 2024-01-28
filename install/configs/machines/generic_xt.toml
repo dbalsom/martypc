@@ -125,12 +125,12 @@ ppi_turbo = false
         # Drives connected to controller. Maximum of 2.
         # Drive #0 - (Typically C:)
         [[machine.hdc.drive]]
-        type = "Mfm"
+        format = "Mfm"
         vhd = "dos330.vhd"
         
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
-        #type = "Mfm"
+        #format = "Mfm"
         #vhd = "games.vhd"
 
     # Serial card
@@ -185,12 +185,12 @@ ppi_turbo = false
         # Drives connected to controller. Maximum of 2.
         # Drive #0 - (Typically C:)
         [[machine.hdc.drive]]
-        type = "Mfm"
+        format = "Mfm"
         vhd = "dos330.vhd"
         
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
-        #type = "Mfm"
+        #format = "Mfm"
         #vhd = "games.vhd"
 
     # Serial card
@@ -246,12 +246,12 @@ ppi_turbo = true
         # Drives connected to controller. Maximum of 2.
         # Drive #0 - (Typically C:)
         [[machine.hdc.drive]]
-        type = "Mfm"
+        format = "Mfm"
         vhd = "dos330.vhd"
         
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
-        #type = "Mfm"
+        #format = "Mfm"
         #vhd = "games.vhd"
 
     # Serial card
