@@ -336,7 +336,7 @@ impl TimestepManager {
         log::info!(
             "Emulator render rate has changed to {} FPS, new frame target: {:.2}ms",
             self.emu_render_rate.get(),
-            self.frame_target.as_millis(),
+            self.frame_target.as_secs_f64() * 1000.0,
         );
     }
 
