@@ -38,7 +38,11 @@
    - A file (for screenshots)
 */
 
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+    time::Duration,
+};
 
 pub use display_backend_pixels::{
     BufferDimensions,
@@ -114,6 +118,11 @@ pub struct DisplayTargetParams {
     window_dim: DisplayTargetDimensions,  // The window client area size in pixels.
 }
 
+pub struct ResizeTarget {
+    pub w: u32,
+    pub h: u32,
+}
+
 impl DisplayTargetParams {
     /// Given requested display target parameters, return true if they represent a difference that requires the display
     /// target to reconfigure (resolve) one or more of its components, and if so, flags indicating which components need to be resolved.
@@ -169,6 +178,7 @@ pub struct WgpuDisplayManager {
     // The window containing egui will always be at index 0.
     targets: Vec<DisplayTargetContext<PixelsBackend>>,
     window_id_map: HashMap<WindowId, usize>,
+    window_id_resize_requests: HashMap<WindowId, ResizeTarget>,
     card_id_map: HashMap<VideoCardId, Vec<usize>>, // Card id maps to a Vec<usize> as a single card can have multiple targets.
     primary_idx: Option<usize>,
     scaler_presets: HashMap<String, ScalerPreset>,
@@ -180,6 +190,7 @@ impl Default for WgpuDisplayManager {
             event_loop: None,
             targets: Vec::new(),
             window_id_map: HashMap::new(),
+            window_id_resize_requests: HashMap::new(),
             card_id_map: HashMap::new(),
             primary_idx: None,
             scaler_presets: HashMap::new(),
@@ -1170,56 +1181,76 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
     fn on_window_resized(&mut self, wid: WindowId, w: u32, h: u32) -> Result<(), Error> {
         let idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
 
-        let dt = &mut self.targets[*idx];
+        self.window_id_resize_requests
+            .entry(wid)
+            .and_modify(|r| {
+                r.w = w;
+                r.h = h;
+            })
+            .or_insert(ResizeTarget { w, h });
 
-        if let Some(window) = &dt.window {
-            let scale_factor = window.scale_factor();
-            let resize_string = format!("{}x{} (scale factor: {})", w, h, scale_factor);
-            if let Some(backend) = &mut dt.backend {
-                log::debug!(
-                    "on_window_resized(): dt{}: resizing backend surface to {}",
-                    *idx,
-                    resize_string
-                );
-                backend.resize_surface(SurfaceDimensions { w: w, h: h })?;
+        Ok(())
+    }
 
-                // We may receive this event in response to a on_card_resized event that triggered a window size
-                // change. We should get the current aspect ratio from the renderer.
-                if let Some(renderer) = &mut dt.renderer {
-                    let buf_dimensions = renderer.get_buf_dimensions();
-                    let aspect_dimensions = renderer.get_display_dimensions();
+    fn resize_windows(&mut self) -> Result<(), Error> {
+        let wids: Vec<WindowId> = self.window_id_resize_requests.keys().cloned().collect();
 
-                    // Resize the DisplayScaler if present.
-                    if let Some(scaler) = &mut dt.scaler {
-                        log::debug!("on_window_resized(): dt{}: resizing scaler to {}", *idx, resize_string);
-                        scaler.resize(
-                            backend.get_backend_raw().unwrap(),
-                            buf_dimensions.w,
-                            buf_dimensions.h,
-                            aspect_dimensions.w,
-                            aspect_dimensions.h,
-                            w,
-                            h,
-                        );
+        for wid in wids {
+            let rt = self.window_id_resize_requests.remove(&wid).unwrap();
+
+            let idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
+
+            let dt = &mut self.targets[*idx];
+
+            if let Some(window) = &dt.window {
+                let scale_factor = window.scale_factor();
+                let resize_string = format!("{}x{} (scale factor: {})", rt.w, rt.h, scale_factor);
+                if let Some(backend) = &mut dt.backend {
+                    log::debug!(
+                        "resize_windows(): dt{}: resizing backend surface to {}",
+                        *idx,
+                        resize_string
+                    );
+                    backend.resize_surface(SurfaceDimensions { w: rt.w, h: rt.h })?;
+
+                    // We may receive this event in response to a on_card_resized event that triggered a window size
+                    // change. We should get the current aspect ratio from the renderer.
+                    if let Some(renderer) = &mut dt.renderer {
+                        let buf_dimensions = renderer.get_buf_dimensions();
+                        let aspect_dimensions = renderer.get_display_dimensions();
+
+                        // Resize the DisplayScaler if present.
+                        if let Some(scaler) = &mut dt.scaler {
+                            log::debug!("resize_windows(): dt{}: resizing scaler to {}", *idx, resize_string);
+                            scaler.resize(
+                                backend.get_backend_raw().unwrap(),
+                                buf_dimensions.w,
+                                buf_dimensions.h,
+                                aspect_dimensions.w,
+                                aspect_dimensions.h,
+                                rt.w,
+                                rt.h,
+                            );
+                        }
+                    }
+                    else {
+                        // Resize the DisplayScaler if present.
+                        if let Some(scaler) = &mut dt.scaler {
+                            log::debug!("resize_windows(): dt{}: resizing scaler to {}", *idx, resize_string);
+                            scaler.resize_surface(backend.get_backend_raw().unwrap(), rt.w, rt.h)
+                        }
                     }
                 }
-                else {
-                    // Resize the DisplayScaler if present.
-                    if let Some(scaler) = &mut dt.scaler {
-                        log::debug!("on_window_resized(): dt{}: resizing scaler to {}", *idx, resize_string);
-                        scaler.resize_surface(backend.get_backend_raw().unwrap(), w, h)
-                    }
-                }
-            }
 
-            if let Some(gui_ctx) = &mut dt.gui_ctx {
-                log::debug!(
-                    "on_window_resized(): dt{}: resizing gui context for window id: {:?} to {}",
-                    *idx,
-                    wid,
-                    resize_string
-                );
-                gui_ctx.resize(window, w, h);
+                if let Some(gui_ctx) = &mut dt.gui_ctx {
+                    log::debug!(
+                        "resize_windows(): dt{}: resizing gui context for window id: {:?} to {}",
+                        *idx,
+                        wid,
+                        resize_string
+                    );
+                    gui_ctx.resize(window, rt.w, rt.h);
+                }
             }
         }
 

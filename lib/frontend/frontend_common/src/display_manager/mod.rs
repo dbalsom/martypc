@@ -200,10 +200,15 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// resources can be resized as well.
     fn on_card_resized(&mut self, vid: &VideoCardId, extents: &DisplayExtents) -> Result<(), Error>;
 
-    /// Reflect a change in the specified window's dimensions, so that associated
-    /// resources can be resized as well.
+    /// Reflect a change in the specified window's dimensions.
     /// Typically called in response to a resize event from a window manager event queue.
+    /// The window is not actually updated on this call since multiple resize events may be received
+    /// per frame. To actually resize the window we must call resize_windows(), which will apply the
+    /// last received resize dimensions for each window.
     fn on_window_resized(&mut self, wid: Wi, w: u32, h: u32) -> Result<(), Error>;
+
+    /// Reflect pending window resize events, resizing associated resources as needed.
+    fn resize_windows(&mut self) -> Result<(), Error>;
 
     /// Execute a closure that is passed the VideoCardId for each VideoCard registered in the
     /// DisplayManager.
