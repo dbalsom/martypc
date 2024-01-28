@@ -483,22 +483,22 @@ impl Machine {
             kb_translation_path.push("keyboard");
             kb_translation_path.push(format!("keyboard_{}.toml", kb_string));
 
-            match cpu.bus_mut().keyboard_mut().load_mapping(&kb_translation_path) {
-                Ok(_) => {
-                    println!("Loaded keyboard mapping file: {}", kb_translation_path.display());
+            if let Some(keyboard) = cpu.bus_mut().keyboard_mut() {
+                match keyboard.load_mapping(&kb_translation_path) {
+                    Ok(_) => {
+                        println!("Loaded keyboard mapping file: {}", kb_translation_path.display());
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to load keyboard mapping file: {} Err: {}",
+                            kb_translation_path.display(),
+                            e
+                        )
+                    }
                 }
-                Err(e) => {
-                    eprintln!(
-                        "Failed to load keyboard mapping file: {} Err: {}",
-                        kb_translation_path.display(),
-                        e
-                    )
-                }
+                keyboard.set_debug(core_config.get_keyboard_debug());
             }
         }
-
-        // Set keyboard debug flag.
-        cpu.bus_mut().keyboard_mut().set_debug(core_config.get_keyboard_debug());
 
         // Load BIOS ROM images unless config option suppressed rom loading
         if !core_config.get_machine_noroms() {

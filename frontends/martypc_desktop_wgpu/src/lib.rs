@@ -302,7 +302,7 @@ pub fn run() {
     let machine_names = machine_manager.get_config_names();
     let have_machine_config = machine_names.contains(&config.machine.config_name);
 
-    // Do 'romscan' commandline argument. We print machine info (and rom info if --romscan
+    // Do --machinescan commandline argument. We print machine info (and rom info if --romscan
     // was also specified) and then quit.
     if config.emulator.machinescan {
         // Print the list of machine configurations and their rom requirements
@@ -350,9 +350,13 @@ pub fn run() {
             for overlay in overlay_vec.iter() {
                 log::debug!("Have machine config overlay: {}", overlay);
             }
-            machine_manager
-                .get_config_with_overlays(&config.machine.config_name, overlay_vec)
-                .unwrap()
+            match machine_manager.get_config_with_overlays(&config.machine.config_name, overlay_vec) {
+                Ok(config) => config,
+                Err(err) => {
+                    eprintln!("Error getting machine config: {}", err);
+                    std::process::exit(1);
+                }
+            }
         }
         else {
             machine_manager.get_config(&config.machine.config_name).unwrap()
@@ -506,7 +510,7 @@ pub fn run() {
     let kb_data = KeyboardData::new();
 
     // Mouse event struct
-    let mouse_data = MouseData::new(config.input.reverse_mouse_buttons);
+    let mouse_data = MouseData::new(config.emulator.input.reverse_mouse_buttons);
 
     // Init sound
     let sound_player_opt = {

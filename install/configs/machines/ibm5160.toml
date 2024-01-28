@@ -36,61 +36,36 @@ name = "ibm5160"
 type = "Ibm5160"
 rom_set = "auto"
 speaker = true
+overlays = [
+    "pcxt_2_720k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
 
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
 
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "720k"
-        image = "dos330.img"
-        [[machine.fdc.drive]]
-        type  = "720k"   
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
-    
     # Video cards
     [[machine.video]]
     type = "CGA"
     clock_mode = "Dynamic"
 
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"    
 
 [[machine]]
 name = "ibm5160_hdd"
 type = "Ibm5160"
 rom_set = "auto"
 speaker = true
+overlays = [
+    "pcxt_2_720k_floppies",
+    "pcxt_2_serial_ports",   
+    "us_modelf_keyboard",
+]
 
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "720k"
-        image = "dos330.img"
-        [[machine.fdc.drive]]
-        type  = "720k"   
 
     # Hard disk controller
     [machine.hdc]
@@ -105,46 +80,27 @@ speaker = true
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
         #vhd = "games.vhd"
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
     
     # Video cards
     [[machine.video]]
     type = "CGA"
     clock_mode = "Dynamic"
 
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"    
-
 [[machine]]
 name = "ibm5160_hdd_ega"
 type = "Ibm5160"
 rom_set = "auto"
 speaker = true
-
+overlays = [
+    "pcxt_2_720k_floppies",
+    "pcxt_2_serial_ports", 
+    "us_modelf_keyboard",
+]
+    
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
 
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "720k"
-        image = "dos330.img"
-        [[machine.fdc.drive]]
-        type  = "720k"   
 
     # Hard disk controller
     [machine.hdc]
@@ -159,22 +115,11 @@ speaker = true
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
         #vhd = "games.vhd"
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
     
     # Video cards
     [[machine.video]]
     type = "EGA"
     clock_mode = "Dynamic"
 
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"    
+
+

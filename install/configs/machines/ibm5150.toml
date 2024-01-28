@@ -36,59 +36,35 @@ name = "ibm5150_64k"
 type = "Ibm5150v64K"
 rom_set = "auto"
 speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
 
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        [[machine.fdc.drive]]
-        type  = "360k"   
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
     
     # Video cards
     [[machine.video]]
     type = "MDA"
     clock_mode = "Character"
-
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
 
 [[machine]]
 name = "ibm5150_64k_hdd"
 type = "Ibm5150v64K"
 rom_set = "auto"
 speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
 
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        [[machine.fdc.drive]]
-        type  = "360k"   
 
     # Hard disk controller
     [machine.hdc]
@@ -103,84 +79,48 @@ speaker = true
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
         #vhd = "games.vhd"
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
     
     # Video cards
     [[machine.video]]
     type = "MDA"
     clock_mode = "Character"
-
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
 
 [[machine]]
 name = "ibm5150_256k"
 type = "Ibm5150v256K"
 rom_set = "auto"
 speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
+
 
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        [[machine.fdc.drive]]
-        type  = "360k"   
-        
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
     
     # Video cards
     [[machine.video]]
     type = "MDA"
     clock_mode = "Character"
 
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
-
 [[machine]]
 name = "ibm5150_256k_hdd"
 type = "Ibm5150v256K"
 rom_set = "auto"
 speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
+
 
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
-
-    # Floppy disk controller
-    [machine.fdc]
-    type = "IbmNec"
-    
-        # Drives connected to controller. Maximum of 4.
-        [[machine.fdc.drive]]
-        type  = "360k"
-        [[machine.fdc.drive]]
-        type  = "360k"   
 
     # Hard disk controller
     [machine.hdc]
@@ -195,23 +135,10 @@ speaker = true
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
         #vhd = "games.vhd"
-
-    # Serial card
-    [[machine.serial]]
-    type = "IbmAsync"
-        [[machine.serial.port]]
-        io_base = 0x3F8
-        irq = 4
-        [[machine.serial.port]]
-        io_base = 0x2F8
-        irq = 3
     
     # Video cards
     [[machine.video]]
     type = "MDA"
     clock_mode = "Character"
 
-    [machine.keyboard]
-    type = "ModelF"
-    layout = "US"
 
