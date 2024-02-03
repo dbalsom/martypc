@@ -455,7 +455,7 @@ impl Crtc6845 {
         (self.cursor_start_line, self.cursor_end_line)
     }
 
-    /// Return the immediate cursor status as a tuple. Refle
+    /// Return the immediate cursor status for the current character clock
     #[inline]
     pub fn cursor(&self) -> bool {
         let mut cursor =
