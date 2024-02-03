@@ -24,9 +24,9 @@
 
     ---------------------------------------------------------------------------
 
-    ega::attribute_regs.rs
+    ega::attribute_controller.rs
 
-    Implements the EGA attribute registers.
+    Implements the EGA Attribute Controller
 
 */
 
@@ -134,7 +134,42 @@ pub struct AColorPlaneEnable {
     unused: B2,
 }
 
-impl EGACard {
+pub struct AttributeController {
+    attribute_register_flipflop: AttributeRegisterFlipFlop,
+    attribute_register_select_byte: u8,
+    attribute_register_selected: AttributeRegister,
+    pub attribute_palette_registers: [AttributePaletteEntry; 16],
+    attribute_palette_index: usize,
+    attribute_mode_control: AModeControl,
+    pub attribute_overscan_color: AOverscanColor,
+    attribute_color_plane_enable: AColorPlaneEnable,
+    attribute_pel_panning: u8,
+}
+
+impl Default for AttributeController {
+    fn default() -> Self {
+        Self {
+            attribute_register_flipflop: AttributeRegisterFlipFlop::Address,
+            attribute_register_select_byte: 0,
+            attribute_register_selected: AttributeRegister::Palette0,
+            attribute_palette_registers: [Default::default(); 16],
+            attribute_palette_index: 0,
+            attribute_mode_control: AModeControl::new(),
+            attribute_overscan_color: AOverscanColor::new(),
+            attribute_color_plane_enable: AColorPlaneEnable::new(),
+            attribute_pel_panning: 0,
+        }
+    }
+}
+
+impl AttributeController {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn reset_flipflop(&mut self) {
+        self.attribute_register_flipflop = AttributeRegisterFlipFlop::Address;
+    }
     /// Handle a write to the Attribute Register 0x3C0.
     ///
     /// Unlike the other register files on the EGA, the Attribute Register doesn't have an
@@ -215,6 +250,30 @@ impl EGACard {
                 self.attribute_register_flipflop = AttributeRegisterFlipFlop::Address;
             }
         }
-        self.recalculate_mode();
+    }
+
+    pub fn mode(&self) -> AttributeMode {
+        self.attribute_mode_control.mode()
+    }
+
+    pub fn display_type(&self) -> AttributeDisplayType {
+        self.attribute_mode_control.display_type()
+    }
+
+    #[rustfmt::skip]
+    pub fn get_state(&self) -> Vec<(String, VideoCardStateEntry)> {
+        let mut attribute_vec = Vec::new();
+        attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.mode()))));
+        attribute_vec.push((format!("{:?} disp:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.display_type()))));
+        attribute_vec.push((format!("{:?} elgc:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.enable_line_character_codes()))));
+        attribute_vec.push((format!("{:?} attr:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.enable_blink_or_intensity()))));
+
+        let (r, g, b) = EGACard::ega_to_rgb( self.attribute_overscan_color.into_bytes()[0]);
+        attribute_vec.push((format!("{:?}", AttributeRegister::OverscanColor), VideoCardStateEntry::Color(format!("{:06b}", self.attribute_overscan_color.into_bytes()[0]), r, g, b)));
+        attribute_vec.push((format!("{:?} en:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:04b}", self.attribute_color_plane_enable.enable_plane()))));
+        attribute_vec.push((format!("{:?} mux:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:02b}", self.attribute_color_plane_enable.video_status_mux()))));
+        attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), VideoCardStateEntry::String(format!("{}", self.attribute_pel_panning))));
+
+        attribute_vec
     }
 }

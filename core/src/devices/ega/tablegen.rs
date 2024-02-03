@@ -33,7 +33,7 @@
 
 use super::*;
 
-/// Constant initalizer to pack all possible 6-bit values into 64, 64 bit words
+/// Constant initializer to pack all possible 6-bit values into 64, 64 bit words
 /// representing 8 packed pixels each.
 pub const EGA_COLORS_U64: [u64; 64] = {
     let mut packed = [0u64; 64];

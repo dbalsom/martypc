@@ -31,7 +31,7 @@
     functions defined here to properly de-planarize data for fast rasterization.
 */
 
-use super::*;
+/*use super::*;
 
 impl EGACard {
     pub fn deplane(&mut self, offset: usize) {
@@ -64,3 +64,4 @@ impl EGACard {
         self.deplane(offset);
     }
 }
+*/
