@@ -305,17 +305,11 @@ impl AttributeController {
     pub fn load(&mut self, input: AttributeInput, clock_select: ClockSelect, den: bool) {
         let mut ai = input;
         // The attribute controller will emit the border color when display enable is low.
-        if !den {
-            // Delay border by one character clock in text mode. I can't tell if this is an ugly hack or something the
-            // attribute controller actually does, but it's necessary to get the text mode to align.
-            if matches!(self.mode_control.mode(), AttributeMode::Text) {
-                if (den == self.last_den) {
-                    //ai = AttributeInput::Border;
-                }
-            }
-            else {
-                ai = AttributeInput::Border;
-            }
+        if !den && (den == self.last_den) {
+            // Delay border by one character clock. I can't tell if this is an ugly hack or something the
+            // attribute controller actually does, but it's necessary to get the text mode to align and for
+            // the pel panning to work properly at the right edge of the screen.
+            ai = AttributeInput::Border;
         }
         self.last_den = den;
 
@@ -400,13 +394,13 @@ impl AttributeController {
         out_data0 |= (out_data & 0x00FF000000000000) >> 32; // -> 0x0000000000FF0000
         out_data0 |= (out_data & 0x00FF000000000000) >> 24; // -> 0x00000000FF000000
         out_data0 |= (out_data & 0x0000FF0000000000) >> 8;  // -> 0x000000FF00000000
-        out_data0 |= (out_data & 0x0000FF0000000000);       // -> 0x0000FF0000000000
+        out_data0 |= out_data & 0x0000FF0000000000;         // -> 0x0000FF0000000000
         out_data0 |= (out_data & 0x000000FF00000000) << 16; // -> 0x00FF000000000000
         out_data0 |= (out_data & 0x000000FF00000000) << 24; // -> 0xFF00000000000000
 
         out_data1 |= (out_data & 0x00000000FF000000) >> 24; // -> 0x00000000000000FF
         out_data1 |= (out_data & 0x00000000FF000000) >> 16; // -> 0x000000000000FF00
-        out_data1 |= (out_data & 0x0000000000FF0000);       // -> 0x0000000000FF0000
+        out_data1 |= out_data & 0x0000000000FF0000;         // -> 0x0000000000FF0000
         out_data1 |= (out_data & 0x0000000000FF0000) << 8;  // -> 0x00000000FF000000
         out_data1 |= (out_data & 0x000000000000FF00) << 24; // -> 0x000000FF00000000
         out_data1 |= (out_data & 0x000000000000FF00) << 32; // -> 0x0000FF0000000000
