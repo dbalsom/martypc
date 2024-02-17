@@ -23,7 +23,7 @@ name = "us_modelf_keyboard"
     # would be appreciated in developing new translation files.
     layout = "US"
     # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
-    typematic = false
+    typematic = true
     # Delay in milliseconds before typematic repeat begins.
     typematic_delay = 500.0
     # Delay in milliseconds between each scancode during typematic repeat.
@@ -130,3 +130,9 @@ name = "pcxt_4_360k_floppies"
         type  = "360k"
         [[overlay.fdc.drive]]
         type  = "360k"       
+        
+[[overlay]]
+name = "microsoft_serial_mouse"
+    [overlay.serial_mouse]
+    type = "Microsoft"
+    port = 0 

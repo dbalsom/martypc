@@ -92,7 +92,7 @@ ppi_turbo = false
     type = "ModelF"
     layout = "US"    
     
-    [machine.serialmouse]
+    [machine.serial_mouse]
     type = "Microsoft"
     port = 0 
     
@@ -212,7 +212,7 @@ ppi_turbo = false
     type = "ModelF"
     layout = "US"
     
-    [machine.serialmouse]
+    [machine.serial_mouse]
     type = "Microsoft"
     port = 0
     
@@ -273,6 +273,6 @@ ppi_turbo = true
     type = "ModelF"
     layout = "US"    
     
-    [machine.serialmouse]
+    [machine.serial_mouse]
     type = "Microsoft"
     port = 0    
