@@ -203,6 +203,7 @@ pub struct EgaCrtc {
     vcc: u8,  // Vertical character counter (y pos of character)
     slc: u16, // Scanline counter - increments after reaching vertical total
     hsc: u8,  // Horizontal sync counter - counts during hsync period
+    vsc: u8,  // Vertical sync counter - counts during vsync period
     vtac_c5: u8,
     in_vta: bool,
     in_hrd: bool,
@@ -272,6 +273,7 @@ impl Default for EgaCrtc {
             vcc: 0,
             slc: 0,
             hsc: 0,
+            vsc: 0,
             vtac_c5: 0,
             in_vta: false,
             in_hrd: false,
@@ -861,6 +863,9 @@ impl EgaCrtc {
                 //trace!(self, "Entering vsync");
                 self.status.vblank = true;
                 self.status.den = false;
+
+                // Latch CRTC start address at VSYNC (https://www.vogons.org/viewtopic.php?t=57320)
+                self.start_address_latch = self.crtc_start_address;
             }
 
             if self.slc == self.crtc_vertical_display_end + 1 {
@@ -869,16 +874,13 @@ impl EgaCrtc {
                 self.status.den = false;
                 self.den_skew_back = true;
                 self.status.den_skew = true;
-
-                // Latch CRTC start address at VSYNC (https://www.vogons.org/viewtopic.php?t=57320)
-                self.start_address_latch = self.crtc_start_address;
             }
 
             if self.slc == self.crtc_vertical_total {
                 // We have reached vertical total, we are at the end of the top overscan and entering the active
                 // display area.
                 self.in_vta = false;
-                self.vtac_c5 = 0;
+                self.vsc = 0;
                 self.slc = 0;
 
                 self.hcc = 0;
