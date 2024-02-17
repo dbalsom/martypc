@@ -34,16 +34,6 @@ use super::*;
 use crate::bus::DeviceRunTimeUnit;
 use std::{collections::HashMap, path::Path};
 
-// Helper macro for pushing video card state entries.
-macro_rules! push_reg_str {
-    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((
-            format!("{} {:?}", $decorator, $reg),
-            VideoCardStateEntry::String(format!("{}", $val)),
-        ))
-    };
-}
-
 impl VideoCard for EGACard {
     fn get_sync(&self) -> (bool, bool, bool, bool) {
         (false, false, false, false)
@@ -51,7 +41,7 @@ impl VideoCard for EGACard {
 
     fn set_video_option(&mut self, opt: VideoOption) {
         match opt {
-            VideoOption::EnableSnow(state) => {
+            VideoOption::EnableSnow(_state) => {
                 log::warn!("VideoOption::EnableSnow not supported for EGA");
             }
             VideoOption::DebugDraw(state) => {
@@ -421,7 +411,7 @@ impl VideoCard for EGACard {
         &DUMMY_PIXEL
     }
 
-    fn get_pixel_raw(&self, x: u32, y: u32) -> u8 {
+    fn get_pixel_raw(&self, _x: u32, _y: u32) -> u8 {
         /*        let mut byte = 0;
 
         let x_byte_offset = (x + self.attribute_pel_panning as u32) / 8;

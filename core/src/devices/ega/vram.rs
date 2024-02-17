@@ -36,7 +36,7 @@
 
 */
 
-use crate::devices::ega::{DisplayPlane, EGA_GFX_PLANE_SIZE, EGA_MAX_CLOCK16};
+use crate::devices::ega::EGA_GFX_PLANE_SIZE;
 
 /// When in CGA compatibility mode, the Graphics Controller outputs odd and even bits
 /// to different planes so that the Attribute Controller can process the 2bpp data as

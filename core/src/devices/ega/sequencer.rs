@@ -32,11 +32,7 @@
 
 use crate::{
     device_traits::videocard::VideoCardStateEntry,
-    devices::ega::{
-        tablegen::{BIT_EXTEND_REVERSE_TABLE64, BIT_EXTEND_TABLE64, BYTE_EXTEND_TABLE64},
-        vram::Vram,
-        EGA_CHARACTER_HEIGHT,
-    },
+    devices::ega::{tablegen::BIT_EXTEND_TABLE64, vram::Vram, EGA_CHARACTER_HEIGHT},
 };
 use modular_bitfield::{bitfield, prelude::*, BitfieldSpecifier};
 

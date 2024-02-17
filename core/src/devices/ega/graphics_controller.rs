@@ -553,7 +553,7 @@ impl GraphicsController {
     }
 
     pub fn map_address(&self, address: usize, page_select: PageSelect) -> Option<(usize, usize)> {
-        let mut offset = address;
+        let offset;
         match self.graphics_micellaneous.memory_map() {
             MemoryMap::A0000_128k => {
                 if let EGA_MEM_ADDRESS..=EGA_MEM_END_128 = address {

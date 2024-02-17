@@ -63,10 +63,7 @@ mod vram;
 
 use attribute_controller::*;
 
-use crate::devices::ega::{
-    crtc::{EgaCrtc, EGA_HSLC_MASK, EGA_VBLANK_MASK},
-    vram::Vram,
-};
+use crate::devices::ega::crtc::EgaCrtc;
 
 use graphics_controller::*;
 use sequencer::*;
