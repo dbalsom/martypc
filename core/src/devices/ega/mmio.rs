@@ -44,7 +44,11 @@ impl MemoryMappedDevice for EGACard {
             return (0, 0);
         }
 
-        let byte = self.gc.cpu_read_u8(&self.sequencer, address);
+        let byte = self.gc.cpu_read_u8(
+            &self.sequencer,
+            address,
+            self.misc_output_register.oddeven_page_select(),
+        );
         (byte, 0)
     }
 
@@ -62,7 +66,11 @@ impl MemoryMappedDevice for EGACard {
             return 0;
         }
 
-        self.gc.cpu_peek_u8(&self.sequencer, address)
+        self.gc.cpu_peek_u8(
+            &self.sequencer,
+            address,
+            self.misc_output_register.oddeven_page_select(),
+        )
     }
 
     fn mmio_peek_u16(&self, address: usize) -> u16 {
@@ -70,12 +78,6 @@ impl MemoryMappedDevice for EGACard {
         if !self.misc_output_register.enable_ram() {
             return 0;
         }
-
-        // Validate address is within current memory map and get the offset into VRAM
-        let offset = match self.gc.plane_bounds_check(address) {
-            Some(offset) => offset,
-            None => return 0,
-        };
 
         //(self.sequencer.peek_u8(0, offset, address & 0x01) as u16) << 8 | self.sequencer.peek_u8(0, offset + 1) as u16
         (self.mmio_peek_u8(address) as u16) << 8 | self.mmio_peek_u8(address + 1) as u16
@@ -92,7 +94,7 @@ impl MemoryMappedDevice for EGACard {
             return 0;
         }
 
-        self.gc.cpu_write_u8(&mut self.sequencer, address, byte);
+        self.gc.cpu_write_u8(&mut self.sequencer, address, self.misc_output_register.oddeven_page_select(), byte);
         0
     }
 

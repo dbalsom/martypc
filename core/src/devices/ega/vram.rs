@@ -63,19 +63,24 @@ impl Vram {
             .into_boxed_slice()
             .try_into()
             .unwrap(),
-            linear_buf: Box::new([0; EGA_GFX_PLANE_SIZE * 8]),
-            linear_cga_buf: Box::new([0; EGA_GFX_PLANE_SIZE * 4]),
+            linear_buf: vec![0; EGA_GFX_PLANE_SIZE * 8].into_boxed_slice().try_into().unwrap(),
+            linear_cga_buf: vec![0; EGA_GFX_PLANE_SIZE * 4].into_boxed_slice().try_into().unwrap(),
         }
     }
 
     #[inline]
+    pub fn read_glyph(&self, offset: usize) -> u8 {
+        self.planes[2][offset & 0xFFFF]
+    }
+
+    #[inline]
     pub fn peek_u8(&self, plane: usize, offset: usize) -> u8 {
-        self.planes[plane][offset]
+        self.planes[plane][offset & 0xFFFF]
     }
 
     #[inline]
     pub fn read_u8(&self, plane: usize, offset: usize) -> u8 {
-        self.planes[plane][offset]
+        self.planes[plane][offset & 0xFFFF]
     }
 
     #[inline]

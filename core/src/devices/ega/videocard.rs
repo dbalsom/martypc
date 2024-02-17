@@ -216,9 +216,9 @@ impl VideoCard for EGACard {
     }
 
     fn get_current_font(&self) -> FontInfo {
-        let w = EGA_FONTS[self.current_font].w;
-        let h = EGA_FONTS[self.current_font].h;
-        let data = EGA_FONTS[self.current_font].data;
+        let w = EGA_FONTS[self.current_font as usize].w;
+        let h = EGA_FONTS[self.current_font as usize].h;
+        let data = EGA_FONTS[self.current_font as usize].data;
 
         FontInfo { w, h, font_data: data }
     }
@@ -299,43 +299,27 @@ impl VideoCard for EGACard {
         external_vec.push(("Misc Output [vrp]".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.vertical_retrace_polarity()))));
         map.insert("External".to_string(), external_vec);
 
-        let mut sequencer_vec = Vec::new();
-        sequencer_vec.push((format!("{:?}", SequencerRegister::Reset), VideoCardStateEntry::String(format!("{:02b}", self.sequencer.reset))));
-        sequencer_vec.push((format!("{:?}", SequencerRegister::ClockingMode), VideoCardStateEntry::String(format!("{:04b}", self.sequencer.clocking_mode.into_bytes()[0]))));           
-        sequencer_vec.push((format!("{:?} [cc]", SequencerRegister::ClockingMode), VideoCardStateEntry::String(format!("{:?}", self.sequencer.clocking_mode.character_clock()))));
-        sequencer_vec.push((format!("{:?} [bw]", SequencerRegister::ClockingMode), VideoCardStateEntry::String(format!("{}", self.sequencer.clocking_mode.bandwidth()))));
-        sequencer_vec.push((format!("{:?} [sl]", SequencerRegister::ClockingMode), VideoCardStateEntry::String(format!("{}", self.sequencer.clocking_mode.shift_load()))));
-        sequencer_vec.push((format!("{:?} [dc]", SequencerRegister::ClockingMode), VideoCardStateEntry::String(format!("{:?}", self.sequencer.clocking_mode.dot_clock()))));
-
-        sequencer_vec.push((format!("{:?}", SequencerRegister::MapMask), VideoCardStateEntry::String(format!("{:04b}", self.sequencer.map_mask))));
-        sequencer_vec.push((format!("{:?}", SequencerRegister::CharacterMapSelect), VideoCardStateEntry::String(format!("{:04b}", self.sequencer.character_map_select))));
-        sequencer_vec.push((format!("{:?}", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{:04b}", self.sequencer.memory_mode.into_bytes()[0]))));
-        sequencer_vec.push((format!("{:?} [ag]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{}", self.sequencer.memory_mode.alpha_mode() as u8))));
-        sequencer_vec.push((format!("{:?} [em]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{}", self.sequencer.memory_mode.extended_memory() as u8))));
-        sequencer_vec.push((format!("{:?} [oe]", SequencerRegister::MemoryMode), VideoCardStateEntry::String(format!("{}", self.sequencer.memory_mode.odd_even()))));
-        map.insert("Sequencer".to_string(), sequencer_vec);
-
-        let graphics_vec = self.gc.get_state();
-        map.insert("Graphics".to_string(), graphics_vec);
+        map.insert("Sequencer".to_string(), self.sequencer.get_state());
+        map.insert("Graphics".to_string(), self.gc.get_state());
 
         let mut attribute_pal_vec = Vec::new();
         for i in 0..16 {
             // Attribute palette entries are interpreted differently depending on the current clock speed
             // Low resolution modes use 4BPP palette entries, high resolution modes use 6bpp.
             let pal_resolved = match self.misc_output_register.clock_select() {
-                ClockSelect::Clock14 => self.ac.attribute_palette_registers[i].four_to_six,
-                _ => self.ac.attribute_palette_registers[i].six,
+                ClockSelect::Clock14 => self.ac.palette_registers[i].four_to_six,
+                _ => self.ac.palette_registers[i].six,
             };
 
             let (r, g, b) = EGACard::ega_to_rgb(pal_resolved);
             attribute_pal_vec.push((
                 format!("{}", i),
-                VideoCardStateEntry::Color(format!("{:06b}", self.ac.attribute_palette_registers[i].six), r, g, b),
+                VideoCardStateEntry::Color(format!("{:06b}", self.ac.palette_registers[i].six), r, g, b),
             ));
         }
         map.insert("AttributePalette".to_string(), attribute_pal_vec);
         map.insert("Attribute".to_string(), self.ac.get_state());
-        map.insert("Crtc Counters".to_string(), self.crtc.get_counter_state());
+        map.insert("CRTC Counters".to_string(), self.crtc.get_counter_state());
 
         let mut internal_vec = Vec::new();
         internal_vec.push(("scanline:".to_string(), VideoCardStateEntry::String(format!("{}", self.scanline))));

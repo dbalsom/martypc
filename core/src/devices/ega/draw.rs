@@ -42,6 +42,19 @@ impl EGACard {
     }
 
     #[inline]
+    pub fn draw_from_ac(&mut self, attr_char: u64) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[self.rba >> 3] = attr_char;
+    }
+
+    #[inline]
+    pub fn draw_from_ac_halfclock(&mut self, attr_char0: u64, attr_char1: u64) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[self.rba >> 3] = attr_char0;
+        frame_u64[(self.rba >> 3) + 1] = attr_char1;
+    }
+
+    #[inline]
     pub fn draw_solid_hchar_6bpp(&mut self, color: u8) {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         frame_u64[self.rba >> 3] = EGA_COLORS_6BPP_U64[(color & 0x3F) as usize];
@@ -51,6 +64,16 @@ impl EGACard {
     pub fn draw_debug_hchar_at(&mut self, addr: usize, color: u8) {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         frame_u64[addr >> 3] = EGA_COLORS_U64[(color & 0x0F) as usize];
+    }
+
+    /// Draw a character clock worth of overscan. Overscan only applies to low resolution graphics modes
+    /// and the palette is not applied.
+    #[inline]
+    pub fn draw_overscan_lchar(&mut self) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        let attr_color = EGA_COLORS_U64[self.ac.overscan_color.six as usize];
+        frame_u64[self.rba >> 3] = attr_color;
+        frame_u64[(self.rba >> 3) + 1] = attr_color;
     }
 
     /// Draw a character in low res mode (16 pixels) using a single solid color.
@@ -66,7 +89,7 @@ impl EGACard {
     #[inline]
     pub fn draw_solid_lchar_6bpp(&mut self, color: u8) {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-        let attr_color = EGA_COLORS_6BPP_U64[self.ac.attribute_palette_registers[(color & 0x0F) as usize].six as usize];
+        let attr_color = EGA_COLORS_6BPP_U64[self.ac.palette_registers[(color & 0x0F) as usize].six as usize];
         frame_u64[self.rba >> 3] = attr_color;
         frame_u64[(self.rba >> 3) + 1] = attr_color;
     }
@@ -123,6 +146,28 @@ impl EGACard {
         }
     }
 
+    pub fn get_gfx_mode_lchar_6pp(&mut self) -> u64 {
+        let mut span64 = 0;
+        for i in 0..8 {
+            let pixel = self.ac.palette_registers
+                [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x0F) as usize]
+                .four_to_six;
+            span64 |= (pixel as u64) << ((7 - i) * 8);
+        }
+        span64
+    }
+
+    pub fn get_gfx_mode_hchar_6pp(&mut self) -> u64 {
+        let mut span64 = 0;
+        for i in 0..8 {
+            let pixel = self.ac.palette_registers
+                [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x0F) as usize]
+                .six;
+            span64 |= (pixel as u64) << ((7 - i) * 8);
+        }
+        span64
+    }
+
     pub fn draw_gfx_mode_hchar_6bpp(&mut self) {
         //let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         //let deplaned_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.chain_buf);
@@ -131,7 +176,7 @@ impl EGACard {
         for i in 0..8 {
             let buf_i = i - self.pel_pan_latch as usize;
 
-            let attr_color = self.ac.attribute_palette_registers
+            let attr_color = self.ac.palette_registers
                 [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x0F) as usize]
                 .six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
@@ -146,7 +191,7 @@ impl EGACard {
         let ser = self.gc.serialize(&self.sequencer, self.vma);
         for i in 0..8 {
             let buf_i = (i * 2) - (self.pel_pan_latch * 2) as usize;
-            let attr_color = self.ac.attribute_palette_registers[(ser[i] & 0x3F) as usize].four_to_six;
+            let attr_color = self.ac.palette_registers[(ser[i] & 0x3F) as usize].four_to_six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;
             self.buf[self.back_buf][self.rba + buf_i + 1] = attr_color;
         }
@@ -160,7 +205,7 @@ impl EGACard {
         for i in 0..8 {
             let buf_i = (i * 2) - (self.pel_pan_latch * 2) as usize;
 
-            let attr_color = self.ac.attribute_palette_registers
+            let attr_color = self.ac.palette_registers
                 [(self.sequencer.read_linear((self.vma * 8 & 0x7FFFF) + i) & 0x3F) as usize]
                 .six;
             self.buf[self.back_buf][self.rba + buf_i] = attr_color;

@@ -56,13 +56,14 @@ pub struct GDataRotateRegister {
 }
 
 #[bitfield]
+#[derive(Copy, Clone)]
 pub struct GModeRegister {
     #[bits = 2]
     pub write_mode: WriteMode,
     pub test_condition: bool,
     #[bits = 1]
     pub read_mode: ReadMode,
-    pub odd_even: bool,
+    pub odd_even: OddEvenModeComplement,
     #[bits = 1]
     pub shift_mode: ShiftMode,
     #[skip]
@@ -70,12 +71,19 @@ pub struct GModeRegister {
 }
 
 #[bitfield]
+#[derive(Copy, Clone)]
 pub struct GMiscellaneousRegister {
     pub graphics_mode: bool,
     pub chain_odd_even: bool,
     pub memory_map: MemoryMap,
     #[skip]
     pub unused: B4,
+}
+
+#[derive(Copy, Clone, Debug, BitfieldSpecifier)]
+pub enum OddEvenModeComplement {
+    Sequential,
+    OddEven,
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
@@ -190,6 +198,11 @@ impl GraphicsController {
         }
     }
 
+    #[inline]
+    pub fn chain(&self) -> bool {
+        self.graphics_micellaneous.chain_odd_even()
+    }
+
     /// Handle a write to the Graphics Address Register
     pub fn write_graphics_address(&mut self, byte: u8) {
         self.graphics_register_select_byte = byte & 0x0F;
@@ -229,9 +242,8 @@ impl GraphicsController {
             }
             GraphicsRegister::ReadMapSelect => {
                 // Bits 0-2: Map Select 0-2
-                self.graphics_read_map_select = byte & 0x07;
+                self.graphics_read_map_select = byte & 0x03;
             }
-
             GraphicsRegister::Mode => {
                 // Bits 0-1: Write Mode
                 // Bit 2: Test Condition
@@ -254,14 +266,14 @@ impl GraphicsController {
         }
     }
 
-    /// Implement the serializer output of the Graphics Controller.
+    /// Implement the serializer output of the Graphics Controller, for graphics modes.
     /// Unlike CPU reads, this does not set the latches, however it performs address manipulation
     /// and allows for processing such as CGA compatibility shifting.
     pub fn serialize<'a>(&'a mut self, seq: &'a Sequencer, address: usize) -> &[u8] {
         let offset = address;
 
         if let ShiftMode::CGACompatible = self.graphics_mode.shift_mode() {
-            // CGA compatible mode
+            // CGA compatible mode. 2bpp linear pixels are unpacked across two bytes
             let mut byte = seq.read_u8(0, offset, address & 0x01);
             for i in 0..4 {
                 // Mask and extract each sequence of two bits, in left-to-right order
@@ -280,34 +292,57 @@ impl GraphicsController {
         }
     }
 
+    pub fn parallel<'a>(&'a mut self, seq: &'a Sequencer, address: usize, row: u8) -> (&[u8], u8) {
+        let glyph = seq.read_u8(0, address, address & 0x01);
+        let attr = seq.read_u8(1, address + 1, (address + 1) & 0x01);
+        let glyph_span_addr = seq.get_glyph_address(glyph, 0, row);
+        let glyph_span = seq.vram.read_u8(2, glyph_span_addr);
+        let glyph_unpacked = &BYTE_EXTEND_TABLE[glyph_span as usize];
+        (glyph_unpacked, attr)
+    }
+
     /// Implement a read of the Graphics Controller via the CPU. This sets the latches, performs
     /// address manipulation, and executes the pixel pipeline.
-    pub fn cpu_read_u8(&mut self, seq: &Sequencer, address: usize) -> u8 {
+    pub fn cpu_read_u8(&mut self, seq: &Sequencer, address: usize, page_select: PageSelect) -> u8 {
         // Validate address is within current memory map and get the offset
-        let mut offset = match self.plane_bounds_check(address) {
-            Some(offset) => offset,
+        let (offset, a0) = match self.map_address(address, page_select) {
+            Some((offset, a0)) => (offset, a0),
             None => {
                 return 0;
             }
         };
 
-        if self.graphics_mode.odd_even() {
+        /*        if self.graphics_mode.odd_even() {
             //offset >>= 1;
-        }
+        }*/
 
         // Load all the latches regardless of selected plane
         for i in 0..4 {
-            self.latches[i] = seq.read_u8(i, offset, address & 0x01);
+            self.latches[i] = seq.read_u8(i, offset, a0);
         }
 
         // Reads are controlled by the Read Mode bit in the Mode register of the Graphics Controller.
         match self.graphics_mode.read_mode() {
             ReadMode::ReadSelectedPlane => {
-                // In Read Mode 0, the processor reads data from the memory plane selected
+                // Read Mode 0
+                // In Sequential mode, the processor reads data from the memory plane selected
                 // by the read map select register.
-                let plane = (self.graphics_read_map_select & 0x03) as usize;
-                let byte = seq.read_u8(plane, offset, address & 0x01);
-                byte
+                // In Odd/Even mode, the memory plane is chosen by using the read map select to determine which
+                // graphics controller to use, and the address bit 0 to determine which plane to use.
+                match self.graphics_mode.odd_even() {
+                    OddEvenModeComplement::Sequential => {
+                        let plane = self.graphics_read_map_select as usize;
+                        let byte = seq.read_u8(plane, offset, a0);
+                        byte
+                    }
+                    OddEvenModeComplement::OddEven => {
+                        // If selected plane is 0 or 1, choose 0 or 1 based on a0.
+                        // If selected plane is 2 or 3, choose 2 or 3 based on a0.
+                        let plane = (self.graphics_read_map_select as usize & !0x01) | a0;
+                        let byte = seq.read_u8(plane, offset, a0);
+                        byte
+                    }
+                }
             }
             ReadMode::ReadComparedPlanes => {
                 // In Read Mode 1, the processor reads the result of a comparison with the value in the
@@ -321,39 +356,28 @@ impl GraphicsController {
 
     /// Perform a read via the Graphics Controller, allowing for address manipulation, but no side effects such as
     /// setting latches.
-    pub fn cpu_peek_u8(&self, seq: &Sequencer, address: usize) -> u8 {
+    pub fn cpu_peek_u8(&self, seq: &Sequencer, address: usize, page_select: PageSelect) -> u8 {
         // Validate address is within current memory map and get the offset
-        let mut offset = match self.plane_bounds_check(address) {
-            Some(offset) => offset,
+        let (offset, a0) = match self.map_address(address, page_select) {
+            Some((offset, a0)) => (offset, a0),
             None => {
                 return 0;
             }
         };
 
-        if self.graphics_mode.odd_even() {
+        if let OddEvenModeComplement::OddEven = self.graphics_mode.odd_even() {
             //offset >>= 1;
         }
 
-        seq.read_u8(0, offset, address & 0x01)
+        seq.read_u8(0, offset, a0)
     }
 
-    pub fn cpu_write_u8(&mut self, seq: &mut Sequencer, address: usize, byte: u8) {
+    pub fn cpu_write_u8(&mut self, seq: &mut Sequencer, address: usize, page_select: PageSelect, byte: u8) {
         // Validate address is within current memory map and get the offset
-        let mut offset = match self.plane_bounds_check(address) {
-            Some(offset) => offset,
+        let (offset, a0) = match self.map_address(address, page_select) {
+            Some((offset, a0)) => (offset, a0),
             None => return,
         };
-
-        let mut a0 = address & 0x01;
-
-        /*        if self.graphics_miscellaneous.chain_odd_even() {
-            a0 = (offset & (0x01 << 15)) >> 15;
-            offset = offset << 1 | a0;
-        }*/
-
-        if self.graphics_mode.odd_even() {
-            //offset = offset & 0xFFFF;
-        }
 
         match self.graphics_mode.write_mode() {
             WriteMode::Mode0 => {
@@ -413,19 +437,39 @@ impl GraphicsController {
 
                 // Finally, write data to the planes enabled in the Memory Plane Write Enable field of
                 // the Sequencer Map Mask register.
-                for i in 0..4 {
+
+                self.foreach_plane(seq, a0, |gc, seq, plane| {
+                    seq.plane_set(plane, offset, a0, gc.pipeline_buf[plane]);
+                });
+                /*                for i in 0..4 {
                     seq.plane_set(i, offset, a0, self.pipeline_buf[i]);
-                }
+                }*/
             }
             WriteMode::Mode1 => {
                 // Write the contents of the latches to their corresponding planes. This assumes that the latches
                 // were loaded property via a previous read operation.
-                for i in 0..4 {
+                self.foreach_plane(seq, a0, |gc, seq, plane| {
+                    seq.plane_set(plane, offset, a0, gc.latches[plane]);
+                });
+                /*                for i in 0..4 {
                     seq.plane_set(i, offset, a0, self.latches[i]);
-                }
+                }*/
             }
             WriteMode::Mode2 => {
-                for i in 0..4 {
+                self.foreach_plane(seq, a0, |gc, seq, plane| {
+                    // Extend the bit for this plane to 8 bits.
+                    let bit_span: u8 = match byte & (0x01 << plane) != 0 {
+                        true => 0xFF,
+                        false => 0x00,
+                    };
+
+                    // Clear bits not masked
+                    seq.plane_and(plane, offset, a0, !gc.graphics_bitmask);
+                    // Mask off bits not to set
+                    let set_bits = bit_span & gc.graphics_bitmask;
+                    seq.plane_or(plane, offset, a0, set_bits);
+                });
+                /*                for i in 0..4 {
                     // Extend the bit for this plane to 8 bits.
                     let bit_span: u8 = match byte & (0x01 << i) != 0 {
                         true => 0xFF,
@@ -437,11 +481,29 @@ impl GraphicsController {
                     // Mask off bits not to set
                     let set_bits = bit_span & self.graphics_bitmask;
                     seq.plane_or(i, offset, address & 0x01, set_bits);
-                }
+                }*/
             }
             WriteMode::Invalid => {
                 log::warn!("Invalid write mode!");
                 return;
+            }
+        }
+    }
+
+    #[inline]
+    fn foreach_plane<F>(&mut self, seq: &mut Sequencer, a0: usize, f: F)
+    where
+        F: Fn(&mut GraphicsController, &mut Sequencer, usize),
+    {
+        match self.graphics_mode.odd_even() {
+            OddEvenModeComplement::Sequential => {
+                for plane in 0..4 {
+                    f(self, seq, plane);
+                }
+            }
+            OddEvenModeComplement::OddEven => {
+                f(self, seq, 0 + a0);
+                f(self, seq, 2 + a0);
             }
         }
     }
@@ -464,19 +526,19 @@ impl GraphicsController {
         for i in 0..8 {
             let mut plane_comp = 0;
 
-            plane_comp |= match self.latches[i] & (0x01 << i) != 0 {
+            plane_comp |= match self.latches[0] & (0x01 << i) != 0 {
                 true => 0x01,
                 false => 0x00,
             };
-            plane_comp |= match self.latches[i] & (0x01 << i) != 0 {
+            plane_comp |= match self.latches[1] & (0x01 << i) != 0 {
                 true => 0x02,
                 false => 0x00,
             };
-            plane_comp |= match self.latches[i] & (0x01 << i) != 0 {
+            plane_comp |= match self.latches[2] & (0x01 << i) != 0 {
                 true => 0x04,
                 false => 0x00,
             };
-            plane_comp |= match self.latches[i] & (0x01 << i) != 0 {
+            plane_comp |= match self.latches[3] & (0x01 << i) != 0 {
                 true => 0x08,
                 false => 0x00,
             };
@@ -490,19 +552,26 @@ impl GraphicsController {
         comparison
     }
 
-    pub fn plane_bounds_check(&self, address: usize) -> Option<usize> {
+    pub fn map_address(&self, address: usize, page_select: PageSelect) -> Option<(usize, usize)> {
+        let mut offset = address;
         match self.graphics_micellaneous.memory_map() {
             MemoryMap::A0000_128k => {
                 if let EGA_MEM_ADDRESS..=EGA_MEM_END_128 = address {
                     // 128k aperture is usually used with chain odd/even mode.
-                    if self.graphics_micellaneous.chain_odd_even() == true {
-                        // Just return the shifted address. We'll use logic elsewhere to determine plane.
-                        return Some(((address - EGA_MEM_ADDRESS) >> 1) & 0xFFFF);
+                    if self.graphics_micellaneous.chain_odd_even() {
+                        if address > 0xFFFF {
+                            // Replace bit 0 with bit 16
+                            offset = (address & !1) | (((address & 0x10000) >> 16) & 1);
+                        }
+                        else {
+                            // Replace bit 0 with bit 14
+                            offset = (address & !1) | (((address & 0x04000) >> 14) & 1);
+                        }
                     }
                     else {
                         // Not sure what to do in this case if we're out of bounds of a 64k plane.
                         // So just mask it to 64k for now.
-                        return Some((address - EGA_MEM_ADDRESS) & 0xFFFF);
+                        offset = address & 0xFFFF;
                     }
                 }
                 else {
@@ -511,7 +580,13 @@ impl GraphicsController {
             }
             MemoryMap::A0000_64K => {
                 if let EGA_MEM_ADDRESS..=EGA_MEM_END_64 = address {
-                    return Some(address - EGA_MEM_ADDRESS);
+                    if self.graphics_micellaneous.chain_odd_even() {
+                        // Replace bit 0 with the page select bit
+                        offset = (address & !1) | page_select as usize;
+                    }
+                    else {
+                        offset = address - EGA_MEM_ADDRESS;
+                    }
                 }
                 else {
                     return None;
@@ -519,7 +594,7 @@ impl GraphicsController {
             }
             MemoryMap::B8000_32K => {
                 if let CGA_MEM_ADDRESS..=CGA_MEM_END = address {
-                    return Some(address - CGA_MEM_ADDRESS);
+                    offset = address - CGA_MEM_ADDRESS;
                 }
                 else {
                     return None;
@@ -527,6 +602,8 @@ impl GraphicsController {
             }
             _ => return None,
         }
+
+        Some((offset & 0xFFFF, address & 1))
     }
 
     #[rustfmt::skip]
@@ -539,6 +616,7 @@ impl GraphicsController {
         graphics_vec.push((format!("{:?} [ct]", GraphicsRegister::DataRotate), VideoCardStateEntry::String(format!("{:?}", self.graphics_data_rotate.count()))));
         graphics_vec.push((format!("{:?}", GraphicsRegister::ReadMapSelect), VideoCardStateEntry::String(format!("{:03b}", self.graphics_read_map_select))));
 
+        graphics_vec.push((format!("{:?}", GraphicsRegister::Mode), VideoCardStateEntry::String(format!("{:06b}", self.graphics_mode.into_bytes()[0]))));
         graphics_vec.push((format!("{:?} [sr]", GraphicsRegister::Mode), VideoCardStateEntry::String(format!("{:?}", self.graphics_mode.shift_mode()))));
         graphics_vec.push((format!("{:?} [o/e]", GraphicsRegister::Mode), VideoCardStateEntry::String(format!("{:?}", self.graphics_mode.odd_even()))));
         graphics_vec.push((format!("{:?} [rm]", GraphicsRegister::Mode), VideoCardStateEntry::String(format!("{:?}",self.graphics_mode.read_mode()))));

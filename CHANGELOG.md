@@ -41,13 +41,18 @@ advantage of this new system, and so now you can organize your media directories
 * #### EGA Video Card
   * EGA is back! A character-clocked EGA implementation is here, although it may still be a bit rough around the edges. 
     EGA will continue to be polished in upcoming releases.
+  * Features:
+    * Functional emulation of each of the 5 LSI chips on the EGA
+    * Per-scanline Pel panning
+    * Line compare register - See the status bar in Catacombs 3d!
+    * CGA compatibility mode - Play Alleycat!
+    * Software fonts - change your DOS font, or see a graphical mouse cursor in text mode (Norton Utilities 6.0)
   * Known issues:
-    * No CGA emulation 
-    * Not all registers properly emulated 
-    * Pel panning implementation is a bit of a hack
+    * Some paging issues (flickering sprites in Dangerous Dave)
+    * Some scrolling issues (jerky motion in Commander Keen 4)
+    * Some more obscure registers not properly emulated / investigated (SOM, etc)
     * Aperture defintions / adjustments not final
-    * Jerky scrolling in Commander Keen 1-3
-    * User-definable fonts not yet supported
+    * Implementation may be slow / unoptimized in parts
     
 * #### MDA Video Card
   * Not quite as a flashy as EGA, but the MDA card type is now also supported, and moreover, you can install an MDA 

@@ -38,6 +38,7 @@ pub const EGA_HSYNC_MASK: u8 = 0x001F;
 pub const EGA_HSLC_MASK: u16 = 0x01FF;
 
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
+const AC_LATENCY: u8 = 1;
 
 // Helper macro for pushing video card state entries.
 macro_rules! push_reg_str {
@@ -76,6 +77,15 @@ pub enum CRTCRegister {
     EndVerticalBlank,
     ModeControl,
     LineCompare,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct CCursorEnd {
+    pub cursor_end: B5,
+    pub cursor_skew: B2,
+    #[skip]
+    unused: B1,
 }
 
 #[bitfield]
@@ -141,7 +151,9 @@ pub struct CrtcStatus {
     pub hborder: bool,
     pub vborder: bool,
     pub den: bool,
+    pub den_skew: bool,
     pub cursor: bool,
+    pub cref: bool,
 }
 
 pub struct EgaCrtc {
@@ -159,17 +171,17 @@ pub struct EgaCrtc {
     crtc_end_horizontal_retrace: CEndHorizontalRetrace, // R(5) End Horizontal Retrace
     crtc_end_horizontal_retrace_norm: u8,               // End Horizontal Retrace value normalized to column number
     crtc_retrace_width: u8,
-    crtc_vertical_total: u16,  // R(6) Vertical Total (9-bit value)
-    crtc_overflow: u8,         // R(7) Overflow
-    crtc_preset_row_scan: u8,  // R(8) Preset Row Scan
-    crtc_maximum_scanline: u8, // R(9) Max Scanline
-    crtc_cursor_start: u8,     // R(A) Cursor Location (9-bit value)
-    crtc_cursor_enabled: bool, // Calculated from R(A) bit 5
-    crtc_cursor_end: u8,       // R(B)
-    crtc_cursor_skew: u8,      // Calculated from R(B) bits 5-6
-    crtc_start_address_ho: u8, // R(C)
-    crtc_start_address_lo: u8, // R(D)
-    crtc_start_address: u16,   // Calculated from C&D
+    crtc_vertical_total: u16,    // R(6) Vertical Total (9-bit value)
+    crtc_overflow: u8,           // R(7) Overflow
+    crtc_preset_row_scan: u8,    // R(8) Preset Row Scan
+    crtc_maximum_scanline: u8,   // R(9) Max Scanline
+    crtc_cursor_start: u8,       // R(A) Cursor Location (9-bit value)
+    crtc_cursor_enabled: bool,   // Calculated from R(A) bit 5
+    crtc_cursor_end: CCursorEnd, // R(B)
+    crtc_cursor_skew: u8,        // Calculated from R(B) bits 5-6
+    crtc_start_address_ho: u8,   // R(C)
+    crtc_start_address_lo: u8,   // R(D)
+    crtc_start_address: u16,     // Calculated from C&D
     start_address_latch: u16,
     crtc_cursor_address_lo: u8, // R(E)
     crtc_cursor_address_ho: u8, // R(F)
@@ -186,21 +198,23 @@ pub struct EgaCrtc {
     crtc_line_compare: u16,           // R(18) Line Compare (9-bit value)
 
     // CRTC internal counters
-    char_col: u8, // Column of character glyph being drawn
-    hcc: u8,      // Horizontal character counter (x pos of character)
-    vlc: u8,      // Vertical line counter - row of character being drawn
-    vcc: u8,      // Vertical character counter (y pos of character)
-    hslc: u16,    // Horizontal scanline counter - increments after reaching vertical total
-    hsc: u8,      // Horizontal sync counter - counts during hsync period
+    hcc: u8,  // Horizontal character counter (x pos of character)
+    vlc: u8,  // Vertical line counter - row of character being drawn
+    vcc: u8,  // Vertical character counter (y pos of character)
+    slc: u16, // Scanline counter - increments after reaching vertical total
+    hsc: u8,  // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
     in_vta: bool,
     in_hrd: bool,
     hrdc: u8,
     effective_vta: u8,
-    vma: u16,    // VMA register - Video memory address
-    vma_sl: u16, // VMA of start of scanline
-    vma_t: u16,  // VMA' register - Video memory address temporary
-    vmws: usize, // Video memory word size
+    vma: u16,             // VMA register - Video memory address
+    vma_sl: u16,          // VMA of start of scanline
+    vma_t: u16,           // VMA' register - Video memory address temporary
+    vmws: usize,          // Video memory word size
+    den_skew_front: bool, // Display enable skew control for front porch
+    den_skew_back: bool,  // Display enable skew control for back porch
+    dsc: u8,              // Display enable skew counter
 
     pub status: CrtcStatus,
     blink_state: bool,
@@ -233,7 +247,7 @@ impl Default for EgaCrtc {
             crtc_maximum_scanline: DEFAULT_MAX_SCANLINE,
             crtc_cursor_start: DEFAULT_CURSOR_START_LINE,
             crtc_cursor_enabled: true,
-            crtc_cursor_end: DEFAULT_CURSOR_END_LINE,
+            crtc_cursor_end: CCursorEnd::from_bytes([DEFAULT_CURSOR_END_LINE]),
             crtc_cursor_skew: 0,
             crtc_start_address: 0,
             crtc_start_address_ho: 0,
@@ -253,11 +267,10 @@ impl Default for EgaCrtc {
             crtc_mode_control: CModeControl::new(),
             crtc_line_compare: 0,
 
-            char_col: 0,
             hcc: 0,
             vlc: 0,
             vcc: 0,
-            hslc: 0,
+            slc: 0,
             hsc: 0,
             vtac_c5: 0,
             in_vta: false,
@@ -268,6 +281,9 @@ impl Default for EgaCrtc {
             vma_t: 0,
             vma_sl: 0,
             vmws: 1,
+            den_skew_front: false,
+            den_skew_back: false,
+            dsc: 0,
 
             status: CrtcStatus::default(),
             blink_state: false,
@@ -382,6 +398,7 @@ impl EgaCrtc {
             CRTCRegister::PresetRowScan => {
                 // (R8)
                 self.crtc_preset_row_scan = byte;
+                //log::debug!("Preset row scan changed!");
             }
             CRTCRegister::MaximumScanLine => {
                 // (R9)
@@ -402,8 +419,7 @@ impl EgaCrtc {
                 // R(B)
                 // Bits 0-4: Cursor Start Line
                 // Bits 5-6: Cursor Skew
-                self.crtc_cursor_end = byte & CURSOR_LINE_MASK;
-                self.crtc_cursor_skew = byte >> 5 & 0x03;
+                self.crtc_cursor_end = CCursorEnd::from_bytes([byte]);
                 self.update_cursor_data();
             }
             CRTCRegister::StartAddressH => {
@@ -419,6 +435,7 @@ impl EgaCrtc {
                 self.crtc_start_address_lo = byte;
                 self.crtc_start_address &= 0xFF00;
                 self.crtc_start_address |= byte as u16;
+                //log::debug!("CGA: Start address set to: {:04X}", self.crtc_start_address);
             }
             CRTCRegister::CursorAddressH => {
                 // (RE) - 8 bits.  High byte of Cursor Address register
@@ -591,7 +608,7 @@ impl EgaCrtc {
     pub fn read_crtc_register(&mut self) -> u8 {
         match self.register_selected {
             CRTCRegister::CursorStartLine => self.crtc_cursor_start,
-            CRTCRegister::CursorEndLine => self.crtc_cursor_end,
+            CRTCRegister::CursorEndLine => self.crtc_cursor_end.into_bytes()[0],
             CRTCRegister::CursorAddressH => {
                 //log::debug!("CGA: Read from CRTC register: {:?}: {:02}", self.crtc_register_selected, self.crtc_cursor_address_ho );
                 self.crtc_cursor_address_ho
@@ -612,21 +629,40 @@ impl EgaCrtc {
         self.crtc_mode_control = CModeControl::from_bytes([byte]);
     }
 
-    /// Update the cursor data array based on the values of cursor_start_line and cursor_end_line.
-    /// TODO: This logic was copied from CGA. EGA likely has different cursor logic.
+    /// Update the cursor data array based when either cursor_start or cursor_end have changed.
     fn update_cursor_data(&mut self) {
         // Reset cursor data to 0.
         self.cursor_data.fill(false);
 
-        if self.crtc_cursor_start <= self.crtc_cursor_end {
-            // Normal cursor definition. Cursor runs from start_line to end_line.
-            for i in self.crtc_cursor_start..=self.crtc_cursor_end {
+        // Start line must be reached when iterating through character rows to draw a cursor at all.
+        // Therefore, if start_line > maximum_scanline, the cursor is disabled.
+        if self.crtc_cursor_start > self.crtc_maximum_scanline {
+            return;
+        }
+
+        // If start == end, a single line of cursor is drawn.
+        if self.crtc_cursor_start == self.crtc_cursor_end.cursor_end() {
+            self.cursor_data[self.crtc_cursor_start as usize] = true;
+            return;
+        }
+
+        if self.crtc_cursor_start <= self.crtc_cursor_end.cursor_end() {
+            // Normal cursor definition. Cursor runs from start_line to end_line - 1
+            // EGA differs from CGA in this regard as the CGA's cursor runs from start_line to end_line.
+            for i in self.crtc_cursor_start..=self.crtc_cursor_end.cursor_end().saturating_sub(1) {
                 self.cursor_data[i as usize] = true;
             }
         }
         else {
-            // "Split" cursor.
-            for i in 0..self.crtc_cursor_end {
+            // The EGA will draw a single scanline instead of a split cursor if (end % 16) == start
+            // https://www.pcjs.org/blog/2018/03/20/
+            if (self.crtc_cursor_end.cursor_end() & 0x0F) == self.crtc_cursor_start {
+                self.cursor_data[self.crtc_cursor_start as usize] = true;
+                return;
+            }
+
+            // Split cursor.
+            for i in 0..self.crtc_cursor_end.cursor_end().saturating_sub(1) {
                 // First part of cursor is 0->end_line
                 self.cursor_data[i as usize] = true;
             }
@@ -647,21 +683,15 @@ impl EgaCrtc {
         // Advance video memory address offset and grab the next character + attr
         self.vma += 1;
 
-        // Update cursor status
-        self.status.cursor =
-            (self.vma == self.crtc_cursor_address) && self.blink_state && self.cursor_data[(self.vlc & 0x3F) as usize];
-
         // Update horizontal character counter
         self.hcc = self.hcc.wrapping_add(1);
-
-        // Glyph column reset to 0 for next char
-        self.char_col = 0;
 
         // Process horizontal sync period
         if self.status.hblank {
             // End horizontal blank when we reach R3
             if (self.hcc & EGA_HBLANK_MASK) == self.crtc_end_horizontal_blank.end_horizontal_blank() {
                 self.status.hblank = false;
+                self.status.hborder = true;
             }
         }
 
@@ -672,7 +702,7 @@ impl EgaCrtc {
 
             // Implement a fixed hsync width from the monitor's perspective -
             // A wider programmed hsync width than these values shifts the displayed image to the right.
-            let hsync_target = if clock_divisor == 1 { std::cmp::min(5, 5) } else { 4 };
+            let hsync_target = if clock_divisor == 1 { std::cmp::min(6, 6) } else { 3 };
 
             // Do a horizontal sync
             if self.hsc == hsync_target {
@@ -696,8 +726,9 @@ impl EgaCrtc {
 
         if self.status.hsync {
             // End horizontal sync when we reach R3
-            if (self.hcc & EGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
+            if ((self.hcc - 1) & EGA_HSYNC_MASK) == self.crtc_end_horizontal_retrace.end_horizontal_retrace() {
                 // Enter horizontal retrace delay time
+                //log::debug!("entering hrd @ {}", self.hcc);
                 self.in_hrd = true;
                 self.hrdc = 0;
             }
@@ -713,10 +744,10 @@ impl EgaCrtc {
                     self.do_hsync();
                 }
 
-                //self.char_col = 0;
+                //log::debug!("leaving hrd @ {}", self.hcc);
+                self.status.hsync = false;
                 self.in_hrd = false;
                 self.hrdc = 0;
-                self.status.hsync = false;
                 self.hsc = 0;
             }
             else {
@@ -725,45 +756,46 @@ impl EgaCrtc {
         }
 
         if self.hcc == self.crtc_horizontal_display_end + 1 {
-            // C0 == R1. At right edge of the active display area. Entering right overscan.
-
-            if self.vlc == self.crtc_maximum_scanline {
-                // At end of character height for current character row.
-                // Save VMA in VMA'
-                //log::debug!("Updating vma_t: {:04X}", self.vma_t);
-                self.vma_t = self.vma;
-            }
-
-            // Save right overscan start position to calculate width of right overscan later
-            //self.overscan_right_start = self.raster_x;
+            // Leaving active display area, entering right overscan
+            self.den_skew_back = true;
             self.status.den = false;
-            self.status.hborder = true;
         }
 
         if self.hcc == self.crtc_start_horizontal_blank + 1 {
             // Leaving right overscan and entering horizontal blank
+            self.status.hborder = false;
             self.status.hblank = true;
             self.status.den = false;
         }
 
+        if self.hcc == self.crtc_start_horizontal_blank + 2 {
+            self.status.cref = false; // CRTC stops generating addresses
+        }
+
         if self.hcc == self.crtc_start_horizontal_retrace + self.crtc_end_horizontal_retrace.horizontal_retrace_delay()
         {
-            // Entering horizontal retrace
-            self.status.hblank = true;
+            // Entering horizontal retrace. Retrace can start before hblank!
+
             // Both monitor and CRTC will enter hsync at the same time. Monitor may leave hsync first.
             self.status.hsync = true;
             self.monitor_hsync = true;
             self.status.den = false;
+            // Delay toggle of display enable by Display Enable Skew value.
+            //self.den_skew = self.crtc_end_horizontal_blank.display_enable_skew();
             self.hsc = 0;
         }
 
         if self.hcc == self.crtc_horizontal_total && self.in_last_vblank_line {
             // We are one char away from the beginning of the new frame.
             // Draw one char of border
-            self.status.hborder = true;
+            //self.status.hborder = true;
         }
 
-        // Total + 2 on EGA.
+        if self.hcc == self.crtc_horizontal_total + 1 {
+            // Start generating addresses
+        }
+
+        // Actual HorizontalTotal is register value + 2 on EGA.
         if self.hcc == self.crtc_horizontal_total + 2 {
             // Leaving left overscan, finished scanning row. Entering active display area with
             // new logical scanline.
@@ -774,6 +806,7 @@ impl EgaCrtc {
                 self.vsc_c3h += 1;
             }
             */
+            self.status.cref = true;
 
             if self.in_last_vblank_line {
                 self.in_last_vblank_line = false;
@@ -782,7 +815,7 @@ impl EgaCrtc {
 
             // Reset Horizontal Character Counter and increment character row counter
             self.hcc = 0;
-            self.status.hborder = false;
+            //self.status.hborder = false;
             self.vlc += 1;
             // Return video memory address to starting position for next character row
             self.vma = self.vma_sl;
@@ -791,8 +824,8 @@ impl EgaCrtc {
 
             if !self.status.vblank {
                 // Start the new row
-                if self.hslc < self.crtc_vertical_display_end + 1 {
-                    self.status.den = true;
+                if self.slc < self.crtc_vertical_display_end + 1 {
+                    self.den_skew_front = true;
                 }
             }
 
@@ -804,15 +837,23 @@ impl EgaCrtc {
                 self.vcc = self.vcc.wrapping_add(1);
 
                 // Set vma to starting position for next character row
-                //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
-                //self.vma = self.vma_t;
+                // TODO: Offset is multiplied by 2 in byte mode, by 4 in word mode
+
                 self.vma_sl = self.vma_sl + self.crtc_offset as u16 * 2;
                 self.vma = self.vma_sl;
 
                 // Load next char + attr
             }
 
-            if self.hslc == self.crtc_vertical_retrace_start {
+            if self.slc == self.crtc_line_compare {
+                // The line compare register is used to reset the effective start address to 0.
+                // This is used to implement split screen effects - the top of the screen is drawn from some start
+                // address offset, and then the split-screen window is drawn from address 0 after line compare.
+                self.vma_sl = 0;
+                self.vma = 0;
+            }
+
+            if self.slc == self.crtc_vertical_retrace_start {
                 // We've reached vertical retrace start. We set the crtc_vblank flag to start comparing hslc against
                 // vertical_retrace_end register.
 
@@ -822,23 +863,27 @@ impl EgaCrtc {
                 self.status.den = false;
             }
 
-            if self.hslc == self.crtc_vertical_display_end + 1 {
+            if self.slc == self.crtc_vertical_display_end + 1 {
                 // We are leaving the bottom of the active display area, entering the lower overscan area.
                 self.status.vborder = true;
                 self.status.den = false;
+                self.den_skew_back = true;
+                self.status.den_skew = true;
+
+                // Latch CRTC start address at VSYNC (https://www.vogons.org/viewtopic.php?t=57320)
+                self.start_address_latch = self.crtc_start_address;
             }
 
-            if self.hslc == self.crtc_vertical_total {
+            if self.slc == self.crtc_vertical_total {
                 // We have reached vertical total, we are at the end of the top overscan and entering the active
                 // display area.
                 self.in_vta = false;
                 self.vtac_c5 = 0;
-                self.hslc = 0;
+                self.slc = 0;
 
                 self.hcc = 0;
                 self.vcc = 0;
                 self.vlc = 0;
-                self.char_col = 0;
 
                 self.frame += 1;
                 // Toggle blink state. This is toggled every 8 frames by default.
@@ -846,15 +891,23 @@ impl EgaCrtc {
                     self.blink_state = !self.blink_state;
                 }
 
-                //self.pel_pan_latch = self.attribute_pel_panning;
-                //self.pel_pan_latch = 0;
+                // The SOM (Start Odd/Even Memory Address) register is used to select the starting address for each
+                // scanline. If set to 0, even memory addresses are used. If set to 1, odd memory addresses are used.
+                // TODO: I actually have no idea how this is implemented
 
                 /*
-                let start_addr_som = if self.crtc_end_horizontal_retrace.start_odd() == 1 {
-                    self.crtc_start_address | 0x0001
+                let start_addr_som = if self.crtc_end_horizontal_retrace.start_odd() == 0 {
+                    // Start on even address (0)
+                    if self.crtc_start_address & 1 != 0 {
+                        self.crtc_start_address + 1
+                    }
+                    else {
+                        self.crtc_start_address
+                    }
                 }
                 else {
-                    if self.crtc_start_address & 0x0001 != 0 {
+                    // Start on odd address (1)
+                    if self.crtc_start_address & 1 == 0 {
                         self.crtc_start_address + 1
                     }
                     else {
@@ -862,18 +915,53 @@ impl EgaCrtc {
                     }
                 };
 
-                */
-                let start_addr_som = self.crtc_start_address;
                 self.start_address_latch = start_addr_som;
                 self.vma = start_addr_som;
+                */
+
+                self.vma = self.start_address_latch;
                 self.vma_sl = self.vma;
 
-                //self.vma_t = (self.vma & 0xFFFE);
-                self.status.den = true;
+                // Delay toggle of display enable by Display Enable Skew value.
+                self.den_skew_front = true;
+                //self.status.den_skew = true;
                 self.status.vborder = false;
                 self.status.vblank = false;
             }
         }
+
+        // Handle DEN skew.  Ideally we would not have a separate status variable for this, but it's
+        // a little easier to handle this way. DEN skew is 1 in almost all modes on the EGA as far as I can tell
+        if self.den_skew_front {
+            if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY {
+                self.den_skew_front = false;
+                self.status.vborder = false;
+                self.status.hborder = false;
+                self.status.den = true;
+                self.dsc = 0;
+            }
+            else {
+                self.dsc = self.dsc.wrapping_add(1);
+            }
+        }
+
+        if self.den_skew_back {
+            if self.dsc == self.crtc_end_horizontal_blank.display_enable_skew() + AC_LATENCY {
+                self.den_skew_back = false;
+                self.status.den_skew = false;
+                self.status.hborder = true;
+                self.dsc = 0;
+            }
+            else {
+                self.status.den_skew = true;
+                self.dsc = self.dsc.wrapping_add(1);
+            }
+        }
+
+        // Update cursor status
+        self.status.cursor = (self.vma == (self.crtc_cursor_address + 1 + self.crtc_cursor_end.cursor_skew() as u16))
+            && self.blink_state
+            && self.cursor_data[(self.vlc & 0x3F) as usize];
 
         let mut output_addr = self.vma;
 
@@ -901,7 +989,7 @@ impl EgaCrtc {
 
         if self.status.vblank {
             //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-            if (self.hslc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank {
+            if (self.slc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank {
                 self.in_last_vblank_line = true;
                 // We are leaving vblank period. Generate a frame.
                 self.status.begin_vsync = true;
@@ -911,8 +999,7 @@ impl EgaCrtc {
         }
 
         // Restrict HSLC to 9-bit range.
-        self.hslc = (self.hslc + 1) & EGA_HSLC_MASK;
-        self.char_col = 0;
+        self.slc = (self.slc + 1) & EGA_HSLC_MASK;
         self.status.begin_hsync = true;
     }
 
@@ -923,7 +1010,7 @@ impl EgaCrtc {
 
     #[inline]
     pub fn scanline(&self) -> u16 {
-        self.hslc
+        self.slc
     }
 
     #[inline]
@@ -931,12 +1018,23 @@ impl EgaCrtc {
         self.crtc_maximum_scanline
     }
 
+    #[inline]
+    pub fn in_skew(&self) -> bool {
+        self.den_skew_front | (self.den_skew_back && self.dsc < self.crtc_end_horizontal_blank.display_enable_skew())
+    }
+
+    #[inline]
+    pub fn in_blanking(&self) -> bool {
+        self.status.hblank | self.status.vblank
+    }
+
+    #[inline]
     pub fn start_address(&self) -> u16 {
         self.crtc_start_address
     }
 
     pub fn get_cursor_span(&self) -> (u8, u8) {
-        (self.crtc_cursor_start, self.crtc_cursor_end)
+        (self.crtc_cursor_start, self.crtc_cursor_end.cursor_end())
     }
 
     pub fn horizontal_display_end(&self) -> u8 {
@@ -962,7 +1060,7 @@ impl EgaCrtc {
         push_reg_str!(crtc_vec, CRTCRegister::PresetRowScan, "[R08]", self.crtc_preset_row_scan);
         push_reg_str!(crtc_vec, CRTCRegister::MaximumScanLine, "[R09]", self.crtc_maximum_scanline);
         push_reg_str!(crtc_vec, CRTCRegister::CursorStartLine, "[R0A]", self.crtc_cursor_start);
-        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R0B]", self.crtc_cursor_end);
+        push_reg_str!(crtc_vec, CRTCRegister::CursorEndLine, "[R0B]", self.crtc_cursor_end.into_bytes()[0]);
         push_reg_str!(crtc_vec, CRTCRegister::StartAddressH, "[R0C]", self.crtc_start_address_ho);
         push_reg_str!(crtc_vec, CRTCRegister::StartAddressL, "[R0D]", self.crtc_start_address_lo);
         push_reg_str!(crtc_vec, CRTCRegister::CursorAddressH, "[R0E]", self.crtc_cursor_address_ho);
@@ -976,7 +1074,7 @@ impl EgaCrtc {
         push_reg_str!(crtc_vec, CRTCRegister::StartVerticalBlank, "[R15]", self.crtc_start_vertical_blank);
         push_reg_str!(crtc_vec, CRTCRegister::EndVerticalBlank, "[R16]", self.crtc_end_vertical_blank);
         //push_reg_str!(crtc_vec, CRTCRegister::ModeControl, "[R17]", self.crtc_mode_control.into_bytes()[0]);
-        crtc_vec.push(("ModeControl [R17]".to_string(), VideoCardStateEntry::String(format!("{:08b}",self.crtc_mode_control.into_bytes()[0]))));
+        crtc_vec.push(("[R17] ModeControl".to_string(), VideoCardStateEntry::String(format!("{:08b}",self.crtc_mode_control.into_bytes()[0]))));
         push_reg_str!(crtc_vec, CRTCRegister::LineCompare, "[R18]", self.crtc_line_compare);
 
         crtc_vec
@@ -988,14 +1086,19 @@ impl EgaCrtc {
         internal_vec.push(("hcc:".to_string(), VideoCardStateEntry::String(format!("{}", self.hcc))));
         internal_vec.push(("vlc:".to_string(), VideoCardStateEntry::String(format!("{}", self.vlc))));
         internal_vec.push(("vcc:".to_string(), VideoCardStateEntry::String(format!("{}", self.vcc))));
-        internal_vec.push(("hslc:".to_string(), VideoCardStateEntry::String(format!("{}", self.hslc))));
+        internal_vec.push(("hslc:".to_string(), VideoCardStateEntry::String(format!("{}", self.slc))));
         internal_vec.push(("hsc:".to_string(), VideoCardStateEntry::String(format!("{}", self.hsc))));
         internal_vec.push(("vma':".to_string(), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
         internal_vec.push(("vmws:".to_string(), VideoCardStateEntry::String(format!("{}", self.vmws))));
         internal_vec.push(("den:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.status.den))));
+        internal_vec.push(("den_skew:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.status.den_skew))));
+        internal_vec.push(("ds_front:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.den_skew_front))));
+        internal_vec.push(("ds_back:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.den_skew_back))));
+        internal_vec.push(("dsc:".to_string(), VideoCardStateEntry::String(format!("{}", self.dsc))));
         internal_vec.push(("hblank:".to_string(), VideoCardStateEntry::String(format!("{}", self.status.hblank))));
         internal_vec.push(("vblank:".to_string(), VideoCardStateEntry::String(format!("{}", self.status.vblank))));
-        internal_vec.push(("border:".to_string(), VideoCardStateEntry::String(format!("{}", self.status.hborder))));
+        internal_vec.push(("hborder:".to_string(), VideoCardStateEntry::String(format!("{}", self.status.hborder))));
+        internal_vec.push(("vborder:".to_string(), VideoCardStateEntry::String(format!("{}", self.status.vborder))));
         internal_vec
     }
 }

@@ -134,30 +134,69 @@ pub struct AColorPlaneEnable {
     unused: B2,
 }
 
+pub enum AttributeInput<'a> {
+    Black,
+    SolidColor(u8),
+    HBlank,
+    VBlank,
+    Border,
+    Serial(&'a [u8]),
+    Serial64(u64),
+    Parallel(&'a [u8], u8, bool),
+    Parallel64(u64, u8, bool),
+}
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct AttributePaletteEntry {
+    pub six: u8,
+    pub four: u8,
+    pub four_to_six: u8,
+    pub mono: bool,
+}
+
+impl AttributePaletteEntry {
+    pub fn set(&mut self, byte: u8) {
+        self.six = byte & 0x3F;
+        self.four = byte & 0x0F | ((byte & 0x10) >> 1);
+        self.four_to_six = CGA_TO_EGA_U8[self.four as usize];
+        self.mono = (byte & 0x08) != 0;
+    }
+}
+
 pub struct AttributeController {
-    attribute_register_flipflop: AttributeRegisterFlipFlop,
-    attribute_register_select_byte: u8,
-    attribute_register_selected: AttributeRegister,
-    pub attribute_palette_registers: [AttributePaletteEntry; 16],
-    attribute_palette_index: usize,
-    attribute_mode_control: AModeControl,
-    pub attribute_overscan_color: AOverscanColor,
-    attribute_color_plane_enable: AColorPlaneEnable,
-    attribute_pel_panning: u8,
+    register_flipflop: AttributeRegisterFlipFlop,
+    register_select_byte: u8,
+    register_selected: AttributeRegister,
+    pub palette_registers: [AttributePaletteEntry; 16],
+    palette_index: usize,
+    mode_control: AModeControl,
+    pub overscan_color: AttributePaletteEntry,
+    overscan_color64: u64,
+    color_plane_enable: AColorPlaneEnable,
+    pel_panning: u8,
+    blink_state: bool,
+    last_den: bool,
+    shift_reg: u128,
+    shift_buf: [u8; 8],
 }
 
 impl Default for AttributeController {
     fn default() -> Self {
         Self {
-            attribute_register_flipflop: AttributeRegisterFlipFlop::Address,
-            attribute_register_select_byte: 0,
-            attribute_register_selected: AttributeRegister::Palette0,
-            attribute_palette_registers: [Default::default(); 16],
-            attribute_palette_index: 0,
-            attribute_mode_control: AModeControl::new(),
-            attribute_overscan_color: AOverscanColor::new(),
-            attribute_color_plane_enable: AColorPlaneEnable::new(),
-            attribute_pel_panning: 0,
+            register_flipflop: AttributeRegisterFlipFlop::Address,
+            register_select_byte: 0,
+            register_selected: AttributeRegister::Palette0,
+            palette_registers: [Default::default(); 16],
+            palette_index: 0,
+            mode_control: AModeControl::new(),
+            overscan_color: AttributePaletteEntry::default(),
+            overscan_color64: 0,
+            color_plane_enable: AColorPlaneEnable::new(),
+            pel_panning: 0,
+            blink_state: false,
+            last_den: false,
+            shift_reg: 0,
+            shift_buf: [0; 8],
         }
     }
 }
@@ -168,7 +207,7 @@ impl AttributeController {
     }
 
     pub fn reset_flipflop(&mut self) {
-        self.attribute_register_flipflop = AttributeRegisterFlipFlop::Address;
+        self.register_flipflop = AttributeRegisterFlipFlop::Address;
     }
     /// Handle a write to the Attribute Register 0x3C0.
     ///
@@ -176,12 +215,12 @@ impl AttributeController {
     /// address port. Instead, it maintains a flipflop that determines whether the port 0x3C0
     /// is in address or data mode. The flipflop is reset to a known state by reading 0x3DA.
     pub fn write_attribute_register(&mut self, byte: u8) {
-        match self.attribute_register_flipflop {
+        match self.register_flipflop {
             AttributeRegisterFlipFlop::Address => {
                 if byte <= 0x0F {
-                    self.attribute_palette_index = byte as usize;
+                    self.palette_index = byte as usize;
                 }
-                self.attribute_register_selected = match byte & 0x1F {
+                self.register_selected = match byte & 0x1F {
                     0x00 => AttributeRegister::Palette0,
                     0x01 => AttributeRegister::Palette1,
                     0x02 => AttributeRegister::Palette2,
@@ -204,14 +243,14 @@ impl AttributeController {
                     0x13 => AttributeRegister::HorizontalPelPanning,
                     _ => {
                         log::warn!("Invalid attribute register selected: {:02X}", byte);
-                        self.attribute_register_selected
+                        self.register_selected
                     }
                 };
 
-                self.attribute_register_flipflop = AttributeRegisterFlipFlop::Data;
+                self.register_flipflop = AttributeRegisterFlipFlop::Data;
             }
             AttributeRegisterFlipFlop::Data => {
-                match self.attribute_register_selected {
+                match self.register_selected {
                     AttributeRegister::Palette0
                     | AttributeRegister::Palette1
                     | AttributeRegister::Palette2
@@ -228,51 +267,235 @@ impl AttributeController {
                     | AttributeRegister::PaletteD
                     | AttributeRegister::PaletteE
                     | AttributeRegister::PaletteF => {
-                        //self.attribute_palette_registers[self.attribute_palette_index] = APaletteRegister::from_bytes([byte]);
-                        //log::debug!("set palette index {} to {:08b}", self.attribute_palette_index, byte );
-                        self.attribute_palette_registers[self.attribute_palette_index].set(byte);
+                        //self.palette_registers[self.palette_index] = APaletteRegister::from_bytes([byte]);
+                        //log::debug!("set palette index {} to {:08b}", self.palette_index, byte );
+                        self.palette_registers[self.palette_index].set(byte);
                     }
                     AttributeRegister::ModeControl => {
-                        self.attribute_mode_control = AModeControl::from_bytes([byte]);
+                        self.mode_control = AModeControl::from_bytes([byte]);
                     }
                     AttributeRegister::OverscanColor => {
-                        self.attribute_overscan_color = AOverscanColor::from_bytes([byte]);
+                        self.overscan_color.set(byte);
                     }
                     AttributeRegister::ColorPlaneEnable => {
-                        self.attribute_color_plane_enable = AColorPlaneEnable::from_bytes([byte]);
+                        self.color_plane_enable = AColorPlaneEnable::from_bytes([byte]);
                     }
                     AttributeRegister::HorizontalPelPanning => {
-                        self.attribute_pel_panning = byte & 0x0F;
+                        self.pel_panning = byte & 0x0F;
+                        //log::debug!("pel panning set to {}", self.pel_panning);
                     }
                 }
 
-                // IBM: "The flip flop toggles each time an OUT is issued to the Attribute Controller"
-                self.attribute_register_flipflop = AttributeRegisterFlipFlop::Address;
+                // IBM: "The flip-flop toggles each time an OUT is issued to the Attribute Controller"
+                self.register_flipflop = AttributeRegisterFlipFlop::Address;
             }
         }
     }
 
     pub fn mode(&self) -> AttributeMode {
-        self.attribute_mode_control.mode()
+        self.mode_control.mode()
     }
 
     pub fn display_type(&self) -> AttributeDisplayType {
-        self.attribute_mode_control.display_type()
+        self.mode_control.display_type()
+    }
+
+    /// Load the attribute controller with a new AttributeInput.
+    /// Should be called after shift_outX to make room for the new character clock worth of data.
+    pub fn load(&mut self, input: AttributeInput, clock_select: ClockSelect, den: bool) {
+        let mut ai = input;
+        // The attribute controller will emit the border color when display enable is low.
+        if !den {
+            // Delay border by one character clock in text mode. I can't tell if this is an ugly hack or something the
+            // attribute controller actually does, but it's necessary to get the text mode to align.
+            if matches!(self.mode_control.mode(), AttributeMode::Text) {
+                if (den == self.last_den) {
+                    //ai = AttributeInput::Border;
+                }
+            }
+            else {
+                ai = AttributeInput::Border;
+            }
+        }
+        self.last_den = den;
+
+        match ai {
+            AttributeInput::Black => {
+                // If we do nothing - black will be produced
+            }
+            AttributeInput::HBlank => {
+                // If we do nothing - hblank remains black
+            }
+            AttributeInput::VBlank => {
+                // If we do nothing - vblank remains black
+            }
+            AttributeInput::SolidColor(color) => {
+                // Draw a character span of solid color
+                self.shift_reg |= BYTE_EXTEND_TABLE64[color as usize] as u128;
+            }
+            AttributeInput::Border => {
+                // In border area, shift in overscan color
+
+                self.shift_reg |= BYTE_EXTEND_TABLE64[EgaDefaultColor6Bpp::GreenBright as usize] as u128;
+                //self.shift_reg |= BYTE_EXTEND_TABLE64[self.overscan_color.six as usize] as u128;
+            }
+            AttributeInput::Serial(data) => match clock_select {
+                ClockSelect::Clock14 => {
+                    for (i, byte) in data.iter().enumerate() {
+                        self.shift_reg |=
+                            (self.palette_registers[(*byte & 0x0F) as usize].four_to_six as u128) << ((7 - i) * 8);
+                    }
+                }
+                _ => {
+                    for (i, byte) in data.iter().enumerate() {
+                        self.shift_reg |=
+                            (self.palette_registers[(*byte & 0x0F) as usize].six as u128) << ((7 - i) * 8);
+                    }
+                }
+            },
+            AttributeInput::Serial64(data) => {
+                self.shift_reg |= data as u128;
+            }
+            AttributeInput::Parallel(data, attr, cursor) => {
+                let mut resolved_glyph = 0;
+                if cursor {
+                    resolved_glyph = BYTE_EXTEND_TABLE64[0xFF];
+                }
+                else {
+                    for (i, byte) in data.iter().enumerate() {
+                        resolved_glyph |= (*byte as u64) << ((7 - i) * 8);
+                    }
+                }
+                resolved_glyph = self.apply_attribute(resolved_glyph, attr);
+                self.shift_reg |= resolved_glyph as u128;
+            }
+            AttributeInput::Parallel64(data, attr, cursor) => {
+                let resolved_glyph = if cursor { ALL_SET64 } else { data };
+                self.shift_reg |= self.apply_attribute(resolved_glyph, attr) as u128;
+            }
+        }
+    }
+
+    pub fn shift_out64(&mut self) -> u64 {
+        let out_data = ((self.shift_reg << (self.pel_panning * 8)) >> 64) as u64;
+
+        // Shift the attribute data 64 bits to make room for next character clock
+        self.shift_reg <<= 64;
+
+        out_data.to_be()
+    }
+
+    #[rustfmt::skip]
+    pub fn shift_out64_halfclock(&mut self) -> (u64, u64) {
+        let mut out_data0 = 0;
+        let mut out_data1 = 0;
+
+        let out_data = ((self.shift_reg << (self.pel_panning * 8)) >> 64) as u64;
+
+        // Shift the attribute data 64 bits to make room for next character clock
+        self.shift_reg <<= 64;
+
+        out_data0 |= (out_data & 0xFF00000000000000) >> 56; // -> 0x00000000000000FF
+        out_data0 |= (out_data & 0xFF00000000000000) >> 48; // -> 0x000000000000FF00
+        out_data0 |= (out_data & 0x00FF000000000000) >> 32; // -> 0x0000000000FF0000
+        out_data0 |= (out_data & 0x00FF000000000000) >> 24; // -> 0x00000000FF000000
+        out_data0 |= (out_data & 0x0000FF0000000000) >> 8;  // -> 0x000000FF00000000
+        out_data0 |= (out_data & 0x0000FF0000000000);       // -> 0x0000FF0000000000
+        out_data0 |= (out_data & 0x000000FF00000000) << 16; // -> 0x00FF000000000000
+        out_data0 |= (out_data & 0x000000FF00000000) << 24; // -> 0xFF00000000000000
+
+        out_data1 |= (out_data & 0x00000000FF000000) >> 24; // -> 0x00000000000000FF
+        out_data1 |= (out_data & 0x00000000FF000000) >> 16; // -> 0x000000000000FF00
+        out_data1 |= (out_data & 0x0000000000FF0000);       // -> 0x0000000000FF0000
+        out_data1 |= (out_data & 0x0000000000FF0000) << 8;  // -> 0x00000000FF000000
+        out_data1 |= (out_data & 0x000000000000FF00) << 24; // -> 0x000000FF00000000
+        out_data1 |= (out_data & 0x000000000000FF00) << 32; // -> 0x0000FF0000000000
+        out_data1 |= (out_data & 0x00000000000000FF) << 48; // -> 0x00FF000000000000
+        out_data1 |= (out_data & 0x00000000000000FF) << 56; // -> 0xFF00000000000000
+
+        (out_data0, out_data1)
+    }
+
+    /*    pub fn shift_out64_halfclock2(&mut self) -> (u64, u64) {
+        let out_data = ((self.shift_reg << (self.pel_panning * 8)) >> 64) as u64;
+        let mut output1: u64 = 0;
+        let mut output2: u64 = 0;
+
+        for i in 0..4 {
+            // Extract each byte (pixel)
+            let pixel = (out_data >> (56 - i * 8)) & 0xFF;
+            // Double the pixel (still fits within u64)
+            let doubled_pixel = pixel | (pixel << 8);
+
+            // Place the doubled pixels in the output values
+            output1 |= (doubled_pixel as u64) << (16 * i);
+        }
+        for i in 0..4 {
+            // Extract each byte (pixel)
+            let pixel = (out_data >> (56 - (i + 4) * 8)) & 0xFF;
+            // Double the pixel (still fits within u64)
+            let doubled_pixel = pixel | (pixel << 8);
+
+            // Place the doubled pixels in the output values
+            output2 |= (doubled_pixel as u64) << (16 * i);
+        }
+
+        (output1.to_le(), output2.to_le())
+    }*/
+
+    pub fn shift_out(&mut self) -> &[u8] {
+        let out_data = ((self.shift_reg << self.pel_panning) >> 64) as u64;
+        self.shift_buf = out_data.to_le_bytes();
+        &self.shift_buf
+    }
+
+    #[inline]
+    pub fn apply_attribute(&self, glyph_row_base: u64, attribute: u8) -> u64 {
+        let mut fg_index = (attribute & 0x0F) as usize;
+        let mut bg_index = (attribute >> 4) as usize;
+
+        // If blinking is enabled, the bg attribute is only 3 bits and only low-intensity colors
+        // are available.
+        // If blinking is disabled, all 16 colors are available as background attributes.
+        if let AttributeBlinkOrIntensity::Blink = self.mode_control.enable_blink_or_intensity() {
+            bg_index = ((attribute >> 4) & 0x07) as usize;
+            let char_blink = attribute & 0x80 != 0;
+            if char_blink && self.blink_state {
+                // Blinking on the EGA is implemented by toggling the MSB of the color index
+                bg_index |= 0x08;
+                fg_index ^= 0x08;
+            }
+        }
+
+        let fg_color = self.palette_registers[fg_index].six;
+        let bg_color = self.palette_registers[bg_index].six;
+
+        // Combine glyph mask with foreground and background colors.
+        glyph_row_base & EGA_COLORS_U64[fg_color as usize] | !glyph_row_base & EGA_COLORS_U64[bg_color as usize]
+    }
+
+    pub fn palette(&self, pel: u8) -> u8 {
+        self.palette_registers[(pel & 0x0F) as usize].six
+    }
+
+    pub fn palette_four(&self, pel: u8) -> u8 {
+        self.palette_registers[(pel & 0x0F) as usize].four_to_six
     }
 
     #[rustfmt::skip]
     pub fn get_state(&self) -> Vec<(String, VideoCardStateEntry)> {
         let mut attribute_vec = Vec::new();
-        attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.mode()))));
-        attribute_vec.push((format!("{:?} disp:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.display_type()))));
-        attribute_vec.push((format!("{:?} elgc:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.enable_line_character_codes()))));
-        attribute_vec.push((format!("{:?} attr:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.attribute_mode_control.enable_blink_or_intensity()))));
+        attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.mode()))));
+        attribute_vec.push((format!("{:?} disp:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.display_type()))));
+        attribute_vec.push((format!("{:?} elgc:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.enable_line_character_codes()))));
+        attribute_vec.push((format!("{:?} attr:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.enable_blink_or_intensity()))));
 
-        let (r, g, b) = EGACard::ega_to_rgb( self.attribute_overscan_color.into_bytes()[0]);
-        attribute_vec.push((format!("{:?}", AttributeRegister::OverscanColor), VideoCardStateEntry::Color(format!("{:06b}", self.attribute_overscan_color.into_bytes()[0]), r, g, b)));
-        attribute_vec.push((format!("{:?} en:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:04b}", self.attribute_color_plane_enable.enable_plane()))));
-        attribute_vec.push((format!("{:?} mux:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:02b}", self.attribute_color_plane_enable.video_status_mux()))));
-        attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), VideoCardStateEntry::String(format!("{}", self.attribute_pel_panning))));
+        let (r, g, b) = EGACard::ega_to_rgb(self.overscan_color.six);
+        attribute_vec.push((format!("{:?}", AttributeRegister::OverscanColor), VideoCardStateEntry::Color(format!("{:06b}", self.overscan_color.six), r, g, b)));
+
+        attribute_vec.push((format!("{:?} en:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:04b}", self.color_plane_enable.enable_plane()))));
+        attribute_vec.push((format!("{:?} mux:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:02b}", self.color_plane_enable.video_status_mux()))));
+        attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), VideoCardStateEntry::String(format!("{}", self.pel_panning))));
 
         attribute_vec
     }
