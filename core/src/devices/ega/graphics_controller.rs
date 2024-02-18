@@ -606,6 +606,11 @@ impl GraphicsController {
         Some((offset & 0xFFFF, address & 1))
     }
 
+    #[inline]
+    pub(crate) fn shift_mode(&self) -> ShiftMode {
+        self.graphics_mode.shift_mode()
+    }
+
     #[rustfmt::skip]
     pub fn get_state(&self) -> Vec<(String, VideoCardStateEntry)> {
         let mut graphics_vec = Vec::new();

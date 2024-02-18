@@ -229,7 +229,7 @@ impl Sequencer {
         };
     }
 
-    pub fn read_u8(&self, plane: usize, addr: usize, a0: usize) -> u8 {
+    pub fn read_u8(&self, plane: usize, addr: usize, _a0: usize) -> u8 {
         // Handle odd/even addressing
         match self.memory_mode.odd_even() {
             OddEvenMode::Sequential => self.vram.read_u8(plane, addr),
@@ -356,7 +356,7 @@ impl Sequencer {
     }
 
     pub fn get_glyph_address(&self, glyph: u8, font: u8, row: u8) -> usize {
-        let mut offset = match font {
+        let offset = match font {
             0 => self.font_offset_b,
             _ => self.font_offset_a,
         };

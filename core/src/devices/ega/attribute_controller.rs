@@ -173,6 +173,7 @@ pub struct AttributeController {
     pub overscan_color: AttributePaletteEntry,
     overscan_color64: u64,
     color_plane_enable: AColorPlaneEnable,
+    color_plane_enable64: u64,
     pel_panning: u8,
     blink_state: bool,
     last_den: bool,
@@ -192,6 +193,7 @@ impl Default for AttributeController {
             overscan_color: AttributePaletteEntry::default(),
             overscan_color64: 0,
             color_plane_enable: AColorPlaneEnable::new(),
+            color_plane_enable64: !0,
             pel_panning: 0,
             blink_state: false,
             last_den: false,
@@ -279,6 +281,7 @@ impl AttributeController {
                     }
                     AttributeRegister::ColorPlaneEnable => {
                         self.color_plane_enable = AColorPlaneEnable::from_bytes([byte]);
+                        self.recalculate_plane_enable();
                     }
                     AttributeRegister::HorizontalPelPanning => {
                         self.pel_panning = byte & 0x0F;
@@ -289,6 +292,13 @@ impl AttributeController {
                 // IBM: "The flip-flop toggles each time an OUT is issued to the Attribute Controller"
                 self.register_flipflop = AttributeRegisterFlipFlop::Address;
             }
+        }
+    }
+
+    fn recalculate_plane_enable(&mut self) {
+        self.color_plane_enable64 = 0;
+        for i in 0..8 {
+            self.color_plane_enable64 |= (self.color_plane_enable.enable_plane() as u64) << (i * 8);
         }
     }
 
@@ -330,25 +340,25 @@ impl AttributeController {
             AttributeInput::Border => {
                 // In border area, shift in overscan color
 
-                self.shift_reg |= BYTE_EXTEND_TABLE64[EgaDefaultColor6Bpp::GreenBright as usize] as u128;
-                //self.shift_reg |= BYTE_EXTEND_TABLE64[self.overscan_color.six as usize] as u128;
+                //self.shift_reg |= BYTE_EXTEND_TABLE64[EgaDefaultColor6Bpp::GreenBright as usize] as u128;
+                self.shift_reg |= BYTE_EXTEND_TABLE64[self.overscan_color.six as usize] as u128;
             }
             AttributeInput::Serial(data) => match clock_select {
                 ClockSelect::Clock14 => {
                     for (i, byte) in data.iter().enumerate() {
-                        self.shift_reg |=
-                            (self.palette_registers[(*byte & 0x0F) as usize].four_to_six as u128) << ((7 - i) * 8);
+                        let color = *byte & self.color_plane_enable.enable_plane();
+                        self.shift_reg |= (self.palette_registers[color as usize].four_to_six as u128) << ((7 - i) * 8);
                     }
                 }
                 _ => {
                     for (i, byte) in data.iter().enumerate() {
-                        self.shift_reg |=
-                            (self.palette_registers[(*byte & 0x0F) as usize].six as u128) << ((7 - i) * 8);
+                        let color = *byte & self.color_plane_enable.enable_plane();
+                        self.shift_reg |= (self.palette_registers[color as usize].six as u128) << ((7 - i) * 8);
                     }
                 }
             },
             AttributeInput::Serial64(data) => {
-                self.shift_reg |= data as u128;
+                self.shift_reg |= (data & self.color_plane_enable64) as u128;
             }
             AttributeInput::Parallel(data, attr, cursor) => {
                 let mut resolved_glyph = 0;
@@ -360,12 +370,12 @@ impl AttributeController {
                         resolved_glyph |= (*byte as u64) << ((7 - i) * 8);
                     }
                 }
-                resolved_glyph = self.apply_attribute(resolved_glyph, attr);
+                resolved_glyph = self.apply_attribute(resolved_glyph, attr, clock_select);
                 self.shift_reg |= resolved_glyph as u128;
             }
             AttributeInput::Parallel64(data, attr, cursor) => {
                 let resolved_glyph = if cursor { ALL_SET64 } else { data };
-                self.shift_reg |= self.apply_attribute(resolved_glyph, attr) as u128;
+                self.shift_reg |= self.apply_attribute(resolved_glyph, attr, clock_select) as u128;
             }
         }
     }
@@ -444,7 +454,7 @@ impl AttributeController {
     }
 
     #[inline]
-    pub fn apply_attribute(&self, glyph_row_base: u64, attribute: u8) -> u64 {
+    pub fn apply_attribute(&self, glyph_row_base: u64, attribute: u8, clock_select: ClockSelect) -> u64 {
         let mut fg_index = (attribute & 0x0F) as usize;
         let mut bg_index = (attribute >> 4) as usize;
 
@@ -461,8 +471,19 @@ impl AttributeController {
             }
         }
 
-        let fg_color = self.palette_registers[fg_index].six;
-        let bg_color = self.palette_registers[bg_index].six;
+        let fg_color;
+        let bg_color;
+
+        match clock_select {
+            ClockSelect::Clock14 => {
+                fg_color = self.palette_registers[fg_index].four_to_six as usize;
+                bg_color = self.palette_registers[bg_index].four_to_six as usize;
+            }
+            _ => {
+                fg_color = self.palette_registers[fg_index].six as usize;
+                bg_color = self.palette_registers[bg_index].six as usize;
+            }
+        }
 
         // Combine glyph mask with foreground and background colors.
         glyph_row_base & EGA_COLORS_U64[fg_color as usize] | !glyph_row_base & EGA_COLORS_U64[bg_color as usize]
@@ -479,16 +500,16 @@ impl AttributeController {
     #[rustfmt::skip]
     pub fn get_state(&self) -> Vec<(String, VideoCardStateEntry)> {
         let mut attribute_vec = Vec::new();
-        attribute_vec.push((format!("{:?} mode:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.mode()))));
-        attribute_vec.push((format!("{:?} disp:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.display_type()))));
-        attribute_vec.push((format!("{:?} elgc:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.enable_line_character_codes()))));
-        attribute_vec.push((format!("{:?} attr:", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.enable_blink_or_intensity()))));
+        attribute_vec.push((format!("{:?} [mode]", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.mode()))));
+        attribute_vec.push((format!("{:?} [disp]", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.display_type()))));
+        attribute_vec.push((format!("{:?} [elgc]", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.enable_line_character_codes()))));
+        attribute_vec.push((format!("{:?} [attr]", AttributeRegister::ModeControl), VideoCardStateEntry::String(format!("{:?}", self.mode_control.enable_blink_or_intensity()))));
 
         let (r, g, b) = EGACard::ega_to_rgb(self.overscan_color.six);
         attribute_vec.push((format!("{:?}", AttributeRegister::OverscanColor), VideoCardStateEntry::Color(format!("{:06b}", self.overscan_color.six), r, g, b)));
 
-        attribute_vec.push((format!("{:?} en:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:04b}", self.color_plane_enable.enable_plane()))));
-        attribute_vec.push((format!("{:?} mux:", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:02b}", self.color_plane_enable.video_status_mux()))));
+        attribute_vec.push((format!("{:?} [en]", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:04b}", self.color_plane_enable.enable_plane()))));
+        attribute_vec.push((format!("{:?} [mux]", AttributeRegister::ColorPlaneEnable), VideoCardStateEntry::String(format!("{:02b}", self.color_plane_enable.video_status_mux()))));
         attribute_vec.push((format!("{:?}", AttributeRegister::HorizontalPelPanning), VideoCardStateEntry::String(format!("{}", self.pel_panning))));
 
         attribute_vec

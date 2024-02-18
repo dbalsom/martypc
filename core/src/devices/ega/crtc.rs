@@ -33,10 +33,12 @@
 use super::*;
 
 pub const EGA_VBLANK_MASK: u16 = 0x001F;
+pub const EGA_VSYNC_MASK: u16 = 0x001F;
 pub const EGA_HBLANK_MASK: u8 = 0x001F;
 pub const EGA_HSYNC_MASK: u8 = 0x001F;
 pub const EGA_HSLC_MASK: u16 = 0x01FF;
 
+const VSYNC_LENGTH: u8 = 16;
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const AC_LATENCY: u8 = 1;
 
@@ -220,6 +222,7 @@ pub struct EgaCrtc {
     pub status: CrtcStatus,
     blink_state: bool,
     monitor_hsync: bool,
+    monitor_vsync: bool,
     in_last_vblank_line: bool,
     cursor_data: [bool; EGA_CURSOR_MAX],
     frame: u64,
@@ -290,6 +293,7 @@ impl Default for EgaCrtc {
             status: CrtcStatus::default(),
             blink_state: false,
             monitor_hsync: false,
+            monitor_vsync: false,
             in_last_vblank_line: false,
             cursor_data: [false; EGA_CURSOR_MAX],
             frame: 0,
@@ -688,7 +692,7 @@ impl EgaCrtc {
         // Update horizontal character counter
         self.hcc = self.hcc.wrapping_add(1);
 
-        // Process horizontal sync period
+        // Process horizontal blank period
         if self.status.hblank {
             // End horizontal blank when we reach R3
             if (self.hcc & EGA_HBLANK_MASK) == self.crtc_end_horizontal_blank.end_horizontal_blank() {
@@ -704,7 +708,7 @@ impl EgaCrtc {
 
             // Implement a fixed hsync width from the monitor's perspective -
             // A wider programmed hsync width than these values shifts the displayed image to the right.
-            let hsync_target = if clock_divisor == 1 { std::cmp::min(6, 6) } else { 3 };
+            let hsync_target = if clock_divisor == 1 { 6 } else { 3 };
 
             // Do a horizontal sync
             if self.hsc == hsync_target {
@@ -861,6 +865,8 @@ impl EgaCrtc {
 
                 //trace_regs!(self);
                 //trace!(self, "Entering vsync");
+                self.monitor_vsync = true;
+                self.status.vsync = true;
                 self.status.vblank = true;
                 self.status.den = false;
 
@@ -885,7 +891,7 @@ impl EgaCrtc {
 
                 self.hcc = 0;
                 self.vcc = 0;
-                self.vlc = 0;
+                self.vlc = self.crtc_preset_row_scan;
 
                 self.frame += 1;
                 // Toggle blink state. This is toggled every 8 frames by default.
@@ -961,7 +967,8 @@ impl EgaCrtc {
         }
 
         // Update cursor status
-        self.status.cursor = (self.vma == (self.crtc_cursor_address + 1 + self.crtc_cursor_end.cursor_skew() as u16))
+        self.status.cursor = (self.vma
+            == (self.crtc_cursor_address + AC_LATENCY as u16 + self.crtc_cursor_end.cursor_skew() as u16))
             && self.blink_state
             && self.cursor_data[(self.vlc & 0x3F) as usize];
 
@@ -993,9 +1000,17 @@ impl EgaCrtc {
             //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
             if (self.slc & EGA_VBLANK_MASK) == self.crtc_end_vertical_blank {
                 self.in_last_vblank_line = true;
-                // We are leaving vblank period. Generate a frame.
-                self.status.begin_vsync = true;
                 self.monitor_hsync = false;
+                return;
+            }
+        }
+
+        if self.status.vsync {
+            if (self.slc & EGA_VSYNC_MASK) == self.crtc_vertical_retrace_end.vertical_retrace_end() as u16 {
+                // We are leaving vsync period, generate a frame
+                self.status.begin_vsync = true;
+                self.status.vsync = false;
+                self.monitor_vsync = false;
                 return;
             }
         }
@@ -1041,6 +1056,11 @@ impl EgaCrtc {
 
     pub fn horizontal_display_end(&self) -> u8 {
         self.crtc_horizontal_display_end
+    }
+
+    #[inline]
+    pub fn address_mode(&self) -> WordOrByteMode {
+        self.crtc_mode_control.word_or_byte_mode()
     }
 
     #[rustfmt::skip]
