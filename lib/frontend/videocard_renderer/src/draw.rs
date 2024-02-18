@@ -581,8 +581,6 @@ impl VideoRenderer {
     /// Draw the EGA card in Direct Mode.
     /// The EGA in Direct mode generates its own indexed-color framebuffer, which is
     /// converted to 32-bit RGBA for display based on the selected display aperture profile.
-    ///
-    /// TODO: Implement the full EGA 64 color palette lookup.
     pub fn draw_ega_direct_u32(
         frame: &mut [u8],
         w: u32,
