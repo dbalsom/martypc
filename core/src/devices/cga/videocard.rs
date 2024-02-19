@@ -31,7 +31,7 @@
 */
 
 use super::*;
-use crate::device_traits::videocard::*;
+use crate::{device_traits::videocard::*, devices::pic::Pic};
 
 // Helper macro for pushing video card state entries.
 // For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
@@ -396,7 +396,7 @@ impl VideoCard for CGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);

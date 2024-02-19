@@ -394,7 +394,7 @@ impl AttributeController {
         let mut out_data0 = 0;
         let mut out_data1 = 0;
 
-        let out_data = ((self.shift_reg << (self.pel_panning * 8)) >> 64) as u64;
+        let out_data = ((self.shift_reg << (std::cmp::min(self.pel_panning, 0x07) * 8)) >> 64) as u64;
 
         // Shift the attribute data 64 bits to make room for next character clock
         self.shift_reg <<= 64;

@@ -1882,13 +1882,13 @@ impl BusInterface {
         for (_vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Mda(mda) => {
-                    mda.run(DeviceRunTimeUnit::Microseconds(us));
+                    mda.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1);
                 }
                 VideoCardDispatch::Cga(cga) => {
                     self.cga_tick_accum += sys_ticks;
 
                     if self.cga_tick_accum > 8 {
-                        cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum));
+                        cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum), &mut self.pic1);
                         self.cga_tick_accum = 0;
 
                         if self.timer_trigger1_armed && pit_reload_value == 19912 {
@@ -1948,11 +1948,11 @@ impl BusInterface {
                 }
                 #[cfg(feature = "ega")]
                 VideoCardDispatch::Ega(ega) => {
-                    ega.run(DeviceRunTimeUnit::Microseconds(us));
+                    ega.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1);
                 }
                 #[cfg(feature = "vga")]
                 VideoCardDispatch::Vga(vga) => {
-                    vga.run(DeviceRunTimeUnit::Microseconds(us));
+                    vga.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1);
                 }
                 VideoCardDispatch::None => {}
             }

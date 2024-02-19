@@ -30,7 +30,7 @@
 
 */
 use super::*;
-use crate::device_traits::videocard::*;
+use crate::{device_traits::videocard::*, devices::pic::Pic};
 
 impl VideoCard for MDACard {
     fn get_sync(&self) -> (bool, bool, bool, bool) {
@@ -331,7 +331,7 @@ impl VideoCard for MDACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);

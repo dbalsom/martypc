@@ -606,6 +606,14 @@ impl GraphicsController {
         Some((offset & 0xFFFF, address & 1))
     }
 
+    pub(crate) fn memory_map(&self) -> MemoryMap {
+        self.graphics_micellaneous.memory_map()
+    }
+
+    pub(crate) fn odd_even(&self) -> OddEvenModeComplement {
+        self.graphics_mode.odd_even()
+    }
+
     #[inline]
     pub(crate) fn shift_mode(&self) -> ShiftMode {
         self.graphics_mode.shift_mode()

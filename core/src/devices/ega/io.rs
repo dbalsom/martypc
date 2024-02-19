@@ -86,8 +86,13 @@ impl IoDevice for EGACard {
                 self.crtc.write_crtc_register_address(data);
             }
             CRTC_REGISTER => {
-                self.crtc.write_crtc_register_data(data);
-                self.recalculate_mode();
+                let (recalc, clear_intr) = self.crtc.write_crtc_register_data(data);
+                if recalc {
+                    self.recalculate_mode();
+                }
+                if clear_intr {
+                    self.intr = false;
+                }
             }
             EGA_GRAPHICS_1_POSITION => self.gc.write_graphics_position(1, data),
             EGA_GRAPHICS_2_POSITION => self.gc.write_graphics_position(2, data),

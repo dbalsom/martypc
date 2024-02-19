@@ -31,7 +31,7 @@
 */
 
 use super::*;
-use crate::bus::DeviceRunTimeUnit;
+use crate::{bus::DeviceRunTimeUnit, devices::pic::Pic};
 use std::{collections::HashMap, path::Path};
 
 impl VideoCard for EGACard {
@@ -291,6 +291,7 @@ impl VideoCard for EGACard {
 
         map.insert("Sequencer".to_string(), self.sequencer.get_state());
         map.insert("Graphics".to_string(), self.gc.get_state());
+        map.insert("Attribute".to_string(), self.ac.get_state());
 
         let mut attribute_pal_vec = Vec::new();
         for i in 0..16 {
@@ -307,8 +308,8 @@ impl VideoCard for EGACard {
                 VideoCardStateEntry::Color(format!("{:06b}", self.ac.palette_registers[i].six), r, g, b),
             ));
         }
+
         map.insert("AttributePalette".to_string(), attribute_pal_vec);
-        map.insert("Attribute".to_string(), self.ac.get_state());
         map.insert("CRTC Counters".to_string(), self.crtc.get_counter_state());
 
         let mut internal_vec = Vec::new();
@@ -333,7 +334,7 @@ impl VideoCard for EGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>) {
         if let DeviceRunTimeUnit::Microseconds(us) = time {
             // Select the appropriate timings based on the current clocking mode
             let ticks = match self.misc_output_register.clock_select() {
@@ -342,7 +343,7 @@ impl VideoCard for EGACard {
                 _ => 0.0,
             };
 
-            self.tick(ticks)
+            self.tick(ticks, pic)
         }
     }
 

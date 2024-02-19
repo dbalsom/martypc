@@ -70,6 +70,7 @@ use crate::devices::ega::EGACard;
 use crate::devices::vga::VGACard;
 use crate::devices::{cga::CGACard, mda::MDACard};
 
+use crate::devices::pic::Pic;
 use serde::Deserialize;
 use serde_derive::Serialize;
 
@@ -414,9 +415,9 @@ pub trait VideoCard {
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
     /// Runs the video card device for the specified period of time
-    fn run(&mut self, time: DeviceRunTimeUnit);
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>);
 
-    /// Runs the video card for a the specified number of video clocks
+    /// Runs the video card for the specified number of video clocks
     /// Used for debugging by advancing the video card independent of machine state.
     /// An implementor of VideoCard will have its own internal tick procedure.
     fn debug_tick(&mut self, ticks: u32);

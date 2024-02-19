@@ -65,6 +65,7 @@ use attribute_controller::*;
 
 use crate::devices::ega::crtc::{EgaCrtc, WordOrByteMode};
 
+use crate::devices::pic::Pic;
 use graphics_controller::*;
 use sequencer::*;
 use tablegen::*;
@@ -98,7 +99,7 @@ pub const EGA_DIP_SWITCH_MDA: u8 = 0b0010; // MDA emulation
 pub const EGA_DIP_SWITCH_NORMAL: u8 = 0b1000; // EGA 'normal color'
 pub const EGA_DIP_SWITCH_CGA: u8 = 0b0111; // EGA on CGA monitor
 
-pub const DEFAULT_DIP_SWITCH: u8 = EGA_DIP_SWITCH_NORMAL;
+pub const DEFAULT_DIP_SWITCH: u8 = EGA_DIP_SWITCH_EGA;
 
 const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
 const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
@@ -708,6 +709,9 @@ pub struct EGACard {
     // Stat counters
     hsync_ct: u64,
     vsync_ct: u64,
+
+    intr: bool,
+    last_intr: bool,
 }
 
 #[bitfield]
@@ -838,6 +842,9 @@ impl Default for EGACard {
 
             hsync_ct: 0,
             vsync_ct: 0,
+
+            intr: false,
+            last_intr: false,
         }
     }
 }
@@ -1011,12 +1018,8 @@ impl EGACard {
     /// Calculate the current display mode based on the various register parameters of the EGA
     ///
     /// The EGA doesn't have a convenient mode register like the CGA to determine display mode.
-    /// Instead, several fields are used:
-    /// Sequencer Clocking Mode Register Dot Clock field: Determines 320 low res modes 0,1,4,5
-    /// Sequencer Memory Mode Register: Alpha bit: Determines alphanumeric mode
-    /// Attribute Controller Mode Control: Graphics/Alpha bit. Also determines alphanumeric mode
-    /// Attribute Controller Mode Control: Display Type bit. Determines Color or Monochrome
-    ///
+    /// Instead, several fields are used to determine the current display mode.
+    /// Not all cases are easily detectable - for example, CGA mode 6h is implemented as a standard EGA graphics mode.
     fn recalculate_mode(&mut self) {
         if self.crtc.maximum_scanline() > 7 {
             // Use 8x14 font
@@ -1040,10 +1043,24 @@ impl EGACard {
                 }
             }
             AttributeMode::Graphics => {
-                //self.display_mode = match
-                self.display_mode = match (self.crtc.horizontal_display_end(), self.ac.display_type()) {
-                    (00..=39, AttributeDisplayType::Color) => DisplayMode::ModeDEGALowResGraphics,
-                    (79, AttributeDisplayType::Color) => DisplayMode::Mode10EGAHiResGraphics,
+                self.display_mode = match self.gc.memory_map() {
+                    MemoryMap::B8000_32K => match self.gc.odd_even() {
+                        OddEvenModeComplement::OddEven => DisplayMode::Mode4LowResGraphics,
+                        OddEvenModeComplement::Sequential => DisplayMode::Mode6HiResGraphics,
+                    },
+                    MemoryMap::A0000_64K | MemoryMap::A0000_128k => {
+                        match (self.crtc.horizontal_display_end(), self.ac.display_type()) {
+                            (00..=39, AttributeDisplayType::Color) => DisplayMode::ModeDEGALowResGraphics,
+                            (79, AttributeDisplayType::Color) => match self.crtc.vertical_display_end() {
+                                0..=199 => DisplayMode::ModeEEGAMedResGraphics,
+                                _ => DisplayMode::Mode10EGAHiResGraphics,
+                            },
+                            _ => {
+                                log::warn!("Unsupported graphics mode.");
+                                DisplayMode::Mode3TextCo80
+                            }
+                        }
+                    }
                     _ => {
                         log::warn!("Unsupported graphics mode.");
                         DisplayMode::Mode3TextCo80
@@ -1079,7 +1096,7 @@ impl EGACard {
 
     /// Tick the EGA device. This is much simpler than the implementation in the CGA device as
     /// we only support ticking by character clock.
-    fn tick(&mut self, ticks: f64) {
+    fn tick(&mut self, ticks: f64, pic: &mut Option<Pic>) {
         self.ticks_accum += ticks;
 
         // Drain the accumulator while emitting characters.
@@ -1093,6 +1110,21 @@ impl EGACard {
                 DotClock::HalfClock => self.tick_lchar(self.misc_output_register.clock_select()),
             }
             self.ticks_accum -= self.sequencer.char_clock as f64;
+
+            if self.intr && !self.last_intr {
+                // Rising edge of INTR - raise IRQ2
+                if let Some(pic) = pic {
+                    pic.request_interrupt(2);
+                }
+            }
+            else if !self.intr {
+                // Falling edge of INTR - release IRQ2
+                if let Some(pic) = pic {
+                    //log::debug!("clearing irq2!");
+                    pic.clear_interrupt(2);
+                }
+            }
+            self.last_intr = self.intr;
         }
     }
 
@@ -1129,25 +1161,12 @@ impl EGACard {
                         //self.draw_text_mode_hchar14();
                     }
                     AttributeMode::Graphics => {
-                        match self.gc.shift_mode() {
-                            ShiftMode::Standard => {
-                                // Bypass graphics controller for speed
-                                let out_span = self.get_gfx_mode_hchar_6pp();
-                                self.ac.load(
-                                    AttributeInput::Serial64(out_span),
-                                    clock_select,
-                                    self.crtc.status.den | self.crtc.in_skew(),
-                                );
-                            }
-                            ShiftMode::CGACompatible => {
-                                let ser = self.gc.serialize(&self.sequencer, self.vma);
-                                self.ac.load(
-                                    AttributeInput::Serial(ser),
-                                    clock_select,
-                                    self.crtc.status.den | self.crtc.in_skew(),
-                                );
-                            }
-                        }
+                        let ser = self.gc.serialize(&self.sequencer, self.vma);
+                        self.ac.load(
+                            AttributeInput::Serial(ser),
+                            clock_select,
+                            self.crtc.status.den | self.crtc.in_skew(),
+                        );
 
                         //self.draw_gfx_mode_hchar_6bpp();
                     }
@@ -1220,7 +1239,12 @@ impl EGACard {
             self.rba = self.extents.row_stride * self.raster_y as usize;
         }
 
-        self.update_char_tick();
+        if self.update_char_tick() && self.crtc.int_enabled() {
+            self.intr = true;
+        }
+        else if !self.crtc.status.vsync {
+            self.intr = false;
+        }
     }
 
     fn tick_lchar(&mut self, clock_select: ClockSelect) {
@@ -1289,18 +1313,26 @@ impl EGACard {
         self.raster_x += 8 * self.sequencer.clock_divisor as u32;
         self.rba += 8 * self.sequencer.clock_divisor as usize;
 
-        self.update_char_tick();
+        if self.update_char_tick() && self.crtc.int_enabled() {
+            self.intr = true;
+        }
+        else if !self.crtc.status.vsync {
+            self.intr = false;
+        }
     }
 
-    pub fn update_char_tick(&mut self) {
+    pub fn update_char_tick(&mut self) -> bool {
+        let mut did_vsync = false;
         self.vma = self.crtc.tick(self.get_clock_divisor()) as usize;
         if self.crtc.status.begin_vsync {
             self.do_vsync();
+            did_vsync = true;
         }
         if self.crtc.status.begin_hsync {
             self.do_hsync();
         }
         self.fetch_char(self.vma as u16);
+        did_vsync
     }
 
     //noinspection ALL

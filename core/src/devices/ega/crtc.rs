@@ -345,9 +345,11 @@ impl EgaCrtc {
     }
 
     /// Write to one of the CRT Controller registers.
-    /// Returns a boolean representing whether the card should recalculate mode parameters after this write.
-    pub fn write_crtc_register_data(&mut self, byte: u8) -> bool {
+    /// Returns a a tuple, a boolean representing whether the card should recalculate mode parameters after this write,
+    /// and a boolean representing whether the current interrupt status should be cleared.
+    pub fn write_crtc_register_data(&mut self, byte: u8) -> (bool, bool) {
         //log::debug!("CGA: Write to CRTC register: {:?}: {:02}", self.crtc_register_selected, byte );
+        let mut clear_intr = false;
         match self.register_selected {
             CRTCRegister::HorizontalTotal => {
                 // (R0) 8 bit write only
@@ -468,6 +470,10 @@ impl EgaCrtc {
                 // Bit 6: Bandwidth bit (ignored)
                 self.crtc_vertical_retrace_end = CVerticalRetraceEnd::from_bytes([byte]);
                 self.normalize_end_vertical_retrace();
+
+                if self.crtc_vertical_retrace_end.cvi() == 0 {
+                    clear_intr = true;
+                }
             }
             CRTCRegister::VerticalDisplayEnd => {
                 // (R12) 9 bits - Vertical Display End
@@ -504,7 +510,7 @@ impl EgaCrtc {
                 self.crtc_line_compare |= byte as u16;
             }
         }
-        true
+        (true, clear_intr)
     }
 
     /// Update the miscellaneous registers that share bits with the Overflow register.
@@ -857,6 +863,7 @@ impl EgaCrtc {
                 // address offset, and then the split-screen window is drawn from address 0 after line compare.
                 self.vma_sl = 0;
                 self.vma = 0;
+                self.vlc = 0;
             }
 
             if self.slc == self.crtc_vertical_retrace_start {
@@ -1050,12 +1057,21 @@ impl EgaCrtc {
         self.crtc_start_address
     }
 
+    #[inline]
+    pub(crate) fn int_enabled(&self) -> bool {
+        self.crtc_vertical_retrace_end.dvi() == 0
+    }
+
     pub fn get_cursor_span(&self) -> (u8, u8) {
         (self.crtc_cursor_start, self.crtc_cursor_end.cursor_end())
     }
 
     pub fn horizontal_display_end(&self) -> u8 {
         self.crtc_horizontal_display_end
+    }
+
+    pub fn vertical_display_end(&self) -> u16 {
+        self.crtc_vertical_display_end
     }
 
     #[inline]
@@ -1090,6 +1106,7 @@ impl EgaCrtc {
         push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceStart, "[R10]", self.crtc_vertical_retrace_start);
         push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceEnd, "[R11]", self.crtc_vertical_retrace_end.vertical_retrace_end());
         push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceEnd, "[R11:norm]", self.crtc_vertical_retrace_end_norm);
+        push_reg_str!(crtc_vec, CRTCRegister::VerticalRetraceEnd, "[R11:dvi]", self.crtc_vertical_retrace_end.dvi());
         push_reg_str!(crtc_vec, CRTCRegister::VerticalDisplayEnd, "[R12]", self.crtc_vertical_display_end);
         push_reg_str!(crtc_vec, CRTCRegister::Offset, "[R13]", self.crtc_offset);
         push_reg_str!(crtc_vec, CRTCRegister::UnderlineLocation, "[R14]", self.crtc_underline_location);
