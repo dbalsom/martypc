@@ -69,10 +69,6 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
     // -- Update machine state
     emu.gui.set_machine_state(emu.machine.get_state());
 
-    // -- Update display info
-    let dti = emu.dm.get_display_info(&emu.machine);
-    emu.gui.update_display_info(dti);
-
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
         if let Some(hdc) = emu.machine.hdc() {

@@ -34,7 +34,7 @@ use crate::machine_types::{
     FdcType,
     FloppyDriveType,
     HardDiskControllerType,
-    HardDriveType,
+    HardDriveFormat,
     MachineType,
     SerialControllerType,
     SerialMouseType,
@@ -53,7 +53,7 @@ use crate::{
 
 use serde_derive::Deserialize;
 
-// Clock derivision from reenigne
+// Clock derivation from reenigne
 // See https://www.vogons.org/viewtopic.php?t=55049
 pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5 / 11.0;
 pub const PIT_DIVISOR: u32 = 12;
@@ -76,11 +76,11 @@ pub struct MmioSpec {
 #[allow(dead_code)]
 pub struct DeviceSpec {
     dtype: DeviceType,      // Type of device.
-    debug: bool,            // Whether or not device should enable debug functionality.
+    debug: bool,            // Whether device should enable debug functionality.
     tracelog: TraceLogger,  // Tracelogger for device to use.
-    mmio: Option<MmioSpec>, // Whether or not device has a mmio mapping.
-    io: bool,               // Whether or not device registers IO ports / requires IO dispatch.
-    hotplug: bool,          // Whether or not a device can be added/removed while machine is running.
+    mmio: Option<MmioSpec>, // Whether device has a mmio mapping.
+    io: bool,               // Whether device registers IO ports / requires IO dispatch.
+    hotplug: bool,          // Whether device can be added/removed while machine is running.
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -250,6 +250,11 @@ pub struct ConventionalMemoryConfig {
 pub struct KeyboardConfig {
     #[serde(rename = "type")]
     pub kb_type: KeyboardType,
+    pub layout: String,
+    #[serde(default)]
+    pub typematic: bool,
+    pub typematic_delay: Option<f64>,
+    pub typematic_rate: Option<f64>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -302,8 +307,25 @@ pub struct HardDriveControllerConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct HardDriveConfig {
     #[serde(rename = "type")]
-    pub hd_type: HardDriveType,
+    pub hd_type: Option<u32>,
+    pub format: Option<HardDriveFormat>,
     pub vhd: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct FloppyImage {
+    pub image: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct HardDriveImage {
+    pub image: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct MediaConfig {
+    pub floppy: Option<Vec<FloppyImage>>,
+    pub hdd:    Option<Vec<HardDriveImage>>,
 }
 
 #[derive(Clone, Debug)]
@@ -318,6 +340,7 @@ pub struct MachineConfiguration {
     pub serial: Vec<SerialControllerConfig>,
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,
+    pub media: Option<MediaConfig>,
 }
 
 pub fn normalize_conventional_memory(config: &MachineConfiguration) -> Result<u32, Error> {

@@ -30,32 +30,7 @@
 
 */
 use super::*;
-use crate::device_traits::videocard::*;
-
-// Helper macro for pushing video card state entries.
-// For CGA, we put the decorator first as there is only one register file an we use it to show the register index.
-macro_rules! push_reg_str {
-    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((
-            format!("{} {:?}", $decorator, $reg),
-            VideoCardStateEntry::String(format!("{}", $val)),
-        ))
-    };
-}
-
-/*
-macro_rules! push_reg_str_bin8 {
-    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
-    };
-}
-
-macro_rules! push_reg_str_enum {
-    ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
-    };
-}
-*/
+use crate::{device_traits::videocard::*, devices::pic::Pic};
 
 impl VideoCard for MDACard {
     fn get_sync(&self) -> (bool, bool, bool, bool) {
@@ -356,7 +331,7 @@ impl VideoCard for MDACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);

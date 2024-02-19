@@ -302,7 +302,7 @@ pub fn run() {
     let machine_names = machine_manager.get_config_names();
     let have_machine_config = machine_names.contains(&config.machine.config_name);
 
-    // Do 'romscan' commandline argument. We print machine info (and rom info if --romscan
+    // Do --machinescan commandline argument. We print machine info (and rom info if --romscan
     // was also specified) and then quit.
     if config.emulator.machinescan {
         // Print the list of machine configurations and their rom requirements
@@ -338,8 +338,8 @@ pub fn run() {
     }
 
     // Instantiate the new rom manager to load roms
-    let mut nu_rom_manager = frontend_common::rom_manager::RomManager::new(config.machine.prefer_oem);
-    if let Err(err) = nu_rom_manager.load_defs(&resource_manager) {
+    let mut rom_manager = frontend_common::rom_manager::RomManager::new(config.machine.prefer_oem);
+    if let Err(err) = rom_manager.load_defs(&resource_manager) {
         eprintln!("Error loading ROM definition files: {}", err);
         std::process::exit(1);
     }
@@ -350,9 +350,13 @@ pub fn run() {
             for overlay in overlay_vec.iter() {
                 log::debug!("Have machine config overlay: {}", overlay);
             }
-            machine_manager
-                .get_config_with_overlays(&config.machine.config_name, overlay_vec)
-                .unwrap()
+            match machine_manager.get_config_with_overlays(&config.machine.config_name, overlay_vec) {
+                Ok(config) => config,
+                Err(err) => {
+                    eprintln!("Error getting machine config: {}", err);
+                    std::process::exit(1);
+                }
+            }
         }
         else {
             machine_manager.get_config(&config.machine.config_name).unwrap()
@@ -364,21 +368,21 @@ pub fn run() {
     });
 
     // Scan the rom resource director(ies)
-    if let Err(err) = nu_rom_manager.scan(&resource_manager) {
+    if let Err(err) = rom_manager.scan(&resource_manager) {
         eprintln!("Error scanning ROM resource directories: {}", err);
         std::process::exit(1);
     }
 
     // Determine what complete ROM sets we have
-    if let Err(err) = nu_rom_manager.resolve_rom_sets() {
+    if let Err(err) = rom_manager.resolve_rom_sets() {
         eprintln!("Error resolving ROM sets: {}", err);
         std::process::exit(1);
     }
 
     // Do --romscan option.  We print rom and machine info and quit.
     if config.emulator.romscan {
-        nu_rom_manager.print_rom_stats();
-        nu_rom_manager.print_romset_stats();
+        rom_manager.print_rom_stats();
+        rom_manager.print_romset_stats();
         std::process::exit(0);
     }
 
@@ -398,11 +402,11 @@ pub fn run() {
         println!("  {}", rom_feature);
     }
 
-    // Determine if the machine configuration specifies a particular ROM set.as
+    // Determine if the machine configuration specifies a particular ROM set
     let specified_rom_set = machine_config_file.get_specified_rom_set();
 
     // Resolve the ROM requirements for the requested ROM features
-    let rom_sets_resolved = nu_rom_manager
+    let rom_sets_resolved = rom_manager
         .resolve_requirements(required_features, optional_features, specified_rom_set)
         .unwrap_or_else(|err| {
             eprintln!("Error resolving ROM sets for machine: {}", err);
@@ -418,7 +422,7 @@ pub fn run() {
     }
 
     // Create the ROM manifest
-    let rom_manifest = nu_rom_manager
+    let rom_manifest = rom_manager
         .create_manifest(rom_sets_resolved.clone(), &resource_manager)
         .unwrap_or_else(|err| {
             eprintln!("Error loading ROM set: {}", err);
@@ -430,57 +434,10 @@ pub fn run() {
         log::debug!("  rom {}: md5: {} length: {}", i, rom.md5, rom.data.len());
     }
 
-    //std::process::exit(0);
-
-    /*
-    // Instantiate the rom manager to load roms for the requested machine type
-    let mut rom_manager = RomManager::new(MachineType::Ibm5160, features, config.machine.rom_override.clone());
-
-    let mut rom_path = PathBuf::new();
-    rom_path.push(config.emulator.basedir.clone());
-    rom_path.push("roms");
-
-    if let Err(e) = rom_manager.try_load_from_dir(&rom_path) {
-        match e {
-            RomError::DirNotFound => {
-                eprintln!("ROM directory not found: {}", rom_path.display())
-            }
-            RomError::RomNotFoundForMachine => {
-                eprintln!("No valid ROM found for specified machine type.")
-            }
-            RomError::RomNotFoundForFeature(feature) => {
-                eprintln!("No valid ROM found for requested feature: {:?}", feature)
-            }
-            _ => {
-                eprintln!("Error loading ROM file.")
-            }
-        }
-        std::process::exit(1);
-    }
-
-    // Verify that our ROM prerequisites are met for any machine features
-    //let features = rom_manager.get_available_features();
-    //
-    //if let VideoType::EGA = video_type {
-    //    if !features.contains(&RomFeature::EGA) {
-    //        eprintln!("To enable EGA graphics, an EGA adapter ROM must be present.");
-    //        std::process::exit(1);
-    //    }
-    //}
-
-    */
-
     // Instantiate the floppy manager
     let mut floppy_manager = FloppyManager::new();
 
     floppy_manager.set_extensions(config.emulator.media.raw_sector_image_extensions.clone());
-
-    /*
-    // Scan the floppy directory
-    let floppy_path = resource_manager.get_resource_path("floppy").unwrap_or_else(|| {
-        eprintln!("Failed to retrieve 'floppy' resource path.");
-        std::process::exit(1);
-    });*/
 
     // Scan the "floppy" resource
     if let Err(e) = floppy_manager.scan_resource(&resource_manager) {
@@ -491,12 +448,7 @@ pub fn run() {
     // Instantiate the VHD manager
     let mut vhd_manager = VhdManager::new();
 
-    // Scan the HDD directory
-    let hdd_path = resource_manager.get_resource_path("hdd").unwrap_or_else(|| {
-        eprintln!("Failed to retrieve 'hdd' resource path.f");
-        std::process::exit(1);
-    });
-
+    // Scan the "hdd" resource
     if let Err(e) = vhd_manager.scan_resource(&resource_manager) {
         eprintln!("Failed to read hdd path: {:?}", e);
         std::process::exit(1);
@@ -558,7 +510,7 @@ pub fn run() {
     let kb_data = KeyboardData::new();
 
     // Mouse event struct
-    let mouse_data = MouseData::new(config.input.reverse_mouse_buttons);
+    let mouse_data = MouseData::new(config.emulator.input.reverse_mouse_buttons);
 
     // Init sound
     let sound_player_opt = {
@@ -593,7 +545,7 @@ pub fn run() {
 
     let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(&config))
-        .with_machine_config(machine_config)
+        .with_machine_config(&machine_config)
         .with_roms(rom_manifest)
         .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
         .with_trace_log(trace_file_path)
@@ -659,7 +611,7 @@ pub fn run() {
     let mut emu = Emulator {
         rm: resource_manager,
         dm: display_manager,
-        romm: nu_rom_manager,
+        romm: rom_manager,
         romsets: rom_sets_resolved.clone(),
         config,
         machine,

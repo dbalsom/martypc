@@ -69,11 +69,9 @@ impl CoreConfig for ConfigFileParams {
     fn get_machine_turbo(&self) -> bool {
         self.machine.turbo
     }
-    fn get_keyboard_type(&self) -> Option<KeyboardType> {
-        self.machine.keyboard_type
-    }
+    //fn get_keyboard_type(&self) -> Option<KeyboardType> { self.machine.keyboard_type }
     fn get_keyboard_layout(&self) -> Option<String> {
-        self.machine.keyboard_layout.clone()
+        self.machine.input.keyboard_layout.clone()
     }
     fn get_keyboard_debug(&self) -> bool {
         self.emulator.debug_keyboard

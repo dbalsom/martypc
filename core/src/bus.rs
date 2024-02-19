@@ -308,7 +308,7 @@ pub struct BusInterface {
     timing_table: Box<[TimingTableEntry; TIMING_TABLE_LEN]>,
     machine_desc: Option<MachineDescriptor>,
     keyboard_type: KeyboardType,
-    keyboard: Keyboard,
+    keyboard: Option<Keyboard>,
     conventional_size: usize,
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
@@ -444,7 +444,7 @@ impl Default for BusInterface {
             timing_table: Box::new([TimingTableEntry { sys_ticks: 0, us: 0.0 }; TIMING_TABLE_LEN]),
             machine_desc: None,
             keyboard_type: KeyboardType::ModelF,
-            keyboard: Keyboard::new(KeyboardType::ModelF, false),
+            keyboard: None,
             conventional_size: ADDRESS_SPACE,
             memory: vec![OPEN_BUS_BYTE; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
@@ -492,7 +492,6 @@ impl BusInterface {
             timing_table,
             machine_desc: Some(machine_desc),
             keyboard_type,
-            keyboard: Keyboard::new(keyboard_type, false),
             ..BusInterface::default()
         }
     }
@@ -1423,7 +1422,7 @@ impl BusInterface {
         // First we need to initialize the PPI. The PPI is used to read the system's DIP switches, so the PPI must be
         // given several parameters from the machine configuration.
 
-        // Create vector of videotypes for PPI initialization.
+        // Create vector of video types for PPI initialization.
         let video_types = machine_config
             .video
             .iter()
@@ -1502,6 +1501,19 @@ impl BusInterface {
         self.io_map
             .extend(port_list.into_iter().map(|p| (p, IoDeviceType::PicPrimary)));
         self.pic1 = Some(pic1);
+
+        // Create keyboard if specified.
+        if let Some(kb_config) = &machine_config.keyboard {
+            let mut keyboard = Keyboard::new(kb_config.kb_type, false);
+
+            keyboard.set_typematic_params(
+                Some(kb_config.typematic),
+                kb_config.typematic_delay,
+                kb_config.typematic_rate,
+            );
+
+            self.keyboard = Some(keyboard);
+        }
 
         // Create FDC if specified.
         if let Some(fdc_config) = &machine_config.fdc {
@@ -1670,51 +1682,51 @@ impl BusInterface {
     ) -> Option<DeviceEvent> {
         let mut event = None;
 
-        // Send keyboard events to devices.
-        if let Some(kb_event) = kb_event_opt {
-            //log::debug!("Got keyboard byte: {:02X}", kb_byte);
+        if let Some(keyboard) = &mut self.keyboard {
+            // Send keyboard events to devices.
+            if let Some(kb_event) = kb_event_opt {
+                //log::debug!("Got keyboard byte: {:02X}", kb_byte);
 
-            match kb_event.pressed {
-                true => self
-                    .keyboard
-                    .key_down(kb_event.keycode, &kb_event.modifiers, Some(kb_buf)),
-                false => self.keyboard.key_up(kb_event.keycode),
-            }
+                match kb_event.pressed {
+                    true => keyboard.key_down(kb_event.keycode, &kb_event.modifiers, Some(kb_buf)),
+                    false => keyboard.key_up(kb_event.keycode),
+                }
 
-            // Read a byte from the keyboard
-            if let Some(kb_byte) = self.keyboard.recv_scancode() {
-                // Do we have a PPI? if so, send the scancode to the PPI
-                if let Some(ppi) = &mut self.ppi {
-                    ppi.send_keyboard(kb_byte);
+                // Read a byte from the keyboard
+                if let Some(kb_byte) = keyboard.recv_scancode() {
+                    // Do we have a PPI? if so, send the scancode to the PPI
+                    if let Some(ppi) = &mut self.ppi {
+                        ppi.send_keyboard(kb_byte);
 
-                    if ppi.kb_enabled() {
-                        if let Some(pic) = &mut self.pic1 {
-                            // TODO: Should we let the PPI do this directly?
-                            //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
-                            pic.pulse_interrupt(1);
+                        if ppi.kb_enabled() {
+                            if let Some(pic) = &mut self.pic1 {
+                                // TODO: Should we let the PPI do this directly?
+                                //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
+                                pic.pulse_interrupt(1);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // Accumulate us and run the keyboard when scheduled.
-        self.kb_us_accum += us;
-        if self.kb_us_accum > KB_UPDATE_RATE {
-            self.keyboard.run(KB_UPDATE_RATE);
-            self.kb_us_accum -= KB_UPDATE_RATE;
+            // Accumulate us and run the keyboard when scheduled.
+            self.kb_us_accum += us;
+            if self.kb_us_accum > KB_UPDATE_RATE {
+                keyboard.run(KB_UPDATE_RATE);
+                self.kb_us_accum -= KB_UPDATE_RATE;
 
-            // Read a byte from the keyboard
-            if let Some(kb_byte) = self.keyboard.recv_scancode() {
-                // Do we have a PPI? if so, send the scancode to the PPI
-                if let Some(ppi) = &mut self.ppi {
-                    ppi.send_keyboard(kb_byte);
+                // Read a byte from the keyboard
+                if let Some(kb_byte) = keyboard.recv_scancode() {
+                    // Do we have a PPI? if so, send the scancode to the PPI
+                    if let Some(ppi) = &mut self.ppi {
+                        ppi.send_keyboard(kb_byte);
 
-                    if ppi.kb_enabled() {
-                        if let Some(pic) = &mut self.pic1 {
-                            // TODO: Should we let the PPI do this directly?
-                            //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
-                            pic.pulse_interrupt(1);
+                        if ppi.kb_enabled() {
+                            if let Some(pic) = &mut self.pic1 {
+                                // TODO: Should we let the PPI do this directly?
+                                //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
+                                pic.pulse_interrupt(1);
+                            }
                         }
                     }
                 }
@@ -1870,13 +1882,13 @@ impl BusInterface {
         for (_vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Mda(mda) => {
-                    mda.run(DeviceRunTimeUnit::Microseconds(us));
+                    mda.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1);
                 }
                 VideoCardDispatch::Cga(cga) => {
                     self.cga_tick_accum += sys_ticks;
 
                     if self.cga_tick_accum > 8 {
-                        cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum));
+                        cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum), &mut self.pic1);
                         self.cga_tick_accum = 0;
 
                         if self.timer_trigger1_armed && pit_reload_value == 19912 {
@@ -1936,11 +1948,11 @@ impl BusInterface {
                 }
                 #[cfg(feature = "ega")]
                 VideoCardDispatch::Ega(ega) => {
-                    ega.run(DeviceRunTimeUnit::Microseconds(us));
+                    ega.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1);
                 }
                 #[cfg(feature = "vga")]
                 VideoCardDispatch::Vga(vga) => {
-                    vga.run(DeviceRunTimeUnit::Microseconds(us));
+                    vga.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1);
                 }
                 VideoCardDispatch::None => {}
             }
@@ -2349,7 +2361,7 @@ impl BusInterface {
         }
     }
 
-    pub fn keyboard_mut(&mut self) -> &mut Keyboard {
-        &mut self.keyboard
+    pub fn keyboard_mut(&mut self) -> Option<&mut Keyboard> {
+        self.keyboard.as_mut()
     }
 }

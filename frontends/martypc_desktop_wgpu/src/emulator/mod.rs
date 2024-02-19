@@ -238,11 +238,56 @@ impl Emulator {
         Ok(())
     }
 
-    pub fn mount_vhds(&mut self) -> Result<(), Error> {
+    /// Get a list of VHD images specified in the machine configuration.
+    /// Returns a vector of Option<String> where Some(String) is the filename of the VHD image, and None is an empty
+    /// hard drive slot.
+    pub fn get_vhds_from_machine(&self) -> Vec<Option<String>> {
         let mut vhd_names: Vec<Option<String>> = Vec::new();
 
-        for vhd in self.config.emulator.media.vhd.as_ref().unwrap_or(&Vec::new()) {
-            vhd_names.push(Some(vhd.filename.clone()));
+        let machine_config = self.machine.config();
+
+        if let Some(controller) = machine_config.hdc.as_ref() {
+            for drive in controller.drive.as_ref().unwrap_or(&Vec::new()) {
+                if let Some(vhd) = drive.vhd.as_ref() {
+                    vhd_names.push(Some(vhd.clone()));
+                }
+                else {
+                    vhd_names.push(None);
+                }
+            }
+        }
+
+        vhd_names
+    }
+
+    /// Mount VHD images into hard drive devices.
+    /// VHD images can be specified either in the machine configuration, or in the main configuration.
+    /// Images specified in the main configuration will override images specified in a machine configuration.
+    /// Images are mounted in the order they are specified, starting with the first hard disk controller, and first
+    /// hard disk, and continuing until all images are mounted, or there are no more hard disks.
+    pub fn mount_vhds(&mut self) -> Result<(), Error> {
+        // First, retrieve the list of VHD images specified in the machine configuration.
+        let mut vhd_names: Vec<Option<String>> = self.get_vhds_from_machine();
+        let machine_max = vhd_names.len();
+
+        for (drive_i, vhd) in self
+            .config
+            .emulator
+            .media
+            .vhd
+            .as_ref()
+            .unwrap_or(&Vec::new())
+            .iter()
+            .enumerate()
+        {
+            if drive_i >= machine_max {
+                // Add new drive
+                vhd_names.push(Some(vhd.filename.clone()));
+            }
+            else {
+                // Replace existing drive
+                vhd_names[drive_i] = Some(vhd.filename.clone());
+            }
         }
 
         let mut config_drive_idx: usize = 0;
@@ -319,103 +364,9 @@ impl Emulator {
             let card_str = format!("Card: {} ({:?})", vid.idx, vid.vtype);
             card_strs.push(card_str);
         }
+
+        // Set list of video cards
         self.gui.set_card_list(card_strs);
-
-        /*
-            if let Some(card) = machine.videocard() {
-                if let RenderMode::Direct = card.get_render_mode() {
-                    if let Some(render_window) = window_manager.get_render_window(card.get_video_type()) {
-                        let extents = card.get_display_extents();
-                        let (aper_x, mut aper_y) = card.get_display_aperture();
-                        assert!(aper_x != 0 && aper_y != 0);
-
-                        if extents.double_scan {
-                            video.set_double_scan(true);
-                            aper_y *= 2;
-                        }
-                        else {
-                            video.set_double_scan(false);
-                        }
-
-                        let aspect_ratio = if config.emulator.scaler_aspect_correction {
-                            Some(marty_render::AspectRatio { h: 4, v: 3 })
-                        }
-                        else {
-                            None
-                        };
-
-                        video.set_aspect_ratio(aspect_ratio);
-
-                        let (aper_correct_x, aper_correct_y) = {
-                            let dim = video.get_display_dimensions();
-                            (dim.w, dim.h)
-                        };
-
-                        let mut double_res = false;
-
-                        // Get the current monitor resolution.
-                        if let Some(monitor) = render_window.window.current_monitor() {
-                            let monitor_size = monitor.size();
-                            let dip_scale = monitor.scale_factor();
-
-                            log::debug!(
-                                "Current monitor resolution: {}x{} scale factor: {}",
-                                monitor_size.width,
-                                monitor_size.height,
-                                dip_scale
-                            );
-
-                            // Take into account DPI scaling for window-fit.
-                            let scaled_width = ((aper_correct_x * 2) as f64 * dip_scale) as u32;
-                            let scaled_height = ((aper_correct_y * 2) as f64 * dip_scale) as u32;
-                            log::debug!(
-                                "Target resolution after aspect correction and DPI scaling: {}x{}",
-                                scaled_width,
-                                scaled_height
-                            );
-
-                            if (scaled_width <= monitor_size.width) && (scaled_height <= monitor_size.height) {
-                                // Monitor is large enough to double the display window
-                                double_res = true;
-                            }
-                        }
-
-                        let window_resize_w = if double_res { aper_correct_x * 2 } else { aper_correct_x };
-                        let window_resize_h = if double_res { aper_correct_y * 2 } else { aper_correct_y };
-
-                        log::debug!("Resizing window to {}x{}", window_resize_w, window_resize_h);
-                        //resize_h = if card.get_scanline_double() { resize_h * 2 } else { resize_h };
-
-                        render_window
-                            .window
-                            .set_inner_size(winit::dpi::LogicalSize::new(window_resize_w, window_resize_h));
-
-                        log::debug!("Resizing marty_render buffer to {}x{}", aper_x, aper_y);
-
-                        video.resize((aper_x, aper_y).into());
-
-                        /*
-                        let pixel_res = video.get_display_dimensions();
-
-                        if (pixel_res.w > 0) && (pixel_res.h > 0) {
-                            log::debug!("Resizing pixel buffer to {}x{}", pixel_res.w, pixel_res.h);
-                            pixels.resize_buffer(pixel_res.w, pixel_res.h).expect("Failed to resize Pixels buffer.");
-                        }
-                        */
-
-                        //VideoRenderer::set_alpha(pixels.frame_mut(), pixel_res.w, pixel_res.h, 255);
-
-                        // Recalculate sampling parameters.
-                        //resample_context.precalc(aper_x, aper_y, aper_correct_x, aper_correct_y);
-
-                        // Update internal state and request a redraw
-                        render_window.window.request_redraw();
-                    }
-                }
-            }
-        }
-
-         */
 
         // Set floppy drives.
         self.gui.set_floppy_drives(self.machine.bus().floppy_drive_ct());

@@ -39,7 +39,7 @@ use crate::{
     cpu_validator::ValidatorType,
     device_traits::videocard::{ClockingMode, VideoType},
     devices::keyboard::KeyboardType,
-    machine_types::{MachineType},
+    machine_types::MachineType,
 };
 use std::path::PathBuf;
 
@@ -59,7 +59,7 @@ pub trait CoreConfig {
     fn get_machine_type(&self) -> MachineType;
     fn get_machine_noroms(&self) -> bool;
     fn get_machine_turbo(&self) -> bool;
-    fn get_keyboard_type(&self) -> Option<KeyboardType>;
+    //fn get_keyboard_type(&self) -> Option<KeyboardType>;
     fn get_keyboard_layout(&self) -> Option<String>;
     fn get_keyboard_debug(&self) -> bool;
     //fn get_video_type(&self) -> Option<VideoType>;

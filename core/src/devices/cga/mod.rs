@@ -2227,7 +2227,7 @@ impl CGACard {
         self.last_vsync_cycles = self.cycles;
 
         if self.cycles_per_vsync > 300000 {
-            log::warn!(
+            log::trace!(
                 "do_vsync(): Excessively long frame. char_clock: {} cycles: {} beam_y: {}",
                 self.char_clock,
                 self.cycles_per_vsync,

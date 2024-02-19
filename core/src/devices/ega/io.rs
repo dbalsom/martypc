@@ -64,7 +64,7 @@ impl IoDevice for EGACard {
             CRTC_REGISTER_MDA => {
                 // Don't respond on this port if we are in CGA compatibility mode
                 match self.misc_output_register.io_address_select() {
-                    IoAddressSelect::CompatMonochrome => self.read_crtc_register(),
+                    IoAddressSelect::CompatMonochrome => self.crtc.read_crtc_register(),
                     IoAddressSelect::CompatCGA => 0xFF,
                 }
             }
@@ -73,6 +73,7 @@ impl IoDevice for EGACard {
             }
         }
     }
+
     fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             MISC_OUTPUT_REGISTER => {
@@ -82,20 +83,30 @@ impl IoDevice for EGACard {
             //    self.handle_mode_register(data);
             //}
             CRTC_REGISTER_ADDRESS => {
-                self.write_crtc_register_address(data);
+                self.crtc.write_crtc_register_address(data);
             }
             CRTC_REGISTER => {
-                self.write_crtc_register_data(data);
+                let (recalc, clear_intr) = self.crtc.write_crtc_register_data(data);
+                if recalc {
+                    self.recalculate_mode();
+                }
+                if clear_intr {
+                    self.intr = false;
+                }
             }
-            EGA_GRAPHICS_1_POSITION => self.write_graphics_position(1, data),
-            EGA_GRAPHICS_2_POSITION => self.write_graphics_position(2, data),
-            EGA_GRAPHICS_ADDRESS => self.write_graphics_address(data),
-            EGA_GRAPHICS_DATA => {
-                self.write_graphics_data(data);
+            EGA_GRAPHICS_1_POSITION => self.gc.write_graphics_position(1, data),
+            EGA_GRAPHICS_2_POSITION => self.gc.write_graphics_position(2, data),
+            EGA_GRAPHICS_ADDRESS => self.gc.write_graphics_address(data),
+            EGA_GRAPHICS_DATA => self.gc.write_graphics_data(data),
+            SEQUENCER_ADDRESS_REGISTER => self.sequencer.write_address(data),
+            SEQUENCER_DATA_REGISTER => {
+                self.sequencer.write_data(data);
+                self.recalculate_mode();
             }
-            SEQUENCER_ADDRESS_REGISTER => self.write_sequencer_address(data),
-            SEQUENCER_DATA_REGISTER => self.write_sequencer_data(data),
-            ATTRIBUTE_REGISTER | ATTRIBUTE_REGISTER_ALT => self.write_attribute_register(data),
+            ATTRIBUTE_REGISTER | ATTRIBUTE_REGISTER_ALT => {
+                self.ac.write_attribute_register(data);
+                self.recalculate_mode();
+            }
             //COLOR_CONTROL_REGISTER => {
             //    self.handle_cc_register_write(data);
             //}

@@ -225,6 +225,13 @@ impl Keyboard {
         if let Some(rate) = rate {
             self.typematic_rate = rate;
         }
+
+        log::debug!(
+            "Typematic paramters set: enabled: {}, delay: {:.2}, rate: {:.2}",
+            self.typematic,
+            self.typematic_delay,
+            self.typematic_rate
+        );
     }
 
     pub fn load_mapping(&mut self, map_file: &Path) -> Result<()> {
@@ -665,11 +672,9 @@ impl Keyboard {
 
         // Update keys pressed.
         for vkey in &self.keys_pressed {
-            if self.is_typematic_key(*vkey) {
+            if self.typematic && self.is_typematic_key(*vkey) {
                 if let Some(key_state) = self.kb_hash.get_mut(&vkey) {
                     key_state.pressed_time += ms;
-
-                    // TODO: implement key repeat here
                     if key_state.pressed_time > (self.typematic_delay - self.typematic_rate) {
                         if self.debug {
                             log::debug!("typematic delay elapsed for: {:?}", vkey);

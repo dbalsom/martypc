@@ -192,6 +192,11 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
                 }
             }
 
+            // Resize windows
+            if let Err(err) = emuc.dm.resize_windows() {
+                log::error!("Error resizing windows: {}", err);
+            }
+
             let render_start = Instant::now();
 
             // Check if any videocard has resized and handle it

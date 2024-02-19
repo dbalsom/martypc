@@ -1,9 +1,9 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run martypc [RELEASE] [EGA]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="DIST [RELEASE]">
-    <option name="command" value="run -r --features devtools,ega -- --configfile martypc.toml  --machine-config-overlays=ega" />
+    <option name="command" value="run -r --features devtools,ega -- --configfile martypc.toml  --machine-config-overlays=ibm_ega" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
     <envs>
-      <env name="RUST_LOG" value="debug,naga=error,wgpu_core=error,marty_core::devices::fdc=debug" />
+      <env name="RUST_LOG" value="debug,naga=error,wgpu_hal=error,wgpu_core=error,marty_core::devices::fdc=debug" />
     </envs>
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />

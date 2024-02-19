@@ -161,6 +161,7 @@ pub struct Emulator {
 
     pub window: Vec<WindowDefinition>,
     pub scaler_preset: Vec<ScalerPreset>,
+    pub input: EmulatorInput,
 }
 
 #[derive(Debug, Deserialize)]
@@ -208,6 +209,11 @@ pub struct Cpu {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct MachineInput {
+    pub keyboard_layout: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Machine {
     pub config_name: String,
     pub config_overlays: Option<Vec<String>>,
@@ -224,15 +230,15 @@ pub struct Machine {
     pub turbo: bool,
     pub cpu: Cpu,
     pub pit_phase: Option<u32>,
-    pub keyboard_type: Option<KeyboardType>,
-    pub keyboard_layout: Option<String>,
+    pub input: MachineInput,
 }
 
 #[derive(Debug, Deserialize)]
-pub struct Input {
+pub struct EmulatorInput {
     #[serde(default)]
     pub reverse_mouse_buttons: bool,
 }
+
 #[derive(Debug, Deserialize)]
 pub struct WindowDefinition {
     #[serde(default)]
@@ -252,7 +258,6 @@ pub struct WindowDefinition {
 pub struct ConfigFileParams {
     pub emulator: Emulator,
     pub gui: Gui,
-    pub input: Input,
     pub machine: Machine,
     pub validator: Validator,
     pub tests: Tests,
@@ -386,7 +391,7 @@ impl ConfigFileParams {
             *off_rails_detection |= shell_args.off_rails_detection;
         }
 
-        self.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
+        self.emulator.input.reverse_mouse_buttons |= shell_args.reverse_mouse_buttons;
 
         self.emulator.romscan = shell_args.romscan;
         self.emulator.machinescan = shell_args.romscan;

@@ -285,11 +285,11 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn with_machine_config(mut self, config: MachineConfiguration) -> Self {
+    pub fn with_machine_config(mut self, config: &MachineConfiguration) -> Self {
         let mtype = config.machine_type;
         self.mtype = Some(mtype);
         self.descriptor = Some(get_machine_descriptor(mtype).unwrap().clone());
-        self.machine_config = Some(config);
+        self.machine_config = Some(config.clone());
         self
     }
 
@@ -483,22 +483,22 @@ impl Machine {
             kb_translation_path.push("keyboard");
             kb_translation_path.push(format!("keyboard_{}.toml", kb_string));
 
-            match cpu.bus_mut().keyboard_mut().load_mapping(&kb_translation_path) {
-                Ok(_) => {
-                    println!("Loaded keyboard mapping file: {}", kb_translation_path.display());
+            if let Some(keyboard) = cpu.bus_mut().keyboard_mut() {
+                match keyboard.load_mapping(&kb_translation_path) {
+                    Ok(_) => {
+                        println!("Loaded keyboard mapping file: {}", kb_translation_path.display());
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to load keyboard mapping file: {} Err: {}",
+                            kb_translation_path.display(),
+                            e
+                        )
+                    }
                 }
-                Err(e) => {
-                    eprintln!(
-                        "Failed to load keyboard mapping file: {} Err: {}",
-                        kb_translation_path.display(),
-                        e
-                    )
-                }
+                keyboard.set_debug(core_config.get_keyboard_debug());
             }
         }
-
-        // Set keyboard debug flag.
-        cpu.bus_mut().keyboard_mut().set_debug(core_config.get_keyboard_debug());
 
         // Load BIOS ROM images unless config option suppressed rom loading
         if !core_config.get_machine_noroms() {
@@ -686,6 +686,10 @@ impl Machine {
 
     pub fn cpu(&self) -> &Cpu {
         &self.cpu
+    }
+
+    pub fn config(&self) -> &MachineConfiguration {
+        &self.machine_config
     }
 
     /// Set a CPU option. Avoids needing to borrow CPU.
@@ -1274,7 +1278,7 @@ impl Machine {
 
         // Process a keyboard event once per frame.
         // A reasonably fast typist can generate two events in a single 16ms frame, and to the virtual cpu
-        // they then appear to happen instantenously. The PPI has no buffer, so one scancode gets lost.
+        // they then appear to happen instantaneously. The PPI has no buffer, so one scancode gets lost.
         //
         // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
         // fast typist and this method seems to work fine.

@@ -17,7 +17,7 @@ config_version = "0.2"
 # Specify the name of a machine configuration to load. Valid config_names
 # are defined via machine configuration profiles in the /configs/machines
 # directory.
-config_name = "ibm5160"
+config_name = "ibm5160_hdd"
 #config_name = "generic_xt"
 #config_name = "generic_award_xt_hdd"
 #config_name = "generic_xt_hdd"
@@ -32,7 +32,7 @@ config_name = "ibm5160"
 #config_overlays = ["ega"]
 
 # Prefer OEM ROMs over other compatible ROMs, if present. Default: true.
-prefer_oem = false
+prefer_oem = true
 
 # Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
 reload_roms = true
@@ -52,27 +52,16 @@ turbo = false
 # you would want to do that.
 pit_phase = 0
 
-# Keyboard Type
 # ----------------------------------------------------------------------------
-# Valid options for keyboard_type are:
-# ModelF - This was the original 83-key keyboard shipped with the PC/XT
-#          (More keyboard types yet to be implemented)
-keyboard_type = "ModelF"
+# Input options
+# ----------------------------------------------------------------------------
+[machine.input]
+# Keyboard layouts are normally specified in machine configurations. You can
+# override the keyboard layout here. Easier than editing all your machines.
+# A keyboard mapping file compatible with the specified layout and keyboard
+# type must be present.
 
-# Keyboard layout. Used to load the appropriate keyboard translation file. 
-# MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
-# where XX is the string specified by keyboard_layout.
-#
-# Certain scancodes have changed their meaning since the 1980's. Your help
-# would be appreciated in developing new translation files.
-keyboard_layout="US"
-
-# Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
-typematic = true
-# Delay in milliseconds before typematic repeat begins.
-typematic_delay = 500.0
-# Delay in milliseconds between each scancode during typematic repeat.
-typematic_rate= 50.0
+#keyboard_layout = "US"
 
 # ----------------------------------------------------------------------------
 # CPU Options
@@ -216,10 +205,10 @@ raw_sector_image_extensions = [ "img", "ima", "dsk", "mnx" ]
 # Default state of write protection for newly loaded floppy images.
 write_protect_default = true
 
-[[emulator.media.vhd]]
+#[[emulator.media.vhd]]
 # VHD to mount into drive 0 (Typically C:)
-drive = 0
-filename = "dos330.vhd"
+#drive = 0
+#filename = "dos330.vhd"
 
 #[[emulator.media.vhd]]
 # VHD to mount into drive 1 (Typically D:)
@@ -466,6 +455,16 @@ composite = false
 aspect_ratio = { h=4, v=3 }
 
 # ----------------------------------------------------------------------------
+# General Input Options
+# ----------------------------------------------------------------------------
+[emulator.input]
+# Some platforms reverse the left and right mouse button id #'s. 
+# We try to detect this, but it can be overridden here.
+
+# reverse_mouse_buttons = false
+
+
+# ----------------------------------------------------------------------------
 # GUI options
 # ----------------------------------------------------------------------------
 [gui]
@@ -486,17 +485,6 @@ menu_theme = "DefaultLight"
 # Global zoom level for GUI. Smaller numbers will make all the GUI elements 
 # smaller. Default: 1.0 Max: 1.0 Min: 0.1
 zoom = 1.0
-
-[input]
-# ----------------------------------------------------------------------------
-
-# Some platforms reverse the left and right mouse button id #'s. 
-# We try to detect this, but it can be overridden here.
-# reverse_mouse_buttons = false
-
-
-
-
 
 # ----------------------------------------------------------------------------
 # Benchmarking (not yet implemented - configs are placeholder)

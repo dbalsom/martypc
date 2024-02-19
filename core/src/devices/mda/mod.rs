@@ -352,7 +352,6 @@ use crate::devices::{
     mda::io::LPT_DEFAULT_IO_BASE,
 };
 
-
 #[bitfield]
 #[derive(Copy, Clone)]
 pub struct MdaModeRegister {
@@ -1050,10 +1049,6 @@ impl MDACard {
             self.do_hsync();
         }
         self.fetch_char(vma);
-        if den {
-            // If we are in display enable, fetch the next character.
-        }
-
         self.vma = vma as usize;
     }
 
