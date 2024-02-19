@@ -12,17 +12,9 @@ Thumbs.db
 /.vscode/settings.json
 
 # Emulator files
-/rom
-/roms
-/floppy
-/hdd
-/dumps
-/builds
-/screenshots
-/traces
+/archive
 /program
 /releases
-/keyboard
 /cfg
 /tests/v*
 /tests/tools/gen_list.py
