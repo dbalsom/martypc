@@ -2,6 +2,8 @@ name: Linux
 
 on:
   push:
+    branches:
+      - version_0_2_0
   pull_request:
 
 env:
