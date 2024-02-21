@@ -346,20 +346,20 @@ pub fn run() {
 
     // Get the ROM requirements for the requested machine type
     let machine_config_file = {
-        if let Some(overlay_vec) = &config.machine.config_overlays {
+        let mut overlay_vec = Vec::new();
+        if let Some(config_overlay_vec) = &config.machine.config_overlays {
             for overlay in overlay_vec.iter() {
-                log::debug!("Have machine config overlay: {}", overlay);
+                log::debug!("Have machine config overlay from global config: {}", overlay);
             }
-            match machine_manager.get_config_with_overlays(&config.machine.config_name, overlay_vec) {
-                Ok(config) => config,
-                Err(err) => {
-                    eprintln!("Error getting machine config: {}", err);
-                    std::process::exit(1);
-                }
-            }
+            overlay_vec = config_overlay_vec.clone();
         }
-        else {
-            machine_manager.get_config(&config.machine.config_name).unwrap()
+
+        match machine_manager.get_config_with_overlays(&config.machine.config_name, &overlay_vec) {
+            Ok(config) => config,
+            Err(err) => {
+                eprintln!("Error getting machine config: {}", err);
+                std::process::exit(1);
+            }
         }
     };
     let (required_features, optional_features) = machine_config_file.get_rom_requirements().unwrap_or_else(|e| {
