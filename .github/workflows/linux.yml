@@ -1,0 +1,51 @@
+name: Linux
+
+on:
+  push:
+    branches:
+      - version_0_2_0
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build_and_test:
+    name: martypc
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: >-
+          sudo apt update && sudo apt install
+          libasound2-dev
+          libudev-dev
+
+      - name: Cargo build
+        run: cargo build -r --features ega
+
+      - name: Copy files into install dir
+        run: cp README.md target/release/martypc install
+
+      - name: Rename install directory
+        run: mv install martypc
+
+      - name: Create artifact directory
+        run: mkdir artifacts
+
+      # GitHub zips all artifacts, losing file permissions.
+      # We'll need to tar the directory in order to
+      # preserve the file permissions
+      - name: Create artifact from install directory
+        run: tar cvf artifacts/martypc.tar martypc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'martypc-linux-gha${{ github.run_number }}'
+          path: artifacts/martypc.tar
