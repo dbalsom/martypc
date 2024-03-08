@@ -389,11 +389,11 @@ pub enum Displacement {
 #[derive(Copy, Clone, Debug)]
 pub enum DmaState {
     Idle,
-    TimerTrigger,
     Dreq,
     Hrq,
     HoldA,
     Operating(u8),
+    End,
     //DmaWait(u8)
 }
 
@@ -770,13 +770,26 @@ pub struct Cpu {
 
     service_events: VecDeque<ServiceEvent>,
 
+    // Interrupt scheduling
+    interrupt_scheduling:   bool,
+    interrupt_cycle_period: u32,
+    interrupt_cycle_num:    u32,
+    interrupt_retrigger:    bool,
+
+    clk0: bool,
+
     // DMA stuff
     dma_state: DmaState,
     dram_refresh_simulation: bool,
     dram_refresh_cycle_period: u32,
     dram_refresh_cycle_num: u32,
     dram_refresh_adjust: u32,
+    dram_refresh_tc: bool,
+    dram_refresh_retrigger: bool,
     dma_aen: bool,
+    dma_holda: bool,
+    dma_req: bool,
+    dma_ack: bool,
     dma_wait_states: u32,
 
     // Trap stuff
@@ -1140,6 +1153,9 @@ impl Cpu {
         self.i8288.aiowc = false;
         self.i8288.iowc = false;
 
+        self.dram_refresh_tc = false;
+        self.dram_refresh_retrigger = false;
+
         self.step_over_target = None;
         self.end_addr = 0xFFFFF;
 
@@ -1162,10 +1178,6 @@ impl Cpu {
         }
 
         trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip());
-    }
-
-    pub fn emit_header(&mut self) {
-        self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,vs,hs,den,brd")
     }
 
     /// Calculate the value of IP as needed. The IP register on the 808X is not a physical register,
@@ -1214,6 +1226,11 @@ impl Cpu {
 
     pub fn get_csip(&self) -> CpuAddress {
         CpuAddress::Segmented(self.cs, self.ip())
+    }
+
+    #[inline]
+    pub fn is_last_wait_t3tw(&self) -> bool {
+        self.wait_states == 0 && self.dma_wait_states == 0
     }
 
     #[inline]
@@ -1721,7 +1738,7 @@ impl Cpu {
         }
     }
 
-    /// Evaluate an string expression such as 'cs:ip' to an address.
+    /// Evaluate a string expression such as 'cs:ip' to an address.
     /// Basic forms supported are [reg:reg], [reg:offset], [seg:offset]
     pub fn eval_address(&self, expr: &str) -> Option<CpuAddress> {
         lazy_static! {
@@ -2132,7 +2149,14 @@ impl Cpu {
                 self.instruction_history.clear();
                 self.instruction_history_on = state;
             }
-            CpuOption::SimulateDramRefresh(state, cycle_target, cycles) => {
+            CpuOption::ScheduleInterrupt(state, cycle_target, cycles, retrigger) => {
+                log::debug!("Setting InterruptHint to: ({},{})", cycle_target, cycles);
+                self.interrupt_scheduling = true;
+                self.interrupt_cycle_period = cycle_target;
+                self.interrupt_cycle_num = cycles;
+                self.interrupt_retrigger = retrigger;
+            }
+            CpuOption::ScheduleDramRefresh(state, cycle_target, cycles, retrigger) => {
                 log::trace!(
                     "Setting SimulateDramRefresh to: {:?} ({},{})",
                     state,
@@ -2142,6 +2166,8 @@ impl Cpu {
                 self.dram_refresh_simulation = state;
                 self.dram_refresh_cycle_period = cycle_target;
                 self.dram_refresh_cycle_num = cycles;
+                self.dram_refresh_retrigger = retrigger;
+                self.dram_refresh_tc = false;
             }
             CpuOption::DramRefreshAdjust(adj) => {
                 log::debug!("Setting DramRefreshAdjust to: {}", adj);
@@ -2179,7 +2205,8 @@ impl Cpu {
     pub fn get_option(&mut self, opt: CpuOption) -> bool {
         match opt {
             CpuOption::InstructionHistory(_) => self.instruction_history_on,
-            CpuOption::SimulateDramRefresh(..) => self.dram_refresh_simulation,
+            CpuOption::ScheduleInterrupt(..) => self.interrupt_cycle_period > 0,
+            CpuOption::ScheduleDramRefresh(..) => self.dram_refresh_simulation,
             CpuOption::DramRefreshAdjust(..) => true,
             CpuOption::HaltResumeDelay(..) => true,
             CpuOption::OffRailsDetection(_) => self.off_rails_detection,

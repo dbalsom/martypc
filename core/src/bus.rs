@@ -106,6 +106,8 @@ pub const KB_UPDATE_RATE: f64 = 5000.0; // Keyboard device update rate in micros
 
 pub const TIMING_TABLE_LEN: usize = 512;
 
+pub const IMMINENT_TIMER_INTERRUPT: u16 = 10;
+
 #[derive(Copy, Clone, Debug)]
 pub struct TimingTableEntry {
     pub sys_ticks: u32,
@@ -192,7 +194,8 @@ pub enum DeviceId {
 
 #[derive(Clone, Debug)]
 pub enum DeviceEvent {
-    DramRefreshUpdate(u16, u16, u32),
+    InterruptUpdate(u16, u16, bool),
+    DramRefreshUpdate(u16, u16, u32, bool),
     DramRefreshEnable(bool),
     TurboToggled(bool),
 }
@@ -297,7 +300,7 @@ pub enum MmioDeviceType {
 
 // Main bus struct.
 // Bus contains both the system memory and IO, and owns all connected devices.
-// This ownership heirachy allows us to avoid needing RefCells for devices.
+// This ownership hierarchy allows us to avoid needing RefCells for devices.
 //
 // All devices are wrapped in Options. Some devices are actually optional, depending
 // on the machine type.
@@ -317,6 +320,7 @@ pub struct BusInterface {
     mmio_map_fast: [MmioDeviceType; MMIO_MAP_LEN],
     mmio_data: MmioData,
     cursor: usize,
+    intr_imminent: bool,
 
     io_map: HashMap<u16, IoDeviceType>,
     ppi: Option<Ppi>,
@@ -453,6 +457,7 @@ impl Default for BusInterface {
             mmio_map_fast: [MmioDeviceType::Memory; MMIO_MAP_LEN],
             mmio_data: MmioData::new(),
             cursor: 0,
+            intr_imminent: false,
 
             io_map: HashMap::new(),
             ppi: None,
@@ -1748,7 +1753,7 @@ impl BusInterface {
 
         // Run the PIT. The PIT communicates with lots of things, so we send it the entire bus.
         // The PIT may have a separate clock crystal, such as in the IBM AT. In this case, there may not
-        // be an integer number of PIT ticks per system ticks. Therefore the PIT can take either
+        // be an integer number of PIT ticks per system ticks. Therefore, the PIT can take either
         // system ticks (PC/XT) or microseconds as an update parameter.
         if let Some(_crystal) = self.machine_desc.unwrap().timer_crystal {
             pit.run(self, speaker_buf_producer, DeviceRunTimeUnit::Microseconds(us));
@@ -1764,66 +1769,15 @@ impl BusInterface {
             self.pit_ticks_advance = 0;
         }
 
-        // Has PIT channel 1 (DMA timer) changed?
-        let (pit_dirty, pit_counting, pit_ticked) = pit.is_dirty(1);
-
-        if pit_dirty {
-            log::trace!("Pit is dirty! counting: {} ticked: {}", pit_counting, pit_ticked);
-        }
-
-        if pit_counting && pit_dirty {
-            // Pit is dirty and counting. Update the the DMA scheduler.
-
-            let (dma_count_register, dma_counting_element) = pit.get_channel_count(1);
-
-            // Get the timer accumulator to provide tick offset to DMA scheduler.
-            // The timer ticks every 12 system ticks by default on PC/XT; if 11 ticks are stored in the accumulator,
-            // this represents two CPU cycles, so we need to adjust the scheduler by that much.
-            let dma_add_ticks = pit.get_timer_accum();
-
-            log::trace!(
-                "pit dirty and counting! count register: {} counting element: {} ",
-                dma_count_register,
-                dma_counting_element
-            );
-
-            if dma_counting_element <= dma_count_register {
-                // DRAM refresh DMA counter has changed. If the counting element is in range,
-                // update the CPU's DRAM refresh simulation.
-                log::trace!(
-                    "DRAM refresh DMA counter updated: {}, {}, +{}",
-                    dma_count_register,
-                    dma_counting_element,
-                    dma_add_ticks
-                );
-                self.dma_counter = dma_count_register;
-
-                // Invert the dma counter value as Cpu counts up toward total
-
-                if dma_counting_element == 0 && !pit_ticked {
-                    // Counter is still at initial 0 - not a terminal count.
-                    event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, 0, 0));
-                }
-                else {
-                    // Timer is at terminal count!
-                    event = Some(DeviceEvent::DramRefreshUpdate(
-                        dma_count_register,
-                        dma_counting_element,
-                        dma_add_ticks,
-                    ));
-                }
-                self.refresh_active = true;
-            }
-        }
-        else if !pit_counting && self.refresh_active {
-            // Timer 1 isn't counting anymore! Disable DRAM refresh...
-            log::debug!("Channel 1 not counting. Disabling DRAM refresh...");
-            event = Some(DeviceEvent::DramRefreshEnable(false));
-            self.refresh_active = false;
-        }
+        self.handle_refresh_scheduling(&mut pit, &mut event);
 
         // Save current count info.
-        let (pit_reload_value, pit_counting_element) = pit.get_channel_count(0);
+        let (pit_reload_value, pit_counting_element, pit_counting) = pit.get_channel_count(0);
+
+        // Set imminent interrupt flag. The CPU can use this as a hint to adjust cycles for halt instructions - using
+        // more cycles when an interrupt is not imminent, and one cycle when it is. This allows for cycle-precise wake
+        // from halt.
+        self.intr_imminent = pit_counting & (pit_counting_element <= IMMINENT_TIMER_INTERRUPT);
 
         // Do hack for Area5150 :(
         if pit_reload_value == 5117 {
@@ -1838,13 +1792,6 @@ impl BusInterface {
                 log::warn!("Area5150 hack armed for wibble effect.");
             }
         }
-
-        /*
-        if pit_reload_value == 19912 && (self.timer_trigger1_armed || self.timer_trigger2_armed) {
-            self.timer_trigger1_armed = false;
-            self.timer_trigger2_armed = false;
-        }
-        */
 
         // Put the PIT back.
         self.pit = Some(pit);
@@ -1878,8 +1825,11 @@ impl BusInterface {
             }
         }
 
+        let mut do_area5150_hack = false;
+        let mut save_cga: VideoCardId = Default::default();
+
         // Run all video cards
-        for (_vid, video_dispatch) in self.videocards.iter_mut() {
+        for (vid, video_dispatch) in self.videocards.iter_mut() {
             match video_dispatch {
                 VideoCardDispatch::Mda(mda) => {
                     mda.run(DeviceRunTimeUnit::Microseconds(us), &mut self.pic1);
@@ -1891,58 +1841,9 @@ impl BusInterface {
                         cga.run(DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum), &mut self.pic1);
                         self.cga_tick_accum = 0;
 
-                        if self.timer_trigger1_armed && pit_reload_value == 19912 {
-                            // Do hack for Area5150. TODO: Figure out why this is necessary.
-
-                            // With VerticalTotalAdjust == 0, ticks per frame are 233472.
-                            let screen_tick_pos = cga.get_screen_ticks();
-
-                            //let screen_target = 17256
-                            //let screen_target = 16344;
-                            let screen_target = 15432 + 40;
-                            // Only adjust if we are late
-                            if screen_tick_pos > screen_target {
-                                let ticks_adj = screen_tick_pos - screen_target;
-                                log::warn!(
-                                    "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})",
-                                    screen_target,
-                                    screen_tick_pos,
-                                    ticks_adj,
-                                    pit_counting_element
-                                );
-
-                                //cga.debug_tick(233472 - ticks_adj as u32);
-
-                                //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
-                            }
-
-                            self.timer_trigger1_armed = false;
-                        }
-                        else if self.timer_trigger2_armed && pit_reload_value == 19912 {
-                            // Do hack for Area5150. TODO: Figure out why this is necessary.
-
-                            // With VerticalTotalAdjust == 0, ticks per frame are 233472.
-                            let screen_tick_pos = cga.get_screen_ticks();
-
-                            //let screen_target = 17256;
-                            let screen_target = 16344 + 40;
-                            // Only adjust if we are late
-                            if screen_tick_pos > screen_target {
-                                let ticks_adj = screen_tick_pos - screen_target;
-                                log::warn!(
-                                    "Doing Area5150 hack. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})",
-                                    screen_target,
-                                    screen_tick_pos,
-                                    ticks_adj,
-                                    pit_counting_element
-                                );
-
-                                //cga.debug_tick(233472 - ticks_adj as u32);
-
-                                //cga.run(DeviceRunTimeUnit::SystemTicks(233472 - ticks_adj as u32));
-                            }
-
-                            self.timer_trigger2_armed = false;
+                        if (self.timer_trigger1_armed || self.timer_trigger2_armed) && (pit_reload_value == 19912) {
+                            do_area5150_hack = true;
+                            save_cga = *vid;
                         }
                     }
                 }
@@ -1958,7 +1859,124 @@ impl BusInterface {
             }
         }
 
+        if do_area5150_hack {
+            if let VideoCardDispatch::Cga(cga) = self.videocards.get_mut(&save_cga).unwrap() {
+                Self::do_area5150_hack(
+                    pit_counting_element,
+                    self.timer_trigger1_armed,
+                    self.timer_trigger2_armed,
+                    cga,
+                );
+            }
+            self.timer_trigger1_armed = false;
+            self.timer_trigger2_armed = false;
+        }
+
         event
+    }
+
+    pub fn do_area5150_hack(pit_counting_element: u16, trigger1: bool, trigger2: bool, cga: &mut CGACard) {
+        let mut screen_target = 21960;
+        let screen_tick_pos = cga.get_screen_ticks();
+        let mut effect: String = String::new();
+
+        if trigger1 {
+            screen_target = 21960;
+            effect = "Lake".to_string();
+        }
+        else if trigger2 {
+            screen_target = 21952;
+            effect = "Wibble".to_string();
+        }
+
+        if screen_tick_pos > screen_target {
+            // Adjust if we are late - we can't tick the card backwards, so we tick an entire frame minus delta
+            let ticks_adj = screen_tick_pos - screen_target;
+            log::warn!(
+                "Doing Area5150 hack for {} effect. Target: {} Pos: {} Rewinding CGA by {} ticks. (Timer: {})",
+                effect,
+                screen_target,
+                screen_tick_pos,
+                ticks_adj,
+                pit_counting_element
+            );
+            cga.debug_tick(233472 - ticks_adj as u32);
+        }
+        else {
+            // Adjust if we are early
+            let ticks_adj = screen_target - screen_tick_pos;
+            log::warn!(
+                "Doing Area5150 hack for {} effect. Target: {} Pos: {} Advancing CGA by {} ticks. (Timer: {})",
+                effect,
+                screen_target,
+                screen_tick_pos,
+                ticks_adj,
+                pit_counting_element
+            );
+            cga.debug_tick(ticks_adj as u32);
+        }
+    }
+
+    pub fn handle_refresh_scheduling(&mut self, pit: &mut Pit, event: &mut Option<DeviceEvent>) {
+        // Has PIT channel 1 (DMA timer) changed?
+        let (pit_dirty, pit_counting, pit_ticked) = pit.is_dirty(1);
+
+        if pit_dirty {
+            log::trace!("Pit is dirty! counting: {} ticked: {}", pit_counting, pit_ticked);
+        }
+
+        if pit_counting && pit_dirty {
+            // Pit is dirty and counting. Update the DMA scheduler.
+
+            let (dma_count_register, dma_counting_element, _counting) = pit.get_channel_count(1);
+            let retriggers = pit.does_channel_retrigger(1);
+
+            // Get the timer accumulator to provide tick offset to DMA scheduler.
+            // The timer ticks every 12 system ticks by default on PC/XT; if 11 ticks are stored in the accumulator,
+            // this represents two CPU cycles, so we need to adjust the scheduler by that much.
+            let dma_add_ticks = pit.get_timer_accum();
+
+            log::trace!(
+                "pit dirty and counting! count register: {} counting element: {} ",
+                dma_count_register,
+                dma_counting_element
+            );
+
+            if dma_counting_element <= dma_count_register {
+                // DRAM refresh DMA counter has changed. If the counting element is in range,
+                // update the CPU's DRAM refresh simulation.
+                log::trace!(
+                    "DRAM refresh DMA counter updated: {}, {}, +{}",
+                    dma_count_register,
+                    dma_counting_element,
+                    dma_add_ticks
+                );
+                self.dma_counter = dma_count_register;
+
+                // Invert the dma counter value as Cpu counts up toward total
+
+                if dma_counting_element == 0 && !pit_ticked {
+                    // Counter is still at initial 0 - not a terminal count.
+                    *event = Some(DeviceEvent::DramRefreshUpdate(dma_count_register, 0, 0, retriggers));
+                }
+                else {
+                    // Timer is at terminal count!
+                    *event = Some(DeviceEvent::DramRefreshUpdate(
+                        dma_count_register,
+                        dma_counting_element,
+                        dma_add_ticks,
+                        retriggers,
+                    ));
+                }
+                self.refresh_active = true;
+            }
+        }
+        else if !pit_counting && self.refresh_active {
+            // Timer 1 isn't counting anymore! Disable DRAM refresh...
+            log::debug!("Channel 1 not counting. Disabling DRAM refresh...");
+            *event = Some(DeviceEvent::DramRefreshEnable(false));
+            self.refresh_active = false;
+        }
     }
 
     /// Call the reset methods for all devices on the bus
@@ -2216,6 +2234,13 @@ impl BusInterface {
                 _ => {}
             }
         }
+    }
+
+    /// Return a boolean indicating whether a timer interrupt is imminent.
+    /// This is intended to be called by the CPU to determine the required cycle granularity of the HLT state.
+    #[inline]
+    pub fn is_intr_imminent(&self) -> bool {
+        self.intr_imminent
     }
 
     // Device accessors

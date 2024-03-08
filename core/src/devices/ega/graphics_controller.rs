@@ -46,6 +46,7 @@ pub enum GraphicsRegister {
     BitMask,
 }
 
+#[allow(dead_code)]
 #[bitfield]
 pub struct GDataRotateRegister {
     pub count: B3,
@@ -129,7 +130,6 @@ pub struct GraphicsController {
     graphics_enable_set_reset: u8,
     graphics_color_compare: u8,
     graphics_data_rotate: GDataRotateRegister,
-    graphics_data_rotate_function: RotateFunction,
     graphics_read_map_select: u8,
     graphics_mode: GModeRegister,
     graphics_micellaneous: GMiscellaneousRegister,
@@ -140,11 +140,10 @@ pub struct GraphicsController {
 
     pixel_buf: [u8; 8],
     pipeline_buf: [u8; 4],
-    write_buf: [u8; 4],
     serialize_buf: [u8; 8],
 }
 
-pub const TEST_SEQUENCE: [u8; 8] = [0x01, 0x02, 0x01, 0x02, 0x01, 0x03, 0x01, 0x03];
+//pub const TEST_SEQUENCE: [u8; 8] = [0x01, 0x02, 0x01, 0x02, 0x01, 0x03, 0x01, 0x03];
 
 impl Default for GraphicsController {
     fn default() -> Self {
@@ -155,7 +154,6 @@ impl Default for GraphicsController {
             graphics_enable_set_reset: 0,
             graphics_color_compare: 0,
             graphics_data_rotate: GDataRotateRegister::new(),
-            graphics_data_rotate_function: RotateFunction::Unmodified,
             graphics_read_map_select: 0,
             graphics_mode: GModeRegister::new(),
             graphics_micellaneous: GMiscellaneousRegister::new(),
@@ -166,7 +164,6 @@ impl Default for GraphicsController {
 
             pixel_buf: [0; 8],
             pipeline_buf: [0; 4],
-            write_buf: [0; 4],
             serialize_buf: [0; 8],
         }
     }

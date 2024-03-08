@@ -168,7 +168,6 @@ pub struct EgaCrtc {
     crtc_start_horizontal_blank: u8,                    // R(2) Start Horizontal Blank
     crtc_end_horizontal_blank: CEndHorizontalBlank,     // R(3) Bits 0-4 - End Horizontal Blank
     crtc_end_horizontal_blank_norm: u8,                 // End Horizontal Blank value normalized to column number
-    crtc_display_enable_skew: u8,                       // Calculated from R(3) Bits 5-6
     crtc_start_horizontal_retrace: u8,                  // R(4) Start Horizontal Retrace
     crtc_end_horizontal_retrace: CEndHorizontalRetrace, // R(5) End Horizontal Retrace
     crtc_end_horizontal_retrace_norm: u8,               // End Horizontal Retrace value normalized to column number
@@ -240,7 +239,6 @@ impl Default for EgaCrtc {
             crtc_start_horizontal_blank: DEFAULT_HORIZONTAL_SYNC_POS,
             crtc_end_horizontal_blank: CEndHorizontalBlank::new(),
             crtc_end_horizontal_blank_norm: 0,
-            crtc_display_enable_skew: 0,
             crtc_start_horizontal_retrace: 0,
             crtc_end_horizontal_retrace: CEndHorizontalRetrace::new(),
             crtc_end_horizontal_retrace_norm: 0,

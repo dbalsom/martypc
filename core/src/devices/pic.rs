@@ -99,6 +99,7 @@ impl InterruptStats {
 }
 
 pub type PicRequestFn = fn(&mut Pic, interrupt: u8);
+
 pub struct Pic {
     init_state: InitializationState, // Initialization state for expecting various ICWs
     int_offset: u8,                  // Interrupt Vector Offset (Always 8 on IBM PC)
@@ -120,10 +121,41 @@ pub struct Pic {
     expecting_icw4: bool, // ICW3 not supported in Single mode operation
     error: bool,          // We encountered an invalid condition or request
 
+    spurious_irqs: u64,
     interrupt_stats: Vec<InterruptStats>,
-
     intr_scheduled: bool,
     intr_timer: u32,
+}
+
+impl Default for Pic {
+    fn default() -> Self {
+        Self {
+            init_state: InitializationState::Normal,
+            int_offset: 0,
+            imr: 0xFF, // All IRQs initially masked
+            isr: 0x00,
+            irr: 0,
+            ir: 0,
+            read_select: ReadSelect::IRR,
+            irq: 0,
+            intr: false,
+            buffered: false,
+            nested: true,
+            special_nested: false,
+            polled: false,
+            auto_eoi: false,
+            trigger_mode: TriggerMode::Edge,
+            rotate_on_aeoi: false,
+            expecting_icw2: false,
+            expecting_icw4: false,
+            error: false,
+
+            spurious_irqs: 0,
+            interrupt_stats: vec![InterruptStats::new(); 8],
+            intr_scheduled: false,
+            intr_timer: 0,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -135,6 +167,7 @@ pub struct PicStringState {
     pub intr: String,
     pub autoeoi: String,
     pub trigger_mode: String,
+    pub spurious_irqs: String,
     pub interrupt_stats: Vec<(String, String, String)>,
 }
 
@@ -165,57 +198,11 @@ impl IoDevice for Pic {
 
 impl Pic {
     pub fn new() -> Self {
-        Self {
-            init_state: InitializationState::Normal,
-            int_offset: 0,
-            imr: 0xFF, // All IRQs initially masked
-            isr: 0x00,
-            irr: 0,
-            ir: 0,
-            read_select: ReadSelect::IRR,
-            irq: 0,
-            intr: false,
-            buffered: false,
-            nested: true,
-            special_nested: false,
-            polled: false,
-            auto_eoi: false,
-            trigger_mode: TriggerMode::Edge,
-            rotate_on_aeoi: false,
-            expecting_icw2: false,
-            expecting_icw4: false,
-            error: false,
-            interrupt_stats: vec![InterruptStats::new(); 8],
-
-            intr_scheduled: false,
-            intr_timer: 0,
-        }
+        Default::default()
     }
 
     pub fn reset(&mut self) {
-        self.init_state = InitializationState::Normal;
-        self.imr = 0xFF;
-        self.isr = 0x00;
-        self.irr = 0x00;
-        self.ir = 0x00;
-        self.read_select = ReadSelect::IRR;
-        self.irq = 0;
-        self.intr = false;
-        self.buffered = false;
-        self.nested = true;
-        self.special_nested = false;
-        self.polled = false;
-        self.auto_eoi = false;
-        self.rotate_on_aeoi = false;
-        self.expecting_icw2 = false;
-        self.expecting_icw4 = false;
-        self.error = false;
-
-        for stat_entry in &mut self.interrupt_stats {
-            stat_entry.imr_masked_count = 0;
-            stat_entry.isr_masked_count = 0;
-            stat_entry.serviced_count = 0;
-        }
+        *self = Default::default();
     }
 
     pub fn handle_command_register_write(&mut self, byte: u8) {
@@ -345,6 +332,7 @@ impl Pic {
         byte
     }
 
+    #[inline]
     pub fn clear_bit(byte: u8, bitn: u8) -> u8 {
         let mut mask: u8 = 0x01;
         mask <<= bitn;
@@ -352,6 +340,7 @@ impl Pic {
         byte & !mask
     }
 
+    #[inline]
     pub fn check_bit(byte: u8, bitn: u8) -> bool {
         let mut mask: u8 = 0x01;
         mask <<= bitn;
@@ -436,16 +425,16 @@ impl Pic {
         //log::trace!("PIC: Interrupt {} requested by device", interrupt);
 
         // Interrupts 0-7 map to bits 0-7 in IMR register
-        let intr_bit: u8 = 0x01 << interrupt;
+        let ir_bit: u8 = 0x01 << interrupt;
         // Set IR line high and set the request bit in the IRR register
-        self.ir |= intr_bit;
-        self.irr |= intr_bit;
+        self.ir |= ir_bit;
+        self.irr |= ir_bit;
 
-        if self.imr & intr_bit != 0 {
+        if self.imr & ir_bit != 0 {
             // If the corresponding bit is set in the IMR, it is masked: do not process right now
             self.interrupt_stats[interrupt as usize].imr_masked_count += 1;
         }
-        else if self.isr & intr_bit != 0 {
+        else if self.isr & ir_bit != 0 {
             // If the corresponding bit is set in the ISR, do not process right now
             self.interrupt_stats[interrupt as usize].isr_masked_count += 1;
         }
@@ -488,6 +477,8 @@ impl Pic {
             self.intr = true;
             self.interrupt_stats[interrupt as usize].serviced_count += 1;
         }
+
+        // TODO: Schedule high to low transition of IR line after some time
     }
 
     /// Called by device to withdraw interrupt service request
@@ -497,9 +488,16 @@ impl Pic {
             panic!("PIC: Received interrupt out of range: {}", interrupt);
         }
 
-        // Clear the corresponding bit in the IR lines
+        // Clear the corresponding bit in the IR lines.
         let intr_bit: u8 = 0x01 << interrupt;
         self.ir &= !intr_bit;
+
+        // We also clear the bit in the IRR register - it is not clear from the datasheet but bus sniffing
+        // implies that a high to low transition in edge-triggered mode can de-assert INTR.
+        self.irr &= !intr_bit;
+
+        // Recalculate INTR in case lowering this IR line would withdraw the interrupt.
+        self.intr = self.calc_intr();
     }
 
     pub fn query_interrupt_line(&self) -> bool {
@@ -525,11 +523,14 @@ impl Pic {
 
             // TODO: Can an interrupt vector be delivered while in service? We assume not for now.
             if have_request && !in_service {
-                // Found highest priority IRR not in service
+                // Found the highest priority IRR not in service
 
-                // Clear its bit in the IR...
-                self.irr &= !ir_bit;
-                // ...and set it in ISR being serviced. This technically occurs during the first INTA pulse.
+                // If in edge triggered mode, clear the bit in the IRR.
+                // The IR line will need to make another low-to-high transition to re-assert the IRR bit.
+                if let TriggerMode::Edge = self.trigger_mode {
+                    self.irr &= !ir_bit;
+                }
+                // Set the bit in the ISR to mark as in service. (This technically occurs during the first INTA pulse.)
                 self.isr |= ir_bit;
                 // If Auto-EOI is enabled, the ISR bit is cleared during the second INTA pulse.
                 if self.auto_eoi {
@@ -549,6 +550,7 @@ impl Pic {
         // If no bit in the IRR was found to be set, then a spurious interrupt occurs.
         // Note that in the event of a spurious interrupt, no bit in the ISR is set to indicate an interrupt is being
         // serviced. This provides a method of determining whether an IR7 is spurious or real.
+        self.spurious_irqs += 1;
         Some(SPURIOUS_INTERRUPT)
     }
 
@@ -561,6 +563,7 @@ impl Pic {
             intr: format!("{}", self.intr),
             autoeoi: format!("{:?}", self.auto_eoi),
             trigger_mode: format!("{:?}", self.trigger_mode),
+            spurious_irqs: format!("{}", self.spurious_irqs),
             interrupt_stats: Vec::new(),
         };
 
@@ -579,8 +582,25 @@ impl Pic {
         self.intr_timer = sys_ticks;
     }
 
-    /// Run the PIC. This is primarily used to effect a delay in raising INTR when the IMR is
-    /// changed.
+    /// Calculate the intended INTR line state based on the current state of the PIC.
+    #[inline]
+    pub fn calc_intr(&self) -> bool {
+        let mut ir_bit: u8 = 0x01;
+        for _irq in 0..8 {
+            let have_request = self.irr & ir_bit != 0;
+            let is_not_masked = self.imr & ir_bit == 0;
+            let is_not_in_service = self.isr & ir_bit == 0;
+
+            if have_request && is_not_masked && is_not_in_service {
+                return true;
+            }
+
+            ir_bit <<= 1;
+        }
+        false
+    }
+
+    /// Run the PIC. This is primarily used to effect a delay in raising INTR when the IMR is changed.
     pub fn run(&mut self, sys_ticks: u32) {
         if self.intr_scheduled {
             self.intr_timer = self.intr_timer.saturating_sub(sys_ticks);
@@ -592,19 +612,13 @@ impl Pic {
 
         // If INTR is low and not pending, check for unmasked bits in the IRR and raise it again if found.
         if !self.intr && !self.intr_scheduled {
-            let mut ir_bit: u8 = 0x01;
-            for _irq in 0..8 {
-                let have_request = self.irr & ir_bit != 0;
-                let is_not_masked = self.imr & ir_bit == 0;
-                let is_not_in_service = self.isr & ir_bit == 0;
-
-                if have_request && is_not_masked && is_not_in_service {
-                    self.schedule_intr(100);
-                    break;
-                }
-
-                ir_bit <<= 1;
+            if self.calc_intr() {
+                self.schedule_intr(100);
             }
+        }
+        else if self.intr {
+            // If INTR is high check for unmasked bits in the IRR and lower it if none are found.
+            self.intr = self.calc_intr();
         }
     }
 }

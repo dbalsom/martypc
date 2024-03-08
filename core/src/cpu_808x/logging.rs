@@ -75,6 +75,10 @@ impl Cpu {
         instr_str
     }
 
+    pub fn emit_header(&mut self) {
+        self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd")
+    }
+
     pub fn trace_csv_line(&mut self) {
         let q = self.last_queue_op as u8;
         let s = self.bus_status as u8;
@@ -85,10 +89,10 @@ impl Cpu {
         let mut brd = 0;
         if let Some(video) = self.bus().primary_video() {
             let (vs_b, hs_b, den_b, brd_b) = video.get_sync();
-            vs = if vs_b { 1 } else { 0 };
-            hs = if hs_b { 1 } else { 0 };
-            den = if den_b { 1 } else { 0 };
-            brd = if brd_b { 1 } else { 0 };
+            vs = vs_b as u8;
+            hs = hs_b as u8;
+            den = den_b as u8;
+            brd = brd_b as u8;
         }
 
         // Segment status bits are valid after ALE.
@@ -106,15 +110,16 @@ impl Cpu {
         // sigrok import string:
         // t,x20,l,l,x2,x3,l,l,l,l,l,l
         self.trace_emit(&format!(
-            "{},{:05X},1,{},{},{},{},{},{},{},{},{},{}",
+            "{},{:05X},1,{},{},{},{},{},{},{},{},{},{},{}",
             self.t_stamp,
             self.address_bus,
-            if self.ready { 1 } else { 0 },
+            self.ready as u8,
             q,
             s,
-            0,
-            if self.intr { 1 } else { 0 },
-            if matches!(self.dma_state, DmaState::Dreq) { 1 } else { 0 },
+            self.clk0 as u8,
+            self.intr as u8,
+            self.dma_req as u8,
+            self.dma_holda as u8,
             vs,
             hs,
             den,
@@ -122,15 +127,16 @@ impl Cpu {
         ));
 
         self.trace_emit(&format!(
-            "{},{:05X},0,{},{},{},{},{},{},{},{},{},{}",
+            "{},{:05X},0,{},{},{},{},{},{},{},{},{},{},{}",
             self.t_stamp + self.t_step_h,
             self.address_bus,
-            if self.ready { 1 } else { 0 },
+            self.ready as u8,
             q,
             s,
-            0,
-            if self.intr { 1 } else { 0 },
-            if matches!(self.dma_state, DmaState::Dreq) { 1 } else { 0 },
+            self.clk0 as u8,
+            self.intr as u8,
+            self.dma_req as u8,
+            self.dma_holda as u8,
             vs,
             hs,
             den,
@@ -299,17 +305,17 @@ impl Cpu {
 
         let dma_str = match self.dma_state {
             DmaState::Idle => dma_count_str,
-            DmaState::TimerTrigger => "TIMR",
             DmaState::Dreq => "DREQ",
             DmaState::Hrq => "HRQ ",
             DmaState::HoldA => "HLDA",
             DmaState::Operating(n) => match n {
-                4 => "S1",
-                3 => "S2",
+                0 => "S1",
+                1 => "S2",
                 2 => "S3",
-                1 => "S4",
-                _ => "S?",
+                3 => "S4",
+                _ => dma_count_str,
             }, //DmaState::DmaWait(..) => "DMAW"
+            DmaState::End => "END",
         };
 
         let mut cycle_str;
@@ -547,7 +553,6 @@ impl Cpu {
 
         let dma_str = match self.dma_state {
             DmaState::Idle => dma_count_str,
-            DmaState::TimerTrigger => "TIMR",
             DmaState::Dreq => "DREQ",
             DmaState::Hrq => "HRQ ",
             DmaState::HoldA => "HLDA",
@@ -558,6 +563,7 @@ impl Cpu {
                 1 => "S4",
                 _ => "S?",
             }, //DmaState::DmaWait(..) => "DMAW"
+            DmaState::End => "END",
         };
         let _dma_str_token = SyntaxToken::Text(dma_str.to_string());
 

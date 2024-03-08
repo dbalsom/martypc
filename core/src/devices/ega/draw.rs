@@ -94,47 +94,6 @@ impl EGACard {
         frame_u64[(self.rba >> 3) + 1] = attr_color;
     }
 
-    /// Draw an entire character row in high resolution text mode (8 pixels)
-    pub fn draw_text_mode_hchar14(&mut self) {
-        // Do cursor if visible, enabled and defined
-        if self.crtc.status.cursor {
-            self.draw_solid_hchar_6bpp(self.cur_fg);
-        }
-        else if self.mode_enable {
-            let glyph_row: u64;
-            // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            glyph_row = self.get_hchar_glyph14_row(self.cur_char as usize, self.crtc.vlc() as usize);
-
-            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-            frame_u64[self.rba >> 3] = glyph_row;
-        }
-        else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
-            self.draw_solid_hchar_6bpp(EgaDefaultColor4Bpp::Brown as u8);
-        }
-    }
-
-    /// Draw an entire character row in low resolution text mode (16 pixels)
-    pub fn draw_text_mode_lchar14(&mut self) {
-        // Do cursor if visible, enabled and defined
-        if self.crtc.status.cursor {
-            self.draw_solid_lchar_6bpp(self.cur_fg);
-        }
-        else if self.mode_enable {
-            // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
-            let (glyph_row0, glyph_row1) =
-                self.get_lchar_glyph14_rows(self.cur_char as usize, self.crtc.vlc() as usize);
-
-            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-            frame_u64[self.rba >> 3] = glyph_row0;
-            frame_u64[(self.rba >> 3) + 1] = glyph_row1;
-        }
-        else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
-            self.draw_solid_lchar(0);
-        }
-    }
-
     pub fn draw_gfx_mode_hchar_4bpp(&mut self) {
         //let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         //let deplaned_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.chain_buf);

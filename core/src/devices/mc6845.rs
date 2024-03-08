@@ -614,8 +614,8 @@ impl Crtc6845 {
             if self.vlc_c9 > self.reg[9] {
                 // C9 == R9 (MaxScanlineAddress): We finished drawing this row of characters
                 self.vlc_c9 = 0;
-                // Advance Vertical Character Counter
-                self.vcc_c4 = self.vcc_c4.wrapping_add(1);
+                // Increment Vertical Character Counter, wrapping at 7 bits
+                self.vcc_c4 = (self.vcc_c4 + 1) & 0x7F;
                 // Set vma to starting position for next character row
                 self.vma = self.vma_t;
 

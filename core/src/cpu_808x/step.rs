@@ -30,7 +30,7 @@
 
 */
 
-use crate::cpu_808x::{*};
+use crate::cpu_808x::*;
 
 impl Cpu {
     /// Run a single instruction.
@@ -119,16 +119,16 @@ impl Cpu {
         }
         */
 
-        // Halt state can be expensive since if we only executing a single cycle.
-        // See if we can get away with executing 3 halt cycles at at time - demo effects may require more precision
-
-        // TODO: Adjust this value based on Timer channel 0 count - if no interrupt is pending soon we can do more
-        // cycles per halt.
+        // The Halt state can be expensive if we only execute one cycle per halt - however precise wake from halt is
+        // necessary for Area5150. We can dynamically adjust the cycle count of stepping in the halt state depending
+        // on a hint from the bus whether a timer interrupt is imminent.
         if self.halted {
-            self.cycle_i(self.mc_pc);
-            self.cycle_i(self.mc_pc);
-            self.cycle_i(self.mc_pc);
-            return Ok((StepResult::Normal, 3));
+            let halt_cycles = match self.bus().is_intr_imminent() {
+                true => 1,
+                false => 5,
+            };
+            self.cycles(halt_cycles);
+            return Ok((StepResult::Normal, halt_cycles));
         }
 
         let mut instruction_address = self.instruction_address;

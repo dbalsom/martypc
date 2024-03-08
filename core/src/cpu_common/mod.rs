@@ -95,7 +95,8 @@ impl Default for CpuType {
 #[derive(Debug)]
 pub enum CpuOption {
     InstructionHistory(bool),
-    SimulateDramRefresh(bool, u32, u32),
+    ScheduleInterrupt(bool, u32, u32, bool),
+    ScheduleDramRefresh(bool, u32, u32, bool),
     DramRefreshAdjust(u32),
     HaltResumeDelay(u32),
     OffRailsDetection(bool),

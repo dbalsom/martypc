@@ -33,6 +33,7 @@ use crate::Emulator;
 use display_backend_pixels::DisplayBackend;
 use display_manager_wgpu::DisplayManager;
 use marty_core::{device_traits::videocard::BufferSelect, machine::ExecutionState};
+use marty_egui::GuiBoolean;
 
 pub fn render_frame(emu: &mut Emulator) {
     // First, run each renderer to resolve all videocard views.
@@ -41,23 +42,21 @@ pub fn render_frame(emu: &mut Emulator) {
         if let Some(videocard) = emu.machine.bus_mut().video_mut(&vid) {
             // Check if the emulator is paused - if paused, optionally select the back buffer
             // so we can watch the raster beam draw
-            let beam_pos;
+            let mut beam_pos = None;
             match emu.exec_control.borrow_mut().get_state() {
                 ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::Halted => {
-                    renderer.select_buffer(BufferSelect::Front);
-                    /* TODO: Enable this on a per-display basis?
                     if emu.gui.get_option(GuiBoolean::ShowBackBuffer).unwrap_or(false) {
                         renderer.select_buffer(BufferSelect::Back);
+                        if emu.gui.get_option(GuiBoolean::ShowRasterPosition).unwrap_or(false) {
+                            beam_pos = videocard.get_beam_pos();
+                        }
                     }
                     else {
                         renderer.select_buffer(BufferSelect::Front);
                     }
-                     */
-                    beam_pos = videocard.get_beam_pos();
                 }
                 _ => {
                     renderer.select_buffer(BufferSelect::Front);
-                    beam_pos = None;
                 }
             }
 

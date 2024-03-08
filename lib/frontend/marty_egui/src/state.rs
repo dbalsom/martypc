@@ -274,7 +274,8 @@ impl GuiState {
             (GuiBoolean::CpuInstructionHistory, false),
             (GuiBoolean::CpuTraceLoggingEnabled, false),
             (GuiBoolean::TurboButton, false),
-            //(GuiBoolean::ShowBackBuffer, true),
+            (GuiBoolean::ShowBackBuffer, false),
+            (GuiBoolean::ShowRasterPosition, true),
             //(GuiBoolean::EnableSnow, true),
         ]
         .into();
