@@ -36,23 +36,22 @@
 * #### New Resource Manager Framework
   * Paths are to 'resource ids' are now fully configurable, and facilities to build file trees are provided. 
     MartyPC can create needed directories on startup. The Floppy and VHD browsers have been rewritten to take
-advantage of this new system, and so now you can organize your media directories into subdirectories for convenience.
+    advantage of this new system, and so now you can organize your media directories into subdirectories for convenience.
   
 * #### EGA Video Card
   * EGA is back! A character-clocked EGA implementation is here, although it may still be a bit rough around the edges. 
     EGA will continue to be polished in upcoming releases.
   * Features:
     * Functional emulation of each of the 5 LSI chips on the EGA
-    * Per-scanline Pel panning
+    * Per-scanline Pel panning - effects like the wibble in Bevery Hills Cop work
     * Line compare register - See the status bar in Catacombs 3d!
     * CGA compatibility mode - Play Alleycat!
     * Software fonts - change your DOS font, or see a graphical mouse cursor in text mode (Norton Utilities 6.0)
   * Known issues:
-    * Some paging issues (flickering sprites in Dangerous Dave)
-    * Some scrolling issues (jerky motion in Commander Keen 4)
+    * Visual glitches with n0p's Windows 3.0 EGA driver patched for 8088 
     * Some more obscure registers not properly emulated / investigated (SOM, etc)
     * Aperture defintions / adjustments not final
-    * Implementation may be slow / unoptimized in parts
+    * Implementation may be slow in parts - more optimization needed (SIMD?)
     
 * #### MDA Video Card
   * Not quite as a flashy as EGA, but the MDA card type is now also supported, and moreover, you can install an MDA 
@@ -96,11 +95,11 @@ advantage of this new system, and so now you can organize your media directories
 * CPU: Refactor PC from u32 to u16 to address segment wrapping issues, implement ip() in terms of PC
 * CPU: Instruction counts properly increment even when instruction history is off
 * CPU: Fixed device ticks after interrupts
-* CPU: Improved Halt/Resume logic and cycle timings
+* CPU: Improved Halt/Resume logic and cycle timings (Thanks Ken Shirriff)
 * CPU: New sigrok cycle log format for viewing cycle logs in sigrok PulseView logic analyzer
 * CPU: Updated disassembler to normalize output against iced-x86. Now resolves negative immediates and displacements.
 * CPU: Fixed typo for 'bp+di+DISP' in both disassemblers (Thanks Tom Harte)
-* CPU: Brand new, simplified BIU state logic
+* CPU: Brand new, simplified BIU state logic (which now needs to be rewritten, again...)
 * CPU: Fixed & Improved DMA refresh scheduling. (Fixes 8088MPH CPU test)
 * CPU: Fixed issue where Call Stack could grow uncontrollably with recursive code or interrupts
 * CPU: Fixed CS:IP reporting in Instruction trace mode logs
@@ -108,9 +107,12 @@ advantage of this new system, and so now you can organize your media directories
 * CPU: Fixed CPU cycle timings for LES and LDS instructions
 * CPU: Fixed CPU issue where incorrect microcode jump was listed for fixed word displacements
 * CPU: Fixed CPU issue where a prefetch abort would not properly override a prefetch delay
+* PIC: Revised edge-triggered mode to lower INTR if last unmasked IR line goes low
 * PIC: Ignore IMR during INTA pulse
 * PIC: Handle multiple IRR bits unmaksed at the same time
 * PIC: Honor IRQ offset specified in IWC2 to PIC (Thanks Folkert)
+* PIT: Revised count register loading logic. Counting element uses internal reload value
+* CGA: Properly model CRTC last-line flag when hcc < 2
 * CGA: Preliminary CGA snow emulation. Not yet 100% accurate
 * CGA: Properly disable cursor if cursor start > maximum scanline
 * CGA: Reverted color palette entry for black from dark gray to true black
