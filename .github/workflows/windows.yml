@@ -39,16 +39,10 @@ jobs:
           fetch-depth: 0
 
       - name: Cargo build
-        run: cargo build -r --profile release-lto --features ega
+        run: cargo build --profile release-lto --features ega
 
-      - name: Copy README into install dir
-        run: cp README.md target/release/martypc install
-
-      - name: Copy CHANGELOG into install dir
-        run: cp CHANGELOG.md target/release/martypc install
-
-      - name: Copy CREDITS into install dir
-        run: cp CREDITS.md target/release/martypc install
+      - name: Copy files into install dir
+        run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
 
       - name: Rename install directory
         run: mv install martypc
