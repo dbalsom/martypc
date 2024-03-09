@@ -235,7 +235,7 @@ const CGA_DEBUG_U64: [u64; 16] = [
     0xF0F0F0F0F0F0F0F0,
 ];
 
-// Display aperatures.
+// Display apertures.
 // CROPPED will show the display area only - no overscan will be visible.
 // NORMAL is an attempt to represent the maximum visible display extents, including overscan.
 // Anything more is likely to be hidden by the monitor bezel or not shown for some other reason.
@@ -264,7 +264,7 @@ const MDA_APERTURE_DEBUG_X: u32 = 0;
 const MDA_APERTURE_DEBUG_Y: u32 = 0;
 
 const MDA_APERTURES: [DisplayAperture; 4] = [
-    // 14Mhz CROPPED aperture
+    // 16Mhz CROPPED aperture
     DisplayAperture {
         w: MDA_APERTURE_CROPPED_W,
         h: MDA_APERTURE_CROPPED_H,
@@ -272,7 +272,7 @@ const MDA_APERTURES: [DisplayAperture; 4] = [
         y: MDA_APERTURE_CROPPED_Y,
         debug: false,
     },
-    // 14Mhz ACCURATE aperture
+    // 16Mhz ACCURATE aperture
     DisplayAperture {
         w: MDA_APERTURE_NORMAL_W,
         h: MDA_APERTURE_NORMAL_H,
@@ -280,7 +280,7 @@ const MDA_APERTURES: [DisplayAperture; 4] = [
         y: MDA_APERTURE_NORMAL_Y,
         debug: false,
     },
-    // 14Mhz FULL aperture
+    // 16Mhz FULL aperture
     DisplayAperture {
         w: MDA_APERTURE_FULL_W,
         h: MDA_APERTURE_FULL_H,
@@ -288,7 +288,7 @@ const MDA_APERTURES: [DisplayAperture; 4] = [
         y: MDA_APERTURE_FULL_Y,
         debug: false,
     },
-    // 14Mhz DEBUG aperture
+    // 16Mhz DEBUG aperture
     DisplayAperture {
         w: MDA_APERTURE_DEBUG_W,
         h: MDA_APERTURE_DEBUG_H,

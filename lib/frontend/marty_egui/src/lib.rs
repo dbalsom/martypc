@@ -123,9 +123,11 @@ pub enum GuiBoolean {
     CpuInstructionHistory,
     CpuTraceLoggingEnabled,
     TurboButton,
+    ShowBackBuffer,
+    ShowRasterPosition,
 }
 
-// Enums are hashed with with a tuple of GuiEnumContext and their base discriminant.
+// Enums are hashed with a tuple of GuiEnumContext and their base discriminant.
 // This allows the same enum to be stored in different contexts, ie, a DisplayAperture can be
 // stored for each Display context.  The Global context can be used if no specific context is
 // required.
@@ -285,7 +287,7 @@ lazy_static! {
             WorkspaceWindowDef {
                 id: GuiWindow::MemoryViewer,
                 title: "Memory Viewer",
-                menu: "Memory",
+                menu: "Memory Viewer",
                 width: 400.0,
                 resizable: false,
             },

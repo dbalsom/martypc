@@ -396,7 +396,7 @@ impl VideoCard for CGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);

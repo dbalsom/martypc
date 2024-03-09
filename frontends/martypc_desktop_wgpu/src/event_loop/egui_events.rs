@@ -82,6 +82,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 (GuiBoolean::TurboButton, state) => {
                     emu.machine.set_turbo_mode(state);
                 }
+                _ => {}
             },
             GuiVariable::Enum(op) => match ctx {
                 GuiVariableContext::Display(d_idx) => match op {

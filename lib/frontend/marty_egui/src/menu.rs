@@ -288,6 +288,33 @@ impl GuiState {
                      */
                 });
 
+                if ui
+                    .checkbox(&mut self.get_option_mut(GuiBoolean::ShowBackBuffer), "Show Back Buffer")
+                    .clicked()
+                {
+                    let new_opt = self.get_option(GuiBoolean::ShowBackBuffer).unwrap();
+
+                    self.event_queue.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::ShowBackBuffer, new_opt),
+                    ));
+                }
+
+                if ui
+                    .checkbox(
+                        &mut self.get_option_mut(GuiBoolean::ShowRasterPosition),
+                        "Show Raster Position",
+                    )
+                    .clicked()
+                {
+                    let new_opt = self.get_option(GuiBoolean::ShowRasterPosition).unwrap();
+
+                    self.event_queue.send(GuiEvent::VariableChanged(
+                        GuiVariableContext::Global,
+                        GuiVariable::Bool(GuiBoolean::ShowRasterPosition, new_opt),
+                    ));
+                }
+
                 if ui.button("Flush Trace Logs").clicked() {
                     self.event_queue.send(GuiEvent::FlushLogs);
                     ui.close_menu();

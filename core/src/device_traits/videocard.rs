@@ -152,9 +152,9 @@ pub enum VideoCardDispatch {
     Vga(VGACard),
 }
 
-// This struct provides an identifier for a VideoCard, encapuslating a unique numeric id ('idx')
-// and the card's type. Hashable to store look
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+// This struct provides an identifier for a VideoCard, encapsulating a unique numeric id ('idx')
+// and the card's type. Hashable to store video cards in HashMap
+#[derive(Default, Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct VideoCardId {
     pub idx:   usize,
     pub vtype: VideoType,

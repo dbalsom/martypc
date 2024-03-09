@@ -540,6 +540,13 @@ impl Cpu {
     /// in by miscellaneous logic for one cycle.
     pub fn biu_halt(&mut self) {
         self.fetch_state = FetchState::Idle;
+        self.biu_bus_wait_finish();
+        if let TCycle::T4 = self.t_cycle {
+            self.cycle();
+        }
+        self.t_cycle = TCycle::Ti;
+        self.cycle();
+
         self.bus_status = BusStatus::Halt;
         self.bus_status_latch = BusStatus::Halt;
         self.bus_segment = Segment::CS;

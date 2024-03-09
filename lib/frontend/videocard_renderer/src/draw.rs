@@ -119,21 +119,27 @@ impl VideoRenderer {
             }
         }
 
-        // Draw raster beam if specified.
+        // Draw raster beam position if provided
         if let Some(beam) = beam_pos {
+            let beam_x = beam.0 - extents.apertures[self.params.aperture as usize].x;
+            let mut beam_y = beam.1 - &extents.apertures[self.params.aperture as usize].y;
+            if self.params.line_double {
+                beam_y *= 2
+            };
+
             VideoRenderer::draw_horizontal_xor_line(
                 first_pass_buf,
                 self.params.render.w,
                 self.params.render.w,
                 self.params.render.h,
-                beam.1,
+                beam_y,
             );
             VideoRenderer::draw_vertical_xor_line(
                 first_pass_buf,
                 self.params.render.w,
                 self.params.render.w,
                 self.params.render.h,
-                beam.0,
+                beam_x,
             );
         }
 
@@ -313,7 +319,7 @@ impl VideoRenderer {
 
         let mut horiz_adjust = aperture.x;
         let mut vert_adjust = aperture.y;
-        // Ignore aperture adjustments if it pushes us outside of the field boundaries
+        // Ignore aperture adjustments if it pushes us outside the field boundaries
         if aperture.x + aperture.w >= extents.field_w {
             horiz_adjust = 0;
         }
@@ -607,7 +613,12 @@ impl VideoRenderer {
         }
 
         if h as usize * extents.row_stride > dbuf.len() {
-            log::warn!("draw_ega_direct_u32(): extents {}x{} greater than buffer!", w, h);
+            log::warn!(
+                "draw_ega_direct_u32(): extents {}x{} greater than buffer: {}",
+                w,
+                h,
+                dbuf.len()
+            );
             return;
         }
 

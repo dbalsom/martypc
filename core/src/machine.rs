@@ -994,7 +994,7 @@ impl Machine {
                     ExecutionOperation::Step => {
                         // Skip current breakpoint, if any
                         skip_breakpoint = true;
-                        // Execute 1 cycle
+                        // Execute 1 instruction
                         1
                     }
                     ExecutionOperation::StepOver => {
@@ -1002,7 +1002,7 @@ impl Machine {
                         skip_breakpoint = true;
                         // Set step-over flag
                         step_over = true;
-                        // Execute 1 cycle
+                        // Execute 1 instruction
                         1
                     }
                     ExecutionOperation::Run => {
@@ -1303,16 +1303,25 @@ impl Machine {
 
         if let Some(event) = device_event {
             match event {
-                DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val, _dma_tick_adjust) => {
-                    self.cpu.set_option(CpuOption::SimulateDramRefresh(
+                DeviceEvent::InterruptUpdate(intr_counter, inter_counter_val, retrigger) => {
+                    self.cpu.set_option(CpuOption::ScheduleInterrupt(
+                        true,
+                        self.timer_ticks_to_cpu_cycles(intr_counter),
+                        self.timer_ticks_to_cpu_cycles(inter_counter_val),
+                        retrigger,
+                    ))
+                }
+                DeviceEvent::DramRefreshUpdate(dma_counter, dma_counter_val, _dma_tick_adjust, retrigger) => {
+                    self.cpu.set_option(CpuOption::ScheduleDramRefresh(
                         true,
                         self.timer_ticks_to_cpu_cycles(dma_counter),
                         self.timer_ticks_to_cpu_cycles(dma_counter_val), //self.timer_ticks_to_cpu_cycles(0)
+                        retrigger,
                     ))
                 }
                 DeviceEvent::DramRefreshEnable(state) if state == false => {
                     // Stop refresh
-                    self.cpu.set_option(CpuOption::SimulateDramRefresh(false, 0, 0));
+                    self.cpu.set_option(CpuOption::ScheduleDramRefresh(false, 0, 0, false));
                 }
                 _ => {}
             }

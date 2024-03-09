@@ -162,6 +162,7 @@ pub struct Channel {
     load_state: LoadState,
     load_type: LoadType,
     load_mask: u16,
+    reload_value: Updatable<u16>,
     counting_element: Updatable<u16>,
     ce_undefined: bool,
     armed: bool,
@@ -266,6 +267,7 @@ impl Channel {
             load_state: LoadState::WaitingForLsb,
             load_type: LoadType::InitialLoad,
             load_mask: 0xFFFF,
+            reload_value: Updatable::Dirty(0, false),
             counting_element: Updatable::Dirty(0, false),
             ce_undefined: false,
             armed: false,
@@ -354,7 +356,7 @@ impl Channel {
 
     /// Return (and reset) the dirty flag, along with whether we are counting and if the counting
     /// element has ticked.  The latter is to help discriminate whether a 0 count value indicates
-    /// inital vs terminal count.
+    /// initial vs terminal count.
     #[inline]
     pub fn is_dirty(&mut self) -> (bool, bool, bool) {
         let is_dirty = self.dirty;
@@ -432,10 +434,10 @@ impl Channel {
             if self.channel_state != ChannelState::WaitingForReload {
                 match *self.mode {
                     ChannelMode::InterruptOnTerminalCount => {
-                        // Falling gate has no efect.
+                        // Falling gate has no effect.
                     }
                     ChannelMode::HardwareRetriggerableOneShot => {
-                        // Falling gate has no efect.
+                        // Falling gate has no effect.
                     }
                     ChannelMode::RateGenerator => {
                         // Falling gate stops count. Output goes high.
@@ -452,7 +454,7 @@ impl Channel {
                         self.change_channel_state(ChannelState::WaitingForGate);
                     }
                     ChannelMode::HardwareTriggeredStrobe => {
-                        // Falling gate has no efect.
+                        // Falling gate has no effect.
                     }
                 }
             }
@@ -523,14 +525,6 @@ impl Channel {
                         let new_count = (*self.count_register & 0x00FF) | ((byte as u16) << 8);
                         //log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
                         self.count_register.update(new_count);
-
-                        // If the counting element was reloaded between load of LSB and MSB, it is an incomplete load.
-                        // Reload the counting element again when we get the MSB.
-                        // Note: This is completely undocumented behavior
-                        if self.incomplete_reload {
-                            self.counting_element.update(new_count);
-                            self.incomplete_reload = false;
-                        }
                         self.load_state = LoadState::WaitingForLsb;
                         self.finalize_load();
                     }
@@ -540,6 +534,9 @@ impl Channel {
     }
 
     pub fn finalize_load(&mut self) {
+        // The count register is transferred to the counting element when a complete count is written.
+        self.reload_value.update(*self.count_register);
+
         match self.load_type {
             LoadType::InitialLoad => {
                 // This was the first load. Enter either WaitingForLoadTrigger or WaitingForLoadCycle
@@ -644,11 +641,13 @@ impl Channel {
         return;
     }
 
+    #[inline]
     pub fn count2(&mut self) {
         self.count();
         self.count();
     }
 
+    #[inline]
     pub fn count3(&mut self) {
         self.count();
         self.count();
@@ -660,18 +659,8 @@ impl Channel {
             || self.channel_state == ChannelState::Counting(ReloadFlag::ReloadNextCycle)
         {
             // Load the current reload value into the counting element, applying the load mask
-            self.counting_element.update(*self.count_register & self.load_mask);
-
-            if self.load_state == LoadState::WaitingForMsb {
-                // We are reloading during an incomplete counter load. Proceed, but set a flag to mark
-                // this load as incomplete.
-                self.incomplete_reload = true;
-            }
-            else {
-                self.incomplete_reload = false;
-            }
-
-            //self.load_state = LoadState::Loaded;
+            //self.counting_element.update(*self.reload_value & self.load_mask);
+            self.counting_element.update(*self.reload_value);
 
             // Start counting.
             self.change_channel_state(ChannelState::Counting(ReloadFlag::Normal));
@@ -743,7 +732,7 @@ impl Channel {
                             self.count2();
                             if *self.counting_element == 0 {
                                 self.change_output_state(!*self.output, bus); // Toggle output state
-                                self.counting_element.update(*self.count_register);
+                                self.counting_element.update(*self.reload_value);
                                 // Reload counting element
                             }
                         }
@@ -762,7 +751,7 @@ impl Channel {
                                     else {
                                         // Output is low. Reload and update output immediately.
                                         self.change_output_state(!*self.output, bus); // Toggle output state
-                                        self.counting_element.update(*self.count_register);
+                                        self.counting_element.update(*self.reload_value);
                                         // Reload counting element
                                     }
                                 }
@@ -787,7 +776,7 @@ impl Channel {
                                 if *self.counting_element == 0 {
                                     // Counting element is immediately reloaded and output toggled.
                                     self.change_output_state(!*self.output, bus); // Toggle output state
-                                    self.counting_element.update(*self.count_register);
+                                    self.counting_element.update(*self.reload_value);
                                 }
                             }
                         }
@@ -988,7 +977,7 @@ impl ProgrammableIntervalTimer {
         }
     }
 
-    pub fn ticks_from_time_advance(&mut self, run_unit: DeviceRunTimeUnit) -> u32 {
+    /*    pub fn ticks_from_time_advance(&mut self, run_unit: DeviceRunTimeUnit) -> u32 {
         let mut do_ticks = 0;
         match run_unit {
             DeviceRunTimeUnit::Microseconds(us) => {
@@ -1023,7 +1012,7 @@ impl ProgrammableIntervalTimer {
                 do_ticks
             }
         }
-    }
+    }*/
 
     pub fn run(
         &mut self,
@@ -1055,11 +1044,23 @@ impl ProgrammableIntervalTimer {
     /// Returns the specified channels' count register (reload value) and counting element
     /// in a tuple.
     #[inline]
-    pub fn get_channel_count(&self, channel: usize) -> (u16, u16) {
+    pub fn get_channel_count(&self, channel: usize) -> (u16, u16, bool) {
         (
             *self.channels[channel].count_register.get(),
             *self.channels[channel].counting_element.get(),
+            matches!(self.channels[channel].channel_state, ChannelState::Counting(_)),
         )
+    }
+
+    #[inline]
+    pub fn does_channel_retrigger(&self, channel: usize) -> bool {
+        match *self.channels[channel].mode {
+            ChannelMode::InterruptOnTerminalCount
+            | ChannelMode::HardwareRetriggerableOneShot
+            | ChannelMode::SoftwareTriggeredStrobe
+            | ChannelMode::HardwareTriggeredStrobe => false,
+            _ => true,
+        }
     }
 
     #[inline]
@@ -1143,6 +1144,7 @@ impl ProgrammableIntervalTimer {
         if clean {
             for i in 0..3 {
                 self.channels[i].mode.clean();
+                self.channels[i].reload_value.clean();
                 self.channels[i].counting_element.clean();
                 self.channels[i].count_register.clean();
                 self.channels[i].rw_mode.clean();
@@ -1192,6 +1194,17 @@ impl ProgrammableIntervalTimer {
                 ),
             );
             channel_map.insert(
+                "Reload Value:",
+                SyntaxToken::StateString(
+                    format!(
+                        "{:?} [{:04X}]",
+                        *self.channels[i].reload_value, *self.channels[i].reload_value,
+                    ),
+                    self.channels[i].reload_value.is_dirty(),
+                    0,
+                ),
+            );
+            channel_map.insert(
                 "Count Register:",
                 SyntaxToken::StateString(
                     format!(
@@ -1236,7 +1249,7 @@ impl ProgrammableIntervalTimer {
         if clean {
             for i in 0..3 {
                 self.channels[i].mode.clean();
-
+                self.channels[i].reload_value.clean();
                 self.channels[i].counting_element.clean();
                 self.channels[i].count_register.clean();
                 self.channels[i].output_latch.clean();

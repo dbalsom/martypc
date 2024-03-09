@@ -52,40 +52,30 @@ impl PicViewerControl {
             .striped(true)
             .min_col_width(100.0)
             .show(ui, |ui| {
-                //ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("IMR Register: ").text_style(egui::TextStyle::Monospace));
-                ui.add(egui::TextEdit::singleline(&mut self.state.imr).font(egui::TextStyle::Monospace));
-                //});
-                ui.end_row();
-                //ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("ISR Register: ").text_style(egui::TextStyle::Monospace));
-                ui.add(egui::TextEdit::singleline(&mut self.state.isr).font(egui::TextStyle::Monospace));
-                //});
-                ui.end_row();
-                //ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("IRR Register: ").text_style(egui::TextStyle::Monospace));
-                ui.add(egui::TextEdit::singleline(&mut self.state.irr).font(egui::TextStyle::Monospace));
-                //});
-                ui.end_row();
-                //ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("IR Lines: ").text_style(egui::TextStyle::Monospace));
-                ui.add(egui::TextEdit::singleline(&mut self.state.ir).font(egui::TextStyle::Monospace));
-                //});
-                ui.end_row();
-                //ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("INTR Status: ").text_style(egui::TextStyle::Monospace));
+                ui.label(egui::RichText::new("INTR Status").text_style(egui::TextStyle::Monospace));
                 ui.add(egui::TextEdit::singleline(&mut self.state.intr).font(egui::TextStyle::Monospace));
-                //});
-                ui.end_row();
-                //ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Auto-EOI: ").text_style(egui::TextStyle::Monospace));
+                ui.label(egui::RichText::new("Auto-EOI").text_style(egui::TextStyle::Monospace));
                 ui.add(egui::TextEdit::singleline(&mut self.state.autoeoi).font(egui::TextStyle::Monospace));
-                //});
                 ui.end_row();
-                //ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Trigger Mode: ").text_style(egui::TextStyle::Monospace));
+
+                ui.label(egui::RichText::new("IMR Register").text_style(egui::TextStyle::Monospace));
+                ui.add(egui::TextEdit::singleline(&mut self.state.imr).font(egui::TextStyle::Monospace));
+                ui.label(egui::RichText::new("Trigger Mode").text_style(egui::TextStyle::Monospace));
                 ui.add(egui::TextEdit::singleline(&mut self.state.trigger_mode).font(egui::TextStyle::Monospace));
-                //});
+                ui.end_row();
+
+                ui.label(egui::RichText::new("ISR Register").text_style(egui::TextStyle::Monospace));
+                ui.add(egui::TextEdit::singleline(&mut self.state.isr).font(egui::TextStyle::Monospace));
+                ui.label(egui::RichText::new("Spurious IRQs").text_style(egui::TextStyle::Monospace));
+                ui.add(egui::TextEdit::singleline(&mut self.state.spurious_irqs).font(egui::TextStyle::Monospace));
+                ui.end_row();
+
+                ui.label(egui::RichText::new("IRR Register").text_style(egui::TextStyle::Monospace));
+                ui.add(egui::TextEdit::singleline(&mut self.state.irr).font(egui::TextStyle::Monospace));
+                ui.end_row();
+
+                ui.label(egui::RichText::new("IR Lines").text_style(egui::TextStyle::Monospace));
+                ui.add(egui::TextEdit::singleline(&mut self.state.ir).font(egui::TextStyle::Monospace));
                 ui.end_row();
 
                 // Add table header

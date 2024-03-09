@@ -35,7 +35,6 @@ use crate::{
     util,
 };
 
-
 /*
 macro_rules! read_operand {
     ($self:ident, $op: expr) => {
@@ -1403,6 +1402,7 @@ impl Cpu {
                 if self.intr {
                     // If an intr is pending now, execute it without actually halting.
                     log::trace!("Halt overriden at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip()));
+                    self.cycles(2); // Cycle to load interrupt routine
                     self.halt_not_hold = false;
                 }
                 else {

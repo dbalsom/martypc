@@ -17,10 +17,8 @@ config_version = "0.2"
 # Specify the name of a machine configuration to load. Valid config_names
 # are defined via machine configuration profiles in the /configs/machines
 # directory.
-config_name = "ibm5160_hdd"
-#config_name = "generic_xt"
-#config_name = "generic_award_xt_hdd"
-#config_name = "generic_xt_hdd"
+config_name = "ibm5160"
+#config_name = "ibm5160_hdd"
 #config_name = "ibm5160_hdd_ega"
 
 # Specify configuration overlays to load on top of machine configuration.

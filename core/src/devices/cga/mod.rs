@@ -132,7 +132,7 @@ const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
     the expected maximum of 640x200, but it includes overscan and retrace periods.
     With a default horizontal sync width of 10(*8), and a fixed (on the Motorola at least)
     vsync 'width' of 16, this brings us down to a visible area of 832x246.
-    This produces vertical ovescan borders of 26 pixels and horizontal borders of 96 pixels
+    This produces vertical overscan borders of 26 pixels and horizontal borders of 96 pixels
     The Area5150 demo manages to squeeze out a 768 pixel horizontal resolution mode from
     the CGA. This is accomplished with a HorizontalDisplayed value of 96. (96 * 8 = 768)
     I am assuming this is the highest value we will actually ever encounter and anything
@@ -150,9 +150,9 @@ const CGA_MONITOR_HSYNC_POS: u32 = 832;
 const CGA_MONITOR_HSYNC_WIDTH: u32 = 80;
 const CGA_MONITOR_VSYNC_POS: u32 = 246;
 // Minimum scanline value after which we can perform a vsync. A vsync before this scanline will be ignored.
-const CGA_MONITOR_VSYNC_MIN: u32 = 0;
+const CGA_MONITOR_VSYNC_MIN: u32 = 127;
 
-// For derivision of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
+// For derivation of CGA timings, see https://www.vogons.org/viewtopic.php?t=47052
 // We run the CGA card independent of the CPU frequency.
 // Timings in 4.77Mhz CPU cycles are provided for reference.
 const FRAME_TIME_CLOCKS: u32 = 238944;
@@ -200,15 +200,15 @@ const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
 const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
 
 // Include the standard 8x8 CGA font.
-// TODO: Support alternate font with thinner glyphs? It was normally not accessable except
-// by soldering a jumper
+// TODO: Support alternate font with thinner glyphs? It was normally not accessible except
+//       by soldering a jumper
 const CGA_FONT: &'static [u8] = include_bytes!("../../../../assets/cga_8by8.bin");
 const CGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const CGA_HCHAR_CLOCK: u8 = 8;
 const CGA_LCHAR_CLOCK: u8 = 16;
 const CRTC_FONT_HEIGHT: u8 = 8;
-const CRTC_VBLANK_HEIGHT: u8 = 16;
+const CRTC_VSYNC_HEIGHT: u8 = 16;
 
 const CRTC_R0_HORIZONTAL_MAX: u32 = 113;
 const CRTC_SCANLINE_MAX: u32 = 262;
@@ -302,7 +302,7 @@ const CGA_DEBUG_U64: [u64; 16] = [
     0xF0F0F0F0F0F0F0F0,
 ];
 
-// Display aperatures.
+// Display apertures.
 // CROPPED will show the display area only - no overscan will be visible.
 // NORMAL is an attempt to represent the maximum visible display extents, including overscan.
 // Anything more is likely to be hidden by the monitor bezel or not shown for some other reason.
@@ -487,6 +487,7 @@ pub struct CGACard {
     crtc_frame_address: usize,
     in_crtc_hblank: bool,
     in_crtc_vblank: bool,
+    in_crtc_vsync: bool,
     in_last_vblank_line: bool,
     hborder: bool,
     vborder: bool,
@@ -522,6 +523,7 @@ pub struct CGACard {
     hcc_c0: u8,      // Horizontal character counter (x pos of character)
     vlc_c9: u8,      // Vertical line counter - row of character being drawn
     vcc_c4: u8,      // Vertical character counter (y pos of character)
+    last_row: bool,  // Flag set on last character row of screen
     vsc_c3h: u8,     // Vertical sync counter - counts during vsync period
     hsc_c3l: u8,     // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
@@ -674,6 +676,7 @@ impl Default for CGACard {
 
             in_crtc_hblank: false,
             in_crtc_vblank: false,
+            in_crtc_vsync: false,
             in_last_vblank_line: false,
             hborder: true,
             vborder: true,
@@ -707,6 +710,7 @@ impl Default for CGACard {
             hcc_c0: 0,
             vlc_c9: 0,
             vcc_c4: 0,
+            last_row: false,
             vsc_c3h: 0,
             hsc_c3l: 0,
             vtac_c5: 0,
@@ -759,7 +763,7 @@ impl CGACard {
         let mut cga = Self::default();
 
         cga.trace_logger = trace_logger;
-        cga.debug = video_frame_debug;
+        //cga.debug = video_frame_debug;
 
         if let ClockingMode::Default = clock_mode {
             cga.clock_mode = ClockingMode::Dynamic;
@@ -884,7 +888,7 @@ impl CGACard {
 
     fn set_lp_latch(&mut self) {
         if self.lightpen_latch == false {
-            // Low to high transaition of light pen latch, set latch addr.
+            // Low to high transition of light pen latch, set latch addr.
             log::debug!("Updating lightpen latch address");
             self.lightpen_addr = self.vma;
         }
@@ -1153,7 +1157,7 @@ impl CGACard {
     fn is_deferred_mode_change(&self, new_mode_byte: u8) -> bool {
         // In general, we can determine whether we are in graphics mode or text mode by
         // checking the graphics bit, however, the graphics bit is allowed to coexist with the
-        // HIREST_TEXT bit in an undocumented combination that remains in text mode but allows
+        // HIRES_TEXT bit in an undocumented combination that remains in text mode but allows
         // a selectable background color.
 
         // If both graphics and hi-res text bits are set, we are still in text mode
@@ -1180,7 +1184,7 @@ impl CGACard {
     /// register is actually written to, depending on if we are changing from text to graphics mode
     /// or vice versa.
     fn update_mode(&mut self) {
-        // Will this mode change change the character clock?
+        // Will this mode change the character clock?
         let clock_changed = self.mode_hires_txt != (self.mode_byte & MODE_HIRES_TEXT != 0);
 
         if clock_changed {
@@ -1255,7 +1259,7 @@ impl CGACard {
     #[inline]
     fn update_clock(&mut self) {
         if self.clock_pending && (self.cycles & 0x0F == 0) {
-            // Clock divisor is 1 in high res text mode, 2 in all other modes
+            // Clock divisor is 1 in high-res text mode, 2 in all other modes
             // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
             (
                 self.clock_divisor,
@@ -1283,7 +1287,7 @@ impl CGACard {
             self.mode_byte = mode_byte;
         }
         else {
-            // We're not changing from text to graphcis or vice versa, so we do not have to
+            // We're not changing from text to graphics or vice versa, so we do not have to
             // defer the update.
             self.mode_byte = mode_byte;
             self.update_mode();
@@ -1295,12 +1299,12 @@ impl CGACard {
     fn handle_status_register_read(&mut self) -> u8 {
         // Bit 1 of the status register is set when the CGA can be safely written to without snow.
         // It is tied to the 'Display Enable' line from the CGA card, inverted.
-        // Thus it will be 1 when the CGA card is not currently scanning, IE during both horizontal
+        // Thus, it will be 1 when the CGA card is not currently scanning, IE during both horizontal
         // and vertical refresh.
 
         // https://www.vogons.org/viewtopic.php?t=47052
 
-        // Addendum: The DE line is from the MC6845, and actually includes anything outside of the
+        // Addendum: The DE line is from the MC6845, and actually includes anything outside the
         // active display area. This gives a much wider window to hit for scanline wait loops.
 
         let mut byte = if self.in_crtc_vblank {
@@ -1343,7 +1347,7 @@ impl CGACard {
     }
 
     /// Handle write to the Color Control register. This register controls the palette selection
-    /// and background/overscan color (foreground color in high res graphics mode)
+    /// and background/overscan color (foreground color in high-res graphics mode)
     fn handle_cc_register_write(&mut self, data: u8) {
         self.cc_register = data;
         self.update_palette();
@@ -1408,7 +1412,7 @@ impl CGACard {
         // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
         let addr = (self.vma & CGA_TEXT_MODE_WRAP) << 1;
 
-        // Generate snow if we are in hires mode, have a dirty bus, and hclock is odd
+        // Generate snow if we are in hires mode, have a dirty bus, and HCLOCK is odd
         if self.enable_snow && self.mode_hires_txt && self.dirty_snow && (self.cycles & 0b1000 != 0) {
             self.cur_char = self.snow_char;
             self.cur_attr = self.last_bus_value;
@@ -1647,7 +1651,7 @@ impl CGACard {
 
     /// Execute one high resolution character clock.
     pub fn tick_hchar(&mut self) {
-        // sink_cycles must be factor of 8
+        // sink_cycles must be a factor of 8
         // assert_eq!(self.sink_cycles & 0x07, 0);
 
         if self.sink_cycles & 0x07 != 0 {
@@ -1708,6 +1712,10 @@ impl CGACard {
                 //self.dump_status();
                 //panic!("invalid display state...");
             }
+
+            /*            if self.in_vta {
+                self.draw_solid_hchar(CGA_DEBUG2_COLOR);
+            }*/
         }
 
         // Update position to next pixel and character column.
@@ -1732,6 +1740,8 @@ impl CGACard {
         }
 
         self.tick_crtc_char();
+        self.char_col = 0;
+        self.set_char_addr();
         self.update_clock();
     }
 
@@ -1741,7 +1751,7 @@ impl CGACard {
         assert_eq!(self.cycles & 0x0F, 0);
         assert_eq!(self.char_clock, 16);
 
-        // sink_cycles must be factor of 8
+        // sink_cycles must be a factor of 8
         //assert!((self.sink_cycles & 0x07) == 0);
 
         /*
@@ -1822,6 +1832,8 @@ impl CGACard {
         }
 
         self.tick_crtc_char();
+        self.set_char_addr();
+        self.char_col = 0;
         self.update_clock();
     }
 
@@ -1863,6 +1875,8 @@ impl CGACard {
         // Done with the current character
         if self.char_col == CGA_HCHAR_CLOCK {
             self.tick_crtc_char();
+            self.set_char_addr();
+            self.char_col = 0;
         }
     }
 
@@ -1980,14 +1994,14 @@ impl CGACard {
                 );
             }
             self.tick_crtc_char();
+            self.set_char_addr();
+            self.char_col = 0;
             self.update_clock();
         }
     }
 
     /// Update the CRTC logic for next character.
     pub fn tick_crtc_char(&mut self) {
-        // Update horizontal character counter
-        self.hcc_c0 = self.hcc_c0.wrapping_add(1);
         if self.hcc_c0 == 0 {
             self.hborder = false;
             if self.vcc_c4 == 0 {
@@ -1996,17 +2010,23 @@ impl CGACard {
             }
         }
 
-        if self.hcc_c0 == 0 && self.vcc_c4 == 0 {
-            // We are at the first character of a CRTC frame. Update start address.
-            self.vma = self.crtc_frame_address;
+        if self.hcc_c0 == 0 {
+            // When C0 < 2 evaluate last_line flag status.
+            // LOGON SYSTEM v1.6 pg 73
+            if self.vcc_c4 == self.crtc_vertical_total {
+                self.last_row = true;
+                self.vtac_c5 = 0;
+            }
+            else {
+                //self.last_row = false;
+            }
         }
 
-        // Advance video memory address offset and grab the next character + attr
-        self.vma += 1;
-        self.set_char_addr();
+        // Update horizontal character counter
+        self.hcc_c0 = self.hcc_c0.wrapping_add(1);
 
-        // Glyph column reset to 0 for next char
-        self.char_col = 0;
+        // Advance video memory address offset
+        self.vma += 1;
 
         // Process horizontal blanking period
         if self.in_crtc_hblank {
@@ -2042,7 +2062,7 @@ impl CGACard {
                 // END OF LOGICAL SCANLINE
                 if self.in_crtc_vblank {
                     //if self.vsc_c3h == CRTC_VBLANK_HEIGHT || self.beam_y == CGA_MONITOR_VSYNC_POS {
-                    if self.vsc_c3h == CRTC_VBLANK_HEIGHT {
+                    if self.vsc_c3h == CRTC_VSYNC_HEIGHT {
                         // We are leaving vblank period. Generate a frame.
 
                         // Previously, we generated frames upon reaching vertical total. This was convenient as
@@ -2064,7 +2084,6 @@ impl CGACard {
                     self.beam_y += 1;
                 }
                 self.beam_x = 0;
-                self.char_col = 0;
 
                 let new_rba = (CGA_XRES_MAX * self.beam_y) as usize;
                 self.rba = new_rba;
@@ -2105,7 +2124,7 @@ impl CGACard {
         }
 
         if self.hcc_c0 == self.crtc_horizontal_total + 1 {
-            // Leaving left overscan, finished scanning row
+            // C0 == R0: Leaving left overscan, finished scanning row
 
             if self.in_crtc_vblank {
                 // If we are in vblank, advance Vertical Sync Counter
@@ -2125,103 +2144,84 @@ impl CGACard {
             self.vma = self.vma_t;
 
             // Reset the current character glyph to start of row
-            self.set_char_addr();
+            //self.set_char_addr();
 
-            if !self.in_crtc_vblank {
+            if !self.in_crtc_vblank && (self.vcc_c4 < self.crtc_vertical_displayed) {
                 // Start the new row
-                if self.vcc_c4 < self.crtc_vertical_displayed {
-                    self.in_display_area = true;
-                }
+                self.in_display_area = true;
             }
 
             if self.vlc_c9 > self.crtc_maximum_scanline_address {
                 // C9 == R9 We finished drawing this row of characters
 
                 self.vlc_c9 = 0;
-                // Advance Vertical Character Counter
+                // Increment Vertical Character Counter for next row
                 self.vcc_c4 = self.vcc_c4.wrapping_add(1);
 
                 // Set vma to starting position for next character row
                 //self.vma = (self.vcc_c4 as usize) * (self.crtc_horizontal_displayed as usize) + self.crtc_frame_address;
                 self.vma = self.vma_t;
 
-                // Load next char + attr
-                self.set_char_addr();
-
                 if self.vcc_c4 == self.crtc_vertical_sync_pos {
-                    // We've reached vertical sync
+                    // C4 == R7: We've reached vertical sync
                     trace_regs!(self);
                     trace!(self, "Entering vsync");
                     self.in_crtc_vblank = true;
                     self.in_display_area = false;
                 }
+
+                if self.last_row {
+                    // C4 == R4 We are at vertical total, start incrementing vertical total adjust counter.
+                    //log::debug!("setting vta at : {}", self.vcc_c4);
+                    self.in_vta = true;
+                    self.last_row = false;
+                }
             }
 
             if self.vcc_c4 == self.crtc_vertical_displayed {
-                // Enter lower overscan area.
+                // C4 == R6: Enter lower overscan area.
                 self.in_display_area = false;
                 self.vborder = true;
             }
 
-            /*
-            if self.vcc_c4 >= (self.crtc_vertical_total + 1)  {
-
-                // We are at vertical total, start incrementing vertical total adjust counter.
-                self.vtac_c5 += 1;
-
-                if self.vtac_c5 > self.crtc_vertical_total_adjust {
-                    // We have reached vertical total adjust. We are at the end of the top overscan.
-                    self.hcc_c0 = 0;
-                    self.vcc_c4 = 0;
-                    self.vtac_c5 = 0;
-                    self.vlc_c9 = 0;
-                    self.char_col = 0;
-                    self.crtc_frame_address = self.crtc_start_address;
-                    self.vma = self.crtc_start_address;
-                    self.vma_t = self.vma;
-                    self.in_display_area = true;
-                    self.vborder = false;
-                    self.in_crtc_vblank = false;
-
-                    // Load first char + attr
-                    self.set_char_addr();
-                }
-            }
-            */
-
             if self.vcc_c4 == self.crtc_vertical_total + 1 {
                 // We are at vertical total, start incrementing vertical total adjust counter.
-                self.in_vta = true;
+                //self.in_vta = true;
+                if !self.in_vta {
+                    log::debug!(
+                        "in last row but no vta? vcc: {} vt: {}",
+                        self.vcc_c4,
+                        self.crtc_vertical_total
+                    );
+                }
             }
 
             if self.in_vta {
                 // We are in vertical total adjust.
-                self.vtac_c5 += 1;
-
-                if self.vtac_c5 > self.crtc_vertical_total_adjust {
+                if self.vtac_c5 == self.crtc_vertical_total_adjust {
                     // We have reached vertical total adjust. We are at the end of the top overscan.
                     self.in_vta = false;
                     self.vtac_c5 = 0;
-
                     self.hcc_c0 = 0;
                     self.vcc_c4 = 0;
                     self.vlc_c9 = 0;
-                    self.char_col = 0;
                     self.crtc_frame_address = self.crtc_start_address;
                     self.vma = self.crtc_start_address;
                     self.vma_t = self.vma;
                     self.in_display_area = true;
                     self.vborder = false;
                     self.in_crtc_vblank = false;
-
-                    // Load first char + attr
-                    self.set_char_addr();
+                }
+                else {
+                    self.vtac_c5 += 1;
                 }
             }
         }
     }
 
     pub fn do_vsync(&mut self) {
+        self.in_crtc_vsync = false;
+
         self.cycles_per_vsync = self.cur_screen_cycles;
         self.cur_screen_cycles = 0;
         self.last_vsync_cycles = self.cycles;
@@ -2244,8 +2244,7 @@ impl CGACard {
 
             if self.beam_y > 258 && self.beam_y < 262 {
                 // This is a "short" frame. Calculate delta.
-                let _delta_y = 262 - self.beam_y;
-
+                //let delta_y = 262 - self.beam_y;
                 //self.sink_cycles = delta_y * 912;
 
                 if self.cycles & self.char_clock_mask != 0 {
@@ -2276,6 +2275,11 @@ impl CGACard {
 
             // Swap the display buffers
             self.swap();
+        }
+        else {
+            // Don't do vsync but reset scanline # so we can keep track in Area5150
+            self.scanline = 0;
+            self.frame_count += 1;
         }
     }
 

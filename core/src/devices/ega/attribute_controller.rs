@@ -381,7 +381,7 @@ impl AttributeController {
     }
 
     pub fn shift_out64(&mut self) -> u64 {
-        let out_data = ((self.shift_reg << (self.pel_panning * 8)) >> 64) as u64;
+        let out_data = ((self.shift_reg << ((self.pel_panning & 0x07) * 8)) >> 64) as u64;
 
         // Shift the attribute data 64 bits to make room for next character clock
         self.shift_reg <<= 64;
@@ -447,8 +447,8 @@ impl AttributeController {
         (output1.to_le(), output2.to_le())
     }*/
 
-    pub fn shift_out(&mut self) -> &[u8] {
-        let out_data = ((self.shift_reg << self.pel_panning) >> 64) as u64;
+    pub fn shift_out_8(&mut self) -> &[u8] {
+        let out_data = ((self.shift_reg << ((self.pel_panning & 0x07) * 8)) >> 64) as u64;
         self.shift_buf = out_data.to_le_bytes();
         &self.shift_buf
     }

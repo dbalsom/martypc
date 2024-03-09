@@ -82,10 +82,10 @@ impl IoDevice for EGACard {
             //MODE_CONTROL_REGISTER => {
             //    self.handle_mode_register(data);
             //}
-            CRTC_REGISTER_ADDRESS => {
+            CRTC_REGISTER_ADDRESS | CRTC_REGISTER_ADDRESS_MDA => {
                 self.crtc.write_crtc_register_address(data);
             }
-            CRTC_REGISTER => {
+            CRTC_REGISTER | CRTC_REGISTER_MDA => {
                 let (recalc, clear_intr) = self.crtc.write_crtc_register_data(data);
                 if recalc {
                     self.recalculate_mode();
@@ -115,23 +115,42 @@ impl IoDevice for EGACard {
     }
 
     fn port_list(&self) -> Vec<u16> {
-        vec![
-            ATTRIBUTE_REGISTER,
-            ATTRIBUTE_REGISTER_ALT,
-            MISC_OUTPUT_REGISTER,
-            INPUT_STATUS_REGISTER_0,
-            INPUT_STATUS_REGISTER_1,
-            INPUT_STATUS_REGISTER_1_MDA,
-            SEQUENCER_ADDRESS_REGISTER,
-            SEQUENCER_DATA_REGISTER,
-            CRTC_REGISTER_ADDRESS,
-            CRTC_REGISTER,
-            CRTC_REGISTER_ADDRESS_MDA,
-            CRTC_REGISTER_MDA,
-            EGA_GRAPHICS_1_POSITION,
-            EGA_GRAPHICS_2_POSITION,
-            EGA_GRAPHICS_ADDRESS,
-            EGA_GRAPHICS_DATA,
-        ]
+        if self.dip_sw == EGA_DIP_SWITCH_MDA {
+            vec![
+                ATTRIBUTE_REGISTER,
+                ATTRIBUTE_REGISTER_ALT,
+                MISC_OUTPUT_REGISTER,
+                INPUT_STATUS_REGISTER_0,
+                INPUT_STATUS_REGISTER_1_MDA,
+                SEQUENCER_ADDRESS_REGISTER,
+                SEQUENCER_DATA_REGISTER,
+                CRTC_REGISTER_ADDRESS_MDA,
+                CRTC_REGISTER_MDA,
+                EGA_GRAPHICS_1_POSITION,
+                EGA_GRAPHICS_2_POSITION,
+                EGA_GRAPHICS_ADDRESS,
+                EGA_GRAPHICS_DATA,
+            ]
+        }
+        else {
+            vec![
+                ATTRIBUTE_REGISTER,
+                ATTRIBUTE_REGISTER_ALT,
+                MISC_OUTPUT_REGISTER,
+                INPUT_STATUS_REGISTER_0,
+                INPUT_STATUS_REGISTER_1,
+                INPUT_STATUS_REGISTER_1_MDA,
+                SEQUENCER_ADDRESS_REGISTER,
+                SEQUENCER_DATA_REGISTER,
+                CRTC_REGISTER_ADDRESS,
+                CRTC_REGISTER,
+                CRTC_REGISTER_ADDRESS_MDA,
+                CRTC_REGISTER_MDA,
+                EGA_GRAPHICS_1_POSITION,
+                EGA_GRAPHICS_2_POSITION,
+                EGA_GRAPHICS_ADDRESS,
+                EGA_GRAPHICS_DATA,
+            ]
+        }
     }
 }

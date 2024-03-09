@@ -39,7 +39,6 @@
 
 */
 
-#![allow(dead_code)]
 use modular_bitfield::prelude::*;
 
 //#![allow(dead_code)]
@@ -95,14 +94,11 @@ pub const EGA_GFX_PLANE_SIZE: usize = 65536;
 // This is the only value that gives high-resolution text 640x350
 
 pub const EGA_DIP_SWITCH_EGA: u8 = 0b1001; // EGA 'enhanced color'
-pub const EGA_DIP_SWITCH_MDA: u8 = 0b0010; // MDA emulation
+pub const EGA_DIP_SWITCH_MDA: u8 = 0b1011; // MDA emulation
 pub const EGA_DIP_SWITCH_NORMAL: u8 = 0b1000; // EGA 'normal color'
 pub const EGA_DIP_SWITCH_CGA: u8 = 0b0111; // EGA on CGA monitor
 
-pub const DEFAULT_DIP_SWITCH: u8 = EGA_DIP_SWITCH_EGA;
-
-const CGA_DEFAULT_CURSOR_BLINK_RATE: f64 = 0.0625;
-const CGA_DEFAULT_CURSOR_FRAME_CYCLE: u32 = 8;
+pub const DEFAULT_DIP_SWITCH: u8 = EGA_DIP_SWITCH_CGA;
 
 // Maximum height of an EGA character.
 const EGA_CHARACTER_HEIGHT: usize = 32;
@@ -149,16 +145,11 @@ const EGA14_MAX_RASTER_Y: u32 = 262;
 const EGA16_MAX_RASTER_X: u32 = 744; // Maximum scanline width
 const EGA16_MAX_RASTER_Y: u32 = 364; // Maximum scanline height
 
-const EGA_APERTURE_CROP_LEFT: u32 = 0;
-const EGA_APERTURE_CROP_TOP: u32 = 0;
 const EGA_MAX_CLOCK14: usize = 912 * 262; // Maximum frame clock for EGA 14Mhz clock (912x262) same as CGA
 const EGA_MAX_CLOCK16: usize = 270816; // Maximum frame clock for EGA 16Mhz clock (744x364)
 const EGA_MONITOR_VSYNC_MIN: u32 = 0;
-const EGA_HCHAR_CLOCK: u8 = 8;
 
-const CGA_HBLANK: f64 = 0.1785714;
-
-// Negative offset to use for CRTC, Feature Control and and ISR1 when in Monochrome
+// Negative offset to use for CRTC, Feature Control and ISR1 when in Monochrome
 // compatibility mode (as controlled by bit 0 in the Miscellaneous Output Register)
 const MDA_COMPAT_IO_ADJUST: u16 = 0x20;
 
@@ -199,32 +190,6 @@ pub const EGA_GRAPHICS_1_POSITION: u16 = 0x3CC;
 pub const EGA_GRAPHICS_2_POSITION: u16 = 0x3CA;
 pub const EGA_GRAPHICS_ADDRESS: u16 = 0x3CE;
 pub const EGA_GRAPHICS_DATA: u16 = 0x3CF;
-
-/* cga things
-const MODE_MATCH_MASK: u8       = 0b0001_1111;
-const MODE_HIRES_TEXT: u8       = 0b0000_0001;
-const MODE_GRAPHICS: u8         = 0b0000_0010;
-const MODE_BW: u8               = 0b0000_0100;
-const MODE_ENABLE: u8           = 0b0000_1000;
-const MODE_HIRES_GRAPHICS: u8   = 0b0001_0000;
-const MODE_BLINKING: u8         = 0b0010_0000;
-
-const CURSOR_ATTR_MASK: u8      = 0b0011_0000;
-
-const STATUS_DISPLAY_ENABLE: u8 = 0b0000_0001;
-const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
-const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
-const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
-*/
-
-// Color control register bits.
-// Alt color = Overscan in Text mode, BG color in 320x200 graphics, FG color in 640x200 graphics
-const CC_ALT_COLOR_MASK: u8 = 0b0000_0111;
-const CC_ALT_INTENSITY: u8 = 0b0000_1000;
-// Controls whether palette is high intensity
-const CC_BRIGHT_BIT: u8 = 0b0001_0000;
-// Controls primary palette between magenta/cyan and red/green
-const CC_PALETTE_BIT: u8 = 0b0010_0000;
 
 pub struct VideoTimings {
     cpu_frame:    u32,
@@ -296,7 +261,6 @@ const EGA_DISABLE_COLOR: u8 = 0;
 const EGA_DISABLE_DEBUG_COLOR: u8 = 2;
 const EGA_OVERSCAN_COLOR: u8 = 5;
 
-const ALL_ZERO64: u64 = 0x0000000000000000;
 const ALL_SET64: u64 = 0xFFFFFFFFFFFFFFFF;
 
 const EGA_PALETTE: [u32; 64] = [
@@ -455,27 +419,6 @@ const fn init_ega_4bpp_u64_colors() -> [u64; 64] {
 const EGA_COLORS_6BPP_U64: [u64; 64] = init_ega_6bpp_u64_colors();
 const EGA_COLORS_4BPP_U64: [u64; 64] = init_ega_4bpp_u64_colors();
 
-// Solid color spans of 8 pixels.
-// Used for drawing debug info into index buffer.
-const EGA_DEBUG_U64: [u64; 16] = [
-    0x0000000000000000,
-    0x1010101010101010,
-    0x2020202020202020,
-    0x3030303030303030,
-    0x4040404040404040,
-    0x5050505050505050,
-    0x6060606060606060,
-    0x7070707070707070,
-    0x8080808080808080,
-    0x9090909090909090,
-    0xA0A0A0A0A0A0A0A0,
-    0xB0B0B0B0B0B0B0B0,
-    0xC0C0C0C0C0C0C0C0,
-    0xD0D0D0D0D0D0D0D0,
-    0xE0E0E0E0E0E0E0E0,
-    0xF0F0F0F0F0F0F0F0,
-];
-
 const EGA_FONT_SPAN: usize = 256;
 
 static EGA_FONTS: [EGAFont; 2] = [
@@ -527,7 +470,30 @@ const EGA16_APERTURE_FULL_H: u32 = 350;
 const EGA16_APERTURE_FULL_X: u32 = 40;
 const EGA16_APERTURE_FULL_Y: u32 = 1;
 
-const EGA_APERTURES: [[DisplayAperture; 4]; 2] = [
+const MDA_MAX_RASTER_X: u32 = 882;
+const MDA_MAX_RASTER_Y: u32 = 369; // Actual value works out to 325,140 / 882 or 368.639
+
+const MDA_APERTURE_CROPPED_W: u32 = 720;
+const MDA_APERTURE_CROPPED_H: u32 = 350;
+const MDA_APERTURE_CROPPED_X: u32 = 9;
+const MDA_APERTURE_CROPPED_Y: u32 = 4;
+
+const MDA_APERTURE_NORMAL_W: u32 = 738;
+const MDA_APERTURE_NORMAL_H: u32 = 354;
+const MDA_APERTURE_NORMAL_X: u32 = 0;
+const MDA_APERTURE_NORMAL_Y: u32 = 0;
+
+const MDA_APERTURE_FULL_W: u32 = 738;
+const MDA_APERTURE_FULL_H: u32 = 354;
+const MDA_APERTURE_FULL_X: u32 = 0;
+const MDA_APERTURE_FULL_Y: u32 = 0;
+
+const MDA_APERTURE_DEBUG_W: u32 = MDA_MAX_RASTER_X;
+const MDA_APERTURE_DEBUG_H: u32 = MDA_MAX_RASTER_Y;
+const MDA_APERTURE_DEBUG_X: u32 = 0;
+const MDA_APERTURE_DEBUG_Y: u32 = 0;
+
+const EGA_APERTURES: [[DisplayAperture; 4]; 3] = [
     [
         // 14Mhz CROPPED aperture
         DisplayAperture {
@@ -596,6 +562,40 @@ const EGA_APERTURES: [[DisplayAperture; 4]; 2] = [
             debug: true,
         },
     ],
+    [
+        // 16Mhz MDA CROPPED aperture
+        DisplayAperture {
+            w: MDA_APERTURE_CROPPED_W,
+            h: MDA_APERTURE_CROPPED_H,
+            x: MDA_APERTURE_CROPPED_X,
+            y: MDA_APERTURE_CROPPED_Y,
+            debug: false,
+        },
+        // 16Mhz MDA ACCURATE aperture
+        DisplayAperture {
+            w: MDA_APERTURE_NORMAL_W,
+            h: MDA_APERTURE_NORMAL_H,
+            x: MDA_APERTURE_NORMAL_X,
+            y: MDA_APERTURE_NORMAL_Y,
+            debug: false,
+        },
+        // 16Mhz MDA FULL aperture
+        DisplayAperture {
+            w: MDA_APERTURE_FULL_W,
+            h: MDA_APERTURE_FULL_H,
+            x: MDA_APERTURE_FULL_X,
+            y: MDA_APERTURE_FULL_Y,
+            debug: false,
+        },
+        // 16Mhz MDA DEBUG aperture
+        DisplayAperture {
+            w: MDA_APERTURE_DEBUG_W,
+            h: MDA_APERTURE_DEBUG_H,
+            x: MDA_APERTURE_DEBUG_X,
+            y: MDA_APERTURE_DEBUG_Y,
+            debug: true,
+        },
+    ],
 ];
 
 const EGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
@@ -616,21 +616,6 @@ const EGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
         aper_enum: DisplayApertureType::Debug,
     },
 ];
-
-#[derive(Clone)]
-pub struct DisplayPlane {
-    latch: u8,
-    buf:   Box<[u8]>,
-}
-
-impl DisplayPlane {
-    fn new() -> Self {
-        Self {
-            latch: 0,
-            buf:   Box::new([0; EGA_GFX_PLANE_SIZE]),
-        }
-    }
-}
 
 pub struct EGACard {
     debug: bool,
@@ -674,11 +659,9 @@ pub struct EGACard {
 
     cursor_status: bool,
     cursor_slowblink: bool,
-    cursor_blink_rate: f64,
+    cursor_blink_rate: u32,
 
     cursor_attr: u8,
-
-    cc_register: u8,
 
     crtc: EgaCrtc,
     vma: usize,
@@ -806,10 +789,8 @@ impl Default for EGACard {
 
             cursor_status: true,
             cursor_slowblink: false,
-            cursor_blink_rate: CGA_DEFAULT_CURSOR_BLINK_RATE,
+            cursor_blink_rate: EGA_CURSOR_BLINK_RATE,
             cursor_attr: 0,
-
-            cc_register: CC_PALETTE_BIT | CC_BRIGHT_BIT,
 
             crtc: EgaCrtc::new(),
             vma: 0,
@@ -1335,46 +1316,6 @@ impl EGACard {
         did_vsync
     }
 
-    //noinspection ALL
-    /// Get the 64-bit value representing the specified row of the specified character
-    /// glyph in high-resolution text mode.
-    #[inline]
-    pub fn get_hchar_glyph14_row(&self, glyph: usize, row: usize) -> u64 {
-        if self.cur_blink && !self.blink_state {
-            EGA_COLORS_U64[self.cur_bg as usize]
-        }
-        else {
-            let glyph_row_base = EGA_HIRES_GLYPH14_TABLE[glyph & 0xFF][row];
-
-            // Combine glyph mask with foreground and background colors.
-            glyph_row_base & EGA_COLORS_U64[self.cur_fg as usize]
-                | !glyph_row_base & EGA_COLORS_U64[self.cur_bg as usize]
-        }
-    }
-
-    //noinspection ALL
-    /// Get a tuple of 64-bit values representing the specified row of the specified character
-    /// glyph in low-resolution (40-column) mode.
-    #[inline]
-    pub fn get_lchar_glyph14_rows(&self, glyph: usize, row: usize) -> (u64, u64) {
-        if self.cur_blink && !self.blink_state {
-            let glyph = EGA_COLORS_U64[self.cur_bg as usize];
-            (glyph, glyph)
-        }
-        else {
-            let glyph_row_base_0 = EGA_LOWRES_GLYPH14_TABLE[glyph & 0xFF][0][row];
-            let glyph_row_base_1 = EGA_LOWRES_GLYPH14_TABLE[glyph & 0xFF][1][row];
-
-            // Combine glyph mask with foreground and background colors.
-            let glyph0 = glyph_row_base_0 & EGA_COLORS_U64[self.cur_fg as usize]
-                | !glyph_row_base_0 & EGA_COLORS_U64[self.cur_bg as usize];
-            let glyph1 = glyph_row_base_1 & EGA_COLORS_U64[self.cur_fg as usize]
-                | !glyph_row_base_1 & EGA_COLORS_U64[self.cur_bg as usize];
-
-            (glyph0, glyph1)
-        }
-    }
-
     fn do_hsync(&mut self) {
         self.hsync_ct += 1;
         self.scanline += 1;
@@ -1488,11 +1429,23 @@ impl EGACard {
                     self.extents.double_scan = true;
                 }
                 ClockSelect::Clock16 => {
-                    self.extents.field_w = EGA16_MAX_RASTER_X;
-                    self.extents.field_h = EGA16_MAX_RASTER_Y;
-                    self.extents.row_stride = EGA16_MAX_RASTER_X as usize;
-                    self.extents.apertures = EGA_APERTURES[1].to_vec();
-                    self.extents.double_scan = false;
+                    match self.sequencer.clocking_mode.character_clock() {
+                        // Switch between native EGA (8 dots) and MDA compatibility (9 dots)
+                        CharacterClock::EightDots => {
+                            self.extents.field_w = EGA16_MAX_RASTER_X;
+                            self.extents.field_h = EGA16_MAX_RASTER_Y;
+                            self.extents.row_stride = EGA16_MAX_RASTER_X as usize;
+                            self.extents.apertures = EGA_APERTURES[1].to_vec();
+                            self.extents.double_scan = false;
+                        }
+                        CharacterClock::NineDots => {
+                            self.extents.field_w = MDA_MAX_RASTER_X;
+                            self.extents.field_h = MDA_MAX_RASTER_Y;
+                            self.extents.row_stride = MDA_MAX_RASTER_X as usize;
+                            self.extents.apertures = EGA_APERTURES[2].to_vec();
+                            self.extents.double_scan = false;
+                        }
+                    }
                 }
                 _ => {
                     // Unsupported
