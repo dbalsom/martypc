@@ -132,7 +132,7 @@ const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
     the expected maximum of 640x200, but it includes overscan and retrace periods.
     With a default horizontal sync width of 10(*8), and a fixed (on the Motorola at least)
     vsync 'width' of 16, this brings us down to a visible area of 832x246.
-    This produces vertical ovescan borders of 26 pixels and horizontal borders of 96 pixels
+    This produces vertical overscan borders of 26 pixels and horizontal borders of 96 pixels
     The Area5150 demo manages to squeeze out a 768 pixel horizontal resolution mode from
     the CGA. This is accomplished with a HorizontalDisplayed value of 96. (96 * 8 = 768)
     I am assuming this is the highest value we will actually ever encounter and anything
@@ -604,7 +604,7 @@ impl CgaDefault for DisplayExtents {
 impl Default for CGACard {
     fn default() -> Self {
         Self {
-            debug: true,
+            debug: false,
             debug_draw: true,
             cycles: 0,
             last_vsync_cycles: 0,
