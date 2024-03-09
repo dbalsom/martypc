@@ -27,10 +27,10 @@ jobs:
           libudev-dev
 
       - name: Cargo build
-        run: cargo build -r --features ega
+        run: cargo build --profile release-lto --features ega
 
       - name: Copy files into install dir
-        run: cp README.md target/release/martypc install
+        run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
 
       - name: Rename install directory
         run: mv install martypc
