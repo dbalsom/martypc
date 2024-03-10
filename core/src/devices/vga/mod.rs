@@ -2203,7 +2203,7 @@ impl MemoryMappedDevice for VGACard {
             }
             WriteMode::Mode1 => {
                 // Write the contents of the latches to their corresponding planes. This assumes that the latches
-                // were loaded propery via a previous read operation.
+                // were loaded properly via a previous read operation.
 
                 trace!(
                     self,
