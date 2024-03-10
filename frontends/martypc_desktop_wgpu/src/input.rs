@@ -255,22 +255,22 @@ impl TranslateKey for KeyCode {
 
 pub fn button_from_id(id: u32, reverse: bool) -> MouseButton {
     match (OS, id, reverse) {
-        ("windows", 1, false) => MouseButton::Left,
-        ("windows", 1, true) => MouseButton::Right,
-        ("windows", 3, false) => MouseButton::Right,
-        ("windows", 3, true) => MouseButton::Left,
-        ("linux", 1, false) => MouseButton::Left, // TODO: Verify this
-        ("linux", 1, true) => MouseButton::Right,
-        ("linux", 3, false) => MouseButton::Right,
-        ("linux", 3, true) => MouseButton::Left,
+        ("windows", 0, false) => MouseButton::Left,
+        ("windows", 0, true) => MouseButton::Right,
+        ("windows", 1, false) => MouseButton::Right,
+        ("windows", 1, true) => MouseButton::Left,
+        ("linux", 0, false) => MouseButton::Left, // TODO: Verify this
+        ("linux", 0, true) => MouseButton::Right,
+        ("linux", 1, false) => MouseButton::Right,
+        ("linux", 1, true) => MouseButton::Left,
         ("macos", 1, false) => MouseButton::Right, // MacOS is reversed!
         ("macos", 1, true) => MouseButton::Left,
-        ("macos", 3, false) => MouseButton::Left,
-        ("macos", 3, true) => MouseButton::Right,
-        (_, 1, false) => MouseButton::Left,
-        (_, 1, true) => MouseButton::Right,
-        (_, 3, false) => MouseButton::Right,
-        (_, 3, true) => MouseButton::Left,
+        ("macos", 0, false) => MouseButton::Left,
+        ("macos", 0, true) => MouseButton::Right,
+        (_, 0, false) => MouseButton::Left,
+        (_, 0, true) => MouseButton::Right,
+        (_, 1, false) => MouseButton::Right,
+        (_, 1, true) => MouseButton::Left,
         _ => MouseButton::Middle, // TODO: This assumes middle button is always 2, valid?
     }
 }

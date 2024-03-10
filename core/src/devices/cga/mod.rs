@@ -1797,13 +1797,7 @@ impl CGACard {
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.debug_draw {
-                    self.draw_solid_hchar(self.cc_overscan_color);
-                    //self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
-                }
-                else {
-                    self.draw_solid_lchar(self.cc_overscan_color);
-                }
+                self.draw_solid_lchar(self.cc_overscan_color);
             }
             else {
                 //log::warn!("invalid display state...");

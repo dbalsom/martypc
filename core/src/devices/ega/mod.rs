@@ -98,7 +98,7 @@ pub const EGA_DIP_SWITCH_MDA: u8 = 0b1011; // MDA emulation
 pub const EGA_DIP_SWITCH_NORMAL: u8 = 0b1000; // EGA 'normal color'
 pub const EGA_DIP_SWITCH_CGA: u8 = 0b0111; // EGA on CGA monitor
 
-pub const DEFAULT_DIP_SWITCH: u8 = EGA_DIP_SWITCH_CGA;
+pub const DEFAULT_DIP_SWITCH: u8 = EGA_DIP_SWITCH_EGA;
 
 // Maximum height of an EGA character.
 const EGA_CHARACTER_HEIGHT: usize = 32;
@@ -445,30 +445,32 @@ const EGA_FONT14: &'static [u8] = include_bytes!("../../../../assets/ega_8by14.b
 // Apertures are listed in order:
 // NORMAL, FULL, DEBUG
 
+const VERT_ADJUST: u32 = 1;
+
 const EGA14_APERTURE_CROPPED_W: u32 = 640;
 const EGA14_APERTURE_CROPPED_H: u32 = 200;
 const EGA14_APERTURE_CROPPED_X: u32 = 128;
-const EGA14_APERTURE_CROPPED_Y: u32 = 32;
+const EGA14_APERTURE_CROPPED_Y: u32 = 32 + VERT_ADJUST;
 
 const EGA14_APERTURE_ACCURATE_W: u32 = 704;
 const EGA14_APERTURE_ACCURATE_H: u32 = 232;
 const EGA14_APERTURE_ACCURATE_X: u32 = 96;
-const EGA14_APERTURE_ACCURATE_Y: u32 = 16;
+const EGA14_APERTURE_ACCURATE_Y: u32 = 16 + VERT_ADJUST;
 
 const EGA14_APERTURE_FULL_W: u32 = 704;
 const EGA14_APERTURE_FULL_H: u32 = 232;
 const EGA14_APERTURE_FULL_X: u32 = 96;
-const EGA14_APERTURE_FULL_Y: u32 = 16;
+const EGA14_APERTURE_FULL_Y: u32 = 16 + VERT_ADJUST;
 
 const EGA16_APERTURE_CROPPED_W: u32 = 640;
 const EGA16_APERTURE_CROPPED_H: u32 = 350;
 const EGA16_APERTURE_CROPPED_X: u32 = 56;
-const EGA16_APERTURE_CROPPED_Y: u32 = 1;
+const EGA16_APERTURE_CROPPED_Y: u32 = VERT_ADJUST;
 
 const EGA16_APERTURE_FULL_W: u32 = 640 + 16 + 16;
 const EGA16_APERTURE_FULL_H: u32 = 350;
 const EGA16_APERTURE_FULL_X: u32 = 40;
-const EGA16_APERTURE_FULL_Y: u32 = 1;
+const EGA16_APERTURE_FULL_Y: u32 = VERT_ADJUST;
 
 const MDA_MAX_RASTER_X: u32 = 882;
 const MDA_MAX_RASTER_Y: u32 = 369; // Actual value works out to 325,140 / 882 or 368.639
