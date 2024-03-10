@@ -76,11 +76,12 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                 }
                 DeviceEvent::Button { button, state } => {
                     // Button ID is a raw u32. It appears that the id's for relative buttons are not consistent
-                    // across platforms. 1 == left button on windows, 3 == left button on macos. So we resolve
+                    // across platforms. 1 == left button on windows, 3 == left button on macOS. So we resolve
                     // button ids to button enums based on platform. There is a config option to override button
                     // order.
 
                     // Resolve the winit button id to a button enum based on platform and reverse flag.
+                    log::debug!("Button: {:?} State: {:?}", button, state);
                     let mbutton = button_from_id(button, emu.mouse_data.reverse_buttons);
 
                     // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse

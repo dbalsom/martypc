@@ -511,6 +511,10 @@ pub fn run() {
 
     // Mouse event struct
     let mouse_data = MouseData::new(config.emulator.input.reverse_mouse_buttons);
+    log::debug!(
+        "Reverse mouse buttons is: {}",
+        config.emulator.input.reverse_mouse_buttons
+    );
 
     // Init sound
     let sound_player_opt = {
