@@ -51,7 +51,7 @@ pub enum GraphicsRegister {
 pub struct GDataRotateRegister {
     pub count: B3,
     #[bits = 2]
-    pub function: RotateFunction,
+    pub function: LogicFunction,
     #[skip]
     unused: B3,
 }
@@ -96,7 +96,7 @@ pub enum MemoryMap {
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
-pub enum RotateFunction {
+pub enum LogicFunction {
     Unmodified,
     And,
     Or,
@@ -130,6 +130,7 @@ pub struct GraphicsController {
     graphics_enable_set_reset: u8,
     graphics_color_compare: u8,
     graphics_data_rotate: GDataRotateRegister,
+    graphics_data_rotate_function: LogicFunction,
     graphics_read_map_select: u8,
     graphics_mode: GModeRegister,
     graphics_micellaneous: GMiscellaneousRegister,
@@ -154,6 +155,7 @@ impl Default for GraphicsController {
             graphics_enable_set_reset: 0,
             graphics_color_compare: 0,
             graphics_data_rotate: GDataRotateRegister::new(),
+            graphics_data_rotate_function: LogicFunction::Unmodified,
             graphics_read_map_select: 0,
             graphics_mode: GModeRegister::new(),
             graphics_micellaneous: GMiscellaneousRegister::new(),
@@ -403,34 +405,8 @@ impl GraphicsController {
                 // A 1 bit in the Graphics Bit Mask register will use the bit result of the Logical Operation.
                 // A 0 bit in the Graphics Bit Mask register will use the bit unchanged from the Read Latch register.
                 for i in 0..4 {
-                    self.pipeline_buf[i] = match self.graphics_data_rotate.function() {
-                        RotateFunction::Unmodified => {
-                            // Clear masked bits from pipeline, set them with mask bits from latch
-                            (self.pipeline_buf[i] & self.graphics_bitmask) | (!self.graphics_bitmask & self.latches[i])
-                        }
-                        RotateFunction::And => (self.pipeline_buf[i] | !self.graphics_bitmask) & self.latches[i],
-                        RotateFunction::Or => (self.pipeline_buf[i] & self.graphics_bitmask) | self.latches[i],
-                        RotateFunction::Xor => (self.pipeline_buf[i] & self.graphics_bitmask) ^ self.latches[i],
-                    }
+                    self.apply_logic_fn(i);
                 }
-
-                // Fourth, the value of the Bit Mask register is used: A set bit in the Mask register will pass
-                // the bit from the data pipeline, a 0 bit will pass a bit from the read latch register.
-                //for i in 0..4 {
-                //
-                //    self.write_buf[i] = 0;
-                //
-                //    for k in 0..8 {
-                //        if self.graphics_bitmask & (0x01 << k) != 0 {
-                //            // If a bit is set in the mask register, pass the bit from the previous stage
-                //            self.write_buf[i] |= self.pipeline_buf[i] & (0x01 << k);
-                //        }
-                //        else {
-                //            // Otherwise, pass the corresponding bit from the read latch register
-                //            self.write_buf[i] |= self.planes[i].latch & (0x01 << k);
-                //        }
-                //    }
-                //}
 
                 // Finally, write data to the planes enabled in the Memory Plane Write Enable field of
                 // the Sequencer Map Mask register.
@@ -438,47 +414,24 @@ impl GraphicsController {
                 self.foreach_plane(seq, a0, |gc, seq, plane| {
                     seq.plane_set(plane, offset, a0, gc.pipeline_buf[plane]);
                 });
-                /*                for i in 0..4 {
-                    seq.plane_set(i, offset, a0, self.pipeline_buf[i]);
-                }*/
             }
             WriteMode::Mode1 => {
                 // Write the contents of the latches to their corresponding planes. This assumes that the latches
-                // were loaded property via a previous read operation.
+                // were loaded properly via a previous read operation.
                 self.foreach_plane(seq, a0, |gc, seq, plane| {
                     seq.plane_set(plane, offset, a0, gc.latches[plane]);
                 });
-                /*                for i in 0..4 {
-                    seq.plane_set(i, offset, a0, self.latches[i]);
-                }*/
             }
             WriteMode::Mode2 => {
                 self.foreach_plane(seq, a0, |gc, seq, plane| {
                     // Extend the bit for this plane to 8 bits.
-                    let bit_span: u8 = match byte & (0x01 << plane) != 0 {
+                    gc.pipeline_buf[plane] = match byte & (0x01 << plane) != 0 {
                         true => 0xFF,
                         false => 0x00,
                     };
-
-                    // Clear bits not masked
-                    seq.plane_and(plane, offset, a0, !gc.graphics_bitmask);
-                    // Mask off bits not to set
-                    let set_bits = bit_span & gc.graphics_bitmask;
-                    seq.plane_or(plane, offset, a0, set_bits);
+                    gc.apply_logic_fn(plane);
+                    seq.plane_set(plane, offset, a0, gc.pipeline_buf[plane]);
                 });
-                /*                for i in 0..4 {
-                    // Extend the bit for this plane to 8 bits.
-                    let bit_span: u8 = match byte & (0x01 << i) != 0 {
-                        true => 0xFF,
-                        false => 0x00,
-                    };
-
-                    // Clear bits not masked
-                    seq.plane_and(i, offset, address & 0x01, !self.graphics_bitmask);
-                    // Mask off bits not to set
-                    let set_bits = bit_span & self.graphics_bitmask;
-                    seq.plane_or(i, offset, address & 0x01, set_bits);
-                }*/
             }
             WriteMode::Invalid => {
                 log::warn!("Invalid write mode!");
@@ -488,9 +441,22 @@ impl GraphicsController {
     }
 
     #[inline]
-    fn foreach_plane<F>(&mut self, seq: &mut Sequencer, a0: usize, f: F)
+    fn apply_logic_fn(&mut self, p: usize) {
+        self.pipeline_buf[p] = match self.graphics_data_rotate.function() {
+            LogicFunction::Unmodified => {
+                // Clear masked bits from pipeline, set them with mask bits from latch
+                (self.pipeline_buf[p] & self.graphics_bitmask) | (!self.graphics_bitmask & self.latches[p])
+            }
+            LogicFunction::And => (self.pipeline_buf[p] | !self.graphics_bitmask) & self.latches[p],
+            LogicFunction::Or => (self.pipeline_buf[p] & self.graphics_bitmask) | self.latches[p],
+            LogicFunction::Xor => (self.pipeline_buf[p] & self.graphics_bitmask) ^ self.latches[p],
+        }
+    }
+
+    #[inline]
+    fn foreach_plane<F>(&mut self, seq: &mut Sequencer, a0: usize, mut f: F)
     where
-        F: Fn(&mut GraphicsController, &mut Sequencer, usize),
+        F: FnMut(&mut GraphicsController, &mut Sequencer, usize),
     {
         match self.graphics_mode.odd_even() {
             OddEvenModeComplement::Sequential => {
