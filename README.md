@@ -57,7 +57,7 @@ Besides emulating the 8088 CPU, MartyPC emulates the following devices:
 * **CGA** - A dynamic, cycle-or-character clocked implementation of the IBM CGA including the Motorola MC6845 CRTC controller allows MartyPC to run demanding PC demos like 8088MPH and Area5150. MartyPC takes a unique approach to PC video card emulation by simulating the entire display field - including overscan. Composite output and monitor simulation is supported, via reenigne's excellent composite conversion code (also used by DOSBox and 86Box) 
 * **MDA** - A character-clocked implementation of the IBM MDA card built on the Motorola MC6845 CRTC controller. An MDA adapter can be installed alongside a CGA or EGA card for multi-monitor operation.
 * **EGA** - A character-clocked implementation of the IBM EGA builds on the techniques used developing the CGA. It is structured to replicate the logical functions of each of the LSI chips on the original hardware. It supports redefinable fonts, vsync interrupts and per-scanline pel-panning for smooth scrolling.  
-* **µPD764 FDC** - Currently robust enough to support both DOS and Minix operating systems, although floppy image emulation is limited to raw sector images.
+* **µPD765 FDC** - Currently robust enough to support both DOS and Minix operating systems, although floppy image emulation is limited to raw sector images.
 * **IBM/Xebec 20MB HDC** - Emulated with basic VHD support. MartyPC currently supports a single disk geometry of 20MB.
 * **8255 PPI** - Low level keyboard emulation is supported via the PPI and keyboard shift register. Supports the 'turbo bit' found in TurboXT clones.
 * **8259 PIC** - Mostly complete, but still missing advanced features such as priority rotation and nested modes.

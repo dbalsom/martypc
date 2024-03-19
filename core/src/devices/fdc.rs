@@ -26,7 +26,7 @@
 
     devices::fdc.rs
 
-    Implements the NEC µPD764 Floppy Disk Controller
+    Implements the NEC µPD765 Floppy Disk Controller
 */
 
 #![allow(dead_code)]
