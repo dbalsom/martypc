@@ -341,6 +341,7 @@ pub struct BusInterface {
     cycles_to_ticks:   [u32; 256], // TODO: Benchmarks don't show any faster than raw multiplication. It's not slower either though.
     pit_ticks_advance: u32, // We can schedule extra PIT ticks to add when run() occurs. This is generally used for PIT phase offset adjustment.
 
+    do_title_hacks: bool,
     timer_trigger1_armed: bool,
     timer_trigger2_armed: bool,
 
@@ -477,6 +478,7 @@ impl Default for BusInterface {
             cycles_to_ticks:   [0; 256],
             pit_ticks_advance: 0,
 
+            do_title_hacks: false,
             timer_trigger1_armed: false,
             timer_trigger2_armed: false,
 
@@ -499,6 +501,10 @@ impl BusInterface {
             keyboard_type,
             ..BusInterface::default()
         }
+    }
+
+    pub fn set_options(&mut self, do_timing_hacks: bool) {
+        self.do_title_hacks = do_timing_hacks;
     }
 
     /// Update the bus timing table.
@@ -1779,17 +1785,20 @@ impl BusInterface {
         // from halt.
         self.intr_imminent = pit_counting & (pit_counting_element <= IMMINENT_TIMER_INTERRUPT);
 
-        // Do hack for Area5150 :(
-        if pit_reload_value == 5117 {
-            if !self.timer_trigger1_armed {
-                self.timer_trigger1_armed = true;
-                log::warn!("Area5150 hack armed for lake effect.");
+        if self.do_title_hacks {
+            // Arm timer adjustment triggers for Area5150 lake/wibble effects.
+            // The ISR chains that set up these effects are a worst-case situation for emulators.
+            if pit_reload_value == 5117 {
+                if !self.timer_trigger1_armed {
+                    self.timer_trigger1_armed = true;
+                    log::debug!("Area5150 hack armed for lake effect.");
+                }
             }
-        }
-        else if pit_reload_value == 5162 {
-            if !self.timer_trigger2_armed {
-                self.timer_trigger2_armed = true;
-                log::warn!("Area5150 hack armed for wibble effect.");
+            else if pit_reload_value == 5162 {
+                if !self.timer_trigger2_armed {
+                    self.timer_trigger2_armed = true;
+                    log::debug!("Area5150 hack armed for wibble effect.");
+                }
             }
         }
 
@@ -1859,7 +1868,7 @@ impl BusInterface {
             }
         }
 
-        if do_area5150_hack {
+        if self.do_title_hacks && do_area5150_hack {
             if let VideoCardDispatch::Cga(cga) = self.videocards.get_mut(&save_cga).unwrap() {
                 Self::do_area5150_hack(
                     pit_counting_element,

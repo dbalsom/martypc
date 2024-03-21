@@ -127,6 +127,7 @@ pub struct ControlByte {
 pub enum ChannelState {
     WaitingForReload,
     WaitingForGate,
+    DeferLoadCycle,
     WaitingForLoadCycle,
     WaitingForLoadTrigger,
     Counting(ReloadFlag),
@@ -177,6 +178,7 @@ pub struct Channel {
     incomplete_reload: bool,
     dirty: bool,  // Have channel parameters changed since last checked?
     ticked: bool, // Has the counting element been ticked at least once?
+    defer_reload_flag: bool,
 }
 
 #[allow(dead_code)]
@@ -191,6 +193,7 @@ pub struct ProgrammableIntervalTimer {
     channels: Vec<Channel>,
     timewarp: DeviceRunTimeUnit,
     speaker_buf: VecDeque<u8>,
+    defer_reload_flag: bool,
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -283,6 +286,7 @@ impl Channel {
             incomplete_reload: false,
             dirty: false,
             ticked: false,
+            defer_reload_flag: false,
         }
     }
 
@@ -297,7 +301,7 @@ impl Channel {
         // Default load mask
         //self.load_mask = 0xFFFF;
 
-        log::debug!(
+        log::trace!(
             "PIT: Channel {} selected, channel_mode {:?}, rw mode {:?}, bcd: {:?}",
             self.c,
             mode,
@@ -495,15 +499,15 @@ impl Channel {
         }
     }
 
-    pub fn write_byte(&mut self, byte: u8, bus: &mut BusInterface) {
+    pub fn write_byte(&mut self, byte: u8, defer_reload: bool, bus: &mut BusInterface) {
         match *self.rw_mode {
             RwMode::Lsb => {
                 self.count_register.update(byte as u16);
-                self.finalize_load();
+                self.finalize_load(defer_reload);
             }
             RwMode::Msb => {
                 self.count_register.update((byte as u16) << 8);
-                self.finalize_load();
+                self.finalize_load(defer_reload);
             }
             RwMode::LsbMsb => {
                 //log::debug!("rw mode: {:?} byte: {:02X} load_state: {:?}", *self.rw_mode, byte, self.load_state);
@@ -526,16 +530,21 @@ impl Channel {
                         //log::debug!("got msb in lsbmsb mode: {:02X} new count in lsbmsb mode: {}", byte, new_count);
                         self.count_register.update(new_count);
                         self.load_state = LoadState::WaitingForLsb;
-                        self.finalize_load();
+                        self.finalize_load(defer_reload);
                     }
                 }
             }
         }
     }
 
-    pub fn finalize_load(&mut self) {
+    pub fn finalize_load(&mut self, defer_reload: bool) {
         // The count register is transferred to the counting element when a complete count is written.
         self.reload_value.update(*self.count_register);
+
+        let next_reload_state = match defer_reload {
+            true => ChannelState::DeferLoadCycle,
+            false => ChannelState::WaitingForLoadCycle,
+        };
 
         match self.load_type {
             LoadType::InitialLoad => {
@@ -545,7 +554,7 @@ impl Channel {
                     self.change_channel_state(ChannelState::WaitingForLoadTrigger);
                 }
                 else {
-                    self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                    self.change_channel_state(next_reload_state);
                 }
                 // Arm the timer (applicable only to one-shot modes, but doesn't hurt anything to set)
                 self.armed = true;
@@ -557,11 +566,11 @@ impl Channel {
                 match *self.mode {
                     ChannelMode::InterruptOnTerminalCount => {
                         // In InterruptOnTerminalCount mode, completing a load will reload that value on the next cycle.
-                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                        self.change_channel_state(next_reload_state);
                     }
                     ChannelMode::SoftwareTriggeredStrobe => {
                         // In SoftwareTriggeredStrobe mode, completing a load will reload that value on the next cycle.
-                        self.change_channel_state(ChannelState::WaitingForLoadCycle);
+                        self.change_channel_state(next_reload_state);
                     }
                     _ => {
                         // Other modes are not reloaded on a subsequent change of the reload value until gate trigger or
@@ -655,6 +664,12 @@ impl Channel {
     }
 
     pub fn tick(&mut self, bus: &mut BusInterface, _buffer_producer: Option<&mut ringbuf::Producer<u8>>) {
+        if self.channel_state == ChannelState::DeferLoadCycle {
+            // We were too late to load the counter this tick. We'll load it next tick.
+            self.change_channel_state(ChannelState::WaitingForLoadCycle);
+            return;
+        }
+
         if self.channel_state == ChannelState::WaitingForLoadCycle
             || self.channel_state == ChannelState::Counting(ReloadFlag::ReloadNextCycle)
         {
@@ -834,6 +849,7 @@ impl ProgrammableIntervalTimer {
             channels: vec,
             timewarp: DeviceRunTimeUnit::SystemTicks(0),
             speaker_buf: VecDeque::new(),
+            defer_reload_flag: false,
         }
     }
 
@@ -864,8 +880,13 @@ impl ProgrammableIntervalTimer {
         //self.timewarp = self.time_from_ticks(ticks);
         self.timewarp = delta; // the above is technically the correct way but it breaks stuff(?)
 
+        self.defer_reload_flag = false;
+        if self.sys_tick_accumulator > 2 {
+            self.defer_reload_flag = true; // Too late in the bus cycle to reload this tick.
+        }
+
         for _ in 0..ticks {
-            self.tick(bus, None)
+            self.tick(bus, None);
         }
     }
 
@@ -918,7 +939,7 @@ impl ProgrammableIntervalTimer {
     /// Handle a write to one of the PIT's data registers
     /// Writes to this register specify the reload value for the given channel.
     pub fn data_write(&mut self, port_num: usize, data: u8, bus: &mut BusInterface) {
-        self.channels[port_num].write_byte(data, bus);
+        self.channels[port_num].write_byte(data, self.defer_reload_flag, bus);
     }
 
     pub fn data_read(&mut self, port: usize) -> u8 {
