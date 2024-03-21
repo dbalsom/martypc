@@ -166,6 +166,9 @@ headless = false
 # fuzzer: Run the instruction fuzzer (requires validator feature)
 fuzzer = false
 
+# title_hacks: Enable compatibility tweaks for specific software titles
+title_hacks = true
+
 # Debug mode does a few miscellaneous things. 
 # - CPU Autostart is disabled
 # - Several debug panels are opened automatically

@@ -72,4 +72,5 @@ pub trait CoreConfig {
     fn get_cpu_trace_mode(&self) -> Option<TraceMode>;
     fn get_cpu_trace_on(&self) -> bool;
     fn get_cpu_trace_file(&self) -> Option<PathBuf>;
+    fn get_title_hacks(&self) -> bool;
 }

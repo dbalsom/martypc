@@ -139,6 +139,8 @@ pub struct Emulator {
     #[serde(default)]
     pub warpspeed: bool,
     #[serde(default)]
+    pub title_hacks: bool,
+    #[serde(default)]
     pub debug_mode: bool,
     #[serde(default = "_default_true")]
     pub debug_warn: bool,
@@ -296,6 +298,9 @@ pub struct CmdLineArgs {
     pub warpspeed: bool,
 
     #[bpaf(long, switch)]
+    pub title_hacks: bool,
+
+    #[bpaf(long, switch)]
     pub off_rails_detection: bool,
 
     //#[bpaf(long, switch)]
@@ -359,6 +364,7 @@ impl ConfigFileParams {
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.auto_poweron |= shell_args.auto_poweron;
         self.emulator.warpspeed |= shell_args.warpspeed;
+        self.emulator.title_hacks |= shell_args.title_hacks;
         self.emulator.audio.enabled &= !shell_args.noaudio;
 
         //self.emulator.scaler_aspect_correction |= shell_args.scaler_aspect_correction;

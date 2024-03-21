@@ -100,4 +100,7 @@ impl CoreConfig for ConfigFileParams {
     fn get_cpu_trace_file(&self) -> Option<PathBuf> {
         self.machine.cpu.trace_file.clone()
     }
+    fn get_title_hacks(&self) -> bool {
+        self.emulator.title_hacks
+    }
 }

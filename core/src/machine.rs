@@ -433,6 +433,9 @@ impl Machine {
 
         cpu.set_option(CpuOption::TraceLoggingEnabled(core_config.get_cpu_trace_on()));
 
+        // Set bus options from core configuration now that CPU has created the bus
+        cpu.bus_mut().set_options(core_config.get_title_hacks());
+
         // Set up Ringbuffer for PIT channel #2 sampling for PC speaker
         let speaker_buf_size = ((pit::PIT_MHZ * 1_000_000.0) * (BUFFER_MS as f64 / 1000.0)) as usize;
         let speaker_buf: RingBuffer<u8> = RingBuffer::new(speaker_buf_size);
