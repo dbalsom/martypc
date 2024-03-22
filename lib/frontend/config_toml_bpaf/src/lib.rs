@@ -45,7 +45,12 @@ use marty_core::{
     machine_types::HardDiskControllerType,
 };
 
-use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem, MartyGuiTheme};
+use frontend_common::{
+    display_scaler::ScalerPreset,
+    resource_manager::PathConfigItem,
+    BenchmarkEndCondition,
+    MartyGuiTheme,
+};
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
@@ -124,6 +129,7 @@ pub struct Emulator {
     pub basedir: PathBuf,
     pub paths: Vec<PathConfigItem>,
     pub ignore_dirs: Option<Vec<String>>,
+    pub benchmark_mode: bool,
     #[serde(default = "_default_true")]
     pub auto_poweron: bool,
     #[serde(default = "_default_true")]
@@ -164,6 +170,7 @@ pub struct Emulator {
     pub window: Vec<WindowDefinition>,
     pub scaler_preset: Vec<ScalerPreset>,
     pub input: EmulatorInput,
+    pub benchmark: Benchmark,
 }
 
 #[derive(Debug, Deserialize)]
@@ -182,6 +189,17 @@ pub struct Validator {
     pub trigger_address: Option<u32>,
     pub trace_file: Option<PathBuf>,
     pub baud_rate: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Benchmark {
+    pub config_name: String,
+    pub config_overlays: Option<Vec<String>>,
+    #[serde(default)]
+    pub prefer_oem: bool,
+    pub end_condition: BenchmarkEndCondition,
+    pub timeout: Option<u32>,
+    pub cycles: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -275,6 +293,9 @@ pub struct CmdLineArgs {
     pub basedir: Option<PathBuf>,
 
     #[bpaf(long, switch)]
+    pub benchmark_mode: bool,
+
+    #[bpaf(long, switch)]
     pub noaudio: bool,
 
     // Emulator options
@@ -360,6 +381,7 @@ impl ConfigFileParams {
             self.emulator.basedir = basedir;
         }
 
+        self.emulator.benchmark_mode |= shell_args.benchmark_mode;
         self.emulator.headless |= shell_args.headless;
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.auto_poweron |= shell_args.auto_poweron;

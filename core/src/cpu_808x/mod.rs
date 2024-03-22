@@ -1180,6 +1180,10 @@ impl Cpu {
         trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip());
     }
 
+    pub fn get_instruction_ct(&self) -> u64 {
+        self.instruction_count
+    }
+
     /// Calculate the value of IP as needed. The IP register on the 808X is not a physical register,
     /// but produced on demand by adjusting PC by the size of the queue.
     #[inline]

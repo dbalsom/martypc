@@ -40,6 +40,7 @@ mod cpu_test;
 mod emulator;
 mod event_loop;
 mod input;
+mod run_benchmark;
 mod run_headless;
 
 #[cfg(feature = "arduino_validator")]
@@ -50,6 +51,8 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+
+use crate::run_benchmark::run_benchmark;
 
 #[cfg(feature = "arduino_validator")]
 use crate::{cpu_test::gen_tests::run_gentests, cpu_test::run_tests, run_fuzzer::run_fuzzer};
@@ -298,9 +301,29 @@ pub fn run() {
         std::process::exit(1);
     }
 
+    // Initialize machine configuration name, options and prefer_oem flag.
+    // If benchmark_mode is true, we use the values from the benchmark configuration section. This
+    // gives us the ability to run benchmarks with a consistent, static configuration.
+    let mut init_config_name = config.machine.config_name.clone();
+    let mut init_prefer_oem = config.machine.prefer_oem;
+    let mut init_config_overlays = config.machine.config_overlays.clone().unwrap_or_default();
+
+    if config.emulator.benchmark_mode {
+        init_config_name = config.emulator.benchmark.config_name.clone();
+        init_prefer_oem = config.emulator.benchmark.prefer_oem;
+        init_config_overlays = config.emulator.benchmark.config_overlays.clone().unwrap_or_default();
+
+        println!(
+            "Benchmark mode enabled. Using machine config: {} config overlays: [{}] prefer_oem: {}",
+            init_config_name,
+            init_config_overlays.join(", "),
+            init_prefer_oem
+        );
+    }
+
     // Get a list of machine configuration names
     let machine_names = machine_manager.get_config_names();
-    let have_machine_config = machine_names.contains(&config.machine.config_name);
+    let have_machine_config = machine_names.contains(&init_config_name);
 
     // Do --machinescan commandline argument. We print machine info (and rom info if --romscan
     // was also specified) and then quit.
@@ -317,10 +340,8 @@ pub fn run() {
         }
 
         if !have_machine_config {
-            println!(
-                "Warning! No matching configuration found for: {}",
-                config.machine.config_name
-            );
+            println!("Warning! No matching configuration found for: {}", init_config_name);
+            std::process::exit(1);
         }
 
         // Exit unless we will also run romscan
@@ -332,13 +353,13 @@ pub fn run() {
     if !have_machine_config {
         eprintln!(
             "No machine configuration for specified config name: {}",
-            config.machine.config_name
+            init_config_name
         );
         std::process::exit(1);
     }
 
     // Instantiate the new rom manager to load roms
-    let mut rom_manager = frontend_common::rom_manager::RomManager::new(config.machine.prefer_oem);
+    let mut rom_manager = frontend_common::rom_manager::RomManager::new(init_prefer_oem);
     if let Err(err) = rom_manager.load_defs(&resource_manager) {
         eprintln!("Error loading ROM definition files: {}", err);
         std::process::exit(1);
@@ -347,14 +368,12 @@ pub fn run() {
     // Get the ROM requirements for the requested machine type
     let machine_config_file = {
         let mut overlay_vec = Vec::new();
-        if let Some(config_overlay_vec) = &config.machine.config_overlays {
-            for overlay in overlay_vec.iter() {
-                log::debug!("Have machine config overlay from global config: {}", overlay);
-            }
-            overlay_vec = config_overlay_vec.clone();
+        for overlay in init_config_overlays.iter() {
+            log::debug!("Have machine config overlay from global config: {}", overlay);
         }
+        overlay_vec = init_config_overlays.clone();
 
-        match machine_manager.get_config_with_overlays(&config.machine.config_name, &overlay_vec) {
+        match machine_manager.get_config_with_overlays(&init_config_name, &overlay_vec) {
             Ok(config) => config,
             Err(err) => {
                 eprintln!("Error getting machine config: {}", err);
@@ -388,7 +407,7 @@ pub fn run() {
 
     println!(
         "Selected machine config {} requires the following ROM features:",
-        config.machine.config_name
+        init_config_name
     );
     for rom_feature in &required_features {
         println!("  {}", rom_feature);
@@ -396,7 +415,7 @@ pub fn run() {
 
     println!(
         "Selected machine config {} optionally requests the following ROM features:",
-        config.machine.config_name
+        init_config_name
     );
     for rom_feature in &optional_features {
         println!("  {}", rom_feature);
@@ -415,7 +434,7 @@ pub fn run() {
 
     println!(
         "Selected machine config {} has resolved the following ROM sets:",
-        config.machine.config_name
+        init_config_name
     );
     for rom_set in &rom_sets_resolved {
         println!("  {}", rom_set);
@@ -488,6 +507,17 @@ pub fn run() {
         }
     }
 
+    if config.emulator.benchmark_mode {
+        return run_benchmark(
+            &config,
+            machine_config_file,
+            rom_manifest,
+            resource_manager,
+            rom_manager,
+            floppy_manager,
+        );
+    }
+
     // If headless mode was specified, run the emulator in headless mode now
     if config.emulator.headless {
         //return run_headless::run_headless(&config, rom_manager, floppy_manager);
@@ -500,9 +530,6 @@ pub fn run() {
     if config.emulator.cpu_autostart {
         exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
-
-    // Create the logical GUI.
-    let _gui = GuiState::new(exec_control.clone());
 
     let stat_counter = Counter::new();
 

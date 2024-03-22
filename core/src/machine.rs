@@ -764,7 +764,7 @@ impl Machine {
     }
 
     pub fn cpu_instructions(&self) -> u64 {
-        self.cpu_instructions
+        self.cpu.get_instruction_ct()
     }
 
     pub fn system_ticks(&self) -> u64 {
