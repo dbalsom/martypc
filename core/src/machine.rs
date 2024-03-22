@@ -28,7 +28,7 @@
 
     This module defines all the parts that make up the virtual computer.
 
-    This module owns Cpu and thus Bus, and is reponsible for maintaining both
+    This module owns Cpu and thus Bus, and is responsible for maintaining both
     machine and CPU execution state and running the emulated machine by calling
     the appropriate methods on Bus.
 
@@ -629,6 +629,10 @@ impl Machine {
 
     pub fn get_event(&mut self) -> Option<MachineEvent> {
         self.events.pop()
+    }
+
+    pub fn get_cpu_factor(&mut self) -> ClockFactor {
+        self.cpu_factor
     }
 
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
