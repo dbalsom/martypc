@@ -166,32 +166,32 @@ impl Cpu {
 
         let (seg_val, seg, offset) = match mode {
             // All of this relies on 2's compliment arithmetic for signed displacements
-            AddressingMode::BxSi                => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.si)),
-            AddressingMode::BxDi                => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.di)),
+            AddressingMode::BxSi                => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.si)),
+            AddressingMode::BxDi                => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.di)),
             AddressingMode::BpSi                => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si)),  // BP -> SS default seg
             AddressingMode::BpDi                => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di)),  // BP -> SS default seg
             AddressingMode::Si                  => (segment_value_base_ds, segment_base_ds, self.si),
             AddressingMode::Di                  => (segment_value_base_ds, segment_base_ds, self.di),
             AddressingMode::Disp16(disp16)      => (segment_value_base_ds, segment_base_ds, disp16.get_u16()),
-            AddressingMode::Bx                  => (segment_value_base_ds, segment_base_ds, self.bx),
+            AddressingMode::Bx                  => (segment_value_base_ds, segment_base_ds, self.b.x()),
             
-            AddressingMode::BxSiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),
-            AddressingMode::BxDiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),
+            AddressingMode::BxSiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.si.wrapping_add(disp8.get_u16()))),
+            AddressingMode::BxDiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.di.wrapping_add(disp8.get_u16()))),
             AddressingMode::BpSiDisp8(disp8)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
             AddressingMode::BpDiDisp8(disp8)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
             AddressingMode::SiDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.si.wrapping_add(disp8.get_u16())),
             AddressingMode::DiDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.di.wrapping_add(disp8.get_u16())),
             AddressingMode::BpDisp8(disp8)      => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(disp8.get_u16())),    // BP -> SS default seg
-            AddressingMode::BxDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(disp8.get_u16())),
+            AddressingMode::BxDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(disp8.get_u16())),
             
-            AddressingMode::BxSiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.si.wrapping_add(disp16.get_u16()))),
-            AddressingMode::BxDiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(self.di.wrapping_add(disp16.get_u16()))),
+            AddressingMode::BxSiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.si.wrapping_add(disp16.get_u16()))),
+            AddressingMode::BxDiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.di.wrapping_add(disp16.get_u16()))),
             AddressingMode::BpSiDisp16(disp16)  => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
             AddressingMode::BpDiDisp16(disp16)  => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
             AddressingMode::SiDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.si.wrapping_add(disp16.get_u16())),
             AddressingMode::DiDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.di.wrapping_add(disp16.get_u16())),
             AddressingMode::BpDisp16(disp16)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(disp16.get_u16())),   // BP -> SS default reg
-            AddressingMode::BxDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.bx.wrapping_add(disp16.get_u16())),
+            AddressingMode::BxDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(disp16.get_u16())),
 
             // The instruction decoder should convert ModRM operands that specify Registers to Register type operands, so
             // in theory this shouldn't happen
@@ -292,14 +292,14 @@ impl Cpu {
                 Some(byte)
             }
             OperandType::Register8(reg8) => match reg8 {
-                Register8::AH => Some(self.ah),
-                Register8::AL => Some(self.al),
-                Register8::BH => Some(self.bh),
-                Register8::BL => Some(self.bl),
-                Register8::CH => Some(self.ch),
-                Register8::CL => Some(self.cl),
-                Register8::DH => Some(self.dh),
-                Register8::DL => Some(self.dl),
+                Register8::AH => Some(self.a.h()),
+                Register8::AL => Some(self.a.l()),
+                Register8::BH => Some(self.b.h()),
+                Register8::BL => Some(self.b.l()),
+                Register8::CH => Some(self.c.h()),
+                Register8::CL => Some(self.c.l()),
+                Register8::DH => Some(self.d.h()),
+                Register8::DL => Some(self.d.l()),
             }
             OperandType::AddressingMode(_mode) => {
                 // EA operand was already fetched into ea_opr. Return masked byte.
@@ -342,10 +342,10 @@ impl Cpu {
                 Some(word)
             }
             OperandType::Register16(reg16) => match reg16 {
-                Register16::AX => Some(self.ax),
-                Register16::CX => Some(self.cx),
-                Register16::DX => Some(self.dx),
-                Register16::BX => Some(self.bx),
+                Register16::AX => Some(self.a.x()),
+                Register16::CX => Some(self.c.x()),
+                Register16::DX => Some(self.d.x()),
+                Register16::BX => Some(self.b.x()),
                 Register16::SP => Some(self.sp),
                 Register16::BP => Some(self.bp),
                 Register16::SI => Some(self.si),

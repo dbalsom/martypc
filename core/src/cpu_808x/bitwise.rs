@@ -295,7 +295,7 @@ impl Cpu {
                 result = 0xFF;
             }
             Mnemonic::SETMOC => {
-                if self.cl != 0 {
+                if self.c.l() != 0 {
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::AuxCarry);
                     self.clear_flag(Flag::Zero);
@@ -447,7 +447,7 @@ impl Cpu {
                 result = 0xFFFF;
             }
             Mnemonic::SETMOC => {
-                if self.cl != 0 {
+                if self.c.l() != 0 {
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::AuxCarry);
                     self.clear_flag(Flag::Zero);

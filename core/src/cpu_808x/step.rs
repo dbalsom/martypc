@@ -346,10 +346,6 @@ impl Cpu {
         // only valid for a single instruction execution.
         self.intr_pending = false;
 
-        // Check registers and flags for internal consistency.
-        #[cfg(debug_assertions)]
-        self.assert_state();
-
         step_result
     }
 

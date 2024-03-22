@@ -173,7 +173,7 @@ impl Cpu {
                 // Mask CL to 6 bits to shorten tests.
                 // This will still catch emulators that are masking CL to 5 bits.
 
-                self.cl = self.cl & 0x3F;
+                self.c.set_l(self.c.l() & 0x3F);
             }
             0xC0..=0xC3 | 0xC8..=0xCF => {
                 // RETN, RETF, INT[X], IRET

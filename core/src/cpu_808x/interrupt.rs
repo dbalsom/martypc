@@ -45,7 +45,7 @@ impl Cpu {
     pub fn sw_interrupt(&mut self, interrupt: u8) {
         // Interrupt FC, emulator internal services.
         if self.enable_service_interrupt && interrupt == 0xFC {
-            match self.ah {
+            match self.a.h() {
                 0x01 => {
                     // TODO: Make triggering pit logging a separate service number. Just re-using this one
                     // out of laziness.
@@ -53,14 +53,14 @@ impl Cpu {
 
                     log::debug!(
                         "Received emulator trap interrupt: CS: {:04X} IP: {:04X}",
-                        self.bx,
-                        self.cx
+                        self.b.x(),
+                        self.c.x()
                     );
                     self.biu_suspend_fetch();
                     self.cycles(4);
 
-                    self.cs = self.bx;
-                    self.pc = self.cx;
+                    self.cs = self.b.x();
+                    self.pc = self.c.x();
 
                     // Set execution segments
                     self.ds = self.cs;
@@ -96,7 +96,7 @@ impl Cpu {
                 call_ip: new_ip,
                 itype: InterruptType::Software,
                 number: interrupt,
-                ah: self.ah,
+                ah: self.a.h(),
             },
             self.cs,
             self.ip(),
@@ -164,40 +164,40 @@ impl Cpu {
         match interrupt {
             0x10 => {
                 // Video Services
-                match self.ah {
+                match self.a.h() {
                     0x00 => {
                         log::trace!(
                             "CPU: Video Interrupt: {:02X} (AH:{:02X} Set video mode) Video Mode: {:02X}",
                             interrupt,
-                            self.ah,
-                            self.al
+                            self.a.h(),
+                            self.a.l()
                         );
                     }
                     0x01 => {
                         log::trace!(
                             "CPU: Video Interrupt: {:02X} (AH:{:02X} Set text-mode cursor shape: CH:{:02X}, CL:{:02X})",
                             interrupt,
-                            self.ah,
-                            self.ch,
-                            self.cl
+                            self.a.h(),
+                            self.c.h(),
+                            self.c.l()
                         );
                     }
                     0x02 => {
                         log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Set cursor position): Page:{:02X} Row:{:02X} Col:{:02X}",
-                            interrupt, self.ah, self.bh, self.dh, self.dl);
+                            interrupt, self.a.h(), self.b.h(), self.d.h(), self.d.l());
                     }
                     0x09 => {
                         log::trace!("CPU: Video Interrupt: {:02X} (AH:{:02X} Write character and attribute): Char:'{}' Page:{:02X} Color:{:02x} Ct:{:02}", 
-                            interrupt, self.ah, self.al as char, self.bh, self.bl, self.cx);
+                            interrupt, self.a.h(), self.a.l() as char, self.b.h(), self.b.l(), self.c.x());
                     }
                     0x10 => {
                         log::trace!(
                             "CPU: Video Interrupt: {:02X} (AH:{:02X} Write character): Char:'{}' Page:{:02X} Ct:{:02}",
                             interrupt,
-                            self.ah,
-                            self.al as char,
-                            self.bh,
-                            self.cx
+                            self.a.h(),
+                            self.a.l() as char,
+                            self.b.h(),
+                            self.c.x()
                         );
                     }
                     _ => {}
@@ -237,7 +237,7 @@ impl Cpu {
                 call_ip: new_ip,
                 itype,
                 number: vector,
-                ah: self.ah,
+                ah: self.a.h(),
             },
             self.cs,
             self.ip(),

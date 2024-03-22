@@ -58,10 +58,10 @@ impl Cpu {
         self.sp = self.sp.wrapping_sub(2);
 
         let data = match reg {
-            Register16::AX => self.ax,
-            Register16::BX => self.bx,
-            Register16::CX => self.cx,
-            Register16::DX => self.dx,
+            Register16::AX => self.a.x(),
+            Register16::BX => self.b.x(),
+            Register16::CX => self.c.x(),
+            Register16::DX => self.d.x(),
             Register16::SP => self.sp,
             Register16::BP => self.bp,
             Register16::SI => self.si,
