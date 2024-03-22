@@ -1187,7 +1187,7 @@ impl Machine {
             }
 
             // If we returned a step over target address, execution is paused, and step over was requested,
-            // then consume as many instructions as needed to get to to the 'next' instruction. This will
+            // then consume as many instructions as needed to get to the 'next' instruction. This will
             // skip over any CALL or interrupt encountered.
             if step_over {
                 if let Some(step_over_target) = step_over_target {
@@ -1202,7 +1202,7 @@ impl Machine {
                                     StepResult::Normal => cpu_cycles = step_cycles,
                                     StepResult::Call(_) => {
                                         cpu_cycles = step_cycles
-                                        // We are already stepping over a base CALL instruction, so ignore futher CALLS/interrupts.
+                                        // We are already stepping over a base CALL instruction, so ignore further CALLS/interrupts.
                                     }
                                     StepResult::BreakpointHit => {
                                         // We can hit an 'inner' breakpoint while stepping over. This is fine, and ends the step
