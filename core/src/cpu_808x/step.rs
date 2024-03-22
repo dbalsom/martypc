@@ -239,7 +239,7 @@ impl Cpu {
                         cs: last_cs,
                         ip: last_ip,
                         cycles: self.instr_cycle as u16,
-                        i: self.i,
+                        i: self.i.clone(),
                     });
                 }
                 self.instruction_count += 1;
@@ -261,7 +261,7 @@ impl Cpu {
                         cs: last_cs,
                         ip: last_ip,
                         cycles: self.instr_cycle as u16,
-                        i: self.i,
+                        i: self.i.clone(),
                     });
                 }
                 self.instruction_count += 1;
@@ -295,7 +295,7 @@ impl Cpu {
                         cs: last_cs,
                         ip: last_ip,
                         cycles: self.instr_cycle as u16,
-                        i: self.i,
+                        i: self.i.clone(),
                     });
                 }
                 self.instruction_count += 1;

@@ -174,7 +174,7 @@ pub const OPCODE_PREFIX_REP1: u32 = 0b_0001_0000_0000;
 pub const OPCODE_PREFIX_REP2: u32 = 0b_0010_0000_0000;
 
 // The parity flag is calculated from the lower 8 bits of an alu operation regardless
-// of the operand width.  Thefore it is trivial to precalculate a 8-bit parity table.
+// of the operand width.  It is trivial to precalculate an 8-bit parity table.
 pub const PARITY_TABLE: [bool; 256] = {
     let mut table = [false; 256];
     let mut index = 0;
@@ -574,7 +574,7 @@ impl Default for InterruptDescriptor {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct Instruction {
     pub opcode: u8,
     pub flags: u32,
