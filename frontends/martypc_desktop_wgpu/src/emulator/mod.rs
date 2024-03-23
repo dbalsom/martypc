@@ -30,7 +30,7 @@
 */
 
 use display_manager_wgpu::DisplayManager;
-use std::{cell::RefCell, ffi::OsString, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, ffi::OsString, rc::Rc};
 
 use crate::{Counter, KeyboardData, MouseData};
 use anyhow::Error;

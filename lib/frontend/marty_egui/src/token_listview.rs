@@ -85,6 +85,7 @@ impl TokenListView {
         self.max_rows = size;
     }
 
+    #[allow(dead_code)]
     pub fn set_row_span(&mut self, span: usize) {
         self.row_span = span;
     }

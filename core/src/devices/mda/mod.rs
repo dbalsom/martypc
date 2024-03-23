@@ -51,6 +51,7 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
+/*
 #[derive(Copy, Clone)]
 enum RwSlotType {
     Mem,
@@ -74,6 +75,7 @@ struct RwSlot {
     addr: u32,
     tick: u32,
 }
+*/
 
 static DUMMY_PLANE: [u8; 1] = [0];
 static DUMMY_PIXEL: [u8; 4] = [0, 0, 0, 0];
@@ -335,6 +337,7 @@ macro_rules! trace {
 
 pub(crate) use trace;
 
+#[allow(unused_macros)]
 macro_rules! trace_regs {
     ($self:ident) => {
         if $self.trace_logger.is_some() {
@@ -376,7 +379,7 @@ pub struct MDACard {
     catching_up: bool,
 
     last_rw_tick: u32,
-    rw_slots: [RwSlot; 4],
+    //rw_slots: [RwSlot; 4],
     slot_idx: usize,
 
     enable_snow: bool,
@@ -533,7 +536,7 @@ impl Default for MDACard {
             catching_up: false,
 
             last_rw_tick: 0,
-            rw_slots: [Default::default(); 4],
+            //rw_slots: [Default::default(); 4],
             slot_idx: 0,
 
             enable_snow: false,
@@ -688,6 +691,7 @@ impl MDACard {
         }
     }
 
+    /*
     fn rw_op(&mut self, ticks: u32, data: u8, addr: u32, rwtype: RwSlotType) {
         assert!(self.slot_idx < 4);
 
@@ -701,6 +705,7 @@ impl MDACard {
         self.slot_idx += 1;
         self.last_rw_tick = ticks;
     }
+    */
 
     fn catch_up(&mut self, delta: DeviceRunTimeUnit, debug: bool) -> u32 {
         /*
@@ -1040,7 +1045,7 @@ impl MDACard {
     pub fn handle_crtc_tick(&mut self) {
         let (status, vma) = self.crtc.tick(&mut self.hblank_fn);
         // Destructure status so that we can drop the borrow
-        let CrtcStatus { den, hsync, vsync, .. } = *status;
+        let CrtcStatus { hsync, vsync, .. } = *status;
         if vsync {
             //log::warn!(" ************** VSYNC ****************** ");
             self.do_vsync();

@@ -466,7 +466,7 @@ impl SerialPort {
     /// The Interrupt ID Register returns a value representing the highest priority interrupt
     /// currently active.
     fn interrupt_id_read(&mut self) -> u8 {
-        let mut byte = self.calc_irr();
+        let byte = self.calc_irr();
 
         if self.interrupts_active & INTERRUPT_TX_EMPTY != 0 {
             // IBM Docs state that reading the IRR clears this interrupt

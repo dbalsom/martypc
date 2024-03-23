@@ -38,12 +38,6 @@
 
 use crate::devices::ega::EGA_GFX_PLANE_SIZE;
 
-/// When in CGA compatibility mode, the Graphics Controller outputs odd and even bits
-/// to different planes so that the Attribute Controller can process the 2bpp data as
-/// a 4bpp pixel. This array simulates that behavior - instead of emulating the process
-/// in the graphics controller, we precalculate it on write.
-pub const CGA_SHIFT: [u8; 4] = [0, 11, 13, 15];
-
 pub struct Vram {
     // Display Planes
     planes: Box<[[u8; EGA_GFX_PLANE_SIZE]; 4]>,

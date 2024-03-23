@@ -226,12 +226,12 @@ impl VideoCard for MDACard {
         1
     }
 
-    fn get_current_font(&self) -> FontInfo {
-        FontInfo {
+    fn get_current_font(&self) -> Option<FontInfo> {
+        Some(FontInfo {
             w: MDA_CHAR_CLOCK as u32,
             h: CRTC_FONT_HEIGHT as u32,
             font_data: MDA_FONT,
-        }
+        })
     }
 
     fn get_character_height(&self) -> u8 {
@@ -331,7 +331,7 @@ impl VideoCard for MDACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);

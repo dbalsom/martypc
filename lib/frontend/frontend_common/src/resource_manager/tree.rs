@@ -33,7 +33,7 @@
 use crate::resource_manager::ResourceItem;
 use anyhow::{anyhow, Error};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     path::{Path, PathBuf},
 };
 
@@ -129,11 +129,12 @@ impl TreeNode {
                     }
                 }
                 else {
-                    let mut found_path = false;
+                    //let mut found_path = false;
+
                     // Navigate down.
                     for child in self.children() {
                         if child.name.eq_ignore_ascii_case(&component) {
-                            found_path = true;
+                            //found_path = true;
                             return child.navigate(path);
                         }
                         else {

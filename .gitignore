@@ -47,6 +47,9 @@ icon.png
 /install/output/traces/*
 /install/output/dumps/*
 
+# Might add this later if it ever works
+/install/configs/machines/acid88.toml
+
 # Files to include for distribution
 !/install/media/roms/readme.md
 !/install/media/roms/GLaBIOS
@@ -62,3 +65,4 @@ icon.png
 /.idea/workspace.xml
 /flopgen/flopgen_LICENSE.txt
 /tree.txt
+

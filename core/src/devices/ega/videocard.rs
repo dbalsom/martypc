@@ -205,12 +205,8 @@ impl VideoCard for EGACard {
         }
     }
 
-    fn get_current_font(&self) -> FontInfo {
-        let w = EGA_FONTS[self.current_font as usize].w;
-        let h = EGA_FONTS[self.current_font as usize].h;
-        let data = EGA_FONTS[self.current_font as usize].data;
-
-        FontInfo { w, h, font_data: data }
+    fn get_current_font(&self) -> Option<FontInfo> {
+        None
     }
 
     fn get_character_height(&self) -> u8 {

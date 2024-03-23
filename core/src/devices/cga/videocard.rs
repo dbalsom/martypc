@@ -277,12 +277,12 @@ impl VideoCard for CGACard {
         1
     }
 
-    fn get_current_font(&self) -> FontInfo {
-        FontInfo {
+    fn get_current_font(&self) -> Option<FontInfo> {
+        Some(FontInfo {
             w: CGA_HCHAR_CLOCK as u32,
             h: CRTC_FONT_HEIGHT as u32,
             font_data: CGA_FONT,
-        }
+        })
     }
 
     fn get_character_height(&self) -> u8 {

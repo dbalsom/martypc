@@ -49,7 +49,7 @@ use frontend_common::{
 };
 use marty_core::{
     device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
-    devices::{pit::PitDisplayState, ppi::PpiStringState},
+    devices::pit::PitDisplayState,
     machine::{ExecutionControl, MachineState},
 };
 use serde::{Deserialize, Serialize};
@@ -65,29 +65,29 @@ use std::{
 use strum::IntoEnumIterator;
 
 use crate::{
-    themes::GuiTheme,
-    // Use custom windows
-    windows::about::AboutDialog,
-    windows::composite_adjust::CompositeAdjustControl,
-    windows::cpu_control::CpuControl,
-    windows::cpu_state_viewer::CpuViewerControl,
-    windows::cycle_trace_viewer::CycleTraceViewerControl,
-    windows::delay_adjust::DelayAdjustControl,
-    windows::device_control::DeviceControl,
-    windows::disassembly_viewer::DisassemblyControl,
-    windows::dma_viewer::DmaViewerControl,
-    windows::instruction_history_viewer::InstructionHistoryControl,
-    windows::ivt_viewer::IvtViewerControl,
-    windows::memory_viewer::MemoryViewerControl,
-    windows::performance_viewer::PerformanceViewerControl,
-    windows::pic_viewer::PicViewerControl,
-    windows::pit_viewer::PitViewerControl,
-    windows::scaler_adjust::ScalerAdjustControl,
-    windows::vhd_creator::VhdCreator,
-};
-use crate::{
     widgets::file_tree_menu::FileTreeMenu,
-    windows::{call_stack_viewer::CallStackViewer, ppi_viewer::PpiViewerControl, text_mode_viewer::TextModeViewer},
+    windows::{
+        about::AboutDialog,
+        call_stack_viewer::CallStackViewer,
+        composite_adjust::CompositeAdjustControl,
+        cpu_control::CpuControl,
+        cpu_state_viewer::CpuViewerControl,
+        cycle_trace_viewer::CycleTraceViewerControl,
+        delay_adjust::DelayAdjustControl,
+        device_control::DeviceControl,
+        disassembly_viewer::DisassemblyControl,
+        dma_viewer::DmaViewerControl,
+        instruction_history_viewer::InstructionHistoryControl,
+        ivt_viewer::IvtViewerControl,
+        memory_viewer::MemoryViewerControl,
+        performance_viewer::PerformanceViewerControl,
+        pic_viewer::PicViewerControl,
+        pit_viewer::PitViewerControl,
+        ppi_viewer::PpiViewerControl,
+        scaler_adjust::ScalerAdjustControl,
+        text_mode_viewer::TextModeViewer,
+        vhd_creator::VhdCreator,
+    },
 };
 
 pub struct GuiFloppyDriveInfo {
@@ -172,17 +172,10 @@ pub struct GuiState {
 
     // Floppy Disk Images
     pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
-    pub(crate) floppy0_name:  Option<OsString>,
-    pub(crate) floppy1_name:  Option<OsString>,
-
     pub(crate) hdds: Vec<GuiHddInfo>,
 
     // VHD Images
     pub(crate) vhd_names: Vec<OsString>,
-    pub(crate) new_vhd_name0: Option<OsString>,
-    pub(crate) vhd_name0: OsString,
-    pub(crate) new_vhd_name1: Option<OsString>,
-    pub(crate) vhd_name1: OsString,
 
     // Serial ports
     pub(crate) serial_ports: Vec<SerialPortInfo>,
@@ -222,8 +215,7 @@ pub struct GuiState {
 
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
-
-    pub(crate) global_zoom: f32,
+    //pub(crate) global_zoom: f32,
 }
 
 impl GuiState {
@@ -305,16 +297,8 @@ impl GuiState {
             scaler_presets: Vec::new(),
 
             floppy_drives: Vec::new(),
-            floppy0_name: Option::None,
-            floppy1_name: Option::None,
-
             hdds: Vec::new(),
-
             vhd_names: Vec::new(),
-            new_vhd_name0: Option::None,
-            vhd_name0: OsString::new(),
-            new_vhd_name1: Option::None,
-            vhd_name1: OsString::new(),
 
             serial_ports: Vec::new(),
             serial_port_name: String::new(),
@@ -351,8 +335,7 @@ impl GuiState {
 
             floppy_tree_menu: FileTreeMenu::new(),
             hdd_tree_menu: FileTreeMenu::new(),
-
-            global_zoom: 1.0,
+            //global_zoom: 1.0,
         }
     }
 
@@ -499,26 +482,6 @@ impl GuiState {
     pub fn set_scaler_presets(&mut self, presets: &Vec<ScalerPreset>) {
         self.scaler_presets = presets.iter().map(|p| p.name.clone()).collect();
         log::debug!("installed scaler presets: {:?}", self.scaler_presets);
-    }
-
-    /// Retrieve a newly selected VHD image name for the specified device slot.
-    ///
-    /// If a VHD image was selected from the UI then we return it as an Option.
-    /// A return value of None indicates no selection change.
-    pub fn get_new_vhd_name(&mut self, dev: u32) -> Option<OsString> {
-        match dev {
-            0 => {
-                let got_str = self.new_vhd_name0.clone();
-                self.new_vhd_name0 = None;
-                got_str
-            }
-            1 => {
-                let got_str = self.new_vhd_name1.clone();
-                self.new_vhd_name1 = None;
-                got_str
-            }
-            _ => None,
-        }
     }
 
     pub fn show_window(&mut self, window: GuiWindow) {

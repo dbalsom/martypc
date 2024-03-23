@@ -28,11 +28,7 @@
 
 */
 
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    time::{Duration, Instant},
-};
+use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use config_toml_bpaf::ConfigFileParams;
 use frontend_common::{
@@ -52,9 +48,9 @@ pub fn run_benchmark(
     config: &ConfigFileParams,
     machine_config_file: &MachineConfigFileEntry,
     rom_manifest: MachineRomManifest,
-    rm: ResourceManager,
-    romm: RomManager,
-    fm: FloppyManager,
+    _rm: ResourceManager,
+    _romm: RomManager,
+    _fm: FloppyManager,
 ) {
     let machine_config = machine_config_file.to_machine_config();
 
@@ -72,7 +68,7 @@ pub fn run_benchmark(
     let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
     exec_control.borrow_mut().set_state(ExecutionState::Running);
 
-    let mut cycle_total = 0;
+    let cycle_total;
     match config.emulator.benchmark.end_condition {
         BenchmarkEndCondition::Cycles => {
             cycle_total = config.emulator.benchmark.cycles.unwrap_or(10_000_000);

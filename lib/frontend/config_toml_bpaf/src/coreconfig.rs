@@ -40,8 +40,7 @@ use marty_core::{
     coreconfig::CoreConfig,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::keyboard::KeyboardType,
-    machine_types::{HardDiskControllerType, MachineType},
+    machine_types::MachineType,
 };
 
 /*

@@ -2175,7 +2175,7 @@ impl Cpu {
                 self.instruction_history.clear();
                 self.instruction_history_on = state;
             }
-            CpuOption::ScheduleInterrupt(state, cycle_target, cycles, retrigger) => {
+            CpuOption::ScheduleInterrupt(_state, cycle_target, cycles, retrigger) => {
                 log::debug!("Setting InterruptHint to: ({},{})", cycle_target, cycles);
                 self.interrupt_scheduling = true;
                 self.interrupt_cycle_period = cycle_target;

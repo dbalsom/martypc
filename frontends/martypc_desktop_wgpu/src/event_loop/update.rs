@@ -43,8 +43,6 @@ use videocard_renderer::RendererEvent;
 use crate::{
     event_loop::{egui_update::update_egui, render_frame::render_frame},
     Emulator,
-    FPS_TARGET,
-    MICROS_PER_FRAME,
 };
 
 pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &EventLoopWindowTarget<()>) {

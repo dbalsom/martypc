@@ -49,7 +49,7 @@ use marty_core::{
 
 use serde_derive::Deserialize;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     ffi::OsString,
     path::PathBuf,
 };

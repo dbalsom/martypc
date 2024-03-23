@@ -57,7 +57,7 @@ impl InstructionHistoryControl {
 
         let mut new_row = self.row;
         ui.horizontal(|ui| {
-            self.tlv.draw(ui, events, &mut new_row, &mut |scrolled_to, sevents| {});
+            self.tlv.draw(ui, events, &mut new_row, &mut |_scrolled_to, _sevents| {});
         });
     }
 

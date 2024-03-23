@@ -81,6 +81,7 @@ pub enum AttributeBlinkOrIntensity {
 }
 
 #[bitfield]
+#[allow(dead_code)]
 pub struct AttributeAddress {
     address: B5,
     address_source: B1,

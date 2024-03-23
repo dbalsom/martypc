@@ -39,7 +39,7 @@
 */
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
     path::PathBuf,
     time::Duration,
 };
@@ -1179,7 +1179,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
     }
 
     fn on_window_resized(&mut self, wid: WindowId, w: u32, h: u32) -> Result<(), Error> {
-        let idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
+        let _idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
 
         self.window_id_resize_requests
             .entry(wid)

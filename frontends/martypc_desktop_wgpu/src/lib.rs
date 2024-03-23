@@ -60,7 +60,6 @@ use crate::{cpu_test::gen_tests::run_gentests, cpu_test::run_tests, run_fuzzer::
 use config_toml_bpaf::TestMode;
 
 use marty_core::{
-    cpu_validator::ValidatorType,
     devices::keyboard::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState, MachineBuilder},
     sound::SoundPlayer,
@@ -79,16 +78,11 @@ use marty_egui::state::GuiState;
 use run_tests::run_runtests;
 
 use crate::{
-    cpu_test::process_tests::run_processtests,
     emulator::{EmuFlags, Emulator},
     event_loop::handle_event,
 };
 
 pub const FPS_TARGET: f64 = 60.0;
-const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
-
-// Remove static frequency references
-//const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
 // Embed default icon
 const MARTY_ICON: &[u8] = include_bytes!("../../../assets/martypc_icon_small.png");
@@ -367,11 +361,10 @@ pub fn run() {
 
     // Get the ROM requirements for the requested machine type
     let machine_config_file = {
-        let mut overlay_vec = Vec::new();
         for overlay in init_config_overlays.iter() {
             log::debug!("Have machine config overlay from global config: {}", overlay);
         }
-        overlay_vec = init_config_overlays.clone();
+        let overlay_vec = init_config_overlays.clone();
 
         match machine_manager.get_config_with_overlays(&init_config_name, &overlay_vec) {
             Ok(config) => config,

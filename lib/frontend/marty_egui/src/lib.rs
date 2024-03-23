@@ -32,25 +32,23 @@
 extern crate core;
 
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, HashMap, VecDeque},
     ffi::OsString,
     hash::Hash,
-    mem::{discriminant, Discriminant},
-    rc::Rc,
+    mem::{Discriminant},
     time::Duration,
 };
 
-use egui::{Color32, ColorImage, Context, Visuals};
-use egui_notify::{Anchor, Toasts};
+use egui::{Color32, Context, Visuals};
+
 use lazy_static::lazy_static;
 
 use frontend_common::{
     display_manager::DisplayInfo,
-    display_scaler::{ScalerMode, ScalerParams, ScalerPreset},
+    display_scaler::{ScalerMode, ScalerParams},
 };
 
-use serialport::SerialPortInfo;
+
 
 mod color;
 mod constants;
@@ -68,10 +66,10 @@ mod windows;
 mod workspace;
 
 use marty_core::{
-    device_traits::videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
+    device_traits::videocard::{DisplayApertureType},
     device_types::hdc::HardDiskFormat,
-    devices::{pic::PicStringState, pit::PitDisplayState, ppi::PpiStringState},
-    machine::{ExecutionControl, MachineState},
+    devices::{pic::PicStringState},
+    machine::{MachineState},
 };
 
 use serde::{Deserialize, Serialize};

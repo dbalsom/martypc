@@ -31,6 +31,7 @@
 
 use egui::Response;
 
+#[allow(dead_code)]
 pub enum IconType {
     Info,
     Warning,

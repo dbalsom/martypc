@@ -37,13 +37,7 @@ use std::{
     str::FromStr,
 };
 
-use marty_core::{
-    coreconfig::VideoCardDefinition,
-    cpu_common::TraceMode,
-    cpu_validator::ValidatorType,
-    devices::keyboard::KeyboardType,
-    machine_types::HardDiskControllerType,
-};
+use marty_core::{cpu_common::TraceMode, cpu_validator::ValidatorType};
 
 use frontend_common::{
     display_scaler::ScalerPreset,

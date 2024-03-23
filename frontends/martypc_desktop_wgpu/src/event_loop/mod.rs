@@ -39,7 +39,7 @@ mod update;
 
 use keyboard::handle_modifiers;
 
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 use winit::{
     event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
     event_loop::EventLoopWindowTarget,

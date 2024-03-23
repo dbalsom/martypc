@@ -114,9 +114,6 @@ impl VideoRenderer {
                 extents,
                 RenderBpp::Six,
             ),
-            _ => {
-                // unimplemented
-            }
         }
 
         // Draw raster beam position if provided

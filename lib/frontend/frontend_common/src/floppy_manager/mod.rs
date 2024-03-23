@@ -216,7 +216,7 @@ impl FloppyManager {
     }
 
     pub fn load_floppy_data(&self, idx: usize, rm: &ResourceManager) -> Result<Vec<u8>, FloppyError> {
-        let mut floppy_vec = Vec::new();
+        let floppy_vec;
 
         if idx >= self.image_vec.len() {
             return Err(FloppyError::ImageNotFound);
@@ -267,7 +267,7 @@ impl FloppyManager {
     //     }
     // }
 
-    pub fn save_floppy_data(&self, data: &[u8], idx: usize, rm: &ResourceManager) -> Result<PathBuf, FloppyError> {
+    pub fn save_floppy_data(&self, data: &[u8], idx: usize, _rm: &ResourceManager) -> Result<PathBuf, FloppyError> {
         if idx >= self.image_vec.len() {
             return Err(FloppyError::ImageNotFound);
         }

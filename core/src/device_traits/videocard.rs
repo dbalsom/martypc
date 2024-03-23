@@ -399,7 +399,7 @@ pub trait VideoCard {
     fn get_cursor_info(&self) -> CursorInfo;
 
     /// Return a FontInfo struct describing the currently selected font
-    fn get_current_font(&self) -> FontInfo;
+    fn get_current_font(&self) -> Option<FontInfo>;
 
     /// Returns the currently programmed character height
     /// (CRTC Maximum Scanline + 1)

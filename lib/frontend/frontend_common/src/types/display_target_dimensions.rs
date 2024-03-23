@@ -72,6 +72,7 @@ impl ExpandToFit for DisplayTargetDimensions {
 }
 
 impl DisplayTargetDimensions {
+    #[allow(dead_code)]
     fn size_with_margins(&self, margins: DisplayTargetMargins) -> Self {
         Self {
             w: self.w + margins.l + margins.r,

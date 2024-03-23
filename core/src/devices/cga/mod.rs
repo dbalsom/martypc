@@ -759,7 +759,7 @@ impl Default for CGACard {
 }
 
 impl CGACard {
-    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool) -> Self {
+    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, _video_frame_debug: bool) -> Self {
         let mut cga = Self::default();
 
         cga.trace_logger = trace_logger;

@@ -33,7 +33,7 @@
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 
 use marty_core::device_traits::videocard::VideoType;
-use std::time::Duration;
+
 
 use marty_core::machine::MachineState;
 
@@ -123,7 +123,7 @@ impl GuiState {
                 });
             });
 
-            let media_response = ui.menu_button("Media", |ui| {
+            let _media_response = ui.menu_button("Media", |ui| {
                 //ui.set_min_size(egui::vec2(240.0, 0.0));
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
                 ui.set_width_range(egui::Rangef { min: 100.0, max: 240.0 });
@@ -572,7 +572,7 @@ impl GuiState {
         };
     }
 
-    pub fn draw_status_widgets(&mut self, ui: &mut egui::Ui) {
+    pub fn draw_status_widgets(&mut self, _ui: &mut egui::Ui) {
         // Can we put stuff on the right hand side of the menu bar?
         // ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
         //     ui.label("💾");
