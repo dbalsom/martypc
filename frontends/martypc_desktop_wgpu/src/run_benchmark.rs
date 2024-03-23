@@ -100,6 +100,11 @@ pub fn run_benchmark(
         let cycle_batch = std::cmp::min(cycles_left, BENCHMARK_CYCLE_BATCH);
         machine.run(cycle_batch as u32, &mut exec_control.borrow_mut());
         cycles_left = cycles_left.saturating_sub(BENCHMARK_CYCLE_BATCH);
+
+        if let ExecutionState::Halted = exec_control.borrow().get_state() {
+            eprintln!("Machine halted during benchmark!");
+            std::process::exit(1);
+        }
     }
     let benchmark_duration = benchmark_start.elapsed();
 
@@ -117,14 +122,17 @@ pub fn run_benchmark(
         instruction_ct,
         benchmark_duration.as_secs_f64()
     );
+
     println!(
         "Effective Bus speed: {:.4} MHz",
         (sys_ticks as f64 / benchmark_duration.as_secs_f64()) / 1_000_000.0
     );
+
     println!(
         "Effective CPU speed: {:.4} MHz",
         (cycle_total as f64 / benchmark_duration.as_secs_f64()) / 1_000_000.0
     );
+
     println!(
         "MIPS: {:.4}",
         instruction_ct as f64 / benchmark_duration.as_secs_f64() / 1_000_000.0
