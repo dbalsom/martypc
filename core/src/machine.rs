@@ -101,10 +101,7 @@ pub enum MachineState {
 
 impl MachineState {
     pub fn is_on(&self) -> bool {
-        match self {
-            MachineState::Off => false,
-            _ => true,
-        }
+        !matches!(self, MachineState::Off)
     }
 }
 
@@ -138,12 +135,18 @@ pub struct ExecutionControl {
     op: Cell<ExecutionOperation>,
 }
 
-impl ExecutionControl {
-    pub fn new() -> Self {
+impl Default for ExecutionControl {
+    fn default() -> Self {
         Self {
             state: ExecutionState::Paused,
             op:    Cell::new(ExecutionOperation::None),
         }
+    }
+}
+
+impl ExecutionControl {
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn set_state(&mut self, state: ExecutionState) {
@@ -288,7 +291,7 @@ impl<'a> MachineBuilder<'a> {
     pub fn with_machine_config(mut self, config: &MachineConfiguration) -> Self {
         let mtype = config.machine_type;
         self.mtype = Some(mtype);
-        self.descriptor = Some(get_machine_descriptor(mtype).unwrap().clone());
+        self.descriptor = Some(*get_machine_descriptor(mtype).unwrap());
         self.machine_config = Some(config.clone());
         self
     }
@@ -417,6 +420,7 @@ impl Machine {
         #[cfg(feature = "cpu_validator")]
         use crate::cpu_validator::ValidatorMode;
 
+        //noinspection ALL
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
             trace_mode,
@@ -520,13 +524,12 @@ impl Machine {
         }
 
         // Set CPU clock divisor/multiplier
-        let cpu_factor;
-        if core_config.get_machine_turbo() {
-            cpu_factor = machine_desc.cpu_turbo_factor;
+        let cpu_factor = if core_config.get_machine_turbo() {
+            machine_desc.cpu_turbo_factor
         }
         else {
-            cpu_factor = machine_desc.cpu_factor;
-        }
+            machine_desc.cpu_factor
+        };
 
         cpu.emit_header();
         cpu.reset();
@@ -709,6 +712,7 @@ impl Machine {
         self.cpu.get_option(opt)
     }
 
+    //noinspection ALL
     /// Send the specified video option to the active videocard device
     pub fn set_video_option(&mut self, opt: VideoOption) {
         if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
@@ -716,6 +720,7 @@ impl Machine {
         }
     }
 
+    //noinspection ALL
     /// Flush all trace logs for devices that have one
     pub fn flush_trace_logs(&mut self) {
         self.cpu.trace_flush();
@@ -787,8 +792,7 @@ impl Machine {
     pub fn pit_state(&mut self) -> PitDisplayState {
         // Safe to unwrap pit as a PIT will always exist on any machine type
         let pit = self.cpu.bus_mut().pit_mut().as_mut().unwrap();
-        let pit_data = pit.get_display_state(true);
-        pit_data
+        pit.get_display_state(true)
     }
 
     pub fn get_pit_buf(&self) -> Vec<u8> {
@@ -810,12 +814,7 @@ impl Machine {
     }
 
     pub fn ppi_state(&mut self) -> Option<PpiStringState> {
-        if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
-            Some(ppi.get_string_state())
-        }
-        else {
-            None
-        }
+        self.cpu.bus_mut().ppi_mut().as_mut().map(|ppi| ppi.get_string_state())
     }
 
     pub fn set_nmi(&mut self, state: bool) {
@@ -829,14 +828,10 @@ impl Machine {
     }
 
     pub fn videocard_state(&mut self) -> Option<VideoCardState> {
-        if let Some(video_card) = self.cpu.bus_mut().primary_video_mut() {
-            // A video card is present
-            Some(video_card.get_videocard_string_state())
-        }
-        else {
-            // no video card
-            None
-        }
+        self.cpu
+            .bus_mut()
+            .primary_video_mut()
+            .map(|video_card| video_card.get_videocard_string_state())
     }
 
     pub fn get_error_str(&self) -> &Option<String> {
@@ -1076,11 +1071,7 @@ impl Machine {
             }
         };
 
-        let do_run = match self.state {
-            MachineState::On => true,
-            _ => false,
-        };
-
+        let do_run = matches!(self.state, MachineState::On);
         if !do_run {
             return 0;
         }
@@ -1290,7 +1281,7 @@ impl Machine {
         // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
         // fast typist and this method seems to work fine.
         let mut kb_event_opt: Option<KeybufferEntry> = None;
-        if self.kb_buf.len() > 0 && !*kb_event_processed {
+        if !self.kb_buf.is_empty() && !*kb_event_processed {
             kb_event_opt = self.kb_buf.pop_front();
             if kb_event_opt.is_some() {
                 *kb_event_processed = true;
@@ -1326,7 +1317,7 @@ impl Machine {
                         retrigger,
                     ))
                 }
-                DeviceEvent::DramRefreshEnable(state) if state == false => {
+                DeviceEvent::DramRefreshEnable(false) => {
                     // Stop refresh
                     self.cpu.set_option(CpuOption::ScheduleDramRefresh(false, 0, 0, false));
                 }
@@ -1441,7 +1432,7 @@ impl Machine {
                     sum += sample;
 
                     let sample_f32: f32 = if sample == 0 { 0.0 } else { 1.0 };
-                    file.write(&sample_f32.to_le_bytes())
+                    file.write_all(&sample_f32.to_le_bytes())
                         .expect("Error writing to debug sound file");
                 }
                 samples_read = true;
@@ -1481,6 +1472,6 @@ impl Machine {
     where
         F: FnMut(VideoCardInterface),
     {
-        self.bus_mut().for_each_videocard(|video| f(video))
+        self.bus_mut().for_each_videocard(f)
     }
 }

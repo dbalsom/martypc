@@ -613,8 +613,8 @@ mod tests {
         assert_eq!(result, 0xDEAD);
         assert_eq!(carry, false);
 
-        let (result, carry) = Cpu::rcl_u16_with_carry(0xC8a7, 255, false);
-        assert_eq!(result, 0xC8a7);
+        let (result, carry) = Cpu::rcl_u16_with_carry(0xC8A7, 255, false);
+        assert_eq!(result, 0xC8A7);
         assert_eq!(carry, false);
     }
 

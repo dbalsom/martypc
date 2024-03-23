@@ -70,11 +70,9 @@ pub enum FarPtr {
 #[rustfmt::skip]
 impl Cpu {
     #[allow(dead_code)]
-    fn is_register_mode(mode: AddressingMode) {
-        match mode {
-            AddressingMode::RegisterMode => true,
-            _ => false,
-        };
+    #[inline]
+    fn is_register_mode(mode: AddressingMode) -> bool {
+        matches!(mode, AddressingMode::RegisterMode)
     }
 
     pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {

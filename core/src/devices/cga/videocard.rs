@@ -143,7 +143,7 @@ impl VideoCard for CGACard {
                 let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
                 let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
 
-                assert!(ticks == pixel_ticks + (lchar_ticks * 16));
+                assert_eq!(ticks, pixel_ticks + (lchar_ticks * 16));
 
                 for _ in 0..pixel_ticks {
                     self.tick();

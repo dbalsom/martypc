@@ -53,6 +53,7 @@ use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIM
 use marty_core::vhd::VirtualHardDisk;
 use winit::event_loop::EventLoopWindowTarget;
 
+//noinspection RsBorrowChecker
 pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, gui_event: &GuiEvent) {
     match gui_event {
         GuiEvent::Exit => {

@@ -328,7 +328,7 @@ impl Cpu {
         self.set_register8(Register8::AL, quotient as u8);
         self.set_register8(Register8::AH, remainder as u8);
 
-        return true;
+        true
     }
 
     // DIV r/m16 instruction
@@ -351,7 +351,7 @@ impl Cpu {
         self.set_register16(Register16::AX, quotient as u16);
         self.set_register16(Register16::DX, remainder as u16);
 
-        return true;
+        true
     }
 
     // Signed DIV r/m8 instruction
@@ -376,7 +376,7 @@ impl Cpu {
         self.set_register8(Register8::AL, quotient as u8);
         self.set_register8(Register8::AH, remainder as u8);
 
-        return true;
+        true
     }
 
     // Signed DIV r/m16 instruction
@@ -400,8 +400,7 @@ impl Cpu {
         self.set_register16(Register16::AX, quotient as u16);
         self.set_register16(Register16::DX, remainder as u16);
 
-        // Return false if overflow
-        return true;
+        true
     }
 
     /// Sign extend AL into AX
@@ -534,8 +533,7 @@ impl Cpu {
             }
             Mnemonic::NOT => {
                 // Flags: None
-                let result = !operand1;
-                result
+                !operand1
             }
             Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result
@@ -654,8 +652,7 @@ impl Cpu {
             }
             Mnemonic::NOT => {
                 // Flags: None
-                let result = !operand1;
-                result
+                !operand1
             }
             Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result

@@ -332,17 +332,15 @@ impl Cpu {
                 self.next_fetch_state = FetchState::InProgress;
             };
         }
+        else if self.bus_status_latch == BusStatus::CodeFetch
+            && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle))
+        {
+            self.fetch_state = FetchState::Scheduled(ct);
+            self.next_fetch_state = FetchState::Delayed(3);
+        }
         else {
-            if self.bus_status_latch == BusStatus::CodeFetch
-                && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle))
-            {
-                self.fetch_state = FetchState::Scheduled(ct);
-                self.next_fetch_state = FetchState::Delayed(3);
-            }
-            else {
-                self.fetch_state = FetchState::Scheduled(ct);
-                self.next_fetch_state = FetchState::InProgress;
-            };
+            self.fetch_state = FetchState::Scheduled(ct);
+            self.next_fetch_state = FetchState::InProgress;
         }
 
         // new bus logic: transition to PF state
@@ -815,11 +813,9 @@ impl Cpu {
 
     /// If in an active bus cycle, cycle the cpu until the bus cycle has reached at least T2.
     pub fn biu_bus_wait_halt(&mut self) -> u32 {
-        if matches!(self.bus_status_latch, BusStatus::Passive) {
-            if self.t_cycle == TCycle::T1 {
-                self.cycle();
-                return 1;
-            }
+        if matches!(self.bus_status_latch, BusStatus::Passive) && self.t_cycle == TCycle::T1 {
+            self.cycle();
+            return 1;
         }
         0
     }
@@ -864,7 +860,7 @@ impl Cpu {
     /// terminating cycle and the beginning of execution will overlap with T4.
     pub fn biu_bus_wait_until_tx(&mut self) -> u32 {
         let mut bus_cycles_elapsed = 0;
-        match self.bus_status_latch {
+        return match self.bus_status_latch {
             BusStatus::MemRead
             | BusStatus::MemWrite
             | BusStatus::IoRead
@@ -915,10 +911,10 @@ impl Cpu {
                 }
                 */
 
-                return bus_cycles_elapsed;
+                bus_cycles_elapsed
             }
-            _ => return 0,
-        }
+            _ => 0,
+        };
     }
 
     /// Begins a new bus cycle of the specified type.
@@ -1063,7 +1059,7 @@ impl Cpu {
         self.address_bus = address;
         self.address_latch = address;
         self.i8288.ale = true;
-        self.data_bus = data as u16;
+        self.data_bus = data;
         self.transfer_size = size;
         self.operand_size = op_size;
     }

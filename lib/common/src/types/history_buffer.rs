@@ -84,7 +84,7 @@ where
     }
 
     pub fn as_vec(&self) -> Vec<T> {
-        self.iter().map(|x| x.clone()).collect()
+        self.iter().cloned().collect()
     }
 
     pub fn len(&self) -> usize {

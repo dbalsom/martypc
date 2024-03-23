@@ -122,13 +122,13 @@ impl Cpu {
         self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
     }
 
-    /// Ascii adjust before Divison
+    /// Ascii adjust before Division
     /// Flags: The SF, ZF, and PF flags are set according to the resulting binary value in the AL register
     pub fn aad(&mut self, imm8: u8) {
         self.cycles_i(3, &[0x170, 0x171, MC_JUMP]);
         let product_native = (self.a.h() as u16).wrapping_mul(imm8 as u16) as u8;
         let (_, product) = 0u8.corx(self, self.a.h() as u16, imm8 as u16, false);
-        assert!((product as u8) == product_native);
+        assert_eq!((product as u8), product_native);
 
         self.set_register8(Register8::AL, self.a.l().wrapping_add(product as u8));
         self.set_register8(Register8::AH, 0);
@@ -233,7 +233,7 @@ impl Cpu {
         }
 
         if (old_al > al_check) || old_cf {
-            self.set_register8(Register8::AL, self.a.l().wrapping_sub(0x60) as u8);
+            self.set_register8(Register8::AL, self.a.l().wrapping_sub(0x60));
             self.set_flag(Flag::Carry);
         }
         else {
@@ -260,9 +260,9 @@ impl Cpu {
                 self.cycle_i(0x177);
                 // Other sources set flags from AX register. Intel's documentation specifies AL
                 self.set_szp_flags_from_result_u8(self.a.l());
-                return true;
+                true
             }
-            Err(_) => return false,
+            Err(_) => false,
         }
     }
 }

@@ -1788,17 +1788,13 @@ impl BusInterface {
         if self.do_title_hacks {
             // Arm timer adjustment triggers for Area5150 lake/wibble effects.
             // The ISR chains that set up these effects are a worst-case situation for emulators.
-            if pit_reload_value == 5117 {
-                if !self.timer_trigger1_armed {
-                    self.timer_trigger1_armed = true;
-                    log::debug!("Area5150 hack armed for lake effect.");
-                }
+            if pit_reload_value == 5117 && !self.timer_trigger1_armed {
+                self.timer_trigger1_armed = true;
+                log::debug!("Area5150 hack armed for lake effect.");
             }
-            else if pit_reload_value == 5162 {
-                if !self.timer_trigger2_armed {
-                    self.timer_trigger2_armed = true;
-                    log::debug!("Area5150 hack armed for wibble effect.");
-                }
+            else if pit_reload_value == 5162 && !self.timer_trigger2_armed {
+                self.timer_trigger2_armed = true;
+                log::debug!("Area5150 hack armed for wibble effect.");
             }
         }
 
@@ -1988,6 +1984,7 @@ impl BusInterface {
         }
     }
 
+    //noinspection RsBorrowChecker
     /// Call the reset methods for all devices on the bus
     pub fn reset_devices(&mut self) {
         // Reset PIT
