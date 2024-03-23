@@ -611,7 +611,11 @@ impl Channel {
     pub fn count(&mut self) {
         // Decrement and wrap counter appropriately depending on mode.
 
-        if self.bcd_mode {
+        if !self.bcd_mode {
+            // Counter wraps in binary mode.
+            self.counting_element.set((*self.counting_element).wrapping_sub(1));
+        }
+        else {
             // Wrap BCD counter
             if *self.counting_element == 0 {
                 *self.counting_element = 0x9999;
@@ -625,12 +629,12 @@ impl Channel {
                 else if (*self.counting_element & 0x00F0) != 0 {
                     // Tenths place is not 0, borrow from it
                     self.counting_element.set((*self.counting_element).wrapping_sub(0x7));
-                // (0x10 (16) - 7 = 0x09))
+                    // (0x10 (16) - 7 = 0x09))
                 }
                 else if (*self.counting_element & 0x0F00) != 0 {
                     // Hundredths place is not 0, borrow from it
                     self.counting_element.set((*self.counting_element).wrapping_sub(0x67));
-                // (0x100 (256) - 0x67 (103) = 0x99)
+                    // (0x100 (256) - 0x67 (103) = 0x99)
                 }
                 else {
                     // Borrow from thousandths place
@@ -639,19 +643,12 @@ impl Channel {
                 }
             }
         }
-        else {
-            self.counting_element.set((*self.counting_element).wrapping_sub(1));
-            // Counter wraps in binary mode.
-        }
 
         // Update output latch with value of counting_element, if we are not latched
         if !self.count_is_latched {
             self.output_latch.set(*self.counting_element);
         }
-
         self.ticked = true;
-
-        return;
     }
 
     #[inline]
@@ -1130,10 +1127,10 @@ impl ProgrammableIntervalTimer {
         // and the current sample.
         if let Some(buffer) = buffer_producer {
             // Copy any samples that have accumulated in the buffer.
-
             for s in self.speaker_buf.drain(0..) {
                 _ = buffer.push(s);
             }
+            //buffer.push_iter(&mut self.speaker_buf.drain(0..)); <- this is slower for some reason
             _ = buffer.push((speaker_sample) as u8);
         }
         else {
