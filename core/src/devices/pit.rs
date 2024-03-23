@@ -59,6 +59,10 @@ pub const PIT_MHZ: f64 = 1.193182;
 pub const PIT_TICK_US: f64 = 1.0 / PIT_MHZ;
 //pub const PIT_DIVISOR: f64 = 0.25;
 
+// Minimum number of system ticks that must elapse between a counter write and the falling edge
+// of the PIT input clock that would latch the value.
+pub const PIT_WRITE_LATENCY: u32 = 4;
+
 #[derive(Debug, PartialEq)]
 pub enum ChannelMode {
     InterruptOnTerminalCount,
@@ -69,7 +73,7 @@ pub enum ChannelMode {
     HardwareTriggeredStrobe,
 }
 
-// We implement From<u8> for this enum ourselves rather than deriving BitfieldSpecfier
+// We implement From<u8> for this enum ourselves rather than deriving BitfieldSpecifier
 // as there is more than one bit mapping per Enum variant (6 and 7 map to modes 2 & 3 again)
 impl From<u8> for ChannelMode {
     fn from(orig: u8) -> Self {
@@ -881,8 +885,8 @@ impl ProgrammableIntervalTimer {
         self.timewarp = delta; // the above is technically the correct way but it breaks stuff(?)
 
         self.defer_reload_flag = false;
-        if self.sys_tick_accumulator > 2 {
-            self.defer_reload_flag = true; // Too late in the bus cycle to reload this tick.
+        if self.sys_tick_accumulator > (self.clock_divisor - PIT_WRITE_LATENCY) {
+            self.defer_reload_flag = true; // Too close to next clock edge to latch this tick - defer to next tick
         }
 
         for _ in 0..ticks {
