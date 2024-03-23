@@ -78,8 +78,8 @@ off_rails_detection = false
 # What to do when the CPU has entered an unrecoverable halt condition. 
 # Valid options are:
 #  Continue - Do nothing; just keep running
-#  Stop     - Stop the system and display a warning notification
 #  Warn     - Keep running, but display a warning notification
+#  Stop     - Stop the system and display a warning notification
 on_halt = "Warn"
 
 # Enable instruction history. This slows down the emulator a modest amount 
