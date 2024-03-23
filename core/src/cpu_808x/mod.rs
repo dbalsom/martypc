@@ -174,7 +174,7 @@ pub const OPCODE_PREFIX_REP1: u32 = 0b_0001_0000_0000;
 pub const OPCODE_PREFIX_REP2: u32 = 0b_0010_0000_0000;
 
 // The parity flag is calculated from the lower 8 bits of an alu operation regardless
-// of the operand width.  Thefore it is trivial to precalculate a 8-bit parity table.
+// of the operand width.  It is trivial to precalculate an 8-bit parity table.
 pub const PARITY_TABLE: [bool; 256] = {
     let mut table = [false; 256];
     let mut index = 0;
@@ -188,6 +188,76 @@ pub const PARITY_TABLE: [bool; 256] = {
     }
     table
 };
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct GeneralRegisterBytes {
+    pub l: u8,
+    pub h: u8,
+}
+
+#[repr(C)]
+pub union GeneralRegister {
+    b: GeneralRegisterBytes,
+    w: u16,
+}
+impl Default for GeneralRegister {
+    fn default() -> Self {
+        GeneralRegister { w: 0 }
+    }
+}
+
+impl GeneralRegister {
+    // Safety: It is safe to access fields of a union comprised of unsigned integer types.
+    #[inline(always)]
+    pub fn x(&self) -> u16 {
+        unsafe { self.w }
+    }
+    #[inline(always)]
+    pub fn set_x(&mut self, value: u16) {
+        self.w = value;
+    }
+    #[inline(always)]
+    pub fn incr_x(&mut self) {
+        self.w = unsafe { self.w.wrapping_add(1) };
+    }
+    #[inline(always)]
+    pub fn decr_x(&mut self) {
+        self.w = unsafe { self.w.wrapping_sub(1) };
+    }
+    #[inline(always)]
+    pub fn h(&self) -> u8 {
+        unsafe { self.b.h }
+    }
+    #[inline(always)]
+    pub fn set_h(&mut self, value: u8) {
+        self.b.h = value;
+    }
+    #[inline(always)]
+    pub fn incr_h(&mut self) {
+        self.b.h = unsafe { self.b.h.wrapping_add(1) };
+    }
+    #[inline(always)]
+    pub fn decr_h(&mut self) {
+        self.b.h = unsafe { self.b.h.wrapping_sub(1) };
+    }
+    #[inline(always)]
+    pub fn l(&self) -> u8 {
+        unsafe { self.b.l }
+    }
+    #[inline(always)]
+    pub fn set_l(&mut self, value: u8) {
+        self.b.l = value;
+    }
+    #[inline(always)]
+    pub fn incr_l(&mut self) {
+        self.b.l = unsafe { self.b.l.wrapping_add(1) };
+    }
+    #[inline(always)]
+    pub fn decr_l(&mut self) {
+        self.b.l = unsafe { self.b.l.wrapping_sub(1) };
+    }
+}
 
 pub const REGISTER16_LUT: [Register16; 8] = [
     Register16::AX,
@@ -504,7 +574,7 @@ impl Default for InterruptDescriptor {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct Instruction {
     pub opcode: u8,
     pub flags: u32,
@@ -623,26 +693,18 @@ pub struct Cpu {
     cpu_type: CpuType,
     state:    CpuState,
 
-    ah:    u8,
-    al:    u8,
-    ax:    u16,
-    bh:    u8,
-    bl:    u8,
-    bx:    u16,
-    ch:    u8,
-    cl:    u8,
-    cx:    u16,
-    dh:    u8,
-    dl:    u8,
-    dx:    u16,
-    sp:    u16,
-    bp:    u16,
-    si:    u16,
-    di:    u16,
-    cs:    u16,
-    ds:    u16,
-    ss:    u16,
-    es:    u16,
+    a: GeneralRegister,
+    b: GeneralRegister,
+    c: GeneralRegister,
+    d: GeneralRegister,
+    sp: u16,
+    bp: u16,
+    si: u16,
+    di: u16,
+    cs: u16,
+    ds: u16,
+    ss: u16,
+    es: u16,
     //ip:    u16,
     flags: u16,
 
@@ -1485,24 +1547,24 @@ impl Cpu {
     #[inline]
     pub fn get_register8(&self, reg: Register8) -> u8 {
         match reg {
-            Register8::AH => self.ah,
-            Register8::AL => self.al,
-            Register8::BH => self.bh,
-            Register8::BL => self.bl,
-            Register8::CH => self.ch,
-            Register8::CL => self.cl,
-            Register8::DH => self.dh,
-            Register8::DL => self.dl,
+            Register8::AH => self.a.h(),
+            Register8::AL => self.a.l(),
+            Register8::BH => self.b.h(),
+            Register8::BL => self.b.l(),
+            Register8::CH => self.c.h(),
+            Register8::CL => self.c.l(),
+            Register8::DH => self.d.h(),
+            Register8::DL => self.d.l(),
         }
     }
 
     #[inline]
     pub fn get_register16(&self, reg: Register16) -> u16 {
         match reg {
-            Register16::AX => self.ax,
-            Register16::BX => self.bx,
-            Register16::CX => self.cx,
-            Register16::DX => self.dx,
+            Register16::AX => self.a.x(),
+            Register16::BX => self.b.x(),
+            Register16::CX => self.c.x(),
+            Register16::DX => self.d.x(),
             Register16::SP => self.sp,
             Register16::BP => self.bp,
             Register16::SI => self.si,
@@ -1521,70 +1583,29 @@ impl Cpu {
         self.flags
     }
 
-    // Sets one of the 8 bit registers.
-    // It's tempting to represent the H/X registers as a union, because they are one.
-    // However, in the exercise of this project I decided to avoid all unsafe code.
+    // Set one of the 8 bit registers.
     #[inline]
     pub fn set_register8(&mut self, reg: Register8, value: u8) {
         match reg {
-            Register8::AH => {
-                self.ah = value;
-                self.ax = self.ax & REGISTER_HI_MASK | ((value as u16) << 8);
-            }
-            Register8::AL => {
-                self.al = value;
-                self.ax = self.ax & REGISTER_LO_MASK | (value as u16)
-            }
-            Register8::BH => {
-                self.bh = value;
-                self.bx = self.bx & REGISTER_HI_MASK | ((value as u16) << 8);
-            }
-            Register8::BL => {
-                self.bl = value;
-                self.bx = self.bx & REGISTER_LO_MASK | (value as u16)
-            }
-            Register8::CH => {
-                self.ch = value;
-                self.cx = self.cx & REGISTER_HI_MASK | ((value as u16) << 8);
-            }
-            Register8::CL => {
-                self.cl = value;
-                self.cx = self.cx & REGISTER_LO_MASK | (value as u16)
-            }
-            Register8::DH => {
-                self.dh = value;
-                self.dx = self.dx & REGISTER_HI_MASK | ((value as u16) << 8);
-            }
-            Register8::DL => {
-                self.dl = value;
-                self.dx = self.dx & REGISTER_LO_MASK | (value as u16)
-            }
+            Register8::AH => self.a.set_h(value),
+            Register8::AL => self.a.set_l(value),
+            Register8::BH => self.b.set_h(value),
+            Register8::BL => self.b.set_l(value),
+            Register8::CH => self.c.set_h(value),
+            Register8::CL => self.c.set_l(value),
+            Register8::DH => self.d.set_h(value),
+            Register8::DL => self.d.set_l(value),
         }
     }
 
+    // Set one of the 16 bit registers.
     #[inline]
     pub fn set_register16(&mut self, reg: Register16, value: u16) {
         match reg {
-            Register16::AX => {
-                self.ax = value;
-                self.ah = (value >> 8) as u8;
-                self.al = (value & REGISTER_HI_MASK) as u8;
-            }
-            Register16::BX => {
-                self.bx = value;
-                self.bh = (value >> 8) as u8;
-                self.bl = (value & REGISTER_HI_MASK) as u8;
-            }
-            Register16::CX => {
-                self.cx = value;
-                self.ch = (value >> 8) as u8;
-                self.cl = (value & REGISTER_HI_MASK) as u8;
-            }
-            Register16::DX => {
-                self.dx = value;
-                self.dh = (value >> 8) as u8;
-                self.dl = (value & REGISTER_HI_MASK) as u8;
-            }
+            Register16::AX => self.a.set_x(value),
+            Register16::BX => self.b.set_x(value),
+            Register16::CX => self.c.set_x(value),
+            Register16::DX => self.d.set_x(value),
             Register16::SP => self.sp = value,
             Register16::BP => self.bp = value,
             Register16::SI => self.si = value,
@@ -1615,18 +1636,37 @@ impl Cpu {
         }
     }
 
+    #[inline]
     pub fn decrement_register8(&mut self, reg: Register8) {
-        // TODO: do this directly
-        let mut value = self.get_register8(reg);
-        value = value.wrapping_sub(1);
-        self.set_register8(reg, value);
+        match reg {
+            Register8::AH => self.a.decr_h(),
+            Register8::AL => self.a.decr_l(),
+            Register8::BH => self.b.decr_h(),
+            Register8::BL => self.b.decr_l(),
+            Register8::CH => self.c.decr_h(),
+            Register8::CL => self.c.decr_l(),
+            Register8::DH => self.d.decr_h(),
+            Register8::DL => self.d.decr_l(),
+        }
     }
 
+    #[inline]
     pub fn decrement_register16(&mut self, reg: Register16) {
-        // TODO: do this directly
-        let mut value = self.get_register16(reg);
-        value = value.wrapping_sub(1);
-        self.set_register16(reg, value);
+        match reg {
+            Register16::AX => self.a.decr_x(),
+            Register16::BX => self.b.decr_x(),
+            Register16::CX => self.c.decr_x(),
+            Register16::DX => self.d.decr_x(),
+            Register16::SP => self.sp = self.sp.wrapping_sub(1),
+            Register16::BP => self.bp = self.bp.wrapping_sub(1),
+            Register16::SI => self.si = self.si.wrapping_sub(1),
+            Register16::DI => self.di = self.di.wrapping_sub(1),
+            Register16::CS => self.cs = self.cs.wrapping_sub(1),
+            Register16::DS => self.ds = self.ds.wrapping_sub(1),
+            Register16::SS => self.ss = self.ss.wrapping_sub(1),
+            Register16::ES => self.es = self.es.wrapping_sub(1),
+            _ => {}
+        }
     }
 
     pub fn set_reset_vector(&mut self, reset_vector: CpuAddress) {
@@ -1646,18 +1686,18 @@ impl Cpu {
 
     pub fn get_state(&self) -> CpuRegisterState {
         CpuRegisterState {
-            ah:    self.ah,
-            al:    self.al,
-            ax:    self.ax,
-            bh:    self.bh,
-            bl:    self.bl,
-            bx:    self.bx,
-            ch:    self.ch,
-            cl:    self.cl,
-            cx:    self.cx,
-            dh:    self.dh,
-            dl:    self.dl,
-            dx:    self.dx,
+            ah:    self.a.h(),
+            al:    self.a.l(),
+            ax:    self.a.x(),
+            bh:    self.b.h(),
+            bl:    self.b.l(),
+            bx:    self.b.x(),
+            ch:    self.c.h(),
+            cl:    self.c.l(),
+            cx:    self.c.x(),
+            dh:    self.d.h(),
+            dl:    self.d.l(),
+            dx:    self.d.x(),
             sp:    self.sp,
             bp:    self.bp,
             si:    self.si,
@@ -1676,18 +1716,18 @@ impl Cpu {
     /// This is used to display the CPU state viewer window in the debug GUI.
     pub fn get_string_state(&self) -> CpuStringState {
         CpuStringState {
-            ah:   format!("{:02x}", self.ah),
-            al:   format!("{:02x}", self.al),
-            ax:   format!("{:04x}", self.ax),
-            bh:   format!("{:02x}", self.bh),
-            bl:   format!("{:02x}", self.bl),
-            bx:   format!("{:04x}", self.bx),
-            ch:   format!("{:02x}", self.ch),
-            cl:   format!("{:02x}", self.cl),
-            cx:   format!("{:04x}", self.cx),
-            dh:   format!("{:02x}", self.dh),
-            dl:   format!("{:02x}", self.dl),
-            dx:   format!("{:04x}", self.dx),
+            ah:   format!("{:02x}", self.a.h()),
+            al:   format!("{:02x}", self.a.l()),
+            ax:   format!("{:04x}", self.a.x()),
+            bh:   format!("{:02x}", self.b.h()),
+            bl:   format!("{:02x}", self.b.l()),
+            bx:   format!("{:04x}", self.b.x()),
+            ch:   format!("{:02x}", self.c.h()),
+            cl:   format!("{:02x}", self.c.l()),
+            cx:   format!("{:04x}", self.c.x()),
+            dh:   format!("{:02x}", self.d.h()),
+            dl:   format!("{:02x}", self.d.l()),
+            dx:   format!("{:04x}", self.d.x()),
             sp:   format!("{:04x}", self.sp),
             bp:   format!("{:04x}", self.bp),
             si:   format!("{:04x}", self.si),
@@ -1784,18 +1824,18 @@ impl Cpu {
             };
 
             let offset = match reg2 {
-                "ah" => self.ah as u16,
-                "al" => self.al as u16,
-                "ax" => self.ax,
-                "bh" => self.bh as u16,
-                "bl" => self.bl as u16,
-                "bx" => self.bx,
-                "ch" => self.ch as u16,
-                "cl" => self.cl as u16,
-                "cx" => self.cx,
-                "dh" => self.dh as u16,
-                "dl" => self.dl as u16,
-                "dx" => self.dx,
+                "ah" => self.a.h() as u16,
+                "al" => self.a.l() as u16,
+                "ax" => self.a.x(),
+                "bh" => self.b.h() as u16,
+                "bl" => self.b.l() as u16,
+                "bx" => self.b.x(),
+                "ch" => self.c.h() as u16,
+                "cl" => self.c.l() as u16,
+                "cx" => self.c.x(),
+                "dh" => self.d.h() as u16,
+                "dl" => self.d.l() as u16,
+                "dx" => self.d.x(),
                 "sp" => self.sp,
                 "bp" => self.bp,
                 "si" => self.si,
@@ -2104,24 +2144,6 @@ impl Cpu {
     #[inline]
     pub fn trace_instr(&mut self, instr: u16) {
         self.trace_instr = instr;
-    }
-
-    pub fn assert_state(&self) {
-        let ax_should = (self.ah as u16) << 8 | self.al as u16;
-        let bx_should = (self.bh as u16) << 8 | self.bl as u16;
-        let cx_should = (self.ch as u16) << 8 | self.cl as u16;
-        let dx_should = (self.dh as u16) << 8 | self.dl as u16;
-
-        assert_eq!(self.ax, ax_should);
-        assert_eq!(self.bx, bx_should);
-        assert_eq!(self.cx, cx_should);
-        assert_eq!(self.dx, dx_should);
-
-        let should_be_off = self.flags & !CPU_FLAGS_RESERVED_OFF;
-        assert_eq!(should_be_off, 0);
-
-        let should_be_set = self.flags & CPU_FLAGS_RESERVED_ON;
-        assert_eq!(should_be_set, CPU_FLAGS_RESERVED_ON);
     }
 
     pub fn dump_cs(&self, path: &Path) {

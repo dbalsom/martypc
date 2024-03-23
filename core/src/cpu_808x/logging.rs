@@ -60,7 +60,10 @@ impl Cpu {
         instr_str.push_str(&format!("{:04x}:{:04x} {}\n", last_cs, last_ip, self.i));
         instr_str.push_str(&format!(
             "AX: {:04x} BX: {:04x} CX: {:04x} DX: {:04x}\n",
-            self.ax, self.bx, self.cx, self.dx
+            self.a.x(),
+            self.b.x(),
+            self.c.x(),
+            self.d.x()
         ));
         instr_str.push_str(&format!(
             "SP: {:04x} BP: {:04x} SI: {:04x} DI: {:04x}\n",

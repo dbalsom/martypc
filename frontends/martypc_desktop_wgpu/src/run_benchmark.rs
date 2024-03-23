@@ -42,6 +42,7 @@ use frontend_common::{
     rom_manager::RomManager,
     BenchmarkEndCondition,
 };
+use marty_core::bus::ClockFactor;
 
 use marty_core::machine::{ExecutionControl, ExecutionState, MachineBuilder, MachineRomManifest};
 
@@ -75,10 +76,16 @@ pub fn run_benchmark(
     match config.emulator.benchmark.end_condition {
         BenchmarkEndCondition::Cycles => {
             cycle_total = config.emulator.benchmark.cycles.unwrap_or(10_000_000);
+            println!("Running benchmark for {} cycles", cycle_total);
         }
         BenchmarkEndCondition::Timeout => {
-            log::error!("Benchmark 'Timeout' end condition not implemented.");
-            std::process::exit(1);
+            // Calculate number of cycles to run based on timeout
+            let timeout_secs = config.emulator.benchmark.timeout.unwrap_or(30);
+            cycle_total = (machine.get_cpu_mhz() * 1_000_000.0 * timeout_secs as f64) as u64;
+            println!(
+                "Running benchmark for {} virtual seconds; {} cycles",
+                timeout_secs, cycle_total
+            );
         }
         BenchmarkEndCondition::Trigger => {
             log::error!("Benchmark 'Trigger' end condition not implemented.");
@@ -86,7 +93,6 @@ pub fn run_benchmark(
         }
     }
 
-    println!("Running benchmark for {} cycles", cycle_total);
     let mut cycles_left = cycle_total;
 
     let benchmark_start = Instant::now();
@@ -99,6 +105,12 @@ pub fn run_benchmark(
 
     let instruction_ct = machine.cpu_instructions();
 
+    let cpu_factor = machine.get_cpu_factor();
+    let sys_ticks = match cpu_factor {
+        ClockFactor::Divisor(d) => cycle_total * d as u64,
+        ClockFactor::Multiplier(m) => cycle_total / m as u64,
+    };
+
     println!(
         "Benchmark complete.\nRan {} cycles and {} instructions in {:?} seconds.",
         cycle_total,
@@ -107,7 +119,7 @@ pub fn run_benchmark(
     );
     println!(
         "Effective Bus speed: {:.4} MHz",
-        ((cycle_total * 3) as f64 / benchmark_duration.as_secs_f64()) / 1_000_000.0
+        (sys_ticks as f64 / benchmark_duration.as_secs_f64()) / 1_000_000.0
     );
     println!(
         "Effective CPU speed: {:.4} MHz",

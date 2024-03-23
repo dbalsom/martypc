@@ -28,7 +28,7 @@
 
     This module defines all the parts that make up the virtual computer.
 
-    This module owns Cpu and thus Bus, and is reponsible for maintaining both
+    This module owns Cpu and thus Bus, and is responsible for maintaining both
     machine and CPU execution state and running the emulated machine by calling
     the appropriate methods on Bus.
 
@@ -631,6 +631,10 @@ impl Machine {
         self.events.pop()
     }
 
+    pub fn get_cpu_factor(&mut self) -> ClockFactor {
+        self.cpu_factor
+    }
+
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
         let location = Cpu::calc_linear_address(program_seg, program_ofs);
 
@@ -1183,7 +1187,7 @@ impl Machine {
             }
 
             // If we returned a step over target address, execution is paused, and step over was requested,
-            // then consume as many instructions as needed to get to to the 'next' instruction. This will
+            // then consume as many instructions as needed to get to the 'next' instruction. This will
             // skip over any CALL or interrupt encountered.
             if step_over {
                 if let Some(step_over_target) = step_over_target {
@@ -1198,7 +1202,7 @@ impl Machine {
                                     StepResult::Normal => cpu_cycles = step_cycles,
                                     StepResult::Call(_) => {
                                         cpu_cycles = step_cycles
-                                        // We are already stepping over a base CALL instruction, so ignore futher CALLS/interrupts.
+                                        // We are already stepping over a base CALL instruction, so ignore further CALLS/interrupts.
                                     }
                                     StepResult::BreakpointHit => {
                                         // We can hit an 'inner' breakpoint while stepping over. This is fine, and ends the step

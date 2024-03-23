@@ -239,7 +239,7 @@ impl Cpu {
                         cs: last_cs,
                         ip: last_ip,
                         cycles: self.instr_cycle as u16,
-                        i: self.i,
+                        i: self.i.clone(),
                     });
                 }
                 self.instruction_count += 1;
@@ -261,7 +261,7 @@ impl Cpu {
                         cs: last_cs,
                         ip: last_ip,
                         cycles: self.instr_cycle as u16,
-                        i: self.i,
+                        i: self.i.clone(),
                     });
                 }
                 self.instruction_count += 1;
@@ -295,7 +295,7 @@ impl Cpu {
                         cs: last_cs,
                         ip: last_ip,
                         cycles: self.instr_cycle as u16,
-                        i: self.i,
+                        i: self.i.clone(),
                     });
                 }
                 self.instruction_count += 1;
@@ -345,10 +345,6 @@ impl Cpu {
         // Reset interrupt pending flag - this flag is set on step_finish() and
         // only valid for a single instruction execution.
         self.intr_pending = false;
-
-        // Check registers and flags for internal consistency.
-        #[cfg(debug_assertions)]
-        self.assert_state();
 
         step_result
     }
