@@ -48,6 +48,9 @@ pub mod vhd_manager;
 
 pub type FileTreeNode = resource_manager::tree::TreeNode;
 pub type MartyGuiTheme = types::gui::MartyGuiTheme;
+pub type HotkeyEvent = types::hotkeys::HotkeyEvent;
+pub type HotkeyScope = types::hotkeys::HotkeyScope;
+pub type HotkeyConfigEntry = types::hotkeys::HotkeyConfigEntry;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize)]
 pub enum BenchmarkEndCondition {

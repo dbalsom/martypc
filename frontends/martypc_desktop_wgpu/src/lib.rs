@@ -80,6 +80,7 @@ use run_tests::run_runtests;
 use crate::{
     emulator::{EmuFlags, Emulator},
     event_loop::handle_event,
+    input::HotkeyManager,
 };
 
 pub const FPS_TARGET: f64 = 60.0;
@@ -516,6 +517,13 @@ pub fn run() {
         //return run_headless::run_headless(&config, rom_manager, floppy_manager);
     }
 
+    // ----------------------------------------------------------------------------
+    // From this point forward, it is assumed we are staring the full GUI frontend!
+    // ----------------------------------------------------------------------------
+
+    let mut hotkey_manager = HotkeyManager::new();
+    hotkey_manager.add_hotkeys(config.emulator.input.hotkeys.clone());
+
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
 
@@ -652,6 +660,7 @@ pub fn run() {
             render_gui: render_egui,
             debug_keyboard: false,
         },
+        hkm: hotkey_manager,
     };
 
     // Resize video cards

@@ -43,6 +43,7 @@ use frontend_common::{
     display_scaler::ScalerPreset,
     resource_manager::PathConfigItem,
     BenchmarkEndCondition,
+    HotkeyConfigEntry,
     MartyGuiTheme,
 };
 use marty_common::VideoDimensions;
@@ -251,6 +252,7 @@ pub struct Machine {
 pub struct EmulatorInput {
     #[serde(default)]
     pub reverse_mouse_buttons: bool,
+    pub hotkeys: Vec<HotkeyConfigEntry>,
 }
 
 #[derive(Debug, Deserialize)]

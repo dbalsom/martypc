@@ -70,11 +70,12 @@
     * MartyPC now performs low-level emulation of a Model F keyboard instead of directly translating OS input events to
       the core
         * Model M emulation to come
-    * Guest typematic rate is fully configurable
+    * Configurable typematic rate and delay
     * International keyboard layouts are now supported via translation files.
         * Translation files support all keycode names defined by
           w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
         * Translation files can define direct scancode mappings or full macros
+    * Configurable hotkey support
 
 ### Debugger/GUI Improvements
 

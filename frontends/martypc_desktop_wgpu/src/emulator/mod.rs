@@ -32,7 +32,7 @@
 use display_manager_wgpu::DisplayManager;
 use std::{cell::RefCell, ffi::OsString, rc::Rc};
 
-use crate::{Counter, KeyboardData, MouseData};
+use crate::{input::HotkeyManager, Counter, KeyboardData, MouseData};
 use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::WgpuDisplayManager;
@@ -79,6 +79,7 @@ pub struct Emulator {
     pub vhd_manager: VhdManager,
     pub flags: EmuFlags,
     pub perf: PerfSnapshot,
+    pub hkm: HotkeyManager,
 }
 
 impl Emulator {

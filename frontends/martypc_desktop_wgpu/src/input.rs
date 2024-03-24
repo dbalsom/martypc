@@ -33,16 +33,125 @@
     https://w3c.github.io/uievents-code/#code-value-tables
 */
 
-use std::env::consts::OS;
-
-use winit::keyboard::KeyCode;
-
+use frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
 use marty_core::keys::MartyKey;
+use serde_derive::Deserialize;
+use std::{
+    collections::{HashMap, HashSet},
+    env::consts::OS,
+};
+use strum::IntoEnumIterator;
+use winit::keyboard::KeyCode;
 
 pub enum MouseButton {
     Left,
     Right,
     Middle,
+}
+
+pub struct HotkeyState {
+    pub keyset: HashSet<MartyKey>,
+    pub scope: HotkeyScope,
+    pub capture_disable: bool,
+    pub len: usize,
+    pub matched: usize,
+}
+
+impl Default for HotkeyState {
+    fn default() -> Self {
+        HotkeyState {
+            keyset: HashSet::new(),
+            scope: HotkeyScope::Any,
+            capture_disable: false,
+            len: 0,
+            matched: 0,
+        }
+    }
+}
+
+pub struct HotkeyManager {
+    pub hotkeys: HashMap<HotkeyEvent, HotkeyState>,
+}
+
+impl Default for HotkeyManager {
+    fn default() -> Self {
+        let mut hotkeys = HashMap::new();
+        for hotkey in HotkeyEvent::iter() {
+            hotkeys.insert(hotkey, HotkeyState::default());
+        }
+        HotkeyManager { hotkeys }
+    }
+}
+
+impl HotkeyManager {
+    pub fn new() -> Self {
+        HotkeyManager::default()
+    }
+
+    pub fn add_hotkeys(&mut self, hotkey_list: Vec<HotkeyConfigEntry>) {
+        for entry in hotkey_list {
+            self.add_hotkey(entry.event, entry.keys, entry.scope, entry.capture_disable);
+        }
+    }
+
+    pub fn add_hotkey(
+        &mut self,
+        hotkey: HotkeyEvent,
+        keyvec: Vec<MartyKey>,
+        scope: HotkeyScope,
+        capture_disable: bool,
+    ) {
+        let len = keyvec.len();
+        self.hotkeys.insert(
+            hotkey,
+            HotkeyState {
+                keyset: HashSet::from_iter(keyvec.iter().cloned()),
+                scope,
+                capture_disable,
+                len,
+                matched: 0,
+            },
+        );
+    }
+
+    pub fn keydown(&mut self, key: MartyKey, gui_focus: bool, input_captured: bool) -> Option<Vec<HotkeyEvent>> {
+        let mut events = Vec::new();
+        for (hotkey, state) in self.hotkeys.iter_mut() {
+            let mut process_key = match state.scope {
+                HotkeyScope::Any => true,
+                HotkeyScope::Gui => gui_focus,
+                HotkeyScope::Machine => !gui_focus,
+                HotkeyScope::Captured => input_captured,
+            };
+
+            if state.capture_disable && input_captured {
+                process_key = false;
+            }
+
+            if process_key && state.keyset.contains(&key) {
+                state.matched += 1;
+                if state.matched == state.len {
+                    log::debug!("Hotkey matched: {:?}, len: {}", hotkey, state.len);
+                    events.push(*hotkey);
+                }
+            }
+        }
+
+        if events.is_empty() {
+            None
+        }
+        else {
+            Some(events)
+        }
+    }
+
+    pub fn keyup(&mut self, key: MartyKey) {
+        for state in self.hotkeys.values_mut() {
+            if state.keyset.contains(&key) {
+                state.matched = state.matched.saturating_sub(1);
+            }
+        }
+    }
 }
 
 pub trait TranslateKey {

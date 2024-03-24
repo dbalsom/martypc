@@ -37,6 +37,8 @@ use winit::{
 };
 
 use display_manager_wgpu::DisplayManager;
+use frontend_common::{constants::LONG_NOTIFICATION_TIME, HotkeyEvent};
+use marty_core::machine::MachineState;
 
 use crate::{input::TranslateKey, Emulator};
 
@@ -77,82 +79,23 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
         .get_gui_by_window_id(window_id)
         .map_or(false, |gui| gui.has_focus());
 
-    // Get the window for this event.
-    let event_window = emu
-        .dm
-        .get_window_by_id(window_id)
-        .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
-
     match (physical_key, gui_has_focus) {
         (PhysicalKey::Code(keycode), gui_focus) => {
             // An egui widget doesn't have focus, so send an event to the emulated machine
 
-            //handle_hotkey(emu, keycode);
+            process_hotkeys(
+                emu,
+                *keycode,
+                matches!(state, ElementState::Pressed),
+                window_id,
+                gui_focus,
+            );
 
-            // Match global hotkeys regardless of egui focus
-            match (state, keycode) {
-                (winit::event::ElementState::Pressed, KeyCode::F1) => {
-                    if emu.kb_data.ctrl_pressed {
-                        log::info!("Control F1 pressed. Toggling egui state.");
-                        emu.flags.render_gui = !emu.flags.render_gui;
-                    }
-                }
-                (winit::event::ElementState::Pressed, KeyCode::F10) => {
-                    if emu.kb_data.ctrl_pressed {
-                        // Ctrl-F10 pressed. Toggle mouse capture.
-                        log::info!("Control F10 pressed. Capturing mouse cursor.");
-                        if !emu.mouse_data.is_captured {
-                            let mut grab_success = false;
-
-                            match event_window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
-                                Ok(_) => {
-                                    emu.mouse_data.is_captured = true;
-                                    grab_success = true;
-                                }
-                                Err(_) => {
-                                    // Try alternate grab mode (Windows/Mac require opposite modes)
-                                    match event_window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
-                                        Ok(_) => {
-                                            emu.mouse_data.is_captured = true;
-                                            grab_success = true;
-                                        }
-                                        Err(e) => {
-                                            log::error!("Couldn't set cursor grab mode: {:?}", e)
-                                        }
-                                    }
-                                }
-                            }
-                            // Hide mouse cursor if grab successful
-                            if grab_success {
-                                event_window.set_cursor_visible(false);
-                            }
-                        }
-                        else {
-                            // Cursor is grabbed, ungrab
-                            match event_window.set_cursor_grab(winit::window::CursorGrabMode::None) {
-                                Ok(_) => emu.mouse_data.is_captured = false,
-                                Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e),
-                            }
-                            event_window.set_cursor_visible(true);
-                        }
-                    }
-                }
-                (winit::event::ElementState::Pressed, KeyCode::Enter) => {
-                    if emu.kb_data.ctrl_pressed && emu.kb_data.modifiers.alt {
-                        // Ctrl-Alt Enter pressed. Toggle fullscreen.
-                        log::info!("Control-Alt-Enter pressed. Toggling fullscreen.");
-                        match event_window.fullscreen() {
-                            Some(_) => {
-                                event_window.set_fullscreen(None);
-                            }
-                            None => {
-                                event_window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
+            // Get the window for this event.
+            let event_window = emu
+                .dm
+                .get_window_by_id(window_id)
+                .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
 
             match gui_focus {
                 true => {
@@ -197,4 +140,112 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
     }
 
     return false;
+}
+
+pub fn process_hotkeys(emu: &mut Emulator, keycode: KeyCode, pressed: bool, window_id: WindowId, gui_focus: bool) {
+    let mut event_opt = None;
+    if pressed {
+        event_opt = emu
+            .hkm
+            .keydown(keycode.to_internal(), gui_focus, emu.mouse_data.is_captured);
+    }
+    else {
+        emu.hkm.keyup(keycode.to_internal())
+    }
+
+    for hotkey in event_opt.unwrap_or_default().iter() {
+        match hotkey {
+            HotkeyEvent::ToggleGui => {
+                log::debug!("ToggleGui hotkey triggered. Toggling GUI visibility.");
+                emu.flags.render_gui = !emu.flags.render_gui;
+            }
+            HotkeyEvent::CaptureMouse => {
+                // Get the window for this event.
+                let event_window = emu
+                    .dm
+                    .get_window_by_id(window_id)
+                    .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
+
+                log::debug!("CaptureMouse hotkey triggered. Capturing mouse cursor.");
+                if !emu.mouse_data.is_captured {
+                    let mut grab_success = false;
+
+                    match event_window.set_cursor_grab(winit::window::CursorGrabMode::Confined) {
+                        Ok(_) => {
+                            emu.mouse_data.is_captured = true;
+                            grab_success = true;
+                        }
+                        Err(_) => {
+                            // Try alternate grab mode (Windows/Mac require opposite modes)
+                            match event_window.set_cursor_grab(winit::window::CursorGrabMode::Locked) {
+                                Ok(_) => {
+                                    emu.mouse_data.is_captured = true;
+                                    grab_success = true;
+                                }
+                                Err(e) => {
+                                    log::error!("Couldn't set cursor grab mode: {:?}", e)
+                                }
+                            }
+                        }
+                    }
+                    // Hide mouse cursor if grab successful
+                    if grab_success {
+                        event_window.set_cursor_visible(false);
+                    }
+                }
+                else {
+                    // Cursor is grabbed, ungrab
+                    match event_window.set_cursor_grab(winit::window::CursorGrabMode::None) {
+                        Ok(_) => emu.mouse_data.is_captured = false,
+                        Err(e) => log::error!("Couldn't set cursor grab mode: {:?}", e),
+                    }
+                    event_window.set_cursor_visible(true);
+                }
+            }
+            HotkeyEvent::CtrlAltDel => {
+                log::debug!("CtrlAltDel hotkey triggered. Sending Ctrl-Alt-Del to machine.");
+                emu.machine.emit_ctrl_alt_del();
+            }
+            HotkeyEvent::Reboot => {
+                log::debug!("Reboot hotkey triggered. Restarting machine.");
+                emu.machine.change_state(MachineState::Rebooting);
+            }
+            HotkeyEvent::ToggleFullscreen => {
+                log::debug!("ToggleFullscreen hotkey triggered.");
+                // Get the window for this event.
+                let event_window = emu
+                    .dm
+                    .get_window_by_id(window_id)
+                    .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
+
+                match event_window.fullscreen() {
+                    Some(_) => {
+                        log::debug!("ToggleFullscreen: Resetting fullscreen state.");
+                        event_window.set_fullscreen(None);
+                    }
+                    None => {
+                        log::debug!("ToggleFullscreen: Entering fullscreen state.");
+                        event_window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                    }
+                }
+            }
+            HotkeyEvent::Screenshot => {
+                log::debug!("Screenshot hotkey triggered. Capturing screenshot.");
+
+                let screenshot_path = emu.rm.get_resource_path("screenshot").unwrap();
+
+                // Take as screenshot of the primary display target.
+                if let Err(err) = emu.dm.save_screenshot(0, screenshot_path) {
+                    log::error!("Failed to save screenshot: {}", err);
+                    emu.gui
+                        .toasts()
+                        .error(format!("{}", err))
+                        .set_duration(Some(LONG_NOTIFICATION_TIME));
+                }
+            }
+            _ => {
+                log::debug!("Unhandled Hotkey triggered: {:?}", hotkey);
+            }
+        }
+    }
 }

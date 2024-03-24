@@ -1425,6 +1425,8 @@ dependencies = [
  "ringbuf 0.3.3",
  "serde",
  "serde_derive",
+ "strum 0.26.2",
+ "strum_macros 0.26.2",
  "toml 0.5.11",
  "videocard_renderer",
  "web-time",
@@ -2069,8 +2071,8 @@ dependencies = [
  "serde_derive",
  "serde_with",
  "serialport",
- "strum",
- "strum_macros",
+ "strum 0.26.2",
+ "strum_macros 0.26.2",
  "toml 0.5.11",
  "uuid",
 ]
@@ -2096,8 +2098,8 @@ dependencies = [
  "regex",
  "serde",
  "serialport",
- "strum",
- "strum_macros",
+ "strum 0.25.0",
+ "strum_macros 0.25.3",
  "toml 0.8.8",
  "videocard_renderer",
  "web-time",
@@ -2200,6 +2202,8 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "serialport",
+ "strum 0.26.2",
+ "strum_macros 0.26.2",
  "videocard_renderer",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3491,10 +3495,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
 
 [[package]]
+name = "strum"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d8cec3501a5194c432b2b7976db6b7d10ec95c253208b45f83f7136aa985e29"
+
+[[package]]
 name = "strum_macros"
 version = "0.25.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23dc1fa9ac9c169a78ba62f0b841814b7abae11bdd047b9c58f893439e309ea0"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.48",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.26.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6cf59daf282c0a494ba14fd21610a0325f9f90ec9d1231dea26bcb1d696c946"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -4141,7 +4164,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga 0.12.3",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle 0.5.2",
  "smallvec",
@@ -4166,7 +4189,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga 0.14.2",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle 0.5.2",
  "smallvec",
@@ -4191,7 +4214,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga 0.12.3",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle 0.5.2",
  "rustc-hash",
@@ -4214,7 +4237,7 @@ dependencies = [
  "codespan-reporting",
  "log",
  "naga 0.14.2",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "raw-window-handle 0.5.2",
  "rustc-hash",
@@ -4253,7 +4276,7 @@ dependencies = [
  "metal 0.24.0",
  "naga 0.12.3",
  "objc",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle 0.5.2",
@@ -4296,7 +4319,7 @@ dependencies = [
  "naga 0.14.2",
  "objc",
  "once_cell",
- "parking_lot 0.11.2",
+ "parking_lot 0.12.1",
  "profiling",
  "range-alloc",
  "raw-window-handle 0.5.2",
