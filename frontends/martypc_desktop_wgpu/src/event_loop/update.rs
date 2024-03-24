@@ -60,7 +60,6 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
         },
         |emuc, cycles| {
             // Per emu update freq
-
             emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
         },
         |emuc, tmc, &perf| {

@@ -51,6 +51,7 @@ use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
 use marty_core::vhd::VirtualHardDisk;
+use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
 //noinspection RsBorrowChecker
@@ -106,6 +107,27 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         log::debug!("Got scaler preset update event: {:?}", new_preset);
                         if let Err(_e) = emu.dm.apply_scaler_preset(*d_idx, new_preset.clone()) {
                             log::error!("Failed to set scaler preset for display target!");
+                        }
+
+                        // Update dependent GUI items
+                        if let Some(scaler_params) = emu.dm.get_scaler_params(*d_idx) {
+                            //emu.gui.set_option_enum(GuiEnum::DisplayComposite(scaler_params), GuiVariableContext::Display(*d_idx));
+                        }
+                        if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
+                            // Update composite checkbox state
+                            let composite_enable = renderer.get_composite();
+                            emu.gui.set_option_enum(
+                                GuiEnum::DisplayComposite(composite_enable),
+                                Some(GuiVariableContext::Display(*d_idx)),
+                            );
+
+                            // Update aspect correction checkbox state
+                            let aspect_correct = renderer.get_params().aspect_correction;
+                            let aspect_correct_on = !matches!(aspect_correct, AspectCorrectionMode::None);
+                            emu.gui.set_option_enum(
+                                GuiEnum::DisplayAspectCorrect(aspect_correct_on),
+                                Some(GuiVariableContext::Display(*d_idx)),
+                            );
                         }
                     }
                     GuiEnum::DisplayComposite(state) => {

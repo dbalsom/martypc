@@ -279,6 +279,9 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// Apply the specified scaler parameters to the specified display target.
     fn apply_scaler_params(&mut self, dt_idx: usize, params: &ScalerParams) -> Result<(), Error>;
 
+    /// Get the scaler parameters for the specified display target.
+    fn get_scaler_params(&self, dt_idx: usize) -> Option<ScalerParams>;
+
     /// Set the desired Display Aperture for the specified display target.
     /// Returns the associated VideoCardId, as the card will need to be resized when the aperture
     /// is changed.

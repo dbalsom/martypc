@@ -38,11 +38,7 @@
    - A file (for screenshots)
 */
 
-use std::{
-    collections::{HashMap},
-    path::PathBuf,
-    time::Duration,
-};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 pub use display_backend_pixels::{
     BufferDimensions,
@@ -474,7 +470,7 @@ impl DisplayTargetContext<PixelsBackend> {
 
         scaler.set_mode(
             self.backend.as_mut().unwrap().get_backend_raw().unwrap(),
-            preset.mode.unwrap_or(ScalerMode::Integer),
+            preset.mode.unwrap_or(scaler.get_mode()),
         );
         scaler.set_bilinear(bilinear);
         scaler.set_fill_color(MartyColor::from_u24(preset.border_color.unwrap_or(0)));
@@ -1413,6 +1409,15 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
             return Err(anyhow!("Display target out of range!"));
         }
         Ok(())
+    }
+
+    fn get_scaler_params(&self, dt_idx: usize) -> Option<ScalerParams> {
+        if dt_idx < self.targets.len() {
+            self.targets[dt_idx].scaler_params.clone()
+        }
+        else {
+            None
+        }
     }
 
     fn set_display_aperture(
