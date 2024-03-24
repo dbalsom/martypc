@@ -39,7 +39,7 @@ mod update;
 
 use keyboard::handle_modifiers;
 
-use std::time::{Instant};
+use std::time::Instant;
 use winit::{
     event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
     event_loop::EventLoopWindowTarget,
@@ -81,7 +81,7 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                     // order.
 
                     // Resolve the winit button id to a button enum based on platform and reverse flag.
-                    log::debug!("Button: {:?} State: {:?}", button, state);
+                    //log::debug!("Button: {:?} State: {:?}", button, state);
                     let mbutton = button_from_id(button, emu.mouse_data.reverse_buttons);
 
                     // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse
