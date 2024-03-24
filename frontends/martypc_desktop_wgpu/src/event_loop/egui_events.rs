@@ -498,7 +498,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
         }
         GuiEvent::CtrlAltDel => {
-            emu.machine.ctrl_alt_del();
+            emu.machine.emit_ctrl_alt_del();
         }
         GuiEvent::CompositeAdjust(dt_idx, params) => {
             //log::warn!("got composite params: {:?}", params);

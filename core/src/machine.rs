@@ -877,20 +877,34 @@ impl Machine {
         });
     }
 
+    #[rustfmt::skip]
     /// Simulate the user pressing control-alt-delete.
-    pub fn ctrl_alt_del(&mut self) {
-        /*
-        self.kb_buf.push_back(0x1D); // Left-control
-        self.kb_buf.push_back(0x38); // Left-alt
-        self.kb_buf.push_back(0x53); // Delete
+    pub fn emit_ctrl_alt_del(&mut self) {
+        let reboot_keycodes = [
+            MartyKey::ControlLeft,
+            MartyKey::AltLeft,
+            MartyKey::Delete,
+        ];
 
-        // Debugging only. A real PC does not reset anything on ctrl-alt-del
-        //self.bus_mut().reset_devices_warm();
-
-        self.kb_buf.push_back(0x1D | 0x80);
-        self.kb_buf.push_back(0x38 | 0x80);
-        self.kb_buf.push_back(0x53 | 0x80);
-        */
+        // Press ctrl-alt-del
+        for keycode in reboot_keycodes.iter() {
+            self.kb_buf.push_back(KeybufferEntry {
+                keycode: *keycode,
+                pressed: true,
+                modifiers: KeyboardModifiers::default(),
+                translate: false,
+            });
+        }
+        
+        // Release ctrl-alt-del
+        for keycode in reboot_keycodes.iter() {
+            self.kb_buf.push_back(KeybufferEntry {
+                keycode: *keycode,
+                pressed: false,
+                modifiers: KeyboardModifiers::default(),
+                translate: false,
+            });
+        }
     }
 
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
