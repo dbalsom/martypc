@@ -61,7 +61,7 @@ pub const PIT_TICK_US: f64 = 1.0 / PIT_MHZ;
 
 // Minimum number of system ticks that must elapse between a counter write and the falling edge
 // of the PIT input clock that would latch the value.
-pub const PIT_WRITE_LATENCY: u32 = 4;
+pub const PIT_WRITE_LATENCY: u32 = 3;
 
 #[derive(Debug, PartialEq)]
 pub enum ChannelMode {
@@ -884,12 +884,15 @@ impl ProgrammableIntervalTimer {
         self.timewarp = delta; // the above is technically the correct way but it breaks stuff(?)
 
         self.defer_reload_flag = false;
-        if self.sys_tick_accumulator > (self.clock_divisor - PIT_WRITE_LATENCY) {
-            self.defer_reload_flag = true; // Too close to next clock edge to latch this tick - defer to next tick
-        }
 
+        // Tick the PIT for the number of timer clocks that have elapsed.
         for _ in 0..ticks {
             self.tick(bus, None);
+        }
+        // Any remaining ticks in the accumulator represent the number of system ticks that have
+        // elapsed up until T3 of the write that fast-forwarded the PIT
+        if self.sys_tick_accumulator > (self.clock_divisor - PIT_WRITE_LATENCY) {
+            self.defer_reload_flag = true; // Too close to next clock edge to latch this tick - defer to next tick
         }
     }
 
