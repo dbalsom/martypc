@@ -198,6 +198,7 @@ pub struct ProgrammableIntervalTimer {
     timewarp: DeviceRunTimeUnit,
     speaker_buf: VecDeque<u8>,
     defer_reload_flag: bool,
+    do_speaker: bool,
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -827,7 +828,7 @@ impl Channel {
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new(ptype: PitType, _crystal: f64, clock_divisor: u32) -> Self {
+    pub fn new(ptype: PitType, _crystal: f64, clock_divisor: u32, do_speaker: bool) -> Self {
         /*
             The Intel documentation says:
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -851,6 +852,7 @@ impl ProgrammableIntervalTimer {
             timewarp: DeviceRunTimeUnit::SystemTicks(0),
             speaker_buf: VecDeque::new(),
             defer_reload_flag: false,
+            do_speaker,
         }
     }
 
@@ -1114,28 +1116,30 @@ impl ProgrammableIntervalTimer {
 
         //log::trace!("tick(): cycle: {} channel 1 count: {}", self.pit_cycles * 4 + 7, *self.channels[1].counting_element);
 
-        let mut speaker_sample = *self.channels[2].output && speaker_data;
+        if self.do_speaker {
+            let mut speaker_sample = *self.channels[2].output && speaker_data;
 
-        if let ChannelMode::SquareWaveGenerator = *self.channels[2].mode {
-            // Silence speaker if frequency is > 14Khz (approx)
-            if *self.channels[2].count_register <= 170 {
-                speaker_sample = false;
+            if let ChannelMode::SquareWaveGenerator = *self.channels[2].mode {
+                // Silence speaker if frequency is > 14Khz (approx)
+                if *self.channels[2].count_register <= 170 {
+                    speaker_sample = false;
+                }
             }
-        }
 
-        // If we have been passed a buffer, fill it with any queued samples
-        // and the current sample.
-        if let Some(buffer) = buffer_producer {
-            // Copy any samples that have accumulated in the buffer.
-            for s in self.speaker_buf.drain(0..) {
-                _ = buffer.push(s);
+            // If we have been passed a buffer, fill it with any queued samples
+            // and the current sample.
+            if let Some(buffer) = buffer_producer {
+                // Copy any samples that have accumulated in the buffer.
+                for s in self.speaker_buf.drain(0..) {
+                    _ = buffer.push(s);
+                }
+                //buffer.push_iter(&mut self.speaker_buf.drain(0..)); <- this is slower for some reason
+                _ = buffer.push((speaker_sample) as u8);
             }
-            //buffer.push_iter(&mut self.speaker_buf.drain(0..)); <- this is slower for some reason
-            _ = buffer.push((speaker_sample) as u8);
-        }
-        else {
-            // Otherwise, put the sample in the buffer.
-            self.speaker_buf.push_back(speaker_sample as u8);
+            else {
+                // Otherwise, put the sample in the buffer.
+                self.speaker_buf.push_back(speaker_sample as u8);
+            }
         }
     }
 

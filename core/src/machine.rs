@@ -275,6 +275,7 @@ pub struct MachineBuilder<'a> {
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
     sound_player: Option<SoundPlayer>,
+    sound_override: Option<bool>,
 }
 
 impl<'a> MachineBuilder<'a> {
@@ -328,7 +329,12 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Machine, Error> {
+    pub fn with_sound_override(mut self, sound_override: bool) -> Self {
+        self.sound_override = Some(sound_override);
+        self
+    }
+
+    pub fn build(mut self) -> Result<Machine, Error> {
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
         let machine_config = self
             .machine_config
@@ -337,6 +343,13 @@ impl<'a> MachineBuilder<'a> {
         let machine_desc = self.descriptor.ok_or(anyhow!("Failed to get machine description"))?;
         let rom_manifest = self.rom_manifest.ok_or(anyhow!("No ROM manifest specified!"))?;
         let trace_logger = self.trace_logger;
+
+        // Remove sound player if sound_override is Some(false)
+        if let Some(sound_override) = self.sound_override {
+            if self.sound_override.is_some() && !sound_override {
+                self.sound_override = None;
+            }
+        }
 
         Ok(Machine::new(
             *core_config,
@@ -478,8 +491,13 @@ impl Machine {
         }
         */
 
+        let have_audio = core_config.get_audio_enabled() && sound_player.is_some();
+
         // Install devices
-        if let Err(err) = cpu.bus_mut().install_devices(&machine_desc, &machine_config) {
+        if let Err(err) = cpu
+            .bus_mut()
+            .install_devices(&machine_desc, &machine_config, have_audio)
+        {
             log::error!("Failed to install devices: {}", err);
         }
 

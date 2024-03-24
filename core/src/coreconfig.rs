@@ -56,6 +56,8 @@ pub struct VideoCardDefinition {
 pub trait CoreConfig {
     fn get_base_dir(&self) -> PathBuf;
     fn get_machine_type(&self) -> MachineType;
+
+    fn get_audio_enabled(&self) -> bool;
     fn get_machine_noroms(&self) -> bool;
     fn get_machine_turbo(&self) -> bool;
     //fn get_keyboard_type(&self) -> Option<KeyboardType>;

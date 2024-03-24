@@ -58,7 +58,8 @@ pub fn run_benchmark(
         .with_core_config(Box::new(config))
         .with_machine_config(&machine_config)
         .with_roms(rom_manifest)
-        .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default());
+        .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
+        .with_sound_override(false);
 
     let mut machine = machine_builder.build().unwrap_or_else(|e| {
         log::error!("Failed to build machine: {:?}", e);

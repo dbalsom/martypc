@@ -1426,6 +1426,7 @@ impl BusInterface {
         &mut self,
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
+        sound_enabled: bool,
     ) -> Result<(), Error> {
         let video_frame_debug = false;
         let clock_mode = ClockingMode::Default;
@@ -1483,6 +1484,7 @@ impl BusInterface {
                 machine_desc.system_crystal
             },
             machine_desc.timer_divisor,
+            machine_config.speaker && sound_enabled,
         );
 
         // Add PIT ports to io_map

@@ -62,6 +62,9 @@ impl CoreConfig for ConfigFileParams {
     fn get_machine_type(&self) -> MachineType {
         MachineType::Ibm5160
     }
+    fn get_audio_enabled(&self) -> bool {
+        self.emulator.audio.enabled
+    }
     fn get_machine_noroms(&self) -> bool {
         self.machine.no_roms
     }
