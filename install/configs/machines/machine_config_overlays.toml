@@ -135,4 +135,6 @@ name = "pcxt_4_360k_floppies"
 name = "microsoft_serial_mouse"
     [overlay.serial_mouse]
     type = "Microsoft"
-    port = 0 
+    # Port 0 - COM1
+    # Port 1 - COM2
+    port = 1

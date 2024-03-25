@@ -39,7 +39,7 @@ use marty_core::{
     syntax_token::SyntaxToken,
     util,
 };
-use marty_egui::{GuiWindow};
+use marty_egui::GuiWindow;
 
 use frontend_common::timestep_manager::TimestepManager;
 use marty_core::cpu_common::TraceMode;
@@ -68,6 +68,9 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
     // -- Update machine state
     emu.gui.set_machine_state(emu.machine.get_state());
+
+    // -- Update serial ports
+    emu.gui.set_serial_ports(emu.machine.bus().enumerate_serial_ports());
 
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {

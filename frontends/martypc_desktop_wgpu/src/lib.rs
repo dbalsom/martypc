@@ -666,8 +666,8 @@ pub fn run() {
     // Resize video cards
     emu.post_dm_build_init();
 
-    // Set list of serial ports
-    emu.gui.update_serial_ports(serial_ports);
+    // Set list of host serial ports
+    emu.gui.set_host_serial_ports(serial_ports);
 
     let adapter_info = emu.dm.get_main_backend().and_then(|backend| backend.get_adapter_info());
 

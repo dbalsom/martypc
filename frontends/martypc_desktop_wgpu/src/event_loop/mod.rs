@@ -127,8 +127,14 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                     });
                 }
                 WindowEvent::Resized(size) => {
-                    if let Err(e) = emu.dm.on_window_resized(window_id, size.width, size.height) {
-                        log::error!("Failed to resize window: {}", e);
+                    if size.width > 0 && size.height > 0 {
+                        if let Err(e) = emu.dm.on_window_resized(window_id, size.width, size.height) {
+                            log::error!("Failed to resize window: {}", e);
+                        }
+                    }
+                    else {
+                        log::debug!("Ignoring invalid size: {:?}", size);
+                        return;
                     }
                 }
                 WindowEvent::CloseRequested => {

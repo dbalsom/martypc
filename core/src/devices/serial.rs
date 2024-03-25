@@ -213,6 +213,13 @@ pub struct SerialPortDebuggerState {
     tx_byte: u8,
 }
 
+#[derive(Clone, Debug)]
+pub struct SerialPortDescriptor {
+    pub id: usize,
+    pub name: String,
+    pub brige_port_id: Option<usize>,
+}
+
 pub struct SerialPort {
     name: String,
     irq: u8,
@@ -242,8 +249,9 @@ pub struct SerialPort {
     us_per_byte: f64,
 
     // Serial port bridge
+    bridge_port_id: Option<usize>,
     bridge_port: Option<Box<dyn serialport::SerialPort>>,
-    bridge_buf:  Vec<u8>,
+    bridge_buf: Vec<u8>,
 }
 
 impl Default for SerialPort {
@@ -276,8 +284,9 @@ impl Default for SerialPort {
             tx_timer: 0.0,
             us_per_byte: 833.333, // 9600 baud
 
+            bridge_port_id: None,
             bridge_port: None,
-            bridge_buf:  vec![0; 1000],
+            bridge_buf: vec![0; 1000],
         }
     }
 }
@@ -586,7 +595,7 @@ impl SerialPort {
         }
     }
 
-    fn bridge_port(&mut self, port_name: String) -> anyhow::Result<bool> {
+    fn bridge_port(&mut self, port_name: String, port_id: usize) -> anyhow::Result<bool> {
         let port_result = serialport::new(port_name.clone(), 9600)
             .timeout(std::time::Duration::from_millis(5))
             .stop_bits(serialport::StopBits::One)
@@ -595,13 +604,14 @@ impl SerialPort {
 
         match port_result {
             Ok(bridge_port) => {
-                log::trace!("Successfully opened host port {}", port_name);
+                log::debug!("Successfully opened host port {}", port_name);
                 self.bridge_port = Some(bridge_port);
+                self.bridge_port_id = Some(port_id);
                 self.set_modem_status_connected();
                 Ok(true)
             }
             Err(e) => {
-                log::trace!("Error opening host port: {}", e);
+                log::error!("Error opening host port: {}", e);
                 anyhow::bail!("Error opening host port: {}", e)
             }
         }
@@ -620,6 +630,20 @@ impl SerialPortController {
                 SerialPort::new("COM2".to_string(), SERIAL2_IRQ),
             ],
         }
+    }
+
+    pub fn enumerate_ports(&self) -> Vec<SerialPortDescriptor> {
+        let mut ports = Vec::new();
+
+        for (i, port) in self.port.iter().enumerate() {
+            ports.push(SerialPortDescriptor {
+                id: i,
+                name: port.name.clone(),
+                brige_port_id: port.bridge_port_id,
+            });
+        }
+
+        ports
     }
 
     pub fn get_debug_state(&self) -> Vec<SerialPortDebuggerState> {
@@ -661,8 +685,8 @@ impl SerialPortController {
     }
 
     /// Bridge the specified serial port
-    pub fn bridge_port(&mut self, port: usize, port_name: String) -> anyhow::Result<bool> {
-        self.port[port].bridge_port(port_name)
+    pub fn bridge_port(&mut self, port: usize, host_port_name: String, host_port_id: usize) -> anyhow::Result<bool> {
+        self.port[port].bridge_port(host_port_name, host_port_id)
     }
 
     /// Run the serial ports for the specified number of microseconds

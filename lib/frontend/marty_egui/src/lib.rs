@@ -35,7 +35,7 @@ use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     ffi::OsString,
     hash::Hash,
-    mem::{Discriminant},
+    mem::Discriminant,
     time::Duration,
 };
 
@@ -47,8 +47,6 @@ use frontend_common::{
     display_manager::DisplayInfo,
     display_scaler::{ScalerMode, ScalerParams},
 };
-
-
 
 mod color;
 mod constants;
@@ -66,10 +64,10 @@ mod windows;
 mod workspace;
 
 use marty_core::{
-    device_traits::videocard::{DisplayApertureType},
+    device_traits::videocard::DisplayApertureType,
     device_types::hdc::HardDiskFormat,
-    devices::{pic::PicStringState},
-    machine::{MachineState},
+    devices::pic::PicStringState,
+    machine::MachineState,
 };
 
 use serde::{Deserialize, Serialize};
@@ -133,6 +131,7 @@ pub enum GuiBoolean {
 pub enum GuiVariableContext {
     Global,
     Display(usize),
+    SerialPort(usize),
 }
 impl Default for GuiVariableContext {
     fn default() -> Self {
@@ -147,6 +146,7 @@ pub enum GuiEnum {
     DisplayScalerMode(ScalerMode),
     DisplayScalerPreset(String),
     DisplayComposite(bool),
+    SerialPortBridge(usize),
 }
 
 fn create_default_variant(ge: GuiEnum) -> GuiEnum {
@@ -156,6 +156,7 @@ fn create_default_variant(ge: GuiEnum) -> GuiEnum {
         GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
         GuiEnum::DisplayScalerPreset(_) => GuiEnum::DisplayScalerPreset(String::new()),
         GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
+        GuiEnum::SerialPortBridge(_) => GuiEnum::SerialPortBridge(Default::default()),
     }
 }
 
@@ -170,7 +171,7 @@ pub enum GuiEvent {
     SaveFloppy(usize, usize),
     EjectFloppy(usize),
     SetFloppyWriteProtect(usize, bool),
-    BridgeSerialPort(String),
+    BridgeSerialPort(usize, String, usize),
     DumpVRAM,
     DumpCS,
     DumpAllMem,

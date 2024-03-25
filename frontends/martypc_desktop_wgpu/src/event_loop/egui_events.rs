@@ -141,6 +141,13 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                             log::error!("Failed to set aspect correction state for display target!");
                         }
                     }
+                    _ => {}
+                },
+                GuiVariableContext::SerialPort(serial_id) => match op {
+                    GuiEnum::SerialPortBridge(host_id) => {
+                        //emu.machine.bridge_serial_port(*serial_id, host_id.clone());
+                    }
+                    _ => {}
                 },
                 GuiVariableContext::Global => {}
             },
@@ -361,9 +368,34 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 fdc.write_protect(*drive_select, *state);
             }
         }
-        GuiEvent::BridgeSerialPort(port_name) => {
-            log::info!("Bridging serial port: {}", port_name);
-            emu.machine.bridge_serial_port(1, port_name.clone());
+        GuiEvent::BridgeSerialPort(guest_port_id, host_port_name, host_port_id) => {
+            log::info!("Bridging serial port: {}, id: {}", host_port_name, host_port_id);
+            if let Err(err) = emu
+                .machine
+                .bridge_serial_port(*guest_port_id, host_port_name.clone(), *host_port_id)
+            {
+                emu.gui
+                    .toasts()
+                    .error(err.to_string())
+                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+            else {
+                emu.gui
+                    .toasts()
+                    .info(format!("Serial port successfully bridged to {}", host_port_name))
+                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                // Update the serial port enum to show the bridged port
+                emu.gui.set_option_enum(
+                    GuiEnum::SerialPortBridge(*host_port_id),
+                    Some(GuiVariableContext::SerialPort(*guest_port_id)),
+                );
+                log::debug!(
+                    "updating SerialPortBridge, host_port: {} context (guest_port): {}",
+                    host_port_id,
+                    guest_port_id
+                );
+            }
         }
         GuiEvent::DumpVRAM => {
             if let Some(video_card) = emu.machine.primary_videocard() {

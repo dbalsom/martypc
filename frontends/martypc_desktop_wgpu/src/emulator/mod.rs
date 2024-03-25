@@ -366,6 +366,9 @@ impl Emulator {
             card_strs.push(card_str);
         }
 
+        // Set list of virtual serial ports
+        self.gui.set_serial_ports(self.machine.bus().enumerate_serial_ports());
+
         // Set list of video cards
         self.gui.set_card_list(card_strs);
 

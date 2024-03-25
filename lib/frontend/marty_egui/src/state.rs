@@ -49,7 +49,7 @@ use frontend_common::{
 };
 use marty_core::{
     device_traits::videocard::{DisplayApertureDesc, VideoCardState, VideoCardStateEntry},
-    devices::pit::PitDisplayState,
+    devices::{pit::PitDisplayState, serial::SerialPortDescriptor},
     machine::{ExecutionControl, MachineState},
 };
 use serde::{Deserialize, Serialize};
@@ -178,7 +178,8 @@ pub struct GuiState {
     pub(crate) vhd_names: Vec<OsString>,
 
     // Serial ports
-    pub(crate) serial_ports: Vec<SerialPortInfo>,
+    pub(crate) serial_ports: Vec<SerialPortDescriptor>,
+    pub(crate) host_serial_ports: Vec<SerialPortInfo>,
     pub(crate) serial_port_name: String,
 
     pub(crate) exec_control: Rc<RefCell<ExecutionControl>>,
@@ -301,6 +302,7 @@ impl GuiState {
             vhd_names: Vec::new(),
 
             serial_ports: Vec::new(),
+            host_serial_ports: Vec::new(),
             serial_port_name: String::new(),
 
             exec_control: exec_control.clone(),
@@ -496,8 +498,12 @@ impl GuiState {
         self.pit_viewer.update_state(state);
     }
 
-    pub fn update_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
+    pub fn set_serial_ports(&mut self, ports: Vec<SerialPortDescriptor>) {
         self.serial_ports = ports;
+    }
+
+    pub fn set_host_serial_ports(&mut self, ports: Vec<SerialPortInfo>) {
+        self.host_serial_ports = ports;
     }
 
     pub fn update_videocard_state(&mut self, state: HashMap<String, Vec<(String, VideoCardStateEntry)>>) {

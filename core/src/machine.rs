@@ -911,15 +911,18 @@ impl Machine {
         self.cpu.bus_mut().mouse_mut()
     }
 
-    pub fn bridge_serial_port(&mut self, port_num: usize, port_name: String) {
+    pub fn bridge_serial_port(&mut self, port_num: usize, host_port_name: String, host_port_id: usize) -> Result<(), Error> {
         if let Some(spc) = self.cpu.bus_mut().serial_mut() {
-            if let Err(e) = spc.bridge_port(port_num, port_name) {
+            if let Err(e) = spc.bridge_port(port_num, host_port_name, host_port_id) {
                 log::error!("Failed to bridge serial port: {}", e);
+                return Err(anyhow!(format!("Failed to bridge serial port: {}", e)));
             }
         }
         else {
             log::error!("No serial port controller present!");
+            return Err(anyhow!("No serial port controller present!"));
         }
+        Ok(())
     }
 
     pub fn set_breakpoints(&mut self, bp_list: Vec<BreakPointType>) {

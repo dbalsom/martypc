@@ -2376,6 +2376,13 @@ impl BusInterface {
         self.videocard_ids.clone()
     }
 
+    pub fn enumerate_serial_ports(&self) -> Vec<SerialPortDescriptor> {
+        self.serial
+            .as_ref()
+            .and_then(|serial| Some(serial.enumerate_ports()))
+            .unwrap_or_default()
+    }
+
     pub fn floppy_drive_ct(&self) -> usize {
         if let Some(fdc) = &self.fdc {
             fdc.drive_ct()
