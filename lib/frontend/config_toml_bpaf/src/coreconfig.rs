@@ -76,7 +76,7 @@ impl CoreConfig for ConfigFileParams {
         self.machine.input.keyboard_layout.clone()
     }
     fn get_keyboard_debug(&self) -> bool {
-        self.emulator.debug_keyboard
+        self.emulator.input.debug_keyboard
     }
     //fn get_video_type(&self) -> Option<VideoType> { self.machine.primary_video }
     //fn get_video_clockingmode(&self) -> Option<ClockingMode> { self.machine.clocking_mode }

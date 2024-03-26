@@ -276,6 +276,7 @@ pub struct MachineBuilder<'a> {
     trace_logger: TraceLogger,
     sound_player: Option<SoundPlayer>,
     sound_override: Option<bool>,
+    keyboard_layout_file: Option<PathBuf>,
 }
 
 impl<'a> MachineBuilder<'a> {
@@ -333,6 +334,11 @@ impl<'a> MachineBuilder<'a> {
         self.sound_override = Some(sound_override);
         self
     }
+    
+    pub fn with_keyboard_layout(mut self, layout_file: Option<PathBuf>) -> Self {
+        self.keyboard_layout_file = layout_file;
+        self
+    }
 
     pub fn build(mut self) -> Result<Machine, Error> {
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
@@ -360,6 +366,7 @@ impl<'a> MachineBuilder<'a> {
             trace_logger,
             self.sound_player,
             rom_manifest,
+            self.keyboard_layout_file,
         ))
     }
 }
@@ -403,6 +410,7 @@ impl Machine {
         trace_logger: TraceLogger,
         sound_player: Option<SoundPlayer>,
         rom_manifest: MachineRomManifest,
+        keyboard_layout_file: Option<PathBuf>,
         //rom_manager: RomManager,
     ) -> Machine {
         // Create PIT output log file if specified
@@ -502,12 +510,7 @@ impl Machine {
         }
 
         // Load keyboard translation file if specified.
-        if let Some(kb_string) = &core_config.get_keyboard_layout() {
-            let mut kb_translation_path = PathBuf::new();
-            kb_translation_path.push(core_config.get_base_dir().clone());
-            kb_translation_path.push("keyboard");
-            kb_translation_path.push(format!("keyboard_{}.toml", kb_string));
-
+        if let Some(kb_translation_path) = keyboard_layout_file {
             if let Some(keyboard) = cpu.bus_mut().keyboard_mut() {
                 match keyboard.load_mapping(&kb_translation_path) {
                     Ok(_) => {
@@ -518,7 +521,8 @@ impl Machine {
                             "Failed to load keyboard mapping file: {} Err: {}",
                             kb_translation_path.display(),
                             e
-                        )
+                        );
+                        std::process::exit(1);
                     }
                 }
                 keyboard.set_debug(core_config.get_keyboard_debug());

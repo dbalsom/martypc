@@ -575,13 +575,32 @@ pub fn run() {
         trace_file_path = Some(trace_file_base.join(trace_file));
     }
 
+    // Calculate the path to the keyboard layout file
+    let mut kb_layout_file_path = None;
+    let mut kb_string = "US".to_string();
+
+    if let Some(global_kb_string) = &config.machine.input.keyboard_layout {
+        kb_string = global_kb_string.clone()
+    }
+    else {
+        if let Some(keyboard) = machine_config.keyboard.as_ref() {
+            kb_string = keyboard.layout.clone();
+        }
+    }
+
+    if let Some(mut kb_layout_resource_path) = resource_manager.get_resource_path("keyboard_layout") {
+        kb_layout_resource_path.push(format!("keyboard_{}.toml", kb_string));
+        kb_layout_file_path = Some(kb_layout_resource_path);
+    }
+
     let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(&config))
         .with_machine_config(&machine_config)
         .with_roms(rom_manifest)
         .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
         .with_trace_log(trace_file_path)
-        .with_sound_player(sound_player_opt);
+        .with_sound_player(sound_player_opt)
+        .with_keyboard_layout(kb_layout_file_path);
 
     let machine = machine_builder.build().unwrap_or_else(|e| {
         log::error!("Failed to build machine: {:?}", e);

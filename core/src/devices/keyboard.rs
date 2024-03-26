@@ -65,7 +65,7 @@ impl FromStr for KeyboardType {
         }
     }
 }
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct KeyboardModifiers {
     pub control: bool,
     pub alt: bool,
@@ -576,7 +576,7 @@ impl Keyboard {
             // Match keycode by string using Debug for MartyKey.
             if trans.keycode == format!("{:?}", key_code) {
                 let trans_modifiers = Keyboard::modifiers_from_strings(&trans.modifiers);
-
+                log::debug!("trans_modifiers: {:?}", trans_modifiers);
                 let mut matched = false;
                 if trans.modifiers[0].eq_ignore_ascii_case("any") {
                     // Use this translation regardless of modifiers.
@@ -584,13 +584,20 @@ impl Keyboard {
                 }
                 else if trans.modifiers[0].eq_ignore_ascii_case("none") {
                     // Use this translation if there are no modifiers
-                    if trans_modifiers.have_any() {
+                    if !trans_modifiers.have_any() {
                         matched = true;
                     }
                 }
-                else if trans_modifiers == *modifiers {
-                    // We have a list of modifiers. Use this translation if modifiers match.
-                    matched = true;
+                else {
+                    log::debug!(
+                        "We have multiple modifiers: {:?}, translation modifiers: {:?}",
+                        modifiers,
+                        trans_modifiers
+                    );
+                    if trans_modifiers == *modifiers {
+                        // We have a list of modifiers. Use this translation if modifiers match.
+                        matched = true;
+                    }
                 }
 
                 // Load proper translation if we matched. If a macro definition is present,

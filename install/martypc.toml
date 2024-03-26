@@ -182,11 +182,6 @@ debug_mode = false
 # do so and don't want the nag.
 debug_warn = true
 
-# Help the developer debug any keyboard issues you may be having. With this
-# feature set to true, MartyPC will print information about every keystroke
-# to the terminal.
-debug_keyboard = false
-
 # Run the specified program instead of booting BIOS. The CPU reset vector will
 # be set to 'run_bin_seg:run_bin_ofs'
 #run_bin = "./program/a_effect.bin"
@@ -334,8 +329,7 @@ name = "default" # Default preset must exist! Do not rename.
 # The default value is "Integer". This has no effect if no card_id is provided.
 #
 # Valid options for Scaler mode are
-# Fixed1x - Video and shader output will be displayed at native base resolution
-# Fixed2x - Video and shader output will be displayed at double base resolution
+# Fixed   - Video and shader output will be displayed at native base resolution
 # Integer - Video and shader output will be scaled to the largest integer
 #           multiple that will fit in the window. This generally produces the
 #           clearest results, but can leave large black borders.
@@ -485,13 +479,18 @@ reverse_mouse_buttons = false
 #
 # Events are a bit limited at first. More hotkey events are coming in the future.
 hotkeys = [
-    { event="CaptureMouse", keys=["ControlLeft", "F10"], scope="Any", capture_disable=false },
-    { event="CtrlAltDel", keys=["ControlLeft", "F11"], scope="Any", capture_disable=false },
-    { event="Reboot", keys=["ControlLeft", "F12"], scope="Any", capture_disable=false },
-    { event="Screenshot", keys=["ControlLeft", "F5"], scope="Any", capture_disable=false },
-    { event="ToggleGui", keys=["ControlLeft", "F1"], scope="Any", capture_disable=false },
-    { event="ToggleFullscreen", keys=["ControlLeft", "Enter"], scope="Any", capture_disable=false },
+    { event = "CaptureMouse", keys = ["ControlLeft", "F10"], scope = "Any", capture_disable = false },
+    { event = "CtrlAltDel", keys = ["ControlLeft", "F11"], scope = "Any", capture_disable = false },
+    { event = "Reboot", keys = ["ControlLeft", "F12"], scope = "Any", capture_disable = false },
+    { event = "Screenshot", keys = ["ControlLeft", "F5"], scope = "Any", capture_disable = false },
+    { event = "ToggleGui", keys = ["ControlLeft", "F1"], scope = "Any", capture_disable = false },
+    { event = "ToggleFullscreen", keys = ["ControlLeft", "Enter"], scope = "Any", capture_disable = false },
 ]
+
+# Help the developer debug any keyboard issues you may be having. With this
+# feature set to true, MartyPC will print information about every keystroke
+# to the terminal.
+debug_keyboard = false
 
 # ----------------------------------------------------------------------------
 # Benchmarking (not yet implemented - configs are placeholder)

@@ -145,8 +145,6 @@ pub struct Emulator {
     pub debug_mode: bool,
     #[serde(default = "_default_true")]
     pub debug_warn: bool,
-    #[serde(default)]
-    pub debug_keyboard: bool,
     pub media: Media,
     pub debugger: Debugger,
     pub audio: Audio,
@@ -253,6 +251,8 @@ pub struct EmulatorInput {
     #[serde(default)]
     pub reverse_mouse_buttons: bool,
     pub hotkeys: Vec<HotkeyConfigEntry>,
+    #[serde(default)]
+    pub debug_keyboard: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -388,7 +388,7 @@ impl ConfigFileParams {
         //self.emulator.scaler_aspect_correction |= shell_args.scaler_aspect_correction;
         self.emulator.debug_mode |= shell_args.debug_mode;
         //self.emulator.video_frame_debug |= shell_args.video_frame_debug;
-        self.emulator.debug_keyboard |= shell_args.debug_keyboard;
+        self.emulator.input.debug_keyboard |= shell_args.debug_keyboard;
         self.machine.no_roms |= shell_args.no_roms;
 
         /*

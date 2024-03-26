@@ -101,7 +101,7 @@ impl Emulator {
             self.machine.change_state(MachineState::Off);
         }
 
-        self.flags.debug_keyboard = self.config.emulator.debug_keyboard;
+        self.flags.debug_keyboard = self.config.emulator.input.debug_keyboard;
 
         // Do PIT phase offset option
         self.machine
