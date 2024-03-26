@@ -167,31 +167,34 @@ impl CpuControl {
 
         let state_str = format!("{:?}", exec_control.get_state());
         ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Run state: ");
-            ui.label(&state_str);
-        });
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Exec Breakpoint: ");
-            if ui.text_edit_singleline(&mut self.breakpoint).changed() {
-                events.send(GuiEvent::EditBreakpoint);
-            };
-        });
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Mem Breakpoint: ");
-            if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
-                events.send(GuiEvent::EditBreakpoint);
-            }
-        });
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Int Breakpoint: ");
-            if ui.text_edit_singleline(&mut self.int_breakpoint).changed() {
-                events.send(GuiEvent::EditBreakpoint);
-            }
-        });
+
+        egui::Grid::new("cpu_control_grid")
+            .num_columns(2)
+            .striped(false)
+            .min_col_width(60.0)
+            .show(ui, |ui| {
+                ui.label("Run state: ");
+                ui.label(&state_str);
+                ui.end_row();
+
+                ui.label("Exec Breakpoint: ");
+                if ui.text_edit_singleline(&mut self.breakpoint).changed() {
+                    events.send(GuiEvent::EditBreakpoint);
+                };
+                ui.end_row();
+
+                ui.label("Mem Breakpoint: ");
+                if ui.text_edit_singleline(&mut self.mem_breakpoint).changed() {
+                    events.send(GuiEvent::EditBreakpoint);
+                }
+                ui.end_row();
+
+                ui.label("Int Breakpoint: ");
+                if ui.text_edit_singleline(&mut self.int_breakpoint).changed() {
+                    events.send(GuiEvent::EditBreakpoint);
+                }
+                ui.end_row();
+            });
     }
 
     pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {

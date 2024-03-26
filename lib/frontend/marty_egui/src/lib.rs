@@ -277,7 +277,7 @@ lazy_static! {
                 id: GuiWindow::CpuControl,
                 title: "CPU Control",
                 menu: "CPU Control",
-                width: 400.0,
+                width: 300.0,
                 resizable: false,
             },
         ),
