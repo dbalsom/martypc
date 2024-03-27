@@ -1383,6 +1383,8 @@ impl BusInterface {
         vec
     }
 
+    /// Returns a MemoryDebug struct containing information about the memory at the specified address.
+    /// This is used in the Memory Viewer debug window to show a popup when hovering over a byte.
     pub fn get_memory_debug(&mut self, address: usize) -> MemoryDebug {
         let mut debug = MemoryDebug {
             addr:  format!("{:05X}", address),
@@ -1393,21 +1395,21 @@ impl BusInterface {
         };
 
         if address < self.memory.len() - 1 {
-            debug.byte = format!("{:02X}", self.memory[address]);
+            debug.byte = format!("{:02X}", self.peek_u8(address).unwrap_or(0xFF));
         }
         if address < self.memory.len() - 2 {
             debug.word = format!(
                 "{:04X}",
-                (self.memory[address] as u16) | ((self.memory[address + 1] as u16) << 8)
+                self.peek_u8(address).unwrap_or(0xFF) as u16 | (self.peek_u8(address + 1).unwrap_or(0xFF) as u16) << 8
             );
         }
         if address < self.memory.len() - 4 {
             debug.dword = format!(
                 "{:04X}",
-                (self.memory[address] as u32)
-                    | ((self.memory[address + 1] as u32) << 8)
-                    | ((self.memory[address + 2] as u32) << 16)
-                    | ((self.memory[address + 3] as u32) << 24)
+                self.peek_u8(address).unwrap_or(0xFF) as u32
+                    | ((self.peek_u8(address + 1).unwrap_or(0xFF) as u32) << 8)
+                    | ((self.peek_u8(address + 2).unwrap_or(0xFF) as u32) << 16)
+                    | ((self.peek_u8(address + 3).unwrap_or(0xFF) as u32) << 24)
             );
         }
 
