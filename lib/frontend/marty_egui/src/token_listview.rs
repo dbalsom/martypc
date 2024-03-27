@@ -309,7 +309,10 @@ impl TokenListView {
                     match token {
                         SyntaxToken::Formatter(fmt) => match fmt {
                             SyntaxFormatType::Tab => {
-                                token_x = ((token_x / TOKEN_TAB_STOPS as f32).floor() + 1.0) * TOKEN_TAB_STOPS as f32;
+                                let next_tab_stop = (((token_x - x) / TOKEN_TAB_STOPS as f32).floor() + 1.0)
+                                    * TOKEN_TAB_STOPS as f32
+                                    + x;
+                                token_x = next_tab_stop;
                                 drawn = true;
                             }
                             _ => {
