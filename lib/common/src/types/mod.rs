@@ -30,7 +30,5 @@
 
 */
 
-use serde::Deserialize;
-
 pub mod history_buffer;
 pub mod video_dimensions;
