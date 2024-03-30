@@ -51,20 +51,20 @@ pub enum MouseButton {
 
 pub struct HotkeyState {
     pub keyset: HashSet<MartyKey>,
+    pub pressed: HashSet<MartyKey>,
     pub scope: HotkeyScope,
     pub capture_disable: bool,
     pub len: usize,
-    pub matched: usize,
 }
 
 impl Default for HotkeyState {
     fn default() -> Self {
         HotkeyState {
             keyset: HashSet::new(),
+            pressed: HashSet::new(),
             scope: HotkeyScope::Any,
             capture_disable: false,
             len: 0,
-            matched: 0,
         }
     }
 }
@@ -106,10 +106,10 @@ impl HotkeyManager {
             hotkey,
             HotkeyState {
                 keyset: HashSet::from_iter(keyvec.iter().cloned()),
+                pressed: HashSet::new(),
                 scope,
                 capture_disable,
                 len,
-                matched: 0,
             },
         );
     }
@@ -129,8 +129,8 @@ impl HotkeyManager {
             }
 
             if process_key && state.keyset.contains(&key) {
-                state.matched += 1;
-                if state.matched == state.len {
+                state.pressed.insert(key);
+                if state.pressed.len() == state.len {
                     log::debug!("Hotkey matched: {:?}, len: {}", hotkey, state.len);
                     events.push(*hotkey);
                 }
@@ -148,7 +148,7 @@ impl HotkeyManager {
     pub fn keyup(&mut self, key: MartyKey) {
         for state in self.hotkeys.values_mut() {
             if state.keyset.contains(&key) {
-                state.matched = state.matched.saturating_sub(1);
+                state.pressed.remove(&key);
             }
         }
     }
