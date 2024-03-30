@@ -38,7 +38,7 @@ use winit::{
 
 use display_manager_wgpu::DisplayManager;
 use frontend_common::{constants::LONG_NOTIFICATION_TIME, HotkeyEvent};
-use marty_core::machine::MachineState;
+use marty_core::machine::{ExecutionOperation, MachineState};
 
 use crate::{input::TranslateKey, Emulator};
 
@@ -242,6 +242,12 @@ pub fn process_hotkeys(emu: &mut Emulator, keycode: KeyCode, pressed: bool, wind
                         .error(format!("{}", err))
                         .set_duration(Some(LONG_NOTIFICATION_TIME));
                 }
+            }
+            HotkeyEvent::DebugStep => {
+                emu.exec_control.borrow_mut().set_op(ExecutionOperation::Step);
+            }
+            HotkeyEvent::DebugStepOver => {
+                emu.exec_control.borrow_mut().set_op(ExecutionOperation::StepOver);
             }
             _ => {
                 log::debug!("Unhandled Hotkey triggered: {:?}", hotkey);

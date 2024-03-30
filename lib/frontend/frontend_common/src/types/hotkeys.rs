@@ -43,6 +43,8 @@ pub enum HotkeyEvent {
     Screenshot,
     ToggleGui,
     ToggleFullscreen,
+    DebugStep,
+    DebugStepOver,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]

@@ -485,6 +485,8 @@ hotkeys = [
     { event = "Screenshot", keys = ["ControlLeft", "F5"], scope = "Any", capture_disable = false },
     { event = "ToggleGui", keys = ["ControlLeft", "F1"], scope = "Any", capture_disable = false },
     { event = "ToggleFullscreen", keys = ["ControlLeft", "Enter"], scope = "Any", capture_disable = false },
+    { event = "DebugStepOver", keys = ["F10"], scope="Gui", capture_disable = false },
+    { event = "DebugStep", keys = ["F11"], scope="Gui", capture_disable = false },
 ]
 
 # Help the developer debug any keyboard issues you may be having. With this
