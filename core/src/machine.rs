@@ -232,9 +232,11 @@ pub struct MachineCheckpoint {
 
 #[derive(Clone, Default, Debug)]
 pub struct MachinePatch {
+    pub desc: String,
     pub trigger: u32,
     pub addr:    u32,
-    pub data:    Vec<u8>,
+    pub bytes:    Vec<u8>,
+    pub installed: bool,
 }
 
 #[derive(Default, Debug)]
@@ -532,15 +534,13 @@ impl Machine {
         // Load BIOS ROM images unless config option suppressed rom loading
         if !core_config.get_machine_noroms() {
             Machine::install_roms(cpu.bus_mut(), &rom_manifest);
-
-            //rom_manager.copy_into_memory(cpu.bus_mut());
-
+            
             // Load checkpoint flags into memory
-            //rom_manager.install_checkpoints(cpu.bus_mut());
             cpu.bus_mut().install_checkpoints(&rom_manifest.checkpoints);
-
+            cpu.bus_mut().install_patch_checkpoints(&rom_manifest.patches);
+            
+            // TODO: Reimplement support for manual reset vector in rom set?
             // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
-
             //let rom_entry_point = rom_manager.get_entrypoint();
             //cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
         }
@@ -1127,7 +1127,8 @@ impl Machine {
 
             let flat_address = self.cpu.flat_ip();
 
-            // Match checkpoints
+            // Match checkpoints. The first check is against a simple bit flag so that we do not 
+            // need to constantly do a hash lookup.
             if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
                 if let Some(cp) = self.checkpoint_map.get(&flat_address) {
                     log::debug!(
@@ -1140,6 +1141,16 @@ impl Machine {
                         .push(MachineEvent::CheckpointHit(*cp, self.rom_manifest.checkpoints[*cp].lvl));
                 }
 
+                if let Some(&cp) = self.patch_map.get(&flat_address) {
+                    log::debug!(
+                        "ROM PATCH CHECKPOINT: [{:05X}] Installing patch...",
+                        flat_address
+                    );
+                    let mut patch = self.rom_manifest.patches[cp].clone();
+                    self.bus_mut().install_patch(&mut patch);
+                    self.rom_manifest.patches[cp] = patch;
+                }
+                
                 /*
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
                     log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);

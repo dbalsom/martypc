@@ -79,7 +79,7 @@ use crate::{
         cga::{self, CGACard},
         mda::{self, MDACard},
     },
-    machine::MachineCheckpoint,
+    machine::{MachineCheckpoint, MachinePatch},
     machine_config::{normalize_conventional_memory, MachineConfiguration},
     machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
     memerror::MemError,
@@ -549,10 +549,37 @@ impl BusInterface {
         }
     }
 
+    pub fn install_patch_checkpoints(&mut self, patches: &Vec<MachinePatch>) {
+        for patch in patches.iter() {
+            log::debug!("Arming patch trigger [{:05X}] for patch: {}", patch.trigger, patch.desc);
+            self.memory_mask[patch.trigger as usize & 0xFFFFF] |= MEM_CP_BIT;
+        }
+    }
+
     pub fn clear_checkpoints(&mut self) {
         for byte_ref in &mut self.memory_mask {
             *byte_ref &= !MEM_CP_BIT;
         }
+    }
+
+    pub fn install_patch(&mut self, patch: &mut MachinePatch) {
+        if patch.installed {
+            // Don't install patch twice (we might be revisiting the same checkpoint)
+            return;
+        }
+        let patch_size = patch.bytes.len();
+        let patch_start = patch.addr as usize & 0xFFFFF;
+        let patch_end = patch_start + patch_size;
+
+        if patch_end > self.memory.len() {
+            log::error!("Patch out of range: {} len: {}", patch_start, patch_size);
+            return;
+        }
+
+        for (dst, src) in self.memory[patch_start..patch_end].iter_mut().zip(patch.bytes.iter()) {
+            *dst = *src;
+        }
+        patch.installed = true;
     }
 
     pub fn set_conventional_size(&mut self, size: usize) {
