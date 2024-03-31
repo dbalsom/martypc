@@ -111,6 +111,7 @@ pub struct DisplayManagerWindowOptions {
     pub title: String,
     pub resizable: bool,
     pub always_on_top: bool,
+    pub is_on_top: bool,
     pub card_scale: Option<f32>,
 }
 
@@ -124,6 +125,7 @@ impl Default for DisplayManagerWindowOptions {
             title: "New Window".to_string(),
             resizable: false,
             always_on_top: false,
+            is_on_top: false,
             card_scale: None,
         }
     }
@@ -249,7 +251,7 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// Execute a closure that is passed a reference to each Window in the manager.
     fn for_each_window<F>(&mut self, f: F)
     where
-        F: FnMut(&W);
+        F: FnMut(&W, bool) -> Option<bool>;
 
     /// Execute a closure that is passed a reference to the renderer for the specified display target.
     fn with_renderer<F>(&mut self, dt_idx: usize, f: F)

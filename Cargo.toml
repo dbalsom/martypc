@@ -60,26 +60,26 @@ branch = "marty_update_deps"
 
 [workspace.dependencies.egui]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29"
+branch = "0_24_2_winit_0_29_15"
 
 [workspace.dependencies.egui-wgpu]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29"
+branch = "0_24_2_winit_0_29_15"
 
 [workspace.dependencies.egui-winit]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29"
+branch = "0_24_2_winit_0_29_15"
 default-features = false
 features = ["clipboard", "wayland", "x11"]
 
 [workspace.dependencies.egui_extras]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29"
+branch = "0_24_2_winit_0_29_15"
 features = ["image"]
 
 [workspace.dependencies.egui_plot]
 git = "https://github.com/dbalsom/egui_martypc.git"
-branch = "0_24_2_winit_0_29"
+branch = "0_24_2_winit_0_29_15"
 
 [profile.release]
 opt-level = 3

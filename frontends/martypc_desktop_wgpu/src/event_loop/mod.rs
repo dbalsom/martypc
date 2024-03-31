@@ -161,13 +161,17 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                                 dtc.window.as_ref().map(|window| {
                                     window.set_window_level(WindowLevel::AlwaysOnTop);
                                 });
+                                dtc.set_on_top(true);
                             }
                         });
                     }
                     false => {
                         log::debug!("Window {:?} lost focus", window_id);
-                        emu.dm.for_each_window(|window| {
-                            window.set_window_level(WindowLevel::Normal);
+                        emu.dm.for_each_window(|window, on_top| {
+                            if on_top {
+                                window.set_window_level(WindowLevel::Normal);
+                            }
+                            Some(false)
                         });
                     }
                 },
@@ -191,8 +195,9 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
         Event::AboutToWait => {
             // Throttle updates to maximum of 1000Hz
             //std::thread::sleep(Duration::from_millis(1));
-            emu.dm.for_each_window(|window| {
+            emu.dm.for_each_window(|window, _on_top| {
                 window.request_redraw();
+                None
             });
         }
         _ => (),

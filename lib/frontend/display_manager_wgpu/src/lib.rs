@@ -437,6 +437,19 @@ impl DisplayTargetContext<PixelsBackend> {
         }
     }
 
+    pub fn set_on_top(&mut self, on_top: bool) {
+        if let Some(wopts) = &mut self.window_opts {
+            wopts.is_on_top = on_top;
+        }
+    }
+
+    pub fn is_on_top(&self) -> bool {
+        if let Some(wopts) = &self.window_opts {
+            return wopts.is_on_top;
+        }
+        false
+    }
+
     pub fn create_gui_context(
         dt_idx: usize,
         window: &Window,
@@ -1327,11 +1340,14 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
 
     fn for_each_window<F>(&mut self, mut f: F)
     where
-        F: FnMut(&Window),
+        F: FnMut(&Window, bool) -> Option<bool>,
     {
         for dtc in &mut self.targets {
             if let Some(window) = &mut dtc.window {
-                f(&window)
+                let is_on_top = dtc.window_opts.as_ref().map_or(false, |opts| opts.always_on_top);
+                dtc.window_opts
+                    .as_mut()
+                    .map(|opts| opts.is_on_top = f(&window, is_on_top).unwrap_or(opts.is_on_top));
             }
         }
     }

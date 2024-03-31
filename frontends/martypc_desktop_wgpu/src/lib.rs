@@ -705,6 +705,15 @@ pub fn run() {
         }
     };
 
+    if adapter_name_str.contains("llvmpipe") {
+        emu.gui.show_warning(
+            &"MartyPC was unable to initialize a hardware accellerated backend.\n\
+                MartyPC is running under software rasterization (llvmpipe).\n\
+                Performance will be poor."
+                .to_string(),
+        );
+    }
+
     log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
 
     if let Err(e) = emu.apply_config() {

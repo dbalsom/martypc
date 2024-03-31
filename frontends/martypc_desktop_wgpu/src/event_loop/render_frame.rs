@@ -83,8 +83,9 @@ pub fn render_frame(emu: &mut Emulator) {
     emu.dm.for_each_gui(|gui, window| gui.prepare(window, &mut emu.gui));
 
     // Inform window manager that we are about to present
-    emu.dm.for_each_window(|window| {
+    emu.dm.for_each_window(|window, _on_top| {
         window.pre_present_notify();
+        None
     });
 
     // Next, render each backend

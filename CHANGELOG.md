@@ -140,10 +140,10 @@
 
 ### Major dependency updates:
 
-* wgpu to 0.18 (latest)
-* egui to 0.24.2 (latest, forked)
-* pixels to 0.13 (latest, forked)
-* winit to 0.29.4 (latest)
+* wgpu to 0.18
+* egui to 0.24.2
+* pixels to 0.13
+* winit to 0.29.15
 
 ## [0.1.3](https://github.com/dbalsom/martypc/releases/tag/0.1.3) (2023-07-06)
 
