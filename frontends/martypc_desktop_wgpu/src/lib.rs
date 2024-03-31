@@ -709,7 +709,7 @@ pub fn run() {
         emu.gui.show_warning(
             &"MartyPC was unable to initialize a hardware accellerated backend.\n\
                 MartyPC is running under software rasterization (llvmpipe).\n\
-                Performance will be poor."
+                Performance will be poor. (Do you have libx11-dev installed?)"
                 .to_string(),
         );
     }
