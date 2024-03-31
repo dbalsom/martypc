@@ -47,8 +47,10 @@ icon.png
 /install/output/traces/*
 /install/output/dumps/*
 
-# Might add this later if it ever works
+# Dev machines not completed or functional
 /install/configs/machines/acid88.toml
+/install/configs/machines/ibmpcjr.toml
+/install/configs/machines/tandy1000.toml
 
 # Files to include for distribution
 !/install/media/roms/readme.md
@@ -65,4 +67,5 @@ icon.png
 /.idea/workspace.xml
 /flopgen/flopgen_LICENSE.txt
 /tree.txt
+
 
