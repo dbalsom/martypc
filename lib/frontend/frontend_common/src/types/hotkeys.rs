@@ -32,7 +32,6 @@
 
 use marty_core::keys::MartyKey;
 use serde_derive::Deserialize;
-use strum::IntoEnumIterator;
 use strum_macros::EnumIter;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter, Deserialize)]

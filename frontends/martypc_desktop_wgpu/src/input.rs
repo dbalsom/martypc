@@ -35,7 +35,6 @@
 
 use frontend_common::{HotkeyConfigEntry, HotkeyEvent, HotkeyScope};
 use marty_core::keys::MartyKey;
-use serde_derive::Deserialize;
 use std::{
     collections::{HashMap, HashSet},
     env::consts::OS,

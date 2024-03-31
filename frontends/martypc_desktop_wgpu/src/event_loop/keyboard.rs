@@ -92,7 +92,7 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
             );
 
             // Get the window for this event.
-            let event_window = emu
+            let _event_window = emu
                 .dm
                 .get_window_by_id(window_id)
                 .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
@@ -142,6 +142,7 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
     return false;
 }
 
+#[allow(unreachable_patterns)]
 pub fn process_hotkeys(emu: &mut Emulator, keycode: KeyCode, pressed: bool, window_id: WindowId, gui_focus: bool) {
     let mut event_opt = None;
     if pressed {

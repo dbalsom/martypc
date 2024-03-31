@@ -30,7 +30,7 @@
 
 */
 
-use crate::{bytequeue::*, cpu_808x::*};
+use crate::cpu_808x::*;
 
 pub struct InstructionQueue {
     size: usize,
