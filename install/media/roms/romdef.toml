@@ -44,7 +44,7 @@
 # the specified features. 
 #
 # If the 'use_oem' option in main config is set, ROMs that are marked OEM are
-# strongly preferred before any other ROM set. Currently this is implemented 
+# strongly preferred before any other ROM set. Currently, this is implemented
 # by a +100 offset to ROM priority per feature.
 #
 # ----------------------------------------------------------------------------
@@ -82,15 +82,17 @@
 # patches     - When the 'trigger' address is reached, the specified bytes will
 #               be written to the specified 'addr', even if it is ROM.
 #               'addr' may be anywhere in memory.
+#
 #               A 'reset' address can be specified, that when reached will
 #               restore the original bytes at 'addr'. This is useful for
 #               patching code that is verified by CRC or checksum later.
+#               (not yet implemented)
 #
 #               ROM Patching must be enabled in the main configuration for 
 #               this to have any effect.
 #
 # reload      - Reload the ROM from disk and re-map into memory when
-#               the machine is retarted. Useful for ROM developers.
+#               the machine is restarted. Useful for ROM developers.
 #
 
 # ----------------------------------------------------------------------------
@@ -100,7 +102,7 @@
 #
 # A ROM can be identified by either its md5 hash, in which case, filename is
 # ignored, or by filename, in which case hash is ignored. If you specify both,
-# hash takes precedence. Filename may be case sensitive depending on operating
+# hash takes precedence. Filename may be case-sensitive depending on operating
 # system. It is generally recommended to specify ROMs by hash, unless you are 
 # a ROM developer and are replacing the same ROM filename often.
 #
@@ -318,6 +320,7 @@ checkpoint = [
     trigger = 0xFE499
     addr = 0xFE4EA
     bytes = [ 0x90, 0x90, 0x90, 0x90, 0x90]
+
 # ----------------------------------------------------------------------------
 # Device ROMS
 # ----------------------------------------------------------------------------
@@ -377,7 +380,7 @@ checkpoints = [
             
 # ----------------------------------------------------------------------------
 # BASIC ROMS - IBM 5150 & 5160
-# BASIC can be loaded seperately if you arent using system ROMS that have it
+# BASIC can be loaded seperately if you aren't using system ROMS that have it
 # built in.
 # ----------------------------------------------------------------------------
 
@@ -430,7 +433,6 @@ rom = [
 # ----------------------------------------------------------------------------
 # Diagnostic ROMS - IBM 5150 & 5160
 # ----------------------------------------------------------------------------
-
 [[romset]]
 alias = "supersoft_diags"
 desc = "SuperSoft Diagnostic ROM for PC/XT"
@@ -439,7 +441,6 @@ provides = ["bios", "ibm5150v64k", "ibm5150v256k", "ibm5160", "diag"]
 rom = [
     { md5 = "3a0eacac07f1020b95ce06043982dfd1", addr = 0xFE000 }
 ]
-
 
 # ----------------------------------------------------------------------------
 # Generic XT System ROMs
