@@ -33,6 +33,7 @@ name = "us_modelf_keyboard"
 name = "pcxt_2_serial_ports"
     # Serial card
     [[overlay.serial]]
+    bus_type = "ISA"
     type = "IbmAsync"
         [[overlay.serial.port]]
         io_base = 0x3F8
@@ -43,15 +44,20 @@ name = "pcxt_2_serial_ports"
 
 
 [[overlay]]
-name = "xebec"
+name = "ibm_xebec"
     # Hard disk controller
     [overlay.hdc]
+    bus_type = "ISA"
     type = "IbmXebec"
-        
+        [[overlay.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+
 [[overlay]]
 name = "ibm_cga"
     # Video card
-    [[overlay.video]]               
+    [[overlay.video]]
+    bus_type = "ISA"
     type = "CGA"
     
     # Clocking mode for video card. Default values are:
@@ -75,25 +81,29 @@ name = "ibm_cga"
 [[overlay]]
 name = "ibm_mda"
     # Video card
-    [[overlay.video]]               
+    [[overlay.video]]
+    bus_type = "ISA"
     type = "MDA"
     clock_mode = "Default"
 
 [[overlay]]
 name = "ibm_ega"
     # Video card
-    [[overlay.video]]               
+    [[overlay.video]]
+    bus_type = "ISA"
     type = "EGA"
     clock_mode = "Default"
 
 [[overlay]]
 name = "ibm_cga_and_mda"
     # Video card
-    [[overlay.video]]               
+    [[overlay.video]]
+    bus_type = "ISA"
     type = "CGA"
     clock_mode = "Default"
     # Video card
-    [[overlay.video]]               
+    [[overlay.video]]
+    bus_type = "ISA"
     type = "MDA"
     clock_mode = "Default"
     
@@ -109,6 +119,7 @@ name = "ibm_cga_and_mda"
 name = "pcxt_2_720k_floppies"
     # Floppy disk controller
     [overlay.fdc]
+    bus_type = "ISA"
     type = "IbmNec"
         # Drives connected to controller. Maximum of 4.
         [[overlay.fdc.drive]]
@@ -120,6 +131,7 @@ name = "pcxt_2_720k_floppies"
 name = "pcxt_4_360k_floppies"
     # Floppy disk controller
     [overlay.fdc]
+    bus_type = "ISA"
     type = "IbmNec"
         # Drives connected to controller. Maximum of 4.
         [[overlay.fdc.drive]]
