@@ -764,6 +764,7 @@ pub struct Cpu {
 
     // Halt-related stuff
     halted: bool,
+    reported_halt: bool, // Only error on halt once. The caller can determine if it wants to continue.
     halt_not_hold: bool, // Internal halt signal
     wake_timer: u32,
 
@@ -1193,6 +1194,7 @@ impl Cpu {
         self.ready = true;
         self.in_rep = false;
         self.halted = false;
+        self.reported_halt = false;
         self.halt_not_hold = false;
         self.opcode0_counter = 0;
         self.interrupt_inhibit = false;
@@ -1403,15 +1405,6 @@ impl Cpu {
 
     #[inline(always)]
     pub fn set_flag(&mut self, flag: Flag) {
-        if let Flag::Interrupt = flag {
-            self.interrupt_inhibit = true;
-            //if self.eflags & CPU_FLAG_INT_ENABLE == 0 {
-            // The interrupt flag was *just* set, so instruct the CPU to start
-            // honoring interrupts on the *next* instruction
-            // self.interrupt_inhibit = true;
-            //}
-        }
-
         self.flags |= match flag {
             Flag::Carry => CPU_FLAG_CARRY,
             Flag::Parity => CPU_FLAG_PARITY,
@@ -1419,7 +1412,13 @@ impl Cpu {
             Flag::Zero => CPU_FLAG_ZERO,
             Flag::Sign => CPU_FLAG_SIGN,
             Flag::Trap => CPU_FLAG_TRAP,
-            Flag::Interrupt => CPU_FLAG_INT_ENABLE,
+            Flag::Interrupt => {
+                // Only inhibit interrupts if the interrupt flag was not previously set
+                if !self.get_flag(Flag::Interrupt) {
+                    self.interrupt_inhibit = false;
+                }
+                CPU_FLAG_INT_ENABLE
+            }
             Flag::Direction => CPU_FLAG_DIRECTION,
             Flag::Overflow => CPU_FLAG_OVERFLOW,
         };
@@ -1475,34 +1474,28 @@ impl Cpu {
 
     #[inline]
     pub fn get_flag(&self, flag: Flag) -> bool {
-        let mut flags = self.flags;
-        flags &= match flag {
-            Flag::Carry => CPU_FLAG_CARRY,
-            Flag::Parity => CPU_FLAG_PARITY,
-            Flag::AuxCarry => CPU_FLAG_AUX_CARRY,
-            Flag::Zero => CPU_FLAG_ZERO,
-            Flag::Sign => CPU_FLAG_SIGN,
-            Flag::Trap => CPU_FLAG_TRAP,
-            Flag::Interrupt => CPU_FLAG_INT_ENABLE,
-            Flag::Direction => CPU_FLAG_DIRECTION,
-            Flag::Overflow => CPU_FLAG_OVERFLOW,
-        };
-
-        if flags > 0 {
-            true
-        }
-        else {
-            false
-        }
+        self.flags
+            & match flag {
+                Flag::Carry => CPU_FLAG_CARRY,
+                Flag::Parity => CPU_FLAG_PARITY,
+                Flag::AuxCarry => CPU_FLAG_AUX_CARRY,
+                Flag::Zero => CPU_FLAG_ZERO,
+                Flag::Sign => CPU_FLAG_SIGN,
+                Flag::Trap => CPU_FLAG_TRAP,
+                Flag::Interrupt => CPU_FLAG_INT_ENABLE,
+                Flag::Direction => CPU_FLAG_DIRECTION,
+                Flag::Overflow => CPU_FLAG_OVERFLOW,
+            }
+            != 0
     }
 
     #[cfg(feature = "cpu_validator")]
     pub fn get_vregisters(&self) -> VRegisters {
         VRegisters {
-            ax:    self.ax,
-            bx:    self.bx,
-            cx:    self.cx,
-            dx:    self.dx,
+            ax:    self.a.x(),
+            bx:    self.b.x(),
+            cx:    self.c.x(),
+            dx:    self.d.x(),
             cs:    self.cs,
             ss:    self.ss,
             ds:    self.ds,
