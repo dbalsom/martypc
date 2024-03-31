@@ -551,6 +551,20 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     .set_duration(Some(LONG_NOTIFICATION_TIME));
             }
         }
+        GuiEvent::ToggleFullscreen(dt_idx) => {
+            if let Some(window) = emu.dm.get_window(*dt_idx) {
+                match window.fullscreen() {
+                    Some(_) => {
+                        log::debug!("ToggleFullscreen: Resetting fullscreen state.");
+                        window.set_fullscreen(None);
+                    }
+                    None => {
+                        log::debug!("ToggleFullscreen: Entering fullscreen state.");
+                        window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                    }
+                }
+            }
+        }
         GuiEvent::CtrlAltDel => {
             emu.machine.emit_ctrl_alt_del();
         }

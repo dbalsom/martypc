@@ -886,6 +886,11 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
             self.targets[*idx].window.as_ref()
         })
     }
+
+    fn get_window(&self, dt_idx: usize) -> Option<&Window> {
+        self.targets.get(dt_idx).and_then(|dt| dt.window.as_ref())
+    }
+
     fn set_icon(&mut self, icon_path: PathBuf) {
         if let Ok(image) = image::open(icon_path.clone()) {
             let rgba8 = image.into_rgba8();

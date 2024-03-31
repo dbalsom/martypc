@@ -591,6 +591,11 @@ impl GuiState {
             state.text_mode_viewer.select_card(display_idx);
         });
 
+        if ui.button("🖵 Toggle Fullscreen").clicked() {
+            self.event_queue.send(GuiEvent::ToggleFullscreen(display_idx));
+            ui.close_menu();
+        };
+
         ui.separator();
 
         if ui.button("🖼 Take Screenshot").clicked() {

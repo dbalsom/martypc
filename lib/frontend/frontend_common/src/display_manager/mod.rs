@@ -164,8 +164,11 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// to a Machine must be provided to query video card parameters.
     fn get_display_info(&self, machine: &Machine) -> Vec<DisplayInfo>;
 
-    /// Return the associated Window given a c
+    /// Return the associated Window given a Window id.
     fn get_window_by_id(&self, wid: Wi) -> Option<&W>;
+
+    /// Return the associated Window given a display target index.
+    fn get_window(&self, dt_idx: usize) -> Option<&W>;
 
     /// Load and set the specified icon for each window in the DisplayManager.
     fn set_icon(&mut self, icon_path: PathBuf);

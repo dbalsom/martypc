@@ -186,6 +186,7 @@ pub enum GuiEvent {
     TickDevice(DeviceSelection, u32),
     MachineStateChange(MachineState),
     TakeScreenshot(usize),
+    ToggleFullscreen(usize),
     Exit,
     SetNMI(bool),
     TriggerParity,
