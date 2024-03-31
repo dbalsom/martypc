@@ -105,4 +105,7 @@ impl CoreConfig for ConfigFileParams {
     fn get_title_hacks(&self) -> bool {
         self.emulator.title_hacks
     }
+    fn get_patch_enabled(&self) -> bool {
+        self.machine.patch_roms
+    }
 }

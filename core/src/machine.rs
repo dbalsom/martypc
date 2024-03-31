@@ -537,7 +537,10 @@ impl Machine {
             
             // Load checkpoint flags into memory
             cpu.bus_mut().install_checkpoints(&rom_manifest.checkpoints);
-            cpu.bus_mut().install_patch_checkpoints(&rom_manifest.patches);
+
+            if core_config.get_patch_enabled() {
+                cpu.bus_mut().install_patch_checkpoints(&rom_manifest.patches);
+            }
             
             // TODO: Reimplement support for manual reset vector in rom set?
             // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
@@ -557,7 +560,11 @@ impl Machine {
         cpu.reset();
 
         let checkpoint_map = rom_manifest.checkpoint_map();
-        let patch_map = rom_manifest.patch_map();
+
+        let mut patch_map = HashMap::new();
+        if core_config.get_patch_enabled() {
+            patch_map = rom_manifest.patch_map();
+        }
 
         Machine {
             machine_type,
@@ -1518,7 +1525,7 @@ impl Machine {
         self.pit_data.fractional_part = next_sample_f.fract();
     }
 
-    pub fn for_each_videocard<F>(&mut self, mut f: F)
+    pub fn for_each_videocard<F>(&mut self, f: F)
     where
         F: FnMut(VideoCardInterface),
     {

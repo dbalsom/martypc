@@ -236,6 +236,8 @@ pub struct Machine {
     #[serde(default)]
     pub reload_roms: bool,
     #[serde(default)]
+    pub patch_roms: bool,
+    #[serde(default)]
     pub no_roms: bool,
     #[serde(default)]
     pub raw_rom: bool,

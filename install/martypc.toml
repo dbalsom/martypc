@@ -19,7 +19,6 @@ config_version = "0.2"
 # directory.
 config_name = "ibm5160"
 #config_name = "ibm5160_hdd"
-#config_name = "ibm5160_hdd_ega"
 
 # Specify configuration overlays to load on top of machine configuration.
 # Config overlays are a convenient way to swap or add to a base config. 
@@ -34,6 +33,10 @@ prefer_oem = true
 
 # Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
 reload_roms = true
+
+# Apply ROM patches defined in ROM sets. Disable this for authenticity
+# as some patches may speed up boot time.
+patch_roms = true
 
 # Don't load any ROMs if true. Default: false
 #no_roms = true
@@ -194,7 +197,7 @@ run_bin_ofs = 0x0000
 vsync = false
 
 [emulator.audio]
-# Set to false to disable sound system initialization.
+# Set this to false to disable sound system initialization.
 enabled = true
 
 [emulator.media]
@@ -202,7 +205,7 @@ enabled = true
 raw_sector_image_extensions = ["img", "ima", "dsk", "mnx"]
 
 # Default state of write protection for newly loaded floppy images.
-write_protect_default = true
+write_protect_default = false
 
 #[[emulator.media.vhd]]
 # VHD to mount into drive 0 (Typically C:)
@@ -241,7 +244,7 @@ breakpoint_notify = true
 # of the card's selected video aperture, which may be larger than expected
 # due to overscan. If this is larger than the requested min_size, min_size
 # will be ignored, the scaler will not resample downwards.
-# Therefore if you specifically want a 640x480 window, you should
+# Therefore, if you specifically want a 640x480 window, you should
 # select the "Cropped" aperture.
 # ----------------------------------------------------------------------------
 [[emulator.window]]
