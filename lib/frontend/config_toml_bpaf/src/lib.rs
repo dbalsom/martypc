@@ -37,7 +37,7 @@ use std::{
     str::FromStr,
 };
 
-use marty_core::{cpu_common::TraceMode, cpu_validator::ValidatorType};
+use marty_core::{cpu_common::TraceMode, cpu_validator::ValidatorType, machine_types::OnHaltBehavior};
 
 use frontend_common::{
     display_scaler::ScalerPreset,
@@ -49,7 +49,6 @@ use frontend_common::{
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
-use marty_core::cpu_common::HaltMode;
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -212,7 +211,7 @@ pub struct Tests {
 pub struct Cpu {
     pub wait_states: Option<bool>,
     pub off_rails_detection: Option<bool>,
-    pub on_halt: Option<HaltMode>,
+    pub on_halt: Option<OnHaltBehavior>,
     pub instruction_history: Option<bool>,
     pub service_interrupt: Option<bool>,
     #[serde(default)]

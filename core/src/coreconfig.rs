@@ -42,6 +42,7 @@ use crate::{
 };
 use std::path::PathBuf;
 
+use crate::machine_types::OnHaltBehavior;
 use serde::Deserialize;
 
 #[derive(Copy, Clone, Debug, Deserialize)]
@@ -75,4 +76,5 @@ pub trait CoreConfig {
     fn get_cpu_trace_file(&self) -> Option<PathBuf>;
     fn get_title_hacks(&self) -> bool;
     fn get_patch_enabled(&self) -> bool;
+    fn get_halt_behavior(&self) -> OnHaltBehavior;
 }

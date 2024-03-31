@@ -59,6 +59,29 @@ impl FromStr for MachineType {
     }
 }
 
+#[derive(Copy, Clone, Debug, Default, Deserialize)]
+pub enum OnHaltBehavior {
+    #[default]
+    Continue,
+    Warn,
+    Stop,
+}
+
+impl FromStr for OnHaltBehavior {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "continue" => Ok(OnHaltBehavior::Continue),
+            "warn" => Ok(OnHaltBehavior::Warn),
+            "stop" => Ok(OnHaltBehavior::Stop),
+            _ => Err("Bad value for OnHaltBehavior".to_string()),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FloppyDriveType {
     Floppy360K,

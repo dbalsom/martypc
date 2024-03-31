@@ -35,14 +35,6 @@
 use serde::Deserialize;
 use std::str::FromStr;
 
-#[derive(Copy, Clone, Debug, Default, Deserialize)]
-pub enum HaltMode {
-    #[default]
-    Continue,
-    Warn,
-    Stop,
-}
-
 #[derive(Copy, Clone, Debug)]
 pub enum CpuType {
     Intel8088,

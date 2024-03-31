@@ -69,6 +69,7 @@ use crate::{
 };
 
 use ringbuf::{Consumer, Producer, RingBuffer};
+use crate::machine_types::OnHaltBehavior;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
@@ -87,6 +88,7 @@ pub struct KeybufferEntry {
 #[derive(Copy, Clone, Debug)]
 pub enum MachineEvent {
     CheckpointHit(usize, u32),
+    Halted,
     Reset,
 }
 
@@ -400,6 +402,7 @@ pub struct Machine {
     patch_map: HashMap<u32, usize>,
     events: Vec<MachineEvent>,
     reload_pending: bool,
+    halt_behavior: OnHaltBehavior,
 }
 
 impl Machine {
@@ -592,6 +595,7 @@ impl Machine {
             patch_map,
             events: Vec::new(),
             reload_pending: false,
+            halt_behavior: core_config.get_halt_behavior(),
         }
     }
 
@@ -1127,10 +1131,10 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
             let fake_cycles: u32 = 7;
             let mut cpu_cycles;
-
-            if self.cpu.is_error() {
-                break;
-            }
+            
+            // if self.cpu.is_error() {
+            //     break;
+            // }
 
             let flat_address = self.cpu.flat_ip();
 
@@ -1194,23 +1198,41 @@ impl Machine {
                     }
                 },
                 Err(err) => {
+                    // Currently the only "error" that can happen is a permanent halt
+                    // (Halt with interrupts disabled)
                     if let CpuError::CpuHaltedError(_) = err {
-                        log::error!("CPU Halted!");
+                        log::warn!("CPU Halted!");
                         self.cpu.trace_flush();
-                        exec_control.state = ExecutionState::Halted;
+
+                        match self.halt_behavior {
+                            OnHaltBehavior::Continue => {
+                                // Do nothing, just blissfully continue even though nothing more
+                                // will ever happen
+                            }
+                            OnHaltBehavior::Warn => {
+                                // Show the user a notification, but keep running
+                                self.events.push(MachineEvent::Halted);
+                            }
+                            OnHaltBehavior::Stop => {
+                                // Show the user a notification and halt the machine
+                                self.events.push(MachineEvent::Halted);
+                                exec_control.state = ExecutionState::Halted;
+                                self.error = true;
+                                self.error_str = Some(format!("{}", err));
+                                log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
+                            }
+                        }
                     }
-                    self.error = true;
-                    self.error_str = Some(format!("{}", err));
-                    log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
-                    cpu_cycles = 0
+                    cpu_cycles = 0;
                 }
             }
 
             skip_breakpoint = false;
 
-            if cpu_cycles > 200 {
-                log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
-            }
+            // This is not reliable. A rotate by CL can take a long time.
+            // if cpu_cycles > 200 {
+            //     log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
+            // }
 
             instr_count += 1;
             cycles_elapsed += cpu_cycles;

@@ -163,6 +163,12 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
                             }
                         }
                     }
+                    MachineEvent::Halted => {
+                        emuc.gui
+                            .toasts()
+                            .error("CPU permanently halted!".to_string())
+                            .set_duration(Some(LONG_NOTIFICATION_TIME));
+                    }
                 }
             }
 

@@ -40,7 +40,7 @@ use marty_core::{
     coreconfig::CoreConfig,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    machine_types::MachineType,
+    machine_types::{MachineType, OnHaltBehavior},
 };
 
 /*
@@ -107,5 +107,8 @@ impl CoreConfig for ConfigFileParams {
     }
     fn get_patch_enabled(&self) -> bool {
         self.machine.patch_roms
+    }
+    fn get_halt_behavior(&self) -> OnHaltBehavior {
+        self.machine.cpu.on_halt.unwrap_or_default()
     }
 }
