@@ -104,3 +104,17 @@ vga = ["marty_core/vga", "frontend_common/vga"]
 [build-dependencies]
 winres = "0.1"
 
+[package.metadata.appimage]
+assets = [
+    "install/martypc.toml",
+    "install/configs",
+    "install/media",
+    "install/output",
+]
+auto_link = true
+auto_link_exclude_list = [
+    "libc.so*",
+    "libdl.so*",
+    "libpthread.so*",
+]
+
