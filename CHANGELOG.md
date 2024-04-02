@@ -1,4 +1,9 @@
-## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0) (2024-XX-XX)
+
+## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/latest) (2024-XX-XX)
+
+### TBD
+
+## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0b) (2024-04-01)
 
 ### New Features
 
@@ -48,14 +53,14 @@
       EGA will continue to be polished in upcoming releases.
     * Features:
         * Functional emulation of each of the 5 LSI chips on the EGA
-        * Per-scanline Pel panning - effects like the wibble in Bevery Hills Cop work
+        * Per-scanline Pel panning - effects like the wibble in Beverly Hills Cop work
         * Line compare register - See the status bar in Catacombs 3d!
         * CGA compatibility mode - Play Alleycat!
         * Software fonts - change your DOS font, or see a graphical mouse cursor in text mode (Norton Utilities 6.0)
     * Known issues:
         * Visual glitches with n0p's Windows 3.0 EGA driver patched for 8088
-        * Some more obscure registers not properly emulated / investigated (SOM, etc)
-        * Aperture defintions / adjustments not final
+        * Some more obscure registers not properly emulated / investigated (SOM, etc.)
+        * Aperture definitions / adjustments not final
         * Implementation may be slow in parts - more optimization needed (SIMD?)
 
 * #### MDA Video Card
@@ -72,9 +77,9 @@
         * Model M emulation to come
     * Configurable typematic rate and delay
     * International keyboard layouts are now supported via translation files.
-        * Translation files support all keycode names defined by
-          w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
+        * Translation files support all keycode names defined by w3c: [https://w3c.github.io/uievents-code/#code-value-tables](https://w3c.github.io/uievents-code/#code-value-tables)
         * Translation files can define direct scancode mappings or full macros
+        * Initial translation files include US, UK and IT layouts. More to come. Help appreciated!
     * Configurable hotkey support
 
 ### Debugger/GUI Improvements
@@ -94,14 +99,14 @@
 
 ### Frontend Bug Fixes / Improvements
 
-* Readded CTRL-ALT-DEL menu option
+* Implemented configurable CPU halt behaviors
+* Re-added CTRL-ALT-DEL menu option
 * New benchmark mode (enable in martypc.toml, or use --benchmark-mode)
 * Floppy and HDD browsers now support subdirectories
-* Write protection can be toggled for floppy drives
+* Write protection can be toggled for floppy drives with configurable default
 * Sound initialization is now optional
 * Added 8088 JSON CPU test generator and validator
-    * Used to create the
-      first [comprehensive test suite for the Intel 8088](https://github.com/TomHarte/ProcessorTests/tree/main/8088)
+    * Used to create the first [comprehensive test suite for the Intel 8088](https://github.com/TomHarte/ProcessorTests/tree/main/8088)
 * Added debug_keyboard config flag - this will print keyboard event info to the console for support
 
 ### Core Bug Fixes / Improvements
@@ -137,7 +142,6 @@
 * CGA: Don't recalculate composite parameters if mode change was enable bit only
 * Xebec HDC: Proceed from Reset state to WaitngForCommand after a delay (Fixes Minix boot issue)
 * Xebec HDC: Implemented missing Read Sector Buffer command (Fixes panic in IBM diagnostics)
-
 ### Major dependency updates:
 
 * wgpu to 0.18
