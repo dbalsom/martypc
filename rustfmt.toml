@@ -1,0 +1,32 @@
+
+# Daniel's opinionated rustfmt settings.
+# I was somewhat reluctant to use rustfmt at first as I am fairly opinionated about certain code formatting choices
+# and early tests on MartyPC mangled some very long match arms, especially in the instruction decoder.  But I'm biting
+# the bullet and implementing it.
+
+max_width = 120
+
+# Keep 'if' and 'else' in the same column.
+# if lorem {
+#   println!("ipsum!");
+# }
+# else {
+#   println!("dolor!");
+# }
+control_brace_style = "ClosingNextLine"
+
+# I like to keep enum struct variants on one line if possible. The default of 35 is a bit too short and would
+# split this example into individual lines:
+#
+# pub enum ScalerOption {
+#   Mode(ScalerMode),
+#   Adjustment { h: f32, s: f32, b: f32, c: f32, g: f32 },
+struct_variant_width = 65
+
+# Preferred input formats.
+imports_granularity = "Crate"
+imports_layout = "HorizontalVertical"
+
+# I like aligning things
+enum_discrim_align_threshold = 3
+struct_field_align_threshold = 3

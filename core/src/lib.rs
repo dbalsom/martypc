@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,24 +26,29 @@
 
     lib.rs
 
-    Main emulator core 
+    Main emulator core
 
 */
 
-pub mod devices;
+#![allow(dead_code)]
+
+extern crate core;
 
 pub mod breakpoints;
 pub mod bus;
 pub mod bytebuf;
 pub mod bytequeue;
-pub mod config;
-pub mod cpu_common;
+pub mod coreconfig;
 pub mod cpu_808x;
-pub mod floppy_manager;
+pub mod cpu_common;
+pub mod device_traits;
+pub mod device_types;
+pub mod devices;
 pub mod file_util;
 pub mod interrupt;
+pub mod keys;
 pub mod machine;
-pub mod machine_manager;
+pub mod machine_config;
 pub mod memerror;
 pub mod rom_manager;
 pub mod sound;
@@ -51,10 +56,7 @@ pub mod syntax_token;
 pub mod tracelogger;
 pub mod updatable;
 pub mod util;
-
 pub mod vhd;
-pub mod vhd_manager;
-pub mod videocard; // VideoCard trait
 
 pub mod cpu_validator; // CpuValidator trait
 
@@ -64,3 +66,4 @@ pub mod arduino8088_client;
 #[cfg(feature = "arduino_validator")]
 #[macro_use]
 pub mod arduino8088_validator;
+pub mod machine_types;

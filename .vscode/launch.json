@@ -13,7 +13,9 @@
                     "build",
                     "-r",
                     "--bin=martypc",
-                    "--package=martypc"
+                    "--package=martypc",
+                    "--features",
+                    "devtools"
                 ],
                 "filter": {
                     "name": "martypc",
@@ -23,11 +25,97 @@
             "args": [],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace",
+                "RUST_LOG": "debug,naga=error,wgpu_core=warn,marty_core::cpu_808x=trace,marty_core::devices::ppi=trace,marty_core::devices::cga=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
         },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', EGA",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features",
+                    "devtools,ega",
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_ega.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::cpu_808x=trace,marty_core::devices::ppi=trace,marty_core::devices::cga=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },        
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'martypc', EGA",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features",
+                    "devtools,ega",
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_ega.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::cpu_808x=trace,marty_core::devices::ppi=trace,marty_core::devices::cga=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },        
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', GLaBIOS",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features",
+                    "devtools"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_glabios.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,naga=error,wgpu_core=error,marty_core::devices::ppi=trace,marty_core::devices::dma=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },        
         {
             "type": "lldb",
             "request": "launch",
@@ -45,7 +133,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_3/",
+            "cwd": "${workspaceFolder}/releases/0_1_4/",
             "env": {
                 "RUST_LOG": "debug,naga=error,wgpu_core=error",
                 "RUST_LOG_STYLE": "always",
@@ -60,7 +148,9 @@
                 "args": [
                     "build",
                     "--bin=martypc",
-                    "--package=martypc"
+                    "--package=martypc",
+                    "--features",
+                    "devtools"
                 ],
                 "filter": {
                     "name": "martypc",
@@ -78,6 +168,58 @@
         {
             "type": "lldb",
             "request": "launch",
+            "name": "Debug executable 'martypc', run specified program",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "marty_runprog.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        },   
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'martypc', run specified program (runaway)",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "./cfg/runaway_alloc.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            }
+        }, 
+        {
+            "type": "lldb",
+            "request": "launch",
             "name": "Debug executable 'martypc' release candidate",
             "cargo": {
                 "args": [
@@ -91,7 +233,7 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/releases/0_1_3/",
+            "cwd": "${workspaceFolder}/releases/0_1_4/",
             "env": {
                 "RUST_LOG": "martypc=trace",
                 "RUST_LOG_STYLE": "always",
@@ -144,11 +286,183 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "martypc=trace",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug,marty_core::devices::pic=trace,marty_core::devices::ppi=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }
         },         
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', generate tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_gentests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },           
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'martypc', generate tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_gentests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },    
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'martypc', validate JSON tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_runtests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', validate JSON tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_runtests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },    
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', quick-run JSON tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_runtests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "warn,marty_core=warn,martypc_pixels_desktop=warn",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Release executable 'martypc', process JSON tests",
+            "cargo": {
+                "args": [
+                    "build",
+                    "-r",
+                    "--bin=martypc",
+                    "--package=martypc",
+                    "--features=cpu_validator arduino_validator"
+                ],
+                "filter": {
+                    "name": "martypc",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "--configfile",
+                "martypc_processtests.toml"
+            ],
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "RUST_LOG": "debug,marty_core=trace,martypc_pixels_desktop=trace",
+                "RUST_LOG_STYLE": "always",
+                "RUST_BACKTRACE": "1"
+            },
+            //"postDebugTask": "runCondenseScript"
+        },                     
         {
             "type": "lldb",
             "request": "launch",
@@ -171,7 +485,7 @@
             ],
             "cwd": "${workspaceFolder}",
             "env": {
-                "RUST_LOG": "martypc=trace",
+                "RUST_LOG": "warn,naga=error,wgpu_core=error,marty_core=debug,martypc_pixels_desktop=trace",
                 "RUST_LOG_STYLE": "always",
                 "RUST_BACKTRACE": "1"
             }

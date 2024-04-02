@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -30,8 +30,8 @@
 
 */
 
-use modular_bitfield::prelude::*;
 use crate::devices::vga::*;
+use modular_bitfield::prelude::*;
 
 #[derive(Copy, Clone, Debug)]
 pub enum GraphicsRegister {
@@ -43,7 +43,7 @@ pub enum GraphicsRegister {
     Mode,
     Miscellaneous,
     ColorDontCare,
-    BitMask
+    BitMask,
 }
 
 #[bitfield]
@@ -52,7 +52,7 @@ pub struct GDataRotateRegister {
     #[bits = 2]
     pub function: RotateFunction,
     #[skip]
-    unused: B3
+    unused: B3,
 }
 
 #[bitfield]
@@ -66,17 +66,17 @@ pub struct GModeRegister {
     #[bits = 2]
     pub shift_mode: ShiftMode,
     #[skip]
-    unused: B1
+    unused: B1,
 }
 
 #[bitfield]
 pub struct GMiscellaneousRegister {
-    pub graphics_mode: bool,    
+    pub graphics_mode: bool,
     pub chain_odd_maps: bool,
     #[bits = 2]
     pub memory_map: MemoryMap,
     #[skip]
-    unused: B4
+    unused: B4,
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
@@ -84,7 +84,7 @@ pub enum MemoryMap {
     A0000_128k,
     A0000_64K,
     B0000_32K,
-    B8000_32K
+    B8000_32K,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, BitfieldSpecifier)]
@@ -92,7 +92,7 @@ pub enum RotateFunction {
     Unmodified,
     And,
     Or,
-    Xor
+    Xor,
 }
 
 #[derive(Copy, Clone, Debug, BitfieldSpecifier)]
@@ -114,17 +114,16 @@ pub enum ShiftMode {
     Standard,
     CGACompatible,
     EightBits,
-    Reserved
+    Reserved,
 }
 
 impl VGACard {
     /// Handle a write to one of the Graphics Position Registers.
-    /// 
+    ///
     /// According to IBM documentation, both these registers should be set to
-    /// specific values, so we don't really do anything with them other than 
+    /// specific values, so we don't really do anything with them other than
     /// log if we see an unexpected value written.
     pub fn write_graphics_position(&mut self, reg: u32, byte: u8) {
-
         match reg {
             1 => {
                 if byte != 0 {
@@ -154,38 +153,48 @@ impl VGACard {
             0x06 => GraphicsRegister::Miscellaneous,
             0x07 => GraphicsRegister::ColorDontCare,
             0x08 => GraphicsRegister::BitMask,
-            _ => self.graphics_register_selected
+            _ => self.graphics_register_selected,
         };
 
-        trace!(self, "Write to Graphics::Address: {:02X}", self.graphics_register_address);
+        trace!(
+            self,
+            "Write to Graphics::Address: {:02X}",
+            self.graphics_register_address
+        );
     }
 
-    pub fn write_graphics_data(&mut self, byte: u8 ) {
+    pub fn write_graphics_data(&mut self, byte: u8) {
         match self.graphics_register_selected {
             GraphicsRegister::SetReset => {
                 // Bits 0-3: Set/Reset Bits 0-3
                 self.graphics_set_reset = byte & 0x0F;
-                trace!(self, "Write to {:?}: sr: {:01X}",
+                trace!(
+                    self,
+                    "Write to {:?}: sr: {:01X}",
                     self.graphics_register_selected,
                     self.graphics_set_reset
-                );                  
+                );
             }
             GraphicsRegister::EnableSetReset => {
                 // Value must be 1 to enable writing
                 self.graphics_enable_set_reset = byte & 0x0F;
-                trace!(self, "Write to {:?}: esr: {:01x}",
+                trace!(
+                    self,
+                    "Write to {:?}: esr: {:01x}",
                     self.graphics_register_selected,
                     self.graphics_enable_set_reset
-                );                  
-            },
+                );
+            }
             GraphicsRegister::ColorCompare => {
                 // Bits 0-3: Color Compare 0-3
                 self.graphics_color_compare = byte & 0x0F;
-                trace!(self, "Write to {:?}: cc: {:01x}",
+                trace!(
+                    self,
+                    "Write to {:?}: cc: {:01x}",
                     self.graphics_register_selected,
                     self.graphics_color_compare
-                );                  
-            },
+                );
+            }
             GraphicsRegister::DataRotate => {
                 // Bits 0-2: Rotate Count
                 // Bits 3-4: Function Select
@@ -195,21 +204,25 @@ impl VGACard {
                     log::warn!("Invalid write to DataRotate register!");
                 }
 
-                trace!(self, "Write to {:?}:{:02X} rot: {:?} rop:{:?}",
+                trace!(
+                    self,
+                    "Write to {:?}:{:02X} rot: {:?} rop:{:?}",
                     self.graphics_register_selected,
                     byte,
                     self.graphics_data_rotate.count(),
                     self.graphics_data_rotate.function(),
-                );                
-            },
+                );
+            }
             GraphicsRegister::ReadMapSelect => {
                 // Bits 0-2: Map Select 0-2
                 self.graphics_read_map_select = byte & 0x03;
-                trace!(self, "Write to {:?}: rms: {:?}",
+                trace!(
+                    self,
+                    "Write to {:?}: rms: {:?}",
                     self.graphics_register_selected,
                     self.graphics_read_map_select
-                );                
-            },
+                );
+            }
 
             GraphicsRegister::Mode => {
                 // Bits 0-1: Write Mode
@@ -218,15 +231,14 @@ impl VGACard {
                 // Bit 4: Odd/Even
                 // Bit 5: Shift Register Mode
                 self.graphics_mode = GModeRegister::from_bytes([byte]);
-                trace!(self, "Write to {:?}: {:02X}",
-                    self.graphics_register_selected,
-                    byte
-                );                  
-            },
+                trace!(self, "Write to {:?}: {:02X}", self.graphics_register_selected, byte);
+            }
             GraphicsRegister::Miscellaneous => {
                 self.graphics_micellaneous = GMiscellaneousRegister::from_bytes([byte]);
 
-                trace!(self, "Write to {:?}: gm: {:?} com:{:?} mm:{:?}",
+                trace!(
+                    self,
+                    "Write to {:?}: gm: {:?} com:{:?} mm:{:?}",
                     self.graphics_register_selected,
                     self.graphics_micellaneous.graphics_mode(),
                     self.graphics_micellaneous.chain_odd_maps(),
@@ -236,52 +248,38 @@ impl VGACard {
             GraphicsRegister::ColorDontCare => {
                 // Bits 0-3: Color Don't Care
 
-                trace!(self, "Write to {:?}: {:01X}",
+                trace!(
+                    self,
+                    "Write to {:?}: {:01X}",
                     self.graphics_register_selected,
                     self.graphics_color_dont_care
-                );                
+                );
                 self.graphics_color_dont_care = byte & 0x0F;
-            },
+            }
             GraphicsRegister::BitMask => {
                 // Bits 0-7: Bit Mask
                 self.graphics_bitmask = byte;
-                trace!(self, "Write to {:?}: {:01X}",
+                trace!(
+                    self,
+                    "Write to {:?}: {:01X}",
                     self.graphics_register_selected,
                     self.graphics_bitmask
-                );                   
-            },
+                );
+            }
         }
     }
 
     pub fn read_graphics_data(&self) -> u8 {
         match self.graphics_register_selected {
-            GraphicsRegister::SetReset => {
-                self.graphics_set_reset
-            }
-            GraphicsRegister::EnableSetReset => {
-                self.graphics_enable_set_reset     
-            },
-            GraphicsRegister::ColorCompare => {
-                self.graphics_color_compare
-            },
-            GraphicsRegister::DataRotate => {
-                self.graphics_data_rotate.bytes[0]
-            },
-            GraphicsRegister::ReadMapSelect => {
-                self.graphics_read_map_select
-            },
-            GraphicsRegister::Mode => {
-                self.graphics_mode.bytes[0]
-            },
-            GraphicsRegister::Miscellaneous => {
-                self.graphics_micellaneous.bytes[0]
-            }
-            GraphicsRegister::ColorDontCare => {             
-                self.graphics_color_dont_care
-            },
-            GraphicsRegister::BitMask => {
-                self.graphics_bitmask            
-            },
-        }        
+            GraphicsRegister::SetReset => self.graphics_set_reset,
+            GraphicsRegister::EnableSetReset => self.graphics_enable_set_reset,
+            GraphicsRegister::ColorCompare => self.graphics_color_compare,
+            GraphicsRegister::DataRotate => self.graphics_data_rotate.bytes[0],
+            GraphicsRegister::ReadMapSelect => self.graphics_read_map_select,
+            GraphicsRegister::Mode => self.graphics_mode.bytes[0],
+            GraphicsRegister::Miscellaneous => self.graphics_micellaneous.bytes[0],
+            GraphicsRegister::ColorDontCare => self.graphics_color_dont_care,
+            GraphicsRegister::BitMask => self.graphics_bitmask,
+        }
     }
 }

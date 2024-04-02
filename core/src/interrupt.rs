@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -33,30 +33,25 @@
 
 use log;
 
-use crate::cpu_808x::CpuRegisterState;
-use crate::bus::BusInterface;
+use crate::{bus::BusInterface, cpu_808x::CpuRegisterState};
 
 /// Function to log interrupt return values - called on return from interrupt (IRET)
-pub fn log_post_interrupt(int: u8, ah: u8, regs: &CpuRegisterState, bus: &mut BusInterface ) {
-
+pub fn log_post_interrupt(int: u8, ah: u8, regs: &CpuRegisterState, bus: &mut BusInterface) {
     match int {
-
         0x10 => {
             // Video services
-        },
+        }
         0x21 => {
             // Dos services
 
             log_post_interrupt21(ah, regs, bus);
-        },
+        }
         _ => {}
     }
 }
 
-pub fn log_post_interrupt21(ah: u8, regs: &CpuRegisterState, bus: &mut BusInterface ) {
-
+pub fn log_post_interrupt21(ah: u8, regs: &CpuRegisterState, bus: &mut BusInterface) {
     match ah {
-
         0x4b => {
             // Load and Execute Program
 
@@ -73,8 +68,7 @@ pub fn log_post_interrupt21(ah: u8, regs: &CpuRegisterState, bus: &mut BusInterf
             let (ip, _) = bus.read_u16(ip_addr, 0).unwrap();
 
             log::trace!("int21h: 4B Load and Execute Program: CS:IP: [{:04X}]:[{:04X}]", cs, ip);
-
-        },
+        }
         _ => {
             log::trace!("int21h: {:02X}", ah);
         }

@@ -1,0 +1,54 @@
+name: Windows
+
+on:
+  push:
+    branches:
+      - version_0_2_0
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  msys2:
+    name: martypc
+    runs-on: windows-2022
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    strategy:
+      matrix:
+        environment:
+          - msystem: MINGW64
+            prefix: mingw-w64-x86_64
+    steps:
+      - name: Prepare MSYS2 environment
+        uses: msys2/setup-msys2@v2
+        with:
+          release: false
+          update: true
+          msystem: ${{ matrix.environment.msystem }}
+          pacboy: >-
+            rust:p
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cargo build
+        run: cargo build --profile release-lto --features ega
+
+      - name: Copy files into install dir
+        run: cp LICENSE README.md CHANGELOG.md CREDITS.md target/release-lto/martypc install
+
+      - name: Rename install directory
+        run: mv install martypc
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 'martypc-windows-gha${{ github.run_number }}'
+          path: martypc

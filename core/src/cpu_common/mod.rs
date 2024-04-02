@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -32,26 +32,69 @@
 
 #![allow(dead_code)]
 
+use serde::Deserialize;
+use std::str::FromStr;
 
-#[derive (Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum CpuType {
     Intel8088,
     Intel8086,
 }
 
-impl Default for CpuType {
-    fn default() -> Self { CpuType::Intel8088 }
+pub enum CycleTraceMode {
+    Text,
+    Csv,
+    Sigrok,
 }
 
-#[derive (Debug)]
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+pub enum TraceMode {
+    None,
+    CycleText,
+    CycleCsv,
+    CycleSigrok,
+    Instruction,
+}
+
+impl FromStr for TraceMode {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "none" => Ok(TraceMode::None),
+            "cycletext" => Ok(TraceMode::CycleText),
+            "cyclecsv" => Ok(TraceMode::CycleCsv),
+            "cyclesigrok" => Ok(TraceMode::CycleSigrok),
+            "instruction" => Ok(TraceMode::Instruction),
+            _ => Err("Bad value for tracemode".to_string()),
+        }
+    }
+}
+impl Default for TraceMode {
+    fn default() -> Self {
+        TraceMode::None
+    }
+}
+
+impl Default for CpuType {
+    fn default() -> Self {
+        CpuType::Intel8088
+    }
+}
+
+#[derive(Debug)]
 pub enum CpuOption {
     InstructionHistory(bool),
-    SimulateDramRefresh(bool, u32, u32),
+    ScheduleInterrupt(bool, u32, u32, bool),
+    ScheduleDramRefresh(bool, u32, u32, bool),
     DramRefreshAdjust(u32),
     HaltResumeDelay(u32),
     OffRailsDetection(bool),
     EnableWaitStates(bool),
-    TraceLoggingEnabled(bool)
+    TraceLoggingEnabled(bool),
+    EnableServiceInterrupt(bool),
 }
 
 use crate::cpu_808x::*;
@@ -59,7 +102,6 @@ use crate::cpu_808x::*;
 pub mod alu;
 
 impl Cpu {
-
     pub fn common_test(&self) {
         //log::trace!("I'm a common cpu function!");
     }

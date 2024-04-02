@@ -1,0 +1,13 @@
+[package]
+name = "display_backend_trait"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+name = "display_backend_trait"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+thiserror = "1.0"
+anyhow = "1.0"

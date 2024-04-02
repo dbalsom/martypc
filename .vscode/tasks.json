@@ -1,237 +1,285 @@
 {
-	"version": "2.0.0",
-	"tasks": [
-		{
-			"type": "cargo",
-			"command": "build",
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build"
-		},
-		{
-			"type": "cargo",
-			"command": "build",
-			"args": [
-				"--features",
-				"cpu_validator,arduino_validator"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build with validator"
-		},
-		{
-			"type": "cargo",
-			"command": "build",
-			"args": [
-				"--target",
-				"wasm32-unknown-unknown"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build wasm32"
-		},		
-		{
-			"type": "cargo",
-			"command": "build",
-			"args": [
-				"--release",
-				"--target",
-				"wasm32-unknown-unknown"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build release wasm32"
-		},
-		{
-			"label": "rust: wasm-pack martypc player release wasm32",
-			"type": "shell",
-			"command": "wasm-pack",
-            "options": {
-                "cwd": "${workspaceFolder}/frontends/martypc_pixels_wasm32"
-            },			
-			"args": [
-				"build",
-				"--release",
-				"--target",
-				"web"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-		},
-		{
-			"label": "rust: build and install martypc player release wasm32",
-			"type": "shell",
-			"dependsOn": [
-				"rust: wasm-pack martypc player release wasm32",
-				"rust: install martypc wasm player web files"
-			],
-			"options": {
-				"cwd": "${workspaceFolder}/frontends/martypc_pixels_wasm32/pkg"
-			},
-			"windows": {
-				"options": {
-					"env": {
-						"MARTYPC_WEB_DIR": "D:\\temp_web\\"
-					}
-				},
-				"command": "xcopy",
-				"args": [
-					"/E",
-					"/Y",					
-					"${workspaceFolder}\\frontends\\martypc_pixels_wasm32\\pkg\\*",
-					"${env:MARTYPC_WEB_DIR}"
-				]
-			},
-			"linux": {
-				"options": {
-					"env": {
-						"MARTYPC_WEB_DIR": "/dev/null"
-					}
-				},
-				"command": "cp",
-				"args": [
-					"-R",
-					"${workspaceFolder}/frontends/martypc_pixels_wasm32/pkg/*",
-					"${env:MARTYPC_WEB_DIR}"
-				]
-			},
-			"osx": {
-				"options": {
-					"env": {
-						"MARTYPC_WEB_DIR": "/dev/null"
-					}
-				},
-				"command": "cp",
-				"args": [
-					"-R",
-					"${workspaceFolder}/frontends/martypc_pixels_wasm32/pkg/*",
-					"${env:MARTYPC_WEB_DIR}"
-				]
-			},
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build"
-		},
-		{
-			"label": "rust: install martypc wasm player web files",
-			"type": "shell",
-			"dependsOn": ["rust: wasm-pack martypc player release wasm32"],
-			"options": {
-				"cwd": "${workspaceFolder}/frontends/martypc_pixels_wasm32/web"
-			},
-			"windows": {
-				"command": "xcopy",
-				"args": [
-					"/E",
-					"/Y",
-					"${workspaceFolder}\\frontends\\martypc_pixels_wasm32\\web\\*",
-					"${env:MARTYPC_WEB_DIR}"
-				]
-			},
-			"linux": {
-				"command": "cp",
-				"args": [
-					"-R",
-					"${workspaceFolder}/frontends/martypc_pixels_wasm32/web/*",
-					"${env:MARTYPC_WEB_DIR}"
-				]
-			},
-			"osx": {
-				"command": "cp",
-				"args": [
-					"-R",
-					"${workspaceFolder}/frontends/martypc_pixels_wasm32/web/*",
-					"${env:MARTYPC_WEB_DIR}"
-				]
-			},
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build"
-		},				
-		{
-			"type": "cargo",
-			"command": "build",
-			"args": [
-				"-p",
-				"marty_pixels_wasm32_player",				
-				"--target",
-				"wasm32-unknown-unknown"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build wasm32 player"
-		},		
-		{
-			"type": "cargo",
-			"command": "build",
-			"args": [
-				"-p",
-				"marty_pixels_wasm32_player",
-				"--release",
-				"--target",
-				"wasm32-unknown-unknown"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build release wasm32 player"
-		},
-		{
-			"type": "cargo",
-			"command": "build",
-			"args": [
-				"-p",
-				"marty_pixels_desktop",				
-				"--target",
-				"wasm32-unknown-unknown"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build wasm32 desktop"
-		},		
-		{
-			"type": "cargo",
-			"command": "build",
-			"args": [
-				"-p",
-				"marty_pixels_desktop",
-				"--release",
-				"--target",
-				"wasm32-unknown-unknown"
-			],
-			"problemMatcher": [
-				"$rustc"
-			],
-			"group": "build",
-			"label": "rust: cargo build release wasm32 desktop"
-		},				
-		{
-			"type": "cmake",
-			"label": "CMake: clean rebuild",
-			"command": "cleanRebuild",
-			"targets": [
-				""
-			],
-			"group": "build",
-			"problemMatcher": [],
-			"detail": "CMake template clean rebuild task"
-		}
-	]
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "cargo",
+      "command": "build",
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "--release"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build release "
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "-r",
+        "--features",
+        "ega"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build release with EGA"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "--features",
+        "cpu_validator,arduino_validator"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build with validator"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "-r",
+        "--features",
+        "cpu_validator,arduino_validator"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build release with validator"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build wasm32"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "--release",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build release wasm32"
+    },
+    {
+      "label": "rust: wasm-pack martypc player release wasm32",
+      "type": "shell",
+      "command": "wasm-pack",
+      "options": {
+        "cwd": "${workspaceFolder}/frontends/martypc_pixels_wasm32"
+      },
+      "args": [
+        "build",
+        "--release",
+        "--target",
+        "web"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build"
+    },
+    {
+      "label": "rust: build and install martypc player release wasm32",
+      "type": "shell",
+      "dependsOn": [
+        "rust: wasm-pack martypc player release wasm32",
+        "rust: install martypc wasm player web files"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/frontends/martypc_pixels_wasm32/pkg"
+      },
+      "windows": {
+        "options": {
+          "env": {
+            "MARTYPC_WEB_DIR": "D:\\temp_web\\"
+          }
+        },
+        "command": "xcopy",
+        "args": [
+          "/E",
+          "/Y",
+          "${workspaceFolder}\\frontends\\martypc_pixels_wasm32\\pkg\\*",
+          "${env:MARTYPC_WEB_DIR}"
+        ]
+      },
+      "linux": {
+        "options": {
+          "env": {
+            "MARTYPC_WEB_DIR": "/dev/null"
+          }
+        },
+        "command": "cp",
+        "args": [
+          "-R",
+          "${workspaceFolder}/frontends/martypc_pixels_wasm32/pkg/*",
+          "${env:MARTYPC_WEB_DIR}"
+        ]
+      },
+      "osx": {
+        "options": {
+          "env": {
+            "MARTYPC_WEB_DIR": "/dev/null"
+          }
+        },
+        "command": "cp",
+        "args": [
+          "-R",
+          "${workspaceFolder}/frontends/martypc_pixels_wasm32/pkg/*",
+          "${env:MARTYPC_WEB_DIR}"
+        ]
+      },
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build"
+    },
+    {
+      "label": "rust: install martypc wasm player web files",
+      "type": "shell",
+      "dependsOn": [
+        "rust: wasm-pack martypc player release wasm32"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/frontends/martypc_pixels_wasm32/web"
+      },
+      "windows": {
+        "command": "xcopy",
+        "args": [
+          "/E",
+          "/Y",
+          "${workspaceFolder}\\frontends\\martypc_pixels_wasm32\\web\\*",
+          "${env:MARTYPC_WEB_DIR}"
+        ]
+      },
+      "linux": {
+        "command": "cp",
+        "args": [
+          "-R",
+          "${workspaceFolder}/frontends/martypc_pixels_wasm32/web/*",
+          "${env:MARTYPC_WEB_DIR}"
+        ]
+      },
+      "osx": {
+        "command": "cp",
+        "args": [
+          "-R",
+          "${workspaceFolder}/frontends/martypc_pixels_wasm32/web/*",
+          "${env:MARTYPC_WEB_DIR}"
+        ]
+      },
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "-p",
+        "marty_pixels_wasm32_player",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build wasm32 player"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "-p",
+        "marty_pixels_wasm32_player",
+        "--release",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build release wasm32 player"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "-p",
+        "marty_pixels_desktop",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build wasm32 desktop"
+    },
+    {
+      "type": "cargo",
+      "command": "build",
+      "args": [
+        "-p",
+        "marty_pixels_desktop",
+        "--release",
+        "--target",
+        "wasm32-unknown-unknown"
+      ],
+      "problemMatcher": [
+        "$rustc"
+      ],
+      "group": "build",
+      "label": "rust: cargo build release wasm32 desktop"
+    },
+    {
+      "type": "cmake",
+      "label": "CMake: clean rebuild",
+      "command": "cleanRebuild",
+      "targets": [
+        ""
+      ],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "CMake template clean rebuild task"
+    },
+    {
+      "label": "runCondenseScript",
+      "type": "shell",
+      "command": "python ${workspaceFolder}/tests/tools/condense.py ${workspaceFolder}/tests/v1",
+      "problemMatcher": []
+    }
+  ]
 }

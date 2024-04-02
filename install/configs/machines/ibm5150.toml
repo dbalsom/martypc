@@ -1,0 +1,148 @@
+# ibm5150.toml
+# Machine Configurations for the IBM 5150
+
+# MartyPC will search all *.toml files in 'machine' directories for machine
+# configurations, so if you create a custom machine configuration, you can 
+# put it in a separate file.
+#
+# ----------------------------------------------------------------------------
+# Defining a Machine Configuration  
+# Valid Machine types:
+#  "Ibm5150v64K"
+#  "Ibm5150v256K"
+#  "Ibm5160"
+#
+# Valid Floppy Disk Controller types:
+#  "IbmNec"
+#
+# Valid floppy Drive Types:
+#  "360k"
+#  "720k"
+#  "1.2m"
+#  "1.44m"
+
+# Valid Hard Disk Controller Types:
+#  "IbmXebec"
+#
+# Valid Serial Controller Types:
+#  "IbmAsync"
+#
+# Conventional memory amount may be different from value specified due to MMIO
+# optimizations. I recommend specifying a value in 0x10000 increments.
+# ----------------------------------------------------------------------------
+
+[[machine]]
+name = "ibm5150_64k"
+type = "Ibm5150v64K"
+rom_set = "auto"
+speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+    
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Character"
+
+[[machine]]
+name = "ibm5150_64k_hdd"
+type = "Ibm5150v64K"
+rom_set = "auto"
+speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #vhd = "games.vhd"
+    
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Character"
+
+[[machine]]
+name = "ibm5150_256k"
+type = "Ibm5150v256K"
+rom_set = "auto"
+speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+    
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Character"
+
+[[machine]]
+name = "ibm5150_256k_hdd"
+type = "Ibm5150v256K"
+rom_set = "auto"
+speaker = true
+overlays = [
+    "pcxt_2_360k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+        
+        # Drive #1 - (Typically D:)
+        #[[machine.hdc.drive]]
+        #vhd = "games.vhd"
+    
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    clock_mode = "Character"
+
+

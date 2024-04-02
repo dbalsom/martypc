@@ -2,7 +2,7 @@
     MartyPC
     https://github.com/dbalsom/martypc
 
-    Copyright 2022-2023 Daniel Balsom
+    Copyright 2022-2024 Daniel Balsom
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the “Software”),
@@ -17,7 +17,7 @@
     THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
     IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
     FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER   
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
     LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
     FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
     DEALINGS IN THE SOFTWARE.
@@ -26,26 +26,26 @@
 
     bytequeue.rs
 
-    Implements the ByteQueue trait. ByteQueue is implemented by both Bus and 
+    Implements the ByteQueue trait. ByteQueue is implemented by both Bus and
     CPU to permit decoding of instructions from either emulator memory or the
     emulated processor instruction queue.
 */
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub enum QueueType {
     First,
-    Subsequent
+    Subsequent,
 }
 
-#[derive (Copy, Clone)]
+#[derive(Copy, Clone)]
 pub enum QueueReader {
     Biu,
     Eu,
 }
 
 impl Default for QueueType {
-    fn default() -> Self { 
-        QueueType::First 
+    fn default() -> Self {
+        QueueType::First
     }
 }
 
@@ -53,14 +53,11 @@ pub trait ByteQueue {
     fn seek(&mut self, pos: usize);
     fn tell(&self) -> usize;
 
-    fn delay(&mut self, delay: u32);
-    fn clear_delay(&mut self);
-
     fn wait(&mut self, cycles: u32);
     fn wait_i(&mut self, cycles: u32, instr: &[u16]);
     fn wait_comment(&mut self, comment: &'static str);
     fn set_pc(&mut self, pc: u16);
-    
+
     fn q_read_u8(&mut self, qtype: QueueType, reader: QueueReader) -> u8;
     fn q_read_i8(&mut self, qtype: QueueType, reader: QueueReader) -> i8;
     fn q_read_u16(&mut self, qtype: QueueType, reader: QueueReader) -> u16;

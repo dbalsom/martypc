@@ -1,0 +1,37 @@
+[package]
+name = "frontend_common"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "frontend_common"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[dependencies]
+marty_common = { path = "../../common" }
+display_backend_trait = { path = "../../backend/display_backend_trait" }
+videocard_renderer = { path = "../videocard_renderer" }
+marty_core = { path = "../../../core" }
+anyhow.workspace = true
+serde = { workspace = true, features = ["derive"] }
+regex = "1.10"
+md5 = "0.7.0"
+
+# feature dependencies:
+wgpu = { workspace = true, optional = true }
+pixels = { workspace = true, optional = true }
+log = "0.4.20"
+toml = "0.5.11"
+serde_derive.workspace = true
+web-time.workspace = true
+strum = "0.26"
+strum_macros = "0.26"
+ringbuf = "0.3.3"
+
+[features]
+ega = []
+vga = []
+use_wgpu = ["wgpu", "pixels"]

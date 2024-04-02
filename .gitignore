@@ -12,30 +12,60 @@ Thumbs.db
 /.vscode/settings.json
 
 # Emulator files
-/rom
-/roms
-/floppy
-/hdd
-/dumps
-/builds
-/screenshots
-/traces
+/archive
 /program
 /releases
+/cfg
+/tests/v*
+/tests/tools/gen_list.py
 marty*.toml
 *.pcm
 *.cfg
 *.log
 *.exe
-/frontends/martypc_pixels_wasm32/wasm/
+/frontends/martypc_web_player_wgpu/wasm/
 icon.png
+*.crt
 
-# Example install dir
+# Allow tests/tools directory
+!/tests/tools
+
+# Ignore most files in /install directory unless specified
+/install/*.zip
+/install/roms/*
+/install/rom/parking/*
+/install/hdd/*
+/install/floppy/*
+/install/dumps/*
+/install/screenshots/*
+/install/traces/*
+# New media paths for 0.2.0
+/install/media/roms/*
+/install/media/floppies/*
+/install/media/hdds/*
+/install/output/screenshots/*
+/install/output/traces/*
+/install/output/dumps/*
+
+# Dev machines not completed or functional
+/install/configs/machines/acid88.toml
+/install/configs/machines/ibmpcjr.toml
+/install/configs/machines/tandy1000.toml
+/install/configs/machines/compaq_portable.toml
+
+# Files to include for distribution
+!/install/media/roms/readme.md
+!/install/media/roms/GLaBIOS
 !/install/martypc.toml
-!/install/icon.png
 
 # Frontend files
-/frontends/martypc_pixels_wasm32/web/bin
+/frontends/martypc_web_player_wgpu/web/bin
 
 # Assembly stuff
 /asm
+/.idea/shelf/
+/.idea/dictionaries/Daniel.xml
+/.idea/workspace.xml
+/flopgen/flopgen_LICENSE.txt
+/tree.txt
+
