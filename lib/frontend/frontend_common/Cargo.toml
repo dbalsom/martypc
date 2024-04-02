@@ -27,6 +27,8 @@ log = "0.4.20"
 toml = "0.5.11"
 serde_derive.workspace = true
 web-time.workspace = true
+strum = "0.26"
+strum_macros = "0.26"
 ringbuf = "0.3.3"
 
 [features]

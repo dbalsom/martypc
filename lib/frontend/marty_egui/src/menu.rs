@@ -32,8 +32,7 @@
 
 use crate::{state::GuiState, GuiBoolean, GuiEnum, GuiEvent, GuiVariable, GuiVariableContext, GuiWindow};
 
-use marty_core::device_traits::videocard::VideoType;
-use std::time::Duration;
+use marty_core::{device_traits::videocard::VideoType, devices::serial::SerialPortDescriptor};
 
 use marty_core::machine::MachineState;
 
@@ -57,6 +56,52 @@ impl GuiState {
                 }
             });
             ui.menu_button("Machine", |ui| {
+                ui.menu_button("Input/Output", |ui| {
+                    // Create a vector of ports that are currently bridged. We will use this to disable
+                    // those ports from selection in the menu.
+                    let bridged_ports = self
+                        .serial_ports
+                        .iter()
+                        .filter_map(|port| port.brige_port_id)
+                        .collect::<Vec<_>>();
+
+                    for SerialPortDescriptor {
+                        id: guest_port_id,
+                        name: guest_port_name,
+                        ..
+                    } in self.serial_ports.clone().iter()
+                    {
+                        ui.menu_button(format!("Passthrough {}", guest_port_name), |ui| {
+                            let mut selected = false;
+
+                            for (host_port_id, host_port) in self.host_serial_ports.iter().enumerate() {
+                                if let Some(enum_mut) = self.get_option_enum(
+                                    GuiEnum::SerialPortBridge(Default::default()),
+                                    Some(GuiVariableContext::SerialPort(*guest_port_id)),
+                                ) {
+                                    selected = *enum_mut == GuiEnum::SerialPortBridge(host_port_id);
+                                }
+
+                                let enabled = !bridged_ports.contains(&host_port_id);
+
+                                if ui
+                                    .add_enabled(enabled, egui::RadioButton::new(selected, host_port.port_name.clone()))
+                                    .clicked()
+                                {
+                                    self.event_queue.send(GuiEvent::BridgeSerialPort(
+                                        *guest_port_id,
+                                        host_port.port_name.clone(),
+                                        host_port_id,
+                                    ));
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                    }
+                });
+
+                ui.separator();
+
                 let (is_on, is_paused) = match self.machine_state {
                     MachineState::On => (true, false),
                     MachineState::Paused => (true, true),
@@ -123,7 +168,7 @@ impl GuiState {
                 });
             });
 
-            let media_response = ui.menu_button("Media", |ui| {
+            let _media_response = ui.menu_button("Media", |ui| {
                 //ui.set_min_size(egui::vec2(240.0, 0.0));
                 //ui.style_mut().spacing.item_spacing = egui::Vec2{ x: 6.0, y:6.0 };
                 ui.set_width_range(egui::Rangef { min: 100.0, max: 240.0 });
@@ -319,24 +364,6 @@ impl GuiState {
                     self.event_queue.send(GuiEvent::FlushLogs);
                     ui.close_menu();
                 }
-            });
-            ui.menu_button("Options", |ui| {
-                ui.menu_button("Attach COM2: ...", |ui| {
-                    for port in &self.serial_ports {
-                        if ui
-                            .radio_value(
-                                &mut self.serial_port_name,
-                                port.port_name.clone(),
-                                port.port_name.clone(),
-                            )
-                            .clicked()
-                        {
-                            self.event_queue
-                                .send(GuiEvent::BridgeSerialPort(self.serial_port_name.clone()));
-                            ui.close_menu();
-                        }
-                    }
-                });
             });
 
             // Draw drive indicators, etc.
@@ -564,6 +591,11 @@ impl GuiState {
             state.text_mode_viewer.select_card(display_idx);
         });
 
+        if ui.button("🖵 Toggle Fullscreen").clicked() {
+            self.event_queue.send(GuiEvent::ToggleFullscreen(display_idx));
+            ui.close_menu();
+        };
+
         ui.separator();
 
         if ui.button("🖼 Take Screenshot").clicked() {
@@ -572,7 +604,7 @@ impl GuiState {
         };
     }
 
-    pub fn draw_status_widgets(&mut self, ui: &mut egui::Ui) {
+    pub fn draw_status_widgets(&mut self, _ui: &mut egui::Ui) {
         // Can we put stuff on the right hand side of the menu bar?
         // ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
         //     ui.label("💾");

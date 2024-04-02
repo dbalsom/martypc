@@ -30,9 +30,9 @@
 */
 
 use display_manager_wgpu::DisplayManager;
-use std::{cell::RefCell, ffi::OsString, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, ffi::OsString, rc::Rc};
 
-use crate::{Counter, KeyboardData, MouseData};
+use crate::{input::HotkeyManager, Counter, KeyboardData, MouseData};
 use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::WgpuDisplayManager;
@@ -79,6 +79,7 @@ pub struct Emulator {
     pub vhd_manager: VhdManager,
     pub flags: EmuFlags,
     pub perf: PerfSnapshot,
+    pub hkm: HotkeyManager,
 }
 
 impl Emulator {
@@ -100,7 +101,7 @@ impl Emulator {
             self.machine.change_state(MachineState::Off);
         }
 
-        self.flags.debug_keyboard = self.config.emulator.debug_keyboard;
+        self.flags.debug_keyboard = self.config.emulator.input.debug_keyboard;
 
         // Do PIT phase offset option
         self.machine
@@ -364,6 +365,9 @@ impl Emulator {
             let card_str = format!("Card: {} ({:?})", vid.idx, vid.vtype);
             card_strs.push(card_str);
         }
+
+        // Set list of virtual serial ports
+        self.gui.set_serial_ports(self.machine.bus().enumerate_serial_ports());
 
         // Set list of video cards
         self.gui.set_card_list(card_strs);

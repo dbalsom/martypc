@@ -45,9 +45,8 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     ffi::OsString,
     fmt::Display,
-    fs,
     fs::File,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use anyhow::Error;

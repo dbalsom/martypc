@@ -38,11 +38,11 @@ use crate::{
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
     device_traits::videocard::{ClockingMode, VideoType},
-    devices::keyboard::KeyboardType,
     machine_types::MachineType,
 };
 use std::path::PathBuf;
 
+use crate::machine_types::OnHaltBehavior;
 use serde::Deserialize;
 
 #[derive(Copy, Clone, Debug, Deserialize)]
@@ -57,6 +57,8 @@ pub struct VideoCardDefinition {
 pub trait CoreConfig {
     fn get_base_dir(&self) -> PathBuf;
     fn get_machine_type(&self) -> MachineType;
+
+    fn get_audio_enabled(&self) -> bool;
     fn get_machine_noroms(&self) -> bool;
     fn get_machine_turbo(&self) -> bool;
     //fn get_keyboard_type(&self) -> Option<KeyboardType>;
@@ -73,4 +75,6 @@ pub trait CoreConfig {
     fn get_cpu_trace_on(&self) -> bool;
     fn get_cpu_trace_file(&self) -> Option<PathBuf>;
     fn get_title_hacks(&self) -> bool;
+    fn get_patch_enabled(&self) -> bool;
+    fn get_halt_behavior(&self) -> OnHaltBehavior;
 }

@@ -51,8 +51,10 @@ use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
 use marty_core::vhd::VirtualHardDisk;
+use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
+//noinspection RsBorrowChecker
 pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, gui_event: &GuiEvent) {
     match gui_event {
         GuiEvent::Exit => {
@@ -106,6 +108,27 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         if let Err(_e) = emu.dm.apply_scaler_preset(*d_idx, new_preset.clone()) {
                             log::error!("Failed to set scaler preset for display target!");
                         }
+
+                        // Update dependent GUI items
+                        if let Some(_scaler_params) = emu.dm.get_scaler_params(*d_idx) {
+                            //emu.gui.set_option_enum(GuiEnum::DisplayComposite(scaler_params), GuiVariableContext::Display(*d_idx));
+                        }
+                        if let Some(renderer) = emu.dm.get_renderer(*d_idx) {
+                            // Update composite checkbox state
+                            let composite_enable = renderer.get_composite();
+                            emu.gui.set_option_enum(
+                                GuiEnum::DisplayComposite(composite_enable),
+                                Some(GuiVariableContext::Display(*d_idx)),
+                            );
+
+                            // Update aspect correction checkbox state
+                            let aspect_correct = renderer.get_params().aspect_correction;
+                            let aspect_correct_on = !matches!(aspect_correct, AspectCorrectionMode::None);
+                            emu.gui.set_option_enum(
+                                GuiEnum::DisplayAspectCorrect(aspect_correct_on),
+                                Some(GuiVariableContext::Display(*d_idx)),
+                            );
+                        }
                     }
                     GuiEnum::DisplayComposite(state) => {
                         log::debug!("Got composite state update event: {}", state);
@@ -118,6 +141,13 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                             log::error!("Failed to set aspect correction state for display target!");
                         }
                     }
+                    _ => {}
+                },
+                GuiVariableContext::SerialPort(_serial_id) => match op {
+                    GuiEnum::SerialPortBridge(_host_id) => {
+                        //emu.machine.bridge_serial_port(*serial_id, host_id.clone());
+                    }
+                    _ => {}
                 },
                 GuiVariableContext::Global => {}
             },
@@ -338,9 +368,34 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 fdc.write_protect(*drive_select, *state);
             }
         }
-        GuiEvent::BridgeSerialPort(port_name) => {
-            log::info!("Bridging serial port: {}", port_name);
-            emu.machine.bridge_serial_port(1, port_name.clone());
+        GuiEvent::BridgeSerialPort(guest_port_id, host_port_name, host_port_id) => {
+            log::info!("Bridging serial port: {}, id: {}", host_port_name, host_port_id);
+            if let Err(err) = emu
+                .machine
+                .bridge_serial_port(*guest_port_id, host_port_name.clone(), *host_port_id)
+            {
+                emu.gui
+                    .toasts()
+                    .error(err.to_string())
+                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+            }
+            else {
+                emu.gui
+                    .toasts()
+                    .info(format!("Serial port successfully bridged to {}", host_port_name))
+                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                // Update the serial port enum to show the bridged port
+                emu.gui.set_option_enum(
+                    GuiEnum::SerialPortBridge(*host_port_id),
+                    Some(GuiVariableContext::SerialPort(*guest_port_id)),
+                );
+                log::debug!(
+                    "updating SerialPortBridge, host_port: {} context (guest_port): {}",
+                    host_port_id,
+                    guest_port_id
+                );
+            }
         }
         GuiEvent::DumpVRAM => {
             if let Some(video_card) = emu.machine.primary_videocard() {
@@ -496,8 +551,22 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                     .set_duration(Some(LONG_NOTIFICATION_TIME));
             }
         }
+        GuiEvent::ToggleFullscreen(dt_idx) => {
+            if let Some(window) = emu.dm.get_window(*dt_idx) {
+                match window.fullscreen() {
+                    Some(_) => {
+                        log::debug!("ToggleFullscreen: Resetting fullscreen state.");
+                        window.set_fullscreen(None);
+                    }
+                    None => {
+                        log::debug!("ToggleFullscreen: Entering fullscreen state.");
+                        window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                    }
+                }
+            }
+        }
         GuiEvent::CtrlAltDel => {
-            emu.machine.ctrl_alt_del();
+            emu.machine.emit_ctrl_alt_del();
         }
         GuiEvent::CompositeAdjust(dt_idx, params) => {
             //log::warn!("got composite params: {:?}", params);

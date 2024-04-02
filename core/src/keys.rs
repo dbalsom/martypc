@@ -39,9 +39,10 @@
     }
 */
 
+use serde::Deserialize;
 use strum_macros::{EnumIter, EnumString};
 
-#[derive(Copy, Clone, Debug, EnumIter, EnumString, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, EnumIter, EnumString, Deserialize, PartialEq, Eq, Hash)]
 pub enum MartyKey {
     None,
     Backquote,

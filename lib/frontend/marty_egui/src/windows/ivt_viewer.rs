@@ -38,7 +38,6 @@ const DEFAULT_ROWS: usize = 24;
 pub struct IvtViewerControl {
     tlv: TokenListView,
     row: usize,
-    rows: usize,
     content: Vec<Vec<SyntaxToken>>,
     scrolling: bool,
 }
@@ -52,7 +51,6 @@ impl IvtViewerControl {
         Self {
             tlv,
             row: 0,
-            rows: DEFAULT_ROWS,
             content: Vec::new(),
             scrolling: false,
         }
@@ -61,7 +59,8 @@ impl IvtViewerControl {
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
         let mut new_row = self.row;
         ui.horizontal(|ui| {
-            self.tlv.draw(ui, events, &mut new_row, &mut |scrolled_to, sevents| {});
+            self.tlv
+                .draw(ui, events, &mut new_row, &mut |_scrolled_to, _sevents| {});
         });
 
         // TLV viewport was scrolled, update address

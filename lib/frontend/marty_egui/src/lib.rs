@@ -32,25 +32,21 @@
 extern crate core;
 
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, HashMap, VecDeque},
     ffi::OsString,
     hash::Hash,
-    mem::{discriminant, Discriminant},
-    rc::Rc,
+    mem::Discriminant,
     time::Duration,
 };
 
-use egui::{Color32, ColorImage, Context, Visuals};
-use egui_notify::{Anchor, Toasts};
+use egui::{Color32, Context, Visuals};
+
 use lazy_static::lazy_static;
 
 use frontend_common::{
     display_manager::DisplayInfo,
-    display_scaler::{ScalerMode, ScalerParams, ScalerPreset},
+    display_scaler::{ScalerMode, ScalerParams},
 };
-
-use serialport::SerialPortInfo;
 
 mod color;
 mod constants;
@@ -68,10 +64,10 @@ mod windows;
 mod workspace;
 
 use marty_core::{
-    device_traits::videocard::{DisplayApertureDesc, DisplayApertureType, VideoCardState, VideoCardStateEntry},
+    device_traits::videocard::DisplayApertureType,
     device_types::hdc::HardDiskFormat,
-    devices::{pic::PicStringState, pit::PitDisplayState, ppi::PpiStringState},
-    machine::{ExecutionControl, MachineState},
+    devices::pic::PicStringState,
+    machine::MachineState,
 };
 
 use serde::{Deserialize, Serialize};
@@ -135,6 +131,7 @@ pub enum GuiBoolean {
 pub enum GuiVariableContext {
     Global,
     Display(usize),
+    SerialPort(usize),
 }
 impl Default for GuiVariableContext {
     fn default() -> Self {
@@ -149,6 +146,7 @@ pub enum GuiEnum {
     DisplayScalerMode(ScalerMode),
     DisplayScalerPreset(String),
     DisplayComposite(bool),
+    SerialPortBridge(usize),
 }
 
 fn create_default_variant(ge: GuiEnum) -> GuiEnum {
@@ -158,6 +156,7 @@ fn create_default_variant(ge: GuiEnum) -> GuiEnum {
         GuiEnum::DisplayScalerMode(_) => GuiEnum::DisplayAperture(Default::default()),
         GuiEnum::DisplayScalerPreset(_) => GuiEnum::DisplayScalerPreset(String::new()),
         GuiEnum::DisplayComposite(_) => GuiEnum::DisplayComposite(Default::default()),
+        GuiEnum::SerialPortBridge(_) => GuiEnum::SerialPortBridge(Default::default()),
     }
 }
 
@@ -172,7 +171,7 @@ pub enum GuiEvent {
     SaveFloppy(usize, usize),
     EjectFloppy(usize),
     SetFloppyWriteProtect(usize, bool),
-    BridgeSerialPort(String),
+    BridgeSerialPort(usize, String, usize),
     DumpVRAM,
     DumpCS,
     DumpAllMem,
@@ -187,6 +186,7 @@ pub enum GuiEvent {
     TickDevice(DeviceSelection, u32),
     MachineStateChange(MachineState),
     TakeScreenshot(usize),
+    ToggleFullscreen(usize),
     Exit,
     SetNMI(bool),
     TriggerParity,
@@ -278,7 +278,7 @@ lazy_static! {
                 id: GuiWindow::CpuControl,
                 title: "CPU Control",
                 menu: "CPU Control",
-                width: 400.0,
+                width: 300.0,
                 resizable: false,
             },
         ),

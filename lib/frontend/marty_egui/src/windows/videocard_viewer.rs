@@ -32,7 +32,7 @@
 
 use egui::CollapsingHeader;
 
-use crate::{state::GuiState, widgets::color_swatch::color_swatch, *};
+use crate::{state::GuiState, widgets::color_swatch::color_swatch};
 use marty_core::device_traits::videocard::{VideoCardState, VideoCardStateEntry};
 
 // rustfmt just has no idea how to handle this

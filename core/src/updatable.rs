@@ -62,6 +62,7 @@ impl<T> Updatable<T> {
 }
 
 impl<'a, T: 'a + std::cmp::PartialEq> Updatable<T> {
+    #[inline]
     pub fn update(&'a mut self, newval: T) {
         match self {
             Updatable::Dirty(t, d) => {
@@ -85,6 +86,7 @@ impl<'a, T: 'a + std::cmp::PartialEq> Updatable<T> {
             }
         }
     }
+    #[inline]
     pub fn set(&'a mut self, newval: T) {
         match self {
             Updatable::Dirty(t, d) => {
@@ -111,6 +113,7 @@ impl<'a, T: 'a + std::cmp::PartialEq> Updatable<T> {
             _ => {}
         }
     }
+    #[inline]
     pub fn get(&'a self) -> &T {
         match self {
             Updatable::Dirty(t, _) => t,
@@ -122,6 +125,7 @@ impl<'a, T: 'a + std::cmp::PartialEq> Updatable<T> {
 
 impl<T> Deref for Updatable<T> {
     type Target = T;
+    #[inline]
     fn deref(&self) -> &T {
         match self {
             Updatable::Dirty(t, _) => t,
@@ -132,6 +136,7 @@ impl<T> Deref for Updatable<T> {
 }
 
 impl<T> DerefMut for Updatable<T> {
+    #[inline]
     fn deref_mut(&mut self) -> &mut T {
         match self {
             Updatable::Dirty(t, _) => t,

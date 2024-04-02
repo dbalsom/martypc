@@ -73,9 +73,9 @@ impl ByteBuf {
     // Create a ByteBuf from a supplied vector
     pub fn from_vec(vec: Vec<u8>) -> ByteBuf {
         ByteBuf {
-            size:   vec.len(),
+            size: vec.len(),
             cursor: 0,
-            vec:    vec,
+            vec,
         }
     }
 
@@ -103,9 +103,9 @@ impl ByteBuf {
         let _bytes_read = file.read_to_end(&mut buffer).unwrap();
         buffer.resize(size, 0u8);
         Ok(ByteBuf {
-            size:   size,
+            size,
             cursor: 0,
-            vec:    buffer,
+            vec: buffer,
         })
     }
 
@@ -161,7 +161,7 @@ impl ByteBuf {
 
     /// Read a u8 from the buffer
     pub fn read_u8(&mut self) -> Result<u8, ByteBufError> {
-        if self.cursor <= self.vec.len() - 1 {
+        if self.cursor < self.vec.len() {
             let b: u8 = self.vec[self.cursor];
             self.cursor += 1;
             return Ok(b);
@@ -171,7 +171,7 @@ impl ByteBuf {
 
     /// Read an i8 from the buffer
     pub fn read_i8(&mut self) -> Result<i8, ByteBufError> {
-        if self.cursor <= self.vec.len() - 1 {
+        if self.cursor < self.vec.len() {
             let b: i8 = self.vec[self.cursor] as i8;
             self.cursor += 1;
             return Ok(b);
@@ -181,7 +181,7 @@ impl ByteBuf {
 
     /// Write a u8 to the buffer
     pub fn write_u8(&mut self, b: u8) -> Result<(), ByteBufError> {
-        if self.cursor <= self.vec.len() - 1 {
+        if self.cursor < self.vec.len() {
             self.vec[self.cursor] = b;
             self.cursor += 1;
             return Ok(());
@@ -358,7 +358,7 @@ pub struct ByteBufWriter<'a> {
 
 impl<'a> ByteBufWriter<'a> {
     pub fn from_slice(buf: &mut [u8]) -> ByteBufWriter {
-        ByteBufWriter { cursor: 0, buf: buf }
+        ByteBufWriter { cursor: 0, buf }
     }
 
     pub fn take(&mut self) -> &mut [u8] {
@@ -407,7 +407,7 @@ impl<'a> ByteBufWriter<'a> {
 
     /// Write a u8 to the buffer
     pub fn write_u8(&mut self, b: u8) -> Result<(), ByteBufError> {
-        if self.cursor <= self.buf.len() - 1 {
+        if self.cursor < self.buf.len() {
             self.buf[self.cursor] = b;
             self.cursor += 1;
             return Ok(());

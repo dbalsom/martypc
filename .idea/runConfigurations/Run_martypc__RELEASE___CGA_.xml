@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run martypc [RELEASE] [CGA]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="DIST [RELEASE]">
-    <option name="command" value="run -r --features devtools,ega -- --configfile martypc.toml --machine-config-overlays=ibm_cga" />
+    <option name="command" value="run -r --features devtools,ega -- --configfile martypc.toml --machine-config-overlays=ibm_cga,ibm_xebec" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
     <envs>
       <env name="RUST_LOG" value="debug,naga=error,wgpu_core=error,wgpu_hal=error,marty_core::devices::fdc=trace" />

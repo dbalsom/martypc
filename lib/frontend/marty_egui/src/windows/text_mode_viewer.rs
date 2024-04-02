@@ -35,7 +35,6 @@ use std::collections::HashMap;
 pub struct TextModeViewer {
     content_strs: HashMap<usize, String>,
     card_descs: Vec<String>,
-    empty: String,
     card_idx: usize,
     updates: Vec<u64>,
 }
@@ -45,7 +44,6 @@ impl TextModeViewer {
         Self {
             content_strs: HashMap::new(),
             card_descs: Vec::new(),
-            empty: String::new(),
             card_idx: 0,
             updates: Vec::new(),
         }

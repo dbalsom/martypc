@@ -43,8 +43,6 @@ use videocard_renderer::RendererEvent;
 use crate::{
     event_loop::{egui_update::update_egui, render_frame::render_frame},
     Emulator,
-    FPS_TARGET,
-    MICROS_PER_FRAME,
 };
 
 pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &EventLoopWindowTarget<()>) {
@@ -62,7 +60,6 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
         },
         |emuc, cycles| {
             // Per emu update freq
-
             emuc.machine.run(cycles, &mut emuc.exec_control.borrow_mut());
         },
         |emuc, tmc, &perf| {
@@ -165,6 +162,12 @@ pub fn process_update(emu: &mut Emulator, tm: &mut TimestepManager, elwt: &Event
                                 }
                             }
                         }
+                    }
+                    MachineEvent::Halted => {
+                        emuc.gui
+                            .toasts()
+                            .error("CPU permanently halted!".to_string())
+                            .set_duration(Some(LONG_NOTIFICATION_TIME));
                     }
                 }
             }

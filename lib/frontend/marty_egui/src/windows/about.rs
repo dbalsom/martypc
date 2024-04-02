@@ -45,7 +45,7 @@ impl AboutDialog {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, ctx: &Context, _events: &mut GuiEventQueue) {
+    pub fn draw(&mut self, ui: &mut egui::Ui, _ctx: &Context, _events: &mut GuiEventQueue) {
         /*
         let about_texture: &egui::TextureHandle = self.texture.get_or_insert_with(|| {
             ctx.load_texture(

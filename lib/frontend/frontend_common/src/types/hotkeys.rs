@@ -24,13 +24,40 @@
 
    ---------------------------------------------------------------------------
 
-   frontend_common::types::mod.rs
+   frontend_common::types::gui.rs
 
-   Define common frontend types.
+   Define frontend types for hotkeys.
 
 */
 
-pub mod display_target_dimensions;
-pub mod display_target_margins;
-pub mod gui;
-pub mod hotkeys;
+use marty_core::keys::MartyKey;
+use serde_derive::Deserialize;
+use strum_macros::EnumIter;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, EnumIter, Deserialize)]
+pub enum HotkeyEvent {
+    CaptureMouse,
+    CtrlAltDel,
+    Reboot,
+    Screenshot,
+    ToggleGui,
+    ToggleFullscreen,
+    DebugStep,
+    DebugStepOver,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize)]
+pub enum HotkeyScope {
+    Any,
+    Gui,
+    Machine,
+    Captured,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct HotkeyConfigEntry {
+    pub event: HotkeyEvent,
+    pub keys: Vec<MartyKey>,
+    pub capture_disable: bool,
+    pub scope: HotkeyScope,
+}

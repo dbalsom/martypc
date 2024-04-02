@@ -38,6 +38,19 @@ pub const EGA_HBLANK_MASK: u8 = 0x001F;
 pub const EGA_HSYNC_MASK: u8 = 0x001F;
 pub const EGA_HSLC_MASK: u16 = 0x01FF;
 
+const DEFAULT_CURSOR_START_LINE: u8 = 6;
+const DEFAULT_CURSOR_END_LINE: u8 = 7;
+const DEFAULT_HORIZONTAL_TOTAL: u8 = 113;
+const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 80;
+const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 90;
+
+const DEFAULT_VERTICAL_TOTAL: u16 = 31;
+const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
+const DEFAULT_VERTICAL_RETRACE_START: u16 = 350;
+const DEFAULT_OVERFLOW: u8 = 0;
+const DEFAULT_PRESET_ROW_SCAN: u8 = 0;
+const DEFAULT_MAX_SCANLINE: u8 = 13;
+
 const VSYNC_LENGTH: u8 = 16;
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const AC_LATENCY: u8 = 1;
@@ -258,7 +271,7 @@ impl Default for EgaCrtc {
             crtc_cursor_address_lo: 0,
             crtc_cursor_address_ho: 0,
             crtc_cursor_address: 0,
-            crtc_vertical_retrace_start: 0,
+            crtc_vertical_retrace_start: DEFAULT_VERTICAL_RETRACE_START,
             crtc_vertical_retrace_end: CVerticalRetraceEnd::new(),
             crtc_vertical_retrace_end_norm: 0,
             crtc_vertical_display_end: 0,

@@ -40,6 +40,7 @@ mod cpu_test;
 mod emulator;
 mod event_loop;
 mod input;
+mod run_benchmark;
 mod run_headless;
 
 #[cfg(feature = "arduino_validator")]
@@ -51,13 +52,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::run_benchmark::run_benchmark;
+
 #[cfg(feature = "arduino_validator")]
 use crate::{cpu_test::gen_tests::run_gentests, cpu_test::run_tests, run_fuzzer::run_fuzzer};
 
 use config_toml_bpaf::TestMode;
 
 use marty_core::{
-    cpu_validator::ValidatorType,
     devices::keyboard::KeyboardModifiers,
     machine::{ExecutionControl, ExecutionState, MachineBuilder},
     sound::SoundPlayer,
@@ -76,16 +78,12 @@ use marty_egui::state::GuiState;
 use run_tests::run_runtests;
 
 use crate::{
-    cpu_test::process_tests::run_processtests,
     emulator::{EmuFlags, Emulator},
     event_loop::handle_event,
+    input::HotkeyManager,
 };
 
 pub const FPS_TARGET: f64 = 60.0;
-const MICROS_PER_FRAME: f64 = 1.0 / FPS_TARGET * 1000000.0;
-
-// Remove static frequency references
-//const CYCLES_PER_FRAME: u32 = (cpu_808x::CPU_MHZ * 1000000.0 / FPS_TARGET) as u32;
 
 // Embed default icon
 const MARTY_ICON: &[u8] = include_bytes!("../../../assets/martypc_icon_small.png");
@@ -298,9 +296,29 @@ pub fn run() {
         std::process::exit(1);
     }
 
+    // Initialize machine configuration name, options and prefer_oem flag.
+    // If benchmark_mode is true, we use the values from the benchmark configuration section. This
+    // gives us the ability to run benchmarks with a consistent, static configuration.
+    let mut init_config_name = config.machine.config_name.clone();
+    let mut init_prefer_oem = config.machine.prefer_oem;
+    let mut init_config_overlays = config.machine.config_overlays.clone().unwrap_or_default();
+
+    if config.emulator.benchmark_mode {
+        init_config_name = config.emulator.benchmark.config_name.clone();
+        init_prefer_oem = config.emulator.benchmark.prefer_oem;
+        init_config_overlays = config.emulator.benchmark.config_overlays.clone().unwrap_or_default();
+
+        println!(
+            "Benchmark mode enabled. Using machine config: {} config overlays: [{}] prefer_oem: {}",
+            init_config_name,
+            init_config_overlays.join(", "),
+            init_prefer_oem
+        );
+    }
+
     // Get a list of machine configuration names
     let machine_names = machine_manager.get_config_names();
-    let have_machine_config = machine_names.contains(&config.machine.config_name);
+    let have_machine_config = machine_names.contains(&init_config_name);
 
     // Do --machinescan commandline argument. We print machine info (and rom info if --romscan
     // was also specified) and then quit.
@@ -317,10 +335,8 @@ pub fn run() {
         }
 
         if !have_machine_config {
-            println!(
-                "Warning! No matching configuration found for: {}",
-                config.machine.config_name
-            );
+            println!("Warning! No matching configuration found for: {}", init_config_name);
+            std::process::exit(1);
         }
 
         // Exit unless we will also run romscan
@@ -332,13 +348,13 @@ pub fn run() {
     if !have_machine_config {
         eprintln!(
             "No machine configuration for specified config name: {}",
-            config.machine.config_name
+            init_config_name
         );
         std::process::exit(1);
     }
 
     // Instantiate the new rom manager to load roms
-    let mut rom_manager = frontend_common::rom_manager::RomManager::new(config.machine.prefer_oem);
+    let mut rom_manager = frontend_common::rom_manager::RomManager::new(init_prefer_oem);
     if let Err(err) = rom_manager.load_defs(&resource_manager) {
         eprintln!("Error loading ROM definition files: {}", err);
         std::process::exit(1);
@@ -346,15 +362,12 @@ pub fn run() {
 
     // Get the ROM requirements for the requested machine type
     let machine_config_file = {
-        let mut overlay_vec = Vec::new();
-        if let Some(config_overlay_vec) = &config.machine.config_overlays {
-            for overlay in overlay_vec.iter() {
-                log::debug!("Have machine config overlay from global config: {}", overlay);
-            }
-            overlay_vec = config_overlay_vec.clone();
+        for overlay in init_config_overlays.iter() {
+            log::debug!("Have machine config overlay from global config: {}", overlay);
         }
+        let overlay_vec = init_config_overlays.clone();
 
-        match machine_manager.get_config_with_overlays(&config.machine.config_name, &overlay_vec) {
+        match machine_manager.get_config_with_overlays(&init_config_name, &overlay_vec) {
             Ok(config) => config,
             Err(err) => {
                 eprintln!("Error getting machine config: {}", err);
@@ -388,7 +401,7 @@ pub fn run() {
 
     println!(
         "Selected machine config {} requires the following ROM features:",
-        config.machine.config_name
+        init_config_name
     );
     for rom_feature in &required_features {
         println!("  {}", rom_feature);
@@ -396,7 +409,7 @@ pub fn run() {
 
     println!(
         "Selected machine config {} optionally requests the following ROM features:",
-        config.machine.config_name
+        init_config_name
     );
     for rom_feature in &optional_features {
         println!("  {}", rom_feature);
@@ -415,7 +428,7 @@ pub fn run() {
 
     println!(
         "Selected machine config {} has resolved the following ROM sets:",
-        config.machine.config_name
+        init_config_name
     );
     for rom_set in &rom_sets_resolved {
         println!("  {}", rom_set);
@@ -488,10 +501,28 @@ pub fn run() {
         }
     }
 
+    if config.emulator.benchmark_mode {
+        return run_benchmark(
+            &config,
+            machine_config_file,
+            rom_manifest,
+            resource_manager,
+            rom_manager,
+            floppy_manager,
+        );
+    }
+
     // If headless mode was specified, run the emulator in headless mode now
     if config.emulator.headless {
         //return run_headless::run_headless(&config, rom_manager, floppy_manager);
     }
+
+    // ----------------------------------------------------------------------------
+    // From this point forward, it is assumed we are staring the full GUI frontend!
+    // ----------------------------------------------------------------------------
+
+    let mut hotkey_manager = HotkeyManager::new();
+    hotkey_manager.add_hotkeys(config.emulator.input.hotkeys.clone());
 
     // ExecutionControl is shared via RefCell with GUI so that state can be updated by control widget
     let exec_control = Rc::new(RefCell::new(ExecutionControl::new()));
@@ -500,9 +531,6 @@ pub fn run() {
     if config.emulator.cpu_autostart {
         exec_control.borrow_mut().set_state(ExecutionState::Running);
     }
-
-    // Create the logical GUI.
-    let _gui = GuiState::new(exec_control.clone());
 
     let stat_counter = Counter::new();
 
@@ -547,13 +575,32 @@ pub fn run() {
         trace_file_path = Some(trace_file_base.join(trace_file));
     }
 
+    // Calculate the path to the keyboard layout file
+    let mut kb_layout_file_path = None;
+    let mut kb_string = "US".to_string();
+
+    if let Some(global_kb_string) = &config.machine.input.keyboard_layout {
+        kb_string = global_kb_string.clone()
+    }
+    else {
+        if let Some(keyboard) = machine_config.keyboard.as_ref() {
+            kb_string = keyboard.layout.clone();
+        }
+    }
+
+    if let Some(mut kb_layout_resource_path) = resource_manager.get_resource_path("keyboard_layout") {
+        kb_layout_resource_path.push(format!("keyboard_{}.toml", kb_string));
+        kb_layout_file_path = Some(kb_layout_resource_path);
+    }
+
     let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(&config))
         .with_machine_config(&machine_config)
         .with_roms(rom_manifest)
         .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
         .with_trace_log(trace_file_path)
-        .with_sound_player(sound_player_opt);
+        .with_sound_player(sound_player_opt)
+        .with_keyboard_layout(kb_layout_file_path);
 
     let machine = machine_builder.build().unwrap_or_else(|e| {
         log::error!("Failed to build machine: {:?}", e);
@@ -632,13 +679,14 @@ pub fn run() {
             render_gui: render_egui,
             debug_keyboard: false,
         },
+        hkm: hotkey_manager,
     };
 
     // Resize video cards
     emu.post_dm_build_init();
 
-    // Set list of serial ports
-    emu.gui.update_serial_ports(serial_ports);
+    // Set list of host serial ports
+    emu.gui.set_host_serial_ports(serial_ports);
 
     let adapter_info = emu.dm.get_main_backend().and_then(|backend| backend.get_adapter_info());
 
@@ -656,6 +704,15 @@ pub fn run() {
             std::process::exit(1);
         }
     };
+
+    if adapter_name_str.contains("llvmpipe") {
+        emu.gui.show_warning(
+            &"MartyPC was unable to initialize a hardware accellerated backend.\n\
+                MartyPC is running under software rasterization (llvmpipe).\n\
+                Performance will be poor. (Do you have libx11-dev installed?)"
+                .to_string(),
+        );
+    }
 
     log::debug!("wgpu using adapter: {}, backend: {}", adapter_name_str, backend_str);
 

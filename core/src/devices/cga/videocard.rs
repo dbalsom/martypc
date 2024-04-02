@@ -143,7 +143,7 @@ impl VideoCard for CGACard {
                 let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
                 let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
 
-                assert!(ticks == pixel_ticks + (lchar_ticks * 16));
+                assert_eq!(ticks, pixel_ticks + (lchar_ticks * 16));
 
                 for _ in 0..pixel_ticks {
                     self.tick();
@@ -277,12 +277,12 @@ impl VideoCard for CGACard {
         1
     }
 
-    fn get_current_font(&self) -> FontInfo {
-        FontInfo {
+    fn get_current_font(&self) -> Option<FontInfo> {
+        Some(FontInfo {
             w: CGA_HCHAR_CLOCK as u32,
             h: CRTC_FONT_HEIGHT as u32,
             font_data: CGA_FONT,
-        }
+        })
     }
 
     fn get_character_height(&self) -> u8 {

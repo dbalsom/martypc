@@ -33,10 +33,10 @@ use crate::{
     state::GuiState,
     themes::{make_theme, GuiTheme},
 };
-use egui::{ClippedPrimitive, Context, TexturesDelta, ViewportId, Visuals};
+use egui::{ClippedPrimitive, Context, TexturesDelta, ViewportId};
 use egui_extras::install_image_loaders;
 use egui_wgpu::{renderer::ScreenDescriptor, Renderer};
-use frontend_common::{display_manager::DisplayManagerGuiOptions, MartyGuiTheme};
+use frontend_common::{display_manager::DisplayManagerGuiOptions};
 use pixels::{wgpu, PixelsContext};
 use web_time::{Duration, Instant};
 use winit::window::Window;

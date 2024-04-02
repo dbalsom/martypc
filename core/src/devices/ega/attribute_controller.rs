@@ -81,6 +81,7 @@ pub enum AttributeBlinkOrIntensity {
 }
 
 #[bitfield]
+#[allow(dead_code)]
 pub struct AttributeAddress {
     address: B5,
     address_source: B1,
@@ -486,7 +487,7 @@ impl AttributeController {
         }
 
         // Combine glyph mask with foreground and background colors.
-        glyph_row_base & EGA_COLORS_U64[fg_color as usize] | !glyph_row_base & EGA_COLORS_U64[bg_color as usize]
+        glyph_row_base & EGA_COLORS_U64[fg_color] | !glyph_row_base & EGA_COLORS_U64[bg_color]
     }
 
     pub fn palette(&self, pel: u8) -> u8 {

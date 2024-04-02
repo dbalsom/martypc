@@ -38,11 +38,7 @@
    - A file (for screenshots)
 */
 
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    time::Duration,
-};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 pub use display_backend_pixels::{
     BufferDimensions,
@@ -441,6 +437,19 @@ impl DisplayTargetContext<PixelsBackend> {
         }
     }
 
+    pub fn set_on_top(&mut self, on_top: bool) {
+        if let Some(wopts) = &mut self.window_opts {
+            wopts.is_on_top = on_top;
+        }
+    }
+
+    pub fn is_on_top(&self) -> bool {
+        if let Some(wopts) = &self.window_opts {
+            return wopts.is_on_top;
+        }
+        false
+    }
+
     pub fn create_gui_context(
         dt_idx: usize,
         window: &Window,
@@ -474,7 +483,7 @@ impl DisplayTargetContext<PixelsBackend> {
 
         scaler.set_mode(
             self.backend.as_mut().unwrap().get_backend_raw().unwrap(),
-            preset.mode.unwrap_or(ScalerMode::Integer),
+            preset.mode.unwrap_or(scaler.get_mode()),
         );
         scaler.set_bilinear(bilinear);
         scaler.set_fill_color(MartyColor::from_u24(preset.border_color.unwrap_or(0)));
@@ -890,6 +899,11 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
             self.targets[*idx].window.as_ref()
         })
     }
+
+    fn get_window(&self, dt_idx: usize) -> Option<&Window> {
+        self.targets.get(dt_idx).and_then(|dt| dt.window.as_ref())
+    }
+
     fn set_icon(&mut self, icon_path: PathBuf) {
         if let Ok(image) = image::open(icon_path.clone()) {
             let rgba8 = image.into_rgba8();
@@ -1179,7 +1193,7 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
     }
 
     fn on_window_resized(&mut self, wid: WindowId, w: u32, h: u32) -> Result<(), Error> {
-        let idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
+        let _idx = self.window_id_map.get(&wid).context("Failed to look up window")?;
 
         self.window_id_resize_requests
             .entry(wid)
@@ -1326,11 +1340,14 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
 
     fn for_each_window<F>(&mut self, mut f: F)
     where
-        F: FnMut(&Window),
+        F: FnMut(&Window, bool) -> Option<bool>,
     {
         for dtc in &mut self.targets {
             if let Some(window) = &mut dtc.window {
-                f(&window)
+                let is_on_top = dtc.window_opts.as_ref().map_or(false, |opts| opts.always_on_top);
+                dtc.window_opts
+                    .as_mut()
+                    .map(|opts| opts.is_on_top = f(&window, is_on_top).unwrap_or(opts.is_on_top));
             }
         }
     }
@@ -1413,6 +1430,15 @@ impl DisplayManager<PixelsBackend, GuiRenderContext, WindowId, Window> for WgpuD
             return Err(anyhow!("Display target out of range!"));
         }
         Ok(())
+    }
+
+    fn get_scaler_params(&self, dt_idx: usize) -> Option<ScalerParams> {
+        if dt_idx < self.targets.len() {
+            self.targets[dt_idx].scaler_params.clone()
+        }
+        else {
+            None
+        }
     }
 
     fn set_display_aperture(

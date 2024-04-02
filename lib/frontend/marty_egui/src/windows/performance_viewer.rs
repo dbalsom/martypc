@@ -62,7 +62,7 @@ impl<T: fmt::Debug> fmt::Debug for DisplayOption<T> {
 
 pub fn format_freq_counter(ct: u32) -> String {
     let mut ct = ct as f64;
-    let mut suffix = "";
+    let suffix;
     if ct > 1_000_000.0 {
         ct /= 1_000_000.0;
         suffix = "MHz";
@@ -174,14 +174,14 @@ impl PerformanceViewerControl {
                 .collect();
 
             let line = Line::new(points);
-            let x_mag = self.frame_history.len();
+            let _x_mag = self.frame_history.len();
             Plot::new("frame_time_plot")
                 .height(96.0)
                 .allow_scroll(false)
                 .allow_drag(false)
                 .allow_zoom(false)
                 .y_axis_width(2)
-                .y_grid_spacer(|spacer| {
+                .y_grid_spacer(|_spacer| {
                     vec![
                         // 100s
                         GridMark {

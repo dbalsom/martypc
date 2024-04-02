@@ -30,7 +30,7 @@
 
 */
 
-use crate::{bytequeue::*, cpu_808x::*};
+use crate::cpu_808x::*;
 
 pub struct InstructionQueue {
     size: usize,
@@ -38,13 +38,19 @@ pub struct InstructionQueue {
     back: usize,
     front: usize,
     q: [u8; QUEUE_MAX],
-    _dt: [QueueType; QUEUE_MAX],
     preload: Option<u8>,
 }
 
 impl Default for InstructionQueue {
     fn default() -> Self {
-        Self::new(4)
+        Self {
+            size: QUEUE_MAX,
+            len: 0,
+            back: 0,
+            front: 0,
+            q: [0; QUEUE_MAX],
+            preload: None,
+        }
     }
 }
 
@@ -52,12 +58,7 @@ impl InstructionQueue {
     pub fn new(size: usize) -> Self {
         Self {
             size,
-            len: 0,
-            back: 0,
-            front: 0,
-            q: [0; QUEUE_MAX],
-            _dt: [QueueType::First; QUEUE_MAX],
-            preload: None,
+            ..Self::default()
         }
     }
 

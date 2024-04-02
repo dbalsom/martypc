@@ -602,7 +602,7 @@ impl Cpu {
                 // Cycles: 3 (1 Fetch + 2 EU)
                 // Flags: None
                 let op_reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
-                let ax_value = self.ax;
+                let ax_value = self.a.x();
                 let op_reg_value = self.get_register16(op_reg);
 
                 self.cycles_nx_i(2, &[0x084, 0x085]);
@@ -666,7 +666,7 @@ impl Cpu {
             }
             0x9E => {
                 // SAHF - Store AH into Flags
-                self.store_flags(self.ah as u16);
+                self.store_flags(self.a.h() as u16);
             }
             0x9F => {
                 // LAHF - Load Status Flags into AH Register
@@ -690,13 +690,13 @@ impl Cpu {
             0xA2 => {
                 // MOV offset8, Al
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let op2_value = self.al;
+                let op2_value = self.a.l();
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
             }
             0xA3 => {
                 // MOV offset16, AX
                 // These MOV variants are unique in that they take a direct offset with no modr/m byte
-                let op2_value = self.ax;
+                let op2_value = self.a.x();
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);   
             }
             0xA4 | 0xA5 => {
@@ -722,7 +722,7 @@ impl Cpu {
                         else {
                             self.cycles_i(2, &[0x131, 0x132]);
 
-                            if self.cx == 0 {
+                            if self.c.x() == 0 {
                                 // Fall through to 133, RNI
                                 self.rep_end();
                             }
@@ -783,7 +783,7 @@ impl Cpu {
     
                             // Check for REP end condition #2 (CX==0)
                             self.cycle_i(0x12b);
-                            if self.cx == 0 {
+                            if self.c.x() == 0 {
                                 self.rep_end();
                                 // Next instruction is 1f4: RNI, so don't spend cycle
                             }                 
@@ -801,7 +801,7 @@ impl Cpu {
             0xA8 => {
                 // TEST al, imm8
                 // Flags: o..sz.pc
-                let op1_value = self.al;
+                let op1_value = self.a.l();
                 let op2_value = self.read_operand8(self.i.operand2_type, SegmentOverride::None).unwrap();
                 
                 self.math_op8(Mnemonic::TEST,  op1_value, op2_value);
@@ -809,7 +809,7 @@ impl Cpu {
             0xA9 => {
                 // TEST ax, imm16
                 // Flags: o..sz.pc
-                let op1_value = self.ax;
+                let op1_value = self.a.x();
                 let op2_value = self.read_operand16(self.i.operand2_type, SegmentOverride::None).unwrap();
                 
                 self.math_op16(Mnemonic::TEST,  op1_value, op2_value);
@@ -834,7 +834,7 @@ impl Cpu {
                         
                         self.cycle_i(0x1f0);
                         self.decrement_register16(Register16::CX); //1f0
-                        if self.cx == 0 {
+                        if self.c.x() == 0 {
                             self.rep_end();
                         }
                         else {
@@ -873,7 +873,7 @@ impl Cpu {
                         else {
                             self.cycle_i(0x132);
 
-                            if self.cx == 0 {
+                            if self.c.x() == 0 {
                                 // Fall through to 133/1f9, RNI
                                 self.rep_end();
                             }
@@ -1081,15 +1081,15 @@ impl Cpu {
                 self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
-                if self.cl > 0 {
-                    for _ in 0..(self.cl ) {
+                if self.c.l() > 0 {
+                    for _ in 0..(self.c.l() ) {
                         self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
                     }
                 }
                 
                 // If there is a terminal write to M, don't process RNI on line 0x92
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    //if self.cl != 0 {
+                    //if self.c.l() != 0 {
                         self.cycle_i(0x092);
                     //}
                 }
@@ -1106,8 +1106,8 @@ impl Cpu {
                 self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
-                if self.cl > 0 {
-                    for _ in 0..(self.cl ) {
+                if self.c.l() > 0 {
+                    for _ in 0..(self.c.l() ) {
                         self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
                     }
                 }
@@ -1157,7 +1157,7 @@ impl Cpu {
                 
                 // Handle segment override, default DS
                 let segment = Cpu::segment_override(self.i.segment_override, Segment::DS);
-                let disp16: u16 = self.bx.wrapping_add(self.al as u16);
+                let disp16: u16 = self.b.x().wrapping_add(self.a.l() as u16);
                 
                 self.cycles_i(3, &[0x10c, 0x10d, 0x10e]);
 
@@ -1187,7 +1187,7 @@ impl Cpu {
 
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                if self.cx != 0 && zero_condition {
+                if self.c.x() != 0 && zero_condition {
                     self.reljmp2(rel8 as i8 as i16, true);
                     jump = true;
                 }
@@ -1204,7 +1204,7 @@ impl Cpu {
 
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                if self.cx != 0 {
+                if self.c.x() != 0 {
                     self.reljmp2(rel8 as i8 as i16, true);
                     jump = true;
                 }
@@ -1221,7 +1221,7 @@ impl Cpu {
 
                 self.cycle_i(0x13b);
 
-                if self.cx == 0 {
+                if self.c.x() == 0 {
                     self.reljmp2(rel8 as i8 as i16, true);
                     jump = true;
                 }
@@ -1460,27 +1460,27 @@ impl Cpu {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         
                         //self.multiply_u8(op1_value);
-                        let product = self.mul8(self.al, op1_value, false, negate);
+                        let product = self.mul8(self.a.l(), op1_value, false, negate);
                         self.set_register16(Register16::AX, product);
 
                         if let OperandType::Register8(_) = self.i.operand1_type {
                             self.cycle();
                         }
 
-                        self.set_szp_flags_from_result_u8(self.ah);
+                        self.set_szp_flags_from_result_u8(self.a.h());
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         
                         //self.multiply_i8(op1_value as i8);
-                        let product = self.mul8(self.al, op1_value, true, negate);
+                        let product = self.mul8(self.a.l(), op1_value, true, negate);
                         self.set_register16(Register16::AX, product);
 
                         if let OperandType::Register8(_) = self.i.operand1_type {
                             self.cycle();
                         }
 
-                        self.set_szp_flags_from_result_u8(self.ah);
+                        self.set_szp_flags_from_result_u8(self.a.h());
                     }                    
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1493,14 +1493,14 @@ impl Cpu {
                         }
                         */
                         
-                        match self.div8(self.ax, op1_value, false, negate) {
+                        match self.div8(self.a.x(), op1_value, false, negate) {
                             Ok((al, ah)) => {
                                 self.set_register8(Register8::AL, al); // Quotient in AL
                                 self.set_register8(Register8::AH, ah); // Remainder in AH
                             }
                             Err(_) => {
 
-                                self.set_szp_flags_from_result_u8(self.ah);
+                                self.set_szp_flags_from_result_u8(self.a.h());
                                 //self.set_flag(Flag::Zero);
                                 //self.clear_flag(Flag::Sign);
                                 self.clear_flag(Flag::AuxCarry);
@@ -1521,14 +1521,14 @@ impl Cpu {
                         }
                         */
 
-                        match self.div8(self.ax, op1_value, true, negate) {
+                        match self.div8(self.a.x(), op1_value, true, negate) {
                             Ok((al, ah)) => {
                                 self.set_register8(Register8::AL, al); // Quotient in AL
                                 self.set_register8(Register8::AH, ah); // Remainder in AH
                             }
                             Err(_) => {
 
-                                self.set_szp_flags_from_result_u8(self.ah);
+                                self.set_szp_flags_from_result_u8(self.a.h());
                                 //self.set_flag(Flag::Zero);
                                 //self.clear_flag(Flag::Sign);                                
                                 self.clear_flag(Flag::AuxCarry);
@@ -1583,7 +1583,7 @@ impl Cpu {
                         // Multiply handles writing to ax
                         //self.multiply_u16(op1_value);
 
-                        let (dx, ax) = self.mul16(self.ax, op1_value, false, negate);
+                        let (dx, ax) = self.mul16(self.a.x(), op1_value, false, negate);
 
                         if let OperandType::Register16(_) = self.i.operand1_type {
                             self.cycle();
@@ -1593,14 +1593,14 @@ impl Cpu {
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);
 
-                        self.set_szp_flags_from_result_u16(self.dx);
+                        self.set_szp_flags_from_result_u16(self.d.x());
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         // Multiply handles writing to dx:ax
                         //self.multiply_i16(op1_value as i16);
                          
-                        let (dx, ax) = self.mul16(self.ax, op1_value, true, negate);
+                        let (dx, ax) = self.mul16(self.a.x(), op1_value, true, negate);
 
                         if let OperandType::Register16(_) = self.i.operand1_type {
                             self.cycle();
@@ -1609,7 +1609,7 @@ impl Cpu {
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);    
 
-                        self.set_szp_flags_from_result_u16(self.dx);                    
+                        self.set_szp_flags_from_result_u16(self.d.x());
                     }
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1621,14 +1621,14 @@ impl Cpu {
                         }
                         */
 
-                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, false, negate) {
+                        match self.div16(((self.d.x() as u32) << 16 ) | (self.a.x() as u32), op1_value, false, negate) {
                             Ok((quotient, remainder)) => {
                                 self.set_register16(Register16::AX, quotient); // Quotient in AX
                                 self.set_register16(Register16::DX, remainder); // Remainder in DX
                             }
                             Err(_) => {
 
-                                self.set_szp_flags_from_result_u8(self.ah);
+                                self.set_szp_flags_from_result_u8(self.a.h());
                                 //self.set_flag(Flag::Zero);
                                 //self.clear_flag(Flag::Sign);
                                 self.clear_flag(Flag::AuxCarry);
@@ -1650,14 +1650,14 @@ impl Cpu {
                         }
                         */
 
-                        match self.div16(((self.dx as u32) << 16 ) | (self.ax as u32), op1_value, true, negate) {
+                        match self.div16(((self.d.x() as u32) << 16 ) | (self.a.x() as u32), op1_value, true, negate) {
                             Ok((quotient, remainder)) => {
                                 self.set_register16(Register16::AX, quotient); // Quotient in AX
                                 self.set_register16(Register16::DX, remainder); // Remainder in DX
                             }
                             Err(_) => {
 
-                                self.set_szp_flags_from_result_u8(self.ah);
+                                self.set_szp_flags_from_result_u8(self.a.h());
                                 //self.set_flag(Flag::Zero);
                                 //self.clear_flag(Flag::Sign);
                                 self.clear_flag(Flag::AuxCarry);
@@ -2072,8 +2072,9 @@ impl Cpu {
             unreachable!("Invalid opcode!");
             //ExecutionResult::UnsupportedOpcode(self.i.opcode)
         }
-        else if self.halted && !self.get_flag(Flag::Interrupt) && !self.get_flag(Flag::Trap) {
+        else if self.halted && !self.reported_halt && !self.get_flag(Flag::Interrupt) && !self.get_flag(Flag::Trap) {
             // CPU was halted with interrupts disabled - will not continue
+            self.reported_halt = true;
             ExecutionResult::Halt
         }
         else if jump {

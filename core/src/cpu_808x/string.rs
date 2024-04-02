@@ -48,7 +48,7 @@ impl Cpu {
                 // No flags affected
 
                 // Write AL to [es:di]
-                self.biu_write_u8(Segment::ES, self.di, self.al, ReadWriteFlag::Normal);
+                self.biu_write_u8(Segment::ES, self.di, self.a.l(), ReadWriteFlag::Normal);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -66,7 +66,7 @@ impl Cpu {
                 // No flags affected
 
                 // Write AX to [es:di]
-                self.biu_write_u16(Segment::ES, self.di, self.ax, ReadWriteFlag::Normal);
+                self.biu_write_u16(Segment::ES, self.di, self.a.x(), ReadWriteFlag::Normal);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
@@ -170,7 +170,7 @@ impl Cpu {
                 let data = self.biu_read_u8(Segment::ES, self.di);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.al, data, false);
+                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.a.l(), data, false);
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -197,7 +197,7 @@ impl Cpu {
                 let data = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.ax, data, false);
+                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.a.x(), data, false);
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -301,7 +301,7 @@ impl Cpu {
 
             if self.in_rep {
                 // Rep-prefixed instruction is starting for the first time. Run the RPTS procedure.
-                if self.cx == 0 {
+                if self.c.x() == 0 {
                     self.cycles_i(4, &[MC_JUMP, 0x112, 0x113, 0x114]);
                     self.rep_end();
                     return false;

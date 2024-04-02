@@ -19,7 +19,6 @@ config_version = "0.2"
 # directory.
 config_name = "ibm5160"
 #config_name = "ibm5160_hdd"
-#config_name = "ibm5160_hdd_ega"
 
 # Specify configuration overlays to load on top of machine configuration.
 # Config overlays are a convenient way to swap or add to a base config. 
@@ -34,6 +33,10 @@ prefer_oem = true
 
 # Reload ROMs from disk when system is hard-rebooted (not ctrl-alt-del)
 reload_roms = true
+
+# Apply ROM patches defined in ROM sets. Disable this for authenticity
+# as some patches may speed up boot time.
+patch_roms = true
 
 # Don't load any ROMs if true. Default: false
 #no_roms = true
@@ -78,8 +81,8 @@ off_rails_detection = false
 # What to do when the CPU has entered an unrecoverable halt condition. 
 # Valid options are:
 #  Continue - Do nothing; just keep running
-#  Stop     - Stop the system and display a warning notification
 #  Warn     - Keep running, but display a warning notification
+#  Stop     - Stop the system and display a warning notification
 on_halt = "Warn"
 
 # Enable instruction history. This slows down the emulator a modest amount 
@@ -147,7 +150,7 @@ paths = [
 
 # Exclude any matching directories from recursion. Useful for temporarily
 # hiding files, or moving files in and out of a "library" subdir.
-ignore_dirs = [ "parking" ]
+ignore_dirs = ["parking"]
 
 # -------------------------------------------------------------------------------------
 # General emulator options
@@ -159,6 +162,9 @@ auto_poweron = true
 # cpu_autostart: Run the CPU on startup - if false CPU will start paused
 # (only applicable in gui mode)
 cpu_autostart = true
+
+# benchmark_mode: Run MartyPC in benchmark mode (cmdline: --benchmark-mode)
+benchmark_mode = false
 
 # headless: Run MartyPC without any windows
 headless = false
@@ -179,11 +185,6 @@ debug_mode = false
 # do so and don't want the nag.
 debug_warn = true
 
-# Help the developer debug any keyboard issues you may be having. With this
-# feature set to true, MartyPC will print information about every keystroke
-# to the terminal.
-debug_keyboard = false
-
 # Run the specified program instead of booting BIOS. The CPU reset vector will
 # be set to 'run_bin_seg:run_bin_ofs'
 #run_bin = "./program/a_effect.bin"
@@ -196,15 +197,15 @@ run_bin_ofs = 0x0000
 vsync = false
 
 [emulator.audio]
-# Set to false to disable sound system initialization.
+# Set this to false to disable sound system initialization.
 enabled = true
 
 [emulator.media]
 # Provide a list of file extensions to interpret as raw floppy sector images.
-raw_sector_image_extensions = [ "img", "ima", "dsk", "mnx" ]
+raw_sector_image_extensions = ["img", "ima", "dsk", "mnx"]
 
 # Default state of write protection for newly loaded floppy images.
-write_protect_default = true
+write_protect_default = false
 
 #[[emulator.media.vhd]]
 # VHD to mount into drive 0 (Typically C:)
@@ -243,7 +244,7 @@ breakpoint_notify = true
 # of the card's selected video aperture, which may be larger than expected
 # due to overscan. If this is larger than the requested min_size, min_size
 # will be ignored, the scaler will not resample downwards.
-# Therefore if you specifically want a 640x480 window, you should
+# Therefore, if you specifically want a 640x480 window, you should
 # select the "Cropped" aperture.
 # ----------------------------------------------------------------------------
 [[emulator.window]]
@@ -254,7 +255,7 @@ name = "Main GUI"
 # this size, or the video aperture resolution, whichever is higher.
 # It is useful to use this value for the main window, but for secondary
 # display windows, you may wish to use card_scale instead.
-size = { w=1024, h=768 }
+size = { w = 1024, h = 768 }
 
 # If this window has a GUI menu, add the vertical height of the menu to the
 # window height, and adjust the scaler to display the emulated display 
@@ -289,7 +290,7 @@ always_on_top = false
 [[emulator.window]]
 enabled = false
 name = "Secondary Window"
-size = { w=800, h=600 }
+size = { w = 800, h = 600 }
 resizable = false
 card_id = 0
 card_scale = 1
@@ -300,7 +301,7 @@ always_on_top = false
 [[emulator.window]]
 enabled = false
 name = "Tertiary Window"
-size = { w=640, h=480 }
+size = { w = 640, h = 480 }
 resizable = false
 card_id = 0
 card_scale = 1
@@ -331,8 +332,7 @@ name = "default" # Default preset must exist! Do not rename.
 # The default value is "Integer". This has no effect if no card_id is provided.
 #
 # Valid options for Scaler mode are
-# Fixed1x - Video and shader output will be displayed at native base resolution
-# Fixed2x - Video and shader output will be displayed at double base resolution
+# Fixed   - Video and shader output will be displayed at native base resolution
 # Integer - Video and shader output will be scaled to the largest integer
 #           multiple that will fit in the window. This generally produces the
 #           clearest results, but can leave large black borders.
@@ -400,7 +400,7 @@ aspect_correction = true
 
 # Aspect ratio to use, representing a w:h ratio. Both fields should be 
 # integers.
-aspect_ratio = { h=4, v=3 }
+aspect_ratio = { h = 4, v = 3 }
 
 # Emulate a composite color signal (and produce artifact color)
 # Has no effect unless card type is CGA.
@@ -420,7 +420,7 @@ gamma = 1.0
 [emulator.scaler_preset.renderer]
 display_aperture = "Accurate"
 aspect_correction = true
-aspect_ratio = { h=4, v=3 }
+aspect_ratio = { h = 4, v = 3 }
 composite = false
 
 [[emulator.scaler_preset]]
@@ -436,7 +436,7 @@ gamma = 1.0
 [emulator.scaler_preset.renderer]
 display_aperture = "Accurate"
 aspect_correction = true
-aspect_ratio = { h=4, v=3 }
+aspect_ratio = { h = 4, v = 3 }
 composite = false
 
 [[emulator.scaler_preset]]
@@ -453,7 +453,7 @@ gamma = 1.0
 display_aperture = "Accurate"
 aspect_correction = true
 composite = false
-aspect_ratio = { h=4, v=3 }
+aspect_ratio = { h = 4, v = 3 }
 
 # ----------------------------------------------------------------------------
 # General Input Options
@@ -461,9 +461,58 @@ aspect_ratio = { h=4, v=3 }
 [emulator.input]
 # Some platforms reverse the left and right mouse button id #'s. 
 # We try to detect this, but it can be overridden here.
+reverse_mouse_buttons = false
 
-# reverse_mouse_buttons = false
+# Define hotkeys. 
+# Each hotkey definition specifies an event enum and a list of keycodes. See 
+# one of the keyboard mapping files in /config/keyboards for a list of valid 
+# keycode names.
+#
+# scope: When is the hotkey recognized?
+#  "Any" - Hotkey triggers in any context
+#  "Gui" - Hotkey only triggers when GUI has focus
+#  "Machine" - Hotkey only triggers when emulated machine has focus 
+#  "Captured" - Hotkey only triggers when emulated machine has captured input
+#
+# capture_disable: Disable this hotkey when input is captured. Setting this and
+#                  the "Captured" scope will disable the hotkey
+#
+# Multiple events can be mapped to the same input sequence. They will all fire 
+# when that key sequence is pressed.
+#
+# Events are a bit limited at first. More hotkey events are coming in the future.
+hotkeys = [
+    { event = "CaptureMouse", keys = ["ControlLeft", "F10"], scope = "Any", capture_disable = false },
+    { event = "CtrlAltDel", keys = ["ControlLeft", "F11"], scope = "Any", capture_disable = false },
+    { event = "Reboot", keys = ["ControlLeft", "F12"], scope = "Any", capture_disable = false },
+    { event = "Screenshot", keys = ["ControlLeft", "F5"], scope = "Any", capture_disable = false },
+    { event = "ToggleGui", keys = ["ControlLeft", "F1"], scope = "Any", capture_disable = false },
+    { event = "ToggleFullscreen", keys = ["ControlLeft", "Enter"], scope = "Any", capture_disable = false },
+    { event = "DebugStepOver", keys = ["F10"], scope="Gui", capture_disable = false },
+    { event = "DebugStep", keys = ["F11"], scope="Gui", capture_disable = false },
+]
 
+# Help the developer debug any keyboard issues you may be having. With this
+# feature set to true, MartyPC will print information about every keystroke
+# to the terminal.
+debug_keyboard = false
+
+# ----------------------------------------------------------------------------
+# Benchmarking (not yet implemented - configs are placeholder)
+# ----------------------------------------------------------------------------
+[emulator.benchmark]
+# Machine configuration to benchmark
+config_name = "ibm5160"
+config_overlays = []
+prefer_oem = true
+
+# Valid options for benchmark_end_condition are:
+# "Timeout" - Benchmark for 'timeout' seconds and exit
+# "Trigger" - Terminate benchmark on signal from internal service interrupt
+# "Cycles"  - Terminate benchmark after 'cycles' CPU cycles
+end_condition = "Timeout"
+timeout = 60
+cycles = 572400000 # 2 minutes
 
 # ----------------------------------------------------------------------------
 # GUI options
@@ -488,21 +537,6 @@ menu_theme = "DefaultLight"
 zoom = 1.0
 
 # ----------------------------------------------------------------------------
-# Benchmarking (not yet implemented - configs are placeholder)
-# ----------------------------------------------------------------------------
-[benchmark]
-# Machine configuration to benchmark
-config_name = "ibm5160"
-
-# Valid options for benchmark_end_condition are:
-# "Timeout" - Benchmark for 'timeout' seconds and exit
-# "Trigger" - Terminate benchmark on signal from internal service interrupt
-# "Cycles"  - Terminate benchmark after 'cycles' CPU cycles
-end_condition = "Timeout"
-timeout = 60
-cycles = 572400000 # 2 minutes
-
-# ----------------------------------------------------------------------------
 # Options for the CPU Validator module.
 # ----------------------------------------------------------------------------
 # You must have an Arduino8088 connected via USB to utilize
@@ -524,15 +558,15 @@ trace_file = "./traces/validator_trace.log"
 # None - Do not generate or validate tests (default - run emulator normally)
 # Generate - generate tests based on supplied parameters
 # Valdidate - validate tests 
-test_mode="None"
+test_mode = "None"
 
 # Random seed for testing. The same random seed should produce the same
 # set of tests. If you want a different set of tests, change this to any 
 # other number.
-test_seed=1234
+test_seed = 1234
 
 # Directory to look for / place tests
-test_dir="tests/v1"
+test_dir = "tests/v1"
 
 # Opcode range to generate or validate. Provide start and end opcodes.
 # If start == end, that single opcode will be generated or validated.

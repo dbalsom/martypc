@@ -79,7 +79,7 @@ use crate::{
         cga::{self, CGACard},
         mda::{self, MDACard},
     },
-    machine::MachineCheckpoint,
+    machine::{MachineCheckpoint, MachinePatch},
     machine_config::{normalize_conventional_memory, MachineConfiguration},
     machine_types::{HardDiskControllerType, SerialControllerType, SerialMouseType},
     memerror::MemError,
@@ -549,10 +549,37 @@ impl BusInterface {
         }
     }
 
+    pub fn install_patch_checkpoints(&mut self, patches: &Vec<MachinePatch>) {
+        for patch in patches.iter() {
+            log::debug!("Arming patch trigger [{:05X}] for patch: {}", patch.trigger, patch.desc);
+            self.memory_mask[patch.trigger as usize & 0xFFFFF] |= MEM_CP_BIT;
+        }
+    }
+
     pub fn clear_checkpoints(&mut self) {
         for byte_ref in &mut self.memory_mask {
             *byte_ref &= !MEM_CP_BIT;
         }
+    }
+
+    pub fn install_patch(&mut self, patch: &mut MachinePatch) {
+        if patch.installed {
+            // Don't install patch twice (we might be revisiting the same checkpoint)
+            return;
+        }
+        let patch_size = patch.bytes.len();
+        let patch_start = patch.addr as usize & 0xFFFFF;
+        let patch_end = patch_start + patch_size;
+
+        if patch_end > self.memory.len() {
+            log::error!("Patch out of range: {} len: {}", patch_start, patch_size);
+            return;
+        }
+
+        for (dst, src) in self.memory[patch_start..patch_end].iter_mut().zip(patch.bytes.iter()) {
+            *dst = *src;
+        }
+        patch.installed = true;
     }
 
     pub fn set_conventional_size(&mut self, size: usize) {
@@ -1383,6 +1410,8 @@ impl BusInterface {
         vec
     }
 
+    /// Returns a MemoryDebug struct containing information about the memory at the specified address.
+    /// This is used in the Memory Viewer debug window to show a popup when hovering over a byte.
     pub fn get_memory_debug(&mut self, address: usize) -> MemoryDebug {
         let mut debug = MemoryDebug {
             addr:  format!("{:05X}", address),
@@ -1393,21 +1422,21 @@ impl BusInterface {
         };
 
         if address < self.memory.len() - 1 {
-            debug.byte = format!("{:02X}", self.memory[address]);
+            debug.byte = format!("{:02X}", self.peek_u8(address).unwrap_or(0xFF));
         }
         if address < self.memory.len() - 2 {
             debug.word = format!(
                 "{:04X}",
-                (self.memory[address] as u16) | ((self.memory[address + 1] as u16) << 8)
+                self.peek_u8(address).unwrap_or(0xFF) as u16 | (self.peek_u8(address + 1).unwrap_or(0xFF) as u16) << 8
             );
         }
         if address < self.memory.len() - 4 {
             debug.dword = format!(
                 "{:04X}",
-                (self.memory[address] as u32)
-                    | ((self.memory[address + 1] as u32) << 8)
-                    | ((self.memory[address + 2] as u32) << 16)
-                    | ((self.memory[address + 3] as u32) << 24)
+                self.peek_u8(address).unwrap_or(0xFF) as u32
+                    | ((self.peek_u8(address + 1).unwrap_or(0xFF) as u32) << 8)
+                    | ((self.peek_u8(address + 2).unwrap_or(0xFF) as u32) << 16)
+                    | ((self.peek_u8(address + 3).unwrap_or(0xFF) as u32) << 24)
             );
         }
 
@@ -1426,6 +1455,7 @@ impl BusInterface {
         &mut self,
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
+        sound_enabled: bool,
     ) -> Result<(), Error> {
         let video_frame_debug = false;
         let clock_mode = ClockingMode::Default;
@@ -1483,6 +1513,7 @@ impl BusInterface {
                 machine_desc.system_crystal
             },
             machine_desc.timer_divisor,
+            machine_config.speaker && sound_enabled,
         );
 
         // Add PIT ports to io_map
@@ -1788,17 +1819,13 @@ impl BusInterface {
         if self.do_title_hacks {
             // Arm timer adjustment triggers for Area5150 lake/wibble effects.
             // The ISR chains that set up these effects are a worst-case situation for emulators.
-            if pit_reload_value == 5117 {
-                if !self.timer_trigger1_armed {
-                    self.timer_trigger1_armed = true;
-                    log::debug!("Area5150 hack armed for lake effect.");
-                }
+            if pit_reload_value == 5117 && !self.timer_trigger1_armed {
+                self.timer_trigger1_armed = true;
+                log::debug!("Area5150 hack armed for lake effect.");
             }
-            else if pit_reload_value == 5162 {
-                if !self.timer_trigger2_armed {
-                    self.timer_trigger2_armed = true;
-                    log::debug!("Area5150 hack armed for wibble effect.");
-                }
+            else if pit_reload_value == 5162 && !self.timer_trigger2_armed {
+                self.timer_trigger2_armed = true;
+                log::debug!("Area5150 hack armed for wibble effect.");
             }
         }
 
@@ -1988,6 +2015,7 @@ impl BusInterface {
         }
     }
 
+    //noinspection RsBorrowChecker
     /// Call the reset methods for all devices on the bus
     pub fn reset_devices(&mut self) {
         // Reset PIT
@@ -2375,6 +2403,13 @@ impl BusInterface {
 
     pub fn enumerate_videocards(&self) -> Vec<VideoCardId> {
         self.videocard_ids.clone()
+    }
+
+    pub fn enumerate_serial_ports(&self) -> Vec<SerialPortDescriptor> {
+        self.serial
+            .as_ref()
+            .and_then(|serial| Some(serial.enumerate_ports()))
+            .unwrap_or_default()
     }
 
     pub fn floppy_drive_ct(&self) -> usize {

@@ -32,11 +32,12 @@
     windows.
 */
 
-use std::collections::HashMap;
+#![allow(dead_code)]
+
 use crate::{state::GuiState, GuiWindow, WORKSPACE_WINDOWS};
-use egui::{Context, Ui};
 use anyhow::Error;
-use crate::state::WorkspaceWindowState;
+use egui::{Context, Ui};
+use std::collections::HashMap;
 
 pub struct GuiWorkspaceConfig {}
 
@@ -201,11 +202,10 @@ impl GuiState {
     }
 
     pub fn get_workspace_config_string(&mut self) -> Result<String, Error> {
-
         let window_state: HashMap<_, _> = self.window_state.clone().into_iter().collect();
         let window_state_toml = toml::to_string_pretty(&window_state).unwrap_or_else(|_| {
             log::error!("Failed to serialize workspace state");
-            return String::new()
+            return String::new();
         });
 
         Ok(window_state_toml)

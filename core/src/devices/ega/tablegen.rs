@@ -31,8 +31,6 @@
 
 */
 
-use super::*;
-
 /// LUT to extend an 8-bit bitfield into a packed 64-bit value
 pub const BIT_EXTEND_TABLE64: [u64; 256] = {
     let mut table = [0u64; 256];
@@ -175,75 +173,6 @@ pub const EGA_HIRES_GFX_TABLE: [[u64; 256]; 16] = {
 
         if color < 15 {
             color += 1;
-        }
-        else {
-            break;
-        }
-    }
-
-    table
-};
-
-/// Constant initializer to unpack all possible 8 bit patterns
-/// of 4, 2-bit pixels into their corresponding u64 representations
-/// by palette. Since value 0 is substituted with the current
-/// cc background color, we also generate a mask to use for setting
-/// the background color.
-/// To use this mask, we perform the following operation:
-/// (glyph64, mask64) = table[pal][glyph]
-/// draw64 = glyph64 | ((glyph64 & mask64) & cc_altcolor))
-pub const CGA_LOWRES_GFX_TABLE: [[(u64, u64); 256]; 6] = {
-    let mut table: [[(u64, u64); 256]; 6] = [[(0, 0); 256]; 6];
-    let mut glyph;
-    let mut palette_i: usize = 0;
-
-    loop {
-        glyph = 0;
-        loop {
-            // Break out 8 bit pattern into 4, 2-bit pixels
-            let pix0 = (glyph >> 6) & 0b11;
-            let pix1 = (glyph >> 4) & 0b11;
-            let pix2 = (glyph >> 2) & 0b11;
-            let pix3 = glyph & 0b11;
-
-            // Look up 2-bit pixel indices into current 4-color palette to get
-            // a 16-color palette index
-            let mut color0: u64 = CGA_PALETTES[palette_i][pix0 as usize] as u64;
-            let mut color1: u64 = CGA_PALETTES[palette_i][pix1 as usize] as u64;
-            let mut color2: u64 = CGA_PALETTES[palette_i][pix2 as usize] as u64;
-            let mut color3: u64 = CGA_PALETTES[palette_i][pix3 as usize] as u64;
-
-            // Double pixels
-            color0 |= color0 << 8;
-            color1 |= color1 << 8;
-            color2 |= color2 << 8;
-            color3 |= color3 << 8;
-
-            // Build a mask where color index 0 == FFFF
-            let mask0: u64 = if pix0 == 0 { 0xFFFF } else { 0x0000 };
-            let mask1: u64 = if pix1 == 0 { 0xFFFF } else { 0x0000 };
-            let mask2: u64 = if pix2 == 0 { 0xFFFF } else { 0x0000 };
-            let mask3: u64 = if pix3 == 0 { 0xFFFF } else { 0x0000 };
-
-            // Create the glyph tuple
-            //let glyph64 = color0 << 48 | color1 << 32 | color2 << 16 | color3;
-            //let mask64 = mask0 << 48 | mask1 << 32 | mask2 << 16 | mask3;
-
-            let glyph64 = color3 << 48 | color2 << 32 | color1 << 16 | color0;
-            let mask64 = mask3 << 48 | mask2 << 32 | mask1 << 16 | mask0;
-
-            table[palette_i][glyph] = (glyph64, mask64);
-
-            if glyph < 255 {
-                glyph += 1;
-            }
-            else {
-                break;
-            }
-        }
-
-        if palette_i < 5 {
-            palette_i += 1;
         }
         else {
             break;

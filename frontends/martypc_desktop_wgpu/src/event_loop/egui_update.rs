@@ -39,7 +39,7 @@ use marty_core::{
     syntax_token::SyntaxToken,
     util,
 };
-use marty_egui::{GuiWindow, PerformanceStats};
+use marty_egui::GuiWindow;
 
 use frontend_common::timestep_manager::TimestepManager;
 use marty_core::cpu_common::TraceMode;
@@ -69,6 +69,9 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
     // -- Update machine state
     emu.gui.set_machine_state(emu.machine.get_state());
 
+    // -- Update serial ports
+    emu.gui.set_serial_ports(emu.machine.bus().enumerate_serial_ports());
+
     // -- Update VHD Creator window
     if emu.gui.is_window_open(GuiWindow::VHDCreator) {
         if let Some(hdc) = emu.machine.hdc() {
@@ -95,7 +98,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
     // -- Update memory viewer window if open
     if emu.gui.is_window_open(GuiWindow::MemoryViewer) {
-        let (mem_dump_addr_str, source) = emu.gui.memory_viewer.get_address();
+        let (mem_dump_addr_str, _source) = emu.gui.memory_viewer.get_address();
 
         let (addr, mem_dump_addr) = match emu.machine.cpu().eval_address(&mem_dump_addr_str) {
             Some(i) => {

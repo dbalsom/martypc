@@ -333,7 +333,7 @@ impl Cpu {
 
         let op2_vec = tokenize_operand(i, OperandSelect::SecondOperand, op_size);
 
-        if op2_vec.len() > 0 {
+        if !op2_vec.is_empty() {
             i_vec.0.push(SyntaxToken::Comma);
             i_vec.append(op2_vec, Some(SyntaxToken::Formatter(SyntaxFormatType::Space)), None);
         }
@@ -573,7 +573,7 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) ->
                 AddressingMode::BxDisp16(disp) => {
                     format!("{}[{}:bx{}]", ptr_prefix, segment1, WithPlusSign(disp))
                 }
-                AddressingMode::RegisterMode => format!(""),
+                AddressingMode::RegisterMode => "".to_string(),
             }
         }
         /*

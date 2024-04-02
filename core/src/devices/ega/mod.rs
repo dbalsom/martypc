@@ -108,35 +108,6 @@ const EGA_CURSOR_MAX: usize = EGA_CHARACTER_HEIGHT as usize;
 // Toggle cursor blink state after this many frames
 const EGA_CURSOR_BLINK_RATE: u32 = 8;
 
-const DEFAULT_CURSOR_START_LINE: u8 = 6;
-const DEFAULT_CURSOR_END_LINE: u8 = 7;
-const DEFAULT_HORIZONTAL_TOTAL: u8 = 113;
-const DEFAULT_HORIZONTAL_DISPLAYED: u8 = 80;
-const DEFAULT_HORIZONTAL_SYNC_POS: u8 = 90;
-const DEFAULT_HORIZONTAL_SYNC_WIDTH: u8 = 10;
-
-const DEFAULT_VERTICAL_TOTAL: u16 = 31;
-
-const DEFAULT_VERTICAL_TOTAL_ADJUST: u8 = 6;
-const DEFAULT_VERTICAL_DISPLAYED: u8 = 25;
-const DEFAULT_VERTICAL_SYNC_POS: u8 = 28;
-
-const DEFAULT_OVERFLOW: u8 = 0;
-const DEFAULT_PRESET_ROW_SCAN: u8 = 0;
-const DEFAULT_MAX_SCANLINE: u8 = 13;
-
-/*
-const CGA_FRAME_CPU_TIME: u32 = 79648;
-const CGA_VBLANK_START: u32 = 70314;
-const CGA_SCANLINE_CPU_TIME: u32 = 304;
-const CGA_HBLANK_START: u32 = 250;
-
-const EGA_FRAME_CPU_TIME: u32 = 70150;
-const EGA_VBLANK_START: u32 = 61928;
-const EGA_SCANLINE_CPU_TIME: u32 = 267;
-const EGA_HBLANK_START: u32 = 220;
-*/
-
 // EGA display field can be calculated via the maximum programmed value in
 // H0 of 91. 91+2*8 = 744.  VerticalTotal 364   744x364 = 270816 * 60Hz = 16,248,960
 
@@ -191,28 +162,12 @@ pub const EGA_GRAPHICS_2_POSITION: u16 = 0x3CA;
 pub const EGA_GRAPHICS_ADDRESS: u16 = 0x3CE;
 pub const EGA_GRAPHICS_DATA: u16 = 0x3CF;
 
-pub struct VideoTimings {
-    cpu_frame:    u32,
-    vblank_start: u32,
-    cpu_scanline: u32,
-    hblank_start: u32,
-}
-
 pub struct EGAFont {
     w:    u32,
     h:    u32,
     span: usize,
     data: &'static [u8],
 }
-
-const CGA_PALETTES: [[u8; 4]; 6] = [
-    [0, 2, 4, 6],    // Red / Green / Brown
-    [0, 10, 12, 14], // Red / Green / Brown High Intensity
-    [0, 3, 5, 7],    // Cyan / Magenta / White
-    [0, 11, 13, 15], // Cyan / Magenta / White High Intensity
-    [0, 3, 4, 7],    // Red / Cyan / White
-    [0, 11, 12, 15], // Red / Cyan / White High Intensity
-];
 
 pub enum EgaDefaultColor4Bpp {
     Black = 0,
@@ -251,15 +206,6 @@ pub enum EgaDefaultColor6Bpp {
     Yellow = 0x3E,
     WhiteBright = 0x3F,
 }
-
-const EGA_DEBUG_COLOR: u8 = EgaDefaultColor6Bpp::Magenta as u8;
-const EGA_HBLANK_COLOR: u8 = 0;
-const EGA_HBLANK_DEBUG_COLOR: u8 = 1;
-const EGA_VBLANK_COLOR: u8 = 0;
-const EGA_VBLANK_DEBUG_COLOR: u8 = 14;
-const EGA_DISABLE_COLOR: u8 = 0;
-const EGA_DISABLE_DEBUG_COLOR: u8 = 2;
-const EGA_OVERSCAN_COLOR: u8 = 5;
 
 const ALL_SET64: u64 = 0xFFFFFFFFFFFFFFFF;
 
@@ -418,26 +364,6 @@ const fn init_ega_4bpp_u64_colors() -> [u64; 64] {
 
 const EGA_COLORS_6BPP_U64: [u64; 64] = init_ega_6bpp_u64_colors();
 const EGA_COLORS_4BPP_U64: [u64; 64] = init_ega_4bpp_u64_colors();
-
-const EGA_FONT_SPAN: usize = 256;
-
-static EGA_FONTS: [EGAFont; 2] = [
-    EGAFont {
-        w:    8,
-        h:    8,
-        span: EGA_FONT_SPAN,
-        data: include_bytes!("../../../../assets/ega_8by8.bin"),
-    },
-    EGAFont {
-        w:    8,
-        h:    14,
-        span: EGA_FONT_SPAN,
-        data: include_bytes!("../../../../assets/ega_8by14.bin"),
-    },
-];
-
-const EGA_FONT8: &'static [u8] = include_bytes!("../../../../assets/ega_8by8.bin");
-const EGA_FONT14: &'static [u8] = include_bytes!("../../../../assets/ega_8by14.bin");
 
 // Display apertures for each EGA clock
 // In 14Mhz mode, EGA apertures are similar to CGA apertures.

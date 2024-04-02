@@ -40,8 +40,7 @@ use marty_core::{
     coreconfig::CoreConfig,
     cpu_common::TraceMode,
     cpu_validator::ValidatorType,
-    devices::keyboard::KeyboardType,
-    machine_types::{HardDiskControllerType, MachineType},
+    machine_types::{MachineType, OnHaltBehavior},
 };
 
 /*
@@ -63,6 +62,9 @@ impl CoreConfig for ConfigFileParams {
     fn get_machine_type(&self) -> MachineType {
         MachineType::Ibm5160
     }
+    fn get_audio_enabled(&self) -> bool {
+        self.emulator.audio.enabled
+    }
     fn get_machine_noroms(&self) -> bool {
         self.machine.no_roms
     }
@@ -74,7 +76,7 @@ impl CoreConfig for ConfigFileParams {
         self.machine.input.keyboard_layout.clone()
     }
     fn get_keyboard_debug(&self) -> bool {
-        self.emulator.debug_keyboard
+        self.emulator.input.debug_keyboard
     }
     //fn get_video_type(&self) -> Option<VideoType> { self.machine.primary_video }
     //fn get_video_clockingmode(&self) -> Option<ClockingMode> { self.machine.clocking_mode }
@@ -102,5 +104,11 @@ impl CoreConfig for ConfigFileParams {
     }
     fn get_title_hacks(&self) -> bool {
         self.emulator.title_hacks
+    }
+    fn get_patch_enabled(&self) -> bool {
+        self.machine.patch_roms
+    }
+    fn get_halt_behavior(&self) -> OnHaltBehavior {
+        self.machine.cpu.on_halt.unwrap_or_default()
     }
 }

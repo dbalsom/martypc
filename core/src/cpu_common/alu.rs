@@ -425,8 +425,8 @@ mod tests {
         assert_eq!(result, 0xDEAD);
         assert_eq!(carry, false);
 
-        let (result, carry) = 0xC8a7u16.alu_rcl(255, false);
-        assert_eq!(result, 0xC8a7);
+        let (result, carry) = 0xC8A7u16.alu_rcl(255, false);
+        assert_eq!(result, 0xC8A7);
         assert_eq!(carry, false);
     }
 

@@ -39,7 +39,7 @@ mod update;
 
 use keyboard::handle_modifiers;
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use winit::{
     event::{DeviceEvent, ElementState, Event, StartCause, WindowEvent},
     event_loop::EventLoopWindowTarget,
@@ -81,7 +81,7 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                     // order.
 
                     // Resolve the winit button id to a button enum based on platform and reverse flag.
-                    log::debug!("Button: {:?} State: {:?}", button, state);
+                    //log::debug!("Button: {:?} State: {:?}", button, state);
                     let mbutton = button_from_id(button, emu.mouse_data.reverse_buttons);
 
                     // A mouse click could be faster than one frame (pressed & released in 16.6ms), therefore mouse
@@ -127,8 +127,14 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                     });
                 }
                 WindowEvent::Resized(size) => {
-                    if let Err(e) = emu.dm.on_window_resized(window_id, size.width, size.height) {
-                        log::error!("Failed to resize window: {}", e);
+                    if size.width > 0 && size.height > 0 {
+                        if let Err(e) = emu.dm.on_window_resized(window_id, size.width, size.height) {
+                            log::error!("Failed to resize window: {}", e);
+                        }
+                    }
+                    else {
+                        log::debug!("Ignoring invalid size: {:?}", size);
+                        return;
                     }
                 }
                 WindowEvent::CloseRequested => {
@@ -155,13 +161,17 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                                 dtc.window.as_ref().map(|window| {
                                     window.set_window_level(WindowLevel::AlwaysOnTop);
                                 });
+                                dtc.set_on_top(true);
                             }
                         });
                     }
                     false => {
                         log::debug!("Window {:?} lost focus", window_id);
-                        emu.dm.for_each_window(|window| {
-                            window.set_window_level(WindowLevel::Normal);
+                        emu.dm.for_each_window(|window, on_top| {
+                            if on_top {
+                                window.set_window_level(WindowLevel::Normal);
+                            }
+                            Some(false)
                         });
                     }
                 },
@@ -185,8 +195,9 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
         Event::AboutToWait => {
             // Throttle updates to maximum of 1000Hz
             //std::thread::sleep(Duration::from_millis(1));
-            emu.dm.for_each_window(|window| {
+            emu.dm.for_each_window(|window, _on_top| {
                 window.request_redraw();
+                None
             });
         }
         _ => (),

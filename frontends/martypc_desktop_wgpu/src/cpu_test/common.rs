@@ -27,13 +27,16 @@
     cpu_test::common.rs - Functions common to CPU test utilities.
 
 */
+
+#![allow(dead_code)]
+
 use anyhow::{bail, Error};
 use colored::Colorize;
 use marty_core::cpu_808x::*;
 use std::{
     collections::{HashMap, LinkedList},
     ffi::OsString,
-    fs::{read_to_string, File, OpenOptions},
+    fs::{File, OpenOptions},
     io::{BufReader, BufWriter, ErrorKind, Read, Seek, SeekFrom, Write},
     path::PathBuf,
     time::Duration,
@@ -463,7 +466,7 @@ pub fn validate_memory(
     flags_on_stack: bool,
     log: &mut BufWriter<File>,
 ) -> Result<(), Error> {
-    let mut ignore_next_ops = 0;
+    let _ignore_next_ops = 0;
 
     // Calculate stack address for flags
     let flat_stack_addr = cpu.flat_sp();
@@ -531,7 +534,7 @@ pub fn clean_cycle_states(states: &mut Vec<CycleState>) {
 
     log::debug!("Clean: Deleted {} cycle states", trimmed_ct);
 
-    for mut state in states {
+    for state in states {
         // Set address bus to 0 if no ALE signal.
         if !state.ale {
             //state.addr = 0;

@@ -59,6 +59,10 @@ pub const PIT_MHZ: f64 = 1.193182;
 pub const PIT_TICK_US: f64 = 1.0 / PIT_MHZ;
 //pub const PIT_DIVISOR: f64 = 0.25;
 
+// Minimum number of system ticks that must elapse between a counter write and the falling edge
+// of the PIT input clock that would latch the value.
+pub const PIT_WRITE_LATENCY: u32 = 3;
+
 #[derive(Debug, PartialEq)]
 pub enum ChannelMode {
     InterruptOnTerminalCount,
@@ -69,7 +73,7 @@ pub enum ChannelMode {
     HardwareTriggeredStrobe,
 }
 
-// We implement From<u8> for this enum ourselves rather than deriving BitfieldSpecfier
+// We implement From<u8> for this enum ourselves rather than deriving BitfieldSpecifier
 // as there is more than one bit mapping per Enum variant (6 and 7 map to modes 2 & 3 again)
 impl From<u8> for ChannelMode {
     fn from(orig: u8) -> Self {
@@ -194,6 +198,7 @@ pub struct ProgrammableIntervalTimer {
     timewarp: DeviceRunTimeUnit,
     speaker_buf: VecDeque<u8>,
     defer_reload_flag: bool,
+    do_speaker: bool,
 }
 pub type Pit = ProgrammableIntervalTimer;
 
@@ -607,7 +612,11 @@ impl Channel {
     pub fn count(&mut self) {
         // Decrement and wrap counter appropriately depending on mode.
 
-        if self.bcd_mode {
+        if !self.bcd_mode {
+            // Counter wraps in binary mode.
+            self.counting_element.set((*self.counting_element).wrapping_sub(1));
+        }
+        else {
             // Wrap BCD counter
             if *self.counting_element == 0 {
                 *self.counting_element = 0x9999;
@@ -621,12 +630,12 @@ impl Channel {
                 else if (*self.counting_element & 0x00F0) != 0 {
                     // Tenths place is not 0, borrow from it
                     self.counting_element.set((*self.counting_element).wrapping_sub(0x7));
-                // (0x10 (16) - 7 = 0x09))
+                    // (0x10 (16) - 7 = 0x09))
                 }
                 else if (*self.counting_element & 0x0F00) != 0 {
                     // Hundredths place is not 0, borrow from it
                     self.counting_element.set((*self.counting_element).wrapping_sub(0x67));
-                // (0x100 (256) - 0x67 (103) = 0x99)
+                    // (0x100 (256) - 0x67 (103) = 0x99)
                 }
                 else {
                     // Borrow from thousandths place
@@ -635,19 +644,12 @@ impl Channel {
                 }
             }
         }
-        else {
-            self.counting_element.set((*self.counting_element).wrapping_sub(1));
-            // Counter wraps in binary mode.
-        }
 
         // Update output latch with value of counting_element, if we are not latched
         if !self.count_is_latched {
             self.output_latch.set(*self.counting_element);
         }
-
         self.ticked = true;
-
-        return;
     }
 
     #[inline]
@@ -826,7 +828,7 @@ impl Channel {
 }
 
 impl ProgrammableIntervalTimer {
-    pub fn new(ptype: PitType, _crystal: f64, clock_divisor: u32) -> Self {
+    pub fn new(ptype: PitType, _crystal: f64, clock_divisor: u32, do_speaker: bool) -> Self {
         /*
             The Intel documentation says:
             "Prior to initialization, the mode, count, and output of all counters is undefined."
@@ -850,6 +852,7 @@ impl ProgrammableIntervalTimer {
             timewarp: DeviceRunTimeUnit::SystemTicks(0),
             speaker_buf: VecDeque::new(),
             defer_reload_flag: false,
+            do_speaker,
         }
     }
 
@@ -881,12 +884,15 @@ impl ProgrammableIntervalTimer {
         self.timewarp = delta; // the above is technically the correct way but it breaks stuff(?)
 
         self.defer_reload_flag = false;
-        if self.sys_tick_accumulator > 2 {
-            self.defer_reload_flag = true; // Too late in the bus cycle to reload this tick.
-        }
 
+        // Tick the PIT for the number of timer clocks that have elapsed.
         for _ in 0..ticks {
             self.tick(bus, None);
+        }
+        // Any remaining ticks in the accumulator represent the number of system ticks that have
+        // elapsed up until T3 of the write that fast-forwarded the PIT
+        if self.sys_tick_accumulator > (self.clock_divisor - PIT_WRITE_LATENCY) {
+            self.defer_reload_flag = true; // Too close to next clock edge to latch this tick - defer to next tick
         }
     }
 
@@ -1113,28 +1119,30 @@ impl ProgrammableIntervalTimer {
 
         //log::trace!("tick(): cycle: {} channel 1 count: {}", self.pit_cycles * 4 + 7, *self.channels[1].counting_element);
 
-        let mut speaker_sample = *self.channels[2].output && speaker_data;
+        if self.do_speaker {
+            let mut speaker_sample = *self.channels[2].output && speaker_data;
 
-        if let ChannelMode::SquareWaveGenerator = *self.channels[2].mode {
-            // Silence speaker if frequency is > 14Khz (approx)
-            if *self.channels[2].count_register <= 170 {
-                speaker_sample = false;
+            if let ChannelMode::SquareWaveGenerator = *self.channels[2].mode {
+                // Silence speaker if frequency is > 14Khz (approx)
+                if *self.channels[2].count_register <= 170 {
+                    speaker_sample = false;
+                }
             }
-        }
 
-        // If we have been passed a buffer, fill it with any queued samples
-        // and the current sample.
-        if let Some(buffer) = buffer_producer {
-            // Copy any samples that have accumulated in the buffer.
-
-            for s in self.speaker_buf.drain(0..) {
-                _ = buffer.push(s);
+            // If we have been passed a buffer, fill it with any queued samples
+            // and the current sample.
+            if let Some(buffer) = buffer_producer {
+                // Copy any samples that have accumulated in the buffer.
+                for s in self.speaker_buf.drain(0..) {
+                    _ = buffer.push(s);
+                }
+                //buffer.push_iter(&mut self.speaker_buf.drain(0..)); <- this is slower for some reason
+                _ = buffer.push((speaker_sample) as u8);
             }
-            _ = buffer.push((speaker_sample) as u8);
-        }
-        else {
-            // Otherwise, put the sample in the buffer.
-            self.speaker_buf.push_back(speaker_sample as u8);
+            else {
+                // Otherwise, put the sample in the buffer.
+                self.speaker_buf.push_back(speaker_sample as u8);
+            }
         }
     }
 

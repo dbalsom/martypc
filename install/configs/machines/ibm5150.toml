@@ -27,7 +27,7 @@
 # Valid Serial Controller Types:
 #  "IbmAsync"
 #
-# Conventional memory amount may be different than value specified due to MMIO
+# Conventional memory amount may be different from value specified due to MMIO
 # optimizations. I recommend specifying a value in 0x10000 increments.
 # ----------------------------------------------------------------------------
 
@@ -48,6 +48,7 @@ overlays = [
     
     # Video cards
     [[machine.video]]
+    bus_type = "ISA"
     type = "MDA"
     clock_mode = "Character"
 
@@ -68,13 +69,14 @@ overlays = [
 
     # Hard disk controller
     [machine.hdc]
+    bus_type = "ISA"
     type = "IbmXebec"
     
         # Drives connected to controller. Maximum of 2.
         # Drive #0 - (Typically C:)
         [[machine.hdc.drive]]
         format = "Mfm"
-        vhd = "dos330.vhd"
+        vhd = "xebec20MB.vhd"
         
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
@@ -82,6 +84,7 @@ overlays = [
     
     # Video cards
     [[machine.video]]
+    bus_type = "ISA"
     type = "MDA"
     clock_mode = "Character"
 
@@ -96,13 +99,13 @@ overlays = [
     "us_modelf_keyboard",
 ]
 
-
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
     
     # Video cards
     [[machine.video]]
+    bus_type = "ISA"
     type = "MDA"
     clock_mode = "Character"
 
@@ -117,20 +120,20 @@ overlays = [
     "us_modelf_keyboard",
 ]
 
-
     [machine.memory]
     conventional.size = 0xA0000
     conventional.wait_states = 0
 
     # Hard disk controller
     [machine.hdc]
+    bus_type = "ISA"
     type = "IbmXebec"
     
         # Drives connected to controller. Maximum of 2.
         # Drive #0 - (Typically C:)
         [[machine.hdc.drive]]
         format = "Mfm"
-        vhd = "dos330.vhd"
+        vhd = "xebec20MB.vhd"
         
         # Drive #1 - (Typically D:)
         #[[machine.hdc.drive]]
@@ -138,6 +141,7 @@ overlays = [
     
     # Video cards
     [[machine.video]]
+    bus_type = "ISA"
     type = "MDA"
     clock_mode = "Character"
 

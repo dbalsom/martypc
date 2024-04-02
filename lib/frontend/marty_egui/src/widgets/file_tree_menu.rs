@@ -30,8 +30,8 @@
 
 */
 
-use crate::image::UiImage;
-use egui::{Response, RichText};
+
+use egui::{RichText};
 use frontend_common::FileTreeNode;
 use std::collections::HashMap;
 

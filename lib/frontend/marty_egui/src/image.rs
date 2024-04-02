@@ -29,7 +29,7 @@
     Routines for loading and manipulating GUI images.
 */
 
-use egui::ColorImage;
+/*use egui::ColorImage;
 //use image;
 
 static LOGO_IMAGE: &[u8] = include_bytes!("../../../../assets/marty_logo_about.png");
@@ -56,3 +56,4 @@ fn load_image_from_memory(image_data: &[u8]) -> Result<ColorImage, image::ImageE
     let pixels = image_buffer.as_flat_samples();
     Ok(ColorImage::from_rgba_unmultiplied(size, pixels.as_slice()))
 }
+*/

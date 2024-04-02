@@ -111,6 +111,7 @@ pub struct DisplayManagerWindowOptions {
     pub title: String,
     pub resizable: bool,
     pub always_on_top: bool,
+    pub is_on_top: bool,
     pub card_scale: Option<f32>,
 }
 
@@ -124,6 +125,7 @@ impl Default for DisplayManagerWindowOptions {
             title: "New Window".to_string(),
             resizable: false,
             always_on_top: false,
+            is_on_top: false,
             card_scale: None,
         }
     }
@@ -164,8 +166,11 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// to a Machine must be provided to query video card parameters.
     fn get_display_info(&self, machine: &Machine) -> Vec<DisplayInfo>;
 
-    /// Return the associated Window given a c
+    /// Return the associated Window given a Window id.
     fn get_window_by_id(&self, wid: Wi) -> Option<&W>;
+
+    /// Return the associated Window given a display target index.
+    fn get_window(&self, dt_idx: usize) -> Option<&W>;
 
     /// Load and set the specified icon for each window in the DisplayManager.
     fn set_icon(&mut self, icon_path: PathBuf);
@@ -246,7 +251,7 @@ pub trait DisplayManager<B, G, Wi, W> {
     /// Execute a closure that is passed a reference to each Window in the manager.
     fn for_each_window<F>(&mut self, f: F)
     where
-        F: FnMut(&W);
+        F: FnMut(&W, bool) -> Option<bool>;
 
     /// Execute a closure that is passed a reference to the renderer for the specified display target.
     fn with_renderer<F>(&mut self, dt_idx: usize, f: F)
@@ -278,6 +283,9 @@ pub trait DisplayManager<B, G, Wi, W> {
 
     /// Apply the specified scaler parameters to the specified display target.
     fn apply_scaler_params(&mut self, dt_idx: usize, params: &ScalerParams) -> Result<(), Error>;
+
+    /// Get the scaler parameters for the specified display target.
+    fn get_scaler_params(&self, dt_idx: usize) -> Option<ScalerParams>;
 
     /// Set the desired Display Aperture for the specified display target.
     /// Returns the associated VideoCardId, as the card will need to be resized when the aperture

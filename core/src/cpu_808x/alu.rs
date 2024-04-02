@@ -223,7 +223,7 @@ impl Cpu {
     /// otherwise, the flags are set. The SF, ZF, AF, and PF flags are undefined.
     pub fn multiply_u8(&mut self, operand1: u8) {
         // 8 bit operand => 16 bit product
-        let product: u16 = self.al as u16 * operand1 as u16;
+        let product: u16 = self.a.l() as u16 * operand1 as u16;
 
         // Set carry and overflow if product wouldn't fit in u8
         if product & 0xFF00 == 0 {
@@ -244,7 +244,7 @@ impl Cpu {
     /// otherwise, the flags are set. The SF, ZF, AF, and PF flags are undefined.
     pub fn multiply_u16(&mut self, operand1: u16) {
         // 16 bit operand => 32bit product
-        let product: u32 = self.ax as u32 * operand1 as u32;
+        let product: u32 = self.a.x() as u32 * operand1 as u32;
 
         // Set carry and overflow if product wouldn't fit in u16
         if product & 0xFFFF0000 == 0 {
@@ -270,7 +270,7 @@ impl Cpu {
     /// The SF, ZF, AF, and PF flags are undefined.
     pub fn multiply_i8(&mut self, operand1: i8) {
         // 8 bit operand => 16 bit product
-        let product: i16 = (self.al as i8 as i16) * (operand1 as i16);
+        let product: i16 = (self.a.l() as i8 as i16) * (operand1 as i16);
 
         // Set carry and overflow if product wouldn't fit in i8
         if product < i8::MIN.into() || product > i8::MAX.into() {
@@ -292,7 +292,7 @@ impl Cpu {
     /// The SF, ZF, AF, and PF flags are undefined.
     pub fn multiply_i16(&mut self, operand1: i16) {
         // 16 bit operand => 32 bit product
-        let product: i32 = (self.ax as i16 as i32) * (operand1 as i32);
+        let product: i32 = (self.a.x() as i16 as i32) * (operand1 as i32);
 
         // Set carry and overflow if product wouldn't fit in i16
         if product < i16::MIN.into() || product > i16::MAX.into() {
@@ -318,8 +318,8 @@ impl Cpu {
             return false;
         }
 
-        let quotient = self.ax / operand1 as u16;
-        let remainder = self.ax % operand1 as u16;
+        let quotient = self.a.x() / operand1 as u16;
+        let remainder = self.a.x() % operand1 as u16;
 
         if quotient & 0xFF00 != 0 {
             return false;
@@ -328,7 +328,7 @@ impl Cpu {
         self.set_register8(Register8::AL, quotient as u8);
         self.set_register8(Register8::AH, remainder as u8);
 
-        return true;
+        true
     }
 
     // DIV r/m16 instruction
@@ -339,7 +339,7 @@ impl Cpu {
             return false;
         }
 
-        let dividend = (self.dx as u32) << 16 | self.ax as u32;
+        let dividend = (self.d.x() as u32) << 16 | self.a.x() as u32;
 
         let quotient = dividend / operand1 as u32;
         let remainder = dividend % operand1 as u32;
@@ -351,7 +351,7 @@ impl Cpu {
         self.set_register16(Register16::AX, quotient as u16);
         self.set_register16(Register16::DX, remainder as u16);
 
-        return true;
+        true
     }
 
     // Signed DIV r/m8 instruction
@@ -362,7 +362,7 @@ impl Cpu {
             return false;
         }
 
-        let dividend = self.ax as i16;
+        let dividend = self.a.x() as i16;
 
         let quotient = dividend / operand1 as i8 as i16;
         let remainder = dividend % operand1 as i8 as i16;
@@ -376,7 +376,7 @@ impl Cpu {
         self.set_register8(Register8::AL, quotient as u8);
         self.set_register8(Register8::AH, remainder as u8);
 
-        return true;
+        true
     }
 
     // Signed DIV r/m16 instruction
@@ -387,7 +387,7 @@ impl Cpu {
             return false;
         }
 
-        let dividend: i32 = ((self.dx as u32) << 16 | self.ax as u32) as i32;
+        let dividend: i32 = ((self.d.x() as u32) << 16 | self.a.x() as u32) as i32;
 
         // Double cast to sign-extend operand properly
         let quotient = dividend / operand1 as i16 as i32;
@@ -400,35 +400,28 @@ impl Cpu {
         self.set_register16(Register16::AX, quotient as u16);
         self.set_register16(Register16::DX, remainder as u16);
 
-        // Return false if overflow
-        return true;
+        true
     }
 
     /// Sign extend AL into AX
     pub fn sign_extend_al(&mut self) {
-        if self.al & 0x80 != 0 {
-            self.ah = 0xFF;
-            self.ax |= 0xFF00;
+        if self.a.l() & 0x80 != 0 {
+            self.a.set_h(0xFF);
         }
         else {
-            self.ah = 0x00;
-            self.ax &= 0x00FF;
+            self.a.set_h(0);
         }
     }
 
     /// Sign extend AX ito DX:AX
     pub fn sign_extend_ax(&mut self) {
         self.cycles(3);
-        if self.ax & 0x8000 == 0 {
-            self.dx = 0x0000;
-            self.dl = 0x00;
-            self.dh = 0x00;
+        if self.a.x() & 0x8000 == 0 {
+            self.d.set_x(0x0000);
         }
         else {
             self.cycle(); // Microcode jump @ 05a
-            self.dx = 0xFFFF;
-            self.dl = 0xFF;
-            self.dh = 0xFF;
+            self.d.set_x(0xFFFF);
         }
     }
 
@@ -540,8 +533,7 @@ impl Cpu {
             }
             Mnemonic::NOT => {
                 // Flags: None
-                let result = !operand1;
-                result
+                !operand1
             }
             Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result
@@ -660,8 +652,7 @@ impl Cpu {
             }
             Mnemonic::NOT => {
                 // Flags: None
-                let result = !operand1;
-                result
+                !operand1
             }
             Mnemonic::CMP => {
                 // CMP behaves like SUB except we do not store the result

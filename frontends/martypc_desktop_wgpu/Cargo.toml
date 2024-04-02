@@ -12,7 +12,7 @@ crate-type = ["lib"]
 
 [dependencies]
 display_backend_pixels = { path = "../../lib/backend/display_backend_pixels" }
-marty_core = { path = "../../core"}
+marty_core = { path = "../../core" }
 frontend_common = { path = "../../lib/frontend/frontend_common" }
 videocard_renderer = { path = "../../lib/frontend/videocard_renderer" }
 display_manager_wgpu = { path = "../../lib/frontend/display_manager_wgpu" }
@@ -46,10 +46,12 @@ anyhow.workspace = true
 egui.workspace = true
 egui-wgpu.workspace = true
 egui-winit.workspace = true
+strum = "0.26"
+strum_macros = "0.26"
 
 # Conditional dependencies for wasm32 target. 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-cpal = { version = "0.13.5", features = ["wasm-bindgen"]}
+cpal = { version = "0.13.5", features = ["wasm-bindgen"] }
 console_error_panic_hook = "0.1"
 console_log = "0.2"
 error-iter = "0.4"

@@ -28,7 +28,7 @@
 
     This module defines all the parts that make up the virtual computer.
 
-    This module owns Cpu and thus Bus, and is reponsible for maintaining both
+    This module owns Cpu and thus Bus, and is responsible for maintaining both
     machine and CPU execution state and running the emulated machine by calling
     the appropriate methods on Bus.
 
@@ -69,6 +69,7 @@ use crate::{
 };
 
 use ringbuf::{Consumer, Producer, RingBuffer};
+use crate::machine_types::OnHaltBehavior;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
@@ -87,6 +88,7 @@ pub struct KeybufferEntry {
 #[derive(Copy, Clone, Debug)]
 pub enum MachineEvent {
     CheckpointHit(usize, u32),
+    Halted,
     Reset,
 }
 
@@ -101,10 +103,7 @@ pub enum MachineState {
 
 impl MachineState {
     pub fn is_on(&self) -> bool {
-        match self {
-            MachineState::Off => false,
-            _ => true,
-        }
+        !matches!(self, MachineState::Off)
     }
 }
 
@@ -138,12 +137,18 @@ pub struct ExecutionControl {
     op: Cell<ExecutionOperation>,
 }
 
-impl ExecutionControl {
-    pub fn new() -> Self {
+impl Default for ExecutionControl {
+    fn default() -> Self {
         Self {
             state: ExecutionState::Paused,
             op:    Cell::new(ExecutionOperation::None),
         }
+    }
+}
+
+impl ExecutionControl {
+    pub fn new() -> Self {
+        Default::default()
     }
 
     pub fn set_state(&mut self, state: ExecutionState) {
@@ -229,9 +234,11 @@ pub struct MachineCheckpoint {
 
 #[derive(Clone, Default, Debug)]
 pub struct MachinePatch {
+    pub desc: String,
     pub trigger: u32,
     pub addr:    u32,
-    pub data:    Vec<u8>,
+    pub bytes:    Vec<u8>,
+    pub installed: bool,
 }
 
 #[derive(Default, Debug)]
@@ -272,6 +279,8 @@ pub struct MachineBuilder<'a> {
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
     sound_player: Option<SoundPlayer>,
+    sound_override: Option<bool>,
+    keyboard_layout_file: Option<PathBuf>,
 }
 
 impl<'a> MachineBuilder<'a> {
@@ -288,7 +297,7 @@ impl<'a> MachineBuilder<'a> {
     pub fn with_machine_config(mut self, config: &MachineConfiguration) -> Self {
         let mtype = config.machine_type;
         self.mtype = Some(mtype);
-        self.descriptor = Some(get_machine_descriptor(mtype).unwrap().clone());
+        self.descriptor = Some(*get_machine_descriptor(mtype).unwrap());
         self.machine_config = Some(config.clone());
         self
     }
@@ -325,7 +334,17 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Machine, Error> {
+    pub fn with_sound_override(mut self, sound_override: bool) -> Self {
+        self.sound_override = Some(sound_override);
+        self
+    }
+    
+    pub fn with_keyboard_layout(mut self, layout_file: Option<PathBuf>) -> Self {
+        self.keyboard_layout_file = layout_file;
+        self
+    }
+
+    pub fn build(mut self) -> Result<Machine, Error> {
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
         let machine_config = self
             .machine_config
@@ -334,6 +353,13 @@ impl<'a> MachineBuilder<'a> {
         let machine_desc = self.descriptor.ok_or(anyhow!("Failed to get machine description"))?;
         let rom_manifest = self.rom_manifest.ok_or(anyhow!("No ROM manifest specified!"))?;
         let trace_logger = self.trace_logger;
+
+        // Remove sound player if sound_override is Some(false)
+        if let Some(sound_override) = self.sound_override {
+            if self.sound_override.is_some() && !sound_override {
+                self.sound_override = None;
+            }
+        }
 
         Ok(Machine::new(
             *core_config,
@@ -344,6 +370,7 @@ impl<'a> MachineBuilder<'a> {
             trace_logger,
             self.sound_player,
             rom_manifest,
+            self.keyboard_layout_file,
         ))
     }
 }
@@ -375,6 +402,7 @@ pub struct Machine {
     patch_map: HashMap<u32, usize>,
     events: Vec<MachineEvent>,
     reload_pending: bool,
+    halt_behavior: OnHaltBehavior,
 }
 
 impl Machine {
@@ -387,6 +415,7 @@ impl Machine {
         trace_logger: TraceLogger,
         sound_player: Option<SoundPlayer>,
         rom_manifest: MachineRomManifest,
+        keyboard_layout_file: Option<PathBuf>,
         //rom_manager: RomManager,
     ) -> Machine {
         // Create PIT output log file if specified
@@ -417,6 +446,7 @@ impl Machine {
         #[cfg(feature = "cpu_validator")]
         use crate::cpu_validator::ValidatorMode;
 
+        //noinspection ALL
         let mut cpu = Cpu::new(
             CpuType::Intel8088,
             trace_mode,
@@ -474,18 +504,18 @@ impl Machine {
         }
         */
 
+        let have_audio = core_config.get_audio_enabled() && sound_player.is_some();
+
         // Install devices
-        if let Err(err) = cpu.bus_mut().install_devices(&machine_desc, &machine_config) {
+        if let Err(err) = cpu
+            .bus_mut()
+            .install_devices(&machine_desc, &machine_config, have_audio)
+        {
             log::error!("Failed to install devices: {}", err);
         }
 
         // Load keyboard translation file if specified.
-        if let Some(kb_string) = &core_config.get_keyboard_layout() {
-            let mut kb_translation_path = PathBuf::new();
-            kb_translation_path.push(core_config.get_base_dir().clone());
-            kb_translation_path.push("keyboard");
-            kb_translation_path.push(format!("keyboard_{}.toml", kb_string));
-
+        if let Some(kb_translation_path) = keyboard_layout_file {
             if let Some(keyboard) = cpu.bus_mut().keyboard_mut() {
                 match keyboard.load_mapping(&kb_translation_path) {
                     Ok(_) => {
@@ -496,7 +526,8 @@ impl Machine {
                             "Failed to load keyboard mapping file: {} Err: {}",
                             kb_translation_path.display(),
                             e
-                        )
+                        );
+                        std::process::exit(1);
                     }
                 }
                 keyboard.set_debug(core_config.get_keyboard_debug());
@@ -506,33 +537,37 @@ impl Machine {
         // Load BIOS ROM images unless config option suppressed rom loading
         if !core_config.get_machine_noroms() {
             Machine::install_roms(cpu.bus_mut(), &rom_manifest);
-
-            //rom_manager.copy_into_memory(cpu.bus_mut());
-
+            
             // Load checkpoint flags into memory
-            //rom_manager.install_checkpoints(cpu.bus_mut());
             cpu.bus_mut().install_checkpoints(&rom_manifest.checkpoints);
 
+            if core_config.get_patch_enabled() {
+                cpu.bus_mut().install_patch_checkpoints(&rom_manifest.patches);
+            }
+            
+            // TODO: Reimplement support for manual reset vector in rom set?
             // Set entry point for ROM (mostly used for diagnostic ROMs that used the wrong jump at reset vector)
-
             //let rom_entry_point = rom_manager.get_entrypoint();
             //cpu.set_reset_vector(CpuAddress::Segmented(rom_entry_point.0, rom_entry_point.1));
         }
 
         // Set CPU clock divisor/multiplier
-        let cpu_factor;
-        if core_config.get_machine_turbo() {
-            cpu_factor = machine_desc.cpu_turbo_factor;
+        let cpu_factor = if core_config.get_machine_turbo() {
+            machine_desc.cpu_turbo_factor
         }
         else {
-            cpu_factor = machine_desc.cpu_factor;
-        }
+            machine_desc.cpu_factor
+        };
 
         cpu.emit_header();
         cpu.reset();
 
         let checkpoint_map = rom_manifest.checkpoint_map();
-        let patch_map = rom_manifest.patch_map();
+
+        let mut patch_map = HashMap::new();
+        if core_config.get_patch_enabled() {
+            patch_map = rom_manifest.patch_map();
+        }
 
         Machine {
             machine_type,
@@ -560,6 +595,7 @@ impl Machine {
             patch_map,
             events: Vec::new(),
             reload_pending: false,
+            halt_behavior: core_config.get_halt_behavior(),
         }
     }
 
@@ -629,6 +665,10 @@ impl Machine {
 
     pub fn get_event(&mut self) -> Option<MachineEvent> {
         self.events.pop()
+    }
+
+    pub fn get_cpu_factor(&mut self) -> ClockFactor {
+        self.cpu_factor
     }
 
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
@@ -705,6 +745,7 @@ impl Machine {
         self.cpu.get_option(opt)
     }
 
+    //noinspection ALL
     /// Send the specified video option to the active videocard device
     pub fn set_video_option(&mut self, opt: VideoOption) {
         if let Some(video) = self.cpu.bus_mut().primary_video_mut() {
@@ -712,6 +753,7 @@ impl Machine {
         }
     }
 
+    //noinspection ALL
     /// Flush all trace logs for devices that have one
     pub fn flush_trace_logs(&mut self) {
         self.cpu.trace_flush();
@@ -764,7 +806,7 @@ impl Machine {
     }
 
     pub fn cpu_instructions(&self) -> u64 {
-        self.cpu_instructions
+        self.cpu.get_instruction_ct()
     }
 
     pub fn system_ticks(&self) -> u64 {
@@ -783,8 +825,7 @@ impl Machine {
     pub fn pit_state(&mut self) -> PitDisplayState {
         // Safe to unwrap pit as a PIT will always exist on any machine type
         let pit = self.cpu.bus_mut().pit_mut().as_mut().unwrap();
-        let pit_data = pit.get_display_state(true);
-        pit_data
+        pit.get_display_state(true)
     }
 
     pub fn get_pit_buf(&self) -> Vec<u8> {
@@ -806,12 +847,7 @@ impl Machine {
     }
 
     pub fn ppi_state(&mut self) -> Option<PpiStringState> {
-        if let Some(ppi) = self.cpu.bus_mut().ppi_mut() {
-            Some(ppi.get_string_state())
-        }
-        else {
-            None
-        }
+        self.cpu.bus_mut().ppi_mut().as_mut().map(|ppi| ppi.get_string_state())
     }
 
     pub fn set_nmi(&mut self, state: bool) {
@@ -825,14 +861,10 @@ impl Machine {
     }
 
     pub fn videocard_state(&mut self) -> Option<VideoCardState> {
-        if let Some(video_card) = self.cpu.bus_mut().primary_video_mut() {
-            // A video card is present
-            Some(video_card.get_videocard_string_state())
-        }
-        else {
-            // no video card
-            None
-        }
+        self.cpu
+            .bus_mut()
+            .primary_video_mut()
+            .map(|video_card| video_card.get_videocard_string_state())
     }
 
     pub fn get_error_str(&self) -> &Option<String> {
@@ -860,35 +892,52 @@ impl Machine {
         });
     }
 
+    #[rustfmt::skip]
     /// Simulate the user pressing control-alt-delete.
-    pub fn ctrl_alt_del(&mut self) {
-        /*
-        self.kb_buf.push_back(0x1D); // Left-control
-        self.kb_buf.push_back(0x38); // Left-alt
-        self.kb_buf.push_back(0x53); // Delete
+    pub fn emit_ctrl_alt_del(&mut self) {
+        let reboot_keycodes = [
+            MartyKey::ControlLeft,
+            MartyKey::AltLeft,
+            MartyKey::Delete,
+        ];
 
-        // Debugging only. A real PC does not reset anything on ctrl-alt-del
-        //self.bus_mut().reset_devices_warm();
-
-        self.kb_buf.push_back(0x1D | 0x80);
-        self.kb_buf.push_back(0x38 | 0x80);
-        self.kb_buf.push_back(0x53 | 0x80);
-        */
+        // Press ctrl-alt-del
+        for keycode in reboot_keycodes.iter() {
+            self.kb_buf.push_back(KeybufferEntry {
+                keycode: *keycode,
+                pressed: true,
+                modifiers: KeyboardModifiers::default(),
+                translate: false,
+            });
+        }
+        
+        // Release ctrl-alt-del
+        for keycode in reboot_keycodes.iter() {
+            self.kb_buf.push_back(KeybufferEntry {
+                keycode: *keycode,
+                pressed: false,
+                modifiers: KeyboardModifiers::default(),
+                translate: false,
+            });
+        }
     }
 
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
         self.cpu.bus_mut().mouse_mut()
     }
 
-    pub fn bridge_serial_port(&mut self, port_num: usize, port_name: String) {
+    pub fn bridge_serial_port(&mut self, port_num: usize, host_port_name: String, host_port_id: usize) -> Result<(), Error> {
         if let Some(spc) = self.cpu.bus_mut().serial_mut() {
-            if let Err(e) = spc.bridge_port(port_num, port_name) {
+            if let Err(e) = spc.bridge_port(port_num, host_port_name, host_port_id) {
                 log::error!("Failed to bridge serial port: {}", e);
+                return Err(anyhow!(format!("Failed to bridge serial port: {}", e)));
             }
         }
         else {
             log::error!("No serial port controller present!");
+            return Err(anyhow!("No serial port controller present!"));
         }
+        Ok(())
     }
 
     pub fn set_breakpoints(&mut self, bp_list: Vec<BreakPointType>) {
@@ -1072,11 +1121,7 @@ impl Machine {
             }
         };
 
-        let do_run = match self.state {
-            MachineState::On => true,
-            _ => false,
-        };
-
+        let do_run = matches!(self.state, MachineState::On);
         if !do_run {
             return 0;
         }
@@ -1086,14 +1131,15 @@ impl Machine {
         while cycles_elapsed < cycle_target_adj {
             let fake_cycles: u32 = 7;
             let mut cpu_cycles;
-
-            if self.cpu.is_error() {
-                break;
-            }
+            
+            // if self.cpu.is_error() {
+            //     break;
+            // }
 
             let flat_address = self.cpu.flat_ip();
 
-            // Match checkpoints
+            // Match checkpoints. The first check is against a simple bit flag so that we do not 
+            // need to constantly do a hash lookup.
             if self.cpu.bus().get_flags(flat_address as usize) & MEM_CP_BIT != 0 {
                 if let Some(cp) = self.checkpoint_map.get(&flat_address) {
                     log::debug!(
@@ -1106,6 +1152,16 @@ impl Machine {
                         .push(MachineEvent::CheckpointHit(*cp, self.rom_manifest.checkpoints[*cp].lvl));
                 }
 
+                if let Some(&cp) = self.patch_map.get(&flat_address) {
+                    log::debug!(
+                        "ROM PATCH CHECKPOINT: [{:05X}] Installing patch...",
+                        flat_address
+                    );
+                    let mut patch = self.rom_manifest.patches[cp].clone();
+                    self.bus_mut().install_patch(&mut patch);
+                    self.rom_manifest.patches[cp] = patch;
+                }
+                
                 /*
                 if let Some(cp) = self.rom_manager.get_checkpoint(flat_address) {
                     log::debug!("ROM CHECKPOINT: [{:05X}] {}", flat_address, cp);
@@ -1142,23 +1198,41 @@ impl Machine {
                     }
                 },
                 Err(err) => {
+                    // Currently the only "error" that can happen is a permanent halt
+                    // (Halt with interrupts disabled)
                     if let CpuError::CpuHaltedError(_) = err {
-                        log::error!("CPU Halted!");
+                        log::warn!("CPU Halted!");
                         self.cpu.trace_flush();
-                        exec_control.state = ExecutionState::Halted;
+
+                        match self.halt_behavior {
+                            OnHaltBehavior::Continue => {
+                                // Do nothing, just blissfully continue even though nothing more
+                                // will ever happen
+                            }
+                            OnHaltBehavior::Warn => {
+                                // Show the user a notification, but keep running
+                                self.events.push(MachineEvent::Halted);
+                            }
+                            OnHaltBehavior::Stop => {
+                                // Show the user a notification and halt the machine
+                                self.events.push(MachineEvent::Halted);
+                                exec_control.state = ExecutionState::Halted;
+                                self.error = true;
+                                self.error_str = Some(format!("{}", err));
+                                log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
+                            }
+                        }
                     }
-                    self.error = true;
-                    self.error_str = Some(format!("{}", err));
-                    log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
-                    cpu_cycles = 0
+                    cpu_cycles = 0;
                 }
             }
 
             skip_breakpoint = false;
 
-            if cpu_cycles > 200 {
-                log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
-            }
+            // This is not reliable. A rotate by CL can take a long time.
+            // if cpu_cycles > 200 {
+            //     log::warn!("CPU instruction took too long! Cycles: {}", cpu_cycles);
+            // }
 
             instr_count += 1;
             cycles_elapsed += cpu_cycles;
@@ -1183,7 +1257,7 @@ impl Machine {
             }
 
             // If we returned a step over target address, execution is paused, and step over was requested,
-            // then consume as many instructions as needed to get to to the 'next' instruction. This will
+            // then consume as many instructions as needed to get to the 'next' instruction. This will
             // skip over any CALL or interrupt encountered.
             if step_over {
                 if let Some(step_over_target) = step_over_target {
@@ -1198,7 +1272,7 @@ impl Machine {
                                     StepResult::Normal => cpu_cycles = step_cycles,
                                     StepResult::Call(_) => {
                                         cpu_cycles = step_cycles
-                                        // We are already stepping over a base CALL instruction, so ignore futher CALLS/interrupts.
+                                        // We are already stepping over a base CALL instruction, so ignore further CALLS/interrupts.
                                     }
                                     StepResult::BreakpointHit => {
                                         // We can hit an 'inner' breakpoint while stepping over. This is fine, and ends the step
@@ -1286,7 +1360,7 @@ impl Machine {
         // If we limit keyboard events to once per frame, this avoids this problem. I'm a reasonably
         // fast typist and this method seems to work fine.
         let mut kb_event_opt: Option<KeybufferEntry> = None;
-        if self.kb_buf.len() > 0 && !*kb_event_processed {
+        if !self.kb_buf.is_empty() && !*kb_event_processed {
             kb_event_opt = self.kb_buf.pop_front();
             if kb_event_opt.is_some() {
                 *kb_event_processed = true;
@@ -1322,7 +1396,7 @@ impl Machine {
                         retrigger,
                     ))
                 }
-                DeviceEvent::DramRefreshEnable(state) if state == false => {
+                DeviceEvent::DramRefreshEnable(false) => {
                     // Stop refresh
                     self.cpu.set_option(CpuOption::ScheduleDramRefresh(false, 0, 0, false));
                 }
@@ -1437,7 +1511,7 @@ impl Machine {
                     sum += sample;
 
                     let sample_f32: f32 = if sample == 0 { 0.0 } else { 1.0 };
-                    file.write(&sample_f32.to_le_bytes())
+                    file.write_all(&sample_f32.to_le_bytes())
                         .expect("Error writing to debug sound file");
                 }
                 samples_read = true;
@@ -1473,10 +1547,10 @@ impl Machine {
         self.pit_data.fractional_part = next_sample_f.fract();
     }
 
-    pub fn for_each_videocard<F>(&mut self, mut f: F)
+    pub fn for_each_videocard<F>(&mut self, f: F)
     where
         F: FnMut(VideoCardInterface),
     {
-        self.bus_mut().for_each_videocard(|video| f(video))
+        self.bus_mut().for_each_videocard(f)
     }
 }

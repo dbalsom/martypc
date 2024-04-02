@@ -329,6 +329,10 @@ impl VideoRenderer {
         self.composite_enabled = state;
     }
 
+    pub fn get_composite(&mut self) -> bool {
+        self.composite_enabled
+    }
+
     pub fn set_aperture(&mut self, aperture: DisplayApertureType) {
         log::debug!("Setting renderer aperture to {:?}", aperture);
         self.params.aperture = aperture;

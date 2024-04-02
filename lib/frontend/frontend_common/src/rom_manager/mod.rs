@@ -31,7 +31,7 @@
 
 use crate::resource_manager::ResourceManager;
 use anyhow::Error;
-use marty_core::machine::{MachineCheckpoint, MachineRomEntry, MachineRomManifest};
+use marty_core::machine::{MachineCheckpoint, MachinePatch, MachineRomEntry, MachineRomManifest};
 use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
@@ -869,6 +869,20 @@ impl RomManager {
                         desc: checkpoint.desc.clone(),
                     };
                     new_manifest.checkpoints.push(new_checkpoint);
+                }
+            }
+
+            // Add patches to manifest
+            if let Some(patches) = &rom_set_def.patch {
+                for patch in patches.iter() {
+                    let new_patch = MachinePatch {
+                        desc: patch.desc.clone(),
+                        trigger: patch.trigger,
+                        addr: patch.addr,
+                        bytes: patch.bytes.clone(),
+                        installed: false,
+                    };
+                    new_manifest.patches.push(new_patch);
                 }
             }
         }

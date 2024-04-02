@@ -67,7 +67,7 @@ impl ResourceManager {
     /// cannot be canonicalized, it returns an `Error`.
     ///
     /// # Errors
-    /// The function may return an error if the resource path is not found or if there's an issue in canonicalizing
+    /// The function may return an error if the resource path is not found or if there's an issue in canonicalization
     /// the path.
     pub fn enumerate_items(
         &self,
@@ -97,8 +97,7 @@ impl ResourceManager {
             }
 
             for path in paths.iter() {
-                let mut path = path.clone();
-                let path = path.canonicalize()?;
+                let path = path.clone().canonicalize()?;
 
                 for entry in fs::read_dir(path.clone())? {
                     match entry {

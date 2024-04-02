@@ -37,19 +37,18 @@ use std::{
     str::FromStr,
 };
 
-use marty_core::{
-    coreconfig::VideoCardDefinition,
-    cpu_common::TraceMode,
-    cpu_validator::ValidatorType,
-    devices::keyboard::KeyboardType,
-    machine_types::HardDiskControllerType,
-};
+use marty_core::{cpu_common::TraceMode, cpu_validator::ValidatorType, machine_types::OnHaltBehavior};
 
-use frontend_common::{display_scaler::ScalerPreset, resource_manager::PathConfigItem, MartyGuiTheme};
+use frontend_common::{
+    display_scaler::ScalerPreset,
+    resource_manager::PathConfigItem,
+    BenchmarkEndCondition,
+    HotkeyConfigEntry,
+    MartyGuiTheme,
+};
 use marty_common::VideoDimensions;
 
 use bpaf::Bpaf;
-use marty_core::cpu_common::HaltMode;
 use serde_derive::Deserialize;
 
 const fn _default_true() -> bool {
@@ -124,6 +123,7 @@ pub struct Emulator {
     pub basedir: PathBuf,
     pub paths: Vec<PathConfigItem>,
     pub ignore_dirs: Option<Vec<String>>,
+    pub benchmark_mode: bool,
     #[serde(default = "_default_true")]
     pub auto_poweron: bool,
     #[serde(default = "_default_true")]
@@ -144,8 +144,6 @@ pub struct Emulator {
     pub debug_mode: bool,
     #[serde(default = "_default_true")]
     pub debug_warn: bool,
-    #[serde(default)]
-    pub debug_keyboard: bool,
     pub media: Media,
     pub debugger: Debugger,
     pub audio: Audio,
@@ -164,6 +162,7 @@ pub struct Emulator {
     pub window: Vec<WindowDefinition>,
     pub scaler_preset: Vec<ScalerPreset>,
     pub input: EmulatorInput,
+    pub benchmark: Benchmark,
 }
 
 #[derive(Debug, Deserialize)]
@@ -185,6 +184,17 @@ pub struct Validator {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Benchmark {
+    pub config_name: String,
+    pub config_overlays: Option<Vec<String>>,
+    #[serde(default)]
+    pub prefer_oem: bool,
+    pub end_condition: BenchmarkEndCondition,
+    pub timeout: Option<u32>,
+    pub cycles: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Tests {
     pub test_mode: Option<TestMode>,
     pub test_seed: Option<u64>,
@@ -201,7 +211,7 @@ pub struct Tests {
 pub struct Cpu {
     pub wait_states: Option<bool>,
     pub off_rails_detection: Option<bool>,
-    pub on_halt: Option<HaltMode>,
+    pub on_halt: Option<OnHaltBehavior>,
     pub instruction_history: Option<bool>,
     pub service_interrupt: Option<bool>,
     #[serde(default)]
@@ -225,6 +235,8 @@ pub struct Machine {
     #[serde(default)]
     pub reload_roms: bool,
     #[serde(default)]
+    pub patch_roms: bool,
+    #[serde(default)]
     pub no_roms: bool,
     #[serde(default)]
     pub raw_rom: bool,
@@ -239,6 +251,9 @@ pub struct Machine {
 pub struct EmulatorInput {
     #[serde(default)]
     pub reverse_mouse_buttons: bool,
+    pub hotkeys: Vec<HotkeyConfigEntry>,
+    #[serde(default)]
+    pub debug_keyboard: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -273,6 +288,9 @@ pub struct CmdLineArgs {
 
     #[bpaf(long)]
     pub basedir: Option<PathBuf>,
+
+    #[bpaf(long, switch)]
+    pub benchmark_mode: bool,
 
     #[bpaf(long, switch)]
     pub noaudio: bool,
@@ -360,6 +378,7 @@ impl ConfigFileParams {
             self.emulator.basedir = basedir;
         }
 
+        self.emulator.benchmark_mode |= shell_args.benchmark_mode;
         self.emulator.headless |= shell_args.headless;
         self.emulator.fuzzer |= shell_args.fuzzer;
         self.emulator.auto_poweron |= shell_args.auto_poweron;
@@ -370,7 +389,7 @@ impl ConfigFileParams {
         //self.emulator.scaler_aspect_correction |= shell_args.scaler_aspect_correction;
         self.emulator.debug_mode |= shell_args.debug_mode;
         //self.emulator.video_frame_debug |= shell_args.video_frame_debug;
-        self.emulator.debug_keyboard |= shell_args.debug_keyboard;
+        self.emulator.input.debug_keyboard |= shell_args.debug_keyboard;
         self.machine.no_roms |= shell_args.no_roms;
 
         /*
