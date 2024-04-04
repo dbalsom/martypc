@@ -1,0 +1,35 @@
+# tandy1000.toml
+# Machine Configurations for the Tandy 1000 series
+
+[[machine]]
+name = "tandy1000"
+type = "Tandy1000"
+rom_set = "auto"
+speaker = true
+overlays = [
+    "us_modelf_keyboard",
+    "pcxt_2_720k_floppies",
+    
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Video card
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "TGA"
+    clock_mode = "Default"
+    
+    # Hard disk controller
+    [machine.hdc]
+    bus_type = "ISA"
+    type = "IbmXebec"
+    
+        # Drives connected to controller. Maximum of 2.
+        # Drive #0 - (Typically C:)
+        [[machine.hdc.drive]]
+        format = "Mfm"
+        vhd = "xebec20MB.vhd"
+            

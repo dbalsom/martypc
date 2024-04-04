@@ -1,0 +1,15 @@
+# romdef_megabios.toml
+# ROM definition file for MartyPC.
+
+# ----------------------------------------------------------------------------
+# ROM definitions for MEGABIOS
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "megabios_v1"
+desc = "DTC MegaBIOS Reassembly"
+priority = 5
+provides = ["bios", "ibm5160", "expansion"]
+oem_for = ["megabios_pc"]
+rom = [
+    { filename = "MEGABIOS.ROM", addr = 0xFE000, size = 8192, chip = "megabios" }
+]

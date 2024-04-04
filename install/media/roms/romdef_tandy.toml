@@ -1,0 +1,35 @@
+# romdef_glabios.toml
+# ROM definition file for MartyPC.
+
+# ----------------------------------------------------------------------------
+# ROM definitions for IBM PCJr
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "tandy1000_v1"
+desc = "Tandy 1000 v1"
+priority = 0
+provides = ["bios", "tandy1000", "expansion"]
+oem_for = ["tandy1000"]
+rom = [
+    { md5 = "ebf7922d471c3eae9d3d1b22c92445e5", addr = 0xF0000, size = 0x10000, chip = "1" },
+]
+
+[[romset]]
+alias = "tandy1000_v2"
+desc = "Tandy 1000 v2"
+priority = 1
+provides = ["bios", "tandy1000", "expansion"]
+oem_for = ["tandy1000"]
+rom = [
+    { md5 = "7844c637dc246ec5f0e760ea33475073", addr = 0xF0000, size = 0x10000, chip = "1" },
+]
+
+[[romset]]
+alias = "tandy1000_v3"
+desc = "Tandy 1000 v3"
+priority = 2
+provides = ["bios", "tandy1000", "expansion"]
+oem_for = ["tandy1000"]
+rom = [
+    { md5 = "1c25e4d439be8e8488467d466a28091f", addr = 0xF0000, size = 0x10000, chip = "1" },
+]
