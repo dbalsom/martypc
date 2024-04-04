@@ -39,6 +39,7 @@ use std::str::FromStr;
 pub enum CpuType {
     Intel8088,
     Intel8086,
+    Harris80C88,
 }
 
 pub enum CycleTraceMode {

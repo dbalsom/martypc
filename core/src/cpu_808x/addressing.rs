@@ -114,37 +114,6 @@ impl Cpu {
         // Addressing modes that reference BP use the stack segment instead of data segment
         // unless a segment override is present.
 
-        // Using a segment override adds 2 cycles per Intel documentation.
-        // Addressing mode calculations are performed on the ALU and are expensive!
-        // -- Mod 0x00 ------ cycles --
-        // ds:[bx+si]        7 cycles
-        // ds:[bx+di]        8 cycles
-        // ss:[bp+si]        8 cycles
-        // ss:[bp+di]        7 cycles
-        // ds:[si]           5 cycles
-        // ds:[di]           5 cycles
-        // ds:[disp]         6 cycles
-        // ds:[bx]           5 cycles
-        // -- Mod 0x01 ------ cycles --
-        // ds:[bx+si+{disp]  11 cycles
-        // ds:[bx+di+{disp]  12 cycles
-        // ss:[bp+si+{disp]  12 cycles
-        // ss:[bp+di+{disp]  11 cycles
-        // ds:[si+disp]      9 cycles
-        // ds:[di+disp]      9 cycles
-        // ss:[bp+disp]      9 cycles
-        // ds:[bx+disp]      9 cycles
-        // -- Mod 0x10 ------ cycles --
-        // ds:[bx+si+disp]   11 cycles
-        // ds:[bx+di+disp]   12 cycles
-        // ss:[bp+si+disp]   12 cycles
-        // ss:[bp+si+disp]   8 cycles
-        // ds:[si+disp]
-        // ds:[di+disp]
-        // ss:[bp+disp]
-        // ds:[bx+disp]
-        // Reference: (210912·001, Table 1-15)
-
         // Override default segments based on prefix
         let (segment_value_base_ds, segment_base_ds) = match segment_override {
             SegmentOverride::None => (self.ds, Segment::DS),
@@ -486,8 +455,7 @@ impl Cpu {
             _ => {}
         }
     }
-
-    // TODO: implement cycle cost
+    
     pub fn write_operand16(
         &mut self,
         operand: OperandType,
@@ -513,15 +481,22 @@ impl Cpu {
                     Register16::BP => self.set_register16(Register16::BP, value),
                     Register16::SI => self.set_register16(Register16::SI, value),
                     Register16::DI => self.set_register16(Register16::DI, value),
-                    Register16::ES => self.set_register16(Register16::ES, value),
-                    Register16::CS => self.set_register16(Register16::CS, value),
+                    Register16::ES => {
+                        self.set_register16(Register16::ES, value);
+                        self.interrupt_inhibit = true;
+                    },
+                    Register16::CS => {
+                        self.set_register16(Register16::CS, value);
+                        self.interrupt_inhibit = true;
+                    },
                     Register16::SS => {
                         self.set_register16(Register16::SS, value);
-                        // Technically only MOV ss, nn instructions will inhibit interrupts for one instruction
-                        // Other writes may not.
                         self.interrupt_inhibit = true;
                     }
-                    Register16::DS => self.set_register16(Register16::DS, value),
+                    Register16::DS => {
+                        self.set_register16(Register16::DS, value);
+                        self.interrupt_inhibit = true;
+                    },
                     _ => panic!("read_operand16(): Invalid Register16 operand"),
                 }
             }

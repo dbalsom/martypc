@@ -419,7 +419,7 @@ impl Cpu {
     */
     pub fn biu_queue_has_room(&mut self) -> bool {
         match self.cpu_type {
-            CpuType::Intel8088 => self.queue.len() < 4,
+            CpuType::Intel8088 | CpuType::Harris80C88 => self.queue.len() < 4,
             CpuType::Intel8086 => {
                 // 8086 fetches two bytes at a time, so must be two free bytes in queue
                 self.queue.len() < 5

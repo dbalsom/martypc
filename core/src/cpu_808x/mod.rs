@@ -166,8 +166,6 @@ pub const OPCODE_PREFIX_CS_OVERRIDE: u32 = 0b_0000_0000_0010;
 pub const OPCODE_PREFIX_SS_OVERRIDE: u32 = 0b_0000_0000_0100;
 pub const OPCODE_PREFIX_DS_OVERRIDE: u32 = 0b_0000_0000_1000;
 pub const OPCODE_SEG_OVERRIDE_MASK: u32 = 0b_0000_0000_1111;
-pub const OPCODE_PREFIX_OPERAND_OVERIDE: u32 = 0b_0000_0001_0000;
-pub const OPCODE_PREFIX_ADDRESS_OVERIDE: u32 = 0b_0000_0010_0000;
 pub const OPCODE_PREFIX_WAIT: u32 = 0b_0000_0100_0000;
 pub const OPCODE_PREFIX_LOCK: u32 = 0b_0000_1000_0000;
 pub const OPCODE_PREFIX_REP1: u32 = 0b_0001_0000_0000;
@@ -1080,7 +1078,7 @@ impl Cpu {
         let mut cpu: Cpu = Default::default();
 
         match cpu_type {
-            CpuType::Intel8088 => {
+            CpuType::Harris80C88 | CpuType::Intel8088 => {
                 cpu.queue.set_size(4);
                 cpu.fetch_size = TransferSize::Byte;
             }

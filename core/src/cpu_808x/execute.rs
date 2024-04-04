@@ -162,12 +162,15 @@ impl Cpu {
                     //return ExecutionResult::ExecutionError(
                     //    format!("REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].", self.i.mnemonic, self.cs, self.ip)
                     //);
+                    
+                    /*
                     log::warn!(
-                        "REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].",
-                        self.i.mnemonic,
-                        self.cs,
-                        self.ip(),
+                       "REP prefix on invalid opcode: {:?} at [{:04X}:{:04X}].",
+                       self.i.mnemonic,
+                       self.cs,
+                       self.ip(),
                     );
+                    */
                 }
             }
 
@@ -569,7 +572,7 @@ impl Cpu {
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycle_i(0x0ec);
-                }           
+                }
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
             }

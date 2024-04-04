@@ -66,10 +66,30 @@ impl Cpu {
             Register16::BP => self.bp,
             Register16::SI => self.si,
             Register16::DI => self.di,
-            Register16::CS => self.cs,
-            Register16::DS => self.ds,
-            Register16::SS => self.ss,
-            Register16::ES => self.es,
+            Register16::CS => {
+                if let CpuType::Harris80C88 = self.cpu_type {
+                    self.interrupt_inhibit = true;
+                }
+                self.cs
+            }
+            Register16::DS => {
+                if let CpuType::Harris80C88 = self.cpu_type {
+                    self.interrupt_inhibit = true;
+                }
+                self.ds
+            }
+            Register16::SS => {
+                if let CpuType::Harris80C88 = self.cpu_type {
+                    self.interrupt_inhibit = true;
+                }
+                self.ss
+            }
+            Register16::ES => {
+                if let CpuType::Harris80C88 = self.cpu_type {
+                    self.interrupt_inhibit = true;
+                }
+                self.es
+            }
             Register16::PC => self.pc,
             _ => panic!("Invalid register"),
         };
@@ -93,14 +113,22 @@ impl Cpu {
             Register16::BP => self.bp = data,
             Register16::SI => self.si = data,
             Register16::DI => self.di = data,
-            Register16::CS => self.cs = data,
-            Register16::DS => self.ds = data,
-            Register16::SS => {
-                self.ss = data;
-                // Inhibit interrupts for one instruction after issuing POP SS
+            Register16::CS => {
+                self.cs = data;
                 self.interrupt_inhibit = true
             }
-            Register16::ES => self.es = data,
+            Register16::DS => {
+                self.ds = data;
+                self.interrupt_inhibit = true
+            }
+            Register16::SS => {
+                self.ss = data;
+                self.interrupt_inhibit = true
+            }
+            Register16::ES => {
+                self.es = data;
+                self.interrupt_inhibit = true
+            }
             Register16::PC => self.pc = data,
             _ => panic!("Invalid register"),
         };
@@ -120,10 +148,17 @@ impl Cpu {
         let result = self.biu_read_u16(Segment::SS, self.sp, ReadWriteFlag::Normal);
 
         let trap_was_set = self.get_flag(Flag::Trap);
+        let int_was_set = self.get_flag(Flag::Interrupt);
 
         // Ensure state of reserved flag bits
         self.flags = result & FLAGS_POP_MASK;
         self.flags |= CPU_FLAGS_RESERVED_ON;
+
+        // Was interrupt flag just set? Set interrupt inhibit.
+        let int_is_set = self.get_flag(Flag::Interrupt);
+        if !int_was_set && int_is_set {
+            self.interrupt_inhibit = true;
+        }
 
         // Was trap flag just set? Set trap enable delay.
         let trap_is_set = self.get_flag(Flag::Trap);
