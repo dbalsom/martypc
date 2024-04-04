@@ -451,7 +451,7 @@ priority = 1
 provides = ["bios", "ibm5160", "expansion"]
 oem = false
 rom = [
-    { md5 = "a8a1027cfa97e42a42d95a883e1c30c6", name = "Award_Turbo_4000.BIN", addr = 0xFE000, size = 8192 }, 
+    { md5 = "a8a1027cfa97e42a42d95a883e1c30c6", filename = "Award_Turbo_4000.BIN", addr = 0xFE000, size = 8192 }, 
 ]
 
 [[romset]]
@@ -460,5 +460,16 @@ priority = 1
 provides = ["bios", "ibm5160", "expansion"]
 oem = false
 rom = [
-    { md5 = "688da86aec830ac09fcd436f28cf9bca", name = "Award_XT_2.05_2764.bin", addr = 0xFE000, size = 8192 }, 
+    { md5 = "688da86aec830ac09fcd436f28cf9bca", filename = "Award_XT_2.05_2764.bin", addr = 0xFE000, size = 8192 }, 
+]
+
+[[romset]]
+alias = "skiselev_xt_1.00"
+priority = 1
+# 16k ROM is incompatible with BASIC ROM at FC000. We mark this set as providing basic so basic will not be loaded.
+provides = ["bios", "ibm5160", "expansion", "ibm_basic"]
+oem = false
+rom = [
+    #{ filename = "bios-xi8088-noide.rom", addr = 0xF0000, size = 0x10000 }, 
+    { filename = "bios-xt.bin", addr = 0xFC000, size = 0x4000 }, 
 ]

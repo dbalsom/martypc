@@ -70,6 +70,7 @@ impl IoDevice for MDACard {
         else if (port & LPT_PORT_MASK) == LPT_DEFAULT_IO_BASE {
             // Read is from LPT port.
             if let Some(lpt) = &mut self.lpt {
+                log::warn!("Reading LPT of MDA card!");
                 lpt.port_read(port)
             }
             else {

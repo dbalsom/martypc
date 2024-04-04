@@ -125,8 +125,14 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
     // -- Update IVR viewer window if open
     if emu.gui.is_window_open(GuiWindow::IvtViewer) {
-        let vec = emu.machine.bus_mut().dump_ivr_tokens();
+        let vec = emu.machine.bus_mut().dump_ivt_tokens();
         emu.gui.ivt_viewer.set_content(vec);
+    }
+
+    // -- Update IO stats viewer window if open
+    if emu.gui.is_window_open(GuiWindow::IoStatsViewer) {
+        let vec = emu.machine.bus_mut().dump_io_stats();
+        emu.gui.io_stats_viewer.set_content(vec);
     }
 
     // -- Update register viewer window

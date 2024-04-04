@@ -260,15 +260,19 @@ impl Ppi {
             port_a_mode: match machine_type {
                 MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => PortAMode::SwitchBlock1,
                 MachineType::Ibm5160 => PortAMode::KeyboardByte,
+                MachineType::Tandy1000 => PortAMode::KeyboardByte,
                 _ => {
-                    panic!("Machine type: {:?} has no PPI", machine_type);
+                    log::error!("Machine type: {:?} has no PPI", machine_type);
+                    PortAMode::KeyboardByte
                 }
             },
             port_c_mode: match machine_type {
                 MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => PortCMode::Switch2OneToFour,
                 MachineType::Ibm5160 => PortCMode::Switch1FiveToEight,
+                MachineType::Tandy1000 => PortCMode::Switch1FiveToEight,
                 _ => {
-                    panic!("Machine type: {:?} has no PPI", machine_type);
+                    log::error!("Machine type: {:?} has no PPI", machine_type);
+                    PortCMode::Switch1FiveToEight
                 }
             },
             kb_clock_low: false,
@@ -294,6 +298,7 @@ impl Ppi {
                     log::debug!("DIP SW1: {:08b}", dip_sw1);
                     !dip_sw1
                 }
+                MachineType::Tandy1000 => 0,
                 _ => {
                     log::error!("Machine type: {:?} has no PPI", machine_type);
                     0
@@ -419,7 +424,7 @@ impl Ppi {
 
     pub fn turbo_bit(&self) -> bool {
         match self.machine_type {
-            MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => false,
+            MachineType::Tandy1000 | MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => false,
             MachineType::Ibm5160 => self.pb_byte & PORTB_SW2_SELECT != 0,
             _ => {
                 log::error!("turbo_bit(): Machine type has no PPI!");
@@ -459,7 +464,7 @@ impl Ppi {
                     self.port_a_mode = PortAMode::KeyboardByte
                 }
             }
-            MachineType::Ibm5160 => {
+            MachineType::Tandy1000 | MachineType::Ibm5160 => {
                 // 5160 Behavior only
                 if byte & PORTB_SW1_SELECT == 0 {
                     // If Bit 3 is OFF, PC0-PC3 represent SW1 S1-S4
@@ -543,6 +548,10 @@ impl Ppi {
                 // Cassette data line has been replaced with a speaker monitor line.
                 // On 5160, all four switches 5-8 are readable
                 (self.dip_sw1 >> 4 & 0x0F) | speaker_bit | timer_bit
+            }
+            (MachineType::Tandy1000, _) => {
+                // Tandy 1000 has no DIP switches
+                timer_bit
             }
             _ => {
                 panic!("Invalid PPI state");

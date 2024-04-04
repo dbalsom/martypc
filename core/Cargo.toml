@@ -30,6 +30,7 @@ strum = "0.26"
 strum_macros = "0.26"
 toml = "0.5.10"
 uuid = { version = "1.1.2", features = ["v4"] }
+fxhash.workspace = true
 
 [dev-dependencies]
 criterion = "0.5"

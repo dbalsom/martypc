@@ -116,6 +116,8 @@ lazy_static! {
         m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k"]);
         m.insert(MachineType::Ibm5160, vec!["ibm5160"]);
+        m.insert(MachineType::IbmPCJr, vec!["ibm_pcjr"]);
+        m.insert(MachineType::Tandy1000, vec!["tandy1000"]);
         m
     };
 
@@ -127,6 +129,8 @@ lazy_static! {
         m.insert(MachineType::Ibm5150v64K, vec!["ibm_basic"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm_basic"]);
         m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
+        m.insert(MachineType::IbmPCJr, vec![]);
+        m.insert(MachineType::Tandy1000, vec![]);
         m
     };
 }
@@ -158,7 +162,34 @@ pub struct MachineDescriptor {
     pub kb_controller: KbControllerType,
     pub pit_type: PitType,
     pub pic_type: PicType,
-    pub dma_type: DmaType,
+    pub dma_type: Option<DmaType>,     // Not all machines have DMA (PCJr)
+    pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
+    pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
+}
+
+impl Default for MachineDescriptor {
+    /// The default MachineDescriptor represents the IBM 5150.
+    fn default() -> Self {
+        MachineDescriptor {
+            machine_type: MachineType::Ibm5150v64K,
+            system_crystal: IBM_PC_SYSTEM_CLOCK,
+            timer_crystal: None,
+            bus_crystal: IBM_PC_SYSTEM_CLOCK,
+            cpu_type: CpuType::Intel8088,
+            cpu_factor: ClockFactor::Divisor(3),
+            cpu_turbo_factor: ClockFactor::Divisor(2),
+            bus_type: BusType::Isa8,
+            bus_factor: ClockFactor::Divisor(1),
+            timer_divisor: PIT_DIVISOR,
+            have_ppi: true,
+            kb_controller: KbControllerType::Ppi,
+            pit_type: PitType::Model8253,
+            pic_type: PicType::Single,
+            dma_type: Some(DmaType::Single),
+            onboard_serial: None,
+            onboard_parallel: None,
+        }
+    }
 }
 
 lazy_static! {
@@ -169,47 +200,46 @@ lazy_static! {
             (
                 MachineType::Ibm5150v64K,
                 MachineDescriptor {
-                    machine_type: MachineType::Ibm5150v64K,
-                    system_crystal: IBM_PC_SYSTEM_CLOCK,
-                    timer_crystal: None,
-                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
-                    cpu_type: CpuType::Intel8088,
-                    cpu_factor: ClockFactor::Divisor(3),
-                    cpu_turbo_factor: ClockFactor::Divisor(2),
-                    bus_type: BusType::Isa8,
-                    bus_factor: ClockFactor::Divisor(1),
-                    timer_divisor: PIT_DIVISOR,
-                    have_ppi: true,
-                    kb_controller: KbControllerType::Ppi,
-                    pit_type: PitType::Model8253,
-                    pic_type: PicType::Single,
-                    dma_type: DmaType::Single,
+                    ..Default::default()
                 },
             ),
             (
                 MachineType::Ibm5150v256K,
                 MachineDescriptor {
-                    machine_type: MachineType::Ibm5150v256K,
-                    system_crystal: IBM_PC_SYSTEM_CLOCK,
-                    timer_crystal: None,
-                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
-                    cpu_type: CpuType::Intel8088,
-                    cpu_factor: ClockFactor::Divisor(3),
-                    cpu_turbo_factor: ClockFactor::Divisor(2),
-                    bus_type: BusType::Isa8,
-                    bus_factor: ClockFactor::Divisor(1),
-                    timer_divisor: PIT_DIVISOR,
-                    have_ppi: true,
-                    kb_controller: KbControllerType::Ppi,
-                    pit_type: PitType::Model8253,
-                    pic_type: PicType::Single,
-                    dma_type: DmaType::Single,
+                    ..Default::default()
                 },
             ),
             (
                 MachineType::Ibm5160,
                 MachineDescriptor {
-                    machine_type: MachineType::Ibm5160,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::IbmPCJr,
+                MachineDescriptor {
+                    machine_type: MachineType::IbmPCJr,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    cpu_type: CpuType::Intel8088,
+                    cpu_factor: ClockFactor::Divisor(3),
+                    cpu_turbo_factor: ClockFactor::Divisor(2),
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: false,
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: None,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::Tandy1000,
+                MachineDescriptor {
+                    machine_type: MachineType::Tandy1000,
                     system_crystal: IBM_PC_SYSTEM_CLOCK,
                     timer_crystal: None,
                     bus_crystal: IBM_PC_SYSTEM_CLOCK,
@@ -223,9 +253,11 @@ lazy_static! {
                     kb_controller: KbControllerType::Ppi,
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,
-                    dma_type: DmaType::Single,
+                    dma_type: Some(DmaType::Single),
+                    onboard_serial: None,
+                    onboard_parallel: Some(0x378),
                 },
-            ),
+            )
         ]);
         map
     };

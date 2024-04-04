@@ -253,6 +253,25 @@ impl MachineRomManifest {
     pub fn new() -> Self {
         Default::default()
     }
+    
+    /// Return true if the specified address range is not covered by any ROM in the manifest.
+    /// Return false if the specified address range conflicts with an existing rom.
+    pub fn check_load(&self, addr: usize, len: usize) -> bool {
+        
+        let check_start = addr;
+        let check_end = addr + len;
+        
+        for rom in self.roms.iter() {
+            let rom_start = rom.addr as usize;
+            let rom_end = rom_start + rom.data.len();
+            
+            if (check_end > rom_start) && (check_end < rom_end) {
+                return false;
+            }
+        }
+        true
+    }
+    
     pub fn checkpoint_map(&self) -> HashMap<u32, usize> {
         let mut map = HashMap::new();
         for (idx, cp) in self.checkpoints.iter().enumerate() {
@@ -260,6 +279,7 @@ impl MachineRomManifest {
         }
         map
     }
+    
     pub fn patch_map(&self) -> HashMap<u32, usize> {
         let mut map = HashMap::new();
         for (idx, patch) in self.patches.iter().enumerate() {

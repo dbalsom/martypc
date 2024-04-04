@@ -133,6 +133,8 @@ impl GuiState {
                 GuiState::draw_register_file(ui, videocard_state, false,"External", "External Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Sequencer", "Sequencer Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Graphics", "Graphics Registers".to_string());
+                GuiState::draw_register_file(ui, videocard_state, false,"Palette", "Palette Registers".to_string());
+                GuiState::draw_register_file(ui, videocard_state, false,"VideoArray", "Video Array Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"AttributePalette", "Attribute Palette Registers".to_string());
                 GuiState::draw_register_file(ui, videocard_state, false,"Attribute", "Attribute Registers".to_string());
 

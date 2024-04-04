@@ -79,7 +79,7 @@ impl VideoRenderer {
                     extents,
                 );
             }
-            VideoType::CGA => {
+            VideoType::CGA | VideoType::TGA => {
                 if self.composite_enabled {
                     VideoRenderer::draw_cga_direct_composite_reenigne(
                         first_pass_buf,

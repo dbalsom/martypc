@@ -54,6 +54,28 @@ overlays = [
     clock_mode = "Dynamic"
 
 [[machine]]
+name = "ibm5160_diags"
+type = "Ibm5160"
+rom_set = "supersoft_diags"
+speaker = true
+overlays = [
+    "pcxt_2_720k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+    "microsoft_serial_mouse",
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Video cards
+    [[machine.video]]
+    bus_type = "ISA"
+    type = "CGA"
+    clock_mode = "Dynamic"
+
+[[machine]]
 name = "ibm5160_hdd"
 type = "Ibm5160"
 rom_set = "auto"

@@ -41,6 +41,8 @@ pub enum MachineType {
     Ibm5150v64K,
     Ibm5150v256K,
     Ibm5160,
+    IbmPCJr,
+    Tandy1000,
 }
 
 impl FromStr for MachineType {
@@ -54,6 +56,8 @@ impl FromStr for MachineType {
             "ibm5150v64k" => Ok(MachineType::Ibm5150v64K),
             "ibm5150v256k" => Ok(MachineType::Ibm5150v64K),
             "ibm5160" => Ok(MachineType::Ibm5160),
+            "ibm_pcjr" => Ok(MachineType::IbmPCJr),
+            "tandy1000" => Ok(MachineType::Tandy1000),
             _ => Err("Bad value for model".to_string()),
         }
     }

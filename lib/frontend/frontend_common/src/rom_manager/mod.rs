@@ -821,6 +821,13 @@ impl RomManager {
                             rom_vec.truncate(size as usize - offset_len);
                         }
 
+                        if !new_manifest.check_load(rom_desc.addr as usize, rom_vec.len()) {
+                            return Err(anyhow::anyhow!(
+                                "ROM {} overlaps with existing ROM in manifest.",
+                                rom_desc.md5.as_ref().unwrap()
+                            ));
+                        }
+
                         new_manifest.roms.push(MachineRomEntry {
                             md5:  rom_desc.md5.clone().unwrap(),
                             addr: rom_desc.addr,
@@ -841,6 +848,13 @@ impl RomManager {
                         // Truncate to 'size' if specified
                         if let Some(size) = rom_desc.size {
                             rom_vec.truncate(size as usize - offset_len);
+                        }
+
+                        if !new_manifest.check_load(rom_desc.addr as usize, rom_vec.len()) {
+                            return Err(anyhow::anyhow!(
+                                "ROM {} overlaps with existing ROM in manifest.",
+                                rom_desc.md5.as_ref().unwrap()
+                            ));
                         }
 
                         new_manifest.roms.push(MachineRomEntry {

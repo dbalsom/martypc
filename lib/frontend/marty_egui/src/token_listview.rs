@@ -178,12 +178,12 @@ impl TokenListView {
                             SyntaxToken::StateString(old_s, old_dirty, old_age),
                         ) => {
                             if old_s == new_s && old_dirty == new_dirty {
-                                // This is the same address as before. Update age.
+                                // This is the same string as before. Update age.
                                 *new_age = old_age.saturating_add(2);
                             }
                             else {
-                                // Different byte address in this position. Set age to maximum so it doesn't flash.
-                                *new_age = 255;
+                                // Different string in this position. Set age to maximum so it doesn't flash.
+                                *new_age = 0;
                             }
                         }
                         _ => {}
@@ -419,6 +419,18 @@ impl TokenListView {
                             drawn = true;
                         }
                         SyntaxToken::StateMemoryAddressSeg16(_, _, s, age) => {
+                            text_rect = ui.painter().text(
+                                egui::pos2(token_x, y),
+                                egui::Align2::LEFT_TOP,
+                                s,
+                                font_id.clone(),
+                                fade_c32(Color32::LIGHT_GRAY, Color32::from_rgb(0, 255, 255), 255 - *age),
+                            );
+                            token_x = text_rect.max.x;
+                            used_rect = used_rect.union(text_rect);
+                            drawn = true;
+                        }
+                        SyntaxToken::StateString(s, _, age) => {
                             text_rect = ui.painter().text(
                                 egui::pos2(token_x, y),
                                 egui::Align2::LEFT_TOP,

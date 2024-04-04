@@ -308,6 +308,7 @@ impl GuiState {
                         *self.window_flag(GuiWindow::DeviceControl) = true;
                         ui.close_menu();
                     }
+                    self.workspace_window_open_button(ui, GuiWindow::IoStatsViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::PicViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::PitViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::PpiViewer, true);

@@ -36,9 +36,11 @@ use std::collections::{BTreeMap, VecDeque};
 
 use modular_bitfield::prelude::*;
 
-use crate::bus::{BusInterface, DeviceRunTimeUnit, IoDevice};
-
-use crate::{syntax_token::*, updatable::*};
+use crate::{
+    bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
+    syntax_token::*,
+    updatable::*,
+};
 
 pub type PitDisplayState = Vec<BTreeMap<&'static str, SyntaxToken>>;
 
@@ -296,7 +298,8 @@ impl Channel {
     }
 
     pub fn set_mode(&mut self, mode: ChannelMode, rw_mode: RwMode, bcd: bool, bus: &mut BusInterface) {
-        self.output_latch.update(0);
+        // Latch isn't cleared on mode set? (Tandy1000 BIOS checks for this)
+        //self.output_latch.update(0);
         self.counting_element.update(0);
 
         self.count_is_latched = false;

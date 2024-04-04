@@ -150,6 +150,9 @@ impl GuiState {
                 GuiWindow::IvtViewer => {
                     self.ivt_viewer.draw(ui, &mut self.event_queue);
                 }
+                GuiWindow::IoStatsViewer => {
+                    self.io_stats_viewer.draw(ui, &mut self.event_queue);
+                }
                 GuiWindow::DelayAdjust => {
                     self.delay_adjust.draw(ui, &mut self.event_queue);
                 }

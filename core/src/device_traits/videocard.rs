@@ -68,7 +68,7 @@ use crate::bus::DeviceRunTimeUnit;
 use crate::devices::ega::EGACard;
 #[cfg(feature = "vga")]
 use crate::devices::vga::VGACard;
-use crate::devices::{cga::CGACard, mda::MDACard};
+use crate::devices::{cga::CGACard, mda::MDACard, tga::TGACard};
 
 use crate::devices::pic::Pic;
 use serde::Deserialize;
@@ -80,6 +80,7 @@ use serde_derive::Serialize;
 pub enum VideoType {
     MDA,
     CGA,
+    TGA,
     #[cfg(feature = "ega")]
     EGA,
     #[cfg(feature = "vga")]
@@ -101,6 +102,7 @@ impl FromStr for VideoType {
         match s {
             "MDA" => Ok(VideoType::MDA),
             "CGA" => Ok(VideoType::CGA),
+            "TGA" => Ok(VideoType::TGA),
             #[cfg(feature = "ega")]
             "EGA" => Ok(VideoType::EGA),
             #[cfg(feature = "vga")]
@@ -146,6 +148,7 @@ pub enum VideoCardDispatch {
     None,
     Mda(MDACard),
     Cga(CGACard),
+    Tga(TGACard),
     #[cfg(feature = "ega")]
     Ega(EGACard),
     #[cfg(feature = "vga")]

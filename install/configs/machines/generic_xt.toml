@@ -178,3 +178,25 @@ overlays = [
     [[machine.video]]
     type = "CGA"
     clock_mode = "Default"
+
+[[machine]]
+name = "generic_skiselev_xt"
+type = "Ibm5160"
+rom_set = "skiselev_xt_1.00"
+speaker = true
+ppi_turbo = true
+overlays = [
+    "pcxt_2_720k_floppies",
+    "pcxt_2_serial_ports",
+    "us_modelf_keyboard",
+    "microsoft_serial_mouse"
+]
+
+    [machine.memory]
+    conventional.size = 0xA0000
+    conventional.wait_states = 0
+
+    # Video cards
+    [[machine.video]]
+    type = "CGA"
+    clock_mode = "Default"
