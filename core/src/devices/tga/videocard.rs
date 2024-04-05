@@ -143,7 +143,7 @@ impl VideoCard for TGACard {
     }
 
     /// Tick the CGA the specified number of video clock cycles.
-    fn debug_tick(&mut self, ticks: u32) {
+    fn debug_tick(&mut self, ticks: u32, cpumem: Option<&[u8]>) {
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
                 let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
@@ -152,21 +152,22 @@ impl VideoCard for TGACard {
                 assert_eq!(ticks, pixel_ticks + (lchar_ticks * 16));
 
                 for _ in 0..pixel_ticks {
-                    self.tick();
+                    //self.tick();
                 }
                 for _ in 0..lchar_ticks {
                     if self.clock_divisor == 2 {
-                        self.tick_lchar();
+                        self.tick_lchar(cpumem.unwrap());
                     }
                     else {
-                        self.tick_hchar();
-                        self.tick_hchar();
+                        self.tick_hchar(cpumem.unwrap());
+                        self.tick_hchar(cpumem.unwrap());
                     }
                 }
             }
             ClockingMode::Cycle => {
+                panic!("unsupported mode for TGA");
                 for _ in 0..ticks {
-                    self.tick();
+                    //self.tick();
                 }
             }
             _ => {}
@@ -426,7 +427,7 @@ impl VideoCard for TGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>, cpumem: Option<&[u8]>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);
@@ -476,7 +477,7 @@ impl VideoCard for TGACard {
         let mut tick_count = 0;
 
         while self.pixel_clocks_owed > 0 {
-            self.tick();
+            //self.tick();
             tick_count += 1;
             self.pixel_clocks_owed -= 1;
             self.clocks_accum = self.clocks_accum.saturating_sub(1);
@@ -534,10 +535,10 @@ impl VideoCard for TGACard {
                     let old_char_clock = self.char_clock;
 
                     if self.clock_divisor == 2 {
-                        self.tick_lchar();
+                        self.tick_lchar(cpumem.unwrap());
                     }
                     else {
-                        self.tick_hchar();
+                        self.tick_hchar(cpumem.unwrap());
                     }
 
                     /*
@@ -551,6 +552,7 @@ impl VideoCard for TGACard {
                 }
             }
             ClockingMode::Cycle => {
+                panic!("Unsupported mode for TGA");
                 while self.clocks_accum > 0 {
                     // Handle blinking. TODO: Move blink handling into tick().
                     self.blink_accum_clocks += 1;
@@ -559,7 +561,7 @@ impl VideoCard for TGACard {
                         self.blink_accum_clocks -= CGA_CURSOR_BLINK_RATE_CLOCKS;
                     }
 
-                    self.tick();
+                    //self.tick();
                     self.clocks_accum = self.clocks_accum.saturating_sub(1);
                 }
             }
@@ -595,17 +597,7 @@ impl VideoCard for TGACard {
     }
 
     fn dump_mem(&self, path: &Path) {
-        let mut filename = path.to_path_buf();
-        filename.push("cga_mem.bin");
-
-        match std::fs::write(filename.clone(), &*self.mem) {
-            Ok(_) => {
-                log::debug!("Wrote memory dump: {}", filename.display())
-            }
-            Err(e) => {
-                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
-            }
-        }
+        // No memory to dump
     }
 
     fn write_trace_log(&mut self, msg: String) {
@@ -617,7 +609,7 @@ impl VideoCard for TGACard {
     }
 
     fn get_text_mode_strings(&self) -> Vec<String> {
-        let mut strings = Vec::new();
+/*        let mut strings = Vec::new();
 
         let start_addr = self.crtc_start_address;
         let columns = self.crtc_horizontal_displayed as usize;
@@ -644,6 +636,7 @@ impl VideoCard for TGACard {
             strings.push(line);
         }
 
-        strings
+        strings*/
+        Vec::new()
     }
 }

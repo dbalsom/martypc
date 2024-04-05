@@ -38,7 +38,7 @@ impl MemoryMappedDevice for EGACard {
         0
     }
 
-    fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u8, u32) {
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
             return (0, 0);
@@ -52,15 +52,15 @@ impl MemoryMappedDevice for EGACard {
         (byte, 0)
     }
 
-    fn mmio_read_u16(&mut self, address: usize, cycles: u32) -> (u16, u32) {
-        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, cycles);
-        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, cycles);
+    fn mmio_read_u16(&mut self, address: usize, cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, cycles, cpumem);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, cycles, cpumem);
 
         //log::warn!("Unsupported 16 bit read from VRAM");
         ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2)
     }
 
-    fn mmio_peek_u8(&self, address: usize) -> u8 {
+    fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
             return 0;
@@ -73,14 +73,14 @@ impl MemoryMappedDevice for EGACard {
         )
     }
 
-    fn mmio_peek_u16(&self, address: usize) -> u16 {
+    fn mmio_peek_u16(&self, address: usize, cpumem: Option<&[u8]>) -> u16 {
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
             return 0;
         }
 
         //(self.sequencer.peek_u8(0, offset, address & 0x01) as u16) << 8 | self.sequencer.peek_u8(0, offset + 1) as u16
-        (self.mmio_peek_u8(address) as u16) << 8 | self.mmio_peek_u8(address + 1) as u16
+        (self.mmio_peek_u8(address, cpumem) as u16) << 8 | self.mmio_peek_u8(address + 1, cpumem) as u16
     }
 
     fn get_write_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
@@ -88,7 +88,7 @@ impl MemoryMappedDevice for EGACard {
     }
 
     #[rustfmt::skip]
-    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         // RAM Enable disables memory mapped IO
         if !self.misc_output_register.enable_ram() {
             return 0;
@@ -98,7 +98,7 @@ impl MemoryMappedDevice for EGACard {
         0
     }
 
-    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
+    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         log::warn!("Unsupported 16 bit write to VRAM");
         0
     }

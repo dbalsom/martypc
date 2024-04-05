@@ -152,6 +152,8 @@ pub const PORTB_PULL_KB_LOW: u8 = 0b0100_0000;
 pub const PORTB_KB_CLEAR: u8 = 0b1000_0000;
 pub const PORTB_PRESENT_SW1_PORTA: u8 = 0b1000_0000;
 
+pub const PORTC_TANDY_COLOR: u8 = 0b0100_0000;
+
 #[derive(Debug)]
 pub enum PortAMode {
     SwitchBlock1,
@@ -163,6 +165,7 @@ pub enum PortCMode {
     Switch2Five,
     Switch1OneToFour,
     Switch1FiveToEight,
+    Tandy1000,
 }
 pub struct Ppi {
     machine_type: MachineType,
@@ -551,7 +554,8 @@ impl Ppi {
             }
             (MachineType::Tandy1000, _) => {
                 // Tandy 1000 has no DIP switches
-                timer_bit
+
+                timer_bit | PORTC_TANDY_COLOR
             }
             _ => {
                 panic!("Invalid PPI state");

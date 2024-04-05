@@ -418,12 +418,12 @@ pub trait VideoCard {
     fn get_videocard_string_state(&self) -> HashMap<String, Vec<(String, VideoCardStateEntry)>>;
 
     /// Runs the video card device for the specified period of time
-    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>);
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>, cpumem: Option<&[u8]>);
 
     /// Runs the video card for the specified number of video clocks
     /// Used for debugging by advancing the video card independent of machine state.
     /// An implementor of VideoCard will have its own internal tick procedure.
-    fn debug_tick(&mut self, ticks: u32);
+    fn debug_tick(&mut self, ticks: u32, cpumem: Option<&[u8]>);
 
     /// Reset the video card
     fn reset(&mut self);

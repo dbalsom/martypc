@@ -57,7 +57,7 @@ pub const TGA_PAGE_REGISTER: u16 = 0x3DF;
 impl IoDevice for TGACard {
     fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8 {
         // Catch up to CPU state.
-        let _ticks = self.catch_up(delta, false);
+        //let _ticks = self.catch_up(delta, false);
 
         //self.rw_op(ticks, 0, port as u32, RwSlotType::Io);
 
@@ -94,7 +94,7 @@ impl IoDevice for TGACard {
         let debug_port = (if port == 0x3D5 { true } else { false }) && self.debug;
 
         // Catch up to CPU state.
-        let _ticks = self.catch_up(delta, debug_port);
+        //let _ticks = self.catch_up(delta, debug_port);
 
         //self.rw_op(ticks, data, port as u32, RwSlotType::Io);
 

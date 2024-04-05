@@ -106,7 +106,7 @@ impl VideoCard for EGACard {
     }
 
     /// Unimplemented
-    fn debug_tick(&mut self, _ticks: u32) {}
+    fn debug_tick(&mut self, _ticks: u32, cpumem: Option<&[u8]>) {}
 
     /// Get the current scanline being rendered.
     fn get_scanline(&self) -> u32 {
@@ -293,7 +293,7 @@ impl VideoCard for EGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>, _cpumem: Option<&[u8]>) {
         if let DeviceRunTimeUnit::Microseconds(us) = time {
             // Select the appropriate timings based on the current clocking mode
             let ticks = match self.misc_output_register.clock_select() {

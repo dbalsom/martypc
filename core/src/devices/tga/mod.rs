@@ -581,8 +581,7 @@ pub struct TGACard {
     ticks_accum: u32,
     clocks_accum: u32,
 
-    mem: Box<[u8; TGA_MEM_SIZE]>,
-
+    //mem: Box<[u8; TGA_MEM_SIZE]>,
     back_buf: usize,
     front_buf: usize,
     extents: DisplayExtents,
@@ -605,6 +604,8 @@ pub struct TGACard {
     mode_control: TModeControlRegister,
     palette_registers: [u8; 16],
     page_register: TPageRegister,
+    page_offset: usize,
+    page_size: usize,
 }
 
 #[derive(Debug)]
@@ -777,8 +778,7 @@ impl Default for TGACard {
             clocks_accum: 0,
             pixel_clocks_owed: 0,
 
-            mem: vec![0; TGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
-
+            //mem: vec![0xFF; TGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
             back_buf:  1,
             front_buf: 0,
             extents:   CgaDefault::default(),
@@ -809,6 +809,8 @@ impl Default for TGACard {
             mode_control: TModeControlRegister::new(),
             palette_registers: [0; 16],
             page_register: TPageRegister::new(),
+            page_offset: 0,
+            page_size: 0x8000,
         }
     }
 }
@@ -861,65 +863,65 @@ impl TGACard {
         self.last_rw_tick = ticks;
     }
 
-    fn catch_up(&mut self, delta: DeviceRunTimeUnit, debug: bool) -> u32 {
-        /*
-        if self.sink_cycles > 0 {
-            // Don't catch up when sinking;
-            return
+    /*    fn catch_up(&mut self, delta: DeviceRunTimeUnit, debug: bool, cpumem: &[u8]) -> u32 {
+            /*
+            if self.sink_cycles > 0 {
+                // Don't catch up when sinking;
+                return
+            }
+            */
+
+            // Catch up to CPU state.
+            if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
+                //log::debug!("Ticking {} clocks on IO read.", ticks);
+
+                self.catching_up = true; // Setting this flag disables mode changes.
+
+                let phase_offset = self.calc_phase_offset();
+
+                // Can we squeeze a character update into the catch-up interval?
+                if (ticks > phase_offset) && ((ticks - phase_offset) >= self.char_clock) {
+                    //log::warn!("can afford character tick in catch_up()");
+
+                    // Catch up to LCLOCK
+                    for _ in 0..phase_offset {
+                        self.tick();
+                    }
+
+                    if self.calc_phase_offset() != 0 {
+                        log::error!("catch up failed: {} + {}", self.cycles, phase_offset);
+                    }
+
+                    // Tick a character
+                    self.tick_char(cpumem);
+
+                    // Tick any remaining cycles
+                    for _ in 0..(ticks - phase_offset - self.char_clock as u32) {
+                        self.tick();
+                    }
+                }
+                else {
+                    // Not enough ticks for a full character, just catch up
+                    for _ in 0..ticks {
+                        self.tick();
+                    }
+                }
+
+                self.ticks_advanced += ticks; // must be +=
+                self.pixel_clocks_owed = self.calc_cycles_owed();
+
+                //assert!((self.cycles + self.pixel_clocks_owed as u64) & (CGA_LCHAR_CLOCK as u64) == 0);
+                self.catching_up = false;
+
+                if debug && self.rba < (CGA_MAX_CLOCK - 8) {
+                    //log::debug!("crtc write!");
+                    self.draw_solid_hchar(13);
+                }
+                return ticks;
+            }
+            0
         }
-        */
-
-        // Catch up to CPU state.
-        if let DeviceRunTimeUnit::SystemTicks(ticks) = delta {
-            //log::debug!("Ticking {} clocks on IO read.", ticks);
-
-            self.catching_up = true; // Setting this flag disables mode changes.
-
-            let phase_offset = self.calc_phase_offset();
-
-            // Can we squeeze a character update into the catch-up interval?
-            if (ticks > phase_offset) && ((ticks - phase_offset) >= self.char_clock) {
-                //log::warn!("can afford character tick in catch_up()");
-
-                // Catch up to LCLOCK
-                for _ in 0..phase_offset {
-                    self.tick();
-                }
-
-                if self.calc_phase_offset() != 0 {
-                    log::error!("catch up failed: {} + {}", self.cycles, phase_offset);
-                }
-
-                // Tick a character
-                self.tick_char();
-
-                // Tick any remaining cycles
-                for _ in 0..(ticks - phase_offset - self.char_clock as u32) {
-                    self.tick();
-                }
-            }
-            else {
-                // Not enough ticks for a full character, just catch up
-                for _ in 0..ticks {
-                    self.tick();
-                }
-            }
-
-            self.ticks_advanced += ticks; // must be +=
-            self.pixel_clocks_owed = self.calc_cycles_owed();
-
-            //assert!((self.cycles + self.pixel_clocks_owed as u64) & (CGA_LCHAR_CLOCK as u64) == 0);
-            self.catching_up = false;
-
-            if debug && self.rba < (CGA_MAX_CLOCK - 8) {
-                //log::debug!("crtc write!");
-                self.draw_solid_hchar(13);
-            }
-            return ticks;
-        }
-        0
-    }
-
+    */
     /// Update the number of pixel clocks we must execute before we can return to clocking the
     /// CGA card by character clock.  When an IO read/write occurs, the CGA card is updated to
     /// the current clock cycle by ticking pixels. During run() we then have to tick by pixels
@@ -1463,7 +1465,7 @@ impl TGACard {
 
     /// Set the character attributes for the current character.
     /// This applies to text mode only, but is computed in all modes at appropriate times.
-    fn set_char_addr(&mut self) {
+    fn set_char_addr(&mut self, cpu_mem: &[u8]) {
         // Address from CRTC is masked by 0x1FFF by the CGA card (bit 13 ignored) and doubled.
         let addr = (self.vma & CGA_TEXT_MODE_WRAP) << 1;
 
@@ -1476,8 +1478,8 @@ impl TGACard {
         }
         else {
             // No snow
-            self.cur_char = self.mem[addr];
-            self.cur_attr = self.mem[addr + 1];
+            self.cur_char = self.mem(cpu_mem)[addr];
+            self.cur_attr = self.mem(cpu_mem)[addr + 1];
         }
 
         self.cur_fg = self.cur_attr & 0x0F;
@@ -1578,10 +1580,10 @@ impl TGACard {
     }
     */
 
-    pub fn get_lowres_pixel_color(&self, row: u8, col: u8) -> u8 {
+    pub fn get_lowres_pixel_color(&self, row: u8, col: u8, cpumem: &[u8]) -> u8 {
         let base_addr = self.get_gfx_addr(row);
 
-        let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
+        let word = (self.mem(cpumem)[base_addr] as u16) << 8 | self.mem(cpumem)[base_addr + 1] as u16;
 
         let idx = ((word >> (CGA_LCHAR_CLOCK - (col + 1) * 2)) & 0x03) as usize;
 
@@ -1596,11 +1598,11 @@ impl TGACard {
     /// Look up the low res graphics glyphs and masks for the current lo-res graphics mode
     /// byte (vma)
     #[inline]
-    pub fn get_lowres_gfx_lchar(&self, row: u8) -> (&(u64, u64), &(u64, u64)) {
+    pub fn get_lowres_gfx_lchar(&self, row: u8, cpumem: &[u8]) -> (&(u64, u64), &(u64, u64)) {
         let base_addr = self.get_gfx_addr(row);
         (
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr] as usize],
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem[base_addr + 1] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem(cpumem)[base_addr] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem(cpumem)[base_addr + 1] as usize],
         )
     }
 
@@ -1695,20 +1697,20 @@ impl TGACard {
 
     /// Execute a hires or lowres character clock as appropriate.
     #[inline]
-    pub fn tick_char(&mut self) {
+    pub fn tick_char(&mut self, cpumem: &[u8]) {
         if self.mode_control.fourbpp_mode() {
-            self.tick_4lchar()
+            self.tick_4lchar(cpumem)
         }
         else if self.clock_divisor == 2 {
-            self.tick_lchar();
+            self.tick_lchar(cpumem);
         }
         else {
-            self.tick_hchar();
+            self.tick_hchar(cpumem);
         }
     }
 
     /// Execute one high resolution character clock.
-    pub fn tick_hchar(&mut self) {
+    pub fn tick_hchar(&mut self, cpumem: &[u8]) {
         // sink_cycles must be a factor of 8
         // assert_eq!(self.sink_cycles & 0x07, 0);
 
@@ -1736,7 +1738,7 @@ impl TGACard {
                     self.draw_text_mode_hchar();
                 }
                 else if self.mode_hires_gfx {
-                    self.draw_hires_gfx_mode_char();
+                    self.draw_hires_gfx_mode_char(cpumem);
                 }
                 else {
                     self.draw_solid_hchar(self.cc_overscan_color);
@@ -1799,12 +1801,12 @@ impl TGACard {
 
         self.tick_crtc_char();
         self.char_col = 0;
-        self.set_char_addr();
+        self.set_char_addr(cpumem);
         self.update_clock();
     }
 
     /// Execute one low resolution character clock.
-    pub fn tick_lchar(&mut self) {
+    pub fn tick_lchar(&mut self, cpumem: &[u8]) {
         // Cycles must be a factor of 16 and char_clock == 16
         assert_eq!(self.cycles & 0x0F, 0);
         assert_eq!(self.char_clock, 16);
@@ -1835,10 +1837,10 @@ impl TGACard {
                     self.draw_text_mode_lchar();
                 }
                 else if self.mode_hires_gfx {
-                    self.draw_hires_gfx_mode_char();
+                    self.draw_hires_gfx_mode_char(cpumem);
                 }
                 else {
-                    self.draw_lowres_gfx_mode_char();
+                    self.draw_lowres_gfx_mode_char(cpumem);
                 }
             }
             else if self.in_crtc_hblank {
@@ -1884,13 +1886,13 @@ impl TGACard {
         }
 
         self.tick_crtc_char();
-        self.set_char_addr();
+        self.set_char_addr(cpumem);
         self.char_col = 0;
         self.update_clock();
     }
 
     /// Execute one 4bpp low resolution character clock.
-    pub fn tick_4lchar(&mut self) {
+    pub fn tick_4lchar(&mut self, cpumem: &[u8]) {
         // Cycles must be a factor of 16 and char_clock == 16
         assert_eq!(self.cycles & 0x0F, 0);
         assert_eq!(self.char_clock, 32);
@@ -1916,7 +1918,7 @@ impl TGACard {
         if self.rba < (CGA_MAX_CLOCK - 16) {
             if self.in_display_area {
                 // Draw current character row
-                self.draw_lowres_gfx_mode_4bpp_char();
+                self.draw_lowres_gfx_mode_4bpp_char(cpumem);
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
@@ -1961,55 +1963,56 @@ impl TGACard {
         }
 
         self.tick_crtc_char();
-        self.set_char_addr();
+        self.set_char_addr(cpumem);
         self.char_col = 0;
         self.update_clock();
     }
 
-    pub fn debug_tick2(&mut self) {
-        if self.sink_cycles > 0 {
-            self.sink_cycles = self.sink_cycles.saturating_sub(1);
-            return;
+    /*    pub fn debug_tick2(&mut self) {
+            if self.sink_cycles > 0 {
+                self.sink_cycles = self.sink_cycles.saturating_sub(1);
+                return;
+            }
+            self.cycles += 1;
+            self.cur_screen_cycles += 1;
+
+            // Don't execute even cycles if we are in half-clock mode
+            if self.clock_divisor == 2 && (self.cycles & 0x01 == 0) {
+                return;
+            }
+
+            let saved_rba = self.rba;
+
+            if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
+                self.draw_pixel(CGA_DEBUG_COLOR);
+            }
+
+            // Update position to next pixel and character column.
+            self.beam_x += self.clock_divisor as u32;
+            self.rba += self.clock_divisor as usize;
+            self.char_col += 1;
+
+            if self.beam_x == CGA_XRES_MAX {
+                self.beam_x = 0;
+                self.beam_y += 1;
+                self.in_monitor_hsync = false;
+                self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
+            }
+
+            if self.rba != saved_rba + self.clock_divisor as usize {
+                log::warn!("bad rba increment");
+            }
+
+            // Done with the current character
+            if self.char_col == CGA_HCHAR_CLOCK {
+                self.tick_crtc_char();
+                self.set_char_addr(cpumem);
+                self.char_col = 0;
+            }
         }
-        self.cycles += 1;
-        self.cur_screen_cycles += 1;
+    */
 
-        // Don't execute even cycles if we are in half-clock mode
-        if self.clock_divisor == 2 && (self.cycles & 0x01 == 0) {
-            return;
-        }
-
-        let saved_rba = self.rba;
-
-        if self.rba < (CGA_MAX_CLOCK - self.clock_divisor as usize) {
-            self.draw_pixel(CGA_DEBUG_COLOR);
-        }
-
-        // Update position to next pixel and character column.
-        self.beam_x += self.clock_divisor as u32;
-        self.rba += self.clock_divisor as usize;
-        self.char_col += 1;
-
-        if self.beam_x == CGA_XRES_MAX {
-            self.beam_x = 0;
-            self.beam_y += 1;
-            self.in_monitor_hsync = false;
-            self.rba = (CGA_XRES_MAX * self.beam_y) as usize;
-        }
-
-        if self.rba != saved_rba + self.clock_divisor as usize {
-            log::warn!("bad rba increment");
-        }
-
-        // Done with the current character
-        if self.char_col == CGA_HCHAR_CLOCK {
-            self.tick_crtc_char();
-            self.set_char_addr();
-            self.char_col = 0;
-        }
-    }
-
-    /// Execute one CGA clock cycle.
+    /*    /// Execute one CGA clock cycle.
     pub fn tick(&mut self) {
         if self.sink_cycles > 0 {
             self.sink_cycles = self.sink_cycles.saturating_sub(1);
@@ -2127,7 +2130,7 @@ impl TGACard {
             self.char_col = 0;
             self.update_clock();
         }
-    }
+    }*/
 
     /// Update the CRTC logic for next character.
     pub fn tick_crtc_char(&mut self) {
@@ -2444,5 +2447,18 @@ impl TGACard {
     pub fn page_register_write(&mut self, data: u8) {
         self.page_register = TPageRegister::from_bytes([data]);
         log::debug!("TGA Page Register: {:?}", self.page_register);
+
+        self.page_offset = self.page_register.cpu_page() as usize * 0x8000; // Select 32K page for CPU
+        log::debug!("New page offset: {:05X}", self.page_offset);
+    }
+
+    #[inline]
+    pub fn mem<'a>(&'a self, cpumem: &'a [u8]) -> &[u8] {
+        cpumem[self.page_offset..self.page_offset + self.page_size].as_ref()
+    }
+
+    #[inline]
+    pub fn memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &mut [u8] {
+        cpumem[self.page_offset..self.page_offset + self.page_size].as_mut()
     }
 }

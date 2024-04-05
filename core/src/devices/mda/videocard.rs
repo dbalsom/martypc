@@ -107,7 +107,7 @@ impl VideoCard for MDACard {
     }
 
     /// Tick the MDA the specified number of video clock cycles.
-    fn debug_tick(&mut self, ticks: u32) {
+    fn debug_tick(&mut self, ticks: u32, cpumem: Option<&[u8]>) {
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
                 let pixel_ticks = ticks % MDA_CHAR_CLOCK as u32;
@@ -331,7 +331,7 @@ impl VideoCard for MDACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>, _cpumem: Option<&[u8]>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);

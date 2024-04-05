@@ -184,8 +184,8 @@ impl TGACard {
 
     /// Draw a pixel in low resolution graphics mode (320x200)
     /// In this mode, pixels are doubled
-    pub fn draw_lowres_gfx_mode_pixel(&mut self) {
-        let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, self.char_col);
+    pub fn draw_lowres_gfx_mode_pixel(&mut self, cpumem: &[u8]) {
+        let mut new_pixel = self.get_lowres_pixel_color(self.vlc_c9, self.char_col, cpumem);
 
         if self.rba >= CGA_MAX_CLOCK - 2 {
             return;
@@ -202,9 +202,9 @@ impl TGACard {
     /// Draw 16 pixels in low res graphics mode (320x200)
     /// This routine uses precalculated lookups and masks to generate two u64
     /// values to write to the index frame buffer directly.
-    pub fn draw_lowres_gfx_mode_char(&mut self) {
+    pub fn draw_lowres_gfx_mode_char(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
-            let lchar_dat = self.get_lowres_gfx_lchar(self.vlc_c9);
+            let lchar_dat = self.get_lowres_gfx_lchar(self.vlc_c9, cpumem);
             let color0 = lchar_dat.0 .0;
             let color1 = lchar_dat.1 .0;
             let mask0 = lchar_dat.0 .1;
@@ -221,13 +221,13 @@ impl TGACard {
     }
 
     /// Draw 16 pixels in low res 4bpp graphics mode (320x200x16)
-    pub fn draw_lowres_gfx_mode_4bpp_char(&mut self) {
+    pub fn draw_lowres_gfx_mode_4bpp_char(&mut self, cpumem: &[u8]) {
         if self.mode_enable {
             let base_addr = self.get_gfx_addr(self.vlc_c9);
-            let pair0 = self.mem[base_addr] as usize;
-            let pair1 = self.mem[base_addr + 1] as usize;
-            let pair2 = self.mem[base_addr + 2] as usize;
-            let pair3 = self.mem[base_addr + 3] as usize;
+            let pair0 = self.mem(cpumem)[base_addr] as usize;
+            let pair1 = self.mem(cpumem)[base_addr + 1] as usize;
+            let pair2 = self.mem(cpumem)[base_addr + 2] as usize;
+            let pair3 = self.mem(cpumem)[base_addr + 3] as usize;
             self.buf[self.back_buf][self.rba] = self.palette_registers[pair0 & 0x0F];
             self.buf[self.back_buf][self.rba + 1] = self.palette_registers[pair0 & 0x0F];
             self.buf[self.back_buf][self.rba + 2] = self.palette_registers[pair0 >> 4];
@@ -252,10 +252,10 @@ impl TGACard {
 
     /// Draw pixels in high resolution graphics mode. (640x200)
     /// In this mode, two pixels are drawn at the same time.
-    pub fn draw_hires_gfx_mode_pixel(&mut self) {
+    pub fn draw_hires_gfx_mode_pixel(&mut self, cpumem: &[u8]) {
         let base_addr = self.get_gfx_addr(self.vlc_c9);
 
-        let word = (self.mem[base_addr] as u16) << 8 | self.mem[base_addr + 1] as u16;
+        let word = (self.mem(cpumem)[base_addr] as u16) << 8 | self.mem(cpumem)[base_addr + 1] as u16;
 
         let bit1 = (word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 1)) & 0x01;
         let bit2 = (word >> CGA_LCHAR_CLOCK - (self.char_col * 2 + 2)) & 0x01;
@@ -282,14 +282,14 @@ impl TGACard {
     }
 
     /// Draw a single character column in high resolution graphics mode (640x200)
-    pub fn draw_hires_gfx_mode_char(&mut self) {
+    pub fn draw_hires_gfx_mode_char(&mut self, cpumem: &[u8]) {
         let base_addr = self.get_gfx_addr(self.vlc_c9);
+
+        let byte0 = self.mem(cpumem)[base_addr];
+        let byte1 = self.mem(cpumem)[base_addr + 1];
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
         if self.mode_enable {
-            let byte0 = self.mem[base_addr];
-            let byte1 = self.mem[base_addr + 1];
-
             frame_u64[self.rba >> 3] = CGA_HIRES_GFX_TABLE[self.cc_altcolor as usize][byte0 as usize];
             frame_u64[(self.rba >> 3) + 1] = CGA_HIRES_GFX_TABLE[self.cc_altcolor as usize][byte1 as usize];
         }

@@ -56,7 +56,7 @@ impl MemoryMappedDevice for TGACard {
         waits
     }
 
-    fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u8, u32) {
         /*
         if self.enable_snow {
             // Catch up to CPU state.
@@ -72,17 +72,22 @@ impl MemoryMappedDevice for TGACard {
             if self.cycles & 0b1000 == 0 {
                 // Save bus parameters for snow emulation
                 self.last_bus_addr = a_offset;
-                self.last_bus_value = self.mem[a_offset] ^ 0xAA; // this becomes the char attribute
+                self.last_bus_value = self.mem(cpumem.unwrap())[a_offset] ^ 0xAA; // this becomes the char attribute
                 self.dirty_snow = true;
-                self.snow_char = self.mem[a_offset]; // 0xDD; // this becomes the character glyph
+                self.snow_char = self.mem(cpumem.unwrap())[a_offset]; // 0xDD; // this becomes the character glyph
 
             //log::debug!("snow attr: {:08b}", self.mem[a_offset]);
             }
             else {
             }
 
-            trace!(self, "READ_U8: {:04X}:{:02X}", a_offset, self.mem[a_offset],);
-            (self.mem[a_offset], 0)
+            trace!(
+                self,
+                "READ_U8: {:04X}:{:02X}",
+                a_offset,
+                self.mem(cpumem.unwrap())[a_offset],
+            );
+            (self.mem(cpumem.unwrap())[a_offset], 0)
         }
         else {
             // Read out of range, shouldn't happen...
@@ -90,28 +95,28 @@ impl MemoryMappedDevice for TGACard {
         }
     }
 
-    fn mmio_peek_u8(&self, address: usize) -> u8 {
+    fn mmio_peek_u8(&self, address: usize, cpumem: Option<&[u8]>) -> u8 {
         let a_offset = address - TGA_MEM_ADDRESS;
 
-        self.mem[a_offset]
+        self.mem(cpumem.unwrap())[a_offset]
     }
 
-    fn mmio_peek_u16(&self, address: usize) -> u16 {
+    fn mmio_peek_u16(&self, address: usize, cpumem: Option<&[u8]>) -> u16 {
         let a_offset = address - TGA_MEM_ADDRESS;
 
-        (self.mem[a_offset] as u16) << 8 | self.mem[a_offset + 1] as u16
+        (self.mem(cpumem.unwrap())[a_offset] as u16) << 8 | self.mem(cpumem.unwrap())[a_offset + 1] as u16
     }
 
-    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, cpumem: Option<&mut [u8]>) -> u32 {
         let a_offset = address - TGA_MEM_ADDRESS;
         if a_offset < TGA_MEM_SIZE {
             // Save bus parameters for snow emulation
             self.last_bus_addr = a_offset;
             self.last_bus_value = byte;
             self.dirty_snow = true;
-            self.snow_char = self.mem[a_offset];
+            self.snow_char = self.mem(cpumem.as_ref().unwrap())[a_offset];
 
-            self.mem[a_offset] = byte;
+            self.memmut(cpumem.unwrap())[a_offset] = byte;
 
             trace!(self, "WRITE_U8: {:04X}:{:02X}", a_offset, byte);
             0
@@ -122,15 +127,15 @@ impl MemoryMappedDevice for TGACard {
         }
     }
 
-    fn mmio_read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
-        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0);
-        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0);
+    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0, cpumem);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
 
         log::warn!("Unsupported 16 bit read from VRAM");
         return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2);
     }
 
-    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
+    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
         0

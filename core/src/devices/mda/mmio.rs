@@ -56,7 +56,7 @@ impl MemoryMappedDevice for MDACard {
         waits
     }
 
-    fn mmio_read_u8(&mut self, address: usize, _cycles: u32) -> (u8, u32) {
+    fn mmio_read_u8(&mut self, address: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u8, u32) {
         /*
         if self.enable_snow {
             // Catch up to CPU state.
@@ -89,19 +89,19 @@ impl MemoryMappedDevice for MDACard {
         }
     }
 
-    fn mmio_peek_u8(&self, address: usize) -> u8 {
+    fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
         let a_offset = address & MDA_MEM_MASK;
 
         self.mem[a_offset & 0x0FFF]
     }
 
-    fn mmio_peek_u16(&self, address: usize) -> u16 {
+    fn mmio_peek_u16(&self, address: usize, _cpumem: Option<&[u8]>) -> u16 {
         let a_offset = address & MDA_MEM_MASK;
 
         (self.mem[a_offset & 0x0FFF] as u16) << 8 | self.mem[(a_offset + 1) & 0x0FFF] as u16
     }
 
-    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32) -> u32 {
+    fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         let a_offset = address & MDA_MEM_MASK;
         if a_offset < MDA_MEM_SIZE {
             // Save bus parameters for snow emulation
@@ -121,15 +121,15 @@ impl MemoryMappedDevice for MDACard {
         }
     }
 
-    fn mmio_read_u16(&mut self, address: usize, _cycles: u32) -> (u16, u32) {
-        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0);
-        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0);
+    fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
+        let (lo_byte, wait1) = MemoryMappedDevice::mmio_read_u8(self, address, 0, cpumem);
+        let (ho_byte, wait2) = MemoryMappedDevice::mmio_read_u8(self, address + 1, 0, cpumem);
 
         log::warn!("Unsupported 16 bit read from VRAM");
         return ((ho_byte as u16) << 8 | lo_byte as u16, wait1 + wait2);
     }
 
-    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32) -> u32 {
+    fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
         0

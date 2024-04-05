@@ -515,7 +515,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                         // Playing around with the clock forces the adapter into
                         // cycle mode, if supported.
                         video_card.set_clocking_mode(ClockingMode::Cycle);
-                        video_card.debug_tick(*ticks);
+                        video_card.debug_tick(*ticks, None);
                     }
                 }
             }
