@@ -140,6 +140,7 @@ trace_file = "cycle_trace.log"
 basedir = "."
 paths = [
     { resource = "machine", path = "$basedir$/configs/machines", recurse = true },
+    { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
     { resource = "floppy", path = "$basedir$/media/floppies", recurse = true },
