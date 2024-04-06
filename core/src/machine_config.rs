@@ -112,7 +112,7 @@ lazy_static! {
     /// The key is the machine type, and the value is a vector of ROM features.
     static ref BASE_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
         let mut m = HashMap::new();
-        m.insert(MachineType::Fuzzer8088, vec![]);
+        m.insert(MachineType::Default, vec![]);
         m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k"]);
         m.insert(MachineType::Ibm5160, vec!["ibm5160"]);
@@ -125,7 +125,7 @@ lazy_static! {
     /// Missing optional features will not stop machine creation.
     static ref OPTIONAL_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
         let mut m = HashMap::new();
-        m.insert(MachineType::Fuzzer8088, vec![]);
+        m.insert(MachineType::Default, vec![]);
         m.insert(MachineType::Ibm5150v64K, vec!["ibm_basic"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm_basic"]);
         m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
@@ -171,7 +171,7 @@ impl Default for MachineDescriptor {
     /// The default MachineDescriptor represents the IBM 5150.
     fn default() -> Self {
         MachineDescriptor {
-            machine_type: MachineType::Ibm5150v64K,
+            machine_type: MachineType::Default,
             system_crystal: IBM_PC_SYSTEM_CLOCK,
             timer_crystal: None,
             bus_crystal: IBM_PC_SYSTEM_CLOCK,
@@ -200,18 +200,21 @@ lazy_static! {
             (
                 MachineType::Ibm5150v64K,
                 MachineDescriptor {
+                    machine_type: MachineType::Ibm5150v64K,
                     ..Default::default()
                 },
             ),
             (
                 MachineType::Ibm5150v256K,
                 MachineDescriptor {
+                    machine_type: MachineType::Ibm5150v256K,
                     ..Default::default()
                 },
             ),
             (
                 MachineType::Ibm5160,
                 MachineDescriptor {
+                    machine_type: MachineType::Ibm5160,
                     ..Default::default()
                 },
             ),
@@ -228,7 +231,7 @@ lazy_static! {
                     bus_type: BusType::Isa8,
                     bus_factor: ClockFactor::Divisor(1),
                     timer_divisor: PIT_DIVISOR,
-                    have_ppi: false,
+                    have_ppi: true,
                     kb_controller: KbControllerType::Ppi,
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,

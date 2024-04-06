@@ -37,7 +37,7 @@ use std::str::FromStr;
 
 #[derive(Copy, Clone, Debug, Deserialize, Hash, Eq, PartialEq)]
 pub enum MachineType {
-    Fuzzer8088,
+    Default,
     Ibm5150v64K,
     Ibm5150v256K,
     Ibm5160,
@@ -52,7 +52,7 @@ impl FromStr for MachineType {
         Self: Sized,
     {
         match s.to_lowercase().as_str() {
-            "fuzzer8088" => Ok(MachineType::Fuzzer8088),
+            "default" => Ok(MachineType::Default),
             "ibm5150v64k" => Ok(MachineType::Ibm5150v64K),
             "ibm5150v256k" => Ok(MachineType::Ibm5150v64K),
             "ibm5160" => Ok(MachineType::Ibm5160),
