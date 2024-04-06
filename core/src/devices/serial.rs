@@ -165,22 +165,22 @@ impl IoDevice for SerialPortController {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         vec![
-            SERIAL1_RX_TX_BUFFER,
-            SERIAL1_INTERRUPT_ENABLE,
-            SERIAL1_INTERRUPT_ID,
-            SERIAL1_LINE_CONTROL,
-            SERIAL1_MODEM_CONTROL,
-            SERIAL1_LINE_STATUS,
-            SERIAL1_MODEM_STATUS,
-            SERIAL2_RX_TX_BUFFER,
-            SERIAL2_INTERRUPT_ENABLE,
-            SERIAL2_INTERRUPT_ID,
-            SERIAL2_LINE_CONTROL,
-            SERIAL2_MODEM_CONTROL,
-            SERIAL2_LINE_STATUS,
-            SERIAL2_MODEM_STATUS,
+            (String::from("SERIAL1 RX/TX Buffer"), SERIAL1_RX_TX_BUFFER),
+            (String::from("SERIAL1 Interrupt Enable"), SERIAL1_INTERRUPT_ENABLE),
+            (String::from("SERIAL1 Interrupt ID"), SERIAL1_INTERRUPT_ID),
+            (String::from("SERIAL1 Line Control"), SERIAL1_LINE_CONTROL),
+            (String::from("SERIAL1 Modem Control"), SERIAL1_MODEM_CONTROL),
+            (String::from("SERIAL1 Line Status"), SERIAL1_LINE_STATUS),
+            (String::from("SERIAL1 Modem Status"), SERIAL1_MODEM_STATUS),
+            (String::from("SERIAL2 RX/TX Buffer"), SERIAL2_RX_TX_BUFFER),
+            (String::from("SERIAL2 Interrupt Enable"), SERIAL2_INTERRUPT_ENABLE),
+            (String::from("SERIAL2 Interrupt ID"), SERIAL2_INTERRUPT_ID),
+            (String::from("SERIAL2 Line Control"), SERIAL2_LINE_CONTROL),
+            (String::from("SERIAL2 Modem Control"), SERIAL2_MODEM_CONTROL),
+            (String::from("SERIAL2 Line Status"), SERIAL2_LINE_STATUS),
+            (String::from("SERIAL2 Modem Status"), SERIAL2_MODEM_STATUS),
         ]
     }
 }

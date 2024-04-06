@@ -275,8 +275,12 @@ impl IoDevice for FloppyController {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
-        vec![FDC_DIGITAL_OUTPUT_REGISTER, FDC_STATUS_REGISTER, FDC_DATA_REGISTER]
+    fn port_list(&self) -> Vec<(String, u16)> {
+        vec![
+            (String::from("FDC Digital Output Register"), FDC_DIGITAL_OUTPUT_REGISTER),
+            (String::from("FDC Status Register"), FDC_STATUS_REGISTER),
+            (String::from("FDC Data Register"), FDC_DATA_REGISTER),
+        ]
     }
 }
 

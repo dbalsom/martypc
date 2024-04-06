@@ -114,42 +114,54 @@ impl IoDevice for EGACard {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         if self.dip_sw == EGA_DIP_SWITCH_MDA {
             vec![
-                ATTRIBUTE_REGISTER,
-                ATTRIBUTE_REGISTER_ALT,
-                MISC_OUTPUT_REGISTER,
-                INPUT_STATUS_REGISTER_0,
-                INPUT_STATUS_REGISTER_1_MDA,
-                SEQUENCER_ADDRESS_REGISTER,
-                SEQUENCER_DATA_REGISTER,
-                CRTC_REGISTER_ADDRESS_MDA,
-                CRTC_REGISTER_MDA,
-                EGA_GRAPHICS_1_POSITION,
-                EGA_GRAPHICS_2_POSITION,
-                EGA_GRAPHICS_ADDRESS,
-                EGA_GRAPHICS_DATA,
+                (String::from("EGA Attribute Register"), ATTRIBUTE_REGISTER),
+                (String::from("EGA Attribute Register"), ATTRIBUTE_REGISTER_ALT),
+                (String::from("EGA Misc Output Register"), MISC_OUTPUT_REGISTER),
+                (String::from("EGA Input Status Register 0"), INPUT_STATUS_REGISTER_0),
+                (
+                    String::from("EGA Input Status Register 1 (MDA)"),
+                    INPUT_STATUS_REGISTER_1_MDA,
+                ),
+                (
+                    String::from("EGA Sequencer Address Register"),
+                    SEQUENCER_ADDRESS_REGISTER,
+                ),
+                (String::from("EGA Sequencer Data Register"), SEQUENCER_DATA_REGISTER),
+                (String::from("EGA CRTC Address (MDA)"), CRTC_REGISTER_ADDRESS_MDA),
+                (String::from("EGA CRTC Data (MDA)"), CRTC_REGISTER_MDA),
+                (String::from("EGA Graphics 1 Position"), EGA_GRAPHICS_1_POSITION),
+                (String::from("EGA Graphics 2 Position"), EGA_GRAPHICS_2_POSITION),
+                (String::from("EGA Graphics Address"), EGA_GRAPHICS_ADDRESS),
+                (String::from("EGA Graphics Data"), EGA_GRAPHICS_DATA),
             ]
         }
         else {
             vec![
-                ATTRIBUTE_REGISTER,
-                ATTRIBUTE_REGISTER_ALT,
-                MISC_OUTPUT_REGISTER,
-                INPUT_STATUS_REGISTER_0,
-                INPUT_STATUS_REGISTER_1,
-                INPUT_STATUS_REGISTER_1_MDA,
-                SEQUENCER_ADDRESS_REGISTER,
-                SEQUENCER_DATA_REGISTER,
-                CRTC_REGISTER_ADDRESS,
-                CRTC_REGISTER,
-                CRTC_REGISTER_ADDRESS_MDA,
-                CRTC_REGISTER_MDA,
-                EGA_GRAPHICS_1_POSITION,
-                EGA_GRAPHICS_2_POSITION,
-                EGA_GRAPHICS_ADDRESS,
-                EGA_GRAPHICS_DATA,
+                (String::from("EGA Attribute Register"), ATTRIBUTE_REGISTER),
+                (String::from("EGA Attribute Register"), ATTRIBUTE_REGISTER_ALT),
+                (String::from("EGA Misc Output Register"), MISC_OUTPUT_REGISTER),
+                (String::from("EGA Input Status Register 0"), INPUT_STATUS_REGISTER_0),
+                (String::from("EGA Input Status Register 1"), INPUT_STATUS_REGISTER_1),
+                (
+                    String::from("EGA Input Status Register 1 (MDA)"),
+                    INPUT_STATUS_REGISTER_1_MDA,
+                ),
+                (
+                    String::from("EGA Sequencer Address Register"),
+                    SEQUENCER_ADDRESS_REGISTER,
+                ),
+                (String::from("EGA Sequencer Data Register"), SEQUENCER_DATA_REGISTER),
+                (String::from("EGA CRTC Address"), CRTC_REGISTER_ADDRESS),
+                (String::from("EGA CRTC Data"), CRTC_REGISTER),
+                (String::from("EGA CRTC Address (MDA)"), CRTC_REGISTER_ADDRESS_MDA),
+                (String::from("EGA CRTC Data (MDA)"), CRTC_REGISTER_MDA),
+                (String::from("EGA Graphics 1 Position"), EGA_GRAPHICS_1_POSITION),
+                (String::from("EGA Graphics 2 Position"), EGA_GRAPHICS_2_POSITION),
+                (String::from("EGA Graphics Address"), EGA_GRAPHICS_ADDRESS),
+                (String::from("EGA Graphics Data"), EGA_GRAPHICS_DATA),
             ]
         }
     }

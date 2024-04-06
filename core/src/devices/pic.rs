@@ -191,8 +191,11 @@ impl IoDevice for Pic {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
-        vec![PIC_COMMAND_PORT, PIC_DATA_PORT]
+    fn port_list(&self) -> Vec<(String, u16)> {
+        vec![
+            (String::from("PIC Command Port"), PIC_COMMAND_PORT),
+            (String::from("PIC Data Port"), PIC_DATA_PORT),
+        ]
     }
 }
 

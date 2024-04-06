@@ -271,30 +271,29 @@ impl IoDevice for DMAController {
         if port == DMA_COMMAND_REGISTER {}
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         vec![
-            DMA_CHANNEL_0_ADDR_PORT,
-            DMA_CHANNEL_0_WC_PORT,
-            DMA_CHANNEL_1_ADDR_PORT,
-            DMA_CHANNEL_1_WC_PORT,
-            DMA_CHANNEL_2_ADDR_PORT,
-            DMA_CHANNEL_2_WC_PORT,
-            DMA_CHANNEL_3_ADDR_PORT,
-            DMA_CHANNEL_3_WC_PORT,
-            DMA_STATUS_REGISTER,
-            DMA_COMMAND_REGISTER,
-            DMA_WRITE_REQ_REGISTER,
-            DMA_CHANNEL_MASK_REGISTER,
-            DMA_CHANNEL_MODE_REGISTER,
-            DMA_CLEAR_FLIPFLOP,
-            DMA_READ_TEMP_REGISTER,
-            DMA_MASTER_CLEAR,
-            DMA_CLEAR_MASK_REGISTER,
-            DMA_WRITE_MASK_REGISTER,
-            DMA_CHANNEL_0_PAGE_REGISTER,
-            DMA_CHANNEL_1_PAGE_REGISTER,
-            DMA_CHANNEL_2_PAGE_REGISTER,
-            DMA_CHANNEL_3_PAGE_REGISTER,
+            (String::from("DMA Channel 0 Address"), DMA_CHANNEL_0_ADDR_PORT),
+            (String::from("DMA Channel 0 Word Count"), DMA_CHANNEL_0_WC_PORT),
+            (String::from("DMA Channel 1 Address"), DMA_CHANNEL_1_ADDR_PORT),
+            (String::from("DMA Channel 1 Word Count"), DMA_CHANNEL_1_WC_PORT),
+            (String::from("DMA Channel 2 Address"), DMA_CHANNEL_2_ADDR_PORT),
+            (String::from("DMA Channel 2 Word Count"), DMA_CHANNEL_2_WC_PORT),
+            (String::from("DMA Channel 3 Address"), DMA_CHANNEL_3_ADDR_PORT),
+            (String::from("DMA Channel 3 Word Count"), DMA_CHANNEL_3_WC_PORT),
+            (String::from("DMA Status/Command Register"), DMA_STATUS_REGISTER),
+            (String::from("DMA Write Request Register"), DMA_WRITE_REQ_REGISTER),
+            (String::from("DMA Channel Mask Register"), DMA_CHANNEL_MASK_REGISTER),
+            (String::from("DMA Channel Mode Register"), DMA_CHANNEL_MODE_REGISTER),
+            (String::from("DMA Clear Flip-Flop"), DMA_CLEAR_FLIPFLOP),
+            (String::from("DMA Read Temp Register"), DMA_READ_TEMP_REGISTER),
+            (String::from("DMA Master Clear"), DMA_MASTER_CLEAR),
+            (String::from("DMA Clear Mask Register"), DMA_CLEAR_MASK_REGISTER),
+            (String::from("DMA Write Mask Register"), DMA_WRITE_MASK_REGISTER),
+            (String::from("DMA Channel 0 Page Register"), DMA_CHANNEL_0_PAGE_REGISTER),
+            (String::from("DMA Channel 1 Page Register"), DMA_CHANNEL_1_PAGE_REGISTER),
+            (String::from("DMA Channel 2 Page Register"), DMA_CHANNEL_2_PAGE_REGISTER),
+            (String::from("DMA Channel 3 Page Register"), DMA_CHANNEL_3_PAGE_REGISTER),
         ]
     }
 }

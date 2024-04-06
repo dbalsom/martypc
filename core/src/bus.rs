@@ -106,6 +106,8 @@ pub const TIMING_TABLE_LEN: usize = 512;
 
 pub const IMMINENT_TIMER_INTERRUPT: u16 = 10;
 
+pub const DEVICE_DESC_LEN: usize = 28;
+
 #[derive(Copy, Clone, Debug)]
 pub struct TimingTableEntry {
     pub sys_ticks: u32,
@@ -298,7 +300,7 @@ impl IoDeviceStats {
 pub trait IoDevice {
     fn read_u8(&mut self, port: u16, delta: DeviceRunTimeUnit) -> u8;
     fn write_u8(&mut self, port: u16, data: u8, bus: Option<&mut BusInterface>, delta: DeviceRunTimeUnit);
-    fn port_list(&self) -> Vec<u16>;
+    fn port_list(&self) -> Vec<(String, u16)>;
 }
 
 pub struct MmioData {
@@ -351,6 +353,7 @@ pub struct BusInterface {
     intr_imminent: bool,
 
     io_map: FxHashMap<u16, IoDeviceType>,
+    io_desc_map: FxHashMap<u16, String>,
     io_stats: FxHashMap<u16, (bool, IoDeviceStats)>,
     ppi: Option<Ppi>,
     pit: Option<Pit>,
@@ -379,6 +382,15 @@ pub struct BusInterface {
     tga_tick_accum: u32,
     kb_us_accum:    f64,
     refresh_active: bool,
+}
+
+#[macro_export]
+macro_rules! add_io_device {
+    ($self:expr, $device:expr, $device_type:expr) => {{
+        let port_list = $device.port_list();
+        $self.io_desc_map.extend(port_list.iter().map(|p| (p.1, p.0.clone())));
+        $self.io_map.extend(port_list.into_iter().map(|p| (p.1, $device_type)));
+    }};
 }
 
 impl ByteQueue for BusInterface {
@@ -492,6 +504,7 @@ impl Default for BusInterface {
             intr_imminent: false,
 
             io_map: FxHashMap::default(),
+            io_desc_map: FxHashMap::default(),
             io_stats: FxHashMap::default(),
             ppi: None,
             pit: None,
@@ -1600,9 +1613,8 @@ impl BusInterface {
                 num_floppies,
             ));
             // Add PPI ports to io_map
-            let port_list = self.ppi.as_mut().unwrap().port_list();
-            self.io_map
-                .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Ppi)));
+
+            add_io_device!(self, self.ppi.as_mut().unwrap(), IoDeviceType::Ppi);
         }
 
         // Create the PIT. One PIT will always exist, but it may be an 8253 or 8254.
@@ -1621,9 +1633,7 @@ impl BusInterface {
         );
 
         // Add PIT ports to io_map
-        let port_list = pit.port_list();
-        self.io_map
-            .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Pit)));
+        add_io_device!(self, pit, IoDeviceType::Pit);
 
         // Tie gates for pit channel 0 & 1 high.
         pit.set_channel_gate(0, true, self);
@@ -1635,17 +1645,13 @@ impl BusInterface {
         let dma1 = DMAController::new();
 
         // Add DMA ports to io_map
-        let port_list = dma1.port_list();
-        self.io_map
-            .extend(port_list.into_iter().map(|p| (p, IoDeviceType::DmaPrimary)));
+        add_io_device!(self, dma1, IoDeviceType::DmaPrimary);
         self.dma1 = Some(dma1);
 
         // Create PIC. One PIC will always exist.
         let pic1 = Pic::new();
         // Add PIC ports to io_map
-        let port_list = pic1.port_list();
-        self.io_map
-            .extend(port_list.into_iter().map(|p| (p, IoDeviceType::PicPrimary)));
+        add_io_device!(self, pic1, IoDeviceType::PicPrimary);
         self.pic1 = Some(pic1);
 
         // Create keyboard if specified.
@@ -1667,9 +1673,7 @@ impl BusInterface {
 
             let fdc = FloppyController::new(floppy_ct);
             // Add FDC ports to io_map
-            let port_list = fdc.port_list();
-            self.io_map
-                .extend(port_list.into_iter().map(|p| (p, IoDeviceType::FloppyController)));
+            add_io_device!(self, fdc, IoDeviceType::FloppyController);
             self.fdc = Some(fdc);
         }
 
@@ -1680,9 +1684,7 @@ impl BusInterface {
                     // TODO: Get the correct drive type from the specified VHD...?
                     let hdc = HardDiskController::new(2, DRIVE_TYPE2_DIP);
                     // Add HDC ports to io_map
-                    let port_list = hdc.port_list();
-                    self.io_map
-                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::HardDiskController)));
+                    add_io_device!(self, hdc, IoDeviceType::HardDiskController);
                     self.hdc = Some(hdc);
                 }
             }
@@ -1693,9 +1695,7 @@ impl BusInterface {
             log::debug!("Creating on-board parallel port...");
             let parallel = ParallelController::new(Some(port_base));
             // Add Parallel Port ports to io_map
-            let port_list = parallel.port_list();
-            self.io_map
-                .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Parallel)));
+            add_io_device!(self, parallel, IoDeviceType::Parallel);
             self.parallel = Some(parallel);
         }
 
@@ -1705,9 +1705,7 @@ impl BusInterface {
                 SerialControllerType::IbmAsync => {
                     let serial = SerialPortController::new();
                     // Add Serial Controller ports to io_map
-                    let port_list = serial.port_list();
-                    self.io_map
-                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Serial)));
+                    add_io_device!(self, serial, IoDeviceType::Serial);
                     self.serial = Some(serial);
                 }
             }
@@ -1738,10 +1736,7 @@ impl BusInterface {
             match card.video_type {
                 VideoType::MDA => {
                     let mda = MDACard::new(TraceLogger::None, clock_mode, true, video_frame_debug);
-                    let port_list = mda.port_list();
-                    self.io_map
-                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
-
+                    add_io_device!(self, mda, IoDeviceType::Video(video_id));
                     let mem_descriptor = MemRangeDescriptor::new(mda::MDA_MEM_ADDRESS, mda::MDA_MEM_APERTURE, false);
                     self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
 
@@ -1749,10 +1744,7 @@ impl BusInterface {
                 }
                 VideoType::CGA => {
                     let cga = CGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
-                    let port_list = cga.port_list();
-                    self.io_map
-                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
-
+                    add_io_device!(self, cga, IoDeviceType::Video(video_id));
                     let mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false);
                     self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
 
@@ -1760,10 +1752,7 @@ impl BusInterface {
                 }
                 VideoType::TGA => {
                     let tga = TGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
-                    let port_list = tga.port_list();
-                    self.io_map
-                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
-
+                    add_io_device!(self, tga, IoDeviceType::Video(video_id));
                     let mem_descriptor = MemRangeDescriptor::new(tga::TGA_MEM_ADDRESS, tga::TGA_MEM_APERTURE, false);
                     self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
 
@@ -1772,10 +1761,7 @@ impl BusInterface {
                 #[cfg(feature = "ega")]
                 VideoType::EGA => {
                     let ega = EGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
-                    let port_list = ega.port_list();
-                    self.io_map
-                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
-
+                    add_io_device!(self, ega, IoDeviceType::Video(video_id));
                     let cga_mem_descriptor =
                         MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false);
                     let ega_mem_descriptor =
@@ -1788,10 +1774,7 @@ impl BusInterface {
                 #[cfg(feature = "vga")]
                 VideoType::VGA => {
                     let vga = VGACard::new(TraceLogger::None);
-                    let port_list = vga.port_list();
-                    self.io_map
-                        .extend(port_list.into_iter().map(|p| (p, IoDeviceType::Video(video_id))));
-
+                    add_io_device!(self, vga, IoDeviceType::Video(video_id));
                     let cga_mem_descriptor =
                         MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false);
                     let mem_descriptor = MemRangeDescriptor::new(vga::VGA_GFX_ADDRESS, vga::VGA_GFX_PLANE_SIZE, false);
@@ -2595,6 +2578,14 @@ impl BusInterface {
             .io_stats
             .iter_mut()
             .map(|(port, stats)| {
+                let mut port_desc = self.io_desc_map.get(port).unwrap_or(&String::new()).clone();
+                if port_desc.len() > DEVICE_DESC_LEN {
+                    port_desc.truncate(DEVICE_DESC_LEN);
+                }
+                else {
+                    port_desc = format!("{:width$}", port_desc, width = DEVICE_DESC_LEN);
+                }
+
                 let mut tokens = Vec::new();
                 tokens.push(SyntaxToken::Text(format!(
                     "{:04X}{}",
@@ -2602,6 +2593,7 @@ impl BusInterface {
                     if stats.0 { " " } else { "*" }
                 )));
                 tokens.push(SyntaxToken::Colon);
+                tokens.push(SyntaxToken::Text(port_desc));
                 tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
                 tokens.push(SyntaxToken::StateString(
                     format!("{}", stats.1.reads),

@@ -186,13 +186,13 @@ impl IoDevice for HardDiskController {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         vec![
-            HDC_DATA_REGISTER,
-            HDC_STATUS_REGISTER,
-            HDC_READ_DIP_REGISTER,
-            HDC_CONTROLLER_SELECT,
-            HDC_WRITE_MASK_REGISTER,
+            (String::from("HDC Data Register"), HDC_DATA_REGISTER),
+            (String::from("HDC Status Register"), HDC_STATUS_REGISTER),
+            (String::from("HDC Read DIP Register"), HDC_READ_DIP_REGISTER),
+            (String::from("HDC Controller Select"), HDC_CONTROLLER_SELECT),
+            (String::from("HDC Write Mask Register"), HDC_WRITE_MASK_REGISTER),
         ]
     }
 }

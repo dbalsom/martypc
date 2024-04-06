@@ -134,21 +134,21 @@ impl IoDevice for TGACard {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         vec![
-            CRTC_REGISTER_SELECT0,
-            CRTC_REGISTER0,
-            CRTC_REGISTER_SELECT1,
-            CRTC_REGISTER1,
-            CRTC_REGISTER_SELECT2,
-            CRTC_REGISTER2,
-            CGA_MODE_CONTROL_REGISTER,
-            CGA_COLOR_CONTROL_REGISTER,
-            CGA_LIGHTPEN_LATCH_RESET,
-            CGA_LIGHTPEN_LATCH_SET,
-            CGA_STATUS_REGISTER,
-            TGA_VIDEO_ARRAY_DATA,
-            TGA_PAGE_REGISTER,
+            (String::from("TGA CRTC Address"), CRTC_REGISTER_SELECT0),
+            (String::from("TGA CRTC Data"), CRTC_REGISTER0),
+            (String::from("TGA CRTC Address"), CRTC_REGISTER_SELECT1),
+            (String::from("TGA CRTC Data"), CRTC_REGISTER1),
+            (String::from("TGA CRTC Address"), CRTC_REGISTER_SELECT2),
+            (String::from("TGA CRTC Data"), CRTC_REGISTER2),
+            (String::from("TGA Mode Control Register"), CGA_MODE_CONTROL_REGISTER),
+            (String::from("TGA Color Control Register"), CGA_COLOR_CONTROL_REGISTER),
+            (String::from("TGA Lightpen Latch Reset"), CGA_LIGHTPEN_LATCH_RESET),
+            (String::from("TGA Lightpen Latch Set"), CGA_LIGHTPEN_LATCH_SET),
+            (String::from("TGA Status Register"), CGA_STATUS_REGISTER),
+            (String::from("TGA Video Array Data"), TGA_VIDEO_ARRAY_DATA),
+            (String::from("TGA Page Register"), TGA_PAGE_REGISTER),
         ]
     }
 }

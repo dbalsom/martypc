@@ -254,12 +254,12 @@ impl IoDevice for ProgrammableIntervalTimer {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         vec![
-            PIT_CHANNEL_0_DATA_PORT,
-            PIT_CHANNEL_1_DATA_PORT,
-            PIT_CHANNEL_2_DATA_PORT,
-            PIT_COMMAND_REGISTER,
+            (String::from("PIT Channel 0 Data Port"), PIT_CHANNEL_0_DATA_PORT),
+            (String::from("PIT Channel 1 Data Port"), PIT_CHANNEL_1_DATA_PORT),
+            (String::from("PIT Channel 2 Data Port"), PIT_CHANNEL_2_DATA_PORT),
+            (String::from("PIT Command Register"), PIT_COMMAND_REGISTER),
         ]
     }
 }
@@ -299,7 +299,7 @@ impl Channel {
 
     pub fn set_mode(&mut self, mode: ChannelMode, rw_mode: RwMode, bcd: bool, bus: &mut BusInterface) {
         // Latch isn't cleared on mode set? (Tandy1000 BIOS checks for this)
-        //self.output_latch.update(0);
+        self.output_latch.update(0);
         self.counting_element.update(0);
 
         self.count_is_latched = false;

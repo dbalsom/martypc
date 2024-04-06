@@ -119,23 +119,30 @@ impl IoDevice for MDACard {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         let mut mda_ports = vec![
-            CRTC_REGISTER_SELECT0,
-            CRTC_REGISTER_SELECT1,
-            CRTC_REGISTER_SELECT2,
-            CRTC_REGISTER_SELECT3,
-            CRTC_REGISTER0,
-            CRTC_REGISTER1,
-            CRTC_REGISTER2,
-            CRTC_REGISTER3,
-            MDA_MODE_CONTROL_REGISTER,
-            MDA_STATUS_REGISTER,
+            (String::from("MDA CRTC Register Select 0"), CRTC_REGISTER_SELECT0),
+            (String::from("MDA CRTC Register Select 1"), CRTC_REGISTER_SELECT1),
+            (String::from("MDA CRTC Register Select 2"), CRTC_REGISTER_SELECT2),
+            (String::from("MDA CRTC Register Select 3"), CRTC_REGISTER_SELECT3),
+            (String::from("MDA CRTC Register 0"), CRTC_REGISTER0),
+            (String::from("MDA CRTC Register 1"), CRTC_REGISTER1),
+            (String::from("MDA CRTC Register 2"), CRTC_REGISTER2),
+            (String::from("MDA CRTC Register 3"), CRTC_REGISTER3),
+            (String::from("MDA Mode Control Register"), MDA_MODE_CONTROL_REGISTER),
+            (String::from("MDA Status Register"), MDA_STATUS_REGISTER),
         ];
 
         if self.lpt.is_some() {
             log::debug!("Adding LPT ports to MDA port list");
-            mda_ports.extend([self.lpt_port_base, self.lpt_port_base + 1, self.lpt_port_base + 2].iter());
+            mda_ports.extend(
+                [
+                    (String::from("MDA LPT Data"), self.lpt_port_base),
+                    (String::from("MDA LPT Status"), self.lpt_port_base + 1),
+                    (String::from("MDA LPT Control"), self.lpt_port_base + 2),
+                ]
+                .into_iter(),
+            );
         }
         mda_ports
     }

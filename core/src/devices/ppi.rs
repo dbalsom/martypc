@@ -34,14 +34,56 @@
 */
 #![allow(dead_code)]
 
-use std::cell::Cell;
+use modular_bitfield::{
+    bitfield,
+    prelude::{B2, B3},
+    BitfieldSpecifier,
+};
+use std::{cell::Cell, collections::BTreeMap};
 
 use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice, NO_IO_BYTE},
     device_traits::videocard::VideoType,
-    devices::pic,
+    devices::{pic, pit::PitDisplayState},
     machine_types::MachineType,
+    syntax_token::SyntaxToken,
+    updatable::Updatable,
 };
+
+#[derive(Debug, Default, BitfieldSpecifier)]
+pub enum PpiModeA {
+    #[default]
+    Mode0Io,
+    Mode1StrobedIo,
+    Mode2BiDirectional,
+    Mode2BiDirectional2,
+}
+
+#[derive(Debug, Default, BitfieldSpecifier)]
+pub enum PpiModeB {
+    #[default]
+    Mode0Io,
+    Mode1StrobedIo,
+}
+
+#[derive(Debug, Default, BitfieldSpecifier)]
+pub enum IoMode {
+    #[default]
+    Output,
+    Input,
+}
+
+#[bitfield]
+#[derive(Copy, Clone, Debug)]
+pub struct PpiControlWord {
+    pub group_b_c: IoMode,
+    pub group_b_b: IoMode,
+    pub group_b_mode: PpiModeB,
+    pub group_a_c: IoMode,
+    pub group_a_a: IoMode,
+    pub group_a_mode: PpiModeA,
+    pub mode_set: bool,
+}
 
 pub const PPI_PORT_A: u16 = 0x60;
 pub const PPI_PORT_B: u16 = 0x61;
@@ -169,17 +211,24 @@ pub enum PortCMode {
 }
 pub struct Ppi {
     machine_type: MachineType,
+    control_word: PpiControlWord,
+    group_a_mode: PpiModeA,
+    group_b_mode: PpiModeB,
     port_a_mode: PortAMode,
     port_c_mode: PortCMode,
+    port_a_iomode: IoMode,
+    port_b_iomode: IoMode,
+    port_cu_iomode: IoMode, // Port C Upper IO mode
+    port_cl_iomode: IoMode, // Port C Lower IO mode
     kb_clock_low: bool,
     kb_counting_low: bool,
     kb_low_count: f64,
     kb_do_reset: bool,
     kb_count_until_reset_byte: f64,
-    kb_resets_counter: u32,
+    kb_resets_counter: Updatable<u32>,
     pb_byte: u8,
-    kb_byte: u8,
-    kb_byte_last: u8,
+    kb_byte: Updatable<u8>,
+    kb_byte_last: Updatable<u8>,
     keyboard_clear_scheduled: bool,
     ksr_cleared: bool,
     kb_enabled: bool,
@@ -187,6 +236,39 @@ pub struct Ppi {
     dip_sw2: u8,
     timer_in: bool,
     speaker_in: bool,
+}
+
+impl Default for Ppi {
+    fn default() -> Self {
+        Self {
+            machine_type: MachineType::Ibm5150v64K,
+            control_word: PpiControlWord::new(),
+            group_a_mode: PpiModeA::default(),
+            group_b_mode: PpiModeB::default(),
+            port_a_mode: PortAMode::KeyboardByte,
+            port_c_mode: PortCMode::Switch1FiveToEight,
+            port_a_iomode: IoMode::default(),
+            port_b_iomode: IoMode::default(),
+            port_cu_iomode: IoMode::default(),
+            port_cl_iomode: IoMode::default(),
+            kb_clock_low: false,
+            kb_counting_low: false,
+            kb_low_count: 0.0,
+            kb_do_reset: false,
+            kb_count_until_reset_byte: 0.0,
+            kb_resets_counter: Updatable::Dirty(0, false),
+            pb_byte: 0,
+            kb_byte: Updatable::Dirty(0, false),
+            kb_byte_last: Updatable::Dirty(0, false),
+            keyboard_clear_scheduled: false,
+            ksr_cleared: true,
+            kb_enabled: true,
+            dip_sw1: 0,
+            dip_sw2: 0,
+            timer_in: false,
+            speaker_in: false,
+        }
+    }
 }
 
 // This structure implements an interface for wires connected to the PPI from
@@ -202,7 +284,11 @@ pub struct PpiWires {
 
 #[derive(Default)]
 pub struct PpiStringState {
+    pub group_a_mode: String,
+    pub group_b_mode: String,
     pub port_a_mode: String,
+    pub port_a_io: String,
+    pub port_b_io: String,
     pub port_a_value_bin: String,
     pub port_a_value_hex: String,
     pub port_b_value_bin: String,
@@ -212,6 +298,8 @@ pub struct PpiStringState {
     pub port_c_mode: String,
     pub port_c_value: String,
 }
+
+pub type PpiDisplayState = BTreeMap<String, Vec<BTreeMap<&'static str, SyntaxToken>>>;
 
 impl Ppi {
     pub fn new(
@@ -278,18 +366,6 @@ impl Ppi {
                     PortCMode::Switch1FiveToEight
                 }
             },
-            kb_clock_low: false,
-            kb_counting_low: false,
-            kb_low_count: 0.0,
-            kb_do_reset: false,
-            kb_count_until_reset_byte: 0.0,
-            kb_resets_counter: 0,
-            pb_byte: 0,
-            kb_byte: 0,
-            kb_byte_last: 0,
-            keyboard_clear_scheduled: false,
-            ksr_cleared: true,
-            kb_enabled: true,
             dip_sw1: match machine_type {
                 MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => {
                     let dip_sw1 = sw1_bank_bits | sw1_floppy_ct_bits | sw1_video_bits | sw1_master_floppy_bit;
@@ -308,8 +384,7 @@ impl Ppi {
                 }
             },
             dip_sw2: !sw2_ram_dip_bits,
-            timer_in: false,
-            speaker_in: false,
+            ..Default::default()
         }
     }
 
@@ -382,7 +457,7 @@ impl IoDevice for Ppi {
                     PortAMode::SwitchBlock1 => self.dip_sw1,
                     PortAMode::KeyboardByte => {
                         if self.kb_enabled {
-                            self.kb_byte
+                            *self.kb_byte
                         }
                         else {
                             0
@@ -415,13 +490,24 @@ impl IoDevice for Ppi {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
-        vec![PPI_PORT_A, PPI_PORT_B, PPI_PORT_C, PPI_COMMAND_PORT]
+    fn port_list(&self) -> Vec<(String, u16)> {
+        vec![
+            ("PPI Port A".to_string(), PPI_PORT_A),
+            ("PPI Port B".to_string(), PPI_PORT_B),
+            ("PPI Port C".to_string(), PPI_PORT_C),
+            ("PPI Command".to_string(), PPI_COMMAND_PORT),
+        ]
     }
 }
 
 impl Ppi {
     pub fn handle_command_port_write(&mut self, byte: u8) {
+        self.control_word = PpiControlWord::from_bytes([byte]);
+
+        if self.control_word.mode_set() {
+            self.group_a_mode = self.control_word.group_a_mode();
+            self.group_b_mode = self.control_word.group_b_mode();
+        }
         log::trace!("PPI: Write to command port: {:02X}", byte);
     }
 
@@ -487,6 +573,9 @@ impl Ppi {
                 }
                 self.port_a_mode = PortAMode::KeyboardByte;
             }
+            MachineType::IbmPCJr => {
+                // TODO: do PCJr stuff
+            }
             _ => {
                 panic!("Invalid model type for PPI");
             }
@@ -517,7 +606,7 @@ impl Ppi {
         // Only send a scancode if the keyboard is not actively being reset.
         if self.kb_enabled && self.ksr_cleared && !self.kb_clock_low {
             self.ksr_cleared = false;
-            self.kb_byte = byte;
+            self.kb_byte.update(byte);
         }
     }
 
@@ -557,6 +646,10 @@ impl Ppi {
 
                 timer_bit | PORTC_TANDY_COLOR
             }
+            (MachineType::IbmPCJr, _) => {
+                // TODO: Do PCJr Stuff
+                0
+            }
             _ => {
                 panic!("Invalid PPI state");
             }
@@ -566,22 +659,127 @@ impl Ppi {
     pub fn get_string_state(&self) -> PpiStringState {
         let port_a_value = match self.port_a_mode {
             PortAMode::SwitchBlock1 => self.dip_sw1,
-            PortAMode::KeyboardByte => self.kb_byte,
+            PortAMode::KeyboardByte => *self.kb_byte,
         };
         let port_b_value = self.pb_byte;
         let port_c_value = self.calc_port_c_value();
 
         PpiStringState {
+            group_a_mode: format!("{:?}", self.group_a_mode),
+            group_b_mode: format!("{:?}", self.group_b_mode),
+            port_a_io: format!("{:?}", self.port_a_iomode),
+            port_b_io: format!("{:?}", self.port_b_iomode),
             port_a_mode: format!("{:?}", self.port_a_mode),
             port_a_value_bin: format!("{:08b}", port_a_value),
             port_a_value_hex: format!("{:02X}", port_a_value),
             port_b_value_bin: format!("{:08b}", port_b_value),
-            kb_byte_value_hex: format!("{:02X}", self.kb_byte),
-            kb_last_byte_value_hex: format!("{:02X}", self.kb_byte_last),
-            kb_resets_counter: format!("{}", self.kb_resets_counter),
+            kb_byte_value_hex: format!("{:02X}", *self.kb_byte),
+            kb_last_byte_value_hex: format!("{:02X}", *self.kb_byte_last),
+            kb_resets_counter: self.kb_resets_counter.to_string(),
             port_c_mode: format!("{:?}", self.port_c_mode),
             port_c_value: format!("{:08b}", port_c_value),
         }
+    }
+
+    pub fn get_display_state(&mut self, clean: bool) -> PpiDisplayState {
+        let port_a_value = match self.port_a_mode {
+            PortAMode::SwitchBlock1 => self.dip_sw1,
+            PortAMode::KeyboardByte => *self.kb_byte,
+        };
+        let port_b_value = self.pb_byte;
+        let port_c_value = self.calc_port_c_value();
+
+        let mut group_map = BTreeMap::new();
+
+        // Group A includes Port A and Upper Port C
+        {
+            let mut state_vec = Vec::new();
+
+            let mut port_a_map = BTreeMap::<&str, SyntaxToken>::new();
+            port_a_map.insert(
+                "Group A Mode:",
+                SyntaxToken::StateString(format!("{:?}", self.group_a_mode), false, 0),
+            );
+            port_a_map.insert(
+                "Port A IO Mode:",
+                SyntaxToken::StateString(format!("{:?}", self.port_a_iomode), false, 0),
+            );
+            port_a_map.insert(
+                "Port A Intent:",
+                SyntaxToken::StateString(format!("{:?}", self.port_a_mode), false, 0),
+            );
+            port_a_map.insert(
+                "Port A Read Value:",
+                SyntaxToken::StateString(format!("{:08b}", port_a_value), false, 0),
+            );
+
+            state_vec.push(port_a_map);
+
+            let mut port_cu_map = BTreeMap::<&str, SyntaxToken>::new();
+            port_cu_map.insert(
+                "Port CU (Group A) Mode:",
+                SyntaxToken::StateString(format!("{:?}", self.group_a_mode), false, 0),
+            );
+            port_cu_map.insert(
+                "Port CU (Machine) Mode:",
+                SyntaxToken::StateString(format!("{:?}", self.port_c_mode), false, 0),
+            );
+            state_vec.push(port_cu_map);
+            group_map.insert(format!("Group A | Mode: {:?}", self.group_a_mode), state_vec);
+        }
+
+        // Group B includes Port B and Lower Port C
+        {
+            let mut state_vec = Vec::new();
+
+            let mut port_cl_map = BTreeMap::<&str, SyntaxToken>::new();
+            port_cl_map.insert(
+                "Port CL (Group B) Mode:",
+                SyntaxToken::StateString(format!("{:?}", self.group_b_mode), false, 0),
+            );
+            state_vec.push(port_cl_map);
+
+            let mut port_b_map = BTreeMap::<&str, SyntaxToken>::new();
+            port_b_map.insert(
+                "Group B Mode:",
+                SyntaxToken::StateString(format!("{:?}", self.group_b_mode), false, 0),
+            );
+            state_vec.push(port_b_map);
+            group_map.insert(format!("Group B | Mode: {:?}", self.group_b_mode), state_vec);
+        }
+
+        // Add miscellaneous state
+        {
+            let mut state_vec = Vec::new();
+
+            let mut keyb_map = BTreeMap::<&str, SyntaxToken>::new();
+            keyb_map.insert(
+                "Keyboard Byte:",
+                SyntaxToken::StateString(format!("{:02X}", *self.kb_byte), self.kb_byte.is_dirty(), 0),
+            );
+            keyb_map.insert(
+                "Last Keyboard Byte:",
+                SyntaxToken::StateString(format!("{:02X}", *self.kb_byte_last), self.kb_byte_last.is_dirty(), 0),
+            );
+            keyb_map.insert(
+                "Keyboard Resets:",
+                SyntaxToken::StateString(
+                    (*self.kb_resets_counter).to_string(),
+                    self.kb_resets_counter.is_dirty(),
+                    0,
+                ),
+            );
+            state_vec.push(keyb_map);
+            group_map.insert("Misc".to_string(), state_vec);
+        }
+
+        if clean {
+            self.kb_byte.clean();
+            self.kb_byte_last.clean();
+            self.kb_resets_counter.clean();
+        }
+
+        group_map
     }
 
     pub fn get_pb0_state(&self) -> bool {
@@ -615,8 +813,8 @@ impl Ppi {
         if self.keyboard_clear_scheduled {
             self.keyboard_clear_scheduled = false;
             self.ksr_cleared = true;
-            self.kb_byte_last = self.kb_byte;
-            self.kb_byte = 0;
+            self.kb_byte_last.update(*self.kb_byte);
+            self.kb_byte.update(0);
             pic.clear_interrupt(1);
             //log::trace!("PPI: Clearing keyboard");
         }
@@ -636,10 +834,10 @@ impl Ppi {
             if self.kb_count_until_reset_byte > KB_RESET_DELAY_US {
                 self.kb_do_reset = false;
                 self.kb_count_until_reset_byte = 0.0;
-                self.kb_resets_counter += 1;
+                self.kb_resets_counter.update((*self.kb_resets_counter).wrapping_add(1));
 
                 log::trace!("PPI: Sending keyboard reset byte");
-                self.kb_byte = 0xAA;
+                self.kb_byte.update(0xAA);
 
                 if self.kb_enabled {
                     pic.request_interrupt(1);

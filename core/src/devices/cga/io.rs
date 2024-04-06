@@ -121,19 +121,19 @@ impl IoDevice for CGACard {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
+    fn port_list(&self) -> Vec<(String, u16)> {
         vec![
-            CRTC_REGISTER_SELECT0,
-            CRTC_REGISTER0,
-            CRTC_REGISTER_SELECT1,
-            CRTC_REGISTER1,
-            CRTC_REGISTER_SELECT2,
-            CRTC_REGISTER2,
-            CGA_MODE_CONTROL_REGISTER,
-            CGA_COLOR_CONTROL_REGISTER,
-            CGA_LIGHTPEN_LATCH_RESET,
-            CGA_LIGHTPEN_LATCH_SET,
-            CGA_STATUS_REGISTER,
+            ("CRTC Address".into(), CRTC_REGISTER_SELECT0),
+            ("CRTC Data".into(), CRTC_REGISTER0),
+            ("CRTC Address".into(), CRTC_REGISTER_SELECT1),
+            ("CRTC Data".into(), CRTC_REGISTER1),
+            ("CRTC Address".into(), CRTC_REGISTER_SELECT2),
+            ("CRTC Data".into(), CRTC_REGISTER2),
+            ("CGA Mode Control".into(), CGA_MODE_CONTROL_REGISTER),
+            ("CGA Color Control".into(), CGA_COLOR_CONTROL_REGISTER),
+            ("CGA LP Latch Reset".into(), CGA_LIGHTPEN_LATCH_RESET),
+            ("CGA LP Latch Set".into(), CGA_LIGHTPEN_LATCH_SET),
+            ("CGA Status".into(), CGA_STATUS_REGISTER),
         ]
     }
 }

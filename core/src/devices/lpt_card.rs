@@ -82,8 +82,11 @@ impl IoDevice for ParallelController {
         }
     }
 
-    fn port_list(&self) -> Vec<u16> {
-        let lpt_ports = vec![self.lpt_port_base, self.lpt_port_base + 1, self.lpt_port_base + 2];
-        lpt_ports
+    fn port_list(&self) -> Vec<(String, u16)> {
+        vec![
+            ("LPT Data".to_string(), self.lpt_port_base),
+            ("LPT Status".to_string(), self.lpt_port_base + 1),
+            ("LPT Control".to_string(), self.lpt_port_base + 2),
+        ]
     }
 }
