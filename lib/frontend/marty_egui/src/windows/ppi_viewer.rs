@@ -28,11 +28,17 @@
 
 */
 
-use crate::GuiEventQueue;
-use marty_core::devices::ppi::PpiStringState;
+use crate::{
+    color::{fade_c32, STATUS_UPDATE_COLOR},
+    layouts,
+    layouts::MartyLayout,
+    GuiEventQueue,
+};
+use egui::Color32;
+use marty_core::{devices::ppi::PpiDisplayState, syntax_token::SyntaxToken};
 
 pub struct PpiViewerControl {
-    ppi_state: PpiStringState,
+    ppi_state: PpiDisplayState,
 }
 
 impl PpiViewerControl {
@@ -42,7 +48,7 @@ impl PpiViewerControl {
         }
     }
 
-    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
+    /*    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
         egui::Grid::new("ppi_view")
             .num_columns(2)
             .striped(true)
@@ -97,9 +103,53 @@ impl PpiViewerControl {
                 ui.add(egui::TextEdit::singleline(&mut self.ppi_state.port_c_value).font(egui::TextStyle::Monospace));
                 ui.end_row();
             });
+    }*/
+
+    pub fn draw(&mut self, ui: &mut egui::Ui, _events: &mut GuiEventQueue) {
+        for (i, (group_name, group)) in self.ppi_state.iter().enumerate() {
+            egui::CollapsingHeader::new(group_name)
+                .default_open(true)
+                .show(ui, |ui| {
+                    for (map) in group.iter() {
+                        MartyLayout::new(layouts::Layout::KeyValue, &format!("ppi-viewer-grid{}", i))
+                            .min_col_width(200.0)
+                            .show(ui, |ui| {
+                                for (key, value) in map {
+                                    if let SyntaxToken::StateString(text, _, age) = value {
+                                        MartyLayout::kv_row(ui, *key, None, |ui| {
+                                            ui.label(
+                                                egui::RichText::new(text)
+                                                    .text_style(egui::TextStyle::Monospace)
+                                                    .color(fade_c32(Color32::GRAY, STATUS_UPDATE_COLOR, 255 - *age)),
+                                            );
+                                        });
+                                    }
+                                }
+                            });
+                    }
+                });
+        }
     }
 
-    pub fn set_state(&mut self, state: PpiStringState) {
-        self.ppi_state = state;
+    pub fn update_state(&mut self, state: PpiDisplayState) {
+        let mut new_state = state;
+        // Update state entry ages
+        for (group_name, group) in new_state.iter_mut() {
+            for (i, map) in group.iter_mut().enumerate() {
+                for (key, value) in map.iter_mut() {
+                    if let SyntaxToken::StateString(_txt, dirty, age) = value {
+                        if *dirty {
+                            *age = 0;
+                        }
+                        else if let Some(old_tok) = self.ppi_state.get_mut(group_name).and_then(|g| g[i].get(key)) {
+                            if let SyntaxToken::StateString(_, _, old_age) = old_tok {
+                                *age = old_age.saturating_add(2);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.ppi_state = new_state;
     }
 }

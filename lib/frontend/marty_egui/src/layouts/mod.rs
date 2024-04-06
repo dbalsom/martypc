@@ -31,7 +31,10 @@
 */
 
 use egui::{style::Spacing, InnerResponse, Response};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    default::Default,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 static LAYOUT_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -41,8 +44,20 @@ pub enum Layout {
 
 pub struct MartyLayout {
     atomic_id: usize,
-    id_str:    String,
-    layout:    Layout,
+    id_str: String,
+    layout: Layout,
+    min_col_width: f32,
+}
+
+impl Default for MartyLayout {
+    fn default() -> Self {
+        MartyLayout {
+            atomic_id: 0,
+            id_str: String::new(),
+            layout: Layout::KeyValue,
+            min_col_width: 100.0,
+        }
+    }
 }
 
 impl MartyLayout {
@@ -52,7 +67,13 @@ impl MartyLayout {
             atomic_id,
             id_str: id_str.to_string(),
             layout,
+            ..Default::default()
         }
+    }
+
+    pub fn min_col_width(mut self, width: f32) -> Self {
+        self.min_col_width = width;
+        self
     }
 
     pub fn show<F: FnOnce(&mut egui::Ui)>(&self, ui: &mut egui::Ui, content: F) -> Response {
@@ -65,7 +86,7 @@ impl MartyLayout {
         egui::Grid::new(format!("ml_{}", self.id_str))
             .num_columns(2)
             .striped(false)
-            .min_col_width(100.0)
+            .min_col_width(self.min_col_width)
             .spacing(egui::Vec2::from((Spacing::default().item_spacing.x, 6.0f32)))
             .show(ui, content)
     }

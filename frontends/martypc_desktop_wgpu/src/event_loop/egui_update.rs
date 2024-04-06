@@ -158,10 +158,15 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
     // -- Update PPI viewer window
     if emu.gui.is_window_open(GuiWindow::PpiViewer) {
-        let ppi_state_opt = emu.machine.ppi_state();
+        /*        let ppi_state_opt = emu.machine.ppi_state();
         if let Some(ppi_state) = ppi_state_opt {
             emu.gui.ppi_viewer.set_state(ppi_state);
             // TODO: If no PPI, disable debug window
+        }*/
+
+        let ppi_state_opt = emu.machine.ppi_display_state();
+        if let Some(ppi_state) = ppi_state_opt {
+            emu.gui.ppi_viewer.update_state(ppi_state);
         }
     }
 

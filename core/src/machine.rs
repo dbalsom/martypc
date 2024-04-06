@@ -69,6 +69,7 @@ use crate::{
 };
 
 use ringbuf::{Consumer, Producer, RingBuffer};
+use crate::devices::ppi::PpiDisplayState;
 use crate::machine_types::OnHaltBehavior;
 
 pub const STEP_OVER_TIMEOUT: u32 = 320000;
@@ -868,6 +869,10 @@ impl Machine {
 
     pub fn ppi_state(&mut self) -> Option<PpiStringState> {
         self.cpu.bus_mut().ppi_mut().as_mut().map(|ppi| ppi.get_string_state())
+    }
+
+    pub fn ppi_display_state(&mut self) -> Option<PpiDisplayState> {
+        self.cpu.bus_mut().ppi_mut().as_mut().map(|ppi| ppi.get_display_state(true))
     }
 
     pub fn set_nmi(&mut self, state: bool) {
