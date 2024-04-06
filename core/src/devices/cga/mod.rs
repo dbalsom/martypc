@@ -558,6 +558,8 @@ pub struct CGACard {
 
     lightpen_latch: bool,
     lightpen_addr:  usize,
+
+    out_of_sync: bool,
 }
 
 #[derive(Debug)]
@@ -754,6 +756,8 @@ impl Default for CGACard {
 
             lightpen_latch: false,
             lightpen_addr:  0,
+
+            out_of_sync: false,
         }
     }
 }
@@ -1267,10 +1271,21 @@ impl CGACard {
                 self.char_clock_mask,
                 self.char_clock_odd_mask,
             ) = if self.mode_hires_txt {
+                self.out_of_sync = false;
                 (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
             }
             else {
-                (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
+                // Don't enable clock divisor if CRTC isn't programmed for it. This is probably
+                // not accurate and what would really happen is loss of video sync, but for the time
+                // being it keeps us from drawing screens with funky scanlines.
+                if self.crtc_horizontal_total > 55 {
+                    self.out_of_sync = true;
+                    (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
+                }
+                else {
+                    self.out_of_sync = false;
+                    (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
+                }
             };
 
             self.clock_pending = false;
@@ -1686,25 +1701,19 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                if self.debug_draw {
+                if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_hchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                if self.debug_draw {
+                if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_hchar(CGA_VBLANK_DEBUG_COLOR);
                 }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                if self.debug_draw {
-                    self.draw_solid_hchar(self.cc_overscan_color);
-                    //self.draw_solid_hchar(CGA_OVERSCAN_DEBUG_COLOR);
-                }
-                else {
-                    self.draw_solid_hchar(self.cc_overscan_color);
-                }
+                self.draw_solid_hchar(self.cc_overscan_color);
             }
             else {
                 self.draw_solid_hchar(CGA_DEBUG2_COLOR);
@@ -1785,13 +1794,13 @@ impl CGACard {
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                if self.debug_draw {
+                if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_lchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                if self.debug_draw {
+                if self.debug_draw && !self.out_of_sync {
                     self.draw_solid_lchar(CGA_VBLANK_DEBUG_COLOR);
                 }
             }
