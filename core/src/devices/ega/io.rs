@@ -115,7 +115,7 @@ impl IoDevice for EGACard {
     }
 
     fn port_list(&self) -> Vec<(String, u16)> {
-        if self.dip_sw == EGA_DIP_SWITCH_MDA {
+        if self.dip_sw.get_physical_state() == EGA_DIP_SWITCH_MDA {
             vec![
                 (String::from("EGA Attribute Register"), ATTRIBUTE_REGISTER),
                 (String::from("EGA Attribute Register"), ATTRIBUTE_REGISTER_ALT),

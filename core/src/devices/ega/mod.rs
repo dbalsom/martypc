@@ -64,7 +64,10 @@ use attribute_controller::*;
 
 use crate::devices::ega::crtc::{EgaCrtc, WordOrByteMode};
 
-use crate::devices::pic::Pic;
+use crate::devices::{
+    dipswitch::{DipSwitch, DipSwitchSize},
+    pic::Pic,
+};
 use graphics_controller::*;
 use sequencer::*;
 use tablegen::*;
@@ -549,7 +552,7 @@ pub struct EGACard {
     debug: bool,
     debug_draw: bool,
 
-    dip_sw: u8,
+    dip_sw: DipSwitch,
 
     ticks_accum: f64,
     clock_mode: ClockingMode,
@@ -679,7 +682,7 @@ impl Default for EGACard {
             debug: false,
             debug_draw: true,
 
-            dip_sw: DEFAULT_DIP_SWITCH,
+            dip_sw: DipSwitch::new(DipSwitchSize::Dip4, DEFAULT_DIP_SWITCH).with_invert_bits(false),
 
             ticks_accum: 0.0,
             clock_mode: ClockingMode::Cycle,
@@ -779,8 +782,13 @@ impl Default for DisplayExtents {
 }*/
 
 impl EGACard {
-    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool) -> Self {
+    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, video_frame_debug: bool, dip: Option<u8>) -> Self {
         let mut ega = Self::default();
+
+        // If a dip was provided, set the dip switches, otherwise leave them default.
+        if let Some(dip) = dip {
+            ega.dip_sw.set_physical_state(dip);
+        }
 
         ega.trace_logger = trace_logger;
         ega.debug = video_frame_debug;
@@ -864,10 +872,10 @@ impl EGACard {
 
         // Note: DIP switches are wired up in reverse order
         let switch_status = match self.misc_output_register.clock_select() {
-            ClockSelect::Unused => self.dip_sw & 0x01,
-            ClockSelect::ExternalClock => self.dip_sw >> 1 & 0x01,
-            ClockSelect::Clock16 => self.dip_sw >> 2 & 0x01,
-            ClockSelect::Clock14 => self.dip_sw >> 3 & 0x01,
+            ClockSelect::Unused => self.dip_sw.read() & 0x01,
+            ClockSelect::ExternalClock => self.dip_sw.read() >> 1 & 0x01,
+            ClockSelect::Clock16 => self.dip_sw.read() >> 2 & 0x01,
+            ClockSelect::Clock14 => self.dip_sw.read() >> 3 & 0x01,
         };
 
         // Set switch sense bit

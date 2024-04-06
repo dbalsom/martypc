@@ -20,6 +20,8 @@
 
 ### Core Bug Fixes / Improvements
 
+* EGA: Can now specify EGA dipswitch in machine configuration.
+  * Added an `ibm_ega_on_cga` config overlay with the right dipswitch for running FantasyLand
 * BUS: Require IoDevice trait implementations to provide port description strings
 * BUS: Add new functionality for MMIO trait implementors to access main memory (Supports TGA)
 * PIT: Preserve latch value across mode changes (Fixes Tandy 1000 POST)

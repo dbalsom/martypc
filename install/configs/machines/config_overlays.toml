@@ -93,6 +93,17 @@ name = "ibm_ega"
     bus_type = "ISA"
     type = "EGA"
     clock_mode = "Default"
+    dip_switch = 0b1001
+    
+[[overlay]]
+name = "ibm_ega_on_cga"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "EGA"
+    clock_mode = "Default"
+    # 0111 = EGA on CGA monitor.
+    dip_switch = 0b0111
 
 [[overlay]]
 name = "ibm_cga_and_mda"

@@ -1760,7 +1760,7 @@ impl BusInterface {
                 }
                 #[cfg(feature = "ega")]
                 VideoType::EGA => {
-                    let ega = EGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
+                    let ega = EGACard::new(TraceLogger::None, clock_mode, video_frame_debug, card.dip_switch);
                     add_io_device!(self, ega, IoDeviceType::Video(video_id));
                     let cga_mem_descriptor =
                         MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false);

@@ -303,6 +303,7 @@ pub struct SerialMouseConfig {
 pub struct VideoCardConfig {
     #[serde(rename = "type")]
     pub video_type: VideoType,
+    pub dip_switch: Option<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
