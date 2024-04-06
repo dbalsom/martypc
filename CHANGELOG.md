@@ -13,6 +13,7 @@
 
 ### Frontend Bug Fixes / Improvements
 
+* Instruction history now shows when hardware interrupts, traps and NMIs occur
 * Fixed loading of keyboard mapping files
 * New IO Statistics display 
   * Shows you each IO port accessed, port description, and number of reads and writes.
@@ -20,6 +21,8 @@
 
 ### Core Bug Fixes / Improvements
 
+* CPU: Fixed cycle count reporting in Instruction History
+* CPU: Added Interrupt, Trap and NMI history types
 * EGA: Can now specify EGA dipswitch in machine configuration.
   * Added an `ibm_ega_on_cga` config overlay with the right dipswitch for running FantasyLand
 * BUS: Require IoDevice trait implementations to provide port description strings

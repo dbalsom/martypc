@@ -552,7 +552,10 @@ pub enum InterruptType {
 }
 
 pub enum HistoryEntry {
-    Entry { cs: u16, ip: u16, cycles: u16, i: Instruction },
+    InstructionEntry { cs: u16, ip: u16, cycles: u16, interrupt: bool, i: Instruction },
+    InterruptEntry { cs: u16, ip: u16, cycles: u16, iv: u8 },
+    NmiEntry { cs: u16, ip: u16 },
+    TrapEntry { cs: u16, ip: u16 },
 }
 
 #[derive(Copy, Clone)]
@@ -786,6 +789,9 @@ pub struct Cpu {
     instruction_count: u64,
     i: Instruction, // Currently executing instruction
     instruction_ip: u16,
+    last_cs: u16,
+    last_ip: u16,
+    last_intr: bool,
     instruction_address: u32,
     instruction_history_on: bool,
     instruction_history: VecDeque<HistoryEntry>,
@@ -2022,10 +2028,24 @@ impl Cpu {
 
         for i in &self.instruction_history {
             match i {
-                HistoryEntry::Entry { cs, ip, cycles: _, i } => {
-                    let i_string = format!("{:05X} [{:04X}:{:04X}] {}\n", i.address, *cs, *ip, i);
+                HistoryEntry::InstructionEntry {
+                    cs,
+                    ip,
+                    cycles: _,
+                    interrupt,
+                    i,
+                } => {
+                    let i_string = format!(
+                        "{:05X}{} [{:04X}:{:04X}] {}\n",
+                        i.address,
+                        if *interrupt { '*' } else { ' ' },
+                        *cs,
+                        *ip,
+                        i
+                    );
                     disassembly_string.push_str(&i_string);
                 }
+                _ => {}
             }
         }
         disassembly_string
@@ -2037,17 +2057,47 @@ impl Cpu {
         for i in &self.instruction_history {
             let mut i_token_vec = Vec::new();
             match i {
-                HistoryEntry::Entry { cs, ip, cycles, i } => {
+                HistoryEntry::InstructionEntry {
+                    cs,
+                    ip,
+                    cycles,
+                    interrupt,
+                    i,
+                } => {
+                    /*                    if *interrupt {
+                        i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
+                    }*/
                     i_token_vec.push(SyntaxToken::MemoryAddressFlat(i.address, format!("{:05X}", i.address)));
                     i_token_vec.push(SyntaxToken::MemoryAddressSeg16(
                         *cs,
                         *ip,
-                        format!("{:04X}:{:04X}", cs, ip),
+                        format!("{:04X}:{:04X}{}", cs, ip, if *interrupt { '*' } else { ' ' }),
                     ));
-                    i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "".to_string())));
+                    i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", " ")));
                     i_token_vec.extend(i.tokenize());
                     i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
                     i_token_vec.push(SyntaxToken::Text(format!("{}", *cycles)));
+                }
+                HistoryEntry::InterruptEntry { cs, ip, cycles, iv } => {
+                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
+                    i_token_vec.push(SyntaxToken::MemoryAddressFlat(0, format!("{:05}", "")));
+                    i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, String::from("          ")));
+                    i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "")));
+                    i_token_vec.push(SyntaxToken::Text(format!("INT {:02X}", iv)));
+                }
+                HistoryEntry::NmiEntry { cs, ip } => {
+                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
+                    i_token_vec.push(SyntaxToken::MemoryAddressFlat(0, format!("{:05}", "")));
+                    i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, String::from("          ")));
+                    i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "")));
+                    i_token_vec.push(SyntaxToken::Text(String::from("NMI")));
+                }
+                HistoryEntry::TrapEntry { cs, ip } => {
+                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
+                    i_token_vec.push(SyntaxToken::MemoryAddressFlat(0, format!("{:05}", "")));
+                    i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, String::from("          ")));
+                    i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "")));
+                    i_token_vec.push(SyntaxToken::Text(String::from("TRAP")));
                 }
             }
             history_vec.push(i_token_vec);
@@ -2088,7 +2138,7 @@ impl Cpu {
                     ah,
                 } => {
                     call_stack_string.push_str(&format!(
-                        "{:04X}:{:04X} INT {:02X} {:04X}:{:04X} type={:?} AH=={:02X}\n",
+                        "{:04X}:{:04X} INT {:02X}h {:04X}:{:04X} type={:?} AH=={:02X}\n",
                         ret_cs, ret_ip, number, call_cs, call_ip, itype, ah
                     ));
                 }

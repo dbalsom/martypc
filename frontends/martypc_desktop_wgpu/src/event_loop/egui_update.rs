@@ -263,7 +263,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
                             decode_vec.push(SyntaxToken::MemoryAddressSeg16(
                                 segment,
                                 offset,
-                                format!("{:04X}:{:04X}", segment, offset),
+                                format!("{:04X}:{:04X}{}", segment, offset, " ",),
                             ));
 
                             let new_offset = offset.wrapping_add(i.size as u16);

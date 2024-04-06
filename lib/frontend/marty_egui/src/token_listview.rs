@@ -297,6 +297,7 @@ impl TokenListView {
 
             for (i, row) in self.contents[0..show_rows].iter().enumerate() {
                 let x = ui.min_rect().left() + self.l_margin;
+                let width = ui.min_rect().right() - ui.min_rect().left();
                 let y = start_y + ((i as f32) * row_height) + self.t_margin;
 
                 let mut token_x = x;
@@ -313,6 +314,19 @@ impl TokenListView {
                                     * TOKEN_TAB_STOPS as f32
                                     + x;
                                 token_x = next_tab_stop;
+                                drawn = true;
+                            }
+                            SyntaxFormatType::AlertLine => {
+                                // AlertLine should change the background of the line, thus should be at the beginning of
+                                // a vector of tokens.
+                                ui.painter().rect_filled(
+                                    Rect {
+                                        min: egui::pos2(x - self.l_margin, y),
+                                        max: egui::pos2(x + 1000.0, y + row_height),
+                                    },
+                                    egui::Rounding::ZERO,
+                                    Color32::from_rgb(64, 0, 0),
+                                );
                                 drawn = true;
                             }
                             _ => {

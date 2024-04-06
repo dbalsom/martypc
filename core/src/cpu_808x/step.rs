@@ -213,8 +213,8 @@ impl Cpu {
         // Uncomment to debug instruction fetch
         //self.debug_fetch(instruction_address);
 
-        let last_cs = self.cs;
-        let last_ip = self.instruction_ip;
+        self.last_cs = self.cs;
+        self.last_ip = self.instruction_ip;
 
         // Load the mod/rm operand for the instruction, if applicable.
         self.load_operand();
@@ -231,44 +231,22 @@ impl Cpu {
         let step_result = match &self.exec_result {
             ExecutionResult::Okay => {
                 // Normal non-jump instruction updates CS:IP to next instruction during execute()
-                if self.instruction_history_on {
-                    if self.instruction_history.len() == CPU_HISTORY_LEN {
-                        self.instruction_history.pop_front();
-                    }
-                    self.instruction_history.push_back(HistoryEntry::Entry {
-                        cs: last_cs,
-                        ip: last_ip,
-                        cycles: self.instr_cycle as u16,
-                        i: self.i.clone(),
-                    });
-                }
                 self.instruction_count += 1;
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
-                    self.trace_print(&self.instruction_state_string(last_cs, last_ip));
+                    self.trace_print(&self.instruction_state_string(self.last_cs, self.last_ip));
                 }
 
                 Ok((StepResult::Normal, self.device_cycles))
             }
             ExecutionResult::OkayJump => {
-                // A control flow instruction updated CS:IP.
-                if self.instruction_history_on {
-                    if self.instruction_history.len() == CPU_HISTORY_LEN {
-                        self.instruction_history.pop_front();
-                    }
-                    self.instruction_history.push_back(HistoryEntry::Entry {
-                        cs: last_cs,
-                        ip: last_ip,
-                        cycles: self.instr_cycle as u16,
-                        i: self.i.clone(),
-                    });
-                }
+                // A control flow instruction updated PC.
                 self.instruction_count += 1;
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
-                    self.trace_print(&self.instruction_state_string(last_cs, last_ip));
+                    self.trace_print(&self.instruction_state_string(self.last_cs, self.last_ip));
                 }
 
                 // Only CALLS will set a step over target.
@@ -286,18 +264,6 @@ impl Cpu {
                 // continue to process interrupts. We passed pending_interrupt to execute
                 // earlier so that a REP string operation can call RPTI to be ready for
                 // an interrupt to occur.
-                if self.instruction_history_on {
-                    if self.instruction_history.len() == CPU_HISTORY_LEN {
-                        self.instruction_history.pop_front();
-                    }
-
-                    self.instruction_history.push_back(HistoryEntry::Entry {
-                        cs: last_cs,
-                        ip: last_ip,
-                        cycles: self.instr_cycle as u16,
-                        i: self.i.clone(),
-                    });
-                }
                 self.instruction_count += 1;
 
                 Ok((StepResult::Normal, self.device_cycles))
@@ -364,6 +330,9 @@ impl Cpu {
     pub fn step_finish(&mut self) -> Result<StepResult, CpuError> {
         let mut step_result = StepResult::Normal;
         let mut irq = 7;
+        let mut did_interrupt = false;
+        let mut did_nmi = false;
+        let mut did_trap = false;
 
         // This function is called after devices are run for the CPU period, so reset device cycles.
         // Device cycles will begin incrementing again with any terminating fetch.
@@ -380,6 +349,7 @@ impl Cpu {
             log::debug!("Triggered NMI!");
             self.nmi_triggered = true;
             self.int2();
+            did_nmi = true;
             step_result = StepResult::Call(CpuAddress::Segmented(self.cs, self.ip()));
         }
         else if self.intr && self.interrupts_enabled() {
@@ -423,6 +393,7 @@ impl Cpu {
                     self.set_breakpoint_flag();
                 }
                 self.hw_interrupt(irq);
+                did_interrupt = true;
                 self.biu_fetch_next();
             }
         }
@@ -433,6 +404,7 @@ impl Cpu {
                 self.resume();
             }
             self.int1();
+            did_trap = true;
             step_result = StepResult::Call(CpuAddress::Segmented(self.cs, self.ip()));
         }
         else if !self.halted {
@@ -444,6 +416,57 @@ impl Cpu {
         #[cfg(feature = "cpu_validator")]
         {
             self.validate_instruction()?;
+        }
+
+        if self.instruction_history_on {
+            if self.instruction_history.len() == CPU_HISTORY_LEN {
+                self.instruction_history.pop_front();
+            }
+
+            self.instruction_history.push_back(HistoryEntry::InstructionEntry {
+                cs: self.last_cs,
+                ip: self.last_ip,
+                cycles: self.instr_cycle as u16,
+                interrupt: self.last_intr,
+                i: self.i.clone(),
+            });
+
+            if did_nmi {
+                if self.instruction_history.len() == CPU_HISTORY_LEN {
+                    self.instruction_history.pop_front();
+                }
+
+                self.instruction_history.push_back(HistoryEntry::NmiEntry {
+                    cs: self.last_cs,
+                    ip: self.last_ip,
+                });
+            }
+
+            if did_trap {
+                if self.instruction_history.len() == CPU_HISTORY_LEN {
+                    self.instruction_history.pop_front();
+                }
+
+                self.instruction_history.push_back(HistoryEntry::TrapEntry {
+                    cs: self.last_cs,
+                    ip: self.last_ip,
+                });
+            }
+
+            if did_interrupt {
+                if self.instruction_history.len() == CPU_HISTORY_LEN {
+                    self.instruction_history.pop_front();
+                }
+
+                self.instruction_history.push_back(HistoryEntry::InterruptEntry {
+                    cs: self.last_cs,
+                    ip: self.last_ip,
+                    cycles: self.instr_cycle as u16,
+                    iv: irq,
+                });
+            }
+
+            self.last_intr = did_interrupt | did_nmi | did_trap;
         }
 
         Ok(step_result)
