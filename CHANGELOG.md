@@ -1,7 +1,34 @@
 
 ## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/latest) (2024-XX-XX)
 
-### TBD
+### New Machines
+
+* Added Tandy 1000 and IBM PCJr machine types and ROM definitions. These are still very much a work in progress.
+
+### New Video Type
+
+* To go with these new systems, there is now a TGA graphics type. Again, a work in progress. 
+  * TGA adapter operates very differently from other adapter types as it does not have its own VRAM. 
+  * New core functionality was required to allow mapping of MMIO reads and writes back to system memory.
+
+### Frontend Bug Fixes / Improvements
+
+* Fixed loading of keyboard mapping files
+* New IO Statistics display 
+  * Shows you each IO port accessed, port description, and number of reads and writes.
+* Overhauled PPI viewer
+
+### Core Bug Fixes / Improvements
+
+* BUS: Require IoDevice trait implementations to provide port description strings
+* BUS: Add new functionality for MMIO trait implementors to access main memory (Supports TGA)
+* PIT: Preserve latch value across mode changes (Fixes Tandy 1000 POST)
+* PPI: More accurate PPI emulation
+  * Tandy 1000 specific PPI details added
+  * Control register implemented, and PPI group modes are now tracked.
+  * New state dump format for new frontend PPI Viewer
+* CGA: Ignore clock divisor if incompatible CRTC parameters set (Fixes scanline skipping glitch)
+* CGA: Disable debug color drawing if display out of sync 
 
 ## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0b) (2024-04-01)
 
