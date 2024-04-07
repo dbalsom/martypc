@@ -112,8 +112,24 @@ impl MachineState {
 pub enum ExecutionState {
     Paused,
     BreakpointHit,
+    StepOverHit,
     Running,
     Halted,
+}
+
+impl ExecutionState {
+    /// Can we Step from the current state?
+    pub fn can_step(&self) -> bool {
+        matches!(self, ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit)
+    }
+    /// Can we Run from the current state?
+    pub fn can_run(&self) -> bool {
+        matches!(self, ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit)
+    }
+    /// Can we Pause from the current state?
+    pub fn can_pause(&self) -> bool {
+        matches!(self, ExecutionState::Running)
+    }
 }
 
 #[allow(dead_code)]
@@ -123,6 +139,7 @@ pub enum ExecutionOperation {
     Pause,
     Step,
     StepOver,
+    RunToNext,
     Run,
     Reset,
 }
@@ -165,26 +182,32 @@ impl ExecutionControl {
         match op {
             ExecutionOperation::Pause => {
                 // Can only pause if Running
-                if let ExecutionState::Running = self.state {
+                if self.state.can_pause() {
                     self.state = ExecutionState::Paused;
                     self.op.set(op);
                 }
             }
             ExecutionOperation::Step => {
                 // Can only Step if paused / breakpointhit
-                if let ExecutionState::Paused | ExecutionState::BreakpointHit = self.state {
+                if self.state.can_step() {
                     self.op.set(op);
                 }
             }
             ExecutionOperation::StepOver => {
                 // Can only Step Over if paused / breakpointhit
-                if let ExecutionState::Paused | ExecutionState::BreakpointHit = self.state {
+                if self.state.can_step() {
+                    self.op.set(op);
+                }
+            }
+            ExecutionOperation::RunToNext => {
+                // Can only RunToNext if paused / breakpointhit
+                if self.state.can_step() {
                     self.op.set(op);
                 }
             }
             ExecutionOperation::Run => {
                 // Can only Run if paused / breakpointhit
-                if let ExecutionState::Paused | ExecutionState::BreakpointHit = self.state {
+                if self.state.can_run() {
                     self.op.set(op);
                 }
             }
@@ -1079,7 +1102,9 @@ impl Machine {
                         skip_breakpoint = true;
                         // Set step-over flag
                         step_over = true;
-                        // Execute 1 instruction
+                        // Run one instruction to determine the target address. If we get a
+                        // step over target from the CPU, we will set the step over breakpoint and
+                        // then run normally.
                         1
                     }
                     ExecutionOperation::Run => {
@@ -1094,10 +1119,10 @@ impl Machine {
                 _ = exec_control.get_op(); // Clear any pending operation
                 cycle_target
             }
-            ExecutionState::BreakpointHit => {
+            ExecutionState::BreakpointHit | ExecutionState::StepOverHit => {
                 match exec_control.get_op() {
                     ExecutionOperation::Step => {
-                        log::trace!("BreakpointHit -> Step");
+                        log::debug!("BreakpointHit -> Step");
                         // Clear CPU's breakpoint flag
                         self.cpu.clear_breakpoint_flag();
                         // Skip current breakpoint, if any
@@ -1109,7 +1134,7 @@ impl Machine {
                         1
                     }
                     ExecutionOperation::StepOver => {
-                        log::trace!("BreakpointHit -> StepOver");
+                        log::debug!("BreakpointHit -> StepOver");
                         // Clear CPU's breakpoint flag
                         self.cpu.clear_breakpoint_flag();
                         // Skip current breakpoint, if any
@@ -1212,8 +1237,16 @@ impl Machine {
                         cpu_cycles = step_cycles;
                         step_over_target = Some(target);
                     }
+                    StepResult::Rep(target) => {
+                        cpu_cycles = step_cycles;
+                        step_over_target = Some(target);
+                    }
                     StepResult::BreakpointHit => {
                         exec_control.state = ExecutionState::BreakpointHit;
+                        return 1;
+                    }
+                    StepResult::StepOverHit => {
+                        exec_control.state = ExecutionState::StepOverHit;
                         return 1;
                     }
                     StepResult::ProgramEnd => {
@@ -1282,70 +1315,11 @@ impl Machine {
             }
 
             // If we returned a step over target address, execution is paused, and step over was requested,
-            // then consume as many instructions as needed to get to the 'next' instruction. This will
-            // skip over any CALL or interrupt encountered.
+            // Set a special breakpoint at the target address, and then continue running normally.
             if step_over {
-                if let Some(step_over_target) = step_over_target {
-                    log::debug!("Step over requested for CALL, return addr: {}", step_over_target);
-                    let mut cs_ip = self.cpu.get_csip();
-                    let mut step_over_cycles = 0;
-
-                    while cs_ip != step_over_target {
-                        match self.cpu.step(skip_breakpoint) {
-                            Ok((step_result, step_cycles)) => {
-                                match step_result {
-                                    StepResult::Normal => cpu_cycles = step_cycles,
-                                    StepResult::Call(_) => {
-                                        cpu_cycles = step_cycles
-                                        // We are already stepping over a base CALL instruction, so ignore further CALLS/interrupts.
-                                    }
-                                    StepResult::BreakpointHit => {
-                                        // We can hit an 'inner' breakpoint while stepping over. This is fine, and ends the step
-                                        // over operation at the breakpoint.
-                                        exec_control.state = ExecutionState::BreakpointHit;
-                                        return instr_count;
-                                    }
-                                    StepResult::ProgramEnd => {
-                                        exec_control.state = ExecutionState::Halted;
-                                        return instr_count;
-                                    }
-                                }
-                            }
-                            Err(err) => {
-                                if let CpuError::CpuHaltedError(_) = err {
-                                    log::error!("CPU Halted!");
-                                    exec_control.state = ExecutionState::Halted;
-                                }
-                                self.error = true;
-                                self.error_str = Some(format!("{}", err));
-                                log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
-                                cpu_cycles = 0
-                            }
-                        }
-
-                        instr_count += 1;
-                        cycles_elapsed += cpu_cycles;
-                        self.cpu_cycles += cpu_cycles as u64;
-
-                        step_over_cycles += cpu_cycles;
-
-                        if cpu_cycles == 0 {
-                            log::warn!("Instruction returned 0 cycles");
-                            cpu_cycles = fake_cycles;
-                        }
-
-                        self.run_devices(cpu_cycles, &mut kb_event_processed);
-
-                        cs_ip = self.cpu.get_csip();
-
-                        if step_over_cycles > STEP_OVER_TIMEOUT {
-                            log::warn!(
-                                "Step over operation timed out: No return after {} cycles.",
-                                STEP_OVER_TIMEOUT
-                            );
-                            break;
-                        }
-                    }
+                if let Some(target) = step_over_target {
+                    self.cpu.set_step_over_breakpoint(target);
+                    exec_control.state = ExecutionState::Running;
                 }
             }
 

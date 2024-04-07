@@ -51,74 +51,6 @@ impl Cpu {
             self.trace_token_vec.clear();
         }
 
-        // Check for interrupts.
-        //
-        // If an INTR is active at the beginning of an instruction, we should execute the interrupt
-        // instead of the instruction, except if we are in a REP prefixed string instruction, where we set a
-        // pending interrupt flag and run the REP iteration.
-        //
-        // In a real CPU, REP instructions run for the entire period in which they repeat and handle checking
-        // interrupts themselves in microcode. Therefore we want to model that behavior. This allows the
-        // microcode routine for RPTI to execute within the REP-prefixed instruction. The interrupt then
-        // fires after.
-
-        /*
-        self.pending_interrupt = false;
-        let mut irq = 7;
-
-        if self.nmi && self.bus.nmi_enabled() && !self.nmi_triggered {
-            // NMI takes priority over trap and INTR.
-            if self.halted {
-                // Resume from halt on interrupt
-                self.resume();
-            }
-            log::debug!("Triggered NMI!");
-            self.nmi_triggered = true;
-            self.int2();
-            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
-            return step_result
-        }
-        else if self.trap_enabled() {
-            // Trap takes priority over INTR.
-            self.int1();
-            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
-            return step_result
-        }
-        else if self.interrupts_enabled() {
-            if let Some(pic) = self.bus.pic_mut().as_mut() {
-                // Is INTR active? TODO: Could combine these calls (return Option<iv>) on query?
-                if pic.query_interrupt_line() {
-                    if let Some(iv) = pic.get_interrupt_vector() {
-                        irq = iv;
-                        if self.in_rep {
-                            // Set pending interrupt to execute after RPTI
-                            self.pending_interrupt = true;
-                        }
-                        else {
-                            if self.halted {
-                                // Resume from halt on interrupt
-                                self.resume();
-                            }
-                            // We will be jumping into an ISR now. Set the step result to Call and return
-                            // the address of the next instruction. (Step Over skips ISRs)
-
-                            // Set breakpoint flag if we have a breakpoint for this interrupt.
-                            if self.int_flags[irq as usize] != 0 {
-                                self.set_breakpoint_flag();
-                            }
-
-                            // Do interrupt
-                            self.hw_interrupt(irq);
-                            //log::debug!("hardware interrupt took {} cycles", self.instr_cycle);
-                            let step_result = Ok((StepResult::Call(CpuAddress::Segmented(self.cs, self.ip)), self.instr_cycle));
-                            return step_result
-                        }
-                    }
-                }
-            }
-        }
-        */
-
         // The Halt state can be expensive if we only execute one cycle per halt - however precise wake from halt is
         // necessary for Area5150. We can dynamically adjust the cycle count of stepping in the halt state depending
         // on a hint from the bus whether a timer interrupt is imminent.
@@ -161,6 +93,16 @@ impl Cpu {
                 log::debug!("Breakpoint hit at {:05X}", instruction_address);
                 self.set_breakpoint_flag();
                 return Ok((StepResult::BreakpointHit, 0));
+            }
+
+            // Check for the step over breakpoint
+            if let Some(step_over_address) = self.step_over_breakpoint {
+                if instruction_address == step_over_address {
+                    log::debug!("CPU: Step Over address hit: {:05X}", step_over_address);
+                    // Clear the step over breakpoint, so it is not immediately re-triggered
+                    self.step_over_breakpoint = None;
+                    return Ok((StepResult::StepOverHit, 0));
+                }
             }
 
             // Clear the validator cycle states from the last instruction.
@@ -259,14 +201,15 @@ impl Cpu {
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
+                self.instruction_count += 1;
 
                 // The ip will not increment until the instruction has completed, but
                 // continue to process interrupts. We passed pending_interrupt to execute
                 // earlier so that a REP string operation can call RPTI to be ready for
                 // an interrupt to occur.
-                self.instruction_count += 1;
 
-                Ok((StepResult::Normal, self.device_cycles))
+                // REP will always set a step over target.
+                Ok((StepResult::Rep(self.step_over_target.unwrap()), self.device_cycles))
             }
             /*
             ExecutionResult::UnsupportedOpcode(o) => {

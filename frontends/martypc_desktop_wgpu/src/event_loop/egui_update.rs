@@ -82,6 +82,16 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         }
     }
 
+    // --------------------------------------------------------------------------------------------
+    // Update the various debug windows
+    // --------------------------------------------------------------------------------------------
+
+    // Update CPU Control
+    if emu.gui.is_window_open(GuiWindow::CpuControl) {
+        let step_over_target = emu.machine.cpu().get_step_over_breakpoint();
+        emu.gui.cpu_control.set_step_over_target(step_over_target);
+    }
+
     // Update performance viewer
     if emu.gui.is_window_open(GuiWindow::PerfViewer) {
         if let Some(renderer) = emu.dm.get_primary_renderer() {

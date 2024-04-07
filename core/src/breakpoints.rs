@@ -32,6 +32,7 @@
 
 #[allow(dead_code)]
 pub enum BreakPointType {
+    StepOver(u32),       // Breakpoint on next decoded instruction
     Execute(u16, u16),   // Breakpoint on CS:IP
     ExecuteOffset(u16),  // Breakpoint on *::IP
     ExecuteFlat(u32),    // Breakpoint on CS<<4+IP

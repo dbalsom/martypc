@@ -31,14 +31,18 @@
 
 */
 use crate::*;
+use marty_core::{
+    cpu_808x::CpuAddress,
+    machine::{ExecutionControl, ExecutionOperation, ExecutionState},
+};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use marty_core::machine::{ExecutionControl, ExecutionOperation, ExecutionState};
 pub struct CpuControl {
     exec_control: Rc<RefCell<ExecutionControl>>,
     breakpoint: String,
     mem_breakpoint: String,
     int_breakpoint: String,
+    step_over_target: Option<CpuAddress>,
 }
 
 impl CpuControl {
@@ -48,6 +52,7 @@ impl CpuControl {
             breakpoint: String::new(),
             mem_breakpoint: String::new(),
             int_breakpoint: String::new(),
+            step_over_target: None,
         }
     }
 
@@ -55,7 +60,7 @@ impl CpuControl {
         let mut exec_control = self.exec_control.borrow_mut();
 
         let (pause_enabled, step_enabled, run_enabled) = match exec_control.state {
-            ExecutionState::Paused | ExecutionState::BreakpointHit => (false, true, true),
+            ExecutionState::Paused | ExecutionState::BreakpointHit | ExecutionState::StepOverHit => (false, true, true),
             ExecutionState::Running => (true, false, false),
             ExecutionState::Halted => (false, false, false),
         };
@@ -177,6 +182,15 @@ impl CpuControl {
                 ui.label(&state_str);
                 ui.end_row();
 
+                ui.label("StepOver Target: ");
+                if let Some(target) = self.step_over_target {
+                    ui.label(&format!("{:?}", self.step_over_target));
+                }
+                else {
+                    ui.label("None");
+                }
+                ui.end_row();
+
                 ui.label("Exec Breakpoint: ");
                 if ui.text_edit_singleline(&mut self.breakpoint).changed() {
                     events.send(GuiEvent::EditBreakpoint);
@@ -195,6 +209,10 @@ impl CpuControl {
                 }
                 ui.end_row();
             });
+    }
+
+    pub fn set_step_over_target(&mut self, target: Option<CpuAddress>) {
+        self.step_over_target = target;
     }
 
     pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {

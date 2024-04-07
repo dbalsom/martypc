@@ -2091,6 +2091,9 @@ impl Cpu {
             }
             else {
                 self.rep_init = true;
+                // Set step-over target so that we can skip long REP instructions.
+                // Normally the step behavior during REP is to perform a single iteration.
+                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
                 ExecutionResult::OkayRep
             }
         }

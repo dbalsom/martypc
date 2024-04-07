@@ -800,8 +800,8 @@ pub struct Cpu {
 
     // Breakpoints
     breakpoints: Vec<BreakPointType>,
-
     step_over_target: Option<CpuAddress>,
+    step_over_breakpoint: Option<u32>,
 
     reset_vector: CpuAddress,
 
@@ -966,7 +966,11 @@ pub enum StepResult {
     // If a call occurred, we return the address of the next instruction after the call
     // so that we can step over the call in the debugger.
     Call(CpuAddress),
+    // If we are in a REP prefixed string operation, we return the address of the next instruction
+    // so that we can step over the string operation.
+    Rep(CpuAddress),
     BreakpointHit,
+    StepOverHit,
     ProgramEnd,
 }
 
@@ -1225,6 +1229,7 @@ impl Cpu {
         self.dram_refresh_retrigger = false;
 
         self.step_over_target = None;
+        self.step_over_breakpoint = None;
         self.end_addr = 0xFFFFF;
 
         self.nx = false;
@@ -2004,6 +2009,17 @@ impl Cpu {
             }
             _ => {}
         });
+    }
+
+    pub fn set_step_over_breakpoint(&mut self, target: CpuAddress) {
+        self.step_over_breakpoint = Some(u32::from(target));
+    }
+
+    pub fn get_step_over_breakpoint(&self) -> Option<CpuAddress> {
+        match self.step_over_breakpoint {
+            Some(addr) => Some(CpuAddress::Flat(addr)),
+            None => None,
+        }
     }
 
     pub fn get_breakpoint_flag(&self) -> bool {
