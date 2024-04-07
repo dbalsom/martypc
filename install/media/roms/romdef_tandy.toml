@@ -1,8 +1,8 @@
-# romdef_glabios.toml
+# romdef_tandy.toml
 # ROM definition file for MartyPC.
 
 # ----------------------------------------------------------------------------
-# ROM definitions for IBM PCJr
+# ROM definitions for Tandy 1000
 # ----------------------------------------------------------------------------
 [[romset]]
 alias = "tandy1000_v1"
