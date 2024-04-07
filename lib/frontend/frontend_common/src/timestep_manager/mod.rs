@@ -78,10 +78,10 @@ impl CycleFrameCounter {
     pub fn update(&mut self, current: u64) -> u64 {
         self.last = self.current;
         self.current = current;
-        self.current - self.last
+        self.current.saturating_sub(self.last)
     }
     pub fn cycles_per(&self) -> u64 {
-        self.current - self.last
+        self.current.saturating_sub(self.last)
     }
 }
 
