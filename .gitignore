@@ -49,6 +49,8 @@ icon.png
 
 # Dev machines not completed or functional
 /install/configs/machines/acid88.toml
+/install/configs/machines/s100.toml
+
 
 # Files to include for distribution
 !/install/media/roms/readme.md
@@ -56,6 +58,7 @@ icon.png
 !/install/media/roms/*.toml
 !/install/martypc.toml
 
+/install/media/roms/romdef_s100.toml
 /install/media/roms/romdef_ast.toml
 
 # Frontend files
@@ -68,4 +71,5 @@ icon.png
 /.idea/workspace.xml
 /flopgen/flopgen_LICENSE.txt
 /tree.txt
+
 
