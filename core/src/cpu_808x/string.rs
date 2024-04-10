@@ -310,6 +310,9 @@ impl Cpu {
                     // CX > 0. Load ALU for decrementing CX
                     self.cycles_i(7, &[MC_JUMP, 0x112, 0x113, 0x114, MC_JUMP, 0x116, MC_RTN]);
                 }
+
+                // Mark this instruction as reentrant - step will execute a single iteration
+                self.instruction_reentrant = true;
             }
         }
 
@@ -331,7 +334,7 @@ impl Cpu {
         self.cycle_i(0x11a);
         self.biu_queue_flush();
 
-        // Rewind IP so that it points to REP instruction again afterwards.
+        // Rewind IP so that it points to REP instruction again afterward.
         // This behavior will emulate the 8088's bug with string operations and segment overrides,
         // as the next time the instruction is fetched it will be with only a single prefix.
         self.pc = self.pc.wrapping_sub(2);

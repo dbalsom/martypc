@@ -316,7 +316,14 @@ impl TokenListView {
                                 token_x = next_tab_stop;
                                 drawn = true;
                             }
-                            SyntaxFormatType::AlertLine => {
+                            SyntaxFormatType::HighlightLine(hilight) => {
+                                let color = match hilight {
+                                    HighlightType::Alert => Color32::from_rgb(64, 0, 0),
+                                    HighlightType::Warning => Color32::from_rgb(64, 64, 0),
+                                    HighlightType::Info => Color32::from_rgb(0, 64, 0),
+                                    _ => Color32::from_rgb(64, 0, 0),
+                                };
+
                                 // AlertLine should change the background of the line, thus should be at the beginning of
                                 // a vector of tokens.
                                 ui.painter().rect_filled(
@@ -325,7 +332,7 @@ impl TokenListView {
                                         max: egui::pos2(x + 1000.0, y + row_height),
                                     },
                                     egui::Rounding::ZERO,
-                                    Color32::from_rgb(64, 0, 0),
+                                    color,
                                 );
                                 drawn = true;
                             }
@@ -465,7 +472,7 @@ impl TokenListView {
                         let (token_color, token_text, token_padding) = match token {
                             SyntaxToken::MemoryAddressSeg16(_, _, s) => (Color32::LIGHT_GRAY, s, 10.0),
                             SyntaxToken::InstructionBytes(s) => (Color32::from_rgb(6, 152, 255), s, 1.0),
-                            SyntaxToken::Prefix(s) => (Color32::from_rgb(116, 228, 227), s, 2.0),
+                            SyntaxToken::Prefix(s) => (Color32::from_rgb(116, 228, 227), s, 6.0),
                             SyntaxToken::Register(s) => (Color32::from_rgb(245, 138, 52), s, 1.0),
                             SyntaxToken::OpenBracket => (Color32::from_rgb(228, 214, 116), &l_bracket, 1.0),
                             SyntaxToken::CloseBracket => (Color32::from_rgb(228, 214, 116), &r_bracket, 2.0),

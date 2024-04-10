@@ -8,19 +8,35 @@
 ### New Video Type
 
 * To go with these new systems, there is now a TGA graphics type. Again, a work in progress. 
+  * This isn't usable yet - use a CGA adapter if you want to play with the Tandy 1000. 
   * TGA adapter operates very differently from other adapter types as it does not have its own VRAM. 
   * New core functionality was required to allow mapping of MMIO reads and writes back to system memory.
 
 ### Frontend Bug Fixes / Improvements
 
-* Instruction history now shows when hardware interrupts, traps and NMIs occur
 * Fixed loading of keyboard mapping files
-* New IO Statistics display 
-  * Shows you each IO port accessed, port description, and number of reads and writes.
+* Added CPI (Cycles Per Instruction) to benchmark 
+
+### Debugger Bug Fixes / Improvements
+
+* 'Step-over' logic overhauled. Step-over cycle timeout removed. A step over may not terminate, but this is in line with 
+  other debuggers. On further feedback, dropping you off in a random location after timeout was not useful.
+  * The expected return address will be displayed in the Cpu Control window in the event a step over does not return.
+* You can now step-over `rep` string operations. 
+* Re-entrant instructions such as `rep` string operations and `hlt` will remain at top of disassembly until completed
+  and will not flood instruction history entries
+* Instruction history now shows when hardware interrupts, traps and NMIs occur (in dark red)
+* Instruction history now shows when jumps were taken (in dark green)
+* New IO Statistics display
+    * Shows you each IO port accessed, port description, and number of reads and writes.
 * Overhauled PPI viewer
+* Added tooltips to CPU Control buttons to clarify operations
 
 ### Core Bug Fixes / Improvements
 
+* CPU: Don't count individual REP iterations toward instruction counter
+* CPU: Fixed call stack tracing (recursive calls will still cause overflow)
+  * Reduced size of call stack history to avoid ridiculously tall windows
 * CPU: Fixed cycle count reporting in Instruction History
 * CPU: Added Interrupt, Trap and NMI history types
 * EGA: Can now specify EGA dipswitch in machine configuration.

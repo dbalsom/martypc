@@ -97,8 +97,16 @@ impl Cpu {
         self.step_over_target = None;
 
         self.trace_comment("EXECUTE");
-
-        // Reset trap suppression flag
+        
+        // TODO: Check optimization here. We could reset several flags at once if they were in a
+        //       bitfield.
+        // Reset instruction reentrancy flag
+        self.instruction_reentrant = false;
+        
+        // Reset jumped flag.
+        self.jumped = false;
+        
+            // Reset trap suppression flag
         self.trap_suppressed = false;
 
         // Decrement trap counters.
@@ -106,7 +114,7 @@ impl Cpu {
         self.trap_disable_delay = self.trap_disable_delay.saturating_sub(1);
 
         // If we have an NX loaded RNI cycle from the previous instruction, execute it.
-        // Otherwise wait one cycle before beginning instruction if there was no modrm.
+        // Otherwise, wait one cycle before beginning instruction if there was no modrm.
         if self.nx {
             self.trace_comment("RNI");
             self.next_mc();
@@ -126,13 +134,6 @@ impl Cpu {
 
         // Set the microcode PC for this opcode.
         self.mc_pc = MICROCODE_ADDRESS_8088[self.i.opcode as usize];
-
-        // Check if this address is a return from a CALL or INT
-        let flat_addr = self.flat_ip();
-        if self.bus.get_flags(flat_addr as usize) & MEM_RET_BIT != 0 {
-            // This address is a return address, rewind the stack
-            self.rewind_call_stack(flat_addr);
-        }
 
         // Check for REPx prefixes
         if (self.i.prefixes & OPCODE_PREFIX_REP1 != 0) || (self.i.prefixes & OPCODE_PREFIX_REP2 != 0) {
@@ -187,7 +188,7 @@ impl Cpu {
         //self.rni = true;
 
         // Keep a tally of how many Opcode 0x00's we've executed in a row. Too many likely means we've run
-        // off the rails into uninitialized memory, whereupon we halt so we can check things out.
+        // off the rails into uninitialized memory, whereupon we halt so that we can check things out.
 
         // This is now optional in the configuration file, as some test applications like acid88 won't work
         // otherwise.
@@ -196,7 +197,6 @@ impl Cpu {
 
             if self.off_rails_detection && (self.opcode0_counter > 5) {
                 // Halt permanently by clearing interrupt flag
-
                 self.clear_flag(Flag::Interrupt);
                 self.halted = true;
             }
@@ -205,6 +205,7 @@ impl Cpu {
             self.opcode0_counter = 0;
         }
 
+        // Main opcode dispatch
         match self.i.opcode {
             0x00 | 0x02 | 0x04 |  // ADD r/m8, r8 | r8, r/m8 | al, imm8
             0x08 | 0x0A | 0x0C |  // OR  r/m8, r8 | r8, r/m8 | al, imm8
@@ -296,25 +297,22 @@ impl Cpu {
                 self.pop_register16(Register16::DS, ReadWriteFlag::RNI);
                 //self.cycle();
             }
-            0x26 => {
-                // ES Segment Override Prefix
-            }
+            // ES Segment Override Prefix
+            0x26 => {}
             0x27 => {
                 // DAA — Decimal Adjust AL after Addition
                 self.cycles_nx_i(3, &[0x144, 0x145, 0x146]);
                 self.daa();
             }
-            0x2E => {
-                // CS Override Prefix
-            }
+            // CS Override Prefix
+            0x2E => {}
             0x2F => {
                 // DAS
                 self.cycles_nx_i(3, &[0x144, 0x145, 0x146]);                
                 self.das();
             }
-            0x36 => {
-                // SS Segment Override Prefix
-            }
+            // SS Segment Override Prefix
+            0x36 => {}
             0x37 => {
                 // AAA
                 self.aaa();
@@ -1413,10 +1411,11 @@ impl Cpu {
                     log::trace!("Halt at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip()));
                     self.halted = true;
                     self.biu_halt();
+                    // HLT is reentrant as step will remain in halt state until interrupt, even
+                    // when stepped.
+                    self.instruction_reentrant = true;
                 }
-                // HLT is non-microcoded, so these cycles have no pc
-                //self.biu_suspend_fetch();
-                //self.cycles(2);
+
             }
             0xF5 => {
                 // CMC - Complement (invert) Carry Flag
@@ -2067,6 +2066,9 @@ impl Cpu {
         // run when executing the instruction.
         if !self.in_rep {
             self.rep_init = false;
+        }
+        else {
+            self.instruction_reentrant = true;
         }
 
         if unhandled {

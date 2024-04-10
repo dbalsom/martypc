@@ -115,7 +115,7 @@ const QUEUE_MAX: usize = 6;
 const FETCH_DELAY: u8 = 2;
 
 const CPU_HISTORY_LEN: usize = 32;
-const CPU_CALL_STACK_LEN: usize = 128;
+const CPU_CALL_STACK_LEN: usize = 48;
 
 const INTERRUPT_VEC_LEN: usize = 4;
 const INTERRUPT_BREAKPOINT: u8 = 1;
@@ -552,10 +552,28 @@ pub enum InterruptType {
 }
 
 pub enum HistoryEntry {
-    InstructionEntry { cs: u16, ip: u16, cycles: u16, interrupt: bool, i: Instruction },
-    InterruptEntry { cs: u16, ip: u16, cycles: u16, iv: u8 },
-    NmiEntry { cs: u16, ip: u16 },
-    TrapEntry { cs: u16, ip: u16 },
+    InstructionEntry {
+        cs: u16,
+        ip: u16,
+        cycles: u16,
+        interrupt: bool,
+        jump: bool,
+        i: Instruction,
+    },
+    InterruptEntry {
+        cs: u16,
+        ip: u16,
+        cycles: u16,
+        iv: u8,
+    },
+    NmiEntry {
+        cs: u16,
+        ip: u16,
+    },
+    TrapEntry {
+        cs: u16,
+        ip: u16,
+    },
 }
 
 #[derive(Copy, Clone)]
@@ -779,6 +797,7 @@ pub struct Cpu {
     rep_type: RepType,
 
     cycle_num: u64,
+    halt_cycles: u64,
     t_stamp: f64,
     t_step: f64,
     t_step_h: f64,
@@ -789,9 +808,11 @@ pub struct Cpu {
     instruction_count: u64,
     i: Instruction, // Currently executing instruction
     instruction_ip: u16,
+    instruction_reentrant: bool, // Is an instruction reentrant? (REP stringop, HLT)
     last_cs: u16,
     last_ip: u16,
     last_intr: bool,
+    jumped: bool,
     instruction_address: u32,
     instruction_history_on: bool,
     instruction_history: VecDeque<HistoryEntry>,
@@ -1089,7 +1110,7 @@ impl Cpu {
 
         match cpu_type {
             CpuType::Harris80C88 | CpuType::Intel8088 => {
-                cpu.queue.set_size(4);
+                cpu.queue.set_size(3);
                 cpu.fetch_size = TransferSize::Byte;
             }
             CpuType::Intel8086 => {
@@ -1196,6 +1217,7 @@ impl Cpu {
         self.iret_count = 0;
         self.instr_cycle = 0;
         self.cycle_num = 1;
+        self.halt_cycles = 0;
         self.t_stamp = 0.0;
         self.t_step = 0.00000021;
         self.t_step_h = 0.000000105;
@@ -1212,6 +1234,12 @@ impl Cpu {
         self.instruction_history.clear();
         self.call_stack.clear();
         self.int_flags = vec![0; 256];
+
+        self.instruction_reentrant = false;
+        self.last_ip = 0;
+        self.last_cs = 0;
+        self.last_intr = false;
+        self.jumped = false;
 
         self.queue_op = QueueOp::Idle;
         self.last_queue_op = QueueOp::Idle;
@@ -1269,10 +1297,28 @@ impl Cpu {
         self.pc.wrapping_sub(self.queue.len() as u16)
     }
 
+    /// Return the IP value for disassembly purposes. We wish to adjust the real value of IP in
+    /// certain circumstances, such as when a reentrant instruction is being executed. This is so
+    /// that reentrant instructions stay in the disassembly viewer until completed.
+    pub fn disassembly_ip(&self) -> u16 {
+        if self.instruction_reentrant {
+            self.pc.wrapping_sub(self.queue.len_p() as u16 + self.i.size as u16)
+        }
+        else {
+            self.pc.wrapping_sub(self.queue.len_p() as u16)
+        }
+    }
+
     /// Return the resolved flat address of CS:CORR(PC)
     #[inline]
     pub fn flat_ip(&self) -> u32 {
         Cpu::calc_linear_address(self.cs, self.ip())
+    }
+
+    /// Return the resolved flat address of CS:CORR(PC), adjusted for reentrant instructions
+    #[inline]
+    pub fn flat_ip_adjusted(&self) -> u32 {
+        Cpu::calc_linear_address(self.cs, self.disassembly_ip())
     }
 
     pub fn flat_sp(&self) -> u32 {
@@ -1846,7 +1892,7 @@ impl Cpu {
                 "ds" => self.ds,
                 "ss" => self.ss,
                 "es" => self.es,
-                "ip" => self.ip(),
+                "ip" => self.disassembly_ip(), // Use reentrant IP for disassembly
                 _ => 0,
             };
 
@@ -2049,6 +2095,7 @@ impl Cpu {
                     ip,
                     cycles: _,
                     interrupt,
+                    jump: _,
                     i,
                 } => {
                     let i_string = format!(
@@ -2078,11 +2125,14 @@ impl Cpu {
                     ip,
                     cycles,
                     interrupt,
+                    jump,
                     i,
                 } => {
-                    /*                    if *interrupt {
-                        i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
-                    }*/
+                    if *jump {
+                        i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::HighlightLine(
+                            HighlightType::Info,
+                        )));
+                    }
                     i_token_vec.push(SyntaxToken::MemoryAddressFlat(i.address, format!("{:05X}", i.address)));
                     i_token_vec.push(SyntaxToken::MemoryAddressSeg16(
                         *cs,
@@ -2095,21 +2145,27 @@ impl Cpu {
                     i_token_vec.push(SyntaxToken::Text(format!("{}", *cycles)));
                 }
                 HistoryEntry::InterruptEntry { cs, ip, cycles, iv } => {
-                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
+                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::HighlightLine(
+                        HighlightType::Alert,
+                    )));
                     i_token_vec.push(SyntaxToken::MemoryAddressFlat(0, format!("{:05}", "")));
                     i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, String::from("          ")));
                     i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "")));
                     i_token_vec.push(SyntaxToken::Text(format!("INT {:02X}", iv)));
                 }
                 HistoryEntry::NmiEntry { cs, ip } => {
-                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
+                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::HighlightLine(
+                        HighlightType::Alert,
+                    )));
                     i_token_vec.push(SyntaxToken::MemoryAddressFlat(0, format!("{:05}", "")));
                     i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, String::from("          ")));
                     i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "")));
                     i_token_vec.push(SyntaxToken::Text(String::from("NMI")));
                 }
                 HistoryEntry::TrapEntry { cs, ip } => {
-                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::AlertLine));
+                    i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::HighlightLine(
+                        HighlightType::Alert,
+                    )));
                     i_token_vec.push(SyntaxToken::MemoryAddressFlat(0, format!("{:05}", "")));
                     i_token_vec.push(SyntaxToken::MemoryAddressSeg16(*cs, *ip, String::from("          ")));
                     i_token_vec.push(SyntaxToken::InstructionBytes(format!("{:012}", "")));
@@ -2304,6 +2360,9 @@ impl Cpu {
     }
     pub fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>> {
         &self.trace_token_vec
+    }
+    pub fn get_cycle_ct(&self) -> (u64, u64) {
+        (self.cycle_num, self.halt_cycles)
     }
 
     #[cfg(feature = "cpu_validator")]

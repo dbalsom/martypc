@@ -69,6 +69,8 @@ impl CpuControl {
             ui.add_enabled_ui(pause_enabled, |ui| {
                 if ui
                     .button(egui::RichText::new("⏸").font(egui::FontId::proportional(20.0)))
+                    .on_hover_text("Pause")
+                    .on_disabled_hover_text("Pause")
                     .clicked()
                 {
                     exec_control.set_state(ExecutionState::Paused);
@@ -78,44 +80,57 @@ impl CpuControl {
             ui.add_enabled_ui(step_enabled, |ui| {
                 if ui
                     .button(egui::RichText::new("⤵").font(egui::FontId::proportional(20.0)))
+                    .on_hover_text("Step Over")
+                    .on_disabled_hover_text("Step Over")
                     .clicked()
                 {
                     exec_control.set_op(ExecutionOperation::StepOver);
                 };
 
-                /*                if ui.input(|i| i.key_pressed(egui::Key::F10)) {
+                /* Moved hotkeys to global hotkey handler.
+                if ui.input(|i| i.key_pressed(egui::Key::F10)) {
                     exec_control.set_op(ExecutionOperation::StepOver);
-                };*/
+                };
+                */
             });
 
             ui.add_enabled_ui(step_enabled, |ui| {
                 if ui
                     .button(egui::RichText::new("➡").font(egui::FontId::proportional(20.0)))
+                    .on_hover_text("Step")
+                    .on_disabled_hover_text("Step")
                     .clicked()
                 {
                     exec_control.set_op(ExecutionOperation::Step);
                 };
 
-                /*                if ui.input(|i| i.key_pressed(egui::Key::F11)) {
+                /* Moved hotkeys to global hotkey handler.
+                if ui.input(|i| i.key_pressed(egui::Key::F11)) {
                     exec_control.set_op(ExecutionOperation::Step);
-                }*/
+                }
+                */
             });
 
             ui.add_enabled_ui(run_enabled, |ui| {
                 if ui
                     .button(egui::RichText::new("▶").font(egui::FontId::proportional(20.0)))
+                    .on_hover_text("Run")
+                    .on_disabled_hover_text("Run")
                     .clicked()
                 {
                     exec_control.set_op(ExecutionOperation::Run);
                 };
 
-                /*                if ui.input(|i| i.key_pressed(egui::Key::F5)) {
+                /* Moved hotkeys to global hotkey handler.
+                if ui.input(|i| i.key_pressed(egui::Key::F5)) {
                     exec_control.set_op(ExecutionOperation::Run);
-                }*/
+                }
+                */
             });
 
             if ui
                 .button(egui::RichText::new("⟲").font(egui::FontId::proportional(20.0)))
+                .on_hover_text("Reset")
                 .clicked()
             {
                 exec_control.set_op(ExecutionOperation::Reset);

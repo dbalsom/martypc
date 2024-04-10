@@ -39,10 +39,17 @@ pub trait SyntaxTokenize {
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
+pub enum HighlightType {
+    Alert,
+    Warning,
+    Info,
+}
+
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub enum SyntaxFormatType {
     Space,
     Tab,
-    AlertLine,
+    HighlightLine(HighlightType),
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]
@@ -114,7 +121,7 @@ impl fmt::Display for SyntaxToken {
             SyntaxToken::Displacement(displacement) => write!(f, "{}", displacement),
 
             SyntaxToken::Formatter(fmt_type) => match fmt_type {
-                SyntaxFormatType::AlertLine => write!(f, ">>> "),
+                SyntaxFormatType::HighlightLine(_) => write!(f, ">>> "),
                 SyntaxFormatType::Space => write!(f, " "),
                 SyntaxFormatType::Tab => write!(f, "\t"),
             },

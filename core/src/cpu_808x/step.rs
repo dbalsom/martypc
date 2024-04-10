@@ -59,6 +59,7 @@ impl Cpu {
                 true => 1,
                 false => 5,
             };
+            self.halt_cycles += halt_cycles as u64;
             self.cycles(halt_cycles);
             return Ok((StepResult::Normal, halt_cycles));
         }
@@ -103,6 +104,12 @@ impl Cpu {
                     self.step_over_breakpoint = None;
                     return Ok((StepResult::StepOverHit, 0));
                 }
+            }
+
+            // Check if this address is a return from a CALL or INT
+            if self.bus.get_flags(instruction_address as usize) & MEM_RET_BIT != 0 {
+                // This address is a return address, rewind the stack
+                self.rewind_call_stack(instruction_address);
             }
 
             // Clear the validator cycle states from the last instruction.
@@ -185,6 +192,7 @@ impl Cpu {
             ExecutionResult::OkayJump => {
                 // A control flow instruction updated PC.
                 self.instruction_count += 1;
+                self.jumped = true;
 
                 // Perform instruction tracing, if enabled
                 if self.trace_enabled && self.trace_mode == TraceMode::Instruction {
@@ -201,7 +209,6 @@ impl Cpu {
             }
             ExecutionResult::OkayRep => {
                 // We are in a REPx-prefixed instruction.
-                self.instruction_count += 1;
 
                 // The ip will not increment until the instruction has completed, but
                 // continue to process interrupts. We passed pending_interrupt to execute
@@ -361,18 +368,25 @@ impl Cpu {
             self.validate_instruction()?;
         }
 
-        if self.instruction_history_on {
-            if self.instruction_history.len() == CPU_HISTORY_LEN {
-                self.instruction_history.pop_front();
-            }
+        let cur_intr = did_interrupt | did_nmi | did_trap;
 
-            self.instruction_history.push_back(HistoryEntry::InstructionEntry {
-                cs: self.last_cs,
-                ip: self.last_ip,
-                cycles: self.instr_cycle as u16,
-                interrupt: self.last_intr,
-                i: self.i.clone(),
-            });
+        if self.instruction_history_on {
+            // Only add non-reentrant instructions to history, unless they were interrupted.
+            // This prevents spamming the history with multiple rep string operations.
+            if !self.instruction_reentrant || cur_intr {
+                if self.instruction_history.len() == CPU_HISTORY_LEN {
+                    self.instruction_history.pop_front();
+                }
+
+                self.instruction_history.push_back(HistoryEntry::InstructionEntry {
+                    cs: self.last_cs,
+                    ip: self.last_ip,
+                    cycles: self.instr_cycle as u16,
+                    interrupt: self.last_intr,
+                    jump: self.jumped,
+                    i: self.i.clone(),
+                });
+            }
 
             if did_nmi {
                 if self.instruction_history.len() == CPU_HISTORY_LEN {
@@ -409,7 +423,7 @@ impl Cpu {
                 });
             }
 
-            self.last_intr = did_interrupt | did_nmi | did_trap;
+            self.last_intr = cur_intr;
         }
 
         Ok(step_result)

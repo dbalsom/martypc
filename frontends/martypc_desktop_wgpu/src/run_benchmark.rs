@@ -104,8 +104,8 @@ pub fn run_benchmark(
         }
     }
     let benchmark_duration = benchmark_start.elapsed();
-
     let instruction_ct = machine.cpu_instructions();
+    let (cycle_total, halt_cycles) = machine.cpu().get_cycle_ct();
 
     let cpu_factor = machine.get_cpu_factor();
     let sys_ticks = match cpu_factor {
@@ -121,13 +121,26 @@ pub fn run_benchmark(
     );
 
     println!(
+        "Cycles spent in halt state: {} ({:.4}%)",
+        halt_cycles,
+        (halt_cycles as f64 / cycle_total as f64) * 100.0
+    );
+
+    let effective_cycles = cycle_total - halt_cycles;
+
+    println!(
+        "Cycles per instruction: {:.4}",
+        effective_cycles as f64 / instruction_ct as f64
+    );
+
+    println!(
         "Effective Bus speed: {:.4} MHz",
         (sys_ticks as f64 / benchmark_duration.as_secs_f64()) / 1_000_000.0
     );
 
     println!(
         "Effective CPU speed: {:.4} MHz",
-        (cycle_total as f64 / benchmark_duration.as_secs_f64()) / 1_000_000.0
+        (effective_cycles as f64 / benchmark_duration.as_secs_f64()) / 1_000_000.0
     );
 
     println!(

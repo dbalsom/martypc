@@ -788,7 +788,7 @@ impl Machine {
     pub fn get_cpu_option(&mut self, opt: CpuOption) -> bool {
         self.cpu.get_option(opt)
     }
-
+    
     //noinspection ALL
     /// Send the specified video option to the active videocard device
     pub fn set_video_option(&mut self, opt: VideoOption) {
@@ -1186,7 +1186,7 @@ impl Machine {
             //     break;
             // }
 
-            let flat_address = self.cpu.flat_ip();
+            let flat_address = self.cpu.flat_ip_adjusted();
 
             // Match checkpoints. The first check is against a simple bit flag so that we do not 
             // need to constantly do a hash lookup.
