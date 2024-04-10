@@ -31,6 +31,9 @@
 */
 use crate::{bytequeue::*, cpu_808x::*};
 
+pub const QUEUE_SIZE: usize = 3;
+pub const QUEUE_POLICY_LEN: usize = 2;
+
 pub enum ReadWriteFlag {
     Normal,
     RNI,
@@ -195,7 +198,7 @@ impl Cpu {
 
     pub fn biu_fetch_on_queue_read(&mut self) {
         // TODO: What if queue is read during transitional state?
-        if matches!(self.biu_state_new, BiuStateNew::Idle) && self.queue.len() == 3 {
+        if matches!(self.biu_state_new, BiuStateNew::Idle) && self.queue.len() == QUEUE_POLICY_LEN {
             self.biu_change_state(BiuStateNew::Prefetch);
             //trace_print!(self, "Transitioning BIU from idle to prefetch due to queue read.");
             self.biu_schedule_fetch(3);
@@ -297,7 +300,7 @@ impl Cpu {
     }
 
     /// Schedule a prefetch. Depending on queue state, there may be Delay cycles scheduled
-    /// that begin after the inital two Scheduled cycles are complete.
+    /// that begin after the initial two Scheduled cycles are complete.
     pub fn biu_schedule_fetch(&mut self, ct: u8) {
         if let FetchState::Scheduled(_) = self.fetch_state {
             // Fetch already scheduled, do nothing
@@ -322,7 +325,8 @@ impl Cpu {
         if ct == 0 {
             // Schedule count of 0 indicates fetch after bus transfer is complete, ie, ScheduleNext
             if self.bus_status_latch == BusStatus::CodeFetch
-                && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle))
+                && (self.queue.len() == QUEUE_POLICY_LEN
+                    || (self.queue.len() == (QUEUE_POLICY_LEN - 1) && self.queue_op != QueueOp::Idle))
             {
                 self.fetch_state = FetchState::ScheduleNext;
                 self.next_fetch_state = FetchState::Delayed(3);
@@ -333,7 +337,8 @@ impl Cpu {
             };
         }
         else if self.bus_status_latch == BusStatus::CodeFetch
-            && (self.queue.len() == 3 || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle))
+            && (self.queue.len() == QUEUE_POLICY_LEN
+                || (self.queue.len() == (QUEUE_POLICY_LEN - 1) && self.queue_op != QueueOp::Idle))
         {
             self.fetch_state = FetchState::Scheduled(ct);
             self.next_fetch_state = FetchState::Delayed(3);
@@ -419,7 +424,7 @@ impl Cpu {
     */
     pub fn biu_queue_has_room(&mut self) -> bool {
         match self.cpu_type {
-            CpuType::Intel8088 | CpuType::Harris80C88 => self.queue.len() < 4,
+            CpuType::Intel8088 | CpuType::Harris80C88 => self.queue.len() < QUEUE_SIZE,
             CpuType::Intel8086 => {
                 // 8086 fetches two bytes at a time, so must be two free bytes in queue
                 self.queue.len() < 5
@@ -430,8 +435,8 @@ impl Cpu {
     /// This function handles the logic performed by the BIU on T3 of a bus transfer to
     /// potentially change BIU states.
     pub fn biu_make_biu_decision(&mut self) {
-        if (self.queue.len() == 3 && self.queue_op == QueueOp::Idle)
-            || (self.queue.len() == 2 && self.queue_op != QueueOp::Idle)
+        if (self.queue.len() == QUEUE_POLICY_LEN && self.queue_op == QueueOp::Idle)
+            || (self.queue.len() == (QUEUE_POLICY_LEN - 1) && self.queue_op != QueueOp::Idle)
         {
             self.trace_comment("THREE");
         }
