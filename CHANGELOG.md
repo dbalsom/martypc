@@ -14,6 +14,7 @@
 
 ### Frontend Bug Fixes / Improvements
 
+* Added missing overlay for dual 360k floppy configuration (thanks DragomirPazura)
 * Fixed loading of keyboard mapping files
 * Added CPI (Cycles Per Instruction) to benchmark 
 

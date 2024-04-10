@@ -125,7 +125,8 @@ name = "ibm_cga_and_mda"
 #    size = 0x60000  # 394K
 #    speed_ns = 200
 #    wait_states = 0
-    
+
+
 [[overlay]]
 name = "pcxt_2_720k_floppies"
     # Floppy disk controller
@@ -136,8 +137,20 @@ name = "pcxt_2_720k_floppies"
         [[overlay.fdc.drive]]
         type  = "720k"
         [[overlay.fdc.drive]]
-        type  = "720k"       
-    
+        type  = "720k"
+
+[[overlay]]
+name = "pcxt_2_360k_floppies"
+# Floppy disk controller
+    [overlay.fdc]
+    bus_type = "ISA"
+    type = "IbmNec"
+        # Drives connected to controller. Maximum of 4.
+        [[overlay.fdc.drive]]
+        type  = "360k"
+        [[overlay.fdc.drive]]
+        type  = "360k"
+
 [[overlay]]
 name = "pcxt_4_360k_floppies"
     # Floppy disk controller
