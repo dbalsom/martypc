@@ -137,7 +137,7 @@ impl VideoCard for CGACard {
     }
 
     /// Tick the CGA the specified number of video clock cycles.
-    fn debug_tick(&mut self, ticks: u32, cpumem: Option<&[u8]>) {
+    fn debug_tick(&mut self, ticks: u32, _cpumem: Option<&[u8]>) {
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
                 let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
@@ -191,8 +191,7 @@ impl VideoCard for CGACard {
         self.scanline
     }
 
-    /// Return whether or not to double scanlines for this video device. For CGA, this is always
-    /// true.
+    /// Return whether to double scanlines for this video device. For CGA, this is always true.
     fn get_scanline_double(&self) -> bool {
         true
     }
