@@ -1,9 +1,10 @@
 
-## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/latest) (2024-XX-XX)
+## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-04-10)
 
 ### New Machines
 
-* Added Tandy 1000 and IBM PCJr machine types and ROM definitions. These are still very much a work in progress.
+* Added Tandy 1000 and IBM PCJr machine types and ROM definitions. These are still very much a work in progress and most likely won't boot.
+  * Please do not submit issues for these machines if you choose to try them out.
 
 ### New Video Type
 
