@@ -299,7 +299,7 @@ impl Channel {
 
     pub fn set_mode(&mut self, mode: ChannelMode, rw_mode: RwMode, bcd: bool, bus: &mut BusInterface) {
         // Latch isn't cleared on mode set? (Tandy1000 BIOS checks for this)
-        self.output_latch.update(0);
+        //self.output_latch.update(0);
         self.counting_element.update(0);
 
         self.count_is_latched = false;
