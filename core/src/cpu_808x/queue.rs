@@ -138,7 +138,6 @@ impl InstructionQueue {
     }
 
     /// Flush the processor queue. This resets the queue to an empty state
-    /// with no delay flags.
     pub fn flush(&mut self) {
         self.len = 0;
         self.back = 0;
@@ -149,6 +148,10 @@ impl InstructionQueue {
     /// Convert the contents of the processor instruction queue to a hexadecimal string.
     pub fn to_string(&self) -> String {
         let mut base_str = "".to_string();
+
+        if let Some(preload) = self.preload {
+            base_str.push_str(&format!("{:02X}", preload));
+        }
 
         for i in 0..self.len {
             base_str.push_str(&format!("{:02X}", self.q[(self.back + i) % self.size]));
