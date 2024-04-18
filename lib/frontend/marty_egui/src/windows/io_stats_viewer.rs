@@ -73,11 +73,13 @@ impl IoStatsViewerControl {
 
     pub fn set_content(&mut self, ivt: Vec<Vec<SyntaxToken>>) {
         self.content = ivt;
-        self.tlv.set_capacity(self.content.len());
-        self.tlv.set_contents(
-            self.content[self.row..self.row + std::cmp::min(self.content.len(), DEFAULT_ROWS)].to_vec(),
-            self.scrolling,
-        );
+        if !self.content.is_empty() {
+            self.tlv.set_capacity(self.content.len());
+            self.tlv.set_contents(
+                self.content[self.row..self.row + std::cmp::min(self.content.len(), DEFAULT_ROWS)].to_vec(),
+                self.scrolling,
+            );
+        }
         self.scrolling = false;
     }
 }
