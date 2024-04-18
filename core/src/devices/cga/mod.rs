@@ -1278,7 +1278,9 @@ impl CGACard {
                 // Don't enable clock divisor if CRTC isn't programmed for it. This is probably
                 // not accurate and what would really happen is loss of video sync, but for the time
                 // being it keeps us from drawing screens with funky scanlines.
-                if self.crtc_horizontal_total > 55 {
+                // TODO: Come up with a better way to handle this or do hardware research to see
+                //       if 'scanline effect' happens on real CGA
+                if !self.mode_hires_gfx && self.crtc_horizontal_total > 56 {
                     self.out_of_sync = true;
                     (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
                 }
