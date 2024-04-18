@@ -1,0 +1,238 @@
+# romdef_ibm.toml
+# Main ROM definition file for MartyPC.
+#
+# You can create your own ROM definition files. MartyPC will attempt to load
+# all toml files found in the rom directory.
+# 
+# If you find ROM variants that should be here, please let me know!
+#
+# ----------------------------------------------------------------------------
+# Defining a ROM set
+# ----------------------------------------------------------------------------
+# Each [[romset]] entry defines a single ROM set.
+# MartyPC resolves ROMs required to run a specific machine configuration based
+# on the concept of "feature requests" and "feature providers".
+# For example, if you wish to run an IBM 5160 (XT) with a Xebec hard disk 
+# controller and an IBM EGA card, that machine configuration will require the
+# following feature strings:
+#  "ibm_5160"
+#  "ibm_basic"
+#  "expansion"
+#  "ibm_ega"
+#  "ibm_xebec"
+# 
+# ROM sets advertise what features they provide in their "provides" field. 
+# MartyPC will load ROM sets that provide the requested features. If more than
+# one ROM set provides the same feature, the set with the highest 'priority'
+# value will be used.
+#
+#
+# The following fiels are required for each ROM set:
+# alias    - Defines a name for this ROM set that may be referenced specifically
+#            (ie, in the rom_override config setting)
+# desc     - A human-readable string describing this ROM set.
+# priority - Breaks ties between matching, complete ROM sets (higher is better)
+# provides - An array of strings describing what features this ROM set provides
+# oem      - If true, marks the ROM set as OEM for all its features. (see below)
+# oem_for  - A list of features for which the ROM set will be marked as OEM.
+#
+# OEM selection:
+# The 'oem' and 'oem_for' fields may be used to influence ROM set priority. 
+# Setting oem = true will set the ROM as OEM for all its features.
+#
+# Using oem_for = ["feature1", "feature2"] will mark the ROM as OEM for only
+# the specified features. 
+#
+# If the 'use_oem' option in main config is set, ROMs that are marked OEM are
+# strongly preferred before any other ROM set. Currently, this is implemented
+# by a +100 offset to ROM priority per feature.
+#
+# ----------------------------------------------------------------------------
+# Other fields
+# ----------------------------------------------------------------------------
+# checkpoints - These are a list of addresses, levels and strings. When the
+#               CPU executes an instruction at the given address, the string is 
+#               logged to the console, or optionally, the notification system
+#               (depending on specified level) 
+#               This can be useful to watch the POST process. Be careful that 
+#               you don't create a checkpoint that is reached too often or you
+#               will flood the console and take a big performance hit.
+#               (you must have RUST_LOG=marty_core::cpu::debug set to see log
+#               messages)
+#               Checkpoints are implemented with memory flags so are fairly
+#               performant to set, although obviously hitting one has a 
+#               performance hit if they are logged.
+# 
+#               There are five defined 'levels', roughly analagoys to Rust log
+#               levels:
+#               0 - Error.  Intended for checkpoints you should never reach.
+#                           Will be logged as an Error.
+#               1 - Warning Intended for checkpoints you with to alert on. Will
+#                           be logged as a Warning.
+#               2 - Debug   Checkpoints you want to see normally but nothing 
+#                           special, just passing through. Will be logged as 
+#                           Debug.
+#               3 - Info    Checkpoints that are in normal control flow and
+#                           would be noisy to display always. Logged as Info.
+#               4 - Trace   Checkpoints that are in normal control flow and 
+#                           would be very noisy. Logged as Trace.
+#
+#               The default checkpoint level, if not provided, is Debug.
+#
+# patches     - When the 'trigger' address is reached, the specified bytes will
+#               be written to the specified 'addr', even if it is ROM.
+#               'addr' may be anywhere in memory.
+#
+#               A 'reset' address can be specified, that when reached will
+#               restore the original bytes at 'addr'. This is useful for
+#               patching code that is verified by CRC or checksum later.
+#               (not yet implemented)
+#
+#               ROM Patching must be enabled in the main configuration for 
+#               this to have any effect.
+#
+# reload      - Reload the ROM from disk and re-map into memory when
+#               the machine is restarted. Useful for ROM developers.
+#
+
+# ----------------------------------------------------------------------------
+# Defining a ROM entry
+# ----------------------------------------------------------------------------
+# 'rom' array:
+#
+# A ROM can be identified by either its md5 hash, in which case, filename is
+# ignored, or by filename, in which case hash is ignored. If you specify both,
+# hash takes precedence. Filename may be case-sensitive depending on operating
+# system. It is generally recommended to specify ROMs by hash, unless you are 
+# a ROM developer and are replacing the same ROM filename often.
+#
+# addr  - (REQUIRED) Specifies where the ROM should be mapped in the machine's 
+#         address space. 
+#
+# size  - (OPTIONAL) Size of the ROM. If it is present, the ROM image will
+#         be truncated to this size before being mapped.
+# 
+# org   - (OPTIONAL) Default is "Normal". Specifies the ROM organization.
+#         Valid values are:
+#          Normal   - just your standard, linear array of bytes.
+#          Reversed - bytes in the ROM image are reversed. (IBM EGA ROM)
+#          InterleavedEven - represents the even bytes in an interleaved set
+#          InterleavedOdd  - represents the odd bytes in an interleaved set
+#
+# chip  - (OPTIONAL) String identifying the chip. Variants of a ROM (different
+#         dumps, sizes, orgs, etc) may be specified by including multiple
+#         rom entries with the same "chip" string. MartyPC will use the first
+#         matching ROM of any duplicate "chip" definitions.
+#         If you don't know the official chip name you can just make up any
+#         valid string.
+
+
+# ----------------------------------------------------------------------------
+# System BIOS for IBM PCJr 
+# There was only one revision of the BIOS for IBM PCJr, not counting 3rd party
+# BIOS replacement cartridges.
+# ----------------------------------------------------------------------------
+[[romset]]
+alias = "ibm_pcjr"
+desc = "IBM 4860 PCJr"
+priority = 0
+provides = ["bios", "ibm_pcjr", "ibm_basic"]
+oem_for = ["ibm_pcjr"]
+rom = [
+    { md5 = "e698e58445afa5add5ba92d7f9761c04", addr = 0xF0000, size = 0x8000, chip = "XX1" },
+    { md5 = "1c7fa6e55d24487b5e4eb02d3c733ec8", addr = 0xF8000, size = 0x8000, chip = "ZM63" },
+]
+checkpoint = [
+    { addr = 0xF09BC, lvl = 0, desc = "Error Message" },
+    { addr = 0xF006D, lvl = 3, desc = "8088 Processor Test" },
+    { addr = 0xF00CA, lvl = 3, desc = "8255 Initialization Test" },
+    { addr = 0xF00E8, lvl = 1, desc = "8255 Register Failure" },
+    { addr = 0xF0103, lvl = 3, desc = "Video Gate Array Setup" },
+    { addr = 0xF0134, lvl = 3, desc = "ROS Checksum Test" },
+    { addr = 0xF015F, lvl = 3, desc = "Base 2K R/W Storage Test" },
+    { addr = 0xF01E8, lvl = 3, desc = "Interrupt Setup" },
+    { addr = 0xF0260, lvl = 3, desc = "8259 PIC Checkout" },
+    { addr = 0xF02A0, lvl = 3, desc = "8253 Timer Checkout" },
+    { addr = 0xF0362, lvl = 0, desc = "Timer Error" },
+    { addr = 0xF03B7, lvl = 3, desc = "CRT Attachment Test" },
+    { addr = 0xF044C, lvl = 3, desc = "VSYNC Interrupt Test" },
+    { addr = 0xF044C, lvl = 3, desc = "Video Mux Status Test" },
+    { addr = 0xF0503, lvl = 3, desc = "Memory Size Test" },
+    { addr = 0xF0603, lvl = 0, desc = "Memory Test Error" },
+    { addr = 0xF0E40, lvl = 3, desc = "Keyboard Test" },
+    { addr = 0xF0703, lvl = 3, desc = "Cassette Interface Test" },
+    { addr = 0xF0785, lvl = 3, desc = "Serial Diagnostics" },
+    { addr = 0xF07AD, lvl = 3, desc = "Hardware Interrupt Setup" },
+    { addr = 0xF07E0, lvl = 3, desc = "Expansion ROM Scan" },
+    { addr = 0xF0806, lvl = 3, desc = "Diskette Attachment Test" },
+    { addr = 0xF08E0, lvl = 3, desc = "Printer and Serial Check" },
+    { addr = 0xF1004, lvl = 1, desc = "Keyboard Read Error" },
+]
+
+# ----------------------------------------------------------------------------
+# Cartridge ROMs
+# Cartridges in raw, headerless format can be loaded here, somewhere in the 
+# PCJr's cartridge ROM window from 0xD0000-0xEFFFF. Multiple carts can be 
+# loaded, but you'll need to adjust the ROM addresses.
+# 
+# Typically, you will want to load cartridge rips (*.JRC files) using
+# MartyPC's built in file browser. This allows dual loading of carts, as well
+# as hot swapping. Carts loaded via ROM definition are static and cannot be 
+# removed.
+#
+# The functionality here is intended for testing.
+# ----------------------------------------------------------------------------
+
+[[romset]]
+alias = "pcjr_basic"
+desc = "Microsoft Cartridge Basic"
+priority = 0
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "f928ac5db13d1663c0b29d2e94697ca7", addr = 0xD0000, size = 0x8000, chip = "cart1" },
+]
+
+[[romset]]
+alias = "pcjr_crossfire"
+desc = "Crossfire"
+priority = 0
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "8cc51ba8346841148492c7d719322673", addr = 0xE0000, size = 0x4000, chip = "cart1" },
+]
+
+[[romset]]
+alias = "pcjr_riverraid"
+desc = "River Raid, Activision 1982"
+priority = 0
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "c605b7d220a6f3f8c99951fc5145e538", addr = 0xE0000, size = 0x4000, chip = "cart1" },
+]
+
+[[romset]]
+alias = "pcjr_pitfall2"
+desc = "Pitfall II"
+priority = 1
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "5cc9cb02bd3fe987a82cbd63b94dd1a7", addr = 0xE0000, size = 0x4000, chip = "cart1" },
+]
+
+[[romset]]
+alias = "pcjr_mouser"
+desc = "Mouser"
+priority = 0
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "54e1d6d8c3f24996a2620a2cfac3ff9e", addr = 0xD0000, size = 0x2000, chip = "cart1" },
+]
+
+[[romset]]
+alias = "pcjr_mineshaft"
+desc = "Mineshaft, Sierra On-Line, 1983"
+priority = 0
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "490e72bdb338feca64c42c5c17a31fdd", addr = 0xE6000, size = 0x2000, chip = "cart1" },
+]

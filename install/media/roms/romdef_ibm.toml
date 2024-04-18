@@ -322,30 +322,6 @@ checkpoint = [
     bytes = [ 0x90, 0x90, 0x90, 0x90, 0x90]
 
 # ----------------------------------------------------------------------------
-# ROM definitions for IBM PCJr
-# ----------------------------------------------------------------------------
-[[romset]]
-alias = "ibm_pcjr"
-desc = "IBM 4860 PCJr"
-priority = 0
-provides = ["bios", "ibm_pcjr"]
-oem_for = ["ibm_pcjr"]
-rom = [
-    { md5 = "e698e58445afa5add5ba92d7f9761c04", addr = 0xF0000, size = 0x8000, chip = "XX1" },
-    { md5 = "1c7fa6e55d24487b5e4eb02d3c733ec8", addr = 0xF8000, size = 0x8000, chip = "ZM63" },
-]
-checkpoint = [
-    { addr = 0xF09BC, lvl = 1, desc = "Error Message" },
-    { addr = 0xF006D, lvl = 3, desc = "8088 Processor Test" },
-    { addr = 0xF00CA, lvl = 3, desc = "8255 Initialization Test" },
-    { addr = 0xF00E8, lvl = 1, desc = "8255 Register Failure" },
-    { addr = 0xF0103, lvl = 3, desc = "Video Gate Array Setup" },
-    { addr = 0xF0134, lvl = 3, desc = "ROS Checksum Test" },
-    { addr = 0xF015F, lvl = 3, desc = "Base 2K R/W Storage Test" },
- 
-]
-
-# ----------------------------------------------------------------------------
 # Device ROMS
 # ----------------------------------------------------------------------------
 
