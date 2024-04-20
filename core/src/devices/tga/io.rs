@@ -105,6 +105,7 @@ impl IoDevice for TGACard {
             }
             else {
                 self.handle_crtc_register_write(data);
+                self.recalc_extents();
             }
         }
         else {
@@ -121,7 +122,24 @@ impl IoDevice for TGACard {
                     self.set_lp_latch()
                 }
                 TGA_VIDEO_ARRAY_ADDRESS => {
-                    self.video_array_select(data);
+                    // One of the minor differences between Tandy and PCJr:
+                    // PCJr uses a flip/flop for both address and data via 3DA.
+                    // Tandy uses 3DE as a dedicated data port.
+                    match self.subtype {
+                        VideoCardSubType::Tandy1000 => {
+                            self.video_array_select(data);
+                        }
+                        VideoCardSubType::IbmPCJr => {
+                            match self.address_flipflop {
+                                true => self.video_array_select(data),
+                                false => self.video_array_write(data),
+                            }
+                            self.address_flipflop = !self.address_flipflop;
+                        }
+                        _ => {
+                            unreachable!("TGA: Invalid subtype for TGA");
+                        }
+                    }
                 }
                 TGA_VIDEO_ARRAY_DATA => {
                     self.video_array_write(data);
@@ -135,20 +153,28 @@ impl IoDevice for TGACard {
     }
 
     fn port_list(&self) -> Vec<(String, u16)> {
-        vec![
+        let mut ports = vec![
             (String::from("TGA CRTC Address"), CRTC_REGISTER_SELECT0),
             (String::from("TGA CRTC Data"), CRTC_REGISTER0),
             (String::from("TGA CRTC Address"), CRTC_REGISTER_SELECT1),
             (String::from("TGA CRTC Data"), CRTC_REGISTER1),
             (String::from("TGA CRTC Address"), CRTC_REGISTER_SELECT2),
             (String::from("TGA CRTC Data"), CRTC_REGISTER2),
-            (String::from("TGA Mode Control Register"), CGA_MODE_CONTROL_REGISTER),
-            (String::from("TGA Color Control Register"), CGA_COLOR_CONTROL_REGISTER),
             (String::from("TGA Lightpen Latch Reset"), CGA_LIGHTPEN_LATCH_RESET),
             (String::from("TGA Lightpen Latch Set"), CGA_LIGHTPEN_LATCH_SET),
             (String::from("TGA Status Register"), CGA_STATUS_REGISTER),
-            (String::from("TGA Video Array Data"), TGA_VIDEO_ARRAY_DATA),
             (String::from("TGA Page Register"), TGA_PAGE_REGISTER),
-        ]
+        ];
+
+        // One of the minor differences between Tandy and PCJr:
+        // PCJr uses a flip/flop for both address and data via 3DA.
+        // Tandy uses 3DE as a dedicated data port.
+        if matches!(self.subtype, VideoCardSubType::Tandy1000) {
+            ports.push((String::from("TGA Mode Control Register"), CGA_MODE_CONTROL_REGISTER));
+            ports.push((String::from("TGA Color Control Register"), CGA_COLOR_CONTROL_REGISTER));
+            ports.push((String::from("TGA Video Array Data"), TGA_VIDEO_ARRAY_DATA));
+        }
+
+        ports
     }
 }

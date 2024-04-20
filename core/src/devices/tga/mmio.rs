@@ -66,28 +66,15 @@ impl MemoryMappedDevice for TGACard {
         }*/
 
         //let a_offset = (address & TGA_MEM_MASK) - TGA_MEM_ADDRESS;
-        let a_offset = address - TGA_MEM_ADDRESS;
+        let a_offset = (address - TGA_MEM_ADDRESS);
         if a_offset < TGA_MEM_SIZE {
-            // Do snow every other hchar
-            if self.cycles & 0b1000 == 0 {
-                // Save bus parameters for snow emulation
-                self.last_bus_addr = a_offset;
-                self.last_bus_value = self.mem(cpumem.unwrap())[a_offset] ^ 0xAA; // this becomes the char attribute
-                self.dirty_snow = true;
-                self.snow_char = self.mem(cpumem.unwrap())[a_offset]; // 0xDD; // this becomes the character glyph
-
-            //log::debug!("snow attr: {:08b}", self.mem[a_offset]);
-            }
-            else {
-            }
-
             trace!(
                 self,
                 "READ_U8: {:04X}:{:02X}",
                 a_offset,
-                self.mem(cpumem.unwrap())[a_offset],
+                self.cpu_mem(cpumem.unwrap())[a_offset],
             );
-            (self.mem(cpumem.unwrap())[a_offset], 0)
+            (self.cpu_mem(cpumem.unwrap())[a_offset], 0)
         }
         else {
             // Read out of range, shouldn't happen...
@@ -96,28 +83,21 @@ impl MemoryMappedDevice for TGACard {
     }
 
     fn mmio_peek_u8(&self, address: usize, cpumem: Option<&[u8]>) -> u8 {
-        let a_offset = address - TGA_MEM_ADDRESS;
+        let a_offset = (address - TGA_MEM_ADDRESS);
 
-        self.mem(cpumem.unwrap())[a_offset]
+        self.cpu_mem(cpumem.unwrap())[a_offset]
     }
 
     fn mmio_peek_u16(&self, address: usize, cpumem: Option<&[u8]>) -> u16 {
-        let a_offset = address - TGA_MEM_ADDRESS;
+        let a_offset = (address - TGA_MEM_ADDRESS);
 
-        (self.mem(cpumem.unwrap())[a_offset] as u16) << 8 | self.mem(cpumem.unwrap())[a_offset + 1] as u16
+        (self.cpu_mem(cpumem.unwrap())[a_offset] as u16) << 8 | self.cpu_mem(cpumem.unwrap())[a_offset + 1] as u16
     }
 
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, cpumem: Option<&mut [u8]>) -> u32 {
-        let a_offset = address - TGA_MEM_ADDRESS;
+        let a_offset = (address - TGA_MEM_ADDRESS);
         if a_offset < TGA_MEM_SIZE {
-            // Save bus parameters for snow emulation
-            self.last_bus_addr = a_offset;
-            self.last_bus_value = byte;
-            self.dirty_snow = true;
-            self.snow_char = self.mem(cpumem.as_ref().unwrap())[a_offset];
-
-            self.memmut(cpumem.unwrap())[a_offset] = byte;
-
+            self.cpu_memmut(cpumem.unwrap())[a_offset] = byte;
             trace!(self, "WRITE_U8: {:04X}:{:02X}", a_offset, byte);
             0
         }

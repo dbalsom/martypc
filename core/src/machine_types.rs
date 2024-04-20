@@ -146,6 +146,7 @@ impl<'de> serde::Deserialize<'de> for FloppyDriveType {
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
 pub enum FdcType {
     IbmNec,
+    IbmPCJrNec,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]

@@ -30,6 +30,7 @@
 
 */
 
+pub mod a0;
 pub mod cga;
 pub mod dipswitch;
 pub mod dma;

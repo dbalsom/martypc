@@ -1379,6 +1379,9 @@ impl Machine {
 
         if let Some(event) = device_event {
             match event {
+                DeviceEvent::NmiTransition(state) => {
+                    self.cpu.set_nmi(state);
+                }
                 DeviceEvent::InterruptUpdate(intr_counter, inter_counter_val, retrigger) => {
                     self.cpu.set_option(CpuOption::ScheduleInterrupt(
                         true,

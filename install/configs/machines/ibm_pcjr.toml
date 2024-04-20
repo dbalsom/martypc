@@ -36,16 +36,43 @@ name = "ibm_pcjr"
 type = "IbmPCJr"
 rom_set = "ibm_pcjr"
 speaker = true
-overlays = [
-    "us_modelf_keyboard",
-]
+
+    [machine.keyboard]
+    # Valid options for keyboard_type are:
+    # ModelF - This was the original 83-key keyboard shipped with the PC/XT
+    #          (More keyboard types yet to be implemented)
+    #
+    # TODO: Replace this with a 'PCJr' keyboard type as there are scancode differences
+    type = "ModelF"
+    # Keyboard layout. Used to load the appropriate keyboard translation file. 
+    # MartyPC will look for the file keyboard_XX.toml in the ./keyboard/ directory
+    # where XX is the string specified by keyboard_layout.
+    #
+    # Certain scancodes have changed their meaning since the 1980's. Your help
+    # would be appreciated in developing new translation files.
+    layout = "US"
+    # Enable typematic repeat for the emulated keyboard. Host repeat is ignored.
+    typematic = true
+    # Delay in milliseconds before typematic repeat begins.
+    typematic_delay = 500.0
+    # Delay in milliseconds between each scancode during typematic repeat.
+    typematic_rate= 50.0
 
     [machine.memory]
-    conventional.size = 0xA0000
-    conventional.wait_states = 0
+    conventional.size = 0x20000 # 128KB max. Install additional RAM via sidecars
+    conventional.wait_states = 3
 
-    # Video cards
+    # Video cards - Maximum of 1.
     [[machine.video]]
     bus_type = "Onboard"
     type = "TGA"
+    subtype = "IbmPCJr"
     clock_mode = "Default"
+
+    # Floppy disk controller
+    [machine.fdc]
+        bus_type = "Onboard"
+        type = "IbmPCJrNec"
+            # Drives connected to controller. Maximum of 1.
+            [[machine.fdc.drive]]
+            type  = "360k"

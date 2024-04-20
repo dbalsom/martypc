@@ -30,16 +30,26 @@
     display controller. This module will also support the PCJr graphics subsystem
     due to the similarities between the two systems.
 
+    Unlike the CGA, the TGA has a proper low-resolution 160x200 pixel addressable
+    mode. Thus we have three clock divisors, 1, 2 and 4 to support 640x200, 320x200
+    and 160x200 modes, respectively.  Thus the various character-related functions
+    have been renamed hchar, mchar and lchar to match.
+
 */
 
 #![allow(dead_code)]
-use super::tga::tablegen::*;
-
+use super::{tga::tablegen::*, *};
+use crate::{
+    bus::{BusInterface, DeviceRunTimeUnit},
+    device_traits::videocard::*,
+    tracelogger::TraceLogger,
+};
 use bytemuck;
 use const_format::formatcp;
+use lazy_static::lazy_static;
 use modular_bitfield::{
     bitfield,
-    prelude::{B1, B2, B3},
+    prelude::{B1, B2, B3, B4},
 };
 use std::{collections::HashMap, convert::TryInto, path::Path};
 
@@ -49,14 +59,6 @@ mod draw;
 mod mmio;
 mod tablegen;
 mod videocard;
-
-use super::*;
-
-use crate::{
-    bus::{BusInterface, DeviceRunTimeUnit},
-    device_traits::videocard::*,
-    tracelogger::TraceLogger,
-};
 
 #[derive(Copy, Clone)]
 enum RwSlotType {
@@ -95,10 +97,40 @@ pub struct TModeControlRegister {
 
 #[bitfield]
 #[derive(Copy, Clone, Debug)]
+pub struct JrModeControlRegister {
+    pub bandwidth: bool,
+    pub graphics: bool,
+    pub bw: bool,
+    pub video: bool,
+    pub fourbpp_mode: bool,
+    #[skip]
+    unused: B3,
+}
+
+#[bitfield]
+#[derive(Copy, Clone, Debug)]
+pub struct JrModeControlRegister2 {
+    #[skip]
+    reserved0: B1,
+    pub blink: bool,
+    #[skip]
+    reserved1: B1,
+    pub twobpp_mode: bool,
+    #[skip]
+    unused: B4,
+}
+
+#[bitfield]
+#[derive(Copy, Clone, Debug)]
 pub struct TPageRegister {
     pub crt_page: B3,
     pub cpu_page: B3,
     pub address_mode: B2,
+}
+
+pub enum VideoModeSize {
+    Mode16k,
+    Mode32k,
 }
 
 static DUMMY_PLANE: [u8; 1] = [0];
@@ -114,7 +146,7 @@ pub const TGA_MEM_APERTURE: usize = 0x8000; // 32Kb aperture.
 pub const TGA_MEM_SIZE: usize = 0x8000; // 32Kb vram
 pub const TGA_MEM_MASK: usize = !0x4000;
 
-pub const CGA_MODE_ENABLE_MASK: u8 = 0b1_0111;
+pub const CGA_MODE_ENABLE_MASK: u8 = 0b11_0111;
 
 // Sensible defaults for CRTC registers. A real CRTC is probably uninitialized.
 // 4/5/2023: Changed these values to 40 column mode.
@@ -134,6 +166,8 @@ const DEFAULT_CLOCK_DIVISOR: u8 = 2;
 const DEFAULT_CHAR_CLOCK: u32 = 16;
 const DEFAULT_CHAR_CLOCK_MASK: u64 = 0x0F;
 const DEFAULT_CHAR_CLOCK_ODD_MASK: u64 = 0x1F;
+
+const TGA_IRQ: u8 = 0x05;
 
 // CGA is clocked at 14.318180Mhz, which is the main clock of the entire PC system.
 // The original CGA card did not have its own crystal.
@@ -161,7 +195,7 @@ const US_PER_CLOCK: f64 = 1.0 / CGA_CLOCK;
 */
 
 // Calculate the maximum possible area of buf field (including refresh period)
-const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * CGA_HCHAR_CLOCK as u32;
+const CGA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * TGA_HCHAR_CLOCK as u32;
 const CGA_YRES_MAX: u32 = CRTC_SCANLINE_MAX;
 pub const CGA_MAX_CLOCK: usize = (CGA_XRES_MAX * CGA_YRES_MAX) as usize; // Should be 238944
 
@@ -203,6 +237,7 @@ const MODE_BW: u8 = 0b0000_0100;
 const MODE_ENABLE: u8 = 0b0000_1000;
 const MODE_HIRES_GRAPHICS: u8 = 0b0001_0000;
 const MODE_BLINKING: u8 = 0b0010_0000;
+const VMODE_4BPP: u8 = 0b0010_0000;
 
 const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
@@ -219,14 +254,16 @@ const STATUS_DISPLAY_ENABLE: u8 = 0b0000_0001;
 const STATUS_LIGHTPEN_TRIGGER_SET: u8 = 0b0000_0010;
 const STATUS_LIGHTPEN_SWITCH_STATUS: u8 = 0b0000_0100;
 const STATUS_VERTICAL_RETRACE: u8 = 0b0000_1000;
+const STATUS_VIDEO_MUX: u8 = 0b0001_0000;
 
 // Include the basic 8x9 TGA font. Technically, TGA has no character ROM, the fonts were accessed
 // from the BIOS ROM. We include the font here to reuse CGA methods.
 const TGA_FONT: &[u8] = include_bytes!("../../../../assets/tga_8by9.bin");
 const TGA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
-const CGA_HCHAR_CLOCK: u8 = 8;
-const CGA_LCHAR_CLOCK: u8 = 16;
+const TGA_HCHAR_CLOCK: u8 = 8;
+const TGA_MCHAR_CLOCK: u8 = 16;
+const TGA_LCHAR_CLOCK: u8 = 32;
 const CRTC_FONT_HEIGHT: u8 = 9;
 const CRTC_VSYNC_HEIGHT: u8 = 16;
 
@@ -349,67 +386,109 @@ const CGA_DEBUG_U64: [u64; 16] = [
 // of each effect, although it will display more than a monitor would.
 // DEBUG will show the entire display field and will enable coloring of hblank and vblank
 // periods.
-const CGA_APERTURE_CROPPED_W: u32 = 640;
-const CGA_APERTURE_CROPPED_H: u32 = 200;
-const CGA_APERTURE_CROPPED_X: u32 = 112;
-const CGA_APERTURE_CROPPED_Y: u32 = 22; // 44px when double-scanned
+const TGA_APERTURE_CROPPED_W: u32 = 640;
+const TGA_APERTURE_CROPPED_H: u32 = 200;
+const TGA_APERTURE_CROPPED_TALL_H: u32 = 225;
+const TGA_APERTURE_CROPPED_X: u32 = 112;
+const TGA_APERTURE_CROPPED_Y: u32 = 22;
+const TGA_APERTURE_CROPPED_TALL_Y: u32 = 12;
 
-const CGA_APERTURE_NORMAL_W: u32 = 704;
-const CGA_APERTURE_NORMAL_H: u32 = 224;
-const CGA_APERTURE_NORMAL_X: u32 = 80;
-const CGA_APERTURE_NORMAL_Y: u32 = 10;
+const TGA_APERTURE_ACCURATE_W: u32 = 704;
+const TGA_APERTURE_ACCURATE_H: u32 = 224;
+const TGA_APERTURE_ACCURATE_TALL_H: u32 = 236;
+const TGA_APERTURE_ACCURATE_X: u32 = 80;
+const TGA_APERTURE_ACCURATE_Y: u32 = 10;
+const TGA_APERTURE_ACCURATE_TALL_Y: u32 = 7;
 
-const CGA_APERTURE_FULL_W: u32 = 768;
-const CGA_APERTURE_FULL_H: u32 = 235;
-const CGA_APERTURE_FULL_X: u32 = 48;
-const CGA_APERTURE_FULL_Y: u32 = 1;
+const TGA_APERTURE_FULL_W: u32 = 768;
+const TGA_APERTURE_FULL_H: u32 = 235;
+const TGA_APERTURE_FULL_TALL_H: u32 = 250;
+const TGA_APERTURE_FULL_X: u32 = 48;
+const TGA_APERTURE_FULL_Y: u32 = 1;
+const TGA_APERTURE_FULL_TALL_Y: u32 = 7;
 
-const CGA_APERTURE_DEBUG_W: u32 = 912;
-const CGA_APERTURE_DEBUG_H: u32 = 262;
-const CGA_APERTURE_DEBUG_X: u32 = 0;
-const CGA_APERTURE_DEBUG_Y: u32 = 0;
+const TGA_APERTURE_DEBUG_W: u32 = 912;
+const TGA_APERTURE_DEBUG_H: u32 = 262;
+const TGA_APERTURE_DEBUG_X: u32 = 0;
+const TGA_APERTURE_DEBUG_Y: u32 = 0;
 
-const CGA_APERTURES: [DisplayAperture; 4] = [
-    // 14Mhz CROPPED aperture
-    DisplayAperture {
-        w: CGA_APERTURE_CROPPED_W,
-        h: CGA_APERTURE_CROPPED_H,
-        x: CGA_APERTURE_CROPPED_X,
-        y: CGA_APERTURE_CROPPED_Y,
-        debug: false,
-    },
-    // 14Mhz ACCURATE aperture
-    DisplayAperture {
-        w: CGA_APERTURE_NORMAL_W,
-        h: CGA_APERTURE_NORMAL_H,
-        x: CGA_APERTURE_NORMAL_X,
-        y: CGA_APERTURE_NORMAL_Y,
-        debug: false,
-    },
-    // 14Mhz FULL aperture
-    DisplayAperture {
-        w: CGA_APERTURE_FULL_W,
-        h: CGA_APERTURE_FULL_H,
-        x: CGA_APERTURE_FULL_X,
-        y: CGA_APERTURE_FULL_Y,
-        debug: false,
-    },
-    // 14Mhz DEBUG aperture
-    DisplayAperture {
-        w: CGA_APERTURE_DEBUG_W,
-        h: CGA_APERTURE_DEBUG_H,
-        x: 0,
-        y: 0,
-        debug: true,
-    },
+const TGA_APERTURES: [[DisplayAperture; 4]; 2] = [
+    [
+        // 14Mhz CROPPED aperture
+        DisplayAperture {
+            w: TGA_APERTURE_CROPPED_W,
+            h: TGA_APERTURE_CROPPED_H,
+            x: TGA_APERTURE_CROPPED_X,
+            y: TGA_APERTURE_CROPPED_Y,
+            debug: false,
+        },
+        // 14Mhz ACCURATE aperture
+        DisplayAperture {
+            w: TGA_APERTURE_ACCURATE_W,
+            h: TGA_APERTURE_ACCURATE_H,
+            x: TGA_APERTURE_ACCURATE_X,
+            y: TGA_APERTURE_ACCURATE_Y,
+            debug: false,
+        },
+        // 14Mhz FULL aperture
+        DisplayAperture {
+            w: TGA_APERTURE_FULL_W,
+            h: TGA_APERTURE_FULL_H,
+            x: TGA_APERTURE_FULL_X,
+            y: TGA_APERTURE_FULL_Y,
+            debug: false,
+        },
+        // 14Mhz DEBUG aperture
+        DisplayAperture {
+            w: TGA_APERTURE_DEBUG_W,
+            h: TGA_APERTURE_DEBUG_H,
+            x: 0,
+            y: 0,
+            debug: true,
+        },
+    ],
+    [
+        // 14Mhz CROPPED TALL aperture
+        DisplayAperture {
+            w: TGA_APERTURE_CROPPED_W,
+            h: TGA_APERTURE_CROPPED_TALL_H,
+            x: TGA_APERTURE_CROPPED_X,
+            y: TGA_APERTURE_CROPPED_TALL_Y,
+            debug: false,
+        },
+        // 14Mhz ACCURATE TALL aperture
+        DisplayAperture {
+            w: TGA_APERTURE_ACCURATE_W,
+            h: TGA_APERTURE_ACCURATE_TALL_H,
+            x: TGA_APERTURE_ACCURATE_X,
+            y: TGA_APERTURE_ACCURATE_TALL_Y,
+            debug: false,
+        },
+        // 14Mhz FULL TALL aperture
+        DisplayAperture {
+            w: TGA_APERTURE_FULL_W,
+            h: TGA_APERTURE_FULL_H,
+            x: TGA_APERTURE_FULL_X,
+            y: TGA_APERTURE_FULL_TALL_Y,
+            debug: false,
+        },
+        // 14Mhz DEBUG aperture
+        DisplayAperture {
+            w: TGA_APERTURE_DEBUG_W,
+            h: TGA_APERTURE_DEBUG_H,
+            x: 0,
+            y: 0,
+            debug: true,
+        },
+    ],
 ];
 
-const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", CGA_APERTURE_CROPPED_W, CGA_APERTURE_CROPPED_H);
-const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", CGA_APERTURE_NORMAL_W, CGA_APERTURE_NORMAL_H);
-const FULL_STRING: &str = &formatcp!("Full: {}x{}", CGA_APERTURE_FULL_W, CGA_APERTURE_FULL_H);
-const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", CGA_APERTURE_DEBUG_W, CGA_APERTURE_DEBUG_H);
+const CROPPED_STRING: &str = &formatcp!("Cropped: {}x{}", TGA_APERTURE_CROPPED_W, TGA_APERTURE_CROPPED_H);
+const ACCURATE_STRING: &str = &formatcp!("Accurate: {}x{}", TGA_APERTURE_ACCURATE_W, TGA_APERTURE_ACCURATE_H);
+const FULL_STRING: &str = &formatcp!("Full: {}x{}", TGA_APERTURE_FULL_W, TGA_APERTURE_FULL_H);
+const DEBUG_STRING: &str = &formatcp!("Debug: {}x{}", TGA_APERTURE_DEBUG_W, TGA_APERTURE_DEBUG_H);
 
-const CGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
+const TGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     DisplayApertureDesc {
         name: CROPPED_STRING,
         aper_enum: DisplayApertureType::Cropped,
@@ -428,7 +507,7 @@ const CGA_APERTURE_DESCS: [DisplayApertureDesc; 4] = [
     },
 ];
 
-const CGA_DEFAULT_APERTURE: usize = 0;
+const TGA_DEFAULT_APERTURE: usize = 0;
 
 macro_rules! trace {
     ($self:ident, $($t:tt)*) => {{
@@ -452,9 +531,11 @@ macro_rules! trace_regs {
     };
 }
 
+use crate::devices::pic::Pic;
 pub(crate) use trace_regs;
 
 pub struct TGACard {
+    subtype: VideoCardSubType,
     debug: bool,
     debug_draw: bool,
     cycles: u64,
@@ -485,6 +566,7 @@ pub struct TGACard {
     mode_hires_gfx: bool,
     mode_hires_txt: bool,
     mode_blinking: bool,
+    mode_4bpp: bool,
     cc_palette: usize,
     cc_altcolor: u8,
     cc_overscan_color: u8,
@@ -598,14 +680,25 @@ pub struct TGACard {
     lightpen_addr:  usize,
 
     // TGA stuff
+    do_vsync: bool,
+    intr: bool,
+    last_intr: bool,
+    intr_enabled: bool,
     video_array_address: usize,
     palette_mask: u8,
     border_color: u8,
-    mode_control: TModeControlRegister,
+    t_mode_control: TModeControlRegister,
+    jr_mode_control: JrModeControlRegister,
+    jr_mode_control2: JrModeControlRegister2,
+    mode_size: VideoModeSize,
     palette_registers: [u8; 16],
     page_register: TPageRegister,
-    page_offset: usize,
+    cpu_page_offset: usize,
+    crt_page_offset: usize,
     page_size: usize,
+    address_flipflop: bool,
+    a0: u8,
+    aperture_base: usize,
 }
 
 #[derive(Debug)]
@@ -630,16 +723,16 @@ pub enum CRTCRegister {
     LightPenPositionL,
 }
 
-// CGA implementation of Default for DisplayExtents.
+// TGA implementation of Default for DisplayExtents.
 // Each videocard implementation should implement sensible defaults.
-// In CGA's case we know the maximum field size and thus row_stride.
-trait CgaDefault {
+// In TGA's case we know the maximum field size and thus row_stride.
+trait TgaDefault {
     fn default() -> Self;
 }
-impl CgaDefault for DisplayExtents {
+impl TgaDefault for DisplayExtents {
     fn default() -> Self {
         Self {
-            apertures: CGA_APERTURES.to_vec(),
+            apertures: TGA_APERTURES[0].to_vec(),
             field_w: CGA_XRES_MAX,
             field_h: CGA_YRES_MAX,
             row_stride: CGA_XRES_MAX as usize,
@@ -652,6 +745,7 @@ impl CgaDefault for DisplayExtents {
 impl Default for TGACard {
     fn default() -> Self {
         Self {
+            subtype: VideoCardSubType::Tandy1000,
             debug: false,
             debug_draw: true,
             cycles: 0,
@@ -682,6 +776,7 @@ impl Default for TGACard {
             mode_hires_gfx: false,
             mode_hires_txt: true,
             mode_blinking: true,
+            mode_4bpp: false,
             cc_palette: 0,
             cc_altcolor: 0,
             cc_overscan_color: 0,
@@ -781,8 +876,8 @@ impl Default for TGACard {
             //mem: vec![0xFF; TGA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
             back_buf:  1,
             front_buf: 0,
-            extents:   CgaDefault::default(),
-            aperture:  CGA_DEFAULT_APERTURE,
+            extents:   TgaDefault::default(),
+            aperture:  TGA_DEFAULT_APERTURE,
 
             //buf: vec![vec![0; (CGA_XRES_MAX * CGA_YRES_MAX) as usize]; 2],
 
@@ -803,23 +898,42 @@ impl Default for TGACard {
             lightpen_addr:  0,
 
             // TGA stuff
+            do_vsync: false,
+            intr: false,
+            last_intr: false,
+            intr_enabled: true,
             video_array_address: 0x01,
             palette_mask: 0,
             border_color: 0,
-            mode_control: TModeControlRegister::new(),
+            t_mode_control: TModeControlRegister::new(),
+            jr_mode_control: JrModeControlRegister::new(),
+            jr_mode_control2: JrModeControlRegister2::new(),
+            mode_size: VideoModeSize::Mode16k,
             palette_registers: [0; 16],
             page_register: TPageRegister::new(),
-            page_offset: 0,
+            cpu_page_offset: 0,
+            crt_page_offset: 0,
             page_size: 0x8000,
+            address_flipflop: true,
+            a0: 0,
+            aperture_base: 0,
         }
     }
 }
 
 impl TGACard {
-    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, _video_frame_debug: bool) -> Self {
-        let mut cga = Self::default();
+    pub fn new(
+        subtype: VideoCardSubType,
+        trace_logger: TraceLogger,
+        clock_mode: ClockingMode,
+        _video_frame_debug: bool,
+    ) -> Self {
+        let mut cga = TGACard {
+            subtype,
+            trace_logger,
+            ..Self::default()
+        };
 
-        cga.trace_logger = trace_logger;
         //cga.debug = video_frame_debug;
 
         if let ClockingMode::Default = clock_mode {
@@ -832,13 +946,14 @@ impl TGACard {
         cga
     }
 
-    /// Reset CGA state (on reboot, for example)
+    /// Reset TGA state (on reboot, for example)
     fn reset_private(&mut self) {
         let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
 
         // Save non-default values
         *self = Self {
             debug: self.debug,
+            subtype: self.subtype,
             clock_mode: self.clock_mode,
             enable_snow: self.enable_snow,
             frame_count: self.frame_count, // Keep frame count as to not confuse frontend
@@ -846,6 +961,17 @@ impl TGACard {
             extents: self.extents.clone(),
 
             ..Self::default()
+        }
+    }
+
+    #[inline(always)]
+    pub fn set_a0(&mut self, byte: u8) {
+        self.a0 = byte & 0x0F;
+        if matches!(self.subtype, VideoCardSubType::Tandy1000) {
+            // A0 register bits 0-3 specify the video aperture location in increments of 64K,
+            // The aperture can be put anywhere in the 1MB address space, but of course putting
+            // it outside existing RAM would not be very useful.
+            self.aperture_base = (self.a0 as usize) << 16;
         }
     }
 
@@ -928,7 +1054,7 @@ impl TGACard {
     /// until we are back in phase with the character clock.
     #[inline]
     fn calc_cycles_owed(&mut self) -> u32 {
-        if self.ticks_advanced % CGA_LCHAR_CLOCK as u32 > 0 {
+        if self.ticks_advanced % TGA_MCHAR_CLOCK as u32 > 0 {
             // We have advanced the CGA card out of phase with the character clock. Count
             // how many pixel clocks we need to tick by to be back in phase.
             ((!self.cycles + 1) & 0x0F) as u32
@@ -1250,45 +1376,113 @@ impl TGACard {
             self.clock_pending = true;
         }
 
-        self.mode_hires_txt = self.mode_byte & MODE_HIRES_TEXT != 0;
-        self.mode_graphics = self.mode_byte & MODE_GRAPHICS != 0;
-        self.mode_bw = self.mode_byte & MODE_BW != 0;
-        self.mode_enable = self.mode_byte & MODE_ENABLE != 0;
-        self.mode_hires_gfx = self.mode_byte & MODE_HIRES_GRAPHICS != 0;
-        self.mode_blinking = self.mode_byte & MODE_BLINKING != 0;
+        match self.subtype {
+            VideoCardSubType::IbmPCJr => {
+                self.mode_hires_txt = !self.jr_mode_control.graphics() && self.jr_mode_control.bandwidth();
+                self.mode_graphics = self.jr_mode_control.graphics();
+                self.mode_bw = self.jr_mode_control.bw();
+                self.mode_enable = self.jr_mode_control.video();
+                self.mode_hires_gfx = self.jr_mode_control.graphics() && self.jr_mode_control.bandwidth();
+                self.mode_blinking = self.jr_mode_control2.blink();
 
-        self.vmws = 2;
+                // Use color control register value for overscan unless high-res graphics mode,
+                // in which case overscan must be black (0).
+                self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.border_color };
 
-        // Use color control register value for overscan unless high res graphics mode,
-        // in which case overscan must be black (0).
-        self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.cc_altcolor };
+                // Reinterpret the CC register based on new mode.
+                self.update_palette();
 
-        // Reinterpret the CC register based on new mode.
-        self.update_palette();
+                // Attempt to update clock.
+                self.update_clock();
 
-        // Attempt to update clock.
-        self.update_clock();
-
-        // Updated mask to exclude enable bit in mode calculation.
-        // "Disabled" isn't really a video mode, it just controls whether
-        // the CGA card outputs video at a given moment. This can be toggled on
-        // and off during a single frame, such as done in VileR's fontcmp.com
-        self.display_mode = match self.mode_byte & CGA_MODE_ENABLE_MASK {
-            0b0_0100 => DisplayMode::Mode0TextBw40,
-            0b0_0000 => DisplayMode::Mode1TextCo40,
-            0b0_0101 => DisplayMode::Mode2TextBw80,
-            0b0_0001 => DisplayMode::Mode3TextCo80,
-            0b0_0011 => DisplayMode::ModeTextAndGraphicsHack,
-            0b0_0010 => DisplayMode::Mode4LowResGraphics,
-            0b0_0110 => DisplayMode::Mode5LowResAltPalette,
-            0b1_0110 => DisplayMode::Mode6HiResGraphics,
-            0b1_0010 => DisplayMode::Mode7LowResComposite,
-            _ => {
-                trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
-                log::warn!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
-                DisplayMode::Mode3TextCo80
+                // Synthesize a virtual mode byte
+                let mut vmode_byte = 0;
+                if self.mode_hires_txt {
+                    vmode_byte |= MODE_HIRES_TEXT;
+                }
+                if self.mode_graphics {
+                    vmode_byte |= MODE_GRAPHICS;
+                }
+                if self.mode_bw {
+                    vmode_byte |= MODE_BW;
+                }
+                if self.mode_enable {
+                    vmode_byte |= MODE_ENABLE;
+                }
+                if self.mode_hires_gfx {
+                    vmode_byte |= MODE_HIRES_GRAPHICS;
+                }
+                if self.mode_4bpp {
+                    // Replaces blinking bit
+                    vmode_byte |= VMODE_4BPP;
+                }
+                self.display_mode = match self.mode_byte & CGA_MODE_ENABLE_MASK {
+                    0b00_0100 => DisplayMode::Mode0TextBw40,
+                    0b00_0000 => DisplayMode::Mode1TextCo40,
+                    0b00_0101 => DisplayMode::Mode2TextBw80,
+                    0b00_0001 => DisplayMode::Mode3TextCo80,
+                    0b00_0011 => DisplayMode::ModeTextAndGraphicsHack,
+                    0b00_0010 => DisplayMode::Mode4LowResGraphics,
+                    0b00_0110 => DisplayMode::Mode5LowResAltPalette,
+                    0b01_0110 => DisplayMode::Mode6HiResGraphics,
+                    0b01_0010 => DisplayMode::Mode6HiResGraphics,
+                    0b10_0010 => DisplayMode::Mode8LowResGraphics16,
+                    _ => {
+                        trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                        log::warn!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                        DisplayMode::Mode3TextCo80
+                    }
+                };
             }
-        };
+            VideoCardSubType::Tandy1000 => {
+                self.mode_hires_txt = self.mode_byte & MODE_HIRES_TEXT != 0;
+                self.mode_graphics = self.mode_byte & MODE_GRAPHICS != 0;
+                self.mode_bw = self.mode_byte & MODE_BW != 0;
+                self.mode_enable = self.mode_byte & MODE_ENABLE != 0;
+                self.mode_hires_gfx = self.mode_byte & MODE_HIRES_GRAPHICS != 0;
+                self.mode_blinking = self.mode_byte & MODE_BLINKING != 0;
+
+                // Use color control register value for overscan unless high-res graphics mode,
+                // in which case overscan must be black (0).
+                self.cc_overscan_color = if self.mode_hires_gfx { 0 } else { self.border_color };
+
+                // Reinterpret the CC register based on new mode.
+                self.update_palette();
+
+                // Attempt to update clock.
+                self.update_clock();
+
+                let mut vmode_byte = self.mode_byte;
+                if self.mode_4bpp {
+                    // Replaces blinking bit
+                    vmode_byte |= VMODE_4BPP;
+                }
+                // Updated mask to exclude the enable bit in mode calculation.
+                // "Disabled" isn't really a video mode, it just controls whether
+                // the CGA card outputs video at a given moment. This can be toggled on
+                // and off during a single frame, such as done in VileR's fontcmp.com
+                self.display_mode = match vmode_byte & CGA_MODE_ENABLE_MASK {
+                    0b00_0100 => DisplayMode::Mode0TextBw40,
+                    0b00_0000 => DisplayMode::Mode1TextCo40,
+                    0b00_0101 => DisplayMode::Mode2TextBw80,
+                    0b00_0001 => DisplayMode::Mode3TextCo80,
+                    0b00_0011 => DisplayMode::ModeTextAndGraphicsHack,
+                    0b00_0010 => DisplayMode::Mode4LowResGraphics,
+                    0b00_0110 => DisplayMode::Mode5LowResAltPalette,
+                    0b01_0110 => DisplayMode::Mode6HiResGraphics,
+                    0b01_0010 => DisplayMode::Mode6HiResGraphics,
+                    0b10_0010 => DisplayMode::Mode8LowResGraphics16,
+                    _ => {
+                        trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                        log::warn!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
+                        DisplayMode::Mode3TextCo80
+                    }
+                };
+            }
+            _ => {
+                panic!("Bad TGA subtype!");
+            }
+        }
 
         trace_regs!(self);
         trace!(
@@ -1315,38 +1509,86 @@ impl TGACard {
     /// our logic.
     #[inline]
     fn update_clock(&mut self) {
-        if self.clock_pending && (self.cycles & 0x0F == 0) {
-            // Clock divisor is 1 in high-res text mode, 2 in all other modes
-            // We draw pixels twice when clock divisor is 2 to simulate slower scanning.
+        match self.subtype {
+            VideoCardSubType::IbmPCJr => {
+                self.update_clock_tandy();
+            }
+            VideoCardSubType::Tandy1000 => {
+                self.update_clock_tandy();
+            }
+            _ => {
+                panic!("Bad TGA subtype!");
+            }
+        }
+    }
+
+    #[inline]
+    fn update_clock_tandy(&mut self) {
+        // Wait to update clock until we are in phase with LCHAR.
+        if self.clock_pending && (self.cycles & 0x1F == 0) {
+            // Clock divisor is 1 in high-res text mode, 2 in medium-res graphics mode,
+            // and 4 in low-res graphics mode.
+            // We draw pixels twice when clock divisor is 2 and four times when clock divisor is 4.
             (
                 self.clock_divisor,
                 self.char_clock,
                 self.char_clock_mask,
                 self.char_clock_odd_mask,
-            ) = if self.mode_hires_txt {
-                (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
-            }
-            else {
-                (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
+                self.mode_size,
+            ) = match (self.mode_graphics, self.mode_hires_txt, self.mode_4bpp) {
+                (false, false, false) => {
+                    // Low-res text mode (40x25)
+                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
+                }
+                (false, false, true) => {
+                    log::warn!("Invalid graphics mode configured. Clock divisor guessed (2)");
+                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
+                }
+                (false, true, false) => {
+                    // High-res text mode (80x25)
+                    (1, TGA_HCHAR_CLOCK as u32, 0x07, 0x0F, VideoModeSize::Mode16k)
+                }
+                (false, true, true) => {
+                    // High-res bit in 4bpp mode toggles between clock divisors 2 and 4.
+                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
+                }
+                (true, false, false) => {
+                    // Medium-res 320x200, 2bpp graphics.
+                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode16k)
+                }
+                (true, false, true) => {
+                    // Low-res 160x200, 4bpp graphics.
+                    (4, TGA_LCHAR_CLOCK as u32, 0x1F, 0x3F, VideoModeSize::Mode16k)
+                }
+                (true, true, false) => {
+                    // High-res 620x200, 2bpp graphics.
+                    (1, TGA_HCHAR_CLOCK as u32, 0x07, 0x0F, VideoModeSize::Mode32k)
+                }
+                (true, true, true) => {
+                    // Medium-res 320x200, 4bpp graphics.
+                    (2, TGA_MCHAR_CLOCK as u32, 0x0F, 0x1F, VideoModeSize::Mode32k)
+                }
             };
 
             self.clock_pending = false;
         }
     }
 
+    #[inline]
+    fn update_clock_pcjr(&mut self) {}
+
     /// Handle a write to the CGA mode register. Defer the mode change if it would change
     /// from graphics mode to text mode or back (Need to measure this on real hardware)
     fn handle_mode_register(&mut self, mode_byte: u8) {
+        self.mode_byte = mode_byte;
         if self.is_deferred_mode_change(mode_byte) {
             // Latch the mode change and mark it pending. We will change the mode on next hsync.
             log::trace!("deferring mode change.");
             self.mode_pending = true;
-            self.mode_byte = mode_byte;
         }
         else {
             // We're not changing from text to graphics or vice versa, so we do not have to
             // defer the update.
-            self.mode_byte = mode_byte;
             self.update_mode();
         }
     }
@@ -1354,42 +1596,13 @@ impl TGACard {
     /// Handle a read from the CGA status register. This register has bits to indicate whether
     /// we are in vblank or if the display is in the active display area (enabled)
     fn handle_status_register_read(&mut self) -> u8 {
-        // Bit 1 of the status register is set when the CGA can be safely written to without snow.
-        // It is tied to the 'Display Enable' line from the CGA card, inverted.
-        // Thus, it will be 1 when the CGA card is not currently scanning, IE during both horizontal
-        // and vertical refresh.
-
-        // https://www.vogons.org/viewtopic.php?t=47052
-
-        // Addendum: The DE line is from the MC6845, and actually includes anything outside the
-        // active display area. This gives a much wider window to hit for scanline wait loops.
-
-        let mut byte = if self.in_crtc_vblank {
-            0xF0 | STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
-        }
-        else if !self.in_display_area {
-            0xF0 | STATUS_DISPLAY_ENABLE
-        }
-        else {
-            if self.vborder || self.hborder {
-                log::warn!("in border but returning 0");
-            }
-            0xF0
-        };
+        self.status_reads += 1;
 
         if self.in_crtc_vblank {
             trace!(self, "in vblank: vsc: {:03}", self.vsc_c3h);
         }
 
-        self.status_reads += 1;
-
-        if self.lightpen_latch {
-            //log::debug!("returning status read with trigger set");
-            byte |= STATUS_LIGHTPEN_TRIGGER_SET;
-        }
-
-        // This bit is logically reversed, i.e., 0 is switch on
-        //byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+        let mut byte = self.calc_status_register();
 
         trace_regs!(self);
         trace!(
@@ -1399,6 +1612,46 @@ impl TGACard {
             self.in_display_area,
             self.in_crtc_vblank
         );
+
+        // The PCJr's vga address flip-flop is reset on status register reads.
+        self.address_flipflop = true;
+
+        byte
+    }
+
+    fn calc_status_register(&self) -> u8 {
+        // Bit 1 of the status register is tied to the 'Display Enable' line from the 6845, inverted.
+        // Thus, it will be 1 when the TGA card is not currently scanning, IE during both horizontal
+        // and vertical refresh.
+        // https://www.vogons.org/viewtopic.php?t=47052
+
+        // Base register value is now 0xE0 to make room for mux bit on TGA
+        let mut byte = if self.in_crtc_vblank {
+            //0xF0 | STATUS_VERTICAL_RETRACE | STATUS_DISPLAY_ENABLE
+            0xE0 | STATUS_VERTICAL_RETRACE
+        }
+        else if self.in_display_area {
+            0xE1
+        }
+        else {
+            0xE0
+        };
+
+        if self.lightpen_latch {
+            //log::debug!("returning status read with trigger set");
+            byte |= STATUS_LIGHTPEN_TRIGGER_SET;
+        }
+
+        // This bit is logically reversed, i.e., 0 is switch on
+        //byte |= STATUS_LIGHTPEN_SWITCH_STATUS;
+
+        // Video MUX bits for TGA/PCJr.
+        // The PCJr POST tests the mux bit by drawing a line of full-block characters to the top row
+        // of the screen. We can essentially fake the mux bits by returning 1 when we are in the top
+        // 8 scanlines.
+        if self.beam_y < 8 {
+            byte |= STATUS_VIDEO_MUX;
+        }
 
         byte
     }
@@ -1416,13 +1669,11 @@ impl TGACard {
         if self.mode_bw && self.mode_graphics && !self.mode_hires_gfx {
             self.cc_palette = 4; // Select Red, Cyan and White palette (undocumented)
         }
+        else if self.cc_register & CC_PALETTE_BIT != 0 {
+            self.cc_palette = 2; // Select Magenta, Cyan, White palette
+        }
         else {
-            if self.cc_register & CC_PALETTE_BIT != 0 {
-                self.cc_palette = 2; // Select Magenta, Cyan, White palette
-            }
-            else {
-                self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
-            }
+            self.cc_palette = 0; // Select Red, Green, 'Yellow' palette
         }
 
         if self.cc_register & CC_BRIGHT_BIT != 0 {
@@ -1453,14 +1704,21 @@ impl TGACard {
     }
 
     /// Return the bit value at (col,row) of the given font glyph
-    fn get_glyph_bit(glyph: u8, col: u8, row: u8) -> bool {
-        debug_assert!(col < CGA_HCHAR_CLOCK);
-        //debug_assert!(row < CRTC_CHAR_CLOCK);
+    fn get_glyph_bit(glyph: u8, mut col: u8, row: u8) -> bool {
+        debug_assert!(col < TGA_HCHAR_CLOCK);
+        if TGACard::is_box_char(glyph) {
+            col = if col > 7 { 7 } else { col };
+        }
         let row_masked = row & 0x7;
 
         // Calculate byte offset
         let glyph_offset: usize = (row_masked as usize * TGA_FONT_SPAN) + glyph as usize;
         TGA_FONT[glyph_offset] & (0x01 << (7 - col)) != 0
+    }
+
+    #[inline]
+    pub fn is_box_char(glyph: u8) -> bool {
+        (0xB0u8..=0xDFu8).contains(&glyph)
     }
 
     /// Set the character attributes for the current character.
@@ -1478,8 +1736,8 @@ impl TGACard {
         }
         else {
             // No snow
-            self.cur_char = self.mem(cpu_mem)[addr];
-            self.cur_attr = self.mem(cpu_mem)[addr + 1];
+            self.cur_char = self.crt_mem(cpu_mem)[addr];
+            self.cur_attr = self.crt_mem(cpu_mem)[addr + 1];
         }
 
         self.cur_fg = self.cur_attr & 0x0F;
@@ -1504,11 +1762,14 @@ impl TGACard {
     /// Get the 64-bit value representing the specified row of the specified character
     /// glyph in high-resolution text mode.
     #[inline]
-    pub fn get_hchar_glyph_row(&self, glyph: usize, row: usize) -> u64 {
+    pub fn get_hchar_glyph_row(&self, glyph: usize, mut row: usize) -> u64 {
         if self.cur_blink && !self.blink_state {
             CGA_COLORS_U64[self.cur_bg as usize]
         }
         else {
+            if TGACard::is_box_char(glyph as u8) {
+                row = if row > 7 { 7 } else { row };
+            }
             let glyph_row_base = TGA_HIRES_GLYPH_TABLE[glyph & 0xFF][row];
 
             // Combine glyph mask with foreground and background colors.
@@ -1520,12 +1781,15 @@ impl TGACard {
     /// Get a tuple of 64-bit values representing the specified row of the specified character
     /// glyph in low-resolution (40-column) mode.
     #[inline]
-    pub fn get_lchar_glyph_rows(&self, glyph: usize, row: usize) -> (u64, u64) {
+    pub fn get_mchar_glyph_rows(&self, glyph: usize, mut row: usize) -> (u64, u64) {
         if self.cur_blink && !self.blink_state {
             let glyph = CGA_COLORS_U64[self.cur_bg as usize];
             (glyph, glyph)
         }
         else {
+            if TGACard::is_box_char(glyph as u8) {
+                row = if row > 7 { 7 } else { row };
+            }
             let glyph_row_base_0 = TGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][0][row];
             let glyph_row_base_1 = TGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][1][row];
 
@@ -1583,9 +1847,9 @@ impl TGACard {
     pub fn get_lowres_pixel_color(&self, row: u8, col: u8, cpumem: &[u8]) -> u8 {
         let base_addr = self.get_gfx_addr(row);
 
-        let word = (self.mem(cpumem)[base_addr] as u16) << 8 | self.mem(cpumem)[base_addr + 1] as u16;
+        let word = (self.crt_mem(cpumem)[base_addr] as u16) << 8 | self.crt_mem(cpumem)[base_addr + 1] as u16;
 
-        let idx = ((word >> (CGA_LCHAR_CLOCK - (col + 1) * 2)) & 0x03) as usize;
+        let idx = ((word >> (TGA_MCHAR_CLOCK - (col + 1) * 2)) & 0x03) as usize;
 
         if idx == 0 {
             self.cc_altcolor
@@ -1598,12 +1862,20 @@ impl TGACard {
     /// Look up the low res graphics glyphs and masks for the current lo-res graphics mode
     /// byte (vma)
     #[inline]
-    pub fn get_lowres_gfx_lchar(&self, row: u8, cpumem: &[u8]) -> (&(u64, u64), &(u64, u64)) {
+    pub fn get_lowres_gfx_mchar(&self, row: u8, cpumem: &[u8]) -> (&(u64, u64), &(u64, u64)) {
         let base_addr = self.get_gfx_addr(row);
         (
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem(cpumem)[base_addr] as usize],
-            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.mem(cpumem)[base_addr + 1] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.crt_mem(cpumem)[base_addr] as usize],
+            &CGA_LOWRES_GFX_TABLE[self.cc_palette as usize][self.crt_mem(cpumem)[base_addr + 1] as usize],
         )
+    }
+
+    #[inline]
+    pub fn get_gfx_addr(&self, row: u8) -> usize {
+        match self.mode_size {
+            VideoModeSize::Mode16k => self.get_gfx_addr_16k(row),
+            VideoModeSize::Mode32k => self.get_gfx_addr_32k(row),
+        }
     }
 
     /// Calculate the byte address given the current value of vma; given that the address
@@ -1611,8 +1883,20 @@ impl TGACard {
     /// In graphics mode, the row counter determines whether address line A12 from the
     /// CRTC is set. This effectively creates a 0x2000 byte offset for odd character rows.
     #[inline]
-    pub fn get_gfx_addr(&self, row: u8) -> usize {
+    pub fn get_gfx_addr_16k(&self, row: u8) -> usize {
         let row_offset = (row as usize & 0x01) << 12;
+        let addr = (self.vma & 0x0FFF | row_offset) << 1;
+        addr
+    }
+
+    /// Calculate the byte address given the current value of vma; given that the address
+    /// programmed into the CRTC start register is interpreted by the CGA as a dword address.
+    /// In 4bpp graphics mode, the two lowest bits of the row counter determine whether how the
+    /// address lines from the CRTC are modified
+    /// This effectively creates 4 banks of video memory at 8k intervals.
+    #[inline]
+    pub fn get_gfx_addr_32k(&self, row: u8) -> usize {
+        let row_offset = (row as usize & 0x03) << 12;
         let addr = (self.vma & 0x0FFF | row_offset) << 1;
         addr
     }
@@ -1626,7 +1910,7 @@ impl TGACard {
     /// Execute one CGA character.
     pub fn tick_char(&mut self) {
 
-        // sink_cycles must be factor of 8
+        // sink_cycles must be a factor of 8
         //assert!((self.sink_cycles & 0x07) == 0);
 
         if self.sink_cycles & 0x07 != 0 {
@@ -1697,16 +1981,31 @@ impl TGACard {
 
     /// Execute a hires or lowres character clock as appropriate.
     #[inline]
-    pub fn tick_char(&mut self, cpumem: &[u8]) {
-        if self.mode_control.fourbpp_mode() {
-            self.tick_4lchar(cpumem)
+    pub fn tick_char(&mut self, pic: &mut Option<Pic>, cpumem: &[u8]) {
+        match self.clock_divisor {
+            1 => self.tick_hchar(cpumem),
+            2 => self.tick_mchar(cpumem),
+            4 => self.tick_lchar(cpumem),
+            _ => {
+                log::error!("Invalid clock divisor: {}", self.clock_divisor);
+                panic!("Invalid clock divisor: {}", self.clock_divisor);
+            }
         }
-        else if self.clock_divisor == 2 {
-            self.tick_lchar(cpumem);
+
+        if self.intr && !self.last_intr {
+            // Rising edge of INTR - raise IRQ5
+            if let Some(pic) = pic {
+                pic.request_interrupt(TGA_IRQ);
+            }
         }
-        else {
-            self.tick_hchar(cpumem);
+        else if !self.intr {
+            // Falling edge of INTR - release IRQ5
+            if let Some(pic) = pic {
+                //log::debug!("clearing irq2!");
+                pic.clear_interrupt(TGA_IRQ);
+            }
         }
+        self.last_intr = self.intr;
     }
 
     /// Execute one high resolution character clock.
@@ -1738,7 +2037,7 @@ impl TGACard {
                     self.draw_text_mode_hchar();
                 }
                 else if self.mode_hires_gfx {
-                    self.draw_hires_gfx_mode_char(cpumem);
+                    //self.draw_hires_gfx_mode_char(cpumem);
                 }
                 else {
                     self.draw_solid_hchar(self.cc_overscan_color);
@@ -1799,14 +2098,19 @@ impl TGACard {
             );
         }
 
-        self.tick_crtc_char();
+        if self.update_char_tick(cpumem) && self.intr_enabled() {
+            self.intr = true;
+        }
+        else if !self.in_crtc_vblank {
+            self.intr = false;
+        }
+
         self.char_col = 0;
-        self.set_char_addr(cpumem);
         self.update_clock();
     }
 
-    /// Execute one low resolution character clock.
-    pub fn tick_lchar(&mut self, cpumem: &[u8]) {
+    /// Execute one medium resolution (7Mhz) character clock.
+    pub fn tick_mchar(&mut self, cpumem: &[u8]) {
         // Cycles must be a factor of 16 and char_clock == 16
         assert_eq!(self.cycles & 0x0F, 0);
         assert_eq!(self.char_clock, 16);
@@ -1832,32 +2136,45 @@ impl TGACard {
         if self.rba < (CGA_MAX_CLOCK - 16) {
             if self.in_display_area {
                 // Draw current character row
-
                 if !self.mode_graphics {
-                    self.draw_text_mode_lchar();
+                    self.draw_text_mode_mchar();
                 }
                 else if self.mode_hires_gfx {
-                    self.draw_hires_gfx_mode_char(cpumem);
+                    self.draw_gfx_mode_hchar_1bpp(cpumem);
+                }
+                else if self.mode_4bpp {
+                    self.draw_gfx_mode_4bpp_mchar(cpumem);
                 }
                 else {
-                    self.draw_lowres_gfx_mode_char(cpumem);
+                    self.draw_gfx_mode_2bpp_mchar(cpumem);
                 }
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
-                if self.debug_draw {
-                    self.draw_solid_lchar(CGA_HBLANK_DEBUG_COLOR);
+                if self.debug_draw && self.mode_4bpp {
+                    self.draw_solid_4bpp_mchar(CGA_HBLANK_DEBUG_COLOR);
+                }
+                else if self.debug_draw {
+                    self.draw_solid_mchar(CGA_HBLANK_DEBUG_COLOR);
                 }
             }
             else if self.in_crtc_vblank {
                 // Draw vblank in debug color
-                if self.debug_draw {
-                    self.draw_solid_lchar(CGA_VBLANK_DEBUG_COLOR);
+                if self.debug_draw && self.mode_4bpp {
+                    self.draw_solid_4bpp_mchar(CGA_HBLANK_DEBUG_COLOR);
+                }
+                else if self.debug_draw {
+                    self.draw_solid_mchar(CGA_VBLANK_DEBUG_COLOR);
                 }
             }
             else if self.vborder | self.hborder {
                 // Draw overscan
-                self.draw_solid_lchar(self.cc_overscan_color);
+                if self.mode_4bpp {
+                    self.draw_solid_4bpp_mchar(self.cc_overscan_color);
+                }
+                else {
+                    self.draw_solid_mchar(self.cc_overscan_color);
+                }
             }
             else {
                 //log::warn!("invalid display state...");
@@ -1865,8 +2182,14 @@ impl TGACard {
         }
 
         // Update position to next pixel and character column.
-        self.beam_x += 16;
-        self.rba += 16;
+        if self.mode_4bpp {
+            self.beam_x += 4 * self.clock_divisor as u32;
+            self.rba += 4 * self.clock_divisor as usize;
+        }
+        else {
+            self.beam_x += 8 * self.clock_divisor as u32;
+            self.rba += 8 * self.clock_divisor as usize;
+        }
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
@@ -1879,20 +2202,24 @@ impl TGACard {
 
         if self.cycles & self.char_clock_mask != 0 {
             log::error!(
-                "tick_lchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
+                "tick_mchar(): calling tick_crtc_char but out of phase with cclock: cycles: {} mask: {}",
                 self.cycles,
                 self.char_clock_mask
             );
         }
 
-        self.tick_crtc_char();
-        self.set_char_addr(cpumem);
+        if self.update_char_tick(cpumem) && self.intr_enabled() {
+            self.intr = true;
+        }
+        else if !self.in_crtc_vblank {
+            self.intr = false;
+        }
         self.char_col = 0;
         self.update_clock();
     }
 
-    /// Execute one 4bpp low resolution character clock.
-    pub fn tick_4lchar(&mut self, cpumem: &[u8]) {
+    /// Execute one low-resolution (3.5Mhz) character clock. Only 4bpp graphics mode is supported.
+    pub fn tick_lchar(&mut self, cpumem: &[u8]) {
         // Cycles must be a factor of 16 and char_clock == 16
         assert_eq!(self.cycles & 0x0F, 0);
         assert_eq!(self.char_clock, 32);
@@ -1907,7 +2234,7 @@ impl TGACard {
         */
 
         if self.sink_cycles > 0 {
-            self.sink_cycles = self.sink_cycles.saturating_sub(32);
+            self.sink_cycles = self.sink_cycles.saturating_sub(16);
             return;
         }
 
@@ -1917,8 +2244,7 @@ impl TGACard {
         // Only draw if marty_render buffer address is in bounds.
         if self.rba < (CGA_MAX_CLOCK - 16) {
             if self.in_display_area {
-                // Draw current character row
-                self.draw_lowres_gfx_mode_4bpp_char(cpumem);
+                self.draw_gfx_mode_4bpp_lchar(cpumem);
             }
             else if self.in_crtc_hblank {
                 // Draw hblank in debug color
@@ -1942,8 +2268,8 @@ impl TGACard {
         }
 
         // Update position to next pixel and character column.
-        self.beam_x += 32;
-        self.rba += 32;
+        self.beam_x += 4 * self.clock_divisor as u32;
+        self.rba += 4 * self.clock_divisor as usize;
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
@@ -1962,10 +2288,30 @@ impl TGACard {
             );
         }
 
-        self.tick_crtc_char();
-        self.set_char_addr(cpumem);
+        if self.update_char_tick(cpumem) && self.intr_enabled() {
+            self.intr = true;
+        }
+        else if !self.in_crtc_vblank {
+            self.intr = false;
+        }
         self.char_col = 0;
         self.update_clock();
+    }
+
+    pub fn update_char_tick(&mut self, cpumem: &[u8]) -> bool {
+        let mut did_vsync = false;
+        self.tick_crtc_char();
+        if self.do_vsync {
+            self.do_vsync = false;
+            did_vsync = true;
+        }
+
+        self.set_char_addr(cpumem);
+        did_vsync
+    }
+
+    pub fn intr_enabled(&self) -> bool {
+        self.intr_enabled
     }
 
     /*    pub fn debug_tick2(&mut self) {
@@ -2175,7 +2521,8 @@ impl TGACard {
 
             // Implement a fixed hsync width from the monitor's perspective -
             // A wider programmed hsync width than these values shifts the displayed image to the right.
-            let hsync_target = if self.clock_divisor == 1 {
+            // in 4bpp low res mode, clock divisor is 2 but the effective character width is halved.
+            let hsync_target = if (self.clock_divisor == 1) || self.mode_4bpp {
                 std::cmp::min(10, self.crtc_sync_width)
             }
             else {
@@ -2206,6 +2553,7 @@ impl TGACard {
                         self.in_last_vblank_line = true;
                         self.vsc_c3h = 0;
                         self.do_vsync();
+                        self.do_vsync = true;
                     }
                 }
 
@@ -2421,21 +2769,49 @@ impl TGACard {
     }
 
     pub fn video_array_write(&mut self, data: u8) {
-        match self.video_array_address {
-            0x01 => {
+        match (self.video_array_address, self.subtype) {
+            (0x00, VideoCardSubType::IbmPCJr) => {
+                self.jr_mode_control = JrModeControlRegister::from_bytes([data]);
+                log::warn!(
+                    "Write to TGA(PCJr) Mode Control: {:02X} {:?}",
+                    data,
+                    self.jr_mode_control
+                );
+                self.mode_4bpp = self.jr_mode_control.fourbpp_mode();
+                self.mode_graphics = self.jr_mode_control.graphics();
+                self.mode_hires_txt = self.jr_mode_control.bandwidth();
+
+                self.mode_pending = true;
+                self.clock_pending = true;
+            }
+            (0x01, _) => {
                 // Palette Mask register
                 self.palette_mask = data & 0x0F;
             }
-            0x02 => {
+            (0x02, _) => {
                 // Border color register
                 self.border_color = data & 0x0F;
             }
-            0x03 => {
-                // Mode control register
-                self.mode_control = TModeControlRegister::from_bytes([data]);
-                log::warn!("Write to TGA Mode Control: {:02X} {:?}", data, self.mode_control);
+
+            (0x03, VideoCardSubType::Tandy1000) => {
+                // Tandy1000 Mode control register
+                self.t_mode_control = TModeControlRegister::from_bytes([data]);
+                log::warn!("Write to TGA Mode Control: {:02X} {:?}", data, self.t_mode_control);
+                self.mode_4bpp = self.t_mode_control.fourbpp_mode();
+                self.mode_pending = true;
+                self.clock_pending = true;
             }
-            0x10..=0x1F => {
+            (0x03, VideoCardSubType::IbmPCJr) => {
+                // Tandy1000 Mode control register
+                self.jr_mode_control2 = JrModeControlRegister2::from_bytes([data]);
+                log::warn!("Write to TGA Mode Control: {:02X} {:?}", data, self.jr_mode_control2);
+                self.mode_blinking = self.jr_mode_control2.blink();
+
+                self.mode_pending = true;
+                self.clock_pending = true;
+            }
+
+            (0x10..=0x1F, _) => {
                 log::debug!("Write to TGA palette register: {:02X}", data);
                 let pal_idx = self.video_array_address - 0x10;
                 self.palette_registers[pal_idx] = data & 0x0F;
@@ -2447,18 +2823,59 @@ impl TGACard {
     pub fn page_register_write(&mut self, data: u8) {
         self.page_register = TPageRegister::from_bytes([data]);
         log::debug!("TGA Page Register: {:?}", self.page_register);
+        match self.mode_size {
+            VideoModeSize::Mode16k => {
+                // Select 16K page for CPU
+                self.cpu_page_offset = self.page_register.cpu_page() as usize * 0x4000;
+            }
+            VideoModeSize::Mode32k => {
+                // Select 32K page for CPU} // Select 32K page for CPU
+                // 32K page is chosen by ignoring bit 0 of the CPU page register
+                self.cpu_page_offset = (self.page_register.cpu_page() & 0x0E) as usize * 0x4000;
+            }
+        }
 
-        self.page_offset = self.page_register.cpu_page() as usize * 0x8000; // Select 32K page for CPU
-        log::debug!("New page offset: {:05X}", self.page_offset);
+        self.crt_page_offset = self.page_register.crt_page() as usize * 0x4000; // Select 16K page for TGA
+        log::debug!(
+            "New page offsets: CPU {:05X} TGA {:05X}",
+            self.cpu_page_offset,
+            self.crt_page_offset
+        );
+    }
+
+    // Recalculate extents based on current CRTC values. This should be called after the maximum scanline address
+    // is changed, so that the screen can be enlarged for the Tandy's 8x9 character cell mode.
+    pub fn recalc_extents(&mut self) {
+        // TGA: Modify apertures for text mode if we are using 9 pixel height glyphs
+        if self.crtc_maximum_scanline_address == 8 {
+            self.extents.apertures = TGA_APERTURES[1].to_vec();
+        }
+        else {
+            self.extents.apertures = TGA_APERTURES[0].to_vec();
+        }
     }
 
     #[inline]
-    pub fn mem<'a>(&'a self, cpumem: &'a [u8]) -> &[u8] {
-        cpumem[self.page_offset..self.page_offset + self.page_size].as_ref()
+    pub fn crt_mem<'a>(&'a self, cpumem: &'a [u8]) -> &[u8] {
+        let start = self.aperture_base + self.crt_page_offset;
+        cpumem[start..start + self.page_size].as_ref()
     }
 
     #[inline]
-    pub fn memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &mut [u8] {
-        cpumem[self.page_offset..self.page_offset + self.page_size].as_mut()
+    pub fn crt_memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &mut [u8] {
+        let start = self.aperture_base + self.crt_page_offset;
+        cpumem[start..start + self.page_size].as_mut()
+    }
+
+    #[inline]
+    pub fn cpu_mem<'a>(&'a self, cpumem: &'a [u8]) -> &[u8] {
+        let start = self.aperture_base + self.cpu_page_offset;
+        cpumem[start..start + self.page_size].as_ref()
+    }
+
+    #[inline]
+    pub fn cpu_memmut<'a>(&'a self, cpumem: &'a mut [u8]) -> &mut [u8] {
+        let start = self.aperture_base + self.cpu_page_offset;
+        cpumem[start..start + self.page_size].as_mut()
     }
 }

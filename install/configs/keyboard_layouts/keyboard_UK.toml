@@ -249,9 +249,28 @@
 # -----------------------------------------------------------------------------
 # Model F - the Original 83-key keyboard shipped with the IBM PC and XT.
 # -----------------------------------------------------------------------------
-# The model F keyboard has single-byte scancodes, so scancodes defined here 
+# The Model F keyboard has single-byte scancodes, so scancodes defined here 
 # should only have one element.
 [keyboard.modelf]
+keycode_mappings = [
+    { keycode = "IntlBackslash", modifiers = ["any"], key_macro = [], macro_translate = false, scancodes = [0x2B] },
+    { keycode = "Quote", modifiers = ["any"], key_macro = [], macro_translate = false, scancodes = [0x28] },
+    { keycode = "Backslash", modifiers = ["any"], key_macro = [], macro_translate = false, scancodes = [0x29] },
+    # Backquote ` didn't exist on the UK Model F keyboard, so we'll use an alt-code.
+    { keycode = "Backquote", modifiers = ["none"], key_macro = ["+AltLeft", "+Numpad9", "+Numpad6", "-AltLeft", "-Numpad9", "-Numpad6"], macro_translate = false, scancodes = [] },
+    # Shift-backquote: ¬ (NOT symbol)
+    { keycode = "Backquote", modifiers = ["shift"], key_macro = ["+AltLeft", "+Numpad1", "+Numpad7", "+Numpad0", "-AltLeft", "-Numpad1", "-Numpad7", "-Numpad0"], macro_translate = false, scancodes = [] },
+    # Alt-Gr keys did not exist on Model F. If we want them, we need to implement them with alt-codes.
+    # There appears to be a bug with AltGr-A. the KeyA keydown event does not fire :(
+    #{ keycode = "KeyA", modifiers = ["control", "alt"], key_macro = ["+AltLeft", "+Numpad1", "+Numpad6", "+Numpad0", "-AltLeft", "-Numpad1", "-Numpad6", "-Numpad0"], macro_translate = false, scancodes = [] },
+]
+
+# -----------------------------------------------------------------------------
+# Tandy 1000 - the Original 95-key keyboard shipped with the Tandy 1000
+# -----------------------------------------------------------------------------
+# The Tandy 1000 keyboard has single-byte scancodes, so scancodes defined here 
+# should only have one element.
+[keyboard.tandy1000]
 keycode_mappings = [
     { keycode = "IntlBackslash", modifiers = ["any"], key_macro = [], macro_translate = false, scancodes = [0x2B] },
     { keycode = "Quote", modifiers = ["any"], key_macro = [], macro_translate = false, scancodes = [0x28] },

@@ -111,6 +111,17 @@ impl FromStr for VideoType {
         }
     }
 }
+
+#[allow(dead_code)]
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, Hash)]
+pub enum VideoCardSubType {
+    #[default]
+    IbmPCJr,
+    Tandy1000,
+    CompaqPortable,
+}
+
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub enum ClockingMode {
     Default,
@@ -218,10 +229,10 @@ pub enum DisplayMode {
     Mode4LowResGraphics,
     Mode5LowResAltPalette,
     Mode6HiResGraphics,
-    Mode7LowResComposite,
-    Mode8LowResTweaked,
-    Mode9PCJrLowResGraphics,
-    ModeAPCjrHiResGraphics,
+    Mode7MonochromeText,
+    Mode8LowResGraphics16,
+    Mode8TGAMedResGraphics16,
+    ModeATGAHighResGraphics,
     ModeBEGAInternal,
     ModeCEGAInternal,
     ModeDEGALowResGraphics,

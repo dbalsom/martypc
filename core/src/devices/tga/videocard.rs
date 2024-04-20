@@ -116,7 +116,7 @@ impl VideoCard for TGACard {
         // CGA supports a single fixed 8x8 font. The size of the displayed window
         // is always HorizontalDisplayed * (VerticalDisplayed * (MaximumScanlineAddress + 1))
         // (Excepting fancy CRTC tricks that delay vsync)
-        let mut width = self.crtc_horizontal_displayed as u32 * CGA_HCHAR_CLOCK as u32;
+        let mut width = self.crtc_horizontal_displayed as u32 * TGA_HCHAR_CLOCK as u32;
         let height = self.crtc_vertical_displayed as u32 * (self.crtc_maximum_scanline_address as u32 + 1);
 
         if self.mode_hires_gfx {
@@ -130,9 +130,10 @@ impl VideoCard for TGACard {
     }
 
     fn list_display_apertures(&self) -> Vec<DisplayApertureDesc> {
-        CGA_APERTURE_DESCS.to_vec()
+        TGA_APERTURE_DESCS.to_vec()
     }
 
+    /// Get a vector of the standard display aperture definitions for this card.
     fn get_display_apertures(&self) -> Vec<DisplayAperture> {
         self.extents.apertures.clone()
     }
@@ -146,17 +147,17 @@ impl VideoCard for TGACard {
     fn debug_tick(&mut self, ticks: u32, cpumem: Option<&[u8]>) {
         match self.clock_mode {
             ClockingMode::Character | ClockingMode::Dynamic => {
-                let pixel_ticks = ticks % CGA_LCHAR_CLOCK as u32;
-                let lchar_ticks = ticks / CGA_LCHAR_CLOCK as u32;
+                let pixel_ticks = ticks % TGA_MCHAR_CLOCK as u32;
+                let mchar_ticks = ticks / TGA_MCHAR_CLOCK as u32;
 
-                assert_eq!(ticks, pixel_ticks + (lchar_ticks * 16));
+                assert_eq!(ticks, pixel_ticks + (mchar_ticks * 16));
 
                 for _ in 0..pixel_ticks {
                     //self.tick();
                 }
-                for _ in 0..lchar_ticks {
+                for _ in 0..mchar_ticks {
                     if self.clock_divisor == 2 {
-                        self.tick_lchar(cpumem.unwrap());
+                        self.tick_mchar(cpumem.unwrap());
                     }
                     else {
                         self.tick_hchar(cpumem.unwrap());
@@ -230,7 +231,6 @@ impl VideoCard for TGACard {
             DisplayMode::Mode4LowResGraphics => true,
             DisplayMode::Mode5LowResAltPalette => true,
             DisplayMode::Mode6HiResGraphics => false,
-            DisplayMode::Mode7LowResComposite => false,
             _ => false,
         }
     }
@@ -285,7 +285,7 @@ impl VideoCard for TGACard {
 
     fn get_current_font(&self) -> Option<FontInfo> {
         Some(FontInfo {
-            w: CGA_HCHAR_CLOCK as u32,
+            w: TGA_HCHAR_CLOCK as u32,
             h: CRTC_FONT_HEIGHT as u32,
             font_data: TGA_FONT,
         })
@@ -343,7 +343,7 @@ impl VideoCard for TGACard {
 
         let mut general_vec = Vec::new();
 
-        general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
+        general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?} ({:?})", self.get_video_type(), self.subtype))));
         general_vec.push((format!("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
         general_vec.push((format!("Video Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
         general_vec.push((format!("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
@@ -373,6 +373,8 @@ impl VideoCard for TGACard {
 
         let mut internal_vec = Vec::new();
 
+        internal_vec.push((String::from("status"), VideoCardStateEntry::String(format!("{:08b}", self.calc_status_register()))));
+        internal_vec.push((String::from("mode"), VideoCardStateEntry::String(format!("{:08b}", self.mode_byte))));
         internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
         internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
         internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
@@ -403,14 +405,32 @@ impl VideoCard for TGACard {
         video_vec.push(("register select:".into(), VideoCardStateEntry::String(self.video_array_address.to_string())));
         video_vec.push(("palette mask:".into(), VideoCardStateEntry::String(format!("{:04b}", self.palette_mask))));
         video_vec.push(("border color:".into(), VideoCardStateEntry::String(format!("{:04b}", self.border_color))));
-        
-        video_vec.push(("2bpp hires mode:".into(), VideoCardStateEntry::String(format!("{}", self.mode_control.twobpp_hires()))));
-        video_vec.push(("4bpp mode:".into(), VideoCardStateEntry::String(format!("{}", self.mode_control.fourbpp_mode()))));
-        video_vec.push(("border enable:".into(), VideoCardStateEntry::String(format!("{}", self.mode_control.border_enable()))));
+
+        match self.subtype {
+            VideoCardSubType::Tandy1000 => {
+                video_vec.push(("Tandy: border enable:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.border_enable()))));
+                video_vec.push(("Tandy: 2bpp hires mode:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.twobpp_hires()))));
+                video_vec.push(("Tandy: 4bpp mode:".into(), VideoCardStateEntry::String(format!("{}", self.t_mode_control.fourbpp_mode()))));
+                video_vec.push(("Tandy: a0:".into(), VideoCardStateEntry::String(format!("{}", self.a0))));
+            }
+            VideoCardSubType::IbmPCJr => {
+                video_vec.push(("PCJr: bandwidth:".into(), VideoCardStateEntry::String(format!("{}", self.jr_mode_control.bandwidth()))));
+                video_vec.push(("PCJr: graphics:".into(), VideoCardStateEntry::String(format!("{}", self.jr_mode_control.graphics()))));
+                video_vec.push(("PCJr: b/w:".into(), VideoCardStateEntry::String(format!("{}", self.jr_mode_control.bw()))));
+                video_vec.push(("PCJr: video enable:".into(), VideoCardStateEntry::String(format!("{}", self.jr_mode_control.video()))));
+                video_vec.push(("PCJr: 4bpp mode:".into(), VideoCardStateEntry::String(format!("{}", self.jr_mode_control.fourbpp_mode()))));
+            }
+            _ => {
+                unreachable!("Bad TGA subtype");
+            }
+        }
 
         video_vec.push(("page register [crt]:".into(), VideoCardStateEntry::String(self.page_register.crt_page().to_string())));
         video_vec.push(("page register [cpu]:".into(), VideoCardStateEntry::String(self.page_register.cpu_page().to_string())));
         video_vec.push(("page register [vam]:".into(), VideoCardStateEntry::String(self.page_register.address_mode().to_string())));
+        video_vec.push(("video aperture:".into(), VideoCardStateEntry::String(format!("{:05X}", self.aperture_base))));
+        video_vec.push(("CPU page:".into(), VideoCardStateEntry::String(format!("{:05X}", (self.aperture_base + self.cpu_page_offset) & 0xFFFFF))));
+        video_vec.push(("CRT page:".into(), VideoCardStateEntry::String(format!("{:05X}", (self.aperture_base + self.crt_page_offset) & 0xFFFFF))));
         
         map.insert("VideoArray".to_string(), video_vec);
 
@@ -427,7 +447,7 @@ impl VideoCard for TGACard {
         map
     }
 
-    fn run(&mut self, time: DeviceRunTimeUnit, _pic: &mut Option<Pic>, cpumem: Option<&[u8]>) {
+    fn run(&mut self, time: DeviceRunTimeUnit, pic: &mut Option<Pic>, cpumem: Option<&[u8]>) {
         /*
         if self.scanline > 1000 {
             log::error!("run(): scanlines way too high: {}", self.scanline);
@@ -534,12 +554,8 @@ impl VideoCard for TGACard {
                     // current clock.
                     let old_char_clock = self.char_clock;
 
-                    if self.clock_divisor == 2 {
-                        self.tick_lchar(cpumem.unwrap());
-                    }
-                    else {
-                        self.tick_hchar(cpumem.unwrap());
-                    }
+                    self.tick_char(pic, cpumem.unwrap());
+
 
                     /*
                     if self.debug_counter >= 3638298 {

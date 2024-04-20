@@ -200,6 +200,8 @@ pub struct ProgrammableIntervalTimer {
     timewarp: DeviceRunTimeUnit,
     speaker_buf: VecDeque<u8>,
     defer_reload_flag: bool,
+    chan1_source: Option<usize>,
+    last_output_state: [bool; 3],
     do_speaker: bool,
 }
 pub type Pit = ProgrammableIntervalTimer;
@@ -396,8 +398,11 @@ impl Channel {
                     dma.request_service(0);
                 }
                 (1, false) => {}
-                (2, true) => {}
-                (2, false) => {}
+                (2, state) => {
+                    if let Some(ppi) = bus.ppi_mut() {
+                        ppi.set_pit_output_bit(state);
+                    }
+                }
                 (_, _) => {}
             }
         }
@@ -855,6 +860,8 @@ impl ProgrammableIntervalTimer {
             timewarp: DeviceRunTimeUnit::SystemTicks(0),
             speaker_buf: VecDeque::new(),
             defer_reload_flag: false,
+            chan1_source: None,
+            last_output_state: [false; 3],
             do_speaker,
         }
     }
@@ -874,6 +881,22 @@ impl ProgrammableIntervalTimer {
             self.channels[i].ce_undefined = false;
             self.channels[i].output.update(false);
             self.channels[i].bcd_mode = false;
+        }
+    }
+
+    /// Optionally set the input of a channel to the output of another channel. If set to None,
+    /// the clock source will be the default clock source for the PIT.
+    /// Required by the PCJr to set the clock source for channel 1 to maintain clock during
+    /// interrupt-heavy operations (Floppy disk access).
+    pub fn set_clock_source(&mut self, channel: usize, source: Option<usize>) {
+        if channel == 1 {
+            // Only support changing channel 1 clock source for the PCJr.
+            if let Some(source) = source {
+                if source > 2 {
+                    panic!("Invalid clock source: {}", source);
+                }
+            }
+            self.chan1_source = source;
         }
     }
 
@@ -1116,9 +1139,26 @@ impl ProgrammableIntervalTimer {
             self.channels[2].set_gate(ppi.get_pit_channel2_gate(), bus);
         }
 
-        self.channels[0].tick(bus, None);
-        self.channels[1].tick(bus, None);
-        self.channels[2].tick(bus, None);
+        if let Some(_source) = self.chan1_source {
+            // TODO: Support source other than 0? (PCJr only for now)
+            self.channels[0].tick(bus, None);
+
+            let chan0_output = *self.channels[0].output;
+
+            // Tick channel 1 if channel 0 output is falling edge
+            if !chan0_output && self.last_output_state[0] {
+                self.channels[1].tick(bus, None);
+            }
+
+            self.last_output_state[0] = chan0_output;
+            self.channels[2].tick(bus, None);
+        }
+        else {
+            // Tick channels normally
+            self.channels[0].tick(bus, None);
+            self.channels[1].tick(bus, None);
+            self.channels[2].tick(bus, None);
+        }
 
         //log::trace!("tick(): cycle: {} channel 1 count: {}", self.pit_cycles * 4 + 7, *self.channels[1].counting_element);
 

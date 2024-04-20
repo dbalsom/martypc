@@ -196,6 +196,16 @@ pub const PORTB_PRESENT_SW1_PORTA: u8 = 0b1000_0000;
 
 pub const PORTC_TANDY_COLOR: u8 = 0b0100_0000;
 
+pub const PORTC_PCJR_NMI_LATCH: u8 = 0b0000_0001;
+pub const PORTC_PCJR_NO_FLOPPY: u8 = 0b0000_0100;
+pub const PORTC_PCJR_KB_BIT: u8 = 0b0100_0000;
+pub const PORTC_PCJR_KB_CABLE_DETACHED: u8 = 0b1000_0000;
+//pub const PORTC_PCJR_64K_CARD_INSTALLED: u8 = 0b1000_0000;
+
+pub const PCJR_KB_BAUD: f64 = 2272.0;
+pub const PCJR_US_PER_BIT: f64 = 1_000_000.0 / PCJR_KB_BAUD;
+pub const PCJR_US_PER_HALFBIT: f64 = PCJR_US_PER_BIT / 2.0;
+
 #[derive(Debug)]
 pub enum PortAMode {
     SwitchBlock1,
@@ -209,6 +219,125 @@ pub enum PortCMode {
     Switch1FiveToEight,
     Tandy1000,
 }
+
+#[derive(Debug)]
+pub enum KbSerializeState {
+    Idle,
+    StartBit,
+    DataBit(u8),
+    ParityBit,
+    StopBit,
+}
+
+pub struct KbSerializer {
+    us_accum: f64,
+    rate: f64,
+    data: Option<u8>,
+    state: KbSerializeState,
+    firsthalf: bool,
+    bit_ct: u8,
+}
+impl Default for KbSerializer {
+    fn default() -> Self {
+        Self {
+            us_accum: 0.0,
+            rate: 1200.0,
+            data: None,
+            state: KbSerializeState::Idle,
+            firsthalf: true,
+            bit_ct: 0,
+        }
+    }
+}
+
+impl KbSerializer {
+    pub fn tick(&mut self, us: f64) {
+        if self.data.is_some() {
+            self.us_accum += us;
+            self.firsthalf = self.us_accum < PCJR_US_PER_HALFBIT;
+            if self.us_accum >= PCJR_US_PER_BIT {
+                self.us_accum -= PCJR_US_PER_BIT;
+                match self.state {
+                    KbSerializeState::Idle => {
+                        log::debug!("starting serialization: StartBit");
+                        self.state = KbSerializeState::StartBit;
+                        self.bit_ct = 0;
+                    }
+                    KbSerializeState::StartBit => {
+                        log::debug!("Next kb_bit: {:02X}", 0x01);
+                        self.state = KbSerializeState::DataBit(0x01);
+                    }
+                    KbSerializeState::DataBit(bit) => {
+                        if self.data.unwrap() & bit != 0 {
+                            self.bit_ct += 1;
+                        }
+
+                        if bit < 0x80 {
+                            log::debug!("Next kb_bit: {:02X}", bit << 1);
+                            self.state = KbSerializeState::DataBit(bit << 1);
+                        }
+                        else {
+                            log::debug!("Sending parity bit");
+                            self.state = KbSerializeState::ParityBit;
+                        }
+                    }
+                    KbSerializeState::ParityBit => {
+                        log::warn!("Ending KB serialization");
+                        self.state = KbSerializeState::StopBit;
+                    }
+                    KbSerializeState::StopBit => {
+                        self.data = None;
+                        self.state = KbSerializeState::Idle;
+                    }
+                }
+            }
+        }
+        else {
+            self.us_accum = 0.0;
+        }
+    }
+
+    pub fn get_bit(&self) -> bool {
+        match self.state {
+            KbSerializeState::StartBit => self.firsthalf,
+            KbSerializeState::DataBit(bit) => {
+                if self.firsthalf {
+                    self.data.unwrap() & bit != 0
+                }
+                else {
+                    self.data.unwrap() & bit == 0
+                }
+            }
+            KbSerializeState::ParityBit => {
+                if self.firsthalf {
+                    self.bit_ct & 0x01 != 0
+                }
+                else {
+                    self.bit_ct & 0x01 == 0
+                }
+            }
+            KbSerializeState::StopBit => false,
+            _ => false,
+        }
+    }
+
+    pub fn set_data(&mut self, data: u8) {
+        match self.state {
+            KbSerializeState::Idle => {
+                log::debug!("Got kb data to serialize: {:02X}", data);
+                self.data = Some(data);
+                self.state = KbSerializeState::StartBit;
+            }
+            _ => {
+                log::warn!(
+                    "Tried to serialize scancode while serializer not idle: {:?}",
+                    self.state
+                );
+            }
+        }
+    }
+}
+
 pub struct Ppi {
     machine_type: MachineType,
     control_word: PpiControlWord,
@@ -226,7 +355,8 @@ pub struct Ppi {
     kb_do_reset: bool,
     kb_count_until_reset_byte: f64,
     kb_resets_counter: Updatable<u32>,
-    pb_byte: u8,
+    port_a_byte: u8,
+    port_b_byte: u8,
     kb_byte: Updatable<u8>,
     kb_byte_last: Updatable<u8>,
     keyboard_clear_scheduled: bool,
@@ -236,6 +366,10 @@ pub struct Ppi {
     dip_sw2: u8,
     timer_in: bool,
     speaker_in: bool,
+    jr_kb_in: bool,
+    nmi_latch_in: bool,
+    kb_serializer: KbSerializer,
+    num_floppies: u32,
 }
 
 impl Default for Ppi {
@@ -257,7 +391,8 @@ impl Default for Ppi {
             kb_do_reset: false,
             kb_count_until_reset_byte: 0.0,
             kb_resets_counter: Updatable::Dirty(0, false),
-            pb_byte: 0,
+            port_a_byte: 0,
+            port_b_byte: 0,
             kb_byte: Updatable::Dirty(0, false),
             kb_byte_last: Updatable::Dirty(0, false),
             keyboard_clear_scheduled: false,
@@ -267,6 +402,10 @@ impl Default for Ppi {
             dip_sw2: 0,
             timer_in: false,
             speaker_in: false,
+            jr_kb_in: false,
+            nmi_latch_in: false,
+            kb_serializer: KbSerializer::default(),
+            num_floppies: 0,
         }
     }
 }
@@ -384,6 +523,7 @@ impl Ppi {
                 }
             },
             dip_sw2: !sw2_ram_dip_bits,
+            num_floppies,
             ..Default::default()
         }
     }
@@ -449,24 +589,9 @@ impl IoDevice for Ppi {
     fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
         //log::trace!("PPI Read from port: {:04X}", port);
         match port {
-            PPI_PORT_A => {
-                // Return dip switch block 1 or kb_byte depending on port mode
-                // 5160 will always return kb_byte.
-                // PPI PB7 suppresses keyboard shift register output.
-                match self.port_a_mode {
-                    PortAMode::SwitchBlock1 => self.dip_sw1,
-                    PortAMode::KeyboardByte => {
-                        if self.kb_enabled {
-                            *self.kb_byte
-                        }
-                        else {
-                            0
-                        }
-                    }
-                }
-            }
+            PPI_PORT_A => self.handle_porta_read(),
             PPI_PORT_B => self.handle_portb_read(),
-            PPI_PORT_C => self.calc_port_c_value(),
+            PPI_PORT_C => self.handle_portc_read(),
             PPI_COMMAND_PORT => NO_IO_BYTE,
             _ => panic!("PPI: Bad port #"),
         }
@@ -475,7 +600,7 @@ impl IoDevice for Ppi {
     fn write_u8(&mut self, port: u16, byte: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
         match port {
             PPI_PORT_A => {
-                // Read-only port
+                self.handle_porta_write(byte);
             }
             PPI_PORT_B => {
                 self.handle_portb_write(byte);
@@ -514,7 +639,7 @@ impl Ppi {
     pub fn turbo_bit(&self) -> bool {
         match self.machine_type {
             MachineType::Tandy1000 | MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => false,
-            MachineType::Ibm5160 => self.pb_byte & PORTB_SW2_SELECT != 0,
+            MachineType::Ibm5160 => self.port_b_byte & PORTB_SW2_SELECT != 0,
             _ => {
                 log::error!("turbo_bit(): Machine type has no PPI!");
                 false
@@ -522,13 +647,43 @@ impl Ppi {
         }
     }
 
+    pub fn handle_porta_read(&self) -> u8 {
+        match self.machine_type {
+            MachineType::IbmPCJr => self.port_a_byte,
+            _ => {
+                // Return dip switch block 1 or kb_byte depending on port mode
+                // 5160 will always return kb_byte.
+                // PPI PB7 suppresses keyboard shift register output.
+                match self.port_a_mode {
+                    PortAMode::SwitchBlock1 => self.dip_sw1,
+                    PortAMode::KeyboardByte => {
+                        if self.kb_enabled {
+                            *self.kb_byte
+                        }
+                        else {
+                            0
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     pub fn handle_portb_read(&self) -> u8 {
-        self.pb_byte
+        self.port_b_byte
+    }
+
+    pub fn handle_portc_read(&self) -> u8 {
+        self.calc_port_c_value()
+    }
+
+    pub fn handle_porta_write(&mut self, byte: u8) {
+        self.port_a_byte = byte;
     }
 
     pub fn handle_portb_write(&mut self, byte: u8) {
         //log::debug!("PPI: Write to Port B: {:02X}", byte);
-        self.pb_byte = byte;
+        self.port_b_byte = byte;
 
         match self.machine_type {
             MachineType::Ibm5150v64K | MachineType::Ibm5150v256K => {
@@ -574,6 +729,7 @@ impl Ppi {
                 self.port_a_mode = PortAMode::KeyboardByte;
             }
             MachineType::IbmPCJr => {
+                self.port_b_byte = byte;
                 // TODO: do PCJr stuff
             }
             _ => {
@@ -582,7 +738,7 @@ impl Ppi {
         }
 
         // Handle keyboard clock line bit for either 5150 or 5160
-        if self.pb_byte & PORTB_PULL_KB_LOW == 0 {
+        if self.port_b_byte & PORTB_PULL_KB_LOW == 0 {
             //log::trace!("PPI: Pulling keyboard clock LOW");
             self.kb_clock_low = true;
             self.kb_counting_low = true;
@@ -601,25 +757,42 @@ impl Ppi {
         }
     }
 
-    /// Send a byte to the keyboard shift register.
+    /// Send a byte to the keyboard shift register on PC/XT, or to the serializer on PCjr.
     pub fn send_keyboard(&mut self, byte: u8) {
-        // Only send a scancode if the keyboard is not actively being reset.
-        if self.kb_enabled && self.ksr_cleared && !self.kb_clock_low {
-            self.ksr_cleared = false;
-            self.kb_byte.update(byte);
+        match self.machine_type {
+            MachineType::IbmPCJr => {
+                // PCjr keyboard is serialized at 1200 baud
+                self.kb_serializer.set_data(byte);
+            }
+            MachineType::Tandy1000 => {
+                // No bits to disable kb on Tandy?
+                if self.ksr_cleared {
+                    self.ksr_cleared = false;
+                    self.kb_byte.update(byte);
+                }
+            }
+            MachineType::Ibm5150v64K | MachineType::Ibm5150v256K | MachineType::Ibm5160 => {
+                // Only send a scancode if the keyboard is not actively being reset.
+                if self.kb_enabled() && self.ksr_cleared {
+                    self.ksr_cleared = false;
+                    self.kb_byte.update(byte);
+                }
+            }
+
+            _ => {}
         }
     }
 
     /// Return whether the keyboard enable line (PB7) is set and the keyboard clock line is not held low.
     pub fn kb_enabled(&self) -> bool {
-        self.kb_enabled && !self.kb_clock_low
+        match self.machine_type {
+            MachineType::Tandy1000 => true,
+            _ => self.kb_enabled && !self.kb_clock_low,
+        }
     }
 
     pub fn calc_port_c_value(&self) -> u8 {
-        let mut speaker_bit = 0;
-        if let MachineType::Ibm5160 = self.machine_type {
-            speaker_bit = (self.speaker_in as u8) << 4;
-        }
+        let speaker_bit = (self.speaker_in as u8) << 4;
         let timer_bit = (self.timer_in as u8) << 5;
 
         match (&self.machine_type, &self.port_c_mode) {
@@ -647,8 +820,21 @@ impl Ppi {
                 timer_bit | PORTC_TANDY_COLOR
             }
             (MachineType::IbmPCJr, _) => {
-                // TODO: Do PCJr Stuff
-                0
+                // TODO: Do PCJr stuff properly.
+                //       For now, always report 128K installed.
+                //       Floppy status bit is set when NO floppy is installed.
+                //log::debug!("PCJr: Timer bit is {:08b}", timer_bit);
+                log::debug!("PCJr: kb_in bit is {}", self.jr_kb_in);
+                timer_bit
+                    | 0
+                    | if self.num_floppies == 0 {
+                        PORTC_PCJR_NO_FLOPPY
+                    }
+                    else {
+                        0
+                    }
+                    | if self.jr_kb_in { PORTC_PCJR_KB_BIT } else { 0 }
+                    | if self.nmi_latch_in { PORTC_PCJR_NMI_LATCH } else { 0 }
             }
             _ => {
                 panic!("Invalid PPI state");
@@ -661,7 +847,7 @@ impl Ppi {
             PortAMode::SwitchBlock1 => self.dip_sw1,
             PortAMode::KeyboardByte => *self.kb_byte,
         };
-        let port_b_value = self.pb_byte;
+        let port_b_value = self.port_b_byte;
         let port_c_value = self.calc_port_c_value();
 
         PpiStringState {
@@ -686,7 +872,7 @@ impl Ppi {
             PortAMode::SwitchBlock1 => self.dip_sw1,
             PortAMode::KeyboardByte => *self.kb_byte,
         };
-        let port_b_value = self.pb_byte;
+        let port_b_value = self.port_b_byte;
         let port_c_value = self.calc_port_c_value();
 
         let mut group_map = BTreeMap::new();
@@ -783,15 +969,15 @@ impl Ppi {
     }
 
     pub fn get_pb0_state(&self) -> bool {
-        self.pb_byte & PORTB_TIMER2_GATE != 0
+        self.port_b_byte & PORTB_TIMER2_GATE != 0
     }
 
     pub fn get_pb1_state(&self) -> bool {
-        self.pb_byte & PORTB_SPEAKER_DATA != 0
+        self.port_b_byte & PORTB_SPEAKER_DATA != 0
     }
 
     pub fn get_pit_channel2_gate(&mut self) -> bool {
-        self.pb_byte & PORTB_TIMER2_GATE != 0
+        self.port_b_byte & PORTB_TIMER2_GATE != 0
     }
 
     pub fn set_pit_output_bit(&mut self, state: bool) {
@@ -802,45 +988,57 @@ impl Ppi {
         self.speaker_in = state;
     }
 
+    pub fn set_nmi_latch_bit(&mut self, state: bool) {
+        self.nmi_latch_in = state;
+    }
+
     /// Return whether NMI generation is enabled
     pub fn nmi_enabled(&self) -> bool {
-        self.pb_byte & PORTB_PARITY_MB_EN == 0 || self.pb_byte & PORTB_PARITY_EX_EN == 0
+        self.port_b_byte & PORTB_PARITY_MB_EN == 0 || self.port_b_byte & PORTB_PARITY_EX_EN == 0
     }
 
     pub fn run(&mut self, pic: &mut pic::Pic, us: f64) {
-        // Our keyboard byte was read, so clear the interrupt request line and reset the byte
-        // read at the keyboard IO port to 0
-        if self.keyboard_clear_scheduled {
-            self.keyboard_clear_scheduled = false;
-            self.ksr_cleared = true;
-            self.kb_byte_last.update(*self.kb_byte);
-            self.kb_byte.update(0);
-            pic.clear_interrupt(1);
-            //log::trace!("PPI: Clearing keyboard");
-        }
+        match self.machine_type {
+            MachineType::IbmPCJr => {
+                self.kb_serializer.tick(us);
+                self.jr_kb_in = self.kb_serializer.get_bit();
+            }
+            _ => {
+                // Our keyboard byte was read, so clear the interrupt request line and reset the byte
+                // read at the keyboard IO port to 0
+                if self.keyboard_clear_scheduled {
+                    self.keyboard_clear_scheduled = false;
+                    self.ksr_cleared = true;
+                    self.kb_byte_last.update(*self.kb_byte);
+                    self.kb_byte.update(0);
+                    pic.clear_interrupt(1);
+                    //log::trace!("PPI: Clearing keyboard");
+                }
 
-        // Keyboard should send a 'aa' byte when clock line is held low (for how long?)
-        // BIOS waits 20ms.
-        // Clock line must go high again
-        if self.kb_counting_low && self.kb_low_count < KB_RESET_US {
-            self.kb_low_count += us;
-        }
+                // Keyboard should send a 'aa' byte when clock line is held low (for how long?)
+                // BIOS waits 20ms.
+                // Clock line must go high again
+                if self.kb_counting_low && self.kb_low_count < KB_RESET_US {
+                    self.kb_low_count += us;
+                }
 
-        // Send reset byte after delay elapsed. The delay gives the BIOS POST routines
-        // time to check for interrupts as they do not do it immediately
-        if self.kb_do_reset {
-            self.kb_count_until_reset_byte += us;
+                // Send reset byte after delay elapsed. The delay gives the BIOS POST routines
+                // time to check for interrupts as they do not do it immediately
+                if self.kb_do_reset {
+                    self.kb_count_until_reset_byte += us;
 
-            if self.kb_count_until_reset_byte > KB_RESET_DELAY_US {
-                self.kb_do_reset = false;
-                self.kb_count_until_reset_byte = 0.0;
-                self.kb_resets_counter.update((*self.kb_resets_counter).wrapping_add(1));
+                    if self.kb_count_until_reset_byte > KB_RESET_DELAY_US {
+                        self.kb_do_reset = false;
+                        self.kb_count_until_reset_byte = 0.0;
+                        self.kb_resets_counter.update((*self.kb_resets_counter).wrapping_add(1));
 
-                log::trace!("PPI: Sending keyboard reset byte");
-                self.kb_byte.update(0xAA);
+                        log::trace!("PPI: Sending keyboard reset byte");
+                        self.kb_byte.update(0xAA);
 
-                if self.kb_enabled {
-                    pic.request_interrupt(1);
+                        if self.kb_enabled {
+                            pic.request_interrupt(1);
+                        }
+                    }
                 }
             }
         }

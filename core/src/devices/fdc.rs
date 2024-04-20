@@ -37,6 +37,7 @@ use crate::{
     bus::{BusInterface, DeviceRunTimeUnit, IoDevice},
     device_types::{chs::DiskChs, fdc::DISK_FORMATS},
     devices::{dma, floppy_drive::FloppyDiskDrive},
+    machine_types::FdcType,
 };
 
 pub const FDC_IRQ: u8 = 0x06;
@@ -45,9 +46,12 @@ pub const FDC_MAX_DRIVES: usize = 4;
 pub const FORMAT_BUFFER_SIZE: usize = 4;
 pub const SECTOR_SIZE: usize = 512;
 
-pub const FDC_DIGITAL_OUTPUT_REGISTER: u16 = 0x3F2;
-pub const FDC_STATUS_REGISTER: u16 = 0x3F4;
-pub const FDC_DATA_REGISTER: u16 = 0x3F5;
+pub const PCXT_IO_BASE: u16 = 0x03F0;
+pub const PCJR_IO_BASE: u16 = 0x00F0;
+
+pub const FDC_DIGITAL_OUTPUT_REGISTER: u16 = 0x02;
+pub const FDC_STATUS_REGISTER: u16 = 0x04;
+pub const FDC_DATA_REGISTER: u16 = 0x05;
 
 // Main Status Register Bit Definitions
 // --------------------------------------------------------------------------------
@@ -84,6 +88,13 @@ pub const DOR_MOTOR_FDD_A: u8 = 0b0001_0000;
 pub const DOR_MOTOR_FDD_B: u8 = 0b0010_0000;
 pub const DOR_MOTOR_FDD_C: u8 = 0b0100_0000;
 pub const DOR_MOTOR_FDD_D: u8 = 0b1000_0000;
+// PCJr specific DOR flags
+pub const DOR_JRFDC_MOTOR: u8 = 0b0000_0001;
+pub const DOR_JRFDC_RESET: u8 = 0b1000_0000;
+pub const DOR_JRFDC_WATCHDOG_ENABLE: u8 = 0b0010_0000;
+pub const DOR_JRFDC_WATCHDOG_TRIGGER: u8 = 0b0100_0000;
+
+pub const WATCHDOG_TIMEOUT: u64 = 3000000; // 3 seconds in microseconds
 
 pub const COMMAND_MASK: u8 = 0b0001_1111;
 pub const COMMAND_READ_TRACK: u8 = 0x02;
@@ -206,6 +217,8 @@ pub enum Continuation {
 }
 
 pub struct FloppyController {
+    us_accumulator: u64,
+    fdc_type: FdcType,
     status_byte: u8,
     reset_flag: bool,
     reset_sense_count: u8,
@@ -227,6 +240,9 @@ pub struct FloppyController {
     send_interrupt: bool,
     pending_interrupt: bool,
     end_interrupt: bool,
+    watchdog_enabled: bool,     // IBM PCJr only.  Watchdog timer enabled.
+    watchdog_trigger_bit: bool, // IBM PCJr only.  Watchdog timer trigger bit status.
+    watchdog_triggered: bool,   // IBM PCJr only.  Watchdog timer triggered.
 
     last_error: DriveError,
 
@@ -241,6 +257,8 @@ pub struct FloppyController {
     in_dma: bool,
     dma_byte_count: usize,
     dma_bytes_left: usize,
+    pio_byte_count: usize,
+    pio_bytes_left: usize,
     xfer_size_sectors: u32,
     xfer_size_bytes: usize,
     xfer_completed_sectors: u32,
@@ -249,7 +267,12 @@ pub struct FloppyController {
 /// IO Port handlers for the FDC
 impl IoDevice for FloppyController {
     fn read_u8(&mut self, port: u16, _delta: DeviceRunTimeUnit) -> u8 {
-        match port {
+        let base = match self.fdc_type {
+            FdcType::IbmNec => PCXT_IO_BASE,
+            FdcType::IbmPCJrNec => PCJR_IO_BASE,
+        };
+
+        match port - base {
             FDC_DIGITAL_OUTPUT_REGISTER => {
                 log::warn!("Read from Write-only DOR register");
                 0
@@ -261,10 +284,16 @@ impl IoDevice for FloppyController {
     }
 
     fn write_u8(&mut self, port: u16, data: u8, _bus: Option<&mut BusInterface>, _delta: DeviceRunTimeUnit) {
-        match port {
-            FDC_DIGITAL_OUTPUT_REGISTER => {
-                self.handle_dor_write(data);
-            }
+        let base = match self.fdc_type {
+            FdcType::IbmNec => PCXT_IO_BASE,
+            FdcType::IbmPCJrNec => PCJR_IO_BASE,
+        };
+
+        match port - base {
+            FDC_DIGITAL_OUTPUT_REGISTER => match self.fdc_type {
+                FdcType::IbmNec => self.handle_dor_write(data),
+                FdcType::IbmPCJrNec => self.handle_dor_write_jr(data),
+            },
             FDC_STATUS_REGISTER => {
                 log::warn!("Write to Read-only status register");
             }
@@ -276,10 +305,18 @@ impl IoDevice for FloppyController {
     }
 
     fn port_list(&self) -> Vec<(String, u16)> {
+        let base = match self.fdc_type {
+            FdcType::IbmNec => PCXT_IO_BASE,
+            FdcType::IbmPCJrNec => PCJR_IO_BASE,
+        };
+
         vec![
-            (String::from("FDC Digital Output Register"), FDC_DIGITAL_OUTPUT_REGISTER),
-            (String::from("FDC Status Register"), FDC_STATUS_REGISTER),
-            (String::from("FDC Data Register"), FDC_DATA_REGISTER),
+            (
+                String::from("FDC Digital Output Register"),
+                base + FDC_DIGITAL_OUTPUT_REGISTER,
+            ),
+            (String::from("FDC Status Register"), base + FDC_STATUS_REGISTER),
+            (String::from("FDC Data Register"), base + FDC_DATA_REGISTER),
         ]
     }
 }
@@ -287,6 +324,8 @@ impl IoDevice for FloppyController {
 impl Default for FloppyController {
     fn default() -> Self {
         Self {
+            us_accumulator: 0,
+            fdc_type: FdcType::IbmNec,
             status_byte: 0,
             reset_flag: false,
             reset_sense_count: 0,
@@ -310,6 +349,9 @@ impl Default for FloppyController {
             send_interrupt: false,
             pending_interrupt: false,
             end_interrupt: false,
+            watchdog_enabled: false,
+            watchdog_trigger_bit: false,
+            watchdog_triggered: false,
 
             data_register_out: VecDeque::new(),
             data_register_in: VecDeque::new(),
@@ -327,6 +369,8 @@ impl Default for FloppyController {
             in_dma: false,
             dma_byte_count: 0,
             dma_bytes_left: 0,
+            pio_byte_count: 0,
+            pio_bytes_left: 0,
             xfer_size_sectors: 0,
             xfer_size_bytes: 0,
             xfer_completed_sectors: 0,
@@ -335,8 +379,17 @@ impl Default for FloppyController {
 }
 
 impl FloppyController {
-    pub fn new(drive_ct: usize) -> Self {
+    pub fn new(fdc_type: FdcType, drive_ct: usize) -> Self {
+        // PCJr has a maximum of one floppy drive, so ignore drive count.
+        let drive_ct = if matches!(fdc_type, FdcType::IbmPCJrNec) {
+            1
+        }
+        else {
+            drive_ct
+        };
+
         Self {
+            fdc_type,
             drive_ct,
             ..Default::default()
         }
@@ -344,6 +397,7 @@ impl FloppyController {
 
     /// Reset the Floppy Drive Controller
     pub fn reset(&mut self) {
+        // TODO: Implement in terms of Default
         self.status_byte = 0;
         self.drive_select = 0;
         self.reset_flag = true;
@@ -545,6 +599,13 @@ impl FloppyController {
                 self.motor_off(3);
             }
 
+            if data & DOR_DMA_ENABLED != 0 {
+                self.dma = true;
+            }
+            else {
+                self.dma = false;
+            }
+
             // Select drive from DRx bits.
             if self.drives[disk_n as usize].motor_on {
                 log::debug!("Drive {} selected, motor on", disk_n);
@@ -554,6 +615,54 @@ impl FloppyController {
             else {
                 // It's valid to write to the dor without turning a motor on.
                 // In this case the FDC can be re-enabled, but with no drive selected.
+            }
+        }
+        self.dor = data;
+    }
+
+    pub fn handle_dor_write_jr(&mut self, data: u8) {
+        if data & DOR_JRFDC_RESET == 0 {
+            // Reset the FDC when the reset bit is *not* set
+            // Ignore all other commands
+            log::debug!("PCJr FDC Reset requested: {:02X}", data);
+            self.reset();
+            self.send_interrupt = true;
+        }
+        else {
+            // Not reset. Turn drive motors on or off based on the drive enable bit.
+            if data & DOR_JRFDC_MOTOR != 0 {
+                self.motor_on(0);
+            }
+            else {
+                self.motor_off(0);
+            }
+
+            if data & DOR_DMA_ENABLED != 0 {
+                log::error!("PCJr FDC DMA was erroneously enabled");
+                self.dma = true;
+            }
+            else {
+                self.dma = false;
+            }
+
+            if data & DOR_JRFDC_WATCHDOG_ENABLE != 0 {
+                log::debug!("PCJr FDC Watchdog enabled");
+                self.watchdog_enabled = true;
+            }
+            else {
+                self.watchdog_enabled = false;
+            }
+
+            // Watchdog trigger is set on falling edge of trigger bit.
+            if data & DOR_JRFDC_WATCHDOG_TRIGGER != 0 {
+                self.watchdog_trigger_bit = true;
+            }
+            else {
+                if self.watchdog_trigger_bit {
+                    log::debug!("PCJr FDC Watchdog triggered");
+                    self.watchdog_triggered = true;
+                }
+                self.watchdog_trigger_bit = false;
             }
         }
         self.dor = data;
@@ -731,7 +840,7 @@ impl FloppyController {
                     self.set_command(Command::WriteSector, 8, FloppyController::command_write_sector);
                 }
                 COMMAND_READ_SECTOR => {
-                    log::trace!("Received Read Sector command: {:02}", command);
+                    log::trace!("Received Read Sector command: {:02X} {:02}", data, command);
                     self.set_command(Command::ReadSector, 8, FloppyController::command_read_sector);
                 }
                 COMMAND_WRITE_DELETED_SECTOR => {
@@ -816,7 +925,7 @@ impl FloppyController {
 
     pub fn command_sense_interrupt(&mut self) {
         /* The 5160 BIOS performs four sense interrupts after a reset of the fdc, presumably one for each of
-           the possible drives. The BIOS expects to to see drive select bits 00 to 11 in the resuling st0 bytes,
+           the possible drives. The BIOS expects to see drive select bits 00 to 11 in the resulting st0 bytes,
            even if no such drives are present.
 
            In theory the FDC issues interrupts when drive status changes between READY and NOT READY states,
@@ -1047,11 +1156,18 @@ impl FloppyController {
         // Start read operation
         self.operation = Operation::ReadSector(cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
 
-        // Clear MRQ until operation completion so there is no attempt to read result values
-        self.mrq = false;
+        if self.dma {
+            // Clear MRQ until operation completion so there is no attempt to read result values
+            self.mrq = false;
 
-        // DMA now in progress (TODO: Support PIO mode?)
-        self.in_dma = true;
+            // DMA now in progress
+            self.in_dma = true;
+        }
+        else {
+            // When not in DMA mode, we can leave MRQ high and let the CPU poll for completion
+            self.mrq = true;
+            self.in_dma = false;
+        }
 
         // The IBM PC BIOS only seems to ever set a track_len of 8. How do we support 9 sector (365k) floppies?
         // Answer: DOS seems to know to request sector #9 and the BIOS doesn't complain
@@ -1067,8 +1183,8 @@ impl FloppyController {
         //}
         //self.dma_bytes_left = max_sectors as usize * SECTOR_SIZE;
 
-        log::trace!("command_read_sector: drive: {} cyl:{} head:{} sector:{} sector_size:{} track_len:{} gap3_len:{} data_len:{}",
-            drive_select, cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
+        log::trace!("command_read_sector: dhs: {:02X} drive: {} cyl:{} head:{} sector:{} sector_size:{} track_len:{} gap3_len:{} data_len:{}",
+            drive_head_select, drive_select, cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
         //log::trace!("command_read_sector: may operate on maximum of {} sectors", max_sectors);
 
         let base_address = self.get_image_address(self.drive_select, cylinder, head, sector);
@@ -1151,11 +1267,18 @@ impl FloppyController {
         self.operation_init = false;
         self.operation = Operation::FormatTrack(sector_size, track_len, gap3_len, fill_byte);
 
-        // Clear MRQ until operation completion so there is no attempt to read result values
-        self.mrq = false;
+        if self.dma {
+            // Clear MRQ until operation completion so there is no attempt to read result values
+            self.mrq = false;
 
-        // DMA now in progress (TODO: Support PIO mode?)
-        self.in_dma = true;
+            // DMA now in progress
+            self.in_dma = true;
+        }
+        else {
+            // When not in DMA mode, we can leave MRQ high and let the CPU poll for completion
+            self.mrq = true;
+            self.in_dma = false;
+        }
 
         log::trace!(
             "command_format_track: sector_size:{} track_len:{} gap3_len:{} fill_byte:{:02X}",
@@ -1264,6 +1387,79 @@ impl FloppyController {
         self.send_data_register();
         // Clear error state
         self.last_error = DriveError::NoError;
+    }
+
+    fn operation_read_sector_pio(&mut self, cylinder: u8, head: u8, sector: u8, sector_size: u8, _track_len: u8) {
+        if !self.operation_init {
+            self.xfer_size_sectors = 1;
+            self.xfer_completed_sectors = 0;
+            self.xfer_size_bytes = SECTOR_SIZE;
+            self.pio_bytes_left = SECTOR_SIZE;
+            self.pio_byte_count = 0;
+            self.operation_init = true;
+        }
+
+        if self.pio_bytes_left > 0 {
+            let base_address = self.get_image_address(self.drive_select, cylinder, head, sector);
+            let byte_address = base_address + self.pio_byte_count;
+
+            //log::trace!("Byte address for FDC read: {:04X}", byte_address);
+            if byte_address >= self.drives[self.drive_select].disk_image.len() {
+                log::error!(
+                    "Read past end of disk image: {}/{}!",
+                    byte_address,
+                    self.drives[self.drive_select].disk_image.len()
+                );
+                self.pio_bytes_left = 0;
+                self.pio_byte_count = 0;
+            }
+            else {
+                let byte = self.drives[self.drive_select].disk_image[byte_address];
+
+                log::trace!(
+                    "Read byte: {:02X}, bytes remaining: {} DR: {}",
+                    byte,
+                    self.pio_bytes_left,
+                    self.data_register_out.len()
+                );
+
+                if self.data_register_out.is_empty() {
+                    self.data_register_out.push_back(byte);
+                    self.pio_byte_count += 1;
+                    self.pio_bytes_left -= 1;
+                }
+            }
+        }
+        else {
+            // No more bytes left to transfer. Finalize operation
+            self.pio_bytes_left = 0;
+            self.pio_byte_count = 0;
+
+            let (new_c, new_h, new_s) = self.get_chs_sector_offset(self.drive_select, 1, cylinder, head, sector);
+            //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
+
+            let new_chs = DiskChs::new(new_c, new_h, new_s);
+
+            // Terminate normally by sending results registers
+            self.send_results_phase(
+                InterruptCode::NormalTermination,
+                self.drive_select,
+                new_chs,
+                sector_size,
+            );
+
+            // Seek to new CHS
+            self.drives[self.drive_select].chs.seek_to(&new_chs);
+
+            log::trace!(
+                "operation_read_sector_pio completed: new chs: {} drive: {}",
+                &self.drives[self.drive_select].chs,
+                self.drive_select
+            );
+            // Finalize operation
+            self.operation = Operation::NoOperation;
+            self.send_interrupt = true;
+        }
     }
 
     fn operation_read_sector(
@@ -1664,7 +1860,10 @@ impl FloppyController {
                 // Do nothing
             }
             Operation::ReadSector(cylinder, head, sector, sector_size, track_len, _gap3_len, _data_len) => {
-                self.operation_read_sector(dma, bus, cylinder, head, sector, sector_size, track_len)
+                match self.dma {
+                    true => self.operation_read_sector(dma, bus, cylinder, head, sector, sector_size, track_len),
+                    false => self.operation_read_sector_pio(cylinder, head, sector, sector_size, track_len),
+                }
             }
             Operation::WriteSector(cylinder, head, sector, sector_size, track_len, _gap3_len, _data_len) => self
                 .operation_write_sector(

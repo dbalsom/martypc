@@ -880,8 +880,10 @@ impl MDACard {
     }
 
     /// Return the bit value at (col,row) of the given font glyph
-    fn get_glyph_bit(glyph: u8, col: u8, row: u8) -> bool {
-        let col = if col > 7 { 7 } else { col };
+    fn get_glyph_bit(glyph: u8, mut col: u8, row: u8) -> bool {
+        if MDACard::is_box_char(glyph) {
+            col = if col > 7 { 7 } else { col };
+        }
         //debug_assert!(row < CRTC_CHAR_CLOCK);
         let row_masked = row & 0xF; // Font was padded to 16 pixels high.
 
@@ -977,6 +979,11 @@ impl MDACard {
         let row_offset = (row as usize & 0x01) << 12;
         let addr = (self.vma & 0x0FFF | row_offset) << 1;
         addr
+    }
+
+    #[inline]
+    pub fn is_box_char(glyph: u8) -> bool {
+        (0xB0u8..=0xDFu8).contains(&glyph)
     }
 
     pub fn get_screen_ticks(&self) -> u64 {

@@ -213,7 +213,7 @@ rom = [
 [[romset]]
 alias = "pcjr_pitfall2"
 desc = "Pitfall II"
-priority = 1
+priority = 0
 provides = ["pcjr_cartridge"]
 rom = [
     { md5 = "5cc9cb02bd3fe987a82cbd63b94dd1a7", addr = 0xE0000, size = 0x4000, chip = "cart1" },
@@ -222,7 +222,7 @@ rom = [
 [[romset]]
 alias = "pcjr_mouser"
 desc = "Mouser"
-priority = 0
+priority = 1
 provides = ["pcjr_cartridge"]
 rom = [
     { md5 = "54e1d6d8c3f24996a2620a2cfac3ff9e", addr = 0xD0000, size = 0x2000, chip = "cart1" },
@@ -235,4 +235,22 @@ priority = 0
 provides = ["pcjr_cartridge"]
 rom = [
     { md5 = "490e72bdb338feca64c42c5c17a31fdd", addr = 0xE6000, size = 0x2000, chip = "cart1" },
+]
+
+[[romset]]
+alias = "pcjr_scubaventure"
+desc = "ScubaVenture"
+priority = 0
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "dee669072031f7fc1c319c7357ec3dcf", addr = 0xE6000, size = 0x2000, chip = "cart1" },
+]
+
+[[romset]]
+alias = "pcjr_demonsattack"
+desc = "Demon Attack"
+priority = 0
+provides = ["pcjr_cartridge"]
+rom = [
+    { md5 = "6d4f8c3a149ba5d5b160dc81ef4a46c2", addr = 0xE0000, size = 0x10000, chip = "cart1" },
 ]

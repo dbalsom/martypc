@@ -181,7 +181,6 @@ impl VideoCard for MDACard {
             DisplayMode::Mode4LowResGraphics => true,
             DisplayMode::Mode5LowResAltPalette => true,
             DisplayMode::Mode6HiResGraphics => false,
-            DisplayMode::Mode7LowResComposite => false,
             _ => false,
         }
     }

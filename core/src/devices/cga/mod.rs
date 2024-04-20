@@ -1229,7 +1229,6 @@ impl CGACard {
             0b0_0010 => DisplayMode::Mode4LowResGraphics,
             0b0_0110 => DisplayMode::Mode5LowResAltPalette,
             0b1_0110 => DisplayMode::Mode6HiResGraphics,
-            0b1_0010 => DisplayMode::Mode7LowResComposite,
             _ => {
                 trace!(self, "Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
                 log::warn!("CGA: Invalid display mode selected: {:02X}", self.mode_byte & 0x1F);
@@ -1280,6 +1279,10 @@ impl CGACard {
                 // being it keeps us from drawing screens with funky scanlines.
                 // TODO: Come up with a better way to handle this or do hardware research to see
                 //       if 'scanline effect' happens on real CGA
+
+                // Removed: This just caused more problems than what it was intending to fix.
+
+                /*
                 if !self.mode_hires_gfx && self.crtc_horizontal_total > 56 {
                     self.out_of_sync = true;
                     (1, CGA_HCHAR_CLOCK as u32, 0x07, 0x0F)
@@ -1288,6 +1291,8 @@ impl CGACard {
                     self.out_of_sync = false;
                     (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
                 }
+                */
+                (2, (CGA_HCHAR_CLOCK as u32) * 2, 0x0F, 0x1F)
             };
 
             self.clock_pending = false;
@@ -1469,7 +1474,7 @@ impl CGACard {
             CGA_COLORS_U64[self.cur_bg as usize]
         }
         else {
-            let glyph_row_base = CGA_HIRES_GLYPH_TABLE[glyph & 0xFF][row];
+            let glyph_row_base = CGA_HIRES_GLYPH_TABLE[glyph & 0xFF][row & 0x07];
 
             // Combine glyph mask with foreground and background colors.
             glyph_row_base & CGA_COLORS_U64[self.cur_fg as usize]
@@ -1486,8 +1491,8 @@ impl CGACard {
             (glyph, glyph)
         }
         else {
-            let glyph_row_base_0 = CGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][0][row];
-            let glyph_row_base_1 = CGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][1][row];
+            let glyph_row_base_0 = CGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][0][row & 0x07];
+            let glyph_row_base_1 = CGA_LOWRES_GLYPH_TABLE[glyph & 0xFF][1][row & 0x07];
 
             // Combine glyph mask with foreground and background colors.
             let glyph0 = glyph_row_base_0 & CGA_COLORS_U64[self.cur_fg as usize]

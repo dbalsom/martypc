@@ -256,3 +256,11 @@
 # should only have one element.
 [keyboard.modelf]
 keycode_mappings = []
+
+# -----------------------------------------------------------------------------
+# Tandy 1000 - the Original 95-key keyboard shipped with the Tandy 1000
+# -----------------------------------------------------------------------------
+# The Tandy 1000 keyboard has single-byte scancodes, so scancodes defined here 
+# should only have one element.
+[keyboard.tandy1000]
+keycode_mappings = []

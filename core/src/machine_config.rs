@@ -51,6 +51,7 @@ use crate::{
     tracelogger::TraceLogger,
 };
 
+use crate::{device_traits::videocard::VideoCardSubType, devices::a0::A0Type};
 use serde_derive::Deserialize;
 
 // Clock derivation from reenigne
@@ -86,6 +87,7 @@ pub struct DeviceSpec {
 #[derive(Copy, Clone, Debug)]
 pub enum KbControllerType {
     Ppi,
+    PCJr,
     At,
 }
 
@@ -129,7 +131,7 @@ lazy_static! {
         m.insert(MachineType::Ibm5150v64K, vec!["ibm_basic"]);
         m.insert(MachineType::Ibm5150v256K, vec!["ibm_basic"]);
         m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
-        m.insert(MachineType::IbmPCJr, vec![]);
+        m.insert(MachineType::IbmPCJr, vec!["pcjr_cartridge"]);
         m.insert(MachineType::Tandy1000, vec![]);
         m
     };
@@ -152,6 +154,7 @@ pub struct MachineDescriptor {
     pub system_crystal: f64,        // The main system crystal speed in MHz.
     pub timer_crystal: Option<f64>, // The main timer crystal speed in MHz. On PC/AT, there is a separate timer crystal to run the PIT at the same speed as PC/XT.
     pub bus_crystal: f64,
+    pub open_bus_byte: u8,
     pub cpu_type: CpuType,
     pub cpu_factor: ClockFactor, // Specifies the CPU speed in either a divisor or multiplier of system crystal.
     pub cpu_turbo_factor: ClockFactor, // Same as above, but when turbo button is active
@@ -159,12 +162,14 @@ pub struct MachineDescriptor {
     pub bus_factor: ClockFactor, // Specifies the ISA bus speed in either a divisor or multiplier of bus crystal.
     pub timer_divisor: u32,      // Specifies the PIT timer speed in a divisor of timer clock speed.
     pub have_ppi: bool,
+    pub a0: Option<A0Type>, // Whether the machine has an A0 register to control NMI, and what type it is.
     pub kb_controller: KbControllerType,
     pub pit_type: PitType,
     pub pic_type: PicType,
     pub dma_type: Option<DmaType>,     // Not all machines have DMA (PCJr)
     pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
     pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
+    pub allow_expansion_video: bool,   // Whether the machine allows for expansion video cards.
 }
 
 impl Default for MachineDescriptor {
@@ -175,6 +180,7 @@ impl Default for MachineDescriptor {
             system_crystal: IBM_PC_SYSTEM_CLOCK,
             timer_crystal: None,
             bus_crystal: IBM_PC_SYSTEM_CLOCK,
+            open_bus_byte: 0xFF,
             cpu_type: CpuType::Intel8088,
             cpu_factor: ClockFactor::Divisor(3),
             cpu_turbo_factor: ClockFactor::Divisor(2),
@@ -182,12 +188,14 @@ impl Default for MachineDescriptor {
             bus_factor: ClockFactor::Divisor(1),
             timer_divisor: PIT_DIVISOR,
             have_ppi: true,
+            a0: Some(A0Type::PCXT),
             kb_controller: KbControllerType::Ppi,
             pit_type: PitType::Model8253,
             pic_type: PicType::Single,
             dma_type: Some(DmaType::Single),
             onboard_serial: None,
             onboard_parallel: None,
+            allow_expansion_video: true,
         }
     }
 }
@@ -232,6 +240,7 @@ lazy_static! {
                     bus_factor: ClockFactor::Divisor(1),
                     timer_divisor: PIT_DIVISOR,
                     have_ppi: true,
+                    a0: Some(A0Type::PCJr),
                     kb_controller: KbControllerType::Ppi,
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,
@@ -246,6 +255,7 @@ lazy_static! {
                     system_crystal: IBM_PC_SYSTEM_CLOCK,
                     timer_crystal: None,
                     bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    open_bus_byte: 0xE8,
                     cpu_type: CpuType::Intel8088,
                     cpu_factor: ClockFactor::Divisor(3),
                     cpu_turbo_factor: ClockFactor::Divisor(2),
@@ -253,12 +263,14 @@ lazy_static! {
                     bus_factor: ClockFactor::Divisor(1),
                     timer_divisor: PIT_DIVISOR,
                     have_ppi: true,
+                    a0: Some(A0Type::Tandy1000),
                     kb_controller: KbControllerType::Ppi,
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,
                     dma_type: Some(DmaType::Single),
                     onboard_serial: None,
                     onboard_parallel: Some(0x378),
+                    allow_expansion_video: false,
                 },
             )
         ]);
@@ -302,8 +314,10 @@ pub struct SerialMouseConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct VideoCardConfig {
     #[serde(rename = "type")]
-    pub video_type: VideoType,
-    pub dip_switch: Option<u8>,
+    pub video_type:    VideoType,
+    #[serde(rename = "subtype")]
+    pub video_subtype: Option<VideoCardSubType>,
+    pub dip_switch:    Option<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize)]

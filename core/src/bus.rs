@@ -79,7 +79,9 @@ use crate::devices::ega::{self, EGACard};
 #[cfg(feature = "vga")]
 use crate::devices::vga::{self, VGACard};
 use crate::{
-    devices::{lpt_card::ParallelController, tga, tga::TGACard},
+    device_traits::videocard::VideoCardSubType,
+    devices::{a0::A0Register, lpt_card::ParallelController, tga, tga::TGACard},
+    machine_types::{FdcType, MachineType},
     syntax_token::SyntaxFormatType,
 };
 
@@ -195,6 +197,7 @@ pub enum DeviceId {
 
 #[derive(Clone, Debug)]
 pub enum DeviceEvent {
+    NmiTransition(bool),
     InterruptUpdate(u16, u16, bool),
     DramRefreshUpdate(u16, u16, u32, bool),
     DramRefreshEnable(bool),
@@ -250,6 +253,7 @@ impl MemRangeDescriptor {
 }
 
 pub enum IoDeviceType {
+    A0Register,
     Ppi,
     Pit,
     DmaPrimary,
@@ -345,6 +349,7 @@ pub struct BusInterface {
     conventional_size: usize,
     memory: Vec<u8>,
     memory_mask: Vec<u8>,
+    open_bus_byte: u8,
     desc_vec: Vec<MemRangeDescriptor>,
     mmio_map: Vec<(MemRangeDescriptor, MmioDeviceType)>,
     mmio_map_fast: [MmioDeviceType; MMIO_MAP_LEN],
@@ -356,6 +361,9 @@ pub struct BusInterface {
     io_desc_map: FxHashMap<u16, String>,
     io_stats: FxHashMap<u16, (bool, IoDeviceStats)>,
     ppi: Option<Ppi>,
+    a0: Option<A0Register>,
+    a0_data: u8,
+    nmi_latch: bool,
     pit: Option<Pit>,
     dma_counter: u16,
     dma1: Option<DMAController>,
@@ -494,8 +502,9 @@ impl Default for BusInterface {
             keyboard_type: KeyboardType::ModelF,
             keyboard: None,
             conventional_size: ADDRESS_SPACE,
-            memory: vec![OPEN_BUS_BYTE; ADDRESS_SPACE],
+            memory: vec![0; ADDRESS_SPACE],
             memory_mask: vec![0; ADDRESS_SPACE],
+            open_bus_byte: 0xFF,
             desc_vec: Vec::new(),
             mmio_map: Vec::new(),
             mmio_map_fast: [MmioDeviceType::Memory; MMIO_MAP_LEN],
@@ -507,6 +516,9 @@ impl Default for BusInterface {
             io_desc_map: FxHashMap::default(),
             io_stats: FxHashMap::default(),
             ppi: None,
+            a0: None,
+            a0_data: 0,
+            nmi_latch: false,
             pit: None,
             dma_counter: 0,
             dma1: None,
@@ -749,8 +761,12 @@ impl BusInterface {
             *byte_ref &= !MEM_RET_BIT;
         }
 
-        // Set all bytes to 0
+        // Set all bytes to open bus byte
         for byte_ref in &mut self.memory {
+            *byte_ref = self.open_bus_byte;
+        }
+        // Then clear conventional memory
+        for byte_ref in &mut self.memory[0..self.conventional_size] {
             *byte_ref = 0;
         }
 
@@ -1597,6 +1613,17 @@ impl BusInterface {
         // Get normalized conventional memory and set it.
         let conventional_memory = normalize_conventional_memory(machine_config)?;
         self.set_conventional_size(conventional_memory as usize);
+        self.open_bus_byte = machine_desc.open_bus_byte;
+
+        // Create the A0 register if specified.
+        // TODO: Wrap this up in a motherboard device type?
+        if let Some(a0_type) = machine_desc.a0 {
+            let a0 = A0Register::new(a0_type);
+
+            log::warn!("Creating A0 register...");
+            add_io_device!(self, a0, IoDeviceType::A0Register);
+            self.a0 = Some(a0);
+        }
 
         // Set the expansion rom flag for DIP if there is anything besides a video card
         // that needs an expansion ROM.
@@ -1670,11 +1697,17 @@ impl BusInterface {
         // Create FDC if specified.
         if let Some(fdc_config) = &machine_config.fdc {
             let floppy_ct = fdc_config.drive.len();
+            let fdc_type = fdc_config.fdc_type;
 
-            let fdc = FloppyController::new(floppy_ct);
-            // Add FDC ports to io_map
-            add_io_device!(self, fdc, IoDeviceType::FloppyController);
-            self.fdc = Some(fdc);
+            // Create the correct kind of FDC (currently only NEC supported)
+            match fdc_type {
+                FdcType::IbmNec | FdcType::IbmPCJrNec => {
+                    let fdc = FloppyController::new(fdc_type, floppy_ct);
+                    // Add FDC ports to io_map
+                    add_io_device!(self, fdc, IoDeviceType::FloppyController);
+                    self.fdc = Some(fdc);
+                }
+            }
         }
 
         // Create a HardDiskController if specified
@@ -1751,7 +1784,9 @@ impl BusInterface {
                     video_dispatch = VideoCardDispatch::Cga(cga)
                 }
                 VideoType::TGA => {
-                    let tga = TGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
+                    // Subtype can be Tandy1000 or PCJr
+                    let subtype = card.video_subtype.unwrap_or(VideoCardSubType::Tandy1000);
+                    let tga = TGACard::new(subtype, TraceLogger::None, clock_mode, video_frame_debug);
                     add_io_device!(self, tga, IoDeviceType::Video(video_id));
                     let mem_descriptor = MemRangeDescriptor::new(tga::TGA_MEM_ADDRESS, tga::TGA_MEM_APERTURE, false);
                     self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
@@ -1803,17 +1838,26 @@ impl BusInterface {
     /// Return whether NMI is enabled.
     /// On the 5150 & 5160, NMI generation can be disabled via the PPI.
     pub fn nmi_enabled(&self) -> bool {
-        if self.machine_desc.unwrap().have_ppi {
-            if let Some(ppi) = &self.ppi {
-                ppi.nmi_enabled()
+        match self.machine_desc.unwrap().machine_type {
+            // TODO: Add other types?
+            MachineType::Ibm5150v64K | MachineType::Ibm5150v256K | MachineType::Ibm5160 => {
+                if let Some(ppi) = &self.ppi {
+                    ppi.nmi_enabled()
+                }
+                else {
+                    true
+                }
             }
-            else {
-                true
+            // Add other types that use A0 register?
+            MachineType::IbmPCJr => {
+                if let Some(a0) = &self.a0 {
+                    a0.is_nmi_enabled()
+                }
+                else {
+                    panic!("PCJr should have A0!")
+                }
             }
-        }
-        else {
-            // TODO: Determine what controls NMI masking on AT (i8042?)
-            true
+            _ => true,
         }
     }
 
@@ -1845,15 +1889,26 @@ impl BusInterface {
 
                 // Read a byte from the keyboard
                 if let Some(kb_byte) = keyboard.recv_scancode() {
+                    log::debug!("Received keyboard byte: {:02X}", kb_byte);
                     // Do we have a PPI? if so, send the scancode to the PPI
                     if let Some(ppi) = &mut self.ppi {
                         ppi.send_keyboard(kb_byte);
 
-                        if ppi.kb_enabled() {
-                            if let Some(pic) = &mut self.pic1 {
-                                // TODO: Should we let the PPI do this directly?
-                                //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
-                                pic.pulse_interrupt(1);
+                        match self.machine_desc.unwrap().machine_type {
+                            MachineType::IbmPCJr => {
+                                // The PCJr is an odd duck and uses NMI for keyboard interrupts.
+                                if let Some(a0) = &mut self.a0 {
+                                    a0.set_nmi_latch(true);
+                                }
+                            }
+                            _ => {
+                                if ppi.kb_enabled() {
+                                    if let Some(pic) = &mut self.pic1 {
+                                        // TODO: Should we let the PPI do this directly?
+                                        //log::warn!("sending kb interrupt for byte: {:02X}", kb_byte);
+                                        pic.pulse_interrupt(1);
+                                    }
+                                }
                             }
                         }
                     }
@@ -1892,8 +1947,29 @@ impl BusInterface {
         // There will always be a PIT, so safe to unwrap.
         let mut pit = self.pit.take().unwrap();
 
+        // Run the A0 register. It doesn't need a time delta.
+        let mut ppi_nmi_latch = None;
+        if let Some(a0) = &mut self.a0 {
+            let new_nmi_latch = a0.run(&mut pit, 0.0);
+            self.a0_data = a0.read();
+
+            if !self.nmi_latch && new_nmi_latch {
+                event = Some(DeviceEvent::NmiTransition(true));
+            }
+            else if self.nmi_latch && !new_nmi_latch {
+                log::debug!("Clearing NMI line to CPU.");
+                event = Some(DeviceEvent::NmiTransition(false));
+            }
+
+            ppi_nmi_latch = Some(new_nmi_latch);
+            self.nmi_latch = new_nmi_latch;
+        }
+
         // Run the PPI if present. PPI takes PIC to generate keyboard interrupts.
         if let Some(ppi) = &mut self.ppi {
+            if let Some(latch_state) = ppi_nmi_latch {
+                ppi.set_nmi_latch_bit(latch_state);
+            }
             ppi.run(pic, us);
         }
 
@@ -2000,6 +2076,7 @@ impl BusInterface {
                     self.cga_tick_accum += sys_ticks;
 
                     if self.cga_tick_accum > 8 {
+                        tga.set_a0(self.a0_data);
                         tga.run(
                             DeviceRunTimeUnit::SystemTicks(self.cga_tick_accum),
                             &mut self.pic1,
@@ -2187,6 +2264,11 @@ impl BusInterface {
         let mut byte = None;
         if let Some(device_id) = self.io_map.get(&port) {
             match device_id {
+                IoDeviceType::A0Register => {
+                    if let Some(a0) = &mut self.a0 {
+                        byte = Some(a0.read_u8(port, nul_delta));
+                    }
+                }
                 IoDeviceType::Ppi => {
                     if let Some(ppi) = &mut self.ppi {
                         byte = Some(ppi.read_u8(port, nul_delta));
@@ -2294,6 +2376,12 @@ impl BusInterface {
         let mut resolved = false;
         if let Some(device_id) = self.io_map.get(&port) {
             match device_id {
+                IoDeviceType::A0Register => {
+                    if let Some(a0) = &mut self.a0 {
+                        a0.write_u8(port, data, None, nul_delta);
+                        resolved = true;
+                    }
+                }
                 IoDeviceType::Ppi => {
                     if let Some(mut ppi) = self.ppi.take() {
                         ppi.write_u8(port, data, Some(self), nul_delta);
