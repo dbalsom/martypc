@@ -524,6 +524,7 @@ pub struct CGACard {
     vlc_c9: u8,      // Vertical line counter - row of character being drawn
     vcc_c4: u8,      // Vertical character counter (y pos of character)
     last_row: bool,  // Flag set on last character row of screen
+    last_line: bool, // Flag set on last line of the screen (C9==R9)
     vsc_c3h: u8,     // Vertical sync counter - counts during vsync period
     hsc_c3l: u8,     // Horizontal sync counter - counts during hsync period
     vtac_c5: u8,
@@ -531,7 +532,6 @@ pub struct CGACard {
     effective_vta: u8,
     vma: usize,              // VMA register - Video memory address
     vma_t: usize,            // VMA' register - Video memory address temporary
-    vmws: usize,             // Video memory word size
     rba: usize,              // Render buffer address
     blink_state: bool,       // Used to control blinking of cursor and text with blink attribute
     blink_accum_us: f64,     // Microsecond accumulator for blink state flipflop
@@ -713,6 +713,7 @@ impl Default for CGACard {
             vlc_c9: 0,
             vcc_c4: 0,
             last_row: false,
+            last_line: false,
             vsc_c3h: 0,
             hsc_c3l: 0,
             vtac_c5: 0,
@@ -720,7 +721,6 @@ impl Default for CGACard {
             effective_vta: 0,
             vma: 0,
             vma_t: 0,
-            vmws: 2,
             rba: 0,
             blink_state: false,
             blink_accum_us: 0.0,
@@ -1203,8 +1203,6 @@ impl CGACard {
         self.mode_enable = self.mode_byte & MODE_ENABLE != 0;
         self.mode_hires_gfx = self.mode_byte & MODE_HIRES_GRAPHICS != 0;
         self.mode_blinking = self.mode_byte & MODE_BLINKING != 0;
-
-        self.vmws = 2;
 
         // Use color control register value for overscan unless high res graphics mode,
         // in which case overscan must be black (0).
@@ -2020,11 +2018,12 @@ impl CGACard {
             }
         }
 
-        if self.hcc_c0 == 0 {
+        if self.hcc_c0 < 2 {
             // When C0 < 2 evaluate last_line flag status.
             // LOGON SYSTEM v1.6 pg 73
             if self.vcc_c4 == self.crtc_vertical_total {
                 self.last_row = true;
+                self.last_line = self.vlc_c9 == self.crtc_maximum_scanline_address;
                 self.vtac_c5 = 0;
             }
             else {
@@ -2161,7 +2160,7 @@ impl CGACard {
                 self.in_display_area = true;
             }
 
-            if self.vlc_c9 > self.crtc_maximum_scanline_address {
+            if self.vlc_c9 == self.crtc_maximum_scanline_address + 1 {
                 // C9 == R9 We finished drawing this row of characters
 
                 self.vlc_c9 = 0;
@@ -2180,11 +2179,12 @@ impl CGACard {
                     self.in_display_area = false;
                 }
 
-                if self.last_row {
+                if self.last_line {
                     // C4 == R4 We are at vertical total, start incrementing vertical total adjust counter.
                     //log::debug!("setting vta at : {}", self.vcc_c4);
                     self.in_vta = true;
                     self.last_row = false;
+                    self.last_line = false;
                 }
             }
 

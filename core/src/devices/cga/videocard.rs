@@ -47,13 +47,13 @@ macro_rules! push_reg_str {
 /*
 macro_rules! push_reg_str_bin8 {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
+        $vec.push((String::from("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:08b}", $val))))
     };
 }
 
 macro_rules! push_reg_str_enum {
     ($vec: expr, $reg: expr, $decorator: expr, $val: expr ) => {
-        $vec.push((format!("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
+        $vec.push((String::from("{:?} {}", $reg, $decorator), VideoCardStateEntry::String(format!("{:?}", $val))))
     };
 }
 */
@@ -335,11 +335,11 @@ impl VideoCard for CGACard {
 
         let mut general_vec = Vec::new();
 
-        general_vec.push((format!("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
-        general_vec.push((format!("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
-        general_vec.push((format!("Video Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
-        general_vec.push((format!("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
-        general_vec.push((format!("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
+        general_vec.push((String::from("Adapter Type:"), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
+        general_vec.push((String::from("Display Mode:"), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
+        general_vec.push((String::from("Video Enable:"), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
+        general_vec.push((String::from("Clock Divisor:"), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));
+        general_vec.push((String::from("Frame Count:"), VideoCardStateEntry::String(format!("{}", self.frame_count))));
         map.insert("General".to_string(), general_vec);
 
         let mut crtc_vec = Vec::new();
@@ -365,30 +365,31 @@ impl VideoCard for CGACard {
 
         let mut internal_vec = Vec::new();
 
-        internal_vec.push((format!("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
-        internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
-        internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
-        internal_vec.push((format!("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
-        internal_vec.push((format!("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
-        internal_vec.push((format!("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
-        internal_vec.push((format!("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
-        internal_vec.push((format!("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
-        internal_vec.push((format!("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
-        internal_vec.push((format!("vmws:"), VideoCardStateEntry::String(format!("{}", self.vmws))));
-        internal_vec.push((format!("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
-        internal_vec.push((format!("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
-        internal_vec.push((format!("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
-        internal_vec.push((format!("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
-        internal_vec.push((format!("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
-        internal_vec.push((format!("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
-        internal_vec.push((format!("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
-        internal_vec.push((format!("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
-        internal_vec.push((format!("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
-        internal_vec.push((format!("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
-        internal_vec.push((format!("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
-        internal_vec.push((format!("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
-        internal_vec.push((format!("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
-        internal_vec.push((format!("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
+        internal_vec.push((String::from("hcc_c0:"), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
+        internal_vec.push((String::from("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
+        internal_vec.push((String::from("last_row:"), VideoCardStateEntry::String(format!("{}", self.last_row))));
+        internal_vec.push((String::from("last_line:"), VideoCardStateEntry::String(format!("{}", self.last_line))));
+        internal_vec.push((String::from("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
+        internal_vec.push((String::from("scanline:"), VideoCardStateEntry::String(format!("{}", self.scanline))));
+        internal_vec.push((String::from("vsc_c3h:"), VideoCardStateEntry::String(format!("{}", self.vsc_c3h))));
+        internal_vec.push((String::from("hsc_c3l:"), VideoCardStateEntry::String(format!("{}", self.hsc_c3l))));
+        internal_vec.push((String::from("vtac_c5:"), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
+        internal_vec.push((String::from("vma:"), VideoCardStateEntry::String(format!("{:04X}", self.vma))));
+        internal_vec.push((String::from("vma':"), VideoCardStateEntry::String(format!("{:04X}", self.vma_t))));
+        internal_vec.push((String::from("rba:"), VideoCardStateEntry::String(format!("{:04X}", self.rba))));
+        internal_vec.push((String::from("de:"), VideoCardStateEntry::String(format!("{}", self.in_display_area))));
+        internal_vec.push((String::from("crtc_hblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_hblank))));
+        internal_vec.push((String::from("crtc_vblank:"), VideoCardStateEntry::String(format!("{}", self.in_crtc_vblank))));
+        internal_vec.push((String::from("beam_x:"), VideoCardStateEntry::String(format!("{}", self.beam_x))));
+        internal_vec.push((String::from("beam_y:"), VideoCardStateEntry::String(format!("{}", self.beam_y))));
+        internal_vec.push((String::from("border:"), VideoCardStateEntry::String(format!("{}", self.hborder))));
+        internal_vec.push((String::from("s_reads:"), VideoCardStateEntry::String(format!("{}", self.status_reads))));
+        internal_vec.push((String::from("missed_hsyncs:"), VideoCardStateEntry::String(format!("{}", self.missed_hsyncs))));
+        internal_vec.push((String::from("vsync_cycles:"), VideoCardStateEntry::String(format!("{}", self.cycles_per_vsync))));
+        internal_vec.push((String::from("cur_screen_cycles:"), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
+        internal_vec.push((String::from("phase:"), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
+        internal_vec.push((String::from("cursor attr:"), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
+        internal_vec.push((String::from("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
         map
