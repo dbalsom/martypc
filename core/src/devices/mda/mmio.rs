@@ -31,7 +31,7 @@
 */
 
 use super::*;
-use crate::bus::MemoryMappedDevice;
+use crate::bus::{MemRangeDescriptor, MemoryMappedDevice};
 
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
 /// but we handle the mirroring of VRAM this way, and for consistency with other devices
@@ -57,68 +57,30 @@ impl MemoryMappedDevice for MDACard {
     }
 
     fn mmio_read_u8(&mut self, address: usize, _cycles: u32, _cpumem: Option<&[u8]>) -> (u8, u32) {
-        /*
-        if self.enable_snow {
-            // Catch up to CPU state.
+        let a_offset = address & self.mem_mask;
 
-            // TODO: We need to pass converted ticks from the CPU here, in case the frequency is different
-            self.catch_up(DeviceRunTimeUnit::SystemTicks(cycles * 3));
-        }*/
-
-        let a_offset = address & MDA_MEM_MASK;
-        if a_offset < MDA_MEM_SIZE {
-            // Do snow every other hchar
-            if self.cycles & 0b1000 == 0 {
-                // Save bus parameters for snow emulation
-                self.last_bus_addr = a_offset;
-                self.last_bus_value = self.mem[a_offset] ^ 0xAA; // this becomes the char attribute
-                self.dirty_snow = true;
-                self.snow_char = self.mem[a_offset]; // 0xDD; // this becomes the character glyph
-
-            //log::debug!("snow attr: {:08b}", self.mem[a_offset]);
-            }
-            else {
-            }
-
-            trace!(self, "READ_U8: {:04X}:{:02X}", a_offset, self.mem[a_offset],);
-            (self.mem[a_offset], 0)
-        }
-        else {
-            // Read out of range, shouldn't happen...
-            (0xFF, 0)
-        }
+        trace!(self, "READ_U8: {:04X}:{:02X}", a_offset, self.mem[a_offset]);
+        (self.mem[a_offset], 0)
     }
 
     fn mmio_peek_u8(&self, address: usize, _cpumem: Option<&[u8]>) -> u8 {
-        let a_offset = address & MDA_MEM_MASK;
+        let a_offset = address & self.mem_mask;
 
-        self.mem[a_offset & 0x0FFF]
+        self.mem[a_offset]
     }
 
     fn mmio_peek_u16(&self, address: usize, _cpumem: Option<&[u8]>) -> u16 {
-        let a_offset = address & MDA_MEM_MASK;
+        let a_offset = address & self.mem_mask;
 
-        (self.mem[a_offset & 0x0FFF] as u16) << 8 | self.mem[(a_offset + 1) & 0x0FFF] as u16
+        (self.mem[a_offset] as u16) << 8 | self.mem[(a_offset + 1) & self.mem_mask] as u16
     }
 
     fn mmio_write_u8(&mut self, address: usize, byte: u8, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
-        let a_offset = address & MDA_MEM_MASK;
-        if a_offset < MDA_MEM_SIZE {
-            // Save bus parameters for snow emulation
-            self.last_bus_addr = a_offset;
-            self.last_bus_value = byte;
-            self.dirty_snow = true;
-            self.snow_char = self.mem[a_offset];
+        let a_offset = address & self.mem_mask;
 
-            self.mem[a_offset & 0x0FFF] = byte;
-
-            trace!(self, "WRITE_U8: {:04X}:{:02X}", a_offset, byte);
-            0
-        }
-        else {
-            // Write out of range, shouldn't happen...
-            0
-        }
+        self.mem[a_offset] = byte;
+        trace!(self, "WRITE_U8: {:04X}:{:02X}", a_offset, byte);
+        0
     }
 
     fn mmio_read_u16(&mut self, address: usize, _cycles: u32, cpumem: Option<&[u8]>) -> (u16, u32) {
@@ -133,5 +95,43 @@ impl MemoryMappedDevice for MDACard {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
         0
+    }
+
+    fn get_mapping(&self) -> Vec<MemRangeDescriptor> {
+        let mut mapping = Vec::new();
+
+        match self.subtype {
+            VideoCardSubType::None => {
+                mapping.push(MemRangeDescriptor {
+                    address: 0xB0000,
+                    size: MDA_MEM_APERTURE,
+                    cycle_cost: 0,
+                    read_only: false,
+                    priority: 0,
+                });
+            }
+            VideoCardSubType::Hercules => {
+                log::warn!("Using Hercules memory map");
+                mapping.push(MemRangeDescriptor {
+                    address: 0xB0000,
+                    size: HGC_MEM_APERTURE_HALF,
+                    cycle_cost: 0,
+                    read_only: false,
+                    priority: 3, // Allow another MDA card to override this
+                });
+                mapping.push(MemRangeDescriptor {
+                    address: 0xB8000,
+                    size: HGC_MEM_APERTURE_HALF,
+                    cycle_cost: 0,
+                    read_only: false,
+                    priority: 0,
+                });
+            }
+            _ => {
+                panic!("Bad subtype for MDA!")
+            }
+        }
+
+        mapping
     }
 }

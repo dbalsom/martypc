@@ -85,6 +85,15 @@ name = "ibm_mda"
     bus_type = "ISA"
     type = "MDA"
     clock_mode = "Default"
+    
+[[overlay]]
+name = "hercules"
+    # Video card
+    [[overlay.video]]
+    bus_type = "ISA"
+    type = "MDA"
+    subtype = "Hercules"
+    clock_mode = "Default"    
 
 [[overlay]]
 name = "ibm_ega"

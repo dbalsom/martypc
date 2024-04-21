@@ -31,6 +31,7 @@
 */
 
 use super::*;
+use crate::devices::mda::tablegen::HGC_8BIT_TABLE;
 
 impl MDACard {
     pub fn draw_overscan_pixel(&mut self) {
@@ -60,6 +61,23 @@ impl MDACard {
         for i in 0..MDA_CHAR_CLOCK as usize {
             self.buf[self.back_buf][self.rba + i] = color;
         }
+    }
+
+    /// Draw a character in hires mode (8 pixels) using a single solid color.
+    /// Since all pixels are the same we can draw 64 bits at a time.
+    #[inline]
+    pub fn draw_solid_gchar(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        let color_u64 = CGA_COLORS_U64[color as usize];
+        frame_u64[self.rba >> 3] = color_u64;
+        frame_u64[(self.rba >> 3) + 1] = color_u64;
+    }
+
+    #[inline]
+    pub fn draw_blank_gchar(&mut self, color: u8) {
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
+        frame_u64[self.rba >> 3] = 0;
+        frame_u64[(self.rba >> 3) + 1] = 0;
     }
 
     /// Draw a single character glyph column pixel in text mode, doubling the pixel if
@@ -152,83 +170,21 @@ impl MDACard {
         }
     }
 
-    /*
-    /// Draw an entire character row in high resolution text mode (8 pixels)
-    pub fn draw_text_mode_hchar(&mut self) {
-        // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
-            self.draw_solid_hchar(self.cur_fg);
-        }
-        else if self.mode_enable {
-            let glyph_row: u64;
-            // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            glyph_row = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
+    /// Draw a single character column in high resolution graphics mode (640x200)
+    pub fn draw_hires_gfx_mode_char(&mut self) {
+        let base_addr = self.get_gfx_addr(self.crtc.vlc());
+        let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
 
-            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-            frame_u64[self.rba >> 3] = glyph_row;
+        if self.mode_enable {
+            let byte0 = self.mem[base_addr];
+            let byte1 = self.mem[base_addr + 1];
+
+            frame_u64[self.rba >> 3] = HGC_8BIT_TABLE[byte0 as usize];
+            frame_u64[(self.rba >> 3) + 1] = HGC_8BIT_TABLE[byte1 as usize];
         }
         else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
-            self.draw_solid_hchar(0);
+            frame_u64[self.rba >> 3] = 0;
+            frame_u64[(self.rba >> 3) + 1] = 0;
         }
     }
-
-     */
-
-    /*
-    /// Draw an entire character row in high resolution text mode (8 pixels)
-    pub fn draw_text_mode_hchar(&mut self) {
-        // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
-            self.draw_solid_hchar(self.cur_fg);
-        }
-        else if self.mode_enable {
-            let glyph_row: u64;
-            // Get the u64 glyph row to draw for the current fg and bg colors and character row (vlc)
-            glyph_row = self.get_hchar_glyph_row(self.cur_char as usize, self.vlc_c9 as usize);
-
-            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-            frame_u64[self.rba >> 3] = glyph_row;
-        }
-        else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
-            self.draw_solid_hchar(0);
-        }
-    }
-
-
-    /// Draw an entire character row in low resolution text mode (16 pixels)
-    pub fn draw_text_mode_lchar(&mut self) {
-        //let draw_span = (8 * self.clock_divisor) as usize;
-
-        // Do cursor if visible, enabled and defined
-        if self.vma == self.crtc_cursor_address
-            && self.cursor_status
-            && self.blink_state
-            && self.cursor_data[(self.vlc_c9 & 0x1F) as usize]
-        {
-            self.draw_solid_lchar(self.cur_fg);
-        }
-        else if self.mode_enable {
-            // Get the two u64 glyph row components to draw for the current fg and bg colors and character row (vlc)
-            let (glyph_row0, glyph_row1) = self.get_lchar_glyph_rows(self.cur_char as usize, self.vlc_c9 as usize);
-
-            let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
-            frame_u64[self.rba >> 3] = glyph_row0;
-            frame_u64[(self.rba >> 3) + 1] = glyph_row1;
-        }
-        else {
-            // When mode bit is disabled in text mode, the CGA acts like VRAM is all 0.
-            self.draw_solid_lchar(0);
-        }
-    }
-     */
 }

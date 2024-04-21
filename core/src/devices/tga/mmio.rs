@@ -31,7 +31,10 @@
 */
 
 use super::*;
-use crate::bus::MemoryMappedDevice;
+use crate::{
+    bus::{MemRangeDescriptor, MemoryMappedDevice},
+    devices::cga::CGA_MEM_APERTURE,
+};
 
 /// Unlike the EGA or VGA the CGA doesn't do any operations on video memory on read/write,
 /// but we handle the mirroring of VRAM this way, and for consistency with other devices
@@ -119,5 +122,19 @@ impl MemoryMappedDevice for TGACard {
         //trace!(self, "16 byte write to VRAM, {:04X} -> {:05X} ", data, address);
         log::warn!("Unsupported 16 bit write to VRAM");
         0
+    }
+
+    fn get_mapping(&self) -> Vec<MemRangeDescriptor> {
+        let mut mapping = Vec::new();
+
+        mapping.push(MemRangeDescriptor {
+            address: 0xB8000,
+            size: TGA_MEM_APERTURE,
+            cycle_cost: 0,
+            read_only: false,
+            priority: 0,
+        });
+
+        mapping
     }
 }

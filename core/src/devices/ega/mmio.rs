@@ -31,7 +31,7 @@
 */
 
 use super::*;
-use crate::bus::MemoryMappedDevice;
+use crate::bus::{MemRangeDescriptor, MemoryMappedDevice};
 
 impl MemoryMappedDevice for EGACard {
     fn get_read_wait(&mut self, _address: usize, _cycles: u32) -> u32 {
@@ -101,5 +101,24 @@ impl MemoryMappedDevice for EGACard {
     fn mmio_write_u16(&mut self, _address: usize, _data: u16, _cycles: u32, _cpumem: Option<&mut [u8]>) -> u32 {
         log::warn!("Unsupported 16 bit write to VRAM");
         0
+    }
+
+    fn get_mapping(&self) -> Vec<MemRangeDescriptor> {
+        vec![
+            MemRangeDescriptor {
+                address: 0xB8000,
+                size: CGA_MEM_WINDOW,
+                cycle_cost: 0,
+                read_only: false,
+                priority: 0,
+            },
+            MemRangeDescriptor {
+                address: 0xA0000,
+                size: EGA_GFX_PLANE_SIZE,
+                cycle_cost: 0,
+                read_only: false,
+                priority: 0,
+            },
+        ]
     }
 }

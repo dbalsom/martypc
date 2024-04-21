@@ -53,6 +53,8 @@ pub const CRTC_REGISTER_MASK: u16 = !0x007;
 
 pub const MDA_MODE_CONTROL_REGISTER: u16 = 0x3B8;
 pub const MDA_STATUS_REGISTER: u16 = 0x3BA;
+
+pub const HGC_CONFIG_SWITCH_REGISTER: u16 = 0x3BF;
 //pub const CGA_LIGHTPEN_LATCH_RESET: u16 = 0x3DB;
 //pub const CGA_LIGHTPEN_LATCH_SET: u16 = 0x3DC;
 
@@ -102,6 +104,9 @@ impl IoDevice for MDACard {
             // Write is to CRTC register.
             self.crtc.port_write(port, data);
         }
+        else if port == HGC_CONFIG_SWITCH_REGISTER {
+            self.handle_hgc_config_switch(data);
+        }
         else if (port & LPT_PORT_MASK) == LPT_DEFAULT_IO_BASE {
             // Read is from LPT port.
             if let Some(lpt) = &mut self.lpt {
@@ -144,6 +149,11 @@ impl IoDevice for MDACard {
                 .into_iter(),
             );
         }
+
+        if let VideoCardSubType::Hercules = self.subtype {
+            mda_ports.push((String::from("HGC Config Switch"), HGC_CONFIG_SWITCH_REGISTER));
+        }
+
         mda_ports
     }
 }

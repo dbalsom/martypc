@@ -117,9 +117,11 @@ impl FromStr for VideoType {
 #[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, Hash)]
 pub enum VideoCardSubType {
     #[default]
+    None,
     IbmPCJr,
     Tandy1000,
-    CompaqPortable,
+    CompaqCGA,
+    Hercules,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]

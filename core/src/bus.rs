@@ -214,6 +214,8 @@ pub trait MemoryMappedDevice {
     fn get_write_wait(&mut self, address: usize, cycles: u32) -> u32;
     fn mmio_write_u8(&mut self, address: usize, data: u8, cycles: u32, cpumem: Option<&mut [u8]>) -> u32;
     fn mmio_write_u16(&mut self, address: usize, data: u16, cycles: u32, cpumem: Option<&mut [u8]>) -> u32;
+
+    fn get_mapping(&self) -> Vec<MemRangeDescriptor>;
 }
 
 pub struct MemoryDebug {
@@ -234,11 +236,13 @@ impl fmt::Display for MemoryDebug {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct MemRangeDescriptor {
-    address: usize,
-    size: usize,
-    cycle_cost: u32,
-    read_only: bool,
+    pub address: usize,
+    pub size: usize,
+    pub cycle_cost: u32,
+    pub read_only: bool,
+    pub priority: u32,
 }
 
 impl MemRangeDescriptor {
@@ -248,6 +252,7 @@ impl MemRangeDescriptor {
             size,
             cycle_cost: 0,
             read_only,
+            priority: 1,
         }
     }
 }
@@ -398,6 +403,16 @@ macro_rules! add_io_device {
         let port_list = $device.port_list();
         $self.io_desc_map.extend(port_list.iter().map(|p| (p.1, p.0.clone())));
         $self.io_map.extend(port_list.into_iter().map(|p| (p.1, $device_type)));
+    }};
+}
+
+#[macro_export]
+macro_rules! add_mmio_video {
+    ($self:expr, $device:expr, $device_type:expr) => {{
+        let mapping = $device.get_mapping();
+        for desc in mapping.iter() {
+            $self.register_map($device_type, desc.clone());
+        }
     }};
 }
 
@@ -711,6 +726,7 @@ impl BusInterface {
                 size: src_size,
                 cycle_cost,
                 read_only,
+                priority: 1,
             }
         });
 
@@ -751,6 +767,7 @@ impl BusInterface {
                 size,
                 cycle_cost,
                 read_only,
+                priority: 1,
             }
         });
     }
@@ -1768,19 +1785,21 @@ impl BusInterface {
             log::debug!("Creating video card of type: {:?}", card.video_type);
             match card.video_type {
                 VideoType::MDA => {
-                    let mda = MDACard::new(TraceLogger::None, clock_mode, true, video_frame_debug);
+                    let mda = MDACard::new(
+                        card.video_subtype.unwrap_or(VideoCardSubType::None),
+                        TraceLogger::None,
+                        clock_mode,
+                        true,
+                        video_frame_debug,
+                    );
                     add_io_device!(self, mda, IoDeviceType::Video(video_id));
-                    let mem_descriptor = MemRangeDescriptor::new(mda::MDA_MEM_ADDRESS, mda::MDA_MEM_APERTURE, false);
-                    self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
-
+                    add_mmio_video!(self, mda, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Mda(mda)
                 }
                 VideoType::CGA => {
                     let cga = CGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
                     add_io_device!(self, cga, IoDeviceType::Video(video_id));
-                    let mem_descriptor = MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false);
-                    self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
-
+                    add_mmio_video!(self, cga, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Cga(cga)
                 }
                 VideoType::TGA => {
@@ -1788,34 +1807,21 @@ impl BusInterface {
                     let subtype = card.video_subtype.unwrap_or(VideoCardSubType::Tandy1000);
                     let tga = TGACard::new(subtype, TraceLogger::None, clock_mode, video_frame_debug);
                     add_io_device!(self, tga, IoDeviceType::Video(video_id));
-                    let mem_descriptor = MemRangeDescriptor::new(tga::TGA_MEM_ADDRESS, tga::TGA_MEM_APERTURE, false);
-                    self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
-
+                    add_mmio_video!(self, tga, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Tga(tga)
                 }
                 #[cfg(feature = "ega")]
                 VideoType::EGA => {
                     let ega = EGACard::new(TraceLogger::None, clock_mode, video_frame_debug, card.dip_switch);
                     add_io_device!(self, ega, IoDeviceType::Video(video_id));
-                    let cga_mem_descriptor =
-                        MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false);
-                    let ega_mem_descriptor =
-                        MemRangeDescriptor::new(ega::EGA_MEM_ADDRESS, ega::EGA_GFX_PLANE_SIZE, false);
-                    self.register_map(MmioDeviceType::Video(video_id), cga_mem_descriptor);
-                    self.register_map(MmioDeviceType::Video(video_id), ega_mem_descriptor);
-
+                    add_mmio_video!(self, ega, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Ega(ega)
                 }
                 #[cfg(feature = "vga")]
                 VideoType::VGA => {
                     let vga = VGACard::new(TraceLogger::None);
                     add_io_device!(self, vga, IoDeviceType::Video(video_id));
-                    let cga_mem_descriptor =
-                        MemRangeDescriptor::new(cga::CGA_MEM_ADDRESS, cga::CGA_MEM_APERTURE, false);
-                    let mem_descriptor = MemRangeDescriptor::new(vga::VGA_GFX_ADDRESS, vga::VGA_GFX_PLANE_SIZE, false);
-                    self.register_map(MmioDeviceType::Video(video_id), cga_mem_descriptor);
-                    self.register_map(MmioDeviceType::Video(video_id), mem_descriptor);
-
+                    add_mmio_video!(self, vga, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Vga(vga)
                 }
                 #[allow(unreachable_patterns)]

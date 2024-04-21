@@ -289,7 +289,7 @@ impl VideoCard for MDACard {
 
         let mut general_vec = Vec::new();
 
-        general_vec.push(("Adapter Type:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.get_video_type()))));
+        general_vec.push(("Adapter Type:".to_string(), VideoCardStateEntry::String(format!("{:?} ({:?})", self.get_video_type(), self.subtype))));
         general_vec.push(("Display Mode:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.get_display_mode()))));
         general_vec.push(("Video Enable:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
         general_vec.push(("Clock Divisor:".to_string(), VideoCardStateEntry::String(format!("{}", self.clock_divisor))));

@@ -30,3 +30,39 @@
     character drawing.
 
 */
+
+/// Constant initializer to unpack all possible 8 bit patterns into 64-bit values for fast writing.
+pub const HGC_8BIT_TABLE: [u64; 256] = {
+    let mut table: [u64; 256] = [0; 256];
+
+    let mut glyph: usize = 0;
+    let mut glyph_u64: u64;
+    let mut bit: u8;
+    loop {
+        bit = 0;
+        glyph_u64 = 0;
+        loop {
+            let bit_val = glyph & (0x01 << (7 - bit)) != 0;
+
+            glyph_u64 |= (if bit_val { 0xFF } else { 0x00 }) << (bit * 8);
+
+            if bit < 7 {
+                bit += 1;
+            }
+            else {
+                break;
+            }
+        }
+
+        table[glyph] = glyph_u64;
+
+        if glyph < 255 {
+            glyph += 1;
+        }
+        else {
+            break;
+        }
+    }
+
+    table
+};

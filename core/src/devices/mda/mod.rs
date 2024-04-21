@@ -86,10 +86,16 @@ static WAIT_TABLE: [u32; 16] = [14, 13, 12, 11, 10, 9, 24, 23, 22, 21, 20, 19, 1
 // in cpu cycles: 5,5,4,4,4,3,8,8,8,7,7,7,6,6,6,5
 
 pub const MDA_MEM_ADDRESS: usize = 0xB0000;
-// MDA memory is repeated from B0000-B7FFFF due to incomplete address decoding.
+// MDA memory is repeated from B0000-B7FFF due to incomplete address decoding.
 pub const MDA_MEM_APERTURE: usize = 0x8000;
 pub const MDA_MEM_SIZE: usize = 0x1000; // 4096 bytes
+pub const HGC_MEM_SIZE: usize = 0x10000; // 65536 bytes
 pub const MDA_MEM_MASK: usize = 0x0FFF; // Applying this mask will implement memory mirror.
+
+pub const HGC_MEM_APERTURE_HALF: usize = 0x8000;
+pub const HGC_MEM_APERTURE_FULL: usize = 0x10000;
+pub const HGC_MEM_MASK_HALF: usize = 0x7FFF;
+pub const HGC_MEM_MASK_FULL: usize = 0xFFFF;
 
 pub const MDA_REPEAT_COL_MASK: u8 = 0b1110_0000;
 pub const MDA_REPEAT_COL_VAL: u8 = 0b1100_0000;
@@ -125,11 +131,12 @@ const US_PER_FRAME: f64 = 1.0 / 50.0;
 
 pub const MDA_BLINK_FAST_RATE: u8 = 8;
 
-pub const MDA_MAX_CLOCK: usize = (MDA_XRES_MAX * MDA_YRES_MAX) as usize;
+pub const MDA_MAX_CLOCK: usize = ((MDA_XRES_MAX * MDA_YRES_MAX) as usize & !0x07) + 8;
 //pub const MDA_MAX_CLOCK: usize = 325140; // 16,257,000 / 50
 
 // Calculate the maximum possible area of display field (including refresh period)
 const MDA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * MDA_CHAR_CLOCK as u32; // 882
+const HGC_XRES_MAX: u32 = MDA_XRES_MAX - 2;
 const MDA_YRES_MAX: u32 = 369; // Actual value works out to 325,140 / 882 or 368.639
 
 // Monitor sync position. The monitor will eventually perform an hsync at a fixed position
@@ -147,16 +154,16 @@ const CURSOR_LINE_MASK: u8 = 0b0001_1111;
 const CURSOR_ATTR_MASK: u8 = 0b0110_0000;
 const CURSOR_ENABLE_MASK: u8 = 0b0010_0000;
 
-const STATUS_RETRACE: u8 = 0b0000_0001;
+const STATUS_HRETRACE: u8 = 0b0000_0001;
 const STATUS_VIDEO: u8 = 0b0000_1000;
+// Hercules only
+const STATUS_NO_VRETRACE: u8 = 0b1000_0000;
 
-// Include the standard 8x8 CGA font.
-// TODO: Support alternate font with thinner glyphs? It was normally not accessable except
-// by soldering a jumper
 const MDA_FONT: &'static [u8] = include_bytes!("../../../../assets/mda_8by14.bin");
 const MDA_FONT_SPAN: usize = 256; // Font bitmap is 2048 bits wide (256 * 8 characters)
 
 const MDA_CHAR_CLOCK: u8 = 9;
+const HGC_CHAR_CLOCK: u8 = 8;
 const CRTC_FONT_HEIGHT: u8 = 14;
 const CRTC_VBLANK_HEIGHT: u8 = 16;
 
@@ -355,6 +362,12 @@ use crate::devices::{
     mda::io::LPT_DEFAULT_IO_BASE,
 };
 
+#[derive(Debug, BitfieldSpecifier)]
+pub enum PageSelect {
+    PageB000,
+    PageB800,
+}
+
 #[bitfield]
 #[derive(Copy, Clone)]
 pub struct MdaModeRegister {
@@ -365,10 +378,22 @@ pub struct MdaModeRegister {
     pub display_enable: bool,
     pub blinking: bool,
     #[skip]
-    pub unused: B3,
+    pub unused: B2,
+    pub page_select: PageSelect,
+}
+
+#[bitfield]
+#[derive(Copy, Clone)]
+pub struct HercConfigSwitch {
+    pub enable_gfx: bool,
+    pub enable_page: bool,
+    #[skip]
+    pub unused: B6,
 }
 
 pub struct MDACard {
+    subtype: VideoCardSubType,
+    mem_mask: usize,
     debug: bool,
     debug_draw: bool,
     cycles: u64,
@@ -429,6 +454,7 @@ pub struct MDACard {
     in_monitor_vblank: bool,
     monitor_hsc: u32,
     scanline: u32,
+    row_span: u32,
     missed_hsyncs: u32,
 
     overscan_left: u32,
@@ -457,7 +483,7 @@ pub struct MDACard {
     ticks_accum: f64,
     clocks_accum: u32,
 
-    mem: Box<[u8; MDA_MEM_SIZE]>,
+    mem: Box<[u8; HGC_MEM_SIZE]>,
 
     back_buf: usize,
     front_buf: usize,
@@ -480,6 +506,8 @@ pub struct MDACard {
     lpt: Option<ParallelPort>,
 
     tmp_color: u8,
+
+    hgc_config: HercConfigSwitch,
 }
 
 #[derive(Debug)]
@@ -526,6 +554,8 @@ impl MdaDefault for DisplayExtents {
 impl Default for MDACard {
     fn default() -> Self {
         Self {
+            subtype: VideoCardSubType::None,
+            mem_mask: MDA_MEM_MASK,
             debug: false,
             debug_draw: true,
             cycles: 0,
@@ -583,6 +613,7 @@ impl Default for MDACard {
             in_monitor_vblank: false,
             monitor_hsc: 0,
             scanline: 0,
+            row_span: MDA_XRES_MAX,
             missed_hsyncs: 0,
 
             overscan_left: 0,
@@ -610,7 +641,7 @@ impl Default for MDACard {
             clocks_accum: 0,
             pixel_clocks_owed: 0,
 
-            mem: vec![0; MDA_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
+            mem: vec![0; HGC_MEM_SIZE].into_boxed_slice().try_into().unwrap(),
 
             back_buf:  1,
             front_buf: 0,
@@ -641,14 +672,26 @@ impl Default for MDACard {
             lpt: None,
 
             tmp_color: 0,
+
+            hgc_config: HercConfigSwitch::new(),
         }
     }
 }
 
 impl MDACard {
-    pub fn new(trace_logger: TraceLogger, clock_mode: ClockingMode, lpt: bool, video_frame_debug: bool) -> Self {
+    pub fn new(
+        subtype: VideoCardSubType,
+        trace_logger: TraceLogger,
+        clock_mode: ClockingMode,
+        lpt: bool,
+        video_frame_debug: bool,
+    ) -> Self {
         let mut mda = Self::default();
 
+        mda.subtype = subtype;
+        if let VideoCardSubType::Hercules = subtype {
+            mda.mem_mask = HGC_MEM_MASK_FULL;
+        }
         mda.trace_logger = trace_logger;
         mda.debug = video_frame_debug;
 
@@ -814,7 +857,40 @@ impl MDACard {
     /// leaving bit 3, which enables or disables video, and Bit 5, which controls blinking.
     fn handle_mode_register(&mut self, mode_byte: u8) {
         log::debug!("Write to MDA mode register: {:02X}", mode_byte);
+
+        let old_bw = self.mode.bw();
+        let old_page = self.mode.page_select();
+
         self.mode = MdaModeRegister::from_bytes([mode_byte]);
+
+        // Don't allow these bits to be set unless enabled.
+        if !self.hgc_config.enable_gfx() {
+            self.mode.set_bw(old_bw);
+        }
+        if !self.hgc_config.enable_page() {
+            self.mode.set_page_select(old_page);
+        }
+
+        self.mode_graphics = self.mode.bw();
+        if self.mode_graphics {
+            self.char_clock = HGC_CHAR_CLOCK as u32;
+            self.row_span = HGC_XRES_MAX;
+            self.extents.field_w = HGC_XRES_MAX;
+            self.extents.row_stride = HGC_XRES_MAX as usize;
+            //self.clock_divisor = 2;
+        }
+        else {
+            self.char_clock = MDA_CHAR_CLOCK as u32;
+            self.row_span = MDA_XRES_MAX;
+            self.extents.field_w = MDA_XRES_MAX;
+            self.extents.row_stride = MDA_XRES_MAX as usize;
+            //self.clock_divisor = 1;
+        }
+    }
+
+    fn handle_hgc_config_switch(&mut self, data: u8) {
+        log::debug!("Write to Hercules configuration switch: {:02X}", data);
+        self.hgc_config = HercConfigSwitch::from_bytes([data]);
     }
 
     /// Handle a read from the MDA status register. This register has bits to indicate whether
@@ -827,14 +903,25 @@ impl MDACard {
         // to give the bit ample time to be detected toggling on and off.
 
         // Bit 3 is set when the horizontal retrace is active.
-        let mut byte = 0xF0;
+        let mut byte = 0x70;
 
-        if self.crtc.hblank() {
-            byte |= STATUS_RETRACE
-        };
+        if let VideoCardSubType::Hercules = self.subtype {
+            if !self.crtc.den() {
+                byte |= STATUS_HRETRACE;
+            }
+        }
+        else if self.crtc.hblank() {
+            byte |= STATUS_HRETRACE
+        }
 
         if self.last_bit {
             byte |= STATUS_VIDEO
+        }
+
+        if let VideoCardSubType::Hercules = self.subtype {
+            if !self.crtc.vblank() {
+                byte |= STATUS_NO_VRETRACE;
+            }
         }
 
         self.status_reads += 1;
@@ -976,7 +1063,7 @@ impl MDACard {
     /// CRTC is set. This effectively creates a 0x2000 byte offset for odd character rows.
     #[inline]
     pub fn get_gfx_addr(&self, row: u8) -> usize {
-        let row_offset = (row as usize & 0x01) << 12;
+        let row_offset = (row as usize & 0x03) << 12;
         let addr = (self.vma & 0x0FFF | row_offset) << 1;
         addr
     }
@@ -992,12 +1079,12 @@ impl MDACard {
 
     /// Execute one high resolution character clock.
     pub fn tick_hchar(&mut self) {
-        self.cycles += MDA_CHAR_CLOCK as u64;
-        self.cur_screen_cycles += MDA_CHAR_CLOCK as u64;
+        self.cycles += self.char_clock as u64;
+        self.cur_screen_cycles += self.char_clock as u64;
         self.last_bit = false;
 
         // Only draw if render address is within display field
-        if self.rba < (MDA_MAX_CLOCK - MDA_CHAR_CLOCK as usize) {
+        if self.rba < (MDA_MAX_CLOCK - self.char_clock as usize) {
             if self.crtc.den() {
                 self.draw_text_mode_hchar_slow();
             }
@@ -1023,8 +1110,8 @@ impl MDACard {
         }
 
         // Update position to next pixel and character column.
-        self.beam_x += MDA_CHAR_CLOCK as u32;
-        self.rba += MDA_CHAR_CLOCK as usize;
+        self.beam_x += self.char_clock as u32;
+        self.rba += self.char_clock as usize;
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
@@ -1044,6 +1131,54 @@ impl MDACard {
             );
         }
          */
+
+        self.handle_crtc_tick();
+    }
+
+    /// Execute one high resolution character clock.
+    pub fn tick_gchar(&mut self) {
+        self.cycles += self.char_clock as u64;
+        self.cur_screen_cycles += self.char_clock as u64;
+        self.last_bit = false;
+
+        // Only draw if render address is within display field
+        if self.rba < (MDA_MAX_CLOCK - self.char_clock as usize) {
+            if self.crtc.den() {
+                self.draw_hires_gfx_mode_char();
+            }
+            else if self.crtc.hblank() {
+                // Draw hblank in debug color
+                if self.debug_draw {
+                    self.draw_solid_gchar(MDA_HBLANK_DEBUG_COLOR);
+                }
+            }
+            else if self.crtc.vblank() {
+                // Draw vblank in debug color
+                if self.debug_draw {
+                    self.draw_solid_gchar(MDA_VBLANK_DEBUG_COLOR);
+                }
+            }
+            else if self.crtc.border() {
+                // Draw overscan
+                self.draw_solid_gchar(0);
+            }
+            else {
+                self.draw_solid_gchar(MDA_DEBUG_COLOR);
+            }
+        }
+
+        // Update position to next pixel and character column.
+        self.beam_x += 16;
+        self.rba += 16;
+
+        // If we have reached the right edge of the 'monitor', return the raster position
+        // to the left side of the screen.
+        if self.beam_x >= MDA_XRES_MAX {
+            self.beam_x = 0;
+            self.beam_y += 1;
+            self.in_monitor_hsync = false;
+            self.rba = (MDA_XRES_MAX * self.beam_y) as usize;
+        }
 
         self.handle_crtc_tick();
     }
@@ -1109,7 +1244,12 @@ impl MDACard {
         self.ticks_accum += ticks;
         // Drain the accumulator while emitting chars
         while self.ticks_accum > self.char_clock as f64 {
-            self.tick_hchar();
+            if !self.mode_graphics {
+                self.tick_hchar();
+            }
+            else {
+                self.tick_gchar();
+            }
             self.ticks_accum -= self.char_clock as f64;
         }
     }
@@ -1219,7 +1359,7 @@ impl MDACard {
             self.beam_y += 1;
         }
         self.beam_x = 0;
-        let new_rba = (MDA_XRES_MAX * self.beam_y) as usize;
+        let new_rba = (self.row_span * self.beam_y) as usize;
         self.rba = new_rba;
     }
 
