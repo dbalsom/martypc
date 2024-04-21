@@ -483,19 +483,19 @@ impl Cpu {
                     Register16::DI => self.set_register16(Register16::DI, value),
                     Register16::ES => {
                         self.set_register16(Register16::ES, value);
-                        self.interrupt_inhibit = true;
+                        //self.interrupt_inhibit = true;
                     },
                     Register16::CS => {
                         self.set_register16(Register16::CS, value);
-                        self.interrupt_inhibit = true;
+                        //self.interrupt_inhibit = true;
                     },
                     Register16::SS => {
                         self.set_register16(Register16::SS, value);
-                        self.interrupt_inhibit = true;
+                        //self.interrupt_inhibit = true;
                     }
                     Register16::DS => {
                         self.set_register16(Register16::DS, value);
-                        self.interrupt_inhibit = true;
+                        //self.interrupt_inhibit = true;
                     },
                     _ => panic!("read_operand16(): Invalid Register16 operand"),
                 }
