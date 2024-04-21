@@ -31,8 +31,8 @@
 */
 use crate::{bytequeue::*, cpu_808x::*};
 
-pub const QUEUE_SIZE: usize = 3;
-pub const QUEUE_POLICY_LEN: usize = 2;
+pub const QUEUE_SIZE: usize = 4;
+pub const QUEUE_POLICY_LEN: usize = 3;
 
 pub enum ReadWriteFlag {
     Normal,

@@ -1110,7 +1110,7 @@ impl Cpu {
 
         match cpu_type {
             CpuType::Harris80C88 | CpuType::Intel8088 => {
-                cpu.queue.set_size(3);
+                cpu.queue.set_size(4);
                 cpu.fetch_size = TransferSize::Byte;
             }
             CpuType::Intel8086 => {
