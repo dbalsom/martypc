@@ -115,11 +115,15 @@ impl Cpu {
             Register16::DI => self.di = data,
             Register16::CS => {
                 self.cs = data;
-                self.interrupt_inhibit = true
+                if let CpuType::Harris80C88 = self.cpu_type {
+                    self.interrupt_inhibit = true;
+                }
             }
             Register16::DS => {
                 self.ds = data;
-                self.interrupt_inhibit = true
+                if let CpuType::Harris80C88 = self.cpu_type {
+                    self.interrupt_inhibit = true;
+                }
             }
             Register16::SS => {
                 self.ss = data;
@@ -127,7 +131,9 @@ impl Cpu {
             }
             Register16::ES => {
                 self.es = data;
-                self.interrupt_inhibit = true
+                if let CpuType::Harris80C88 = self.cpu_type {
+                    self.interrupt_inhibit = true;
+                }
             }
             Register16::PC => self.pc = data,
             _ => panic!("Invalid register"),
