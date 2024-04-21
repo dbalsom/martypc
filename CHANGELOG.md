@@ -3,35 +3,44 @@
 
 ### New Machines
 
-* Added Tandy 1000 and IBM PCJr machine types and ROM definitions. These are still very much a work in progress and most likely won't boot.
-  * Please do not submit issues for these machines if you choose to try them out.
+* Added Tandy 1000 and IBM PCJr machine types and ROM definitions. These are still very much a work in progress.
+  * Tandy 1000 is mostly functional, and can accept a ibm_xebec hard disk controller (I will eventually dump the Tandy
+    hard disk controller ROM, but it is a Xebec controller).
+  * IBM PCJr needs cartridge browser support and PIO mode implemented for the floppy disk controller.
+    * RAW cartridge images can be loaded as ROMs using the standard ROM definitions; however this is less than ideal.
+      I will be adding support for standard PCJr ROM dump formats.
 
-### New Video Type
+### New Video Types
 
 * To go with these new systems, there is now a TGA graphics type. Again, a work in progress. 
-  * This isn't usable yet - use a CGA adapter if you want to play with the Tandy 1000. 
+  * Tandy BIOS identifies the TGA and will boot into 8x9 text mode. Display apertures were tweaked for TGA to support
+    this "tall" mode.
   * TGA adapter operates very differently from other adapter types as it does not have its own VRAM. 
   * New core functionality was required to allow mapping of MMIO reads and writes back to system memory.
+  * High-resolution 620x200 2bpp mode not yet implemented.
+
+* PCJr graphics are implemented as a subtype of TGA adapter
+* Initial support for Hercules graphics card as a subtype of MDA adapter. Still a bit glitchy.
 
 ### Frontend Bug Fixes / Improvements
 
 * Added missing overlay for dual 360k floppy configuration (thanks DragomirPazura)
 * Fixed loading of keyboard mapping files
-* Added CPI (Cycles Per Instruction) to benchmark 
+* Added CPI (Cycles Per Instruction) to benchmark mode.
 
 ### Debugger Bug Fixes / Improvements
 
 * 'Step-over' logic overhauled. Step-over cycle timeout removed. A step over may not terminate, but this is in line with 
   other debuggers. On further feedback, dropping you off in a random location after timeout was not useful.
-  * The expected return address will be displayed in the Cpu Control window in the event a step over does not return.
+  * The expected return address will be displayed in the CPU Control window in the event a step over does not return.
 * You can now step-over `rep` string operations. 
 * Re-entrant instructions such as `rep` string operations and `hlt` will remain at top of disassembly until completed
-  and will not flood instruction history entries
+  and will not flood the instruction history with repeated entries
 * Instruction history now shows when hardware interrupts, traps and NMIs occur (in dark red)
 * Instruction history now shows when jumps were taken (in dark green)
 * New IO Statistics display
     * Shows you each IO port accessed, port description, and number of reads and writes.
-* Overhauled PPI viewer
+* Overhauled PPI viewer (work in progress)
 * Added tooltips to CPU Control buttons to clarify operations
 
 ### Core Bug Fixes / Improvements
@@ -45,13 +54,14 @@
   * Added an `ibm_ega_on_cga` config overlay with the right dipswitch for running FantasyLand
 * BUS: Require IoDevice trait implementations to provide port description strings
 * BUS: Add new functionality for MMIO trait implementors to access main memory (Supports TGA)
+* BUS: Add PCJr-specific keyboard logic to generate NMI on keypress
 * PIT: Preserve latch value across mode changes (Fixes Tandy 1000 POST)
 * PPI: More accurate PPI emulation
-  * Tandy 1000 specific PPI details added
-  * Control register implemented, and PPI group modes are now tracked.
+  * Tandy 1000 and IBM PCJr specific PPI details added
+  * Control register implemented, and PPI group modes are now tracked
   * New state dump format for new frontend PPI Viewer
-* CGA: Ignore clock divisor if incompatible CRTC parameters set (Fixes scanline skipping glitch)
-* CGA: Disable debug color drawing if display out of sync 
+  * Implemented keyboard scancode serializer for PCJr (Still has some bugs)
+* CGA: Fixed last-line CRTC flag logic. Fixes some severe glitches in Area 5150 I didn't notice because I have only been testing the first and last effect. (Thanks Sudo)
 
 ## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0b) (2024-04-01)
 
