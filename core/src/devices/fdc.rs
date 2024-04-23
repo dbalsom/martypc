@@ -94,7 +94,7 @@ pub const DOR_JRFDC_RESET: u8 = 0b1000_0000;
 pub const DOR_JRFDC_WATCHDOG_ENABLE: u8 = 0b0010_0000;
 pub const DOR_JRFDC_WATCHDOG_TRIGGER: u8 = 0b0100_0000;
 
-pub const WATCHDOG_TIMEOUT: u64 = 3000000; // 3 seconds in microseconds
+pub const WATCHDOG_TIMEOUT: f64 = 3_000_000.0; // 3 seconds in microseconds
 
 pub const COMMAND_MASK: u8 = 0b0001_1111;
 pub const COMMAND_READ_TRACK: u8 = 0x02;
@@ -217,7 +217,8 @@ pub enum Continuation {
 }
 
 pub struct FloppyController {
-    us_accumulator: u64,
+    us_accumulator: f64,
+    watchdog_accumulator: f64,
     fdc_type: FdcType,
     status_byte: u8,
     reset_flag: bool,
@@ -324,7 +325,8 @@ impl IoDevice for FloppyController {
 impl Default for FloppyController {
     fn default() -> Self {
         Self {
-            us_accumulator: 0,
+            us_accumulator: 0.0,
+            watchdog_accumulator: 0.0,
             fdc_type: FdcType::IbmNec,
             status_byte: 0,
             reset_flag: false,
@@ -525,7 +527,9 @@ impl FloppyController {
             msr_byte |= FDC_STATUS_FDC_BUSY;
         }
 
-        if !self.dma {
+        // The NDMA bit is sort of an PIO operation status bit. It is cleared when the drive is no
+        // longer busy with the operation.
+        if !self.dma && !matches!(self.operation, Operation::NoOperation) {
             msr_byte |= FDC_STATUS_NON_DMA_MODE;
         }
 
@@ -1165,7 +1169,7 @@ impl FloppyController {
         }
         else {
             // When not in DMA mode, we can leave MRQ high and let the CPU poll for completion
-            self.mrq = true;
+            self.mrq = false;
             self.in_dma = false;
         }
 
@@ -1221,11 +1225,18 @@ impl FloppyController {
         // Start write operation
         self.operation = Operation::WriteSector(cylinder, head, sector, sector_size, track_len, gap3_len, data_len);
 
-        // Clear MRQ until operation completion so there is no attempt to read result values
-        self.mrq = false;
+        if self.dma {
+            // Clear MRQ until operation completion so there is no attempt to read result values
+            self.mrq = false;
 
-        // DMA now in progress (TODO: Support PIO mode?)
-        self.in_dma = true;
+            // DMA now in progress
+            self.in_dma = true;
+        }
+        else {
+            // When not in DMA mode, we can leave MRQ high and let the CPU poll for completion
+            self.mrq = true;
+            self.in_dma = false;
+        }
 
         log::trace!(
             "command_write_sector: cyl:{} head:{} sector:{} sector_size:{} track_len:{} gap3_len:{} data_len:{}",
@@ -1385,21 +1396,34 @@ impl FloppyController {
         self.data_register_out.push_back(sector_size);
 
         self.send_data_register();
+
         // Clear error state
         self.last_error = DriveError::NoError;
     }
 
-    fn operation_read_sector_pio(&mut self, cylinder: u8, head: u8, sector: u8, sector_size: u8, _track_len: u8) {
+    fn operation_read_sector_pio(&mut self, cylinder: u8, head: u8, sector: u8, sector_size: u8, track_len: u8) {
         if !self.operation_init {
-            self.xfer_size_sectors = 1;
+            self.xfer_size_sectors = track_len as u32;
             self.xfer_completed_sectors = 0;
-            self.xfer_size_bytes = SECTOR_SIZE;
-            self.pio_bytes_left = SECTOR_SIZE;
+            self.xfer_size_bytes = self.xfer_size_sectors as usize * SECTOR_SIZE;
+
+            self.pio_bytes_left = self.xfer_size_bytes;
             self.pio_byte_count = 0;
             self.operation_init = true;
         }
 
         if self.pio_bytes_left > 0 {
+            // Calculate how many sectors we've done
+            if (self.pio_bytes_left < self.xfer_size_bytes) && (self.pio_bytes_left % SECTOR_SIZE == 0) {
+                // Completed one sector
+
+                self.xfer_completed_sectors += 1;
+                log::trace!(
+                    "operation_read_sector_pio: Transferred {} sectors.",
+                    self.xfer_completed_sectors
+                );
+            }
+
             let base_address = self.get_image_address(self.drive_select, cylinder, head, sector);
             let byte_address = base_address + self.pio_byte_count;
 
@@ -1416,12 +1440,12 @@ impl FloppyController {
             else {
                 let byte = self.drives[self.drive_select].disk_image[byte_address];
 
-                log::trace!(
+                /*                log::trace!(
                     "Read byte: {:02X}, bytes remaining: {} DR: {}",
                     byte,
                     self.pio_bytes_left,
                     self.data_register_out.len()
-                );
+                );*/
 
                 if self.data_register_out.is_empty() {
                     self.data_register_out.push_back(byte);
@@ -1452,7 +1476,8 @@ impl FloppyController {
             self.drives[self.drive_select].chs.seek_to(&new_chs);
 
             log::trace!(
-                "operation_read_sector_pio completed: new chs: {} drive: {}",
+                "operation_read_sector_pio completed ({} bytes transferred): new chs: {} drive: {}",
+                self.xfer_size_bytes - self.pio_bytes_left,
                 &self.drives[self.drive_select].chs,
                 self.drive_select
             );
@@ -1838,7 +1863,18 @@ impl FloppyController {
     pub fn format_sector(&mut self, _cylinder: u8, _head: u8, _sector: u8, _fill_byte: u8) {}
 
     /// Run the Floppy Drive Controller. Process running Operations.
-    pub fn run(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface, _us: f64) {
+    pub fn run(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface, us: f64) {
+        self.us_accumulator += us;
+        self.watchdog_accumulator += us;
+
+        if self.watchdog_triggered && self.watchdog_accumulator > WATCHDOG_TIMEOUT {
+            log::warn!("FDC watchdog timeout!");
+            self.watchdog_triggered = false;
+            self.watchdog_accumulator = 0.0;
+            self.operation = Operation::NoOperation;
+            self.send_interrupt = true;
+        }
+
         // Send an interrupt if one is queued
         if self.send_interrupt {
             bus.pic_mut().as_mut().unwrap().request_interrupt(FDC_IRQ);

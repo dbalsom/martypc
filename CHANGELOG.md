@@ -17,7 +17,7 @@
     this "tall" mode.
   * TGA adapter operates very differently from other adapter types as it does not have its own VRAM. 
   * New core functionality was required to allow mapping of MMIO reads and writes back to system memory.
-  * High-resolution 620x200 2bpp mode not yet implemented.
+  * High-resolution 640x200 2bpp mode not yet implemented.
 
 * PCJr graphics are implemented as a subtype of TGA adapter
 * Initial support for Hercules graphics card as a subtype of MDA adapter. Still a bit glitchy.
@@ -30,6 +30,8 @@
 
 ### Debugger Bug Fixes / Improvements
 
+* Added cycle stopwatch UI to CPU Control window. The stopwatch allows you to set two 'breakpoints' and measure execution
+  time between them.
 * 'Step-over' logic overhauled. Step-over cycle timeout removed. A step over may not terminate, but this is in line with 
   other debuggers. On further feedback, dropping you off in a random location after timeout was not useful.
   * The expected return address will be displayed in the CPU Control window in the event a step over does not return.
@@ -45,6 +47,7 @@
 
 ### Core Bug Fixes / Improvements
 
+* CPU: Added cyle stopwatch support
 * CPU: Don't count individual REP iterations toward instruction counter
 * CPU: Fixed call stack tracing (recursive calls will still cause overflow)
   * Reduced size of call stack history to avoid ridiculously tall windows

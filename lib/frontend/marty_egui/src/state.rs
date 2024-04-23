@@ -70,7 +70,7 @@ use crate::{
         about::AboutDialog,
         call_stack_viewer::CallStackViewer,
         composite_adjust::CompositeAdjustControl,
-        cpu_control::CpuControl,
+        cpu_control::{BreakpointSet, CpuControl},
         cpu_state_viewer::CpuViewerControl,
         cycle_trace_viewer::CycleTraceViewerControl,
         delay_adjust::DelayAdjustControl,
@@ -493,7 +493,7 @@ impl GuiState {
         *self.window_open_flags.get_mut(&window).unwrap() = true;
     }
 
-    pub fn get_breakpoints(&mut self) -> (&str, &str, &str) {
+    pub fn get_breakpoints(&mut self) -> BreakpointSet {
         self.cpu_control.get_breakpoints()
     }
 

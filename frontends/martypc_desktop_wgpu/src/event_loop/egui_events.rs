@@ -440,12 +440,12 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         }
         GuiEvent::EditBreakpoint => {
             // Get breakpoints from GUI
-            let (bp_str, bp_mem_str, bp_int_str) = emu.gui.get_breakpoints();
+            let bp_set = emu.gui.get_breakpoints();
 
             let mut breakpoints = Vec::new();
 
             // Push exec breakpoint to list if valid expression
-            if let Some(addr) = emu.machine.cpu().eval_address(&bp_str) {
+            if let Some(addr) = emu.machine.cpu().eval_address(bp_set.breakpoint) {
                 let flat_addr = u32::from(addr);
                 if flat_addr > 0 && flat_addr < 0x100000 {
                     breakpoints.push(BreakPointType::ExecuteFlat(flat_addr));
@@ -453,7 +453,7 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             };
 
             // Push mem breakpoint to list if valid expression
-            if let Some(addr) = emu.machine.cpu().eval_address(&bp_mem_str) {
+            if let Some(addr) = emu.machine.cpu().eval_address(bp_set.mem_breakpoint) {
                 let flat_addr = u32::from(addr);
                 if flat_addr > 0 && flat_addr < 0x100000 {
                     breakpoints.push(BreakPointType::MemAccessFlat(flat_addr));
@@ -461,9 +461,24 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             }
 
             // Push int breakpoint to list
-            if let Ok(iv) = u32::from_str_radix(bp_int_str, 10) {
+            if let Ok(iv) = u32::from_str_radix(bp_set.int_breakpoint, 10) {
                 if iv < 256 {
                     breakpoints.push(BreakPointType::Interrupt(iv as u8));
+                }
+            }
+
+            // Push stopwatches to list
+            if let Some(addr) = emu.machine.cpu().eval_address(bp_set.sw_start) {
+                let start_flat_addr = u32::from(addr);
+                if start_flat_addr > 0 && start_flat_addr < 0x100000 {
+                    if let Some(addr) = emu.machine.cpu().eval_address(bp_set.sw_stop) {
+                        let stop_flat_addr = u32::from(addr);
+                        if stop_flat_addr > 0 && stop_flat_addr < 0x100000 {
+                            breakpoints.push(BreakPointType::StartWatch(start_flat_addr));
+                            breakpoints.push(BreakPointType::StopWatch(stop_flat_addr));
+                            emu.machine.set_stopwatch(0, start_flat_addr, stop_flat_addr);
+                        }
+                    }
                 }
             }
 

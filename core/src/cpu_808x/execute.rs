@@ -199,6 +199,7 @@ impl Cpu {
                 // Halt permanently by clearing interrupt flag
                 self.clear_flag(Flag::Interrupt);
                 self.halted = true;
+                self.instruction_reentrant = true;
             }
         }
         else {

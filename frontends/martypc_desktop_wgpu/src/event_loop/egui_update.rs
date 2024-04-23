@@ -90,6 +90,10 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
     if emu.gui.is_window_open(GuiWindow::CpuControl) {
         let step_over_target = emu.machine.cpu().get_step_over_breakpoint();
         emu.gui.cpu_control.set_step_over_target(step_over_target);
+
+        // Update stopwatch data
+        let stopwatch_data = emu.machine.cpu().get_sw_data();
+        emu.gui.cpu_control.set_stopwatch_data(stopwatch_data);
     }
 
     // Update performance viewer

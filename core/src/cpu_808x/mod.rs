@@ -67,19 +67,17 @@ use crate::cpu_808x::{addressing::AddressingMode, microcode::*, mnemonic::Mnemon
 // Make ReadWriteFlag available to benchmarks
 pub use crate::cpu_808x::biu::ReadWriteFlag;
 
-use crate::cpu_common::{CpuOption, CpuType, TraceMode};
+use crate::{
+    breakpoints::{BreakPointType, CycleStopWatch, StopWatchData},
+    bus::{BusInterface, MEM_BPA_BIT, MEM_BPE_BIT, MEM_RET_BIT, MEM_SW_BIT},
+    bytequeue::*,
+    cpu_common::{CpuOption, CpuType, TraceMode},
+    syntax_token::*,
+    tracelogger::TraceLogger,
+};
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ValidatorType;
-
-use crate::{
-    breakpoints::BreakPointType,
-    bus::{BusInterface, MEM_BPA_BIT, MEM_BPE_BIT, MEM_RET_BIT},
-    bytequeue::*,
-};
-//use crate::interrupt::log_post_interrupt;
-
-use crate::{syntax_token::*, tracelogger::TraceLogger};
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::{
@@ -109,6 +107,7 @@ macro_rules! trace_print {
         }
     }};
 }
+
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -821,6 +820,8 @@ pub struct Cpu {
 
     // Breakpoints
     breakpoints: Vec<BreakPointType>,
+    stopwatches: Vec<Option<CycleStopWatch>>,
+    stopwatch_running: bool,
     step_over_target: Option<CpuAddress>,
     step_over_breakpoint: Option<u32>,
 
@@ -1259,6 +1260,7 @@ impl Cpu {
         self.step_over_target = None;
         self.step_over_breakpoint = None;
         self.end_addr = 0xFFFFF;
+        self.stopwatch_running = false;
 
         self.nx = false;
         self.rni = false;
@@ -2034,6 +2036,12 @@ impl Cpu {
             BreakPointType::Interrupt(vector) => {
                 self.int_flags[*vector as usize] = 0;
             }
+            BreakPointType::StartWatch(addr) => {
+                self.bus.clear_flags(*addr as usize, MEM_SW_BIT);
+            }
+            BreakPointType::StopWatch(addr) => {
+                self.bus.clear_flags(*addr as usize, MEM_SW_BIT);
+            }
             _ => {}
         });
 
@@ -2053,8 +2061,71 @@ impl Cpu {
             BreakPointType::Interrupt(vector) => {
                 self.int_flags[*vector as usize] = INTERRUPT_BREAKPOINT;
             }
+            BreakPointType::StartWatch(addr) => {
+                self.bus.set_flags(*addr as usize, MEM_SW_BIT);
+            }
+            BreakPointType::StopWatch(addr) => {
+                self.bus.set_flags(*addr as usize, MEM_SW_BIT);
+            }
             _ => {}
         });
+    }
+
+    pub fn add_breakpoint(&mut self, bp: &BreakPointType) {
+        match bp {
+            BreakPointType::ExecuteFlat(addr) => {
+                log::debug!("Clearing breakpoint on execute at address: {:05X}", *addr);
+                self.bus.set_flags(*addr as usize, MEM_BPE_BIT);
+            }
+            BreakPointType::MemAccessFlat(addr) => {
+                self.bus.set_flags(*addr as usize, MEM_BPA_BIT);
+            }
+            BreakPointType::Interrupt(vector) => {
+                self.int_flags[*vector as usize] = INTERRUPT_BREAKPOINT;
+            }
+            BreakPointType::StartWatch(addr) => {
+                self.bus.set_flags(*addr as usize, MEM_SW_BIT);
+            }
+            BreakPointType::StopWatch(addr) => {
+                self.bus.set_flags(*addr as usize, MEM_SW_BIT);
+            }
+            _ => {
+                // Unsupported breakpoint type - ignore for now
+                return;
+            }
+        }
+    }
+
+    pub fn set_stopwatch(&mut self, sw_idx: usize, start: u32, stop: u32) {
+        if self.stopwatches.is_empty() {
+            self.stopwatches.push(None);
+        }
+        self.stopwatches[sw_idx] = Some(CycleStopWatch::new(start, stop));
+    }
+
+    pub fn start_stopwatch(&mut self, sw_idx: usize) {
+        if let Some(sw) = &mut self.stopwatches[sw_idx] {
+            sw.start();
+        }
+    }
+
+    pub fn stop_stopwatch(&mut self, sw_idx: usize) {
+        if let Some(sw) = &mut self.stopwatches[sw_idx] {
+            sw.stop();
+        }
+    }
+
+    fn update_sw_flag(&mut self) {
+        self.stopwatch_running = false;
+        for sw in self.stopwatches.iter().flatten() {
+            if sw.running() {
+                self.stopwatch_running = true;
+            }
+        }
+    }
+
+    pub fn get_sw_data(&self) -> Vec<StopWatchData> {
+        self.stopwatches.iter().flatten().map(|sw| sw.get_data()).collect()
     }
 
     pub fn set_step_over_breakpoint(&mut self, target: CpuAddress) {
@@ -2069,12 +2140,7 @@ impl Cpu {
     }
 
     pub fn get_breakpoint_flag(&self) -> bool {
-        if let CpuState::BreakpointHit = self.state {
-            true
-        }
-        else {
-            false
-        }
+        matches!(self.state, CpuState::BreakpointHit)
     }
 
     pub fn set_breakpoint_flag(&mut self) {

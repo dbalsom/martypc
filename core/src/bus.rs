@@ -101,6 +101,7 @@ pub const MEM_BPE_BIT: u8 = 0b0010_0000; // Bit to signify that this address is 
 pub const MEM_BPA_BIT: u8 = 0b0001_0000; // Bit to signify that this address is associated with a breakpoint on access
 pub const MEM_CP_BIT: u8 = 0b0000_1000; // Bit to signify that this address is a ROM checkpoint
 pub const MEM_MMIO_BIT: u8 = 0b0000_0100; // Bit to signify that this address is MMIO mapped
+pub const MEM_SW_BIT: u8 = 0b0000_0010; // Bit to signify that this address is in a stopwatch
 
 pub const KB_UPDATE_RATE: f64 = 5000.0; // Keyboard device update rate in microseconds
 

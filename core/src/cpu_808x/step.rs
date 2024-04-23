@@ -89,11 +89,31 @@ impl Cpu {
             }
 
             // Check instruction address for breakpoint on execute flag
-            if !skip_breakpoint && self.bus.get_flags(instruction_address as usize) & MEM_BPE_BIT != 0 {
-                // Breakpoint hit.
-                log::debug!("Breakpoint hit at {:05X}", instruction_address);
-                self.set_breakpoint_flag();
-                return Ok((StepResult::BreakpointHit, 0));
+            let iflags = self.bus.get_flags(instruction_address as usize);
+            if !skip_breakpoint && iflags & (MEM_BPE_BIT | MEM_SW_BIT) != 0 {
+                if iflags & MEM_SW_BIT != 0 {
+                    // Stopwatch hit
+                    for sw in self.stopwatches.iter_mut().flatten() {
+                        // Check for stopwatch stop first. This is so we can restart on the same instruction, ie,
+                        // when measuring loops where start==stop.
+                        if sw.stop == instruction_address {
+                            log::debug!("Stopwatch stop at {:05X}", instruction_address);
+                            sw.stop();
+                        }
+                        if sw.start == instruction_address && !sw.running {
+                            log::debug!("Stopwatch start at {:05X}", instruction_address);
+                            sw.start();
+                        }
+                    }
+                    self.update_sw_flag();
+                }
+
+                if iflags & MEM_BPE_BIT != 0 {
+                    // Breakpoint hit
+                    log::debug!("Breakpoint hit at {:05X}", instruction_address,);
+                    self.set_breakpoint_flag();
+                    return Ok((StepResult::BreakpointHit, 0));
+                }
             }
 
             // Check for the step over breakpoint
@@ -309,7 +329,7 @@ impl Cpu {
                 // We're in an REP prefixed-string instruction.
                 // Delay processing of the interrupt so that the string
                 // instruction can execute RPTI. At that point, the REP
-                // will terminate and we can process the interrupt as normal.
+                // will terminate, and we can process the interrupt as normal.
                 self.intr_pending = true;
             }
             else {
@@ -348,7 +368,7 @@ impl Cpu {
             }
         }
         else if self.trap_enabled() {
-            // Trap has lowest priority.
+            // Trap has the lowest priority.
             if self.halted {
                 // Resume from halt on trap
                 self.resume();
@@ -371,6 +391,15 @@ impl Cpu {
         let cur_intr = did_interrupt | did_nmi | did_trap;
 
         if self.instruction_history_on {
+            // Tick any stopwatches that are running. We maintain a single flag if one stopwatch
+            // is running so that we aren't always iterating through a vector of stopped watches.
+            // We also require instruction history, only for performance reasons to reduce if checks.
+            if self.stopwatch_running {
+                for sw in self.stopwatches.iter_mut().flatten() {
+                    sw.tick(self.instr_cycle as u64);
+                }
+            }
+
             // Only add non-reentrant instructions to history, unless they were interrupted.
             // This prevents spamming the history with multiple rep string operations.
             if !self.instruction_reentrant || cur_intr {

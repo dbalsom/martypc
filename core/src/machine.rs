@@ -992,6 +992,10 @@ impl Machine {
         self.cpu.set_breakpoints(bp_list)
     }
 
+    pub fn set_stopwatch(&mut self, sw_idx: usize, start: u32, stop: u32) {
+        self.cpu.set_stopwatch(sw_idx, start, stop)
+    }    
+
     pub fn reset(&mut self) {
         // TODO: Reload any program specified here?
 
