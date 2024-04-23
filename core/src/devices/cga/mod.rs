@@ -2158,6 +2158,7 @@ impl CGACard {
             if !self.in_crtc_vblank && (self.vcc_c4 < self.crtc_vertical_displayed) {
                 // Start the new row
                 self.in_display_area = true;
+                self.hborder = false;
             }
 
             if self.vlc_c9 == self.crtc_maximum_scanline_address + 1 {
