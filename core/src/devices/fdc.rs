@@ -657,6 +657,8 @@ impl FloppyController {
             }
             else {
                 self.watchdog_enabled = false;
+                self.watchdog_triggered = false;
+                self.watchdog_accumulator = 0.0;
             }
 
             // Watchdog trigger is set on falling edge of trigger bit.
@@ -1877,7 +1879,7 @@ impl FloppyController {
 
         if self.watchdog_triggered {
             self.watchdog_accumulator += us;
-            if self.watchdog_accumulator > WATCHDOG_TIMEOUT {
+            if self.watchdog_enabled && self.watchdog_accumulator > WATCHDOG_TIMEOUT {
                 log::warn!("FDC watchdog timeout!");
                 self.watchdog_triggered = false;
                 self.watchdog_accumulator = 0.0;
