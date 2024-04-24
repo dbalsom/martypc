@@ -259,6 +259,7 @@ pub struct FloppyController {
     dma_byte_count: usize,
     dma_bytes_left: usize,
     pio_byte_count: usize,
+    pio_sector_byte_count: usize,
     pio_bytes_left: usize,
     xfer_size_sectors: u32,
     xfer_size_bytes: usize,
@@ -372,6 +373,7 @@ impl Default for FloppyController {
             dma_byte_count: 0,
             dma_bytes_left: 0,
             pio_byte_count: 0,
+            pio_sector_byte_count: 0,
             pio_bytes_left: 0,
             xfer_size_sectors: 0,
             xfer_size_bytes: 0,
@@ -1169,7 +1171,7 @@ impl FloppyController {
         }
         else {
             // When not in DMA mode, we can leave MRQ high and let the CPU poll for completion
-            self.mrq = false;
+            self.mrq = true;
             self.in_dma = false;
         }
 
@@ -1403,24 +1405,32 @@ impl FloppyController {
 
     fn operation_read_sector_pio(&mut self, cylinder: u8, head: u8, sector: u8, sector_size: u8, track_len: u8) {
         if !self.operation_init {
-            self.xfer_size_sectors = track_len as u32;
+            self.xfer_size_sectors = ((track_len.saturating_sub(sector)) + 1) as u32;
             self.xfer_completed_sectors = 0;
             self.xfer_size_bytes = self.xfer_size_sectors as usize * SECTOR_SIZE;
 
             self.pio_bytes_left = self.xfer_size_bytes;
             self.pio_byte_count = 0;
+            self.pio_sector_byte_count = 0;
             self.operation_init = true;
         }
 
         if self.pio_bytes_left > 0 {
             // Calculate how many sectors we've done
-            if (self.pio_bytes_left < self.xfer_size_bytes) && (self.pio_bytes_left % SECTOR_SIZE == 0) {
+            if (self.pio_bytes_left < self.xfer_size_bytes)
+                && (self.pio_bytes_left % SECTOR_SIZE == 0)
+                && self.data_register_out.is_empty()
+            {
                 // Completed one sector
-
                 self.xfer_completed_sectors += 1;
+                self.pio_sector_byte_count = 0;
                 log::trace!(
-                    "operation_read_sector_pio: Transferred {} sectors.",
-                    self.xfer_completed_sectors
+                    "operation_read_sector_pio: Transferred {}/{} sectors, {}/{} bytes ({} left)",
+                    self.xfer_completed_sectors,
+                    self.xfer_size_sectors,
+                    self.pio_byte_count,
+                    self.xfer_size_bytes,
+                    self.pio_bytes_left
                 );
             }
 
@@ -1437,29 +1447,28 @@ impl FloppyController {
                 self.pio_bytes_left = 0;
                 self.pio_byte_count = 0;
             }
-            else {
+            else if self.data_register_out.is_empty() {
                 let byte = self.drives[self.drive_select].disk_image[byte_address];
-
-                /*                log::trace!(
+                log::trace!(
                     "Read byte: {:02X}, bytes remaining: {} DR: {}",
                     byte,
                     self.pio_bytes_left,
                     self.data_register_out.len()
-                );*/
+                );
 
-                if self.data_register_out.is_empty() {
-                    self.data_register_out.push_back(byte);
-                    self.pio_byte_count += 1;
-                    self.pio_bytes_left -= 1;
-                }
+                self.data_register_out.push_back(byte);
+                self.pio_byte_count += 1;
+                self.pio_sector_byte_count + 1;
+                self.pio_bytes_left -= 1;
             }
         }
-        else {
+        else if self.data_register_out.is_empty() {
             // No more bytes left to transfer. Finalize operation
             self.pio_bytes_left = 0;
             self.pio_byte_count = 0;
 
-            let (new_c, new_h, new_s) = self.get_chs_sector_offset(self.drive_select, 1, cylinder, head, sector);
+            let (new_c, new_h, new_s) =
+                self.get_chs_sector_offset(self.drive_select, self.xfer_size_sectors, cylinder, head, sector);
             //let (new_c, new_h, new_s) = self.get_next_sector(self.drive_select, cylinder, head, sector);
 
             let new_chs = DiskChs::new(new_c, new_h, new_s);
@@ -1483,7 +1492,7 @@ impl FloppyController {
             );
             // Finalize operation
             self.operation = Operation::NoOperation;
-            self.send_interrupt = true;
+            //self.send_interrupt = true;
         }
     }
 
@@ -1865,14 +1874,16 @@ impl FloppyController {
     /// Run the Floppy Drive Controller. Process running Operations.
     pub fn run(&mut self, dma: &mut dma::DMAController, bus: &mut BusInterface, us: f64) {
         self.us_accumulator += us;
-        self.watchdog_accumulator += us;
 
-        if self.watchdog_triggered && self.watchdog_accumulator > WATCHDOG_TIMEOUT {
-            log::warn!("FDC watchdog timeout!");
-            self.watchdog_triggered = false;
-            self.watchdog_accumulator = 0.0;
-            self.operation = Operation::NoOperation;
-            self.send_interrupt = true;
+        if self.watchdog_triggered {
+            self.watchdog_accumulator += us;
+            if self.watchdog_accumulator > WATCHDOG_TIMEOUT {
+                log::warn!("FDC watchdog timeout!");
+                self.watchdog_triggered = false;
+                self.watchdog_accumulator = 0.0;
+                self.operation = Operation::NoOperation;
+                self.send_interrupt = true;
+            }
         }
 
         // Send an interrupt if one is queued

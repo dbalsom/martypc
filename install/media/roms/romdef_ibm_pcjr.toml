@@ -167,6 +167,7 @@ checkpoint = [
     { addr = 0xF0806, lvl = 3, desc = "Diskette Attachment Test" },
     { addr = 0xF08E0, lvl = 3, desc = "Printer and Serial Check" },
     { addr = 0xF1004, lvl = 1, desc = "Keyboard Read Error" },
+    { addr = 0xF0854, lvl = 3, desc = "Disk Bootstrap" },
 ]
 
 # ----------------------------------------------------------------------------
@@ -222,7 +223,7 @@ rom = [
 [[romset]]
 alias = "pcjr_mouser"
 desc = "Mouser"
-priority = 1
+priority = 0
 provides = ["pcjr_cartridge"]
 rom = [
     { md5 = "54e1d6d8c3f24996a2620a2cfac3ff9e", addr = 0xD0000, size = 0x2000, chip = "cart1" },

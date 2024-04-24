@@ -823,8 +823,7 @@ impl Ppi {
                 // TODO: Do PCJr stuff properly.
                 //       For now, always report 128K installed.
                 //       Floppy status bit is set when NO floppy is installed.
-                //log::debug!("PCJr: Timer bit is {:08b}", timer_bit);
-                log::debug!("PCJr: kb_in bit is {}", self.jr_kb_in);
+                //log::trace!("PCJr: kb_in bit is {}", self.jr_kb_in);
                 timer_bit
                     | 0
                     | if self.num_floppies == 0 {
