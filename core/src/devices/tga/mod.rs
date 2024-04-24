@@ -563,6 +563,7 @@ pub struct TGACard {
     mode_enable: bool,
     mode_graphics: bool,
     mode_bw: bool,
+    mode_bandwidth: bool,
     mode_hires_gfx: bool,
     mode_hires_txt: bool,
     mode_blinking: bool,
@@ -773,6 +774,7 @@ impl Default for TGACard {
             mode_enable: true,
             mode_graphics: false,
             mode_bw: false,
+            mode_bandwidth: false,
             mode_hires_gfx: false,
             mode_hires_txt: true,
             mode_blinking: true,
@@ -1378,11 +1380,15 @@ impl TGACard {
 
         match self.subtype {
             VideoCardSubType::IbmPCJr => {
-                self.mode_hires_txt = !self.jr_mode_control.graphics() && self.jr_mode_control.bandwidth();
+                //self.mode_hires_txt = !self.jr_mode_control.graphics() && self.jr_mode_control.bandwidth();
+
+                self.mode_hires_txt = self.jr_mode_control.bandwidth();
                 self.mode_graphics = self.jr_mode_control.graphics();
                 self.mode_bw = self.jr_mode_control.bw();
                 self.mode_enable = self.jr_mode_control.video();
-                self.mode_hires_gfx = self.jr_mode_control.graphics() && self.jr_mode_control.bandwidth();
+                self.mode_hires_gfx = self.jr_mode_control.graphics()
+                    && self.jr_mode_control.bandwidth()
+                    && !self.jr_mode_control.fourbpp_mode();
                 self.mode_blinking = self.jr_mode_control2.blink();
 
                 // Use color control register value for overscan unless high-res graphics mode,
@@ -1573,9 +1579,6 @@ impl TGACard {
             self.clock_pending = false;
         }
     }
-
-    #[inline]
-    fn update_clock_pcjr(&mut self) {}
 
     /// Handle a write to the CGA mode register. Defer the mode change if it would change
     /// from graphics mode to text mode or back (Need to measure this on real hardware)
