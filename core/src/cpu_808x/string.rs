@@ -33,13 +33,12 @@
 use crate::cpu_808x::*;
 
 impl Cpu {
-    pub fn string_op(&mut self, opcode: Mnemonic, segment_override: SegmentOverride) {
-        let (_segment_value_base_ds, segment_base_ds) = match segment_override {
-            SegmentOverride::None => (self.ds, Segment::DS),
-            SegmentOverride::ES => (self.es, Segment::ES),
-            SegmentOverride::CS => (self.cs, Segment::CS),
-            SegmentOverride::SS => (self.ss, Segment::SS),
-            SegmentOverride::DS => (self.ds, Segment::DS),
+    pub fn string_op(&mut self, opcode: Mnemonic, segment_override: Option<Segment>) {
+        let segment_base_ds = if let Some(seg) = segment_override {
+            seg
+        }
+        else {
+            Segment::DS
         };
 
         match opcode {

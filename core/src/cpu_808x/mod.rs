@@ -453,8 +453,9 @@ pub enum Displacement {
     Disp16(i16),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Default, Debug)]
 pub enum DmaState {
+    #[default]
     Idle,
     Dreq,
     Hrq,
@@ -462,12 +463,6 @@ pub enum DmaState {
     Operating(u8),
     End,
     //DmaWait(u8)
-}
-
-impl Default for DmaState {
-    fn default() -> Self {
-        DmaState::Idle
-    }
 }
 
 impl Displacement {
@@ -487,8 +482,9 @@ impl Displacement {
     }
 }
 
-#[derive(Debug)]
+#[derive(Default, Debug)]
 pub enum RepType {
+    #[default]
     NoRep,
     Rep,
     Repne,
@@ -496,33 +492,11 @@ pub enum RepType {
     MulDiv,
 }
 
-impl Default for RepType {
-    fn default() -> Self {
-        RepType::NoRep
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Default, Debug)]
 pub enum Segment {
     None,
     ES,
-    CS,
-    SS,
-    DS,
-}
-
-impl Default for Segment {
-    fn default() -> Self {
-        Segment::CS
-    }
-}
-
-// TODO: This enum duplicates Segment. Why not just store a Segment in an override field?
-#[derive(Copy, Clone, Default, PartialEq)]
-pub enum SegmentOverride {
     #[default]
-    None,
-    ES,
     CS,
     SS,
     DS,
@@ -614,7 +588,7 @@ pub struct Instruction {
     pub address: u32,
     pub size: u32,
     pub mnemonic: Mnemonic,
-    pub segment_override: SegmentOverride,
+    pub segment_override: Option<Segment>,
     pub operand1_type: OperandType,
     pub operand1_size: OperandSize,
     pub operand2_type: OperandType,
@@ -630,7 +604,7 @@ impl Default for Instruction {
             address: 0,
             size: 1,
             mnemonic: Mnemonic::NOP,
-            segment_override: SegmentOverride::None,
+            segment_override: None,
             operand1_type: OperandType::NoOperand,
             operand1_size: OperandSize::NoOperand,
             operand2_type: OperandType::NoOperand,

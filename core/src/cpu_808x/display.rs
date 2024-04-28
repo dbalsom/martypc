@@ -435,18 +435,18 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) ->
         }
         OperandType::Offset8(offset8) => {
             let segment: String = match i.segment_override {
-                SegmentOverride::ES => "es".to_string(),
-                SegmentOverride::CS => "cs".to_string(),
-                SegmentOverride::SS => "ss".to_string(),
+                Some(Segment::ES) => "es".to_string(),
+                Some(Segment::CS) => "cs".to_string(),
+                Some(Segment::SS) => "ss".to_string(),
                 _ => "ds".to_string(),
             };
             format!("byte [{}:{:X}h]", segment, offset8)
         }
         OperandType::Offset16(offset16) => {
             let segment: String = match i.segment_override {
-                SegmentOverride::ES => "es".to_string(),
-                SegmentOverride::CS => "cs".to_string(),
-                SegmentOverride::SS => "ss".to_string(),
+                Some(Segment::ES) => "es".to_string(),
+                Some(Segment::CS) => "cs".to_string(),
+                Some(Segment::SS) => "ss".to_string(),
                 _ => "ds".to_string(),
             };
             format!("word [{}:{:X}h]", segment, offset16)
@@ -497,19 +497,19 @@ fn operand_to_string(i: &Instruction, op: OperandSelect, lvalue: OperandSize) ->
 
             // Handle segment override prefixes
             match i.segment_override {
-                SegmentOverride::ES => {
+                Some(Segment::ES) => {
                     segment1 = "es".to_string();
                     segment2 = "es".to_string();
                 }
-                SegmentOverride::CS => {
+                Some(Segment::CS) => {
                     segment1 = "cs".to_string();
                     segment2 = "cs".to_string();
                 }
-                SegmentOverride::SS => {
+                Some(Segment::SS) => {
                     segment1 = "ss".to_string();
                     segment2 = "ss".to_string();
                 }
-                SegmentOverride::DS => {
+                Some(Segment::DS) => {
                     segment1 = "ds".to_string();
                     segment2 = "ds".to_string();
                 }
@@ -626,9 +626,9 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
         }
         OperandType::Offset8(offset8) => {
             let segment: String = match i.segment_override {
-                SegmentOverride::ES => "es".to_string(),
-                SegmentOverride::CS => "cs".to_string(),
-                SegmentOverride::SS => "ss".to_string(),
+                Some(Segment::ES) => "es".to_string(),
+                Some(Segment::CS) => "cs".to_string(),
+                Some(Segment::SS) => "ss".to_string(),
                 _ => "ds".to_string(),
             };
             op_vec.push(SyntaxToken::Text("byte".to_string()));
@@ -641,9 +641,9 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
         }
         OperandType::Offset16(offset16) => {
             let segment: String = match i.segment_override {
-                SegmentOverride::ES => "es".to_string(),
-                SegmentOverride::CS => "cs".to_string(),
-                SegmentOverride::SS => "ss".to_string(),
+                Some(Segment::ES) => "es".to_string(),
+                Some(Segment::CS) => "cs".to_string(),
+                Some(Segment::SS) => "ss".to_string(),
                 _ => "ds".to_string(),
             };
             op_vec.push(SyntaxToken::Text("word".to_string()));
@@ -712,19 +712,19 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
 
             // Handle segment override prefixes
             match i.segment_override {
-                SegmentOverride::ES => {
+                Some(Segment::ES) => {
                     segment1 = "es".to_string();
                     segment2 = "es".to_string();
                 }
-                SegmentOverride::CS => {
+                Some(Segment::CS) => {
                     segment1 = "cs".to_string();
                     segment2 = "cs".to_string();
                 }
-                SegmentOverride::SS => {
+                Some(Segment::SS) => {
                     segment1 = "ss".to_string();
                     segment2 = "ss".to_string();
                 }
-                SegmentOverride::DS => {
+                Some(Segment::DS) => {
                     segment1 = "ds".to_string();
                     segment2 = "ds".to_string();
                 }
@@ -818,23 +818,23 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
 }
 
 fn override_prefix_to_string(i: &Instruction) -> Option<String> {
-    if let SegmentOverride::None = i.segment_override {
-        // No override
-        None
-    }
-    else {
+    if i.segment_override.is_some() {
         match i.opcode {
             0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD | 0xA6 | 0xA7 | 0xAE | 0xAF => {
                 let segment: String = match i.segment_override {
-                    SegmentOverride::ES => "es".to_string(),
-                    SegmentOverride::CS => "cs".to_string(),
-                    SegmentOverride::SS => "ss".to_string(),
+                    Some(Segment::ES) => "es".to_string(),
+                    Some(Segment::CS) => "cs".to_string(),
+                    Some(Segment::SS) => "ss".to_string(),
                     _ => "ds".to_string(),
                 };
                 Some(segment)
             }
             _ => None,
         }
+    }
+    else {
+        // No override
+        None
     }
 }
 

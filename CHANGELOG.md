@@ -58,6 +58,7 @@
 
 ### Core Bug Fixes / Improvements
 
+* CPU: Converted SegmentOverride enum to Option<Segment>, simplifying segment resolution logic in many places
 * CPU: New 7-cycle bus access logic
 * CPU: Refactored CycleText log format
 * CPU: Added cyle stopwatch support

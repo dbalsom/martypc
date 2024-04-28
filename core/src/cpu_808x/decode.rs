@@ -117,7 +117,7 @@ impl Cpu {
 
         let mut op_flags: u32;
         let mut op_prefixes: u32 = 0;
-        let mut op_segment_override = SegmentOverride::None;
+        let mut op_segment_override = None;
         let mut loaded_modrm = false;
 
         // Read in opcode prefixes until exhausted
@@ -138,10 +138,10 @@ impl Cpu {
             };
             // ... but only store the last segment override prefix seen
             op_segment_override = match opcode {
-                0x26 => SegmentOverride::ES,
-                0x2E => SegmentOverride::CS,
-                0x36 => SegmentOverride::SS,
-                0x3E => SegmentOverride::DS,
+                0x26 => Some(Segment::ES),
+                0x2E => Some(Segment::CS),
+                0x36 => Some(Segment::SS),
+                0x3E => Some(Segment::DS),
                 _=> op_segment_override
             };
 
