@@ -58,6 +58,8 @@
 
 ### Core Bug Fixes / Improvements
 
+* CPU: New 7-cycle bus access logic
+* CPU: Refactored CycleText log format
 * CPU: Added cyle stopwatch support
 * CPU: Don't count individual REP iterations toward instruction counter
 * CPU: Fixed call stack tracing (recursive calls will still cause overflow)
