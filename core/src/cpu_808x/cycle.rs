@@ -397,7 +397,9 @@ impl Cpu {
         self.last_queue_len = self.queue.len();
     }
 
-    #[inline]
+    /// Advance the DMA scheduler by one tick. This function is called every CPU tick. Since it is
+    /// only called from within cycle_i() it can be inlined.
+    #[inline(always)]
     pub fn tick_dma(&mut self) {
         self.dram_refresh_cycle_num = self.dram_refresh_cycle_num.saturating_sub(1);
 

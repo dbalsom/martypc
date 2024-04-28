@@ -30,7 +30,7 @@
 
 */
 
-#![allow(dead_code)]
+//#![allow(dead_code)]
 #![allow(clippy::unusual_byte_groupings)]
 
 use std::{collections::VecDeque, error::Error, fmt, path::Path};
@@ -2242,7 +2242,7 @@ impl Cpu {
                     i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
                     i_token_vec.push(SyntaxToken::Text(format!("{}", *cycles)));
                 }
-                HistoryEntry::InterruptEntry { cs, ip, cycles, iv } => {
+                HistoryEntry::InterruptEntry { cs, ip, cycles: _, iv } => {
                     i_token_vec.push(SyntaxToken::Formatter(SyntaxFormatType::HighlightLine(
                         HighlightType::Alert,
                     )));

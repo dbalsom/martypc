@@ -346,7 +346,7 @@ impl Cpu {
 
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:04} {:02} | {:06} | {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
+                "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:06} | {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
                 self.address_latch,
@@ -355,10 +355,8 @@ impl Cpu {
                 self.wait_states,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
-                slot0bus,
-                slot0t,
-                slot1bus,
-                slot1t,
+                self.bus_status,
+                self.t_cycle,
                 xfer_str,
                 format!("{:?}", self.bus_pending),
                 q_op_chr,
@@ -372,7 +370,7 @@ impl Cpu {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:04} {:02} ({:04}) | {:06} | {:<8}| {:<10} | {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} | {:04} {:02} {:04} {:02} | {:06} | {:<8}| {:<10} | {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
@@ -383,11 +381,12 @@ impl Cpu {
                 tx_cycle,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
+                self.bus_status,
+                self.t_cycle,
                 slot0bus,
                 slot0t,
                 slot1bus,
                 slot1t,
-                self.pl_status,
                 xfer_str,
                 format!("{:?}", self.bus_pending),
                 format!("{:?}", self.fetch_state),
@@ -710,7 +709,6 @@ impl Cpu {
     /// be toggled every time we enter a Tr cycle.
     pub fn get_pl_slots(&self) -> [Option<BusSlotStatus>; 2] {
         let mut slots = [None, None];
-        let pl_slot_u = self.pl_slot as usize;
 
         // Scenario 1: T cycle is Ti, Ta cycle is inactive. Always emit Ti in slot 0.
         if self.t_cycle == TCycle::Ti && self.ta_cycle == TaCycle::Td {
