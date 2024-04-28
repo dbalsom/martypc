@@ -34,6 +34,8 @@ use crate::cpu_808x::*;
 
 pub struct InstructionQueue {
     size: usize,
+    fetch_size: usize,
+    policy_size: usize,
     len: usize,
     back: usize,
     front: usize,
@@ -45,6 +47,8 @@ impl Default for InstructionQueue {
     fn default() -> Self {
         Self {
             size: QUEUE_MAX,
+            fetch_size: 2,
+            policy_size: QUEUE_MAX - 2,
             len: 0,
             back: 0,
             front: 0,
@@ -55,16 +59,30 @@ impl Default for InstructionQueue {
 }
 
 impl InstructionQueue {
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, fetch_size: usize) -> Self {
         Self {
             size,
+            fetch_size,
+            policy_size: size - fetch_size,
             ..Self::default()
         }
     }
 
-    pub fn set_size(&mut self, size: usize) {
+    pub fn set_size(&mut self, size: usize, fetch_size: usize) {
         assert!(size <= QUEUE_MAX);
         self.size = size;
+        self.fetch_size = fetch_size;
+        self.policy_size = size - fetch_size;
+    }
+
+    #[inline]
+    pub fn at_policy_len(&self) -> bool {
+        self.len == self.policy_size
+    }
+
+    #[inline]
+    pub fn has_room_for_fetch(&self) -> bool {
+        self.len <= self.policy_size
     }
 
     #[inline]
@@ -106,11 +124,10 @@ impl InstructionQueue {
         }
     }
 
+    #[inline]
     pub fn push8(&mut self, byte: u8) {
         if self.len < self.size {
             self.q[self.front] = byte;
-            //self.dt[self.front] = dtype;
-
             self.front = (self.front + 1) % self.size;
             self.len += 1;
         }
@@ -119,16 +136,17 @@ impl InstructionQueue {
         }
     }
 
+    #[inline]
     pub fn push16(&mut self, word: u16) {
+        assert_eq!(self.fetch_size, 2);
         self.push8((word & 0xFF) as u8);
         self.push8(((word >> 8) & 0xFF) as u8);
     }
 
+    #[inline]
     pub fn pop(&mut self) -> u8 {
         if self.len > 0 {
             let byte = self.q[self.back];
-            //let dt = self.dt[self.back];
-
             self.back = (self.back + 1) % self.size;
             self.len -= 1;
 

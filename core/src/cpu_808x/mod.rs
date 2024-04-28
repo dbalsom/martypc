@@ -518,8 +518,9 @@ impl Default for Segment {
 }
 
 // TODO: This enum duplicates Segment. Why not just store a Segment in an override field?
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub enum SegmentOverride {
+    #[default]
     None,
     ES,
     CS,
@@ -527,18 +528,13 @@ pub enum SegmentOverride {
     DS,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub enum OperandSize {
+    #[default]
     NoOperand,
     NoSize,
     Operand8,
     Operand16,
-}
-
-impl Default for OperandSize {
-    fn default() -> Self {
-        OperandSize::NoOperand
-    }
 }
 
 #[allow(dead_code)]
@@ -548,6 +544,24 @@ pub enum InterruptType {
     Exception,
     Software,
     Hardware,
+}
+
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+pub enum BusPendingType {
+    #[default]
+    None,
+    EuEarly,
+    EuLate,
+}
+
+#[derive(Copy, Clone, Default, Debug, PartialEq)]
+pub enum FetchState {
+    #[default]
+    Normal,
+    PausedFull,
+    Delayed(u8),
+    Suspended,
+    Halted,
 }
 
 pub enum HistoryEntry {
@@ -755,22 +769,22 @@ pub struct Cpu {
     result_16: u16,
     */
     // BIU stuff
-    biu_state_new: BiuStateNew, // State of BIU: Idle, EU, PF (Prefetcher) or transition state
-    ready: bool,                // READY line from 8284
+    ready: bool, // READY line from 8284
     queue: InstructionQueue,
     fetch_size: TransferSize,
     fetch_state: FetchState,
-    next_fetch_state: FetchState,
-    fetch_suspended: bool,
-    bus_pending_eu: bool, // Has the EU requested a bus operation?
+    bus_pending: BusPendingType, // Has the EU requested a bus operation?
     queue_op: QueueOp,
     last_queue_op: QueueOp,
     queue_byte: u8,
     last_queue_byte: u8,
     last_queue_len: usize,
-    t_cycle: TCycle,
-    bus_status: BusStatus,
-    bus_status_latch: BusStatus,
+    t_cycle: TCycle,             // The current cycle of the main bus cycle (T1-T4)
+    ta_cycle: TaCycle,           // The current cycle of the bus address cycle (Tr-T0)
+    bus_status: BusStatus,       // The current bus status type, valid on T1-T2.
+    bus_status_latch: BusStatus, // The current bus status type, valid on T1-T4.
+    pl_status: BusStatus,        // The upcoming (pipelined) bus status type.
+    pl_slot: bool,
     bus_segment: Segment,
     transfer_size: TransferSize, // Width of current bus transfer
     operand_size: OperandSize,   // Width of the operand being transferred
@@ -1013,9 +1027,43 @@ impl Default for ExecutionResult {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+/// The 8088 has a 7-cycle bus access time. 3 of these cycles can be pipelined during the previous
+/// bus cycle. These cycles can alternatively be considered an 'address cycle'.
+/// Tr: The cycle on which the EU or prefetcher requests a bus cycle
+/// Ts: The first cycle of address calculation
+/// T0: The last cycle of address calculation (may repeat)
+/// Td: No address calculation in progress (done)
+/// https://martypc.blogspot.com/2024/02/the-complete-bus-logic-of-intel-8088.html
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub enum TaCycle {
+    #[default]
+    Tr, // T-Request. This is the cycle on which the EU or prefetcher requests a bus cycle.
+    Ts, // T-Start. This is the cycle on which the first cycle of address calculation occurs.
+    T0, // T-Zero. This is the cycle on which address calculation completes. T0 may be repeated.
+    Td, // T-done. Not a real cycle state, but indicates that no address cycle is in progress.
+    Ta, // T-abort. Signals that the address cycle has been aborted.
+}
+
+impl Display for TaCycle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TaCycle::Tr => write!(f, "Tr"),
+            TaCycle::Ts => write!(f, "Ts"),
+            TaCycle::T0 => write!(f, "T0"),
+            TaCycle::Td => write!(f, "  "),
+            TaCycle::Ta => write!(f, "Ta"),
+        }
+    }
+}
+
+/// The traditional bus cycle model of the 8088 includes T-states from T1 to T4. The CPU executes
+/// 'Ti' or idle T-states when not in an active bus transaction.
+/// Tinit is not a real T-cycle but a state that indicates a new bus cycle has just been initiated
+/// and should be moved to a valid state.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum TCycle {
     Tinit,
+    #[default]
     Ti,
     T1,
     T2,
@@ -1024,29 +1072,23 @@ pub enum TCycle {
     T4,
 }
 
-impl Default for TCycle {
-    fn default() -> TCycle {
-        TCycle::Ti
+impl Display for TCycle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TCycle::Tinit => write!(f, "Tx"),
+            TCycle::Ti => write!(f, "Ti"),
+            TCycle::T1 => write!(f, "T1"),
+            TCycle::T2 => write!(f, "T2"),
+            TCycle::T3 => write!(f, "T3"),
+            TCycle::Tw => write!(f, "Tw"),
+            TCycle::T4 => write!(f, "T4"),
+        }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum BiuStateNew {
-    Idle,
-    ToIdle(u8),
-    Prefetch,
-    ToPrefetch(u8),
-    Eu,
-    ToEu(u8),
-}
-
-impl Default for BiuStateNew {
-    fn default() -> BiuStateNew {
-        BiuStateNew::Idle
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
+/// The 8088 has 8 possible bus cycle types. These are advertised as an octal value on CPU status
+/// pins S0-S2 in Maximum mode.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum BusStatus {
     InterruptAck = 0, // IRQ Acknowledge
     IoRead = 1,       // IO Read
@@ -1055,46 +1097,32 @@ pub enum BusStatus {
     CodeFetch = 4,    // Code Access
     MemRead = 5,      // Memory Read
     MemWrite = 6,     // Memory Write
-    Passive = 7,      // Passive
+    #[default]
+    Passive = 7, // Passive
 }
 
-impl Default for BusStatus {
-    fn default() -> BusStatus {
-        BusStatus::Passive
+impl Display for BusStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BusStatus::InterruptAck => write!(f, "INTA"),
+            BusStatus::IoRead => write!(f, "IOR "),
+            BusStatus::IoWrite => write!(f, "IOW "),
+            BusStatus::Halt => write!(f, "HALT"),
+            BusStatus::CodeFetch => write!(f, "CODE"),
+            BusStatus::MemRead => write!(f, "MEMR"),
+            BusStatus::MemWrite => write!(f, "MEMW"),
+            BusStatus::Passive => write!(f, "PASV"),
+        }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub enum QueueOp {
+    #[default]
     Idle,
     First,
     Flush,
     Subsequent,
-}
-
-impl Default for QueueOp {
-    fn default() -> QueueOp {
-        QueueOp::Idle
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum FetchState {
-    Idle,
-    Suspended,
-    InProgress,
-    Scheduled(u8),
-    ScheduleNext,
-    Delayed(u8),
-    DelayDone,
-    Aborting(u8),
-    BlockedByEU,
-}
-
-impl Default for FetchState {
-    fn default() -> FetchState {
-        FetchState::Idle
-    }
 }
 
 impl Cpu {
@@ -1111,11 +1139,11 @@ impl Cpu {
 
         match cpu_type {
             CpuType::Harris80C88 | CpuType::Intel8088 => {
-                cpu.queue.set_size(4);
+                cpu.queue.set_size(4, 1);
                 cpu.fetch_size = TransferSize::Byte;
             }
             CpuType::Intel8086 => {
-                cpu.queue.set_size(6);
+                cpu.queue.set_size(6, 2);
                 cpu.fetch_size = TransferSize::Word;
             }
         }
@@ -1211,7 +1239,12 @@ impl Cpu {
         self.address_latch = 0;
         self.bus_status = BusStatus::Passive;
         self.bus_status_latch = BusStatus::Passive;
-        self.t_cycle = TCycle::T1;
+        self.t_cycle = TCycle::Ti;
+        self.ta_cycle = TaCycle::Td;
+        self.pl_status = BusStatus::Passive;
+        self.pl_slot = false;
+
+        self.fetch_state = FetchState::Normal;
 
         self.instruction_count = 0;
         self.int_count = 0;
@@ -1244,7 +1277,6 @@ impl Cpu {
 
         self.queue_op = QueueOp::Idle;
         self.last_queue_op = QueueOp::Idle;
-        self.fetch_state = FetchState::Idle;
 
         self.i8288.ale = false;
         self.i8288.mrdc = false;
@@ -1269,7 +1301,7 @@ impl Cpu {
 
         // Reset takes 6 cycles before first fetch
         self.cycle();
-        self.biu_suspend_fetch();
+        self.biu_fetch_suspend();
         self.cycles_i(2, &[0x1e4, 0x1e5]);
         self.biu_queue_flush();
         self.cycles_i(3, &[0x1e6, 0x1e7, 0x1e8]);

@@ -1,9 +1,9 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="Run martypc [DEBUG] [RUN CPU TESTS]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="DEV [DEBUG]">
-    <option name="command" value="run --features devtools,cpu_validator -- --configfile martypc-run_cpu_tests.toml" />
+  <configuration default="false" name="Run martypc [DEBUG] [bintest]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="DEV [DEBUG]">
+    <option name="command" value="run --features devtools,ega -- --configfile martypc-bintest.toml" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
     <envs>
-      <env name="RUST_LOG" value="warn,naga=error,wgpu_core=error,marty_core=warn" />
+      <env name="RUST_LOG" value="debug,naga=error,wgpu_core=error,wgpu_hal=error,marty_core=debug" />
     </envs>
     <option name="emulateTerminal" value="true" />
     <option name="channel" value="DEFAULT" />

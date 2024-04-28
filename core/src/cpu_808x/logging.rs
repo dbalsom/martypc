@@ -33,13 +33,13 @@
 use crate::{
     cpu_808x::{
         microcode::{MC_CORR, MC_JUMP, MC_NONE, MC_RTN, MICROCODE_NUL, MICROCODE_SRC_8088},
-        BiuStateNew,
         BusStatus,
         Cpu,
         DmaState,
         QueueOp,
         Segment,
         TCycle,
+        TaCycle,
         CPU_FLAG_AUX_CARRY,
         CPU_FLAG_CARRY,
         CPU_FLAG_DIRECTION,
@@ -50,10 +50,56 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
+    cpu_common::TraceMode,
     syntax_token::SyntaxToken,
 };
 
+pub enum BusSlotStatus {
+    SlotA(BusStatus, TCycle),
+    SlotB(BusStatus, TaCycle),
+}
+
 impl Cpu {
+    #[inline]
+    pub fn do_cycle_trace(&mut self) {
+        match self.trace_mode {
+            TraceMode::CycleText => {
+                // Get value of timer channel #1 for DMA printout
+                let mut dma_count = 0;
+
+                if let Some(pit) = self.bus.pit_mut().as_mut() {
+                    (_, dma_count, _) = pit.get_channel_count(1);
+                }
+
+                let state_str = self.cycle_state_string(dma_count, false);
+                self.trace_print(&state_str);
+                self.trace_str_vec.push(state_str);
+
+                self.trace_comment.clear();
+                self.trace_instr = MC_NONE;
+            }
+            TraceMode::CycleCsv => {
+                // Get value of timer channel #1 for DMA printout
+                let mut dma_count = 0;
+
+                if let Some(pit) = self.bus.pit_mut().as_mut() {
+                    (_, dma_count, _) = pit.get_channel_count(1);
+                }
+
+                let token_vec = self.cycle_state_tokens(dma_count, false);
+                //self.trace_print(&state_str);
+                self.trace_token_vec.push(token_vec);
+
+                self.trace_comment.clear();
+                self.trace_instr = MC_NONE;
+            }
+            TraceMode::CycleSigrok => {
+                self.trace_csv_line();
+            }
+            _ => {}
+        }
+    }
+
     pub fn instruction_state_string(&self, last_cs: u16, last_ip: u16) -> String {
         let mut instr_str = String::new();
 
@@ -79,7 +125,10 @@ impl Cpu {
     }
 
     pub fn emit_header(&mut self) {
-        self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd")
+        match self.trace_mode {
+            TraceMode::CycleCsv => self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd"),
+            _ => {}
+        }
     }
 
     pub fn trace_csv_line(&mut self) {
@@ -177,15 +226,6 @@ impl Cpu {
             false => ' ',
         };
 
-        let biu_state_new_str = match self.biu_state_new {
-            BiuStateNew::ToIdle(_) => ">I ",
-            BiuStateNew::ToPrefetch(_) => ">PF",
-            BiuStateNew::ToEu(_) => ">EU",
-            BiuStateNew::Idle => "I  ",
-            BiuStateNew::Prefetch => "PF ",
-            BiuStateNew::Eu => "EU ",
-        };
-
         /*
         let mut f_op_chr = match self.fetch_state {
             FetchState::Scheduled(_) => 'S',
@@ -223,27 +263,6 @@ impl Cpu {
         let iow_chr = match self.i8288.iowc {
             true => 'W',
             false => '.',
-        };
-
-        let bus_str = match self.bus_status_latch {
-            BusStatus::InterruptAck => "IRQA",
-            BusStatus::IoRead => "IOR ",
-            BusStatus::IoWrite => "IOW ",
-            BusStatus::Halt => "HALT",
-            BusStatus::CodeFetch => "CODE",
-            BusStatus::MemRead => "MEMR",
-            BusStatus::MemWrite => "MEMW",
-            BusStatus::Passive => "PASV",
-        };
-
-        let t_str = match self.t_cycle {
-            TCycle::Tinit => "Tx",
-            TCycle::Ti => "Ti",
-            TCycle::T1 => "T1",
-            TCycle::T2 => "T2",
-            TCycle::T3 => "T3",
-            TCycle::T4 => "T4",
-            TCycle::Tw => "Tw",
         };
 
         let is_reading = self.i8288.mrdc | self.i8288.iorc;
@@ -323,9 +342,11 @@ impl Cpu {
 
         let mut cycle_str;
 
+        let (slot0bus, slot0t, slot1bus, slot1t) = self.get_pl_slot_strings();
+
         if short {
             cycle_str = format!(
-                "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
+                "{:04} {:02}[{:05X}] {:02} {}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:04} {:02} | {:06} | {:<14}| {:1}{:1}{:1}[{:08}] {} | {:03} | {}",
                 self.instr_cycle,
                 ale_str,
                 self.address_latch,
@@ -334,11 +355,12 @@ impl Cpu {
                 self.wait_states,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
-                bus_str,
-                t_str,
+                slot0bus,
+                slot0t,
+                slot1bus,
+                slot1t,
                 xfer_str,
-                biu_state_new_str,
-                format!("{:?}", self.fetch_state),
+                format!("{:?}", self.bus_pending),
                 q_op_chr,
                 self.last_queue_len,
                 q_preload_char,
@@ -350,7 +372,7 @@ impl Cpu {
         }
         else {
             cycle_str = format!(
-                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}|  | {:04} {:02} {:06} | {:4}| {:<14}| {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
+                "{:08}:{:04} {:02}[{:05X}] {:02} {}{}{} M:{}{}{} I:{}{}{} |{:5}| {:04} {:02} {:04} {:02} ({:04}) | {:06} | {:<8}| {:<10} | {:1}{:1}{:1}[{:08}] {} | {}: {} | {}",
                 self.cycle_num,
                 self.instr_cycle,
                 ale_str,
@@ -361,10 +383,13 @@ impl Cpu {
                 tx_cycle,
                 rs_chr, aws_chr, ws_chr, ior_chr, aiow_chr, iow_chr,
                 dma_str,
-                bus_str,
-                t_str,
+                slot0bus,
+                slot0t,
+                slot1bus,
+                slot1t,
+                self.pl_status,
                 xfer_str,
-                biu_state_new_str,
+                format!("{:?}", self.bus_pending),
                 format!("{:?}", self.fetch_state),
                 q_op_chr,
                 self.last_queue_len,
@@ -417,16 +442,6 @@ impl Cpu {
             true => '*',
             false => ' ',
         };
-
-        let biu_state_new_str = match self.biu_state_new {
-            BiuStateNew::ToIdle(_) => ">I ",
-            BiuStateNew::ToPrefetch(_) => ">PF",
-            BiuStateNew::ToEu(_) => ">EU",
-            BiuStateNew::Idle => "I  ",
-            BiuStateNew::Prefetch => "PF ",
-            BiuStateNew::Eu => "EU ",
-        };
-        let biu_state_new_token = SyntaxToken::Text(biu_state_new_str.to_string());
 
         /*
         let mut f_op_chr = match self.fetch_state {
@@ -594,7 +609,6 @@ impl Cpu {
             bus_str_token,
             t_str_token,
             SyntaxToken::Text(xfer_str),
-            biu_state_new_token,
             SyntaxToken::Text(format!("{:?}", self.fetch_state)),
             q_op_token,
             SyntaxToken::Text(self.last_queue_len.to_string()),
@@ -652,5 +666,76 @@ impl Cpu {
             "1111{}{}{}{}{}{}0{}0{}1{}",
             o_chr, d_chr, i_chr, t_chr, s_chr, z_chr, a_chr, p_chr, c_chr
         )
+    }
+
+    /// Convert the two slots returned by get_pl_slots() into pairs of (bus, t-state) strings for display.
+    pub fn get_pl_slot_strings(&self) -> (String, String, String, String) {
+        let mut slot0_bus_str = String::from("    ");
+        let mut slot0_t_str = String::from("  ");
+
+        let mut slot1_bus_str = String::from("    ");
+        let mut slot1_t_str = String::from("  ");
+
+        let pl_slots = self.get_pl_slots();
+
+        match pl_slots[0] {
+            Some(BusSlotStatus::SlotA(status, cycle)) => {
+                slot0_bus_str = format!("{:04}", status);
+                slot0_t_str = format!("{:02}", cycle);
+            }
+            Some(BusSlotStatus::SlotB(status, cycle)) => {
+                slot0_bus_str = format!("{:04}", status);
+                slot0_t_str = format!("{:02}", cycle);
+            }
+            None => {}
+        }
+        match pl_slots[1] {
+            Some(BusSlotStatus::SlotA(status, cycle)) => {
+                slot1_bus_str = format!("{:04}", status);
+                slot1_t_str = format!("{:02}", cycle);
+            }
+            Some(BusSlotStatus::SlotB(status, cycle)) => {
+                slot1_bus_str = format!("{:04}", status);
+                slot1_t_str = format!("{:02}", cycle);
+            }
+            None => {}
+        }
+
+        (slot0_bus_str, slot0_t_str, slot1_bus_str, slot1_t_str)
+    }
+
+    /// Internally, we don't use pipeline slots to model the pipeline state. But visualizing the
+    /// bus states and t-cycles as two separate pipelines is more clear in logs. This function
+    /// splits the bus states into two slots based on the current pipeline slot flag which should
+    /// be toggled every time we enter a Tr cycle.
+    pub fn get_pl_slots(&self) -> [Option<BusSlotStatus>; 2] {
+        let mut slots = [None, None];
+        let pl_slot_u = self.pl_slot as usize;
+
+        // Scenario 1: T cycle is Ti, Ta cycle is inactive. Always emit Ti in slot 0.
+        if self.t_cycle == TCycle::Ti && self.ta_cycle == TaCycle::Td {
+            slots[0] = Some(BusSlotStatus::SlotA(self.bus_status_latch, self.t_cycle));
+            slots[1] = None;
+            return slots;
+        }
+        // Scenario 2: T cycle is Ti, Ta cycle is valid. Emit Ta in slot 0.
+        if self.t_cycle == TCycle::Ti && self.ta_cycle != TaCycle::Td {
+            slots[0] = Some(BusSlotStatus::SlotB(self.bus_status_latch, self.ta_cycle));
+            slots[1] = None;
+            return slots;
+        }
+        // Scenario 3: T cycle is T1-T4, Ta cycle is inactive. Emit T cycle in pl_slot.
+        if self.t_cycle != TCycle::Ti && self.ta_cycle == TaCycle::Td {
+            slots[self.pl_slot as usize] = Some(BusSlotStatus::SlotA(self.bus_status_latch, self.t_cycle));
+            slots[(!self.pl_slot) as usize] = None;
+            return slots;
+        }
+        // Scenario 4: T cycle is T1-T4, Ta cycle is valid. Emit the Ta cycle in pl_slot, T cycle in the other.
+        if self.t_cycle != TCycle::Ti && self.ta_cycle != TaCycle::Td {
+            slots[self.pl_slot as usize] = Some(BusSlotStatus::SlotB(self.pl_status, self.ta_cycle));
+            slots[(!self.pl_slot) as usize] = Some(BusSlotStatus::SlotA(self.bus_status_latch, self.t_cycle));
+            return slots;
+        }
+        panic!("Unhandled pl_slot scenario in get_pl_slots()");
     }
 }

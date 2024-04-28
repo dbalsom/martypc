@@ -28,15 +28,12 @@
 
 */
 
-
-
-
-
 #[macro_use]
 pub mod common;
 
 #[cfg(feature = "arduino_validator")]
 pub mod gen_tests;
-pub mod process_tests;
 #[cfg(feature = "arduino_validator")]
+pub mod process_tests;
+#[cfg(feature = "cpu_validator")]
 pub mod run_tests;

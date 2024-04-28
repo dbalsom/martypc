@@ -156,8 +156,8 @@ pub fn opcode_extension_from_path(path: &PathBuf) -> Option<u8> {
             // Split the filename on '.' to separate potential opcode and extension
             let parts: Vec<&str> = filename.split('.').collect();
 
-            if parts.len() == 2 {
-                // If there are two parts, take the second one as the extension
+            if parts.len() == 3 {
+                // If there are three parts, take the second one as the extension
                 u8::from_str_radix(parts[1], 16).ok()
             }
             else {

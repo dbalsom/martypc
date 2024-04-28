@@ -56,7 +56,7 @@ impl Cpu {
                         self.b.x(),
                         self.c.x()
                     );
-                    self.biu_suspend_fetch();
+                    self.biu_fetch_suspend();
                     self.cycles(4);
 
                     self.cs = self.b.x();
@@ -102,7 +102,7 @@ impl Cpu {
             self.ip(),
         );
 
-        self.biu_suspend_fetch(); // 1a3 SUSP
+        self.biu_fetch_suspend(); // 1a3 SUSP
         self.cycles_i(2, &[0x1a3, 0x1a4]);
         self.push_flags(ReadWriteFlag::Normal);
         self.clear_flag(Flag::Interrupt);
@@ -243,7 +243,7 @@ impl Cpu {
             self.ip(),
         );
 
-        self.biu_suspend_fetch(); // 1a3 SUSP
+        self.biu_fetch_suspend(); // 1a3 SUSP
         self.cycles_i(2, &[0x1a3, 0x1a4]);
         self.push_flags(ReadWriteFlag::Normal);
         self.clear_flag(Flag::Interrupt);
@@ -259,7 +259,7 @@ impl Cpu {
         // Begin IRQ routine
         self.set_mc_pc(0x19a);
         self.biu_inta(vector);
-        self.biu_suspend_fetch();
+        self.biu_fetch_suspend();
         self.cycles_i(2, &[0x19b, 0x19c]);
 
         // Begin INTR routine

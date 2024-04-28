@@ -1,5 +1,16 @@
 
-## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-04-10)
+## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-XX-XX)
+
+### New BIU logic
+
+* 0.2.0 introduced new BIU logic. Unfortunately, 0.2.0 took so long that this 'new' logic already needed 
+  replacement. With the discovery of the 8088's 7-cycle bus access time, far simpler BIU logic is possible and has been 
+  implemented in 0.2.1. For more information, see 
+  [my corresponding blog post](https://martypc.blogspot.com/2024/02/the-complete-bus-logic-of-intel-8088.html).
+
+* Along with this new logic comes a slightly different cycle log format; I'm probably the only person on earth that reads
+  these logs, but it's worth mentioning. Several old state columns are gone, and now bus and T-cycles are displayed within 
+  two separate 'pipeline slots'. 
 
 ### New Machines
 

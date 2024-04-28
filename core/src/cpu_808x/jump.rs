@@ -42,8 +42,8 @@ impl Cpu {
         if jump {
             self.cycle_i(MC_JUMP);
         }
-        //self.biu_suspend_fetch_i(0x0d2);
-        self.biu_suspend_fetch();
+        //self.biu_fetch_suspend_i(0x0d2);
+        self.biu_fetch_suspend();
         self.cycles_i(4, &[0x0d2, 0x0d3, MC_CORR, 0x0d4]);
         self.pc = new_pc;
         self.biu_queue_flush(); // 0d5
@@ -57,8 +57,8 @@ impl Cpu {
         if jump {
             self.cycle_i(MC_JUMP);
         }
-        //self.biu_suspend_fetch_i(0x0d2);
-        self.biu_suspend_fetch();
+        //self.biu_fetch_suspend_i(0x0d2);
+        self.biu_fetch_suspend();
         self.cycles_i(2, &[0x0d2, 0x0d3]);
         self.corr();
         self.pc = util::relative_offset_u16(self.pc, rel);
@@ -74,7 +74,7 @@ impl Cpu {
         if jump {
             self.cycle_i(MC_JUMP);
         }
-        self.biu_suspend_fetch(); // 0x06B
+        self.biu_fetch_suspend(); // 0x06B
         self.cycles_i(2, &[0x06b, 0x06c]);
         self.corr();
         // Push return segment to stack
@@ -113,7 +113,7 @@ impl Cpu {
         self.set_mc_pc(0x0c2);
         //self.pop_register16(Register16::IP, ReadWriteFlag::RNI);
         self.pc = self.pop_u16();
-        self.biu_suspend_fetch();
+        self.biu_fetch_suspend();
         //self.cycle_i(MC_NONE);
         self.cycles_i(2, &[0x0c3, 0x0c4]);
 

@@ -328,7 +328,7 @@ impl Cpu {
 
     /// Implement the RPTI microcode co-routine for string interrupt handling.
     pub fn rep_interrupt(&mut self) {
-        self.biu_suspend_fetch();
+        self.biu_fetch_suspend();
         self.cycles_i(2, &[0x118, 0x119]);
         self.corr();
         self.cycle_i(0x11a);
