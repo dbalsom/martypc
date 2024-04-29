@@ -95,16 +95,6 @@ impl Cpu {
         (((segment_val as u32) << 4) + offset as u32) & 0xFFFFFu32
     }
 
-    pub fn segment_override(seg_override: Option<Segment>, seg_default: Segment) -> Segment {
-        
-        if let Some(segment) = seg_override {
-            segment
-        }
-        else {
-            seg_default
-        }
-    }
-
     /// Calculate the Effective Address for the given AddressingMode enum
     pub fn calc_effective_address(
         &mut self,
@@ -240,7 +230,7 @@ impl Cpu {
             }
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 let byte = self.biu_read_u8(segment, offset);
                 Some(byte)
             }
@@ -288,8 +278,7 @@ impl Cpu {
             }
             OperandType::Offset16(_offset16) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
-
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 let word = self.biu_read_u16(segment, offset, ReadWriteFlag::Normal);
 
                 Some(word)
@@ -403,8 +392,7 @@ impl Cpu {
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
-
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 self.biu_write_u8(segment, offset, value, flag);
             }
             OperandType::Register8(reg8) => match reg8 {
@@ -436,8 +424,7 @@ impl Cpu {
             OperandType::Offset16(_offset16) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
-
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 self.biu_write_u16(segment, offset, value, flag);
             }
             OperandType::Register16(reg16) => {

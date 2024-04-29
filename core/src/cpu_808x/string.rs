@@ -34,12 +34,7 @@ use crate::cpu_808x::*;
 
 impl Cpu {
     pub fn string_op(&mut self, opcode: Mnemonic, segment_override: Option<Segment>) {
-        let segment_base_ds = if let Some(seg) = segment_override {
-            seg
-        }
-        else {
-            Segment::DS
-        };
+        let segment_base_ds = segment_override.unwrap_or(Segment::DS);
 
         match opcode {
             Mnemonic::STOSB => {

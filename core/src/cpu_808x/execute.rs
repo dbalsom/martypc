@@ -1159,7 +1159,7 @@ impl Cpu {
                 // XLAT
                 
                 // Handle segment override, default DS
-                let segment = Cpu::segment_override(self.i.segment_override, Segment::DS);
+                let segment = self.i.segment_override.unwrap_or(Segment::DS);
                 let disp16: u16 = self.b.x().wrapping_add(self.a.l() as u16);
                 
                 self.cycles_i(3, &[0x10c, 0x10d, 0x10e]);
