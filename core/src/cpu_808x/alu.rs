@@ -36,6 +36,39 @@ use crate::{
     cpu_common::alu::*,
 };
 
+/// The ALU operation specifier 'Xi' determines the ALU operation by decoding 5 bits from the group
+/// decode rom, opcode, and optionally modrm. We don't bother decoding Xi. Instead, Xi is stored
+/// in the precalculated decode table.
+pub enum Xi {
+    ADD,
+    ADC,
+    OR,
+    SBB,
+    SUB,
+    CMP,
+    AND,
+    XOR,
+    ROL,
+    ROR,
+    RCL,
+    RCR,
+    SHL,
+    SHR,
+    SETMO,
+    SAR,
+    PASS,
+    DAA,
+    DAS,
+    AAA,
+    AAS,
+    INC,
+    DEC,
+    NOT,
+    NEG,
+    INC2,
+    DEC2,
+}
+
 //use num_traits::PrimInt;
 
 impl Cpu {
@@ -154,7 +187,6 @@ impl Cpu {
         (sum, carry, overflow, aux_carry)
     }
 
-    // TODO: Handle Aux Carry Flag
     pub fn sub_u8(byte1: u8, byte2: u8, carry_in: bool) -> (u8, bool, bool, bool) {
         // OVERFLOW flag indicates signed overflow
         // CARRY flag indicates unsigned overflow
@@ -403,28 +435,6 @@ impl Cpu {
         true
     }
 
-    /// Sign extend AL into AX
-    pub fn sign_extend_al(&mut self) {
-        if self.a.l() & 0x80 != 0 {
-            self.a.set_h(0xFF);
-        }
-        else {
-            self.a.set_h(0);
-        }
-    }
-
-    /// Sign extend AX ito DX:AX
-    pub fn sign_extend_ax(&mut self) {
-        self.cycles(3);
-        if self.a.x() & 0x8000 == 0 {
-            self.d.set_x(0x0000);
-        }
-        else {
-            self.cycle(); // Microcode jump @ 05a
-            self.d.set_x(0xFFFF);
-        }
-    }
-
     /// Perform various 8-bit math operations
     pub fn math_op8(&mut self, opcode: Mnemonic, operand1: u8, operand2: u8) -> u8 {
         match opcode {
@@ -445,8 +455,6 @@ impl Cpu {
                 result
             }
             Mnemonic::SUB => {
-                //let (result, carry, overflow, aux_carry) = Cpu::sub_u8(operand1, operand2, false );
-
                 let (result, carry, overflow, aux_carry) = operand1.alu_sub(operand2);
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);

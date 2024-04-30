@@ -69,7 +69,7 @@ fn mnemonic_to_str(op: Mnemonic) -> &'static str {
         Mnemonic::DEC => "DEC",
         Mnemonic::DIV => "DIV",
         Mnemonic::ESC => "ESC",
-        Mnemonic::FWAIT => "FWAIT",
+        Mnemonic::WAIT => "WAIT",
         Mnemonic::HLT => "HLT",
         Mnemonic::IDIV => "IDIV",
         Mnemonic::IMUL => "IMUL",

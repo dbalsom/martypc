@@ -35,6 +35,8 @@
 pub enum Mnemonic {
     InvalidOpcode,
     NoOpcode,
+    Group,
+    Prefix,
     NOP,
     AAA,
     AAD,
@@ -59,7 +61,7 @@ pub enum Mnemonic {
     DEC,
     DIV,
     ESC,
-    FWAIT,
+    WAIT,
     HLT,
     IDIV,
     IMUL,
