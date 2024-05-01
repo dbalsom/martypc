@@ -126,12 +126,6 @@ impl Cpu {
             self.cycle();
         }
 
-        // If we have a group cycle delay, execute it now.
-        if self.i.flags & I_GROUP_DELAY != 0 {
-            self.trace_comment("GROUP_DELAY");
-            self.cycle();
-        }
-
         // Set the microcode PC for this opcode.
         self.mc_pc = MICROCODE_ADDRESS_8088[self.i.opcode as usize];
 
@@ -615,12 +609,24 @@ impl Cpu {
             0x98 => {
                 // CBW - Convert Byte to Word
                 // Flags: None
-                self.sign_extend_al();
+                if self.a.l() & 0x80 != 0 {
+                    self.a.set_h(0xFF);
+                }
+                else {
+                    self.a.set_h(0);
+                }
             }
             0x99 => {
                 // CWD - Convert Word to Doubleword
                 // Flags: None
-                self.sign_extend_ax();
+                self.cycles(3);
+                if self.a.x() & 0x8000 == 0 {
+                    self.d.set_x(0x0000);
+                }
+                else {
+                    self.cycle(); // Microcode jump @ 05a
+                    self.d.set_x(0xFFFF);
+                }
             }
             0x9A => {
                 // CALLF - Call Far addr16:16

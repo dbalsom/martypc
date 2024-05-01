@@ -402,7 +402,7 @@ fn run_tests(
 
         cpu.bus_mut().seek(instruction_address as usize);
 
-        let mut i = match Cpu::decode(cpu.bus_mut()) {
+        let mut i = match Cpu::decode(cpu.bus_mut(), true) {
             Ok(i) => i,
             Err(_) => {
                 _ = writeln!(log, "Instruction decode error!");

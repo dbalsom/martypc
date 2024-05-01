@@ -33,7 +33,7 @@
 
 use std::fmt;
 
-use crate::cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, *};
+use crate::cpu_808x::{addressing::AddressingMode, instruction::Instruction, mnemonic::Mnemonic, *};
 
 use crate::syntax_token::SyntaxToken;
 
@@ -69,7 +69,7 @@ fn mnemonic_to_str(op: Mnemonic) -> &'static str {
         Mnemonic::DEC => "DEC",
         Mnemonic::DIV => "DIV",
         Mnemonic::ESC => "ESC",
-        Mnemonic::FWAIT => "FWAIT",
+        Mnemonic::WAIT => "WAIT",
         Mnemonic::HLT => "HLT",
         Mnemonic::IDIV => "IDIV",
         Mnemonic::IMUL => "IMUL",

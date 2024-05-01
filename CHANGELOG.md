@@ -58,15 +58,16 @@
 
 ### Core Bug Fixes / Improvements
 
-* CPU: Converted SegmentOverride enum to Option<Segment>, simplifying segment resolution logic in many places
-* CPU: New 7-cycle bus access logic
-* CPU: Refactored CycleText log format
-* CPU: Added cyle stopwatch support
-* CPU: Don't count individual REP iterations toward instruction counter
-* CPU: Fixed call stack tracing (recursive calls will still cause overflow)
+* 8088: Refactored instruction decode to a table-based lookup, replaced custom flags with values from group decode ROM.
+* 8088: Converted SegmentOverride enum to Option<Segment>, simplifying segment resolution logic in many places
+* 8088: New 7-cycle bus access logic
+* 8088: Refactored CycleText log format
+* 8088: Added cyle stopwatch support
+* 8088: Don't count individual REP iterations toward instruction counter
+* 8088: Fixed call stack tracing (recursive calls will still cause overflow)
   * Reduced size of call stack history to avoid ridiculously tall windows
-* CPU: Fixed cycle count reporting in Instruction History
-* CPU: Added Interrupt, Trap and NMI history types
+* 8088: Fixed cycle count reporting in Instruction History
+* 8088: Added Interrupt, Trap and NMI history types
 * EGA: Can now specify EGA dipswitch in machine configuration.
   * Added an `ibm_ega_on_cga` config overlay with the right dipswitch for running FantasyLand
 * BUS: Require IoDevice trait implementations to provide port description strings
@@ -78,7 +79,8 @@
   * Control register implemented, and PPI group modes are now tracked
   * New state dump format for new frontend PPI Viewer
   * Implemented keyboard scancode serializer for PCJr (Still has some bugs)
-* CGA: Fixed last-line CRTC flag logic. Fixes some severe glitches in Area 5150 I didn't notice because I have only been testing the first and last effect. (Thanks Sudo)
+* CGA: Fixed last-line CRTC flag logic. Fixes some severe glitches in Area 5150 I didn't notice because I have only been
+       testing the first and last effect. (Thanks Sudo)
 
 ## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0b) (2024-04-01)
 

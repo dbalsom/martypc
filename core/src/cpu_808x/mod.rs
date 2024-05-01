@@ -30,15 +30,12 @@
 
 */
 
-//#![allow(dead_code)]
 #![allow(clippy::unusual_byte_groupings)]
 
-use std::{collections::VecDeque, error::Error, fmt, path::Path};
-
 use core::fmt::Display;
-
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::{collections::VecDeque, error::Error, fmt, path::Path};
 
 // Pull in all CPU module components
 mod addressing;
@@ -51,6 +48,8 @@ mod decode;
 mod display;
 mod execute;
 mod fuzzer;
+mod gdr;
+mod instruction;
 mod interrupt;
 mod jump;
 mod logging;
@@ -63,18 +62,18 @@ mod stack;
 mod step;
 mod string;
 
-use crate::cpu_808x::{addressing::AddressingMode, microcode::*, mnemonic::Mnemonic, queue::InstructionQueue};
-// Make ReadWriteFlag available to benchmarks
-pub use crate::cpu_808x::biu::ReadWriteFlag;
-
 use crate::{
     breakpoints::{BreakPointType, CycleStopWatch, StopWatchData},
     bus::{BusInterface, MEM_BPA_BIT, MEM_BPE_BIT, MEM_RET_BIT, MEM_SW_BIT},
     bytequeue::*,
+    cpu_808x::{addressing::AddressingMode, microcode::*, mnemonic::Mnemonic, queue::InstructionQueue},
     cpu_common::{CpuOption, CpuType, TraceMode},
     syntax_token::*,
     tracelogger::TraceLogger,
 };
+
+// Make ReadWriteFlag available to benchmarks
+pub use crate::cpu_808x::biu::ReadWriteFlag;
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::ValidatorType;
@@ -108,6 +107,7 @@ macro_rules! trace_print {
     }};
 }
 
+use crate::cpu_808x::instruction::Instruction;
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -297,7 +297,7 @@ pub enum CpuError {
 }
 impl Error for CpuError {}
 impl Display for CpuError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &*self {
             CpuError::InvalidInstructionError(o, addr) => write!(
                 f,
@@ -580,39 +580,6 @@ impl Default for InterruptDescriptor {
     }
 }
 
-#[derive(Clone)]
-pub struct Instruction {
-    pub opcode: u8,
-    pub flags: u32,
-    pub prefixes: u32,
-    pub address: u32,
-    pub size: u32,
-    pub mnemonic: Mnemonic,
-    pub segment_override: Option<Segment>,
-    pub operand1_type: OperandType,
-    pub operand1_size: OperandSize,
-    pub operand2_type: OperandType,
-    pub operand2_size: OperandSize,
-}
-
-impl Default for Instruction {
-    fn default() -> Self {
-        Self {
-            opcode: 0,
-            flags: 0,
-            prefixes: 0,
-            address: 0,
-            size: 1,
-            mnemonic: Mnemonic::NOP,
-            segment_override: None,
-            operand1_type: OperandType::NoOperand,
-            operand1_size: OperandSize::NoOperand,
-            operand2_type: OperandType::NoOperand,
-            operand2_size: OperandSize::NoOperand,
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub enum TransferSize {
     Byte,
@@ -648,7 +615,7 @@ impl From<CpuAddress> for u32 {
     }
 }
 
-impl fmt::Display for CpuAddress {
+impl Display for CpuAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             CpuAddress::Flat(a) => write!(f, "{:05X}", a),
@@ -1678,7 +1645,8 @@ impl Cpu {
     /// Converts a Register8 into a Register16.
     /// Only really useful for r forms of FE.03-07 which operate on 8 bits of a memory
     /// operand but 16 bits of a register operand. We don't support 'hybrid' 8/16 bit
-    /// instruction templates so we have to convert.
+    /// instruction templates, so we have to convert.
+    #[inline]
     pub fn reg8to16(reg: Register8) -> Register16 {
         match reg {
             Register8::AH => Register16::AX,

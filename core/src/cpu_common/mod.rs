@@ -42,6 +42,12 @@ pub enum CpuType {
     Harris80C88,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum CpuSubType {
+    Intel8088,
+    Harris80C88,
+}
+
 pub enum CycleTraceMode {
     Text,
     Csv,

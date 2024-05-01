@@ -30,7 +30,7 @@
 
 */
 
-use crate::cpu_808x::*;
+use crate::{cpu_808x::*, cpu_common::alu::AluSub};
 
 impl Cpu {
     pub fn string_op(&mut self, opcode: Mnemonic, segment_override: Option<Segment>) {
@@ -164,7 +164,7 @@ impl Cpu {
                 let data = self.biu_read_u8(Segment::ES, self.di);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(self.a.l(), data, false);
+                let (result, carry, overflow, aux_carry) = self.a.l().alu_sub(data);
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -191,7 +191,7 @@ impl Cpu {
                 let data = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(self.a.x(), data, false);
+                let (result, carry, overflow, aux_carry) = self.a.x().alu_sub(data);
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
                 self.set_flag_state(Flag::Overflow, overflow);
@@ -220,7 +220,7 @@ impl Cpu {
                 let esdi_op = self.biu_read_u8(Segment::ES, self.di);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u8(dssi_op, esdi_op, false);
+                let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);
 
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);
@@ -252,7 +252,7 @@ impl Cpu {
                 let esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
-                let (result, carry, overflow, aux_carry) = Cpu::sub_u16(dssi_op, esdi_op, false);
+                let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);
 
                 // Test operation behaves like CMP
                 self.set_flag_state(Flag::Carry, carry);

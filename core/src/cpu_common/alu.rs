@@ -27,7 +27,7 @@
     cpu_common::alu.rs
 
     This module implements traits for alu operations of different widths
-    common accross CPU types.
+    common across CPU types.
 
 */
 
@@ -97,16 +97,14 @@ macro_rules! impl_sbb {
                 let rhs_w: u32 = rhs as u32;
                 let result: u32;
                 let mut carry: bool;
-                let carry2: bool;
 
-                (result, carry) = lhs_w.overflowing_sub(rhs_w.wrapping_add(if carry_in { 1 } else { 0 })); // DEST := (DEST – (SRC + CF));
-                carry2 = if result & (0xFFFFFFFF << <$prim>::BITS) != 0 {
-                    true
+                (result, carry) = lhs_w.overflowing_sub(rhs_w.wrapping_add(carry_in as u32)); // DEST := (DEST – (SRC + CF));
+                carry = if <$prim>::BITS == 32 {
+                    carry
                 }
                 else {
-                    false
-                }; // Unsigned overflow
-                carry = if <$prim>::BITS == 32 { carry } else { carry2 };
+                    result & (0xFFFFFFFF << <$prim>::BITS) != 0
+                };
 
                 let overflow = (lhs_w ^ rhs_w) & (lhs_w ^ result) & (1 << (<$prim>::BITS - 1)) != 0; // Signed overflow
                 let aux_carry = ((lhs_w ^ rhs_w ^ result) & 0x10) != 0; // Borrow from upper nibble
@@ -148,16 +146,14 @@ macro_rules! impl_adc {
                 let rhs_w: u32 = rhs as u32;
                 let result: u32;
                 let mut carry: bool;
-                let carry2: bool;
 
-                (result, carry) = lhs_w.overflowing_add(rhs_w.wrapping_add(if carry_in { 1 } else { 0 })); // DEST := (DEST + (SRC + CF));
-                carry2 = if result & (0xFFFFFFFF << <$prim>::BITS) != 0 {
-                    true
+                (result, carry) = lhs_w.overflowing_add(rhs_w.wrapping_add(carry_in as u32)); // DEST := (DEST + (SRC + CF));
+                carry = if <$prim>::BITS == 32 {
+                    carry
                 }
                 else {
-                    false
-                }; // Unsigned overflow
-                carry = if <$prim>::BITS == 32 { carry } else { carry2 };
+                    result & (0xFFFFFFFF << <$prim>::BITS) != 0
+                };
 
                 let overflow = (lhs_w ^ result) & (rhs_w ^ result) & (1 << (<$prim>::BITS - 1)) != 0; // Signed overflow
                 let aux_carry = ((lhs_w ^ rhs_w ^ result) & 0x10) != 0; // Borrow from upper nibble
@@ -250,14 +246,12 @@ macro_rules! impl_rcl {
         impl AluRotateCarryLeft for $prim {
             fn alu_rcl(mut self, count: u8, carry: bool) -> (Self, bool) {
                 let mut carry = carry as $prim;
-
                 for _ in 0..count {
                     let saved_carry = carry;
                     carry = self >> (<$prim>::BITS - 1);
                     self <<= 1;
                     self |= saved_carry;
                 }
-
                 (self, carry != 0)
             }
         }
@@ -293,14 +287,12 @@ macro_rules! impl_rcr {
         impl AluRotateCarryRight for $prim {
             fn alu_rcr(mut self, count: u8, carry: bool) -> (Self, bool) {
                 let mut carry = carry as $prim << (<$prim>::BITS - 1);
-
                 for _ in 0..count {
                     let saved_carry = carry;
                     carry = (self & 1) << (<$prim>::BITS - 1);   // (<$prim>::BITS - 1);
                     self >>= 1;
                     self |= saved_carry;
                 }
-
                 (self, carry != 0)
             }
         }
