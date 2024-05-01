@@ -133,11 +133,11 @@ impl Cpu {
         //trace_print!(self, "biu_queue_read()");
 
         if let Some(preload_byte) = self.queue.get_preload() {
-            // We have a pre-loaded byte from finalizing the last instruction.
+            // We have a preloaded byte from finalizing the last instruction.
             self.last_queue_op = QueueOp::First;
             self.last_queue_byte = preload_byte;
 
-            // Since we have a pre-loaded fetch, the next instruction will always begin
+            // Since we have a preloaded fetch, the next instruction will always begin
             // execution on the next cycle. If NX bit is set, advance the MC PC to
             // execute the RNI from the previous instruction.
             self.next_mc();

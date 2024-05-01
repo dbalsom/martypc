@@ -168,7 +168,7 @@ impl Cpu {
     /// Load the EA operand for the current instruction, if applicable
     /// (not all instructions with a mod r/m will load, ie, write-only instructions)
     pub fn load_operand(&mut self) {
-        if self.i.flags & I_LOAD_EA != 0 {
+        if self.i.gdr().loads_ea() {
             // This instruction loads its EA operand. Load and save into OPR.
 
             let ea_mode: AddressingMode;
@@ -219,12 +219,11 @@ impl Cpu {
         operand: OperandType,
         seg_override: Option<Segment>,
     ) -> Option<u8> {
-        // The operand enums contain values peeked from instruction fetch. However for accurate cycle
+        // The operand enums may contain values peeked from instruction fetch. However, for accurate cycle
         // timing, we have to fetch them again now.
 
-        // Ideally we would assert that the peeked operand values equal the fetched values, but this can
-        // fail with self-modifying code, such as the end credits of 8088mph.
-
+        // Originally we would assert that the peeked operand values equal the fetched values, but this can
+        // fail with self-modifying code, such as the end credits of 8088MPH.
         match operand {
             OperandType::Immediate8(_imm8) => {
                 let byte = self.q_read_u8(QueueType::Subsequent, QueueReader::Eu);
@@ -271,12 +270,11 @@ impl Cpu {
         operand: OperandType,
         seg_override: Option<Segment>,
     ) -> Option<u16> {
-        // The operand enums contain values peeked from instruction fetch. However for accurate cycle
+        // The operand enums may contain values peeked from instruction fetch. However, for accurate cycle
         // timing, we have to fetch them again now.
 
-        // Ideally we would assert that the peeked operand values equal the fetched values, but this can
-        // fail with self-modifying code, such as the end credits of 8088mph.
-
+        // Originally we would assert that the peeked operand values equal the fetched values, but this can
+        // fail with self-modifying code, such as the end credits of 8088MPH.
         match operand {
             OperandType::Immediate16(_imm16) => {
                 let word = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);

@@ -255,7 +255,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
                 let mut decode_vec = Vec::new();
 
-                match Cpu::decode(bus) {
+                match Cpu::decode(bus, true) {
                     Ok(i) => {
                         let instr_slice = bus.get_slice_at(disassembly_addr_flat, i.size as usize);
                         let instr_bytes_str = util::fmt_byte_array(instr_slice);

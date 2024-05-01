@@ -126,12 +126,6 @@ impl Cpu {
             self.cycle();
         }
 
-        // If we have a group cycle delay, execute it now.
-        if self.i.flags & I_GROUP_DELAY != 0 {
-            self.trace_comment("GROUP_DELAY");
-            self.cycle();
-        }
-
         // Set the microcode PC for this opcode.
         self.mc_pc = MICROCODE_ADDRESS_8088[self.i.opcode as usize];
 

@@ -33,7 +33,7 @@
 
 use std::fmt;
 
-use crate::cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, *};
+use crate::cpu_808x::{addressing::AddressingMode, instruction::Instruction, mnemonic::Mnemonic, *};
 
 use crate::syntax_token::SyntaxToken;
 

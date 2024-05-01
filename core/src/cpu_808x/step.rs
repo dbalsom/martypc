@@ -145,7 +145,7 @@ impl Cpu {
             // anyway.
             if self.trace_mode == TraceMode::CycleText {
                 self.bus.seek(instruction_address as usize);
-                self.i = match Cpu::decode(&mut self.bus) {
+                self.i = match Cpu::decode(&mut self.bus, true) {
                     Ok(i) => i,
                     Err(_) => {
                         self.is_running = false;
@@ -160,7 +160,7 @@ impl Cpu {
             // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait
             // implementation, which fetches instruction bytes through the processor instruction queue.
             //log::warn!("decoding instruction...");
-            self.i = match Cpu::decode(self) {
+            self.i = match Cpu::decode(self, true) {
                 Ok(i) => i,
                 Err(_) => {
                     self.is_running = false;
@@ -561,7 +561,7 @@ impl Cpu {
                             &self.instr_slice,
                             v_flags,
                             self.peek_fetch as u16,
-                            self.i.flags & I_HAS_MODRM != 0,
+                            self.i.gdr().has_modrm(),
                             0,
                             &vregs,
                             &self.cycle_states,
