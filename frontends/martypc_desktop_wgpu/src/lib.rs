@@ -55,7 +55,12 @@ use std::{
 use crate::run_benchmark::run_benchmark;
 
 #[cfg(feature = "arduino_validator")]
-use crate::{cpu_test::gen_tests::run_gentests, cpu_test::run_tests, run_fuzzer::run_fuzzer};
+use crate::{cpu_test::gen_tests::run_gentests, cpu_test::process_tests::run_processtests, run_fuzzer::run_fuzzer};
+
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_test::run_tests::run_runtests;
+#[cfg(feature = "cpu_validator")]
+use marty_core::cpu_validator::ValidatorType;
 
 use config_toml_bpaf::TestMode;
 
@@ -73,9 +78,6 @@ use frontend_common::{
     vhd_manager::VhdManager,
 };
 use marty_egui::state::GuiState;
-
-#[cfg(feature = "cpu_validator")]
-use run_tests::run_runtests;
 
 use crate::{
     emulator::{EmuFlags, Emulator},
@@ -480,7 +482,7 @@ pub fn run() {
     log::debug!("Test mode: {:?}", config.tests.test_mode);
 
     // If fuzzer mode was specified, run the emulator in fuzzer mode now
-    #[cfg(feature = "cpu_validator")]
+    #[cfg(feature = "arduino_validator")]
     if config.emulator.fuzzer {
         return run_fuzzer(&config);
     }
@@ -488,15 +490,17 @@ pub fn run() {
     // If test generate mode was specified, run the emulator in test generation mode now
     #[cfg(feature = "cpu_validator")]
     match config.tests.test_mode {
+        #[cfg(feature = "arduino_validator")]
         Some(TestMode::Generate) => return run_gentests(&config),
         Some(TestMode::Run) | Some(TestMode::Validate) => return run_runtests(config),
+        #[cfg(feature = "arduino_validator")]
         Some(TestMode::Process) => return run_processtests(config),
-        Some(TestMode::None) | None => {}
+        Some(TestMode::None) | None | _ => {}
     }
     #[cfg(not(feature = "cpu_validator"))]
     {
-        if let Some(TestMode::Run) = config.tests.test_mode {
-            eprintln!("Test generation mode not supported in this build.");
+        if !matches!(config.tests.test_mode, None | Some(TestMode::None)) {
+            eprintln!("Test mode not supported without validator feature.");
             std::process::exit(1);
         }
     }

@@ -207,6 +207,18 @@ pub fn run_runtests(config: ConfigFileParams) {
             opcode_from_path(&test_load.path).expect(&format!("Couldn't parse opcode from path: {:?}", test_load.path));
         let extension_opt = opcode_extension_from_path(&test_load.path);
 
+        if let (Some(opt), Some(range)) = (extension_opt, config.tests.test_extension_range.clone()) {
+            if range.len() == 2 {
+                if (range[0]..=range[1]).contains(&opt) {
+                    log::debug!("Extension {} is in range.", opt);
+                }
+                else {
+                    log::debug!("Extension {} is not in range. Skipping...", opt);
+                    continue;
+                }
+            }
+        }
+
         //let results = run_tests(&metadata, &test_load.tests, opcode, extension_opt, &config, &mut writer_lock);
         let results = run_tests(
             &metadata,
@@ -294,11 +306,10 @@ fn run_tests(
 
     // Create the validator trace file, if specified
     let mut validator_trace = TraceLogger::None;
-    /*
+
     if let Some(trace_filename) = &config.validator.trace_file {
         validator_trace = TraceLogger::from_filename(&trace_filename);
     }
-    */
 
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
 
@@ -391,7 +402,7 @@ fn run_tests(
 
         cpu.bus_mut().seek(instruction_address as usize);
 
-        let mut i = match Cpu::decode(cpu.bus_mut()) {
+        let mut i = match Cpu::decode(cpu.bus_mut(), true) {
             Ok(i) => i,
             Err(_) => {
                 _ = writeln!(log, "Instruction decode error!");
@@ -468,7 +479,7 @@ fn run_tests(
                 // Divide exceptions possible - set a flag to ignore undefined flag state when
                 // doing memory comparison (Since flags will be pushed to stack)
                 flags_on_stack = true;
-                debug_mnemonic = true;
+                debug_mnemonic = false;
             }
             _ => {}
         }
@@ -649,8 +660,8 @@ fn run_tests(
                 cpu_cycles.len()
             );
 
-            //print_cycle_diff(log, &test.cycles, &cpu_cycles);
-            //cpu.trace_flush();
+            print_cycle_diff(log, &test.cycles, &cpu_cycles);
+            cpu.trace_flush();
 
             let item = TestFailItem {
                 num:    n as u32,

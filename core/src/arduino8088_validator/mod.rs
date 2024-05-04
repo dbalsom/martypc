@@ -24,9 +24,12 @@
 */
 #![allow(dead_code)]
 
-use std::cmp;
+mod queue;
+pub mod remote_cpu;
+mod udmask;
 
 use crate::{
+    arduino8088_client::*,
     cpu_808x::{
         QueueOp,
         CPU_FLAG_AUX_CARRY,
@@ -39,15 +42,11 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
+    cpu_validator::*,
     tracelogger::TraceLogger,
 };
-
-mod queue;
-pub mod remote_cpu;
-mod udmask;
-
-use crate::{arduino8088_client::*, cpu_validator::*};
 use remote_cpu::*;
+use std::cmp;
 
 const VISIT_ONCE: bool = false;
 const NUM_INVALID_FETCHES: usize = 6;
@@ -188,6 +187,11 @@ pub struct ArduinoValidator {
 
     log_prefix:   String,
     trace_logger: TraceLogger,
+
+    opt_validate_regs:   bool,
+    opt_validate_flags:  bool,
+    opt_validate_mem:    bool,
+    opt_validate_cycles: bool,
 }
 
 impl ArduinoValidator {
@@ -234,7 +238,13 @@ impl ArduinoValidator {
             last_cpu_queue: Vec::new(),
 
             log_prefix: String::new(),
+
             trace_logger,
+
+            opt_validate_cycles: true,
+            opt_validate_regs: true,
+            opt_validate_flags: true,
+            opt_validate_mem: true,
         }
     }
 
@@ -597,6 +607,13 @@ impl CpuValidator for ArduinoValidator {
         true
     }
 
+    fn set_opts(&mut self, validate_cycles: bool, validate_regs: bool, validate_flags: bool, validate_mem: bool) {
+        self.opt_validate_cycles = validate_cycles;
+        self.opt_validate_regs = validate_regs;
+        self.opt_validate_flags = validate_flags;
+        self.opt_validate_mem = validate_mem;
+    }
+
     fn reset_instruction(&mut self) {
         self.current_instr.emu_ops.clear();
         self.current_instr.emu_prefetch.clear();
@@ -796,9 +813,18 @@ impl CpuValidator for ArduinoValidator {
             },
         };
 
+        if cpu_states.is_empty() {
+            trace_error!(self, "No CPU states returned from step()");
+            return Err(ValidatorError::CpuError);
+        }
+
         if self.current_instr.opcode != 0x9C {
             // We ignore PUSHF results due to undefined flags causing write mismatches
-            if !self.validate_mem_ops(discard, flags) {
+
+            if !self.opt_validate_mem {
+                trace!(self, "Skipping memory validation");
+            }
+            else if !self.validate_mem_ops(discard, flags) {
                 trace_error!(self, "Memory validation failure. EMU:");
                 RemoteCpu::print_regs(&self.current_instr.regs[1]);
                 trace_error!(self, "CPU:");
@@ -810,24 +836,29 @@ impl CpuValidator for ArduinoValidator {
                 return Err(ValidatorError::MemOpMismatch);
             }
             else {
-                log::trace!("Memops validated!");
+                trace!(self, "Memops validated!");
             }
         }
 
-        if (flags & VAL_NO_CYCLES == 0) && (emu_states.len() > 0) {
+        if self.opt_validate_cycles && (flags & VAL_NO_CYCLES == 0) && (emu_states.len() > 0) {
             // Only validate CPU cycles if any were provided
 
             self.correct_queue_counts(&mut cpu_states);
             let (result, cycle_num) = self.validate_cycles(flags, &cpu_states, &emu_states);
 
             if !result {
-                trace_error!(self, "Cycle state validation failure @ cycle {}", cycle_num);
+                trace_error!(
+                    self,
+                    "Cycle state validation failure @ cycle {}/{}",
+                    cycle_num,
+                    cpu_states.len()
+                );
                 self.print_cycle_diff(&cpu_states, &emu_states);
                 trace_error!(self, "EMU AFTER:");
-                RemoteCpu::print_regs(&self.current_instr.regs[1]);
+                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
 
                 trace_error!(self, "CPU AFTER:");
-                RemoteCpu::print_regs(&regs);
+                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&regs));
                 self.trace_logger.flush();
 
                 return Err(ValidatorError::CycleMismatch);
@@ -871,9 +902,9 @@ impl CpuValidator for ArduinoValidator {
 
         if !self.validate_registers(&regs) {
             trace_error!(self, "Register validation failure. EMU BEFORE:");
-            RemoteCpu::print_regs(&self.current_instr.regs[0]);
+            trace_error!(self, "{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[0]));
             trace_error!(self, "EMU AFTER:");
-            RemoteCpu::print_regs(&self.current_instr.regs[1]);
+            trace_error!(self, "{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
 
             trace_error!(self, "CPU AFTER:");
             RemoteCpu::print_regs(&regs);

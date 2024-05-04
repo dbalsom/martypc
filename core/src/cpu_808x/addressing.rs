@@ -74,7 +74,7 @@ impl Cpu {
     fn is_register_mode(mode: AddressingMode) -> bool {
         matches!(mode, AddressingMode::RegisterMode)
     }
-
+    
     pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
         (((segment as u32) << 4) + offset as u32) & 0xFFFFFu32
     }
@@ -95,70 +95,47 @@ impl Cpu {
         (((segment_val as u32) << 4) + offset as u32) & 0xFFFFFu32
     }
 
-    pub fn segment_override(seg_override: SegmentOverride, seg_default: Segment) -> Segment {
-        match seg_override {
-            SegmentOverride::None => seg_default,
-            SegmentOverride::ES => Segment::ES,
-            SegmentOverride::CS => Segment::CS,
-            SegmentOverride::SS => Segment::SS,
-            SegmentOverride::DS => Segment::DS,
-        }
-    }
-
     /// Calculate the Effective Address for the given AddressingMode enum
     pub fn calc_effective_address(
         &mut self,
         mode: AddressingMode,
-        segment_override: SegmentOverride,
-    ) -> (u16, Segment, u16) {
+        segment_override: Option<Segment>,
+    ) -> (Segment, u16) {
         // Addressing modes that reference BP use the stack segment instead of data segment
         // unless a segment override is present.
 
         // Override default segments based on prefix
-        let (segment_value_base_ds, segment_base_ds) = match segment_override {
-            SegmentOverride::None => (self.ds, Segment::DS),
-            SegmentOverride::ES => (self.es, Segment::ES),
-            SegmentOverride::CS => (self.cs, Segment::CS),
-            SegmentOverride::SS => (self.ss, Segment::SS),
-            SegmentOverride::DS => (self.ds, Segment::DS),
-        };
+        let segment_base_ds = segment_override.unwrap_or(Segment::DS);
+        let segment_base_ss = segment_override.unwrap_or(Segment::SS);
 
-        let (segment_value_base_ss, segment_base_ss) = match segment_override {
-            SegmentOverride::None => (self.ss, Segment::SS),
-            SegmentOverride::ES => (self.es, Segment::ES),
-            SegmentOverride::CS => (self.cs, Segment::CS),
-            SegmentOverride::SS => (self.ss, Segment::SS),
-            SegmentOverride::DS => (self.ds, Segment::DS),
-        };
-
-        let (seg_val, seg, offset) = match mode {
+        let (seg, offset) = match mode {
             // All of this relies on 2's compliment arithmetic for signed displacements
-            AddressingMode::BxSi                => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.si)),
-            AddressingMode::BxDi                => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.di)),
-            AddressingMode::BpSi                => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si)),  // BP -> SS default seg
-            AddressingMode::BpDi                => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di)),  // BP -> SS default seg
-            AddressingMode::Si                  => (segment_value_base_ds, segment_base_ds, self.si),
-            AddressingMode::Di                  => (segment_value_base_ds, segment_base_ds, self.di),
-            AddressingMode::Disp16(disp16)      => (segment_value_base_ds, segment_base_ds, disp16.get_u16()),
-            AddressingMode::Bx                  => (segment_value_base_ds, segment_base_ds, self.b.x()),
+            AddressingMode::BxSi                => (segment_base_ds, self.b.x().wrapping_add(self.si)),
+            AddressingMode::BxDi                => (segment_base_ds, self.b.x().wrapping_add(self.di)),
+            AddressingMode::BpSi                => (segment_base_ss, self.bp.wrapping_add(self.si)),  // BP -> SS default seg
+            AddressingMode::BpDi                => (segment_base_ss, self.bp.wrapping_add(self.di)),  // BP -> SS default seg
+            AddressingMode::Si                  => (segment_base_ds, self.si),
+            AddressingMode::Di                  => (segment_base_ds, self.di),
+            AddressingMode::Disp16(disp16)      => (segment_base_ds, disp16.get_u16()),
+            AddressingMode::Bx                  => (segment_base_ds, self.b.x()),
             
-            AddressingMode::BxSiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.si.wrapping_add(disp8.get_u16()))),
-            AddressingMode::BxDiDisp8(disp8)    => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.di.wrapping_add(disp8.get_u16()))),
-            AddressingMode::BpSiDisp8(disp8)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
-            AddressingMode::BpDiDisp8(disp8)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
-            AddressingMode::SiDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.si.wrapping_add(disp8.get_u16())),
-            AddressingMode::DiDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.di.wrapping_add(disp8.get_u16())),
-            AddressingMode::BpDisp8(disp8)      => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(disp8.get_u16())),    // BP -> SS default seg
-            AddressingMode::BxDisp8(disp8)      => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(disp8.get_u16())),
+            AddressingMode::BxSiDisp8(disp8)    => (segment_base_ds, self.b.x().wrapping_add(self.si.wrapping_add(disp8.get_u16()))),
+            AddressingMode::BxDiDisp8(disp8)    => (segment_base_ds, self.b.x().wrapping_add(self.di.wrapping_add(disp8.get_u16()))),
+            AddressingMode::BpSiDisp8(disp8)    => (segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
+            AddressingMode::BpDiDisp8(disp8)    => (segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp8.get_u16()))),  // BP -> SS default seg
+            AddressingMode::SiDisp8(disp8)      => (segment_base_ds, self.si.wrapping_add(disp8.get_u16())),
+            AddressingMode::DiDisp8(disp8)      => (segment_base_ds, self.di.wrapping_add(disp8.get_u16())),
+            AddressingMode::BpDisp8(disp8)      => (segment_base_ss, self.bp.wrapping_add(disp8.get_u16())),    // BP -> SS default seg
+            AddressingMode::BxDisp8(disp8)      => (segment_base_ds, self.b.x().wrapping_add(disp8.get_u16())),
             
-            AddressingMode::BxSiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.si.wrapping_add(disp16.get_u16()))),
-            AddressingMode::BxDiDisp16(disp16)  => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(self.di.wrapping_add(disp16.get_u16()))),
-            AddressingMode::BpSiDisp16(disp16)  => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
-            AddressingMode::BpDiDisp16(disp16)  => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
-            AddressingMode::SiDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.si.wrapping_add(disp16.get_u16())),
-            AddressingMode::DiDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.di.wrapping_add(disp16.get_u16())),
-            AddressingMode::BpDisp16(disp16)    => (segment_value_base_ss, segment_base_ss, self.bp.wrapping_add(disp16.get_u16())),   // BP -> SS default reg
-            AddressingMode::BxDisp16(disp16)    => (segment_value_base_ds, segment_base_ds, self.b.x().wrapping_add(disp16.get_u16())),
+            AddressingMode::BxSiDisp16(disp16)  => (segment_base_ds, self.b.x().wrapping_add(self.si.wrapping_add(disp16.get_u16()))),
+            AddressingMode::BxDiDisp16(disp16)  => (segment_base_ds, self.b.x().wrapping_add(self.di.wrapping_add(disp16.get_u16()))),
+            AddressingMode::BpSiDisp16(disp16)  => (segment_base_ss, self.bp.wrapping_add(self.si.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
+            AddressingMode::BpDiDisp16(disp16)  => (segment_base_ss, self.bp.wrapping_add(self.di.wrapping_add(disp16.get_u16()))), // BP -> SS default reg
+            AddressingMode::SiDisp16(disp16)    => (segment_base_ds, self.si.wrapping_add(disp16.get_u16())),
+            AddressingMode::DiDisp16(disp16)    => (segment_base_ds, self.di.wrapping_add(disp16.get_u16())),
+            AddressingMode::BpDisp16(disp16)    => (segment_base_ss, self.bp.wrapping_add(disp16.get_u16())),   // BP -> SS default reg
+            AddressingMode::BxDisp16(disp16)    => (segment_base_ds, self.b.x().wrapping_add(disp16.get_u16())),
 
             // The instruction decoder should convert ModRM operands that specify Registers to Register type operands, so
             // in theory this shouldn't happen
@@ -166,13 +143,13 @@ impl Cpu {
         };
 
         self.last_ea = offset; // Save last EA to do voodoo when LEA is called with reg, reg operands
-        (seg_val, seg, offset)
+        (seg, offset)
     }
 
     pub fn load_effective_address(&mut self, operand: OperandType) -> Option<u16> {
         if let OperandType::AddressingMode(mode) = operand {
-            let (_segment_value, _segment, offset) =
-                self.calc_effective_address(mode, SegmentOverride::None);
+            let (_segment, offset) =
+                self.calc_effective_address(mode, None);
             return Some(offset);
         }
         None
@@ -181,7 +158,7 @@ impl Cpu {
     /// Load the EA operand for the current instruction, if applicable
     /// (not all instructions with a mod r/m will load, ie, write-only instructions)
     pub fn load_operand(&mut self) {
-        if self.i.flags & I_LOAD_EA != 0 {
+        if self.i.gdr().loads_ea() {
             // This instruction loads its EA operand. Load and save into OPR.
 
             let ea_mode: AddressingMode;
@@ -199,8 +176,7 @@ impl Cpu {
             }
 
             self.mc_pc = 0x1e0; // EALOAD - 1
-            let (_segment_val, segment, offset) =
-                self.calc_effective_address(ea_mode, self.i.segment_override);
+            let (segment, offset) = self.calc_effective_address(ea_mode, self.i.segment_override);
 
             self.trace_comment("EALOAD");
 
@@ -231,14 +207,13 @@ impl Cpu {
     pub fn read_operand8(
         &mut self,
         operand: OperandType,
-        seg_override: SegmentOverride,
+        seg_override: Option<Segment>,
     ) -> Option<u8> {
-        // The operand enums contain values peeked from instruction fetch. However for accurate cycle
+        // The operand enums may contain values peeked from instruction fetch. However, for accurate cycle
         // timing, we have to fetch them again now.
 
-        // Ideally we would assert that the peeked operand values equal the fetched values, but this can
-        // fail with self-modifying code, such as the end credits of 8088mph.
-
+        // Originally we would assert that the peeked operand values equal the fetched values, but this can
+        // fail with self-modifying code, such as the end credits of 8088MPH.
         match operand {
             OperandType::Immediate8(_imm8) => {
                 let byte = self.q_read_u8(QueueType::Subsequent, QueueReader::Eu);
@@ -254,7 +229,7 @@ impl Cpu {
             }
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 let byte = self.biu_read_u8(segment, offset);
                 Some(byte)
             }
@@ -283,14 +258,13 @@ impl Cpu {
     pub fn read_operand16(
         &mut self,
         operand: OperandType,
-        seg_override: SegmentOverride,
+        seg_override: Option<Segment>,
     ) -> Option<u16> {
-        // The operand enums contain values peeked from instruction fetch. However for accurate cycle
+        // The operand enums may contain values peeked from instruction fetch. However, for accurate cycle
         // timing, we have to fetch them again now.
 
-        // Ideally we would assert that the peeked operand values equal the fetched values, but this can
-        // fail with self-modifying code, such as the end credits of 8088mph.
-
+        // Originally we would assert that the peeked operand values equal the fetched values, but this can
+        // fail with self-modifying code, such as the end credits of 8088MPH.
         match operand {
             OperandType::Immediate16(_imm16) => {
                 let word = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
@@ -302,8 +276,7 @@ impl Cpu {
             }
             OperandType::Offset16(_offset16) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
-
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 let word = self.biu_read_u16(segment, offset, ReadWriteFlag::Normal);
 
                 Some(word)
@@ -347,27 +320,19 @@ impl Cpu {
     pub fn read_operand_farptr(
         &mut self,
         operand: OperandType,
-        seg_override: SegmentOverride,
+        seg_override: Option<Segment>,
         flag: ReadWriteFlag,
     ) -> Option<(u16, u16)> {
         match operand {
             OperandType::AddressingMode(mode) => {
                 let offset = self.ea_opr;
-                let (_segment_val, segment, ea_offset) =
-                    self.calc_effective_address(mode, seg_override);
+                let (segment, ea_offset) = self.calc_effective_address(mode, seg_override);
                 let segment = self.biu_read_u16(segment, ea_offset.wrapping_add(2), flag);
                 Some((segment, offset))
             }
             OperandType::Register16(_) => {
-                // Illegal form of LES/LDS reg reg uses the last calculated EA.
-                let (_segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
-                    SegmentOverride::None => (self.ds, Segment::DS),
-                    SegmentOverride::ES => (self.es, Segment::ES),
-                    SegmentOverride::CS => (self.cs, Segment::CS),
-                    SegmentOverride::SS => (self.ss, Segment::SS),
-                    SegmentOverride::DS => (self.ds, Segment::DS),
-                };
-
+                // Illegal form of LES/LDS reg/reg uses the last calculated EA.
+                let segment_base_ds = self.i.segment_override.unwrap_or(Segment::DS);
                 let offset =
                     self.biu_read_u16(segment_base_ds, self.last_ea, ReadWriteFlag::Normal);
                 let segment = self.biu_read_u16(
@@ -384,14 +349,13 @@ impl Cpu {
     pub fn read_operand_farptr2(
         &mut self,
         operand: OperandType,
-        seg_override: SegmentOverride,
+        seg_override: Option<Segment>,
         ptr: FarPtr,
         flag: ReadWriteFlag,
     ) -> Option<u16> {
         match operand {
             OperandType::AddressingMode(mode) => {
-                let (_segment_val, segment, offset) =
-                    self.calc_effective_address(mode, seg_override);
+                let (segment, offset) = self.calc_effective_address(mode, seg_override);
 
                 match ptr {
                     FarPtr::Offset => Some(self.biu_read_u16(segment, offset, flag)),
@@ -401,15 +365,8 @@ impl Cpu {
                 }
             }
             OperandType::Register16(_) => {
-                // Illegal form of LES/LDS reg reg uses the last calculated EA.
-                let (_segment_value_base_ds, segment_base_ds) = match self.i.segment_override {
-                    SegmentOverride::None => (self.ds, Segment::DS),
-                    SegmentOverride::ES => (self.es, Segment::ES),
-                    SegmentOverride::CS => (self.cs, Segment::CS),
-                    SegmentOverride::SS => (self.ss, Segment::SS),
-                    SegmentOverride::DS => (self.ds, Segment::DS),
-                };
-
+                // Illegal form of LES/LDS reg/reg uses the last calculated EA.
+                let segment_base_ds = self.i.segment_override.unwrap_or(Segment::DS);
                 match ptr {
                     FarPtr::Offset => Some(0),
                     FarPtr::Segment => {
@@ -425,7 +382,7 @@ impl Cpu {
     pub fn write_operand8(
         &mut self,
         operand: OperandType,
-        seg_override: SegmentOverride,
+        seg_override: Option<Segment>,
         value: u8,
         flag: ReadWriteFlag,
     ) {
@@ -433,8 +390,7 @@ impl Cpu {
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
-
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 self.biu_write_u8(segment, offset, value, flag);
             }
             OperandType::Register8(reg8) => match reg8 {
@@ -448,8 +404,7 @@ impl Cpu {
                 Register8::DL => self.set_register8(Register8::DL, value),
             },
             OperandType::AddressingMode(mode) => {
-                let (_segment_val, segment, offset) =
-                    self.calc_effective_address(mode, seg_override);
+                let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 self.biu_write_u8(segment, offset, value, flag);
             }
             _ => {}
@@ -459,7 +414,7 @@ impl Cpu {
     pub fn write_operand16(
         &mut self,
         operand: OperandType,
-        seg_override: SegmentOverride,
+        seg_override: Option<Segment>,
         value: u16,
         flag: ReadWriteFlag,
     ) {
@@ -467,8 +422,7 @@ impl Cpu {
             OperandType::Offset16(_offset16) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 self.cycle();
-
-                let segment = Cpu::segment_override(seg_override, Segment::DS);
+                let segment = seg_override.unwrap_or(Segment::DS);
                 self.biu_write_u16(segment, offset, value, flag);
             }
             OperandType::Register16(reg16) => {
@@ -501,8 +455,7 @@ impl Cpu {
                 }
             }
             OperandType::AddressingMode(mode) => {
-                let (_segment_val, segment, offset) =
-                    self.calc_effective_address(mode, seg_override);
+                let (segment, offset) = self.calc_effective_address(mode, seg_override);
                 self.biu_write_u16(segment, offset, value, flag);
             }
             _ => {}

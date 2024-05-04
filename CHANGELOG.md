@@ -1,5 +1,16 @@
 
-## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-04-10)
+## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-XX-XX)
+
+### New BIU logic
+
+* 0.2.0 introduced new BIU logic. Unfortunately, 0.2.0 took so long that this 'new' logic already needed 
+  replacement. With the discovery of the 8088's 7-cycle bus access time, far simpler BIU logic is possible and has been 
+  implemented in 0.2.1. For more information, see 
+  [my corresponding blog post](https://martypc.blogspot.com/2024/02/the-complete-bus-logic-of-intel-8088.html).
+
+* Along with this new logic comes a slightly different cycle log format; I'm probably the only person on earth that reads
+  these logs, but it's worth mentioning. Several old state columns are gone, and now bus and T-cycles are displayed within 
+  two separate 'pipeline slots'. 
 
 ### New Machines
 
@@ -47,12 +58,17 @@
 
 ### Core Bug Fixes / Improvements
 
-* CPU: Added cyle stopwatch support
-* CPU: Don't count individual REP iterations toward instruction counter
-* CPU: Fixed call stack tracing (recursive calls will still cause overflow)
+* VALIDATOR: Improvements to CPU validation system to support initial generation of V20 tests.
+* 8088: Refactored instruction decode to a table-based lookup, replaced custom flags with values from group decode ROM.
+* 8088: Converted SegmentOverride enum to Option<Segment>, simplifying segment resolution logic in many places
+* 8088: New 7-cycle bus access logic
+* 8088: Refactored CycleText log format
+* 8088: Added cyle stopwatch support
+* 8088: Don't count individual REP iterations toward instruction counter
+* 8088: Fixed call stack tracing (recursive calls will still cause overflow)
   * Reduced size of call stack history to avoid ridiculously tall windows
-* CPU: Fixed cycle count reporting in Instruction History
-* CPU: Added Interrupt, Trap and NMI history types
+* 8088: Fixed cycle count reporting in Instruction History
+* 8088: Added Interrupt, Trap and NMI history types
 * EGA: Can now specify EGA dipswitch in machine configuration.
   * Added an `ibm_ega_on_cga` config overlay with the right dipswitch for running FantasyLand
 * BUS: Require IoDevice trait implementations to provide port description strings
@@ -64,7 +80,8 @@
   * Control register implemented, and PPI group modes are now tracked
   * New state dump format for new frontend PPI Viewer
   * Implemented keyboard scancode serializer for PCJr (Still has some bugs)
-* CGA: Fixed last-line CRTC flag logic. Fixes some severe glitches in Area 5150 I didn't notice because I have only been testing the first and last effect. (Thanks Sudo)
+* CGA: Fixed last-line CRTC flag logic. Fixes some severe glitches in Area 5150 I didn't notice because I have only been
+       testing the first and last effect. (Thanks Sudo)
 
 ## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0b) (2024-04-01)
 

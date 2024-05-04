@@ -638,6 +638,7 @@ pub trait CpuValidator {
     fn reset_instruction(&mut self);
     fn begin_instruction(&mut self, regs: &VRegisters, end_instr: usize, end_program: usize);
     fn set_regs(&mut self);
+    fn set_opts(&mut self, validate_cycles: bool, validate_regs: bool, validate_flags: bool, validate_mem: bool);
     fn validate_instruction(
         &mut self,
         name: String,

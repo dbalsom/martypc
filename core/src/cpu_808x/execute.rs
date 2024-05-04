@@ -126,12 +126,6 @@ impl Cpu {
             self.cycle();
         }
 
-        // If we have a group cycle delay, execute it now.
-        if self.i.flags & I_GROUP_DELAY != 0 {
-            self.trace_comment("GROUP_DELAY");
-            self.cycle();
-        }
-
         // Set the microcode PC for this opcode.
         self.mc_pc = MICROCODE_ADDRESS_8088[self.i.opcode as usize];
 
@@ -580,11 +574,11 @@ impl Cpu {
                 let ea = self.load_effective_address(self.i.operand2_type);
                 match ea {
                     Some(value) => {
-                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, value, ReadWriteFlag::RNI);
+                        self.write_operand16(self.i.operand1_type, None, value, ReadWriteFlag::RNI);
                     }
                     None => {
                         // In the event of an invalid (Register) operand2, operand1 is set to the last EA calculated by an instruction.
-                        self.write_operand16(self.i.operand1_type, SegmentOverride::None, self.last_ea, ReadWriteFlag::RNI);
+                        self.write_operand16(self.i.operand1_type, None, self.last_ea, ReadWriteFlag::RNI);
                         //self.cycles(1);
                     }
                 }
@@ -615,12 +609,24 @@ impl Cpu {
             0x98 => {
                 // CBW - Convert Byte to Word
                 // Flags: None
-                self.sign_extend_al();
+                if self.a.l() & 0x80 != 0 {
+                    self.a.set_h(0xFF);
+                }
+                else {
+                    self.a.set_h(0);
+                }
             }
             0x99 => {
                 // CWD - Convert Word to Doubleword
                 // Flags: None
-                self.sign_extend_ax();
+                self.cycles(3);
+                if self.a.x() & 0x8000 == 0 {
+                    self.d.set_x(0x0000);
+                }
+                else {
+                    self.cycle(); // Microcode jump @ 05a
+                    self.d.set_x(0xFFFF);
+                }
             }
             0x9A => {
                 // CALLF - Call Far addr16:16
@@ -804,7 +810,7 @@ impl Cpu {
                 // TEST al, imm8
                 // Flags: o..sz.pc
                 let op1_value = self.a.l();
-                let op2_value = self.read_operand8(self.i.operand2_type, SegmentOverride::None).unwrap();
+                let op2_value = self.read_operand8(self.i.operand2_type, None).unwrap();
                 
                 self.math_op8(Mnemonic::TEST,  op1_value, op2_value);
             }
@@ -812,7 +818,7 @@ impl Cpu {
                 // TEST ax, imm16
                 // Flags: o..sz.pc
                 let op1_value = self.a.x();
-                let op2_value = self.read_operand16(self.i.operand2_type, SegmentOverride::None).unwrap();
+                let op2_value = self.read_operand16(self.i.operand2_type, None).unwrap();
                 
                 self.math_op16(Mnemonic::TEST,  op1_value, op2_value);
             }
@@ -821,7 +827,7 @@ impl Cpu {
 
                 if self.rep_start() {
                     
-                    self.string_op(self.i.mnemonic, SegmentOverride::None);
+                    self.string_op(self.i.mnemonic, None);
                     self.cycle_i(0x11e);
     
                     // Check for end condition (CX==0)
@@ -889,7 +895,7 @@ impl Cpu {
             }
             0xB0..=0xB7 => {
                 // MOV r8, imm8
-                let op2_value = self.read_operand8(self.i.operand2_type, SegmentOverride::None).unwrap();
+                let op2_value = self.read_operand8(self.i.operand2_type, None).unwrap();
                 if let OperandType::Register8(reg) = self.i.operand1_type { 
                     self.set_register8(reg, op2_value);
                 }
@@ -898,7 +904,7 @@ impl Cpu {
             }
             0xB8..=0xBF => {
                 // MOV r16, imm16
-                let op2_value = self.read_operand16(self.i.operand2_type, SegmentOverride::None).unwrap();
+                let op2_value = self.read_operand16(self.i.operand2_type, None).unwrap();
                 if let OperandType::Register16(reg) = self.i.operand1_type { 
                     self.set_register16(reg, op2_value);
                 }
@@ -909,12 +915,12 @@ impl Cpu {
                 // 0xC0 undocumented alias for 0xC2
                 // Flags: None
 
-                let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::None).unwrap();
+                let stack_disp = self.read_operand16(self.i.operand1_type, None).unwrap();
                 self.cycle_i(MC_JUMP); // JMP to FARRET
                 let new_pc = self.pop_u16();
                 self.pc = new_pc;
                 
-                self.biu_suspend_fetch();
+                self.biu_fetch_suspend();
                 self.cycles_i(2, &[0x0c3, 0x0c4]);
                 self.biu_queue_flush();
                 self.cycles_i(3, &[0x0c5, MC_JUMP, 0x0ce]);    
@@ -933,7 +939,7 @@ impl Cpu {
                 // Effectively, this instruction is pop ip
                 let new_pc = self.pop_u16();
                 self.pc = new_pc;
-                self.biu_suspend_fetch();
+                self.biu_fetch_suspend();
                 self.cycle_i(0x0bd);
                 self.biu_queue_flush();
                 self.cycles_i(2, &[0x0be, 0x0bf]);                
@@ -999,7 +1005,7 @@ impl Cpu {
             0xC8 | 0xCA => {
                 // RETF imm16 - Far Return w/ release 
                 // 0xC8 undocumented alias for 0xCA
-                let stack_disp = self.read_operand16(self.i.operand1_type, SegmentOverride::None).unwrap();
+                let stack_disp = self.read_operand16(self.i.operand1_type, None).unwrap();
                 self.farret(true);
                 self.release(stack_disp);
                 self.cycle_i(0x0ce);
@@ -1028,7 +1034,7 @@ impl Cpu {
                 // generated by the INT instruction.
                 
                 // Get interrupt number (immediate operand)
-                let irq = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
+                let irq = self.read_operand8(self.i.operand1_type, None).unwrap();
 
                 // Save next address if we step over this INT.
                 self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
@@ -1127,7 +1133,7 @@ impl Cpu {
             0xD4 => {
                 // AAM - Ascii adjust AX after Multiply
                 // Get imm8 value
-                let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
+                let op1_value = self.read_operand8(self.i.operand1_type, None).unwrap();
                 
                 if !self.aam(op1_value) {
                     self.set_szp_flags_from_result_u8(0);
@@ -1141,7 +1147,7 @@ impl Cpu {
             }
             0xD5 => {
                 // AAD - Ascii Adjust before Division
-                let op1_value = self.read_operand8(self.i.operand1_type, SegmentOverride::None).unwrap();
+                let op1_value = self.read_operand8(self.i.operand1_type, None).unwrap();
                 self.aad(op1_value);
             }
             0xD6 => {
@@ -1159,7 +1165,7 @@ impl Cpu {
                 // XLAT
                 
                 // Handle segment override, default DS
-                let segment = Cpu::segment_override(self.i.segment_override, Segment::DS);
+                let segment = self.i.segment_override.unwrap_or(Segment::DS);
                 let disp16: u16 = self.b.x().wrapping_add(self.a.l() as u16);
                 
                 self.cycles_i(3, &[0x10c, 0x10d, 0x10e]);
@@ -1281,7 +1287,7 @@ impl Cpu {
                 // Fetch rel16 operand
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                self.biu_suspend_fetch(); // 0x07E
+                self.biu_fetch_suspend(); // 0x07E
                 self.cycles_i(2, &[0x07e, 0x07f]);
                 self.corr();
                 self.cycle_i(0x080);
@@ -1325,7 +1331,7 @@ impl Cpu {
                 // JMP FAR [addr16:16]
                 // This instruction reads a direct FAR address from the instruction queue. (See 0x9A for its twin CALLF)
                 let (segment, offset) = self.read_operand_faraddr();
-                self.biu_suspend_fetch();
+                self.biu_fetch_suspend();
                 self.cycles_i(2, &[0x0e4, 0x0e5]);
                 self.cs = segment;
                 self.pc = offset;
@@ -1399,7 +1405,7 @@ impl Cpu {
 
                 self.biu_bus_wait_halt();       // wait until at least t2 of m-cycle
                 self.halt_not_hold = true;      // set internal halt signal
-                self.biu_halt_fetch();          // halt prefetcher
+                self.biu_fetch_halt();          // halt prefetcher
                 self.biu_bus_wait_finish();     // wait until end of m-cycle
 
                 if self.intr {
@@ -1488,14 +1494,9 @@ impl Cpu {
                     }                    
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                        
-                        /*
-                        // Divide handles writing to dx:ax
-                        let success = self.divide_u8(op1_value);
-                        if !success {
-                            exception = CpuException::DivideError;
+                        if let OperandType::Register8(_) = self.i.operand1_type {
+                            self.cycle();
                         }
-                        */
                         
                         match self.div8(self.a.x(), op1_value, false, negate) {
                             Ok((al, ah)) => {
@@ -1517,13 +1518,9 @@ impl Cpu {
                     }          
                     Mnemonic::IDIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                        /*
-                        // Divide handles writing to dx:ax
-                        let success = self.divide_i8(op1_value);
-                        if !success {
-                            exception = CpuException::DivideError;
+                        if let OperandType::Register8(_) = self.i.operand1_type {
+                            self.cycle();
                         }
-                        */
 
                         match self.div8(self.a.x(), op1_value, true, negate) {
                             Ok((al, ah)) => {
@@ -1617,13 +1614,9 @@ impl Cpu {
                     }
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                        /*
-                        // Divide handles writing to dx:ax
-                        let success = self.divide_u16(op1_value);
-                        if !success {
-                            exception = CpuException::DivideError;
+                        if let OperandType::Register16(_) = self.i.operand1_type {
+                            self.cycle();
                         }
-                        */
 
                         match self.div16(((self.d.x() as u32) << 16 ) | (self.a.x() as u32), op1_value, false, negate) {
                             Ok((quotient, remainder)) => {
@@ -1646,13 +1639,9 @@ impl Cpu {
                     }
                     Mnemonic::IDIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                        /*
-                        // Divide handles writing to dx:ax
-                        let success = self.divide_i16(op1_value);
-                        if !success {
-                            exception = CpuException::DivideError;
+                        if let OperandType::Register16(_) = self.i.operand1_type {
+                            self.cycle();
                         }
-                        */
 
                         match self.div16(((self.d.x() as u32) << 16 ) | (self.a.x() as u32), op1_value, true, negate) {
                             Ok((quotient, remainder)) => {
@@ -1736,7 +1725,7 @@ impl Cpu {
                             self.push_u8((next_i & 0xFF) as u8, ReadWriteFlag::Normal);
 
                             // temporary timings
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles(4);
                             self.biu_queue_flush();
 
@@ -1750,7 +1739,7 @@ impl Cpu {
                             self.push_u8((next_i & 0xFF) as u8, ReadWriteFlag::Normal);
 
                             // temporary timings
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles(4);
                             self.biu_queue_flush();
                             
@@ -1762,7 +1751,7 @@ impl Cpu {
                     // Call Far
                     Mnemonic::CALLF => {
                         if let OperandType::AddressingMode(mode) = self.i.operand1_type {
-                            let (_ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+                            let (ea_segment, ea_offset) = self.calc_effective_address(mode, None);
 
                             // Read one byte of offset and one byte of segment
                             let offset = self.biu_read_u8(ea_segment, ea_offset);
@@ -1772,7 +1761,7 @@ impl Cpu {
                             let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
 
                             self.cycle_i(0x06a);
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles_i(3, &[0x06b, 0x06c, MC_NONE]);
     
                             // Push low byte of CS
@@ -1802,7 +1791,7 @@ impl Cpu {
                             self.push_u8((self.ip() & 0x00FF) as u8, ReadWriteFlag::Normal);
 
                             // temporary timings
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles(4);
                             self.biu_queue_flush();
                             
@@ -1818,7 +1807,7 @@ impl Cpu {
                         // Set only lower 8 bits of PC, upper bits FF
                         self.pc = 0xFF00 | ptr8 as u16;
 
-                        self.biu_suspend_fetch();
+                        self.biu_fetch_suspend();
                         self.cycles(4);
                         self.biu_queue_flush();
                         jump = true;
@@ -1826,13 +1815,13 @@ impl Cpu {
                     // Jump Far
                     Mnemonic::JMPF => {
                         if let OperandType::AddressingMode(mode) = self.i.operand1_type {
-                            let (_ea_segment_value, ea_segment, ea_offset) = self.calc_effective_address(mode, SegmentOverride::None);
+                            let (ea_segment, ea_offset) = self.calc_effective_address(mode, None);
 
                             // Read one byte of offset and one byte of segment
                             let offset = self.biu_read_u8(ea_segment, ea_offset);
                             let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
 
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles(4);
                             self.biu_queue_flush();
 
@@ -1846,7 +1835,7 @@ impl Cpu {
                             let _ = self.biu_read_u8(Segment::DS, 0x0004);
 
                             // temporary timings
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles(4);
                             self.biu_queue_flush();
                             
@@ -1887,7 +1876,7 @@ impl Cpu {
 
                             let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles_i(4, &[0x074, 0x075, MC_CORR, 0x076]);
 
                             // Save next address if we step over this CALL.
@@ -1918,10 +1907,9 @@ impl Cpu {
                         else if let OperandType::Register16(reg) = self.i.operand1_type {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
                             // We model the odd behavior of this invalid form here.
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles_i(2, &[0x074, 0x075]);
-                            self.corr();
-                            self.cycle_i(0x076);
+                            self.corr();self.cycle_i(0x076);
                             
                             let next_i = self.pc; // PC already corrected above
                             self.pc = self.get_register16(reg); // Value of IP becomes value of register operand
@@ -1962,19 +1950,14 @@ impl Cpu {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
                             // We model the odd behavior of this invalid form here.
 
-                            let seg = match self.i.segment_override {
-                                SegmentOverride::None | SegmentOverride::DS => Segment::DS,
-                                SegmentOverride::CS => Segment::CS,
-                                SegmentOverride::ES => Segment::ES,
-                                SegmentOverride::SS => Segment::SS
-                            };
+                            let seg = self.i.segment_override.unwrap_or(Segment::DS);
                             
                             // Read the segment from Seg:0004 
                             let offset = 0x0004;    
                             let segment = self.biu_read_u16(seg, offset, ReadWriteFlag::Normal);
 
                             self.cycle_i(0x06a);
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycles_i(3, &[0x06b, 0x06c]);
                             self.corr();
 
@@ -1997,7 +1980,7 @@ impl Cpu {
                     Mnemonic::JMP => {
                         let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                        self.biu_suspend_fetch();
+                        self.biu_fetch_suspend();
                         self.cycle_i(0x0d8);
                         self.pc = ptr16;
                         self.biu_queue_flush();
@@ -2010,7 +1993,7 @@ impl Cpu {
                         if let OperandType::AddressingMode(_mode) = self.i.operand1_type {
                             
                             self.cycle_i(0x0dc);
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycle_i(0x0dd);
 
                             let (segment, offset) = self.read_operand_farptr(self.i.operand1_type, self.i.segment_override, ReadWriteFlag::Normal).unwrap();
@@ -2022,16 +2005,10 @@ impl Cpu {
                         else {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
                             // We model the odd behavior of this invalid form here.
-
-                            let seg = match self.i.segment_override {
-                                SegmentOverride::None | SegmentOverride::DS => Segment::DS,
-                                SegmentOverride::CS => Segment::CS,
-                                SegmentOverride::ES => Segment::ES,
-                                SegmentOverride::SS => Segment::SS
-                            };
+                            let seg = self.i.segment_override.unwrap_or(Segment::DS);
 
                             self.cycle();
-                            self.biu_suspend_fetch();
+                            self.biu_fetch_suspend();
                             self.cycle();
                             
                             // Read the segment from Seg:0004 

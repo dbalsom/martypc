@@ -25,7 +25,7 @@ ringbuf = "0.2.8"
 serde = { version = "1.0.107", features = ["derive"] }
 serde_derive = "1.0.107"
 serde_with = "2.1.0"
-serialport = "4.2.0"
+serialport = { workspace = true }
 strum = "0.26"
 strum_macros = "0.26"
 toml = "0.5.10"

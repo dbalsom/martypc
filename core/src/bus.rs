@@ -1593,7 +1593,7 @@ impl BusInterface {
 
         self.seek(address);
 
-        debug.instr = match Cpu::decode(self) {
+        debug.instr = match Cpu::decode(self, true) {
             Ok(instruction) => {
                 format!("{}", instruction)
             }

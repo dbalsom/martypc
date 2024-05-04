@@ -22,7 +22,7 @@ pixels.workspace = true
 #egui_extras = { version = "*", features = ["all_loaders"] }
 image = { workspace = true, default-features = false, features = ["png"] }
 wgpu = {  workspace = true, optional = true }
-serialport = "4.2"
+serialport = { workspace = true }
 regex = "1.10"
 log = "0.4"
 web-time.workspace = true

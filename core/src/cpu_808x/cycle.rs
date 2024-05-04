@@ -56,20 +56,20 @@ macro_rules! validate_write_u8 {
 }
 
 impl Cpu {
-    #[inline]
+    #[inline(always)]
     pub fn set_mc_pc(&mut self, instr: u16) {
         self.mc_pc = instr;
         //self.next_instr = instr;
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn next_mc(&mut self) {
         if self.mc_pc < MC_NONE {
             self.mc_pc += 1;
         }
     }
 
-    #[inline]
+    #[inline(always)]
     pub fn cycle(&mut self) {
         self.cycle_i(MC_NONE);
     }
@@ -92,6 +92,7 @@ impl Cpu {
             self.t_cycle = TCycle::T1;
         }
 
+        // TODO: Can we refactor this so this isn't necessary?
         if self.in_int {
             self.int_elapsed += 1;
         }
@@ -99,10 +100,17 @@ impl Cpu {
             self.instr_elapsed += 1;
         }
 
+        if self.cycle_num == 3480541 {
+            log::debug!("Cycle 352483");
+        }
+
         // Operate current t-state
         match self.bus_status_latch {
             BusStatus::Passive => {
                 self.transfer_n = 0;
+                if let FetchState::Delayed(0) = self.fetch_state {
+                    self.biu_make_fetch_decision();
+                }
             }
             BusStatus::MemRead
             | BusStatus::MemWrite
@@ -114,7 +122,10 @@ impl Cpu {
                     TCycle::Tinit => {
                         panic!("Can't execute TInit state");
                     }
-                    TCycle::Ti | TCycle::T1 => {}
+                    TCycle::Ti => {
+                        self.biu_make_fetch_decision();
+                    }
+                    TCycle::T1 => {}
                     TCycle::T2 => {
                         // Turn off ale signal on T2
                         self.i8288.ale = false;
@@ -174,18 +185,18 @@ impl Cpu {
                         else if self.bus_wait_states > 0 {
                             self.ready = false;
                         }
+
+                        // A prefetch decision is made at the end of T2 of the last bus cycle of an atomic
+                        // bus operation, regardless of wait states.
+                        if self.final_transfer {
+                            self.biu_make_fetch_decision();
+                        }
                     }
                     TCycle::T3 => {
                         if self.is_last_wait_t3tw() {
                             // Do bus transfer on T3 if no wait states.
                             self.do_bus_transfer();
                             self.ready = true;
-                        }
-
-                        // A prefetch decision is always made on T3 of the last bus cycle of an atomic
-                        // bus operation, regardless of wait states.
-                        if self.final_transfer {
-                            self.biu_make_biu_decision();
                         }
                     }
                     TCycle::Tw => {
@@ -210,42 +221,7 @@ impl Cpu {
 
         // Perform cycle tracing, if enabled
         if self.trace_enabled {
-            match self.trace_mode {
-                TraceMode::CycleText => {
-                    // Get value of timer channel #1 for DMA printout
-                    let mut dma_count = 0;
-
-                    if let Some(pit) = self.bus.pit_mut().as_mut() {
-                        (_, dma_count, _) = pit.get_channel_count(1);
-                    }
-
-                    let state_str = self.cycle_state_string(dma_count, false);
-                    self.trace_print(&state_str);
-                    self.trace_str_vec.push(state_str);
-
-                    self.trace_comment.clear();
-                    self.trace_instr = MC_NONE;
-                }
-                TraceMode::CycleCsv => {
-                    // Get value of timer channel #1 for DMA printout
-                    let mut dma_count = 0;
-
-                    if let Some(pit) = self.bus.pit_mut().as_mut() {
-                        (_, dma_count, _) = pit.get_channel_count(1);
-                    }
-
-                    let token_vec = self.cycle_state_tokens(dma_count, false);
-                    //self.trace_print(&state_str);
-                    self.trace_token_vec.push(token_vec);
-
-                    self.trace_comment.clear();
-                    self.trace_instr = MC_NONE;
-                }
-                TraceMode::CycleSigrok => {
-                    self.trace_csv_line();
-                }
-                _ => {}
-            }
+            self.do_cycle_trace();
         }
 
         #[cfg(feature = "cpu_validator")]
@@ -256,93 +232,74 @@ impl Cpu {
 
         // Do DRAM refresh (DMA channel 0) simulation
         if self.enable_wait_states && self.dram_refresh_simulation {
-            self.dram_refresh_cycle_num = self.dram_refresh_cycle_num.saturating_sub(1);
+            self.tick_dma();
+        }
 
-            // Reset scheduler at terminal count
-            if self.dram_refresh_cycle_num == 0 && !self.dram_refresh_tc {
-                // The DACK0 signal suppresses generation of DREQ0, but we advance DMA state after this.
-                // So we will use HOLDA as the suppression signal to give us one cycle advance notice of !DACK0.
-                self.dram_refresh_tc = true;
-                self.dma_req = !self.dma_holda;
-
-                if self.dram_refresh_retrigger {
-                    self.dram_refresh_tc = false;
-                    self.dram_refresh_cycle_num = self.dram_refresh_cycle_period;
-                }
+        // Advance fetch delay counter
+        if let FetchState::Delayed(delay) = &mut self.fetch_state {
+            if self.t_cycle != TCycle::Tw {
+                *delay = delay.saturating_sub(1);
             }
-
-            match &mut self.dma_state {
-                DmaState::Idle => {
-                    if self.dma_req {
-                        // DRAM refresh cycle counter has hit terminal count.
-                        // Begin DMA transfer simulation by entering DREQ state.
-                        self.dma_state = DmaState::Dreq;
-                    }
-                }
-                DmaState::Dreq => {
-                    // DMA request triggered on DMA controller. Next cycle, DMA controller
-                    // will assert HRQ (Hold Request)
-                    self.dma_state = DmaState::Hrq;
-                }
-                DmaState::Hrq => {
-                    // DMA Hold Request.
-                    // DMA Hold request waits for issuance of HOLDA (Hold Acknowledge)
-                    // This signal is generated by miscellaneous TTL logic when S0 & S1 state
-                    // indicates PASV or HALT and !LOCK. (1,1) (Note, bus goes PASV after T2)
-
-                    if (self.bus_status == BusStatus::Passive)
-                        || match self.t_cycle {
-                            TCycle::T3 | TCycle::Tw | TCycle::T4 => true,
-                            _ => false,
-                        }
-                    {
-                        // S0 & S1 are idle. Issue hold acknowledge if LOCK not asserted.
-                        if !self.lock {
-                            self.dma_state = DmaState::HoldA;
-                            self.dma_holda = true;
-                        }
-                    }
-                }
-                DmaState::HoldA => {
-                    // DMA Hold Acknowledge has been issued. DMA controller will enter S1
-                    // on next cycle.
-                    self.dma_state = DmaState::Operating(0);
-                    self.dma_aen = true;
-                }
-                DmaState::Operating(cycles) => {
-                    // the DMA controller has control of the bus now.
-                    // Run DMA transfer cycles.
-                    *cycles = *cycles + 1;
-                    match *cycles {
-                        1 => {
-                            // DMAWAIT asserted after S1
-                            self.dma_wait_states = 7; // Effectively 6 as this is decremented this cycle
-                            self.ready = false;
-                        }
-                        2 => {
-                            // DACK asserted after S2
-                            self.dma_req = false;
-                            self.dma_ack = true;
-                        }
-                        4 => {
-                            // Transfer cycles have elapsed, so move to end state.
-                            self.dma_holda = false;
-                        }
-                        5 => {
-                            self.dma_aen = false;
-                            self.dma_ack = false;
-                            self.dma_state = DmaState::Idle;
-                        }
-                        _ => {}
-                    }
-                }
-                DmaState::End => {
-                    // DMA transfer has completed. Deassert DACK and reset state to idle.
-
-                    self.dma_state = DmaState::Idle;
-                }
+            if *delay == 0 {
+                //self.fetch_state = FetchState::Normal;
             }
         }
+
+        // Transition to next Ta state
+        self.ta_cycle = match self.ta_cycle {
+            TaCycle::Tr => {
+                // We can always proceed from Tr to Ts.
+                TaCycle::Ts
+            }
+            TaCycle::Ts => {
+                // We can proceed from Ts to T0 if there is not a late EU bus request.
+                /*                match (self.pl_status, self.bus_pending) {
+                    (BusStatus::CodeFetch, BusPendingType::EuLate) => TaCycle::Tr,
+                    _ => TaCycle::T0,
+                }*/
+
+                TaCycle::T0
+            }
+            TaCycle::T0 => {
+                // We can proceed from T0 to Td on T4 if the pending bus cycle is not a code fetch.
+                match (self.pl_status, self.bus_pending) {
+                    (BusStatus::CodeFetch, BusPendingType::None) => {
+                        // We can immediately end the address cycle on Ti or T4 if there is no pending eu request.
+                        if matches!(self.t_cycle, TCycle::Ti | TCycle::T4) && self.fetch_state != FetchState::Suspended
+                        {
+                            self.biu_fetch_bus_begin();
+                            TaCycle::Td
+                        }
+                        else {
+                            TaCycle::T0
+                        }
+                    }
+                    (BusStatus::CodeFetch, BusPendingType::EuLate) => {
+                        // We have a late EU bus request. We will abort the code fetch, but only
+                        // on T4. We will do nothing on T3; this implements the prefetch abort delay.
+                        if matches!(self.t_cycle, TCycle::Ti | TCycle::T4) {
+                            self.biu_fetch_abort();
+                            self.ta_cycle
+                        }
+                        else {
+                            TaCycle::T0
+                        }
+                    }
+                    _ => {
+                        // Not a code fetch - no abort handling required. Begin the next bus cycle at Ti or T4.
+                        if matches!(self.t_cycle, TCycle::Ti | TCycle::T4) {
+                            self.t_cycle = TCycle::Tinit;
+                            TaCycle::Td
+                        }
+                        else {
+                            TaCycle::T0
+                        }
+                    }
+                }
+            }
+            TaCycle::Td => TaCycle::Td,
+            TaCycle::Ta => TaCycle::Ta,
+        };
 
         // Transition to next T state
         self.t_cycle = match self.t_cycle {
@@ -417,56 +374,6 @@ impl Cpu {
             }
         };
 
-        // Handle prefetching
-        self.biu_tick_prefetcher();
-
-        match self.fetch_state {
-            FetchState::ScheduleNext | FetchState::Scheduled(0) => {
-                // A fetch is scheduled for this cycle; however we may have additional delays to process.
-
-                // If bus_pending_eu is true, then we arrived here during biu_bus_begin.
-                // That means that we biu_bus_begin will process a fetch abort.
-                // In that case, we should do nothing instead of transitioning to a new fetch state.
-                if !self.bus_pending_eu {
-                    if let BusStatus::Passive = self.bus_status_latch {
-                        // Begin a fetch if we are not transitioning into any delay state, otherwise transition
-                        // into said state.
-                        if self.next_fetch_state == FetchState::InProgress {
-                            self.begin_fetch();
-                        }
-                        else {
-                            self.fetch_state = self.next_fetch_state;
-                        }
-                    }
-                }
-            }
-            FetchState::DelayDone => {
-                if self.next_fetch_state == FetchState::InProgress {
-                    if self.biu_state_new == BiuStateNew::Prefetch {
-                        self.begin_fetch();
-                    }
-                }
-                else {
-                    self.fetch_state = self.next_fetch_state;
-                }
-            }
-            FetchState::Idle if !self.fetch_suspended => {
-                if self.queue_op == QueueOp::Flush {
-                    //trace_print!(self, "Flush scheduled fetch!");
-                    self.biu_schedule_fetch(2);
-                }
-
-                if (self.bus_status_latch == BusStatus::Passive) && (self.t_cycle == TCycle::T1) {
-                    // Nothing is scheduled, suspended, aborted, and bus is idle. Make a prefetch decision.
-                    //trace_print!(self, "schedule fetch due to bus idle");
-                    //self.biu_make_fetch_decision();
-                }
-            }
-            _ => {}
-        }
-
-        self.biu_tick_state();
-
         // Reset queue operation
         self.last_queue_op = self.queue_op;
         self.last_queue_byte = self.queue_byte;
@@ -487,40 +394,100 @@ impl Cpu {
 
         // Advance timestamp 210ns.
         self.t_stamp += self.t_step;
-
-        /*
-        // Try to catch a runaway instruction?
-        if !self.halted && !self.in_rep && self.instr_cycle > 200 {
-            log::error!("Exceeded max cycles for instruction.");
-            self.trace_flush();
-            panic!("Exceeded max cycles for instruction.");
-        }
-        */
-
         self.last_queue_len = self.queue.len();
     }
 
-    /*    /// Temporary function to increment pc. Needed to handle wraparound
-    /// of code segment.  This should be unnecessary once pc is converted to u16.
-    pub fn inc_pc(&mut self) {
-        // pc shouldn't be less than cs:00
-        if self.pc < ((self.cs as u32) << 4) {
-            // Bad pc, fall back to old behavior.
-            self.pc = (self.pc + 1) & 0xFFFFF;
-            return;
+    /// Advance the DMA scheduler by one tick. This function is called every CPU tick. Since it is
+    /// only called from within cycle_i() it can be inlined.
+    #[inline(always)]
+    pub fn tick_dma(&mut self) {
+        self.dram_refresh_cycle_num = self.dram_refresh_cycle_num.saturating_sub(1);
+
+        // Reset scheduler at terminal count
+        if self.dram_refresh_cycle_num == 0 && !self.dram_refresh_tc {
+            // The DACK0 signal suppresses generation of DREQ0, but we advance DMA state after this.
+            // So we will use HOLDA as the suppression signal to give us one cycle advance notice of !DACK0.
+            self.dram_refresh_tc = true;
+            self.dma_req = !self.dma_holda;
+
+            if self.dram_refresh_retrigger {
+                self.dram_refresh_tc = false;
+                self.dram_refresh_cycle_num = self.dram_refresh_cycle_period;
+            }
         }
 
-        assert!(self.pc >= ((self.cs as u32) << 4));
+        match &mut self.dma_state {
+            DmaState::Idle => {
+                if self.dma_req {
+                    // DRAM refresh cycle counter has hit terminal count.
+                    // Begin DMA transfer simulation by entering DREQ state.
+                    self.dma_state = DmaState::Dreq;
+                }
+            }
+            DmaState::Dreq => {
+                // DMA request triggered on DMA controller. Next cycle, DMA controller
+                // will assert HRQ (Hold Request)
+                self.dma_state = DmaState::Hrq;
+            }
+            DmaState::Hrq => {
+                // DMA Hold Request.
+                // DMA Hold request waits for issuance of HOLDA (Hold Acknowledge)
+                // This signal is generated by miscellaneous TTL logic when S0 & S1 state
+                // indicates PASV or HALT and !LOCK. (1,1) (Note, bus goes PASV after T2)
 
-        // Subtract cs from pc to get the 'real' value of pc
-        let mut real_pc: u16 = (self.pc - ((self.cs as u32) << 4)) as u16;
+                if (self.bus_status == BusStatus::Passive)
+                    || match self.t_cycle {
+                        TCycle::T3 | TCycle::Tw | TCycle::T4 => true,
+                        _ => false,
+                    }
+                {
+                    // S0 & S1 are idle. Issue hold acknowledge if LOCK not asserted.
+                    if !self.lock {
+                        self.dma_state = DmaState::HoldA;
+                        self.dma_holda = true;
+                    }
+                }
+            }
+            DmaState::HoldA => {
+                // DMA Hold Acknowledge has been issued. DMA controller will enter S1
+                // on next cycle.
+                self.dma_state = DmaState::Operating(0);
+                self.dma_aen = true;
+            }
+            DmaState::Operating(cycles) => {
+                // the DMA controller has control of the bus now.
+                // Run DMA transfer cycles.
+                *cycles = *cycles + 1;
+                match *cycles {
+                    1 => {
+                        // DMAWAIT asserted after S1
+                        self.dma_wait_states = 7; // Effectively 6 as this is decremented this cycle
+                        self.ready = false;
+                    }
+                    2 => {
+                        // DACK asserted after S2
+                        self.dma_req = false;
+                        self.dma_ack = true;
+                    }
+                    4 => {
+                        // Transfer cycles have elapsed, so move to end state.
+                        self.dma_holda = false;
+                    }
+                    5 => {
+                        self.dma_aen = false;
+                        self.dma_ack = false;
+                        self.dma_state = DmaState::Idle;
+                    }
+                    _ => {}
+                }
+            }
+            DmaState::End => {
+                // DMA transfer has completed. Deassert DACK and reset state to idle.
 
-        // Increment real pc with wraparound
-        real_pc = real_pc.wrapping_add(1);
-
-        // Calculate new 'linear' pc
-        self.pc = Cpu::calc_linear_address(self.cs, real_pc);
-    }*/
+                self.dma_state = DmaState::Idle;
+            }
+        }
+    }
 
     pub fn do_bus_transfer(&mut self) {
         let byte;
@@ -640,46 +607,6 @@ impl Cpu {
 
         self.bus_status = BusStatus::Passive;
         self.address_bus = (self.address_bus & !0xFF) | (self.data_bus as u32);
-    }
-
-    pub fn begin_fetch(&mut self) {
-        if let BiuStateNew::Prefetch | BiuStateNew::ToPrefetch(_) = self.biu_state_new {
-            //trace_print!(self, "scheduling fetch: {}", self.queue.len());
-
-            let addr = Cpu::calc_linear_address(self.cs, self.pc);
-            if self.biu_queue_has_room() {
-                //trace_print!(self, "Setting address bus to PC: {:05X}", self.pc);
-                self.fetch_state = FetchState::InProgress;
-                self.bus_status = BusStatus::CodeFetch;
-                self.bus_status_latch = BusStatus::CodeFetch;
-                self.bus_segment = Segment::CS;
-                self.t_cycle = TCycle::T1;
-                self.address_bus = addr;
-                self.address_latch = addr;
-                self.i8288.ale = true;
-                self.data_bus = 0;
-                self.transfer_size = self.fetch_size;
-                self.operand_size = match self.fetch_size {
-                    TransferSize::Byte => OperandSize::Operand8,
-                    TransferSize::Word => OperandSize::Operand16,
-                };
-                self.transfer_n = 1;
-                self.final_transfer = true;
-            }
-            else if !self.bus_pending_eu {
-                // Cancel fetch if queue is full and no pending bus request from EU that
-                // would otherwise trigger an abort.
-                self.biu_abort_fetch_full();
-            }
-        }
-        else {
-            log::error!("Tried to fetch in invalid BIU state: {:?}", self.biu_state_new);
-            self.trace_flush();
-            panic!(
-                "{}",
-                format!("Tried to fetch in invalid BIU state: {:?}", self.biu_state_new)
-            );
-        }
     }
 
     #[inline]

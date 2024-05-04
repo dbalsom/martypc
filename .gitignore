@@ -11,6 +11,11 @@ Thumbs.db
 #/.vscode
 /.vscode/settings.json
 
+# Jetbrains stuff
+/.idea/shelf/
+/.idea/dictionaries/Daniel.xml
+/.idea/workspace.xml
+
 # Emulator files
 /archive
 /program
@@ -66,10 +71,9 @@ icon.png
 
 # Assembly stuff
 /asm
-/.idea/shelf/
-/.idea/dictionaries/Daniel.xml
-/.idea/workspace.xml
+/install/program/*
+
+#misc
 /flopgen/flopgen_LICENSE.txt
 /tree.txt
-
 

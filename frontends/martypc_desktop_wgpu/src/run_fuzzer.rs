@@ -264,7 +264,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         cpu.bus_mut().seek(instruction_address as usize);
         let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
 
-        let mut i = match Cpu::decode(cpu.bus_mut()) {
+        let mut i = match Cpu::decode(cpu.bus_mut(), true) {
             Ok(i) => i,
             Err(_) => {
                 log::error!("Instruction decode error, skipping...");
@@ -296,7 +296,7 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
                 continue;
             },
             */
-            Mnemonic::FWAIT => {
+            Mnemonic::WAIT => {
                 continue;
             }
             Mnemonic::POPF => {
