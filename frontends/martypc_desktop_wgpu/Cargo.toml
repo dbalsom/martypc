@@ -39,7 +39,7 @@ rgb = "0.8.33"
 serde = { workspace = true, features = ["derive"] }
 serde_derive = "1.0"
 serde_json = "1.0"
-serialport = "4.2"
+serialport.workspace = true
 winit.workspace = true
 anyhow.workspace = true
 

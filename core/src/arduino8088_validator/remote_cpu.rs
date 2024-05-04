@@ -1289,6 +1289,10 @@ impl RemoteCpu {
         println!("{}", regs);
     }
 
+    pub fn get_reg_str(regs: &VRegisters) -> String {
+        regs.to_string()
+    }
+
     pub fn flags_string(f: u16) -> String {
         let c_chr = if CPU_FLAG_CARRY & f != 0 { 'C' } else { 'c' };
         let p_chr = if CPU_FLAG_PARITY & f != 0 { 'P' } else { 'p' };

@@ -205,6 +205,10 @@ pub struct Tests {
     pub test_opcode_exclude_list: Option<Vec<u8>>,
     pub test_opcode_gen_count: Option<u32>,
     pub test_opcode_gen_append: Option<bool>,
+    pub test_gen_validate_cycles: Option<bool>,
+    pub test_gen_validate_memops: Option<bool>,
+    pub test_gen_validate_registers: Option<bool>,
+    pub test_gen_validate_flags: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

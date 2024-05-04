@@ -480,13 +480,22 @@ impl Cpu {
             // Clear cycle states spent in reset but not initial prefetch
             self.clear_reset_cycle_states();
         }
+
+        self.vregs = self.get_vregisters();
     }
 
     #[cfg(feature = "cpu_validator")]
     pub fn validate_begin(&mut self, instruction_address: u32) {
-        let vregs = self.get_vregisters();
+        let v_address = Cpu::calc_linear_address(self.vregs.cs, self.vregs.ip);
+        if v_address != instruction_address {
+            log::warn!(
+                "Validator address mismatch: {:05X} != {:05X}",
+                v_address,
+                instruction_address
+            );
+        }
 
-        if vregs.flags & CPU_FLAG_TRAP != 0 {
+        if self.vregs.flags & CPU_FLAG_TRAP != 0 {
             log::warn!("Trap flag is set - may break validator!");
         }
 
@@ -500,7 +509,7 @@ impl Cpu {
                 || self.validator_state == CpuValidatorState::Running
             {
                 validator.begin_instruction(
-                    &vregs,
+                    &self.vregs,
                     (instruction_address + self.i.size) as usize & 0xFFFFF,
                     self.validator_end,
                 );

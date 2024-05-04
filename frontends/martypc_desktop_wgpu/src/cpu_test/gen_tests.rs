@@ -98,6 +98,14 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
     cpu.randomize_mem();
 
+    let mut validator = cpu.get_validator_mut().as_mut().unwrap();
+    validator.set_opts(
+        config.tests.test_gen_validate_cycles.unwrap_or(true),
+        config.tests.test_gen_validate_registers.unwrap_or(true),
+        config.tests.test_gen_validate_flags.unwrap_or(true),
+        config.tests.test_gen_validate_memops.unwrap_or(true),
+    );
+
     let mut test_num = 0;
     let mut opcode_range_start = 0;
     let mut opcode_range_end = 0xFF;
@@ -253,7 +261,13 @@ pub fn run_gentests(config: &ConfigFileParams) {
             }
 
             // We should have a vector of tests now.
-            println!("Loaded {} tests from file.", tests.len());
+            if tests.is_empty() {
+                test_num = 0;
+            }
+            else {
+                println!("Loaded {} tests from file.", tests.len());
+                test_num = tests.len() as u32;
+            }
 
             //test_num = tests.len() as u32;
             advance_rng_ct = tests.len() as u32;
@@ -281,13 +295,24 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     cpu.random_inst_from_opcodes(&[test_opcode]);
                 }
 
+                if cpu.ip() != cpu.get_register16(Register16::PC) {
+                    log::error!("IP: {:04X} PC: {:04X}", cpu.ip(), cpu.get_register16(Register16::PC));
+                    panic!("IP and PC are out of sync!");
+                }
+
                 // Decode this instruction
                 instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+                log::debug!(
+                    "Instruction address: {:05X} [{:04X}:{:04X}]",
+                    instruction_address,
+                    cpu.get_register16(Register16::CS),
+                    cpu.ip()
+                );
 
                 cpu.bus_mut().seek(instruction_address as usize);
                 let opcode = cpu.bus().peek_u8(instruction_address as usize).expect("mem err");
 
-                let mut i = match Cpu::decode(cpu.bus_mut()) {
+                let mut i = match Cpu::decode(cpu.bus_mut(), true) {
                     Ok(i) => i,
                     Err(_) => {
                         log::error!("Instruction decode error, skipping...");
@@ -376,7 +401,6 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 _ = cpu.step_finish();
 
                 let validator = cpu.get_validator().as_ref().unwrap();
-
                 let cpu_test = get_test_info(validator);
 
                 tests.push_front(cpu_test);
@@ -443,7 +467,7 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
 
     let mut cycle_states = validator.cycle_states().clone();
     if cycle_states.is_empty() {
-        panic!("Got 0 cycles from instruction!");
+        panic!("Got 0 cycles from CPU Validator!");
     }
     let initial_queue = cycle_states[0].queue_vec();
     let mut final_queue = cycle_states[cycle_states.len() - 1].queue_vec();

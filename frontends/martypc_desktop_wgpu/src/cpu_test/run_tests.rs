@@ -479,7 +479,7 @@ fn run_tests(
                 // Divide exceptions possible - set a flag to ignore undefined flag state when
                 // doing memory comparison (Since flags will be pushed to stack)
                 flags_on_stack = true;
-                debug_mnemonic = true;
+                debug_mnemonic = false;
             }
             _ => {}
         }

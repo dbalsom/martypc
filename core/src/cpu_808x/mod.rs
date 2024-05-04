@@ -800,6 +800,8 @@ pub struct Cpu {
     #[cfg(feature = "cpu_validator")]
     validator: Option<Box<dyn CpuValidator>>,
     #[cfg(feature = "cpu_validator")]
+    vregs: VRegisters,
+    #[cfg(feature = "cpu_validator")]
     cycle_states: Vec<CycleState>,
     #[cfg(feature = "cpu_validator")]
     validator_state: CpuValidatorState,
@@ -2413,5 +2415,10 @@ impl Cpu {
     #[cfg(feature = "cpu_validator")]
     pub fn get_validator(&mut self) -> &Option<Box<dyn CpuValidator>> {
         &self.validator
+    }
+
+    #[cfg(feature = "cpu_validator")]
+    pub fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>> {
+        &mut self.validator
     }
 }

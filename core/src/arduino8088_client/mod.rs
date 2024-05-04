@@ -34,7 +34,9 @@
 use log;
 use serialport::ClearBuffer;
 
-pub const ARD8088_BAUD: u32 = 2000000;
+pub const ARD8088_BAUD: u32 = 0; // Baud is inapplicable for SerialUSB
+
+//pub const ARD8088_BAUD: u32 = 2000000;
 //pub const ARD8088_BAUD: u32 = 460800;
 
 #[derive(Copy, Clone)]
@@ -235,8 +237,10 @@ impl CpuClient {
     /// Try to access an Arduino8088 on the specified port. Return the port if successful, otherwise None.
     pub fn try_port(port_info: serialport::SerialPortInfo, baud_rate: u32) -> Option<Box<dyn serialport::SerialPort>> {
         let port_result = serialport::new(port_info.port_name.clone(), baud_rate)
-            .timeout(std::time::Duration::from_millis(2000))
+            .baud_rate(baud_rate)
+            .timeout(std::time::Duration::from_millis(100))
             .stop_bits(serialport::StopBits::One)
+            .data_bits(serialport::DataBits::Eight)
             .parity(serialport::Parity::None)
             .open();
 
