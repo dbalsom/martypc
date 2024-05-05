@@ -33,6 +33,7 @@ use crate::{
     cpu_808x::Intel808x,
     cpu_common::{CpuDispatch, CpuSubType, CpuType, TraceMode},
     cpu_validator::{ValidatorMode, ValidatorType},
+    cpu_vx0::NecVx0,
     tracelogger::TraceLogger,
 };
 use anyhow::{bail, Result};
@@ -63,10 +64,26 @@ impl CpuBuilder {
 
         if let Some(cpu_type) = self.cpu_type {
             match cpu_type {
-                CpuType::Intel808x => {
+                CpuType::Intel8088 => {
                     let mut cpu = Intel808x::new(
-                        CpuType::Intel808x,
+                        CpuType::Intel8088,
                         CpuSubType::Intel8088,
+                        self.trace_mode,
+                        self.trace_logger.take().unwrap_or_default(),
+                        #[cfg(feature = "cpu_validator")]
+                        self.validator_type,
+                        #[cfg(feature = "cpu_validator")]
+                        self.validator_logger.take().unwrap_or_default(),
+                        #[cfg(feature = "cpu_validator")]
+                        self.validator_mode.take().unwrap_or_default(),
+                        #[cfg(feature = "cpu_validator")]
+                        self.validator_baud.take().unwrap_or_default(),
+                    );
+                    return Ok(cpu.into());
+                }
+                CpuType::NecV20 => {
+                    let mut cpu = NecVx0::new(
+                        CpuType::NecV20,
                         self.trace_mode,
                         self.trace_logger.take().unwrap_or_default(),
                         #[cfg(feature = "cpu_validator")]

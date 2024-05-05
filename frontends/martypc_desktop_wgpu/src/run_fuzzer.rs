@@ -28,6 +28,7 @@
                     Requires CPU validator feature.
 */
 
+use marty_core::cpu_common;
 use std::{
     cell::RefCell,
     fs::File,
@@ -40,8 +41,20 @@ use frontend_common::{floppy_manager::FloppyManager, rom_manager::RomManager};
 
 use marty_core::{
     bytequeue::ByteQueue,
-    cpu_808x::{mnemonic::Mnemonic, Cpu, *},
-    cpu_common::{CpuOption, CpuType, TraceMode},
+    cpu_common::{
+        builder::CpuBuilder,
+        Cpu,
+        CpuAddress,
+        CpuOption,
+        CpuSubType,
+        CpuType,
+        Mnemonic,
+        OperandType,
+        Register16,
+        Register8,
+        TraceMode,
+    },
+    cpu_validator::ValidatorType,
     devices::pic::Pic,
     tracelogger::TraceLogger,
 };
@@ -84,19 +97,31 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
     #[cfg(feature = "cpu_validator")]
     use marty_core::cpu_validator::ValidatorMode;
 
-    let mut cpu = Cpu::new(
-        CpuType::Intel8088,
-        trace_mode,
-        cpu_trace,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.vtype.unwrap(),
-        #[cfg(feature = "cpu_validator")]
-        validator_trace,
-        #[cfg(feature = "cpu_validator")]
-        ValidatorMode::Instruction,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.baud_rate.unwrap_or(1_000_000),
-    );
+    let mut cpu;
+    #[cfg(feature = "cpu_validator")]
+    {
+        cpu = match CpuBuilder::new()
+            .with_cpu_type(CpuType::Intel8088)
+            .with_cpu_subtype(CpuSubType::Intel8088)
+            .with_trace_mode(trace_mode)
+            .with_trace_logger(cpu_trace)
+            .with_validator_type(ValidatorType::None)
+            .with_validator_mode(ValidatorMode::Instruction)
+            .with_validator_logger(validator_trace)
+            .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
+            .build()
+        {
+            Ok(cpu) => cpu,
+            Err(e) => {
+                log::error!("Failed to build CPU: {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
+    #[cfg(not(feature = "cpu_validator"))]
+    {
+        panic!("Validator feature not enabled!")
+    };
 
     cpu.randomize_seed(1234);
     cpu.randomize_mem();
@@ -109,12 +134,12 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         test_num += 1;
         cpu.randomize_regs();
 
-        if cpu.ip() > 0xFFF0 {
+        if cpu.get_ip() > 0xFFF0 {
             // Avoid IP wrapping issues for now
             continue;
         }
 
-        if Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip()) > 0xFFFF0 {
+        if cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip()) > 0xFFFF0 {
             // Avoid address space wrapping
             continue;
         }
@@ -259,12 +284,12 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         //cpu.random_grp_instruction(0xFF, &[6, 7]); // PUSH & POP
 
         // Decode this instruction
-        let instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+        let instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
 
         cpu.bus_mut().seek(instruction_address as usize);
         let (opcode, _cost) = cpu.bus_mut().read_u8(instruction_address as usize, 0).expect("mem err");
 
-        let mut i = match Cpu::decode(cpu.bus_mut(), true) {
+        let mut i = match cpu.get_type().decode(cpu.bus_mut(), true) {
             Ok(i) => i,
             Err(_) => {
                 log::error!("Instruction decode error, skipping...");
@@ -362,10 +387,14 @@ pub fn run_fuzzer(config: &ConfigFileParams) {
         );
 
         // Set terminating address for CPU validator.
-        let end_address =
-            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip().wrapping_add(i.size as u16));
+        // Set terminating address for CPU validator.
+        let end_address = cpu_common::calc_linear_address(
+            cpu.get_register16(Register16::CS),
+            cpu.get_ip().wrapping_add(i.size as u16),
+        );
 
-        cpu.set_end_address(end_address as usize);
+        //log::debug!("Setting end address: {:05X}", end_address);
+        cpu.set_end_address(CpuAddress::Flat(end_address));
         log::trace!("Setting end address: {:05X}", end_address);
 
         // We loop here to handle REP string instructions, which are broken up into 1 effective instruction

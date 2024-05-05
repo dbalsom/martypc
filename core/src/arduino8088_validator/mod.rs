@@ -31,7 +31,6 @@ mod udmask;
 use crate::{
     arduino8088_client::*,
     cpu_808x::{
-        QueueOp,
         CPU_FLAG_AUX_CARRY,
         CPU_FLAG_CARRY,
         CPU_FLAG_DIRECTION,
@@ -42,6 +41,7 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
+    cpu_common::QueueOp,
     cpu_validator::*,
     tracelogger::TraceLogger,
 };
@@ -737,7 +737,7 @@ impl CpuValidator for ArduinoValidator {
         //RemoteCpu::print_regs(&self.current_instr.regs[0]);
 
         if has_modrm {
-            if i > (instr.len() - 2) {
+            if i > (instr.len().saturating_sub(2)) {
                 trace_error!(self, "validate(): modrm specified but instruction length < ");
                 trace_error!(
                     self,

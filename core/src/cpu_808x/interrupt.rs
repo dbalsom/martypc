@@ -30,7 +30,10 @@
 
 */
 
-use crate::cpu_808x::*;
+use crate::{
+    cpu_808x::*,
+    cpu_common::{Segment, ServiceEvent},
+};
 
 impl Intel808x {
     /// Execute the IRET microcode routine.

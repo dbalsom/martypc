@@ -30,7 +30,10 @@
 
 */
 
-use crate::cpu_808x::{biu::*, *};
+use crate::{
+    cpu_808x::{biu::*, *},
+    cpu_common::Segment,
+};
 
 impl Intel808x {
     pub fn push_u8(&mut self, data: u8, flag: ReadWriteFlag) {

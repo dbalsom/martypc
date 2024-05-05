@@ -32,6 +32,7 @@
 
 use crate::{
     cpu_808x::{biu::*, *},
+    cpu_common::{CpuAddress, CpuException, ExecutionResult, Mnemonic, OperandType, QueueOp, Segment},
     util,
 };
 

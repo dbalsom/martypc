@@ -33,7 +33,10 @@
 use rand::{Rng, SeedableRng};
 //use rand::rngs::StdRng;
 
-use crate::cpu_808x::{modrm::MODRM_REG_MASK, *};
+use crate::{
+    cpu_808x::{modrm::MODRM_REG_MASK, *},
+    cpu_common::{CpuAddress, Segment},
+};
 
 const RNG_SEED: u64 = 0x58158258u64;
 

@@ -30,36 +30,10 @@
 
 */
 
-use crate::cpu_808x::{biu::*, *};
-
-#[derive(Copy, Clone, Debug)]
-pub enum AddressingMode {
-    BxSi,
-    BxDi,
-    BpSi,
-    BpDi,
-    Si,
-    Di,
-    Disp16(Displacement),
-    Bx,
-    BxSiDisp8(Displacement),
-    BxDiDisp8(Displacement),
-    BpSiDisp8(Displacement),
-    BpDiDisp8(Displacement),
-    SiDisp8(Displacement),
-    DiDisp8(Displacement),
-    BpDisp8(Displacement),
-    BxDisp8(Displacement),
-    BxSiDisp16(Displacement),
-    BxDiDisp16(Displacement),
-    BpSiDisp16(Displacement),
-    BpDiDisp16(Displacement),
-    SiDisp16(Displacement),
-    DiDisp16(Displacement),
-    BpDisp16(Displacement),
-    BxDisp16(Displacement),
-    RegisterMode,
-}
+use crate::{
+    cpu_808x::{biu::*, decode::DECODE, *},
+    cpu_common::{operands::OperandSize, AddressingMode, OperandType, Segment},
+};
 
 #[derive(Copy, Clone, Debug)]
 pub enum FarPtr {
@@ -158,7 +132,7 @@ impl Intel808x {
     /// Load the EA operand for the current instruction, if applicable
     /// (not all instructions with a mod r/m will load, ie, write-only instructions)
     pub fn load_operand(&mut self) {
-        if self.i.gdr().loads_ea() {
+        if DECODE[self.i.decode_idx].gdr.loads_ea() {
             // This instruction loads its EA operand. Load and save into OPR.
 
             let ea_mode: AddressingMode;

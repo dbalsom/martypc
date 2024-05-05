@@ -30,7 +30,11 @@
 
 */
 
-use crate::cpu_808x::*;
+use crate::{
+    cpu_808x::{decode::DECODE, *},
+    cpu_common::{CpuAddress, CpuError, CpuException, ExecutionResult, StepResult},
+    gdr,
+};
 
 impl Intel808x {
     /// Run a single instruction.
@@ -570,7 +574,7 @@ impl Intel808x {
                             &self.instr_slice,
                             v_flags,
                             self.peek_fetch as u16,
-                            self.i.gdr().has_modrm(),
+                            gdr!(self.i).has_modrm(),
                             0,
                             &vregs,
                             &self.cycle_states,

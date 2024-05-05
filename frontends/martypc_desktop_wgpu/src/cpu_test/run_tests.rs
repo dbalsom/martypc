@@ -28,18 +28,6 @@
 
 */
 
-use crate::cpu_test::common::{
-    clean_cycle_states,
-    is_prefix_in_vec,
-    opcode_extension_from_path,
-    opcode_from_path,
-    print_cycle_diff,
-    print_summary,
-    read_tests_from_file,
-    validate_cycles,
-    validate_memory,
-    validate_registers,
-};
 use std::{
     collections::{HashMap, LinkedList},
     fs::{copy, create_dir, read_dir, File},
@@ -50,29 +38,44 @@ use std::{
     time::{Duration, Instant},
 };
 
+use colored::*;
 use config_toml_bpaf::{ConfigFileParams, TestMode};
-
-use marty_core::{
-    bytequeue::ByteQueue,
-    cpu_808x::{mnemonic::Mnemonic, Cpu, *},
-    cpu_common,
-    cpu_common::{CpuOption, CpuType},
-    cpu_validator::ValidatorType,
-    tracelogger::TraceLogger,
-};
+use flate2::read::GzDecoder;
 
 use crate::{
-    cpu_test::common::{CpuTest, FailType, Metadata, TestFailItem, TestResult},
+    cpu_test::{
+        common::{
+            clean_cycle_states,
+            is_prefix_in_vec,
+            opcode_extension_from_path,
+            opcode_from_path,
+            print_cycle_diff,
+            print_summary,
+            read_tests_from_file,
+            validate_cycles,
+            validate_memory,
+            validate_registers,
+            CpuTest,
+            FailType,
+            Metadata,
+            TestFailItem,
+            TestFileLoad,
+            TestResult,
+            TestResultSummary,
+        },
+        run_tests::cpu_common::CpuAddress,
+    },
     trace_error,
     trace_print,
 };
 
-use crate::cpu_test::common::{TestFileLoad, TestResultSummary};
-use colored::*;
-use flate2::read::GzDecoder;
 use marty_core::{
-    cpu_common::{builder::CpuBuilder, CpuSubType, Register16},
-    cpu_validator::ValidatorMode,
+    bytequeue::ByteQueue,
+    cpu_808x::{Cpu, *},
+    cpu_common,
+    cpu_common::{builder::CpuBuilder, CpuOption, CpuSubType, CpuType, Mnemonic, Register16},
+    cpu_validator::{ValidatorMode, ValidatorType},
+    tracelogger::TraceLogger,
 };
 
 pub fn run_runtests(config: ConfigFileParams) {
@@ -325,7 +328,7 @@ fn run_tests(
     #[cfg(feature = "cpu_validator")]
     {
         cpu = match CpuBuilder::new()
-            .with_cpu_type(CpuType::Intel808x)
+            .with_cpu_type(CpuType::Intel8088)
             .with_cpu_subtype(CpuSubType::Intel8088)
             .with_trace_mode(trace_mode)
             .with_trace_logger(trace_logger)

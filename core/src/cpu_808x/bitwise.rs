@@ -30,7 +30,7 @@
 
 */
 
-use crate::cpu_808x::{mnemonic::Mnemonic, *};
+use crate::{cpu_808x::*, cpu_common::Mnemonic};
 
 impl Intel808x {
     pub(crate) fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {

@@ -46,7 +46,7 @@ use serde::{
     Serializer,
 };
 
-use crate::cpu_808x::QueueOp;
+use crate::cpu_common::QueueOp;
 
 pub const VAL_NO_READS: u8 = 0b0000_0001; // Don't validate read op data
 pub const VAL_NO_WRITES: u8 = 0b0000_0010; // Don't validate write op data

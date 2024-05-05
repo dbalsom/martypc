@@ -33,7 +33,7 @@
     the appropriate methods on Bus.
 
 */
-use crate::cpu_common::{CpuDispatch, CpuSubType};
+use crate::cpu_common::{CpuAddress, CpuDispatch, CpuSubType, ServiceEvent, StepResult};
 use log;
 
 use anyhow::{anyhow, Error};
@@ -49,8 +49,8 @@ use crate::{
     breakpoints::BreakPointType,
     bus::{BusInterface, ClockFactor, DeviceEvent, MEM_CP_BIT},
     coreconfig::CoreConfig,
-    cpu_808x::{Intel808x, CpuAddress, CpuError, ServiceEvent, StepResult},
-    cpu_common::{Cpu, CpuOption, CpuType, TraceMode},
+    cpu_808x::{Intel808x},
+    cpu_common::{Cpu, CpuOption, CpuError, CpuType, TraceMode},
     device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     devices::{
         dma::DMAControllerStringState,
@@ -499,7 +499,7 @@ impl Machine {
         #[cfg(feature = "cpu_validator")]
         {
             cpu = match CpuBuilder::new()
-                .with_cpu_type(CpuType::Intel808x)
+                .with_cpu_type(CpuType::Intel8088)
                 .with_cpu_subtype(CpuSubType::Intel8088)
                 .with_trace_mode(trace_mode)
                 .with_trace_logger(trace_logger)

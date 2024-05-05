@@ -31,7 +31,8 @@
 */
 use crate::{
     bytequeue::*,
-    cpu_808x::{addressing::AddressingMode, *},
+    cpu_808x::*,
+    cpu_common::{AddressingMode, Displacement},
 };
 
 pub const MODRM_REG_MASK: u8 = 0b00_111_000;

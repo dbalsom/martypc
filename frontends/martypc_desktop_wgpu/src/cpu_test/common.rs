@@ -32,7 +32,7 @@
 
 use anyhow::{bail, Error};
 use colored::Colorize;
-use marty_core::cpu_808x::*;
+use marty_core::{cpu_808x::*, cpu_common::QueueOp};
 use std::{
     collections::{HashMap, LinkedList},
     ffi::OsString,

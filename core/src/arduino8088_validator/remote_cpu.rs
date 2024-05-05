@@ -26,12 +26,12 @@
 use core::fmt::Display;
 use std::error::Error;
 
-use crate::cpu_validator::*;
-
-use super::{BusOp, BusOpType, QueueOp, OPCODE_NOP};
+use super::{BusOp, BusOpType, OPCODE_NOP};
 use crate::{
     arduino8088_client::*,
     arduino8088_validator::{queue::*, *},
+    cpu_common::QueueOp,
+    cpu_validator::*,
 };
 
 macro_rules! trace {

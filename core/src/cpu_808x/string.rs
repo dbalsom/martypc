@@ -30,7 +30,10 @@
 
 */
 
-use crate::{cpu_808x::*, cpu_common::alu::AluSub};
+use crate::{
+    cpu_808x::*,
+    cpu_common::{alu::AluSub, Mnemonic, Segment},
+};
 
 impl Intel808x {
     pub fn string_op(&mut self, opcode: Mnemonic, segment_override: Option<Segment>) {

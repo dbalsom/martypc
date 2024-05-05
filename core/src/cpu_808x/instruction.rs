@@ -29,26 +29,3 @@
     Definition of the Instruction struct and related methods.
 
 */
-
-use crate::{
-    cpu_808x::{
-        decode::{InstTemplate, DECODE},
-        gdr::GdrEntry,
-        mnemonic::Mnemonic,
-        OperandSize,
-        OperandType,
-        Segment,
-    },
-    cpu_common::Instruction,
-};
-
-impl Instruction {
-    #[inline(always)]
-    pub fn decode_ref(&self) -> &InstTemplate {
-        &DECODE[self.decode_idx]
-    }
-    #[inline(always)]
-    pub fn gdr(&self) -> &GdrEntry {
-        &self.decode_ref().gdr
-    }
-}

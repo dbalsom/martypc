@@ -33,7 +33,18 @@
 #![allow(clippy::unusual_byte_groupings)]
 
 pub use crate::cpu_common::Cpu;
-use crate::cpu_common::{CpuStringState, CpuSubType, Instruction};
+use crate::cpu_common::{
+    instruction::Instruction,
+    AddressingMode,
+    CpuAddress,
+    CpuStringState,
+    CpuSubType,
+    ExecutionResult,
+    Mnemonic,
+    QueueOp,
+    Segment,
+    ServiceEvent,
+};
 use core::fmt::Display;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -69,7 +80,7 @@ use crate::{
     breakpoints::{BreakPointType, CycleStopWatch, StopWatchData},
     bus::{BusInterface, MEM_BPA_BIT, MEM_BPE_BIT, MEM_RET_BIT, MEM_SW_BIT},
     bytequeue::*,
-    cpu_808x::{addressing::AddressingMode, microcode::*, mnemonic::Mnemonic, queue::InstructionQueue},
+    cpu_808x::{microcode::*, queue::InstructionQueue},
     cpu_common::{CpuOption, CpuType, TraceMode},
     syntax_token::*,
     tracelogger::TraceLogger,
@@ -110,7 +121,14 @@ macro_rules! trace_print {
     }};
 }
 
-use crate::cpu_common::{Register16, Register8};
+#[macro_export]
+macro_rules! gdr {
+    ($inst:expr) => {
+        &DECODE[$inst.decode_idx as usize].gdr
+    };
+}
+
+use crate::cpu_common::{operands::OperandSize, Register16, Register8};
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -273,12 +291,6 @@ pub const REGISTER16_LUT: [Register16; 8] = [
 pub const SEGMENT_REGISTER16_LUT: [Register16; 4] = [Register16::ES, Register16::CS, Register16::SS, Register16::DS];
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum CpuException {
-    NoException,
-    DivideError,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CpuState {
     Normal,
     BreakpointHit,
@@ -287,55 +299,6 @@ impl Default for CpuState {
     fn default() -> Self {
         CpuState::Normal
     }
-}
-
-#[derive(Debug)]
-pub enum CpuError {
-    InvalidInstructionError(u8, u32),
-    UnhandledInstructionError(u8, u32),
-    InstructionDecodeError(u32),
-    ExecutionError(u32, String),
-    CpuHaltedError(u32),
-    ExceptionError(CpuException),
-}
-impl Error for CpuError {}
-impl Display for CpuError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &*self {
-            CpuError::InvalidInstructionError(o, addr) => write!(
-                f,
-                "An invalid instruction was encountered: {:02X} at address: {:06X}",
-                o, addr
-            ),
-            CpuError::UnhandledInstructionError(o, addr) => write!(
-                f,
-                "An unhandled instruction was encountered: {:02X} at address: {:06X}",
-                o, addr
-            ),
-            CpuError::InstructionDecodeError(addr) => write!(
-                f,
-                "An error occurred during instruction decode at address: {:06X}",
-                addr
-            ),
-            CpuError::ExecutionError(addr, err) => {
-                write!(f, "An execution error occurred at: {:06X} Message: {}", addr, err)
-            }
-            CpuError::CpuHaltedError(addr) => {
-                write!(f, "The CPU was halted at address: {:06X}.", addr)
-            }
-            CpuError::ExceptionError(exception) => {
-                write!(f, "The CPU threw an exception: {:?}", exception)
-            }
-        }
-    }
-}
-
-// Internal Emulator interrupt service events. These are returned to the machine when
-// the internal service interrupt is called to request an emulator action that cannot
-// be handled by the CPU alone.
-#[derive(Copy, Clone, Debug)]
-pub enum ServiceEvent {
-    TriggerPITLogging,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -400,32 +363,6 @@ pub enum Register {
     IP,
 }*/
 
-#[derive(Copy, Clone)]
-pub enum OperandType {
-    Immediate8(u8),
-    Immediate16(u16),
-    Immediate8s(i8),
-    Relative8(i8),
-    Relative16(i16),
-    Offset8(u16),
-    Offset16(u16),
-    Register8(Register8),
-    Register16(Register16),
-    AddressingMode(AddressingMode),
-    FarAddress(u16, u16),
-    NoOperand,
-    InvalidOperand,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum Displacement {
-    NoDisp,
-    Pending8,
-    Pending16,
-    Disp8(i8),
-    Disp16(i16),
-}
-
 #[derive(Copy, Clone, Default, Debug)]
 pub enum DmaState {
     #[default]
@@ -438,23 +375,6 @@ pub enum DmaState {
     //DmaWait(u8)
 }
 
-impl Displacement {
-    pub fn get_i16(&self) -> i16 {
-        match self {
-            Displacement::Disp8(disp) => *disp as i16,
-            Displacement::Disp16(disp) => *disp,
-            _ => 0,
-        }
-    }
-    pub fn get_u16(&self) -> u16 {
-        match self {
-            Displacement::Disp8(disp) => (*disp as i16) as u16,
-            Displacement::Disp16(disp) => *disp as u16,
-            _ => 0,
-        }
-    }
-}
-
 #[derive(Default, Debug)]
 pub enum RepType {
     #[default]
@@ -463,25 +383,6 @@ pub enum RepType {
     Repne,
     Repe,
     MulDiv,
-}
-
-#[derive(Copy, Clone, Default, Debug)]
-pub enum Segment {
-    None,
-    ES,
-    #[default]
-    CS,
-    SS,
-    DS,
-}
-
-#[derive(Copy, Clone, Default, PartialEq)]
-pub enum OperandSize {
-    #[default]
-    NoOperand,
-    NoSize,
-    Operand8,
-    Operand16,
 }
 
 #[allow(dead_code)]
@@ -562,58 +463,6 @@ pub enum TransferSize {
 impl Default for TransferSize {
     fn default() -> TransferSize {
         TransferSize::Byte
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum CpuAddress {
-    Flat(u32),
-    Segmented(u16, u16),
-    Offset(u16),
-}
-
-impl Default for CpuAddress {
-    fn default() -> CpuAddress {
-        CpuAddress::Segmented(0, 0)
-    }
-}
-
-impl From<CpuAddress> for u32 {
-    fn from(cpu_address: CpuAddress) -> Self {
-        match cpu_address {
-            CpuAddress::Flat(a) => a,
-            CpuAddress::Segmented(s, o) => Intel808x::calc_linear_address(s, o),
-            CpuAddress::Offset(a) => a as Self,
-        }
-    }
-}
-
-impl Display for CpuAddress {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CpuAddress::Flat(a) => write!(f, "{:05X}", a),
-            CpuAddress::Segmented(s, o) => write!(f, "{:04X}:{:04X}", s, o),
-            CpuAddress::Offset(a) => write!(f, "{:04X}", a),
-        }
-    }
-}
-
-impl PartialEq for CpuAddress {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (CpuAddress::Flat(a), CpuAddress::Flat(b)) => a == b,
-            (CpuAddress::Flat(a), CpuAddress::Segmented(s, o)) => {
-                let b = Intel808x::calc_linear_address(*s, *o);
-                *a == b
-            }
-            (CpuAddress::Flat(_a), CpuAddress::Offset(_b)) => false,
-            (CpuAddress::Segmented(s, o), CpuAddress::Flat(b)) => {
-                let a = Intel808x::calc_linear_address(*s, *o);
-                a == *b
-            }
-            (CpuAddress::Segmented(s1, o1), CpuAddress::Segmented(s2, o2)) => *s1 == *s2 && *o1 == *o2,
-            _ => false,
-        }
     }
 }
 
@@ -873,37 +722,6 @@ pub enum RegisterType {
 }
 */
 
-#[derive(Debug)]
-pub enum StepResult {
-    Normal,
-    // If a call occurred, we return the address of the next instruction after the call
-    // so that we can step over the call in the debugger.
-    Call(CpuAddress),
-    // If we are in a REP prefixed string operation, we return the address of the next instruction
-    // so that we can step over the string operation.
-    Rep(CpuAddress),
-    BreakpointHit,
-    StepOverHit,
-    ProgramEnd,
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ExecutionResult {
-    Okay,
-    OkayJump,
-    OkayRep,
-    //UnsupportedOpcode(u8),        // All opcodes implemented.
-    ExecutionError(String),
-    ExceptionError(CpuException),
-    Halt,
-}
-
-impl Default for ExecutionResult {
-    fn default() -> ExecutionResult {
-        ExecutionResult::Okay
-    }
-}
-
 /// The 8088 has a 7-cycle bus access time. 3 of these cycles can be pipelined during the previous
 /// bus cycle. These cycles can alternatively be considered an 'address cycle'.
 /// Tr: The cycle on which the EU or prefetcher requests a bus cycle
@@ -991,15 +809,6 @@ impl Display for BusStatus {
             BusStatus::Passive => write!(f, "PASV"),
         }
     }
-}
-
-#[derive(Copy, Clone, Debug, Default, PartialEq)]
-pub enum QueueOp {
-    #[default]
-    Idle,
-    First,
-    Flush,
-    Subsequent,
 }
 
 impl Intel808x {
@@ -2121,7 +1930,7 @@ impl Intel808x {
     }
 
     #[cfg(feature = "cpu_validator")]
-    pub fn get_validator(&mut self) -> &Option<Box<dyn CpuValidator>> {
+    pub fn get_validator(&self) -> &Option<Box<dyn CpuValidator>> {
         &self.validator
     }
 

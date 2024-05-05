@@ -33,7 +33,7 @@ use crate::{event_loop::egui_events::handle_egui_event, Emulator};
 use display_manager_wgpu::DisplayManager;
 use marty_core::{
     bytequeue::ByteQueue,
-    cpu_808x::{Cpu, CpuAddress},
+    cpu_808x::Cpu,
     cpu_common,
     cpu_common::CpuOption,
     machine,
@@ -43,7 +43,7 @@ use marty_core::{
 use marty_egui::GuiWindow;
 
 use frontend_common::timestep_manager::TimestepManager;
-use marty_core::cpu_common::TraceMode;
+use marty_core::cpu_common::{CpuAddress, TraceMode};
 use winit::event_loop::EventLoopWindowTarget;
 
 pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWindowTarget<()>) {

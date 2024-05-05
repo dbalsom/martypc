@@ -37,8 +37,6 @@ use crate::{
         Cpu,
         DmaState,
         Intel808x,
-        QueueOp,
-        Segment,
         TCycle,
         TaCycle,
         CPU_FLAG_AUX_CARRY,
@@ -51,7 +49,7 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
-    cpu_common::TraceMode,
+    cpu_common::{QueueOp, Segment, TraceMode},
     syntax_token::SyntaxToken,
 };
 

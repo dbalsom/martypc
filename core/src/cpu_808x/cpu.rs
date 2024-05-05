@@ -37,26 +37,37 @@ use crate::{
     cpu_808x::{
         trace_print,
         BusStatus,
-        CpuAddress,
-        CpuError,
         CpuState,
         FetchState,
         Intel808x,
-        QueueOp,
         Register16,
-        ServiceEvent,
-        StepResult,
         TCycle,
         TaCycle,
         CPU_FLAGS_RESERVED_ON,
     },
-    cpu_common::{Cpu, CpuDispatch, CpuOption, CpuStringState, CpuType, Instruction, TraceMode},
+    cpu_common::{
+        instruction::Instruction,
+        Cpu,
+        CpuAddress,
+        CpuDispatch,
+        CpuError,
+        CpuOption,
+        CpuStringState,
+        CpuType,
+        QueueOp,
+        ServiceEvent,
+        StepResult,
+        TraceMode,
+    },
     cpu_validator::{CycleState, VRegisters},
     syntax_token::SyntaxToken,
 };
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_808x::CpuValidatorState;
+use crate::cpu_common::Register8;
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CpuValidator;
 
 impl Cpu for Intel808x {
     fn reset(&mut self) {
@@ -261,6 +272,16 @@ impl Cpu for Intel808x {
     #[inline]
     fn set_register16(&mut self, reg: Register16, value: u16) {
         self.set_register16(reg, value);
+    }
+
+    #[inline]
+    fn get_register8(&self, reg: Register8) -> u8 {
+        self.get_register8(reg)
+    }
+
+    #[inline]
+    fn set_register8(&mut self, reg: Register8, value: u8) {
+        self.set_register8(reg, value);
     }
 
     #[inline]
@@ -470,5 +491,37 @@ impl Cpu for Intel808x {
 
     fn trace_flush(&mut self) {
         self.trace_flush();
+    }
+
+    // Validation methods
+
+    #[cfg(feature = "cpu_validator")]
+    fn get_validator(&self) -> &Option<Box<dyn CpuValidator>> {
+        self.get_validator()
+    }
+
+    #[cfg(feature = "cpu_validator")]
+    fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>> {
+        self.get_validator_mut()
+    }
+
+    fn randomize_seed(&mut self, seed: u64) {
+        self.randomize_seed(seed);
+    }
+
+    fn randomize_mem(&mut self) {
+        self.randomize_mem();
+    }
+
+    fn randomize_regs(&mut self) {
+        self.randomize_regs();
+    }
+
+    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]) {
+        self.random_grp_instruction(opcode, extension_list)
+    }
+
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]) {
+        self.random_inst_from_opcodes(opcode_list);
     }
 }

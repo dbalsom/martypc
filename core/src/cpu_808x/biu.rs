@@ -29,7 +29,11 @@
     Implement CPU behavior specific to the BIU (Bus Interface Unit)
 
 */
-use crate::{bytequeue::*, cpu_808x::*};
+use crate::{
+    bytequeue::*,
+    cpu_808x::*,
+    cpu_common::{operands::OperandSize, QueueOp, Segment},
+};
 
 pub const QUEUE_SIZE: usize = 4;
 pub const QUEUE_POLICY_LEN: usize = 3;

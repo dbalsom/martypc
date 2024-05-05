@@ -37,12 +37,10 @@
 
 use std::{error::Error, fmt::Display};
 
-use crate::cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, modrm::ModRmByte, *};
-
 use crate::{
     bytequeue::*,
-    cpu_808x::{alu::Xi, gdr::GdrEntry},
-    cpu_common::Instruction,
+    cpu_808x::{alu::Xi, gdr::GdrEntry, modrm::ModRmByte, *},
+    cpu_common::{operands::OperandSize, AddressingMode, Instruction, Mnemonic, OperandType, Segment},
 };
 
 #[derive(Copy, Clone, PartialEq)]
@@ -515,7 +513,7 @@ impl Intel808x {
         let mut operand2_type: OperandType = OperandType::NoOperand;
         let mut operand1_size: OperandSize = OperandSize::NoOperand;
         let mut operand2_size: OperandSize = OperandSize::NoOperand;
-        
+
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
         let mut op_prefixes: u32 = 0;

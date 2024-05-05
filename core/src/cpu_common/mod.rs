@@ -32,30 +32,54 @@
 
 #![allow(dead_code)]
 
+pub mod addressing;
 pub mod alu;
 pub mod builder;
+pub mod error;
+pub mod instruction;
+pub mod mnemonic;
+pub mod operands;
 
-use crate::{
-    breakpoints::{BreakPointType, StopWatchData},
-    bus::{BusInterface, ClockFactor},
-    bytequeue::ByteQueue,
-    cpu_808x::{
-        mnemonic::Mnemonic,
-        CpuAddress,
-        CpuError,
-        Intel808x,
-        OperandSize,
-        OperandType,
-        Segment,
-        ServiceEvent,
-        StepResult,
-    },
-    cpu_validator::{CycleState, VRegisters},
-    syntax_token::SyntaxToken,
-};
 use enum_dispatch::enum_dispatch;
 use serde::Deserialize;
 use std::str::FromStr;
+
+pub use addressing::{AddressingMode, CpuAddress, Displacement};
+pub use error::CpuError;
+pub use instruction::Instruction;
+pub use mnemonic::Mnemonic;
+pub use operands::OperandType;
+
+use crate::{
+    breakpoints::{BreakPointType, StopWatchData},
+    bus::BusInterface,
+    bytequeue::ByteQueue,
+    cpu_808x::Intel808x,
+    cpu_validator::{CycleState, VRegisters},
+    cpu_vx0::NecVx0,
+    syntax_token::{SyntaxToken, SyntaxTokenize},
+};
+
+#[cfg(feature = "cpu_validator")]
+use crate::cpu_validator::CpuValidator;
+
+#[derive(Debug, Default, PartialEq)]
+pub enum ExecutionResult {
+    #[default]
+    Okay,
+    OkayJump,
+    OkayRep,
+    //UnsupportedOpcode(u8),        // All opcodes implemented.
+    ExecutionError(String),
+    ExceptionError(CpuException),
+    Halt,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum CpuException {
+    NoException,
+    DivideError,
+}
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum Register8 {
@@ -85,6 +109,16 @@ pub enum Register16 {
     DS,
     PC,
     InvalidRegister,
+}
+
+#[derive(Copy, Clone, Default, Debug)]
+pub enum Segment {
+    None,
+    ES,
+    #[default]
+    CS,
+    SS,
+    DS,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -129,18 +163,23 @@ pub struct CpuStringState {
 
 #[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
 pub enum CpuType {
-    Intel808x,
+    Intel8088,
+    Intel8086,
+    NecV20,
+    NecV30,
 }
 
 impl CpuType {
     pub fn decode(&self, bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
         match self {
-            CpuType::Intel808x => Intel808x::decode(bytes, peek),
+            CpuType::Intel8088 | CpuType::Intel8086 => Intel808x::decode(bytes, peek),
+            CpuType::NecV20 | CpuType::NecV30 => NecVx0::decode(bytes, peek),
         }
     }
     pub fn tokenize_instruction(&self, instruction: &Instruction) -> Vec<SyntaxToken> {
         match self {
-            CpuType::Intel808x => Intel808x::tokenize_instruction(instruction),
+            CpuType::Intel8088 | CpuType::Intel8086 => instruction.tokenize(),
+            CpuType::NecV20 | CpuType::NecV30 => instruction.tokenize(),
         }
     }
 }
@@ -193,7 +232,7 @@ impl Default for TraceMode {
 
 impl Default for CpuType {
     fn default() -> Self {
-        CpuType::Intel808x
+        CpuType::Intel8088
     }
 }
 
@@ -210,46 +249,45 @@ pub enum CpuOption {
     EnableServiceInterrupt(bool),
 }
 
+#[derive(Debug)]
+pub enum StepResult {
+    Normal,
+    // If a call occurred, we return the address of the next instruction after the call
+    // so that we can step over the call in the debugger.
+    Call(CpuAddress),
+    // If we are in a REP prefixed string operation, we return the address of the next instruction
+    // so that we can step over the string operation.
+    Rep(CpuAddress),
+    BreakpointHit,
+    StepOverHit,
+    ProgramEnd,
+}
+
+// Internal Emulator interrupt service events. These are returned to the machine when
+// the internal service interrupt is called to request an emulator action that cannot
+// be handled by the CPU alone.
+#[derive(Copy, Clone, Debug)]
+pub enum ServiceEvent {
+    TriggerPITLogging,
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub enum QueueOp {
+    #[default]
+    Idle,
+    First,
+    Flush,
+    Subsequent,
+}
+
 pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
     (((segment as u32) << 4) + offset as u32) & 0xFFFFFu32
-}
-
-#[derive(Clone)]
-pub struct Instruction {
-    pub decode_idx: usize,
-    pub opcode: u8,
-    pub prefixes: u32,
-    pub address: u32,
-    pub size: u32,
-    pub mnemonic: Mnemonic,
-    pub segment_override: Option<Segment>,
-    pub operand1_type: OperandType,
-    pub operand1_size: OperandSize,
-    pub operand2_type: OperandType,
-    pub operand2_size: OperandSize,
-}
-
-impl Default for Instruction {
-    fn default() -> Self {
-        Self {
-            decode_idx: 0,
-            opcode: 0,
-            prefixes: 0,
-            address: 0,
-            size: 1,
-            mnemonic: Mnemonic::NOP,
-            segment_override: None,
-            operand1_type: OperandType::NoOperand,
-            operand1_size: OperandSize::NoOperand,
-            operand2_type: OperandType::NoOperand,
-            operand2_size: OperandSize::NoOperand,
-        }
-    }
 }
 
 #[enum_dispatch]
 pub enum CpuDispatch {
     Intel808x,
+    NecVx0,
 }
 
 #[enum_dispatch(CpuDispatch)]
@@ -269,6 +307,8 @@ pub trait Cpu {
     fn get_ip(&mut self) -> u16;
     fn get_register16(&self, reg: Register16) -> u16;
     fn set_register16(&mut self, reg: Register16, value: u16);
+    fn get_register8(&self, reg: Register8) -> u8;
+    fn set_register8(&mut self, reg: Register8, value: u8);
     fn get_flags(&self) -> u16;
     fn set_flags(&mut self, flags: u16);
     fn get_cycle_ct(&self) -> (u64, u64);
@@ -283,8 +323,7 @@ pub trait Cpu {
     fn get_cycle_states(&self) -> &Vec<CycleState>;
     fn get_cycle_trace(&self) -> &Vec<String>;
     fn get_cycle_trace_tokens(&self) -> &Vec<Vec<SyntaxToken>>;
-    #[cfg(feature = "cpu_validator")]
-    fn get_vregisters(&self) -> VRegisters;
+
     fn get_string_state(&self) -> CpuStringState;
 
     // Eval
@@ -310,4 +349,17 @@ pub trait Cpu {
     fn cycle_table_header(&self) -> Vec<String>;
     fn emit_header(&mut self);
     fn trace_flush(&mut self);
+
+    // Validation methods
+    #[cfg(feature = "cpu_validator")]
+    fn get_vregisters(&self) -> VRegisters;
+    #[cfg(feature = "cpu_validator")]
+    fn get_validator(&self) -> &Option<Box<dyn CpuValidator>>;
+    #[cfg(feature = "cpu_validator")]
+    fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>>;
+    fn randomize_seed(&mut self, seed: u64);
+    fn randomize_mem(&mut self);
+    fn randomize_regs(&mut self);
+    fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]);
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]);
 }

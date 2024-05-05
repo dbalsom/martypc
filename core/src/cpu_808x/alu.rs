@@ -32,8 +32,8 @@
 #![allow(dead_code)]
 
 use crate::{
-    cpu_808x::{mnemonic::Mnemonic, *},
-    cpu_common::alu::*,
+    cpu_808x::*,
+    cpu_common::{alu::*, Mnemonic},
 };
 
 /// The ALU operation specifier 'Xi' determines the ALU operation by decoding 5 bits from the group

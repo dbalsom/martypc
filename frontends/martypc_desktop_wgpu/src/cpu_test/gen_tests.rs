@@ -39,28 +39,38 @@ use std::{
 };
 
 use config_toml_bpaf::ConfigFileParams;
+use serde::{Deserialize, Serialize};
 
 use marty_core::{
     arduino8088_validator::ArduinoValidator,
     bytequeue::ByteQueue,
-    cpu_808x::{mnemonic::Mnemonic, Cpu, *},
-    cpu_common::{CpuOption, CpuType, TraceMode},
-    cpu_validator::{BusCycle, BusOp, BusOpType, BusState, CpuValidator, CycleState},
+    cpu_808x::{Cpu, *},
+    cpu_common,
+    cpu_common::{
+        builder::CpuBuilder,
+        CpuAddress,
+        CpuOption,
+        CpuSubType,
+        CpuType,
+        Mnemonic,
+        Register16,
+        Register8,
+        TraceMode,
+    },
+    cpu_validator::{BusCycle, BusOp, BusOpType, BusState, CpuValidator, CycleState, ValidatorMode, ValidatorType},
     devices::pic::Pic,
     tracelogger::TraceLogger,
 };
 
 use crate::cpu_test::common::{clean_cycle_states, write_tests_to_file, CpuTest, TestState};
 
-use serde::{Deserialize, Serialize};
-
 pub fn run_gentests(config: &ConfigFileParams) {
     //let pic = Rc::new(RefCell::new(Pic::new()));
 
     // Create the cpu trace file, if specified
-    let mut cpu_trace = TraceLogger::None;
+    let mut trace_logger = TraceLogger::None;
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
-        cpu_trace = TraceLogger::from_filename(&trace_filename);
+        trace_logger = TraceLogger::from_filename(&trace_filename);
     }
 
     // Create the validator trace file, if specified
@@ -69,24 +79,33 @@ pub fn run_gentests(config: &ConfigFileParams) {
         validator_trace = TraceLogger::from_filename(&trace_filename);
     }
 
-    #[cfg(feature = "cpu_validator")]
-    use marty_core::cpu_validator::ValidatorMode;
-
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
 
-    let mut cpu = Cpu::new(
-        CpuType::Intel8088,
-        trace_mode,
-        cpu_trace,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.vtype.unwrap(),
-        #[cfg(feature = "cpu_validator")]
-        validator_trace,
-        #[cfg(feature = "cpu_validator")]
-        ValidatorMode::Instruction,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.baud_rate.unwrap_or(1_000_000),
-    );
+    let mut cpu;
+    #[cfg(feature = "cpu_validator")]
+    {
+        cpu = match CpuBuilder::new()
+            .with_cpu_type(config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088))
+            //.with_cpu_subtype(CpuSubType::Intel8088)
+            .with_trace_mode(trace_mode)
+            .with_trace_logger(trace_logger)
+            .with_validator_type(ValidatorType::Arduino8088)
+            .with_validator_mode(ValidatorMode::Instruction)
+            .with_validator_logger(validator_trace)
+            .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
+            .build()
+        {
+            Ok(cpu) => cpu,
+            Err(e) => {
+                log::error!("Failed to build CPU: {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
+    #[cfg(not(feature = "cpu_validator"))]
+    {
+        panic!("Validator feature not enabled!")
+    };
 
     if let Some(seed) = config.tests.test_seed {
         log::debug!("Using random seed from config: {}", seed);
@@ -277,12 +296,14 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 cpu.randomize_mem();
                 cpu.randomize_regs();
 
-                let mut instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+                let mut instruction_address =
+                    cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
 
-                while (cpu.ip() > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
+                while (cpu.get_ip() > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
                     // Avoid IP wrapping issues for now
                     cpu.randomize_regs();
-                    instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+                    instruction_address =
+                        cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
                 }
 
                 test_num += 1;
@@ -295,24 +316,28 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     cpu.random_inst_from_opcodes(&[test_opcode]);
                 }
 
-                if cpu.ip() != cpu.get_register16(Register16::PC) {
-                    log::error!("IP: {:04X} PC: {:04X}", cpu.ip(), cpu.get_register16(Register16::PC));
+                if cpu.get_ip() != cpu.get_register16(Register16::PC) {
+                    log::error!(
+                        "IP: {:04X} PC: {:04X}",
+                        cpu.get_ip(),
+                        cpu.get_register16(Register16::PC)
+                    );
                     panic!("IP and PC are out of sync!");
                 }
 
                 // Decode this instruction
-                instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+                instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
                 log::debug!(
                     "Instruction address: {:05X} [{:04X}:{:04X}]",
                     instruction_address,
                     cpu.get_register16(Register16::CS),
-                    cpu.ip()
+                    cpu.get_ip()
                 );
 
                 cpu.bus_mut().seek(instruction_address as usize);
                 let opcode = cpu.bus().peek_u8(instruction_address as usize).expect("mem err");
 
-                let mut i = match Cpu::decode(cpu.bus_mut(), true) {
+                let mut i = match cpu.get_type().decode(cpu.bus_mut(), true) {
                     Ok(i) => i,
                     Err(_) => {
                         log::error!("Instruction decode error, skipping...");
@@ -339,10 +364,13 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 );
 
                 // Set terminating address for CPU validator.
-                let end_address =
-                    Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip().wrapping_add(i.size as u16));
+                let end_address = cpu_common::calc_linear_address(
+                    cpu.get_register16(Register16::CS),
+                    cpu.get_ip().wrapping_add(i.size as u16),
+                );
 
-                cpu.set_end_address(end_address as usize);
+                //log::debug!("Setting end address: {:05X}", end_address);
+                cpu.set_end_address(CpuAddress::Flat(end_address));
                 log::trace!("Setting end address: {:05X}", end_address);
 
                 match i.mnemonic {
@@ -532,7 +560,7 @@ pub fn initial_state_from_ops(
     let mut pc = ip;
 
     for byte in instr_bytes {
-        let flat_addr = Cpu::calc_linear_address(cs, pc);
+        let flat_addr = cpu_common::calc_linear_address(cs, pc);
         code_addresses.insert(flat_addr, (*byte, true));
         initial_state.insert(flat_addr, *byte);
         pc = pc.wrapping_add(1);
