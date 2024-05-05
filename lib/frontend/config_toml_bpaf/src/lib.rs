@@ -37,8 +37,6 @@ use std::{
     str::FromStr,
 };
 
-use marty_core::{cpu_common::TraceMode, cpu_validator::ValidatorType, machine_types::OnHaltBehavior};
-
 use frontend_common::{
     display_scaler::ScalerPreset,
     resource_manager::PathConfigItem,
@@ -47,6 +45,11 @@ use frontend_common::{
     MartyGuiTheme,
 };
 use marty_common::VideoDimensions;
+use marty_core::{
+    cpu_common::{CpuSubType, CpuType, TraceMode},
+    cpu_validator::ValidatorType,
+    machine_types::OnHaltBehavior,
+};
 
 use bpaf::Bpaf;
 use serde_derive::Deserialize;
@@ -196,6 +199,8 @@ pub struct Benchmark {
 
 #[derive(Debug, Deserialize)]
 pub struct Tests {
+    pub test_cpu_type: Option<CpuType>,
+    pub test_cpu_subtype: Option<CpuSubType>,
     pub test_mode: Option<TestMode>,
     pub test_seed: Option<u64>,
     pub test_dir: Option<String>,

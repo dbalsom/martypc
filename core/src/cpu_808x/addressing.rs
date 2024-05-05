@@ -68,7 +68,7 @@ pub enum FarPtr {
 }
 
 #[rustfmt::skip]
-impl Cpu {
+impl Intel808x {
     #[allow(dead_code)]
     #[inline]
     fn is_register_mode(mode: AddressingMode) -> bool {

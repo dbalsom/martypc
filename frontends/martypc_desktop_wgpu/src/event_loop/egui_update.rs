@@ -34,6 +34,7 @@ use display_manager_wgpu::DisplayManager;
 use marty_core::{
     bytequeue::ByteQueue,
     cpu_808x::{Cpu, CpuAddress},
+    cpu_common,
     cpu_common::CpuOption,
     machine,
     syntax_token::SyntaxToken,
@@ -241,6 +242,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
             None => 0,
         };
 
+        let cpu_type = emu.machine.cpu().get_type();
         let bus = emu.machine.bus_mut();
 
         let mut listview_vec = Vec::new();
@@ -255,7 +257,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
 
                 let mut decode_vec = Vec::new();
 
-                match Cpu::decode(bus, true) {
+                match cpu_type.decode(bus, true) {
                     Ok(i) => {
                         let instr_slice = bus.get_slice_at(disassembly_addr_flat, i.size as usize);
                         let instr_bytes_str = util::fmt_byte_array(instr_slice);
@@ -265,7 +267,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
                             format!("{:05X}", disassembly_addr_flat),
                         ));
 
-                        let mut instr_vec = Cpu::tokenize_instruction(&i);
+                        let mut instr_vec = cpu_type.tokenize_instruction(&i);
 
                         //let decode_str = format!("{:05X} {:012} {}\n", disassembly_addr, instr_bytes_str, i);
 
@@ -283,7 +285,7 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
                             let new_offset = offset.wrapping_add(i.size as u16);
                             if new_offset < offset {
                                 // A wrap of the code segment occurred. Update the linear address to match.
-                                disassembly_addr_flat = Cpu::calc_linear_address(segment, new_offset) as usize;
+                                disassembly_addr_flat = cpu_common::calc_linear_address(segment, new_offset) as usize;
                             }
 
                             disassembly_addr_seg = Some(CpuAddress::Segmented(segment, new_offset));

@@ -55,7 +55,7 @@ macro_rules! validate_write_u8 {
     }};
 }
 
-impl Cpu {
+impl Intel808x {
     #[inline(always)]
     pub fn set_mc_pc(&mut self, instr: u16) {
         self.mc_pc = instr;

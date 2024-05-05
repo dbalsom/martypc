@@ -32,7 +32,7 @@
 
 use crate::{cpu_808x::*, cpu_common::alu::AluSub};
 
-impl Cpu {
+impl Intel808x {
     pub fn string_op(&mut self, opcode: Mnemonic, segment_override: Option<Segment>) {
         let segment_base_ds = segment_override.unwrap_or(Segment::DS);
 

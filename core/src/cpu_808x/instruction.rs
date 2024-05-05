@@ -30,47 +30,17 @@
 
 */
 
-use crate::cpu_808x::{
-    decode::{InstTemplate, DECODE},
-    gdr::GdrEntry,
-    mnemonic::Mnemonic,
-    OperandSize,
-    OperandType,
-    Segment,
+use crate::{
+    cpu_808x::{
+        decode::{InstTemplate, DECODE},
+        gdr::GdrEntry,
+        mnemonic::Mnemonic,
+        OperandSize,
+        OperandType,
+        Segment,
+    },
+    cpu_common::Instruction,
 };
-
-#[derive(Clone)]
-pub struct Instruction {
-    pub decode_idx: usize,
-    pub opcode: u8,
-    pub prefixes: u32,
-    pub address: u32,
-    pub size: u32,
-    pub mnemonic: Mnemonic,
-    pub segment_override: Option<Segment>,
-    pub operand1_type: OperandType,
-    pub operand1_size: OperandSize,
-    pub operand2_type: OperandType,
-    pub operand2_size: OperandSize,
-}
-
-impl Default for Instruction {
-    fn default() -> Self {
-        Self {
-            decode_idx: 0,
-            opcode: 0,
-            prefixes: 0,
-            address: 0,
-            size: 1,
-            mnemonic: Mnemonic::NOP,
-            segment_override: None,
-            operand1_type: OperandType::NoOperand,
-            operand1_size: OperandSize::NoOperand,
-            operand2_type: OperandType::NoOperand,
-            operand2_size: OperandSize::NoOperand,
-        }
-    }
-}
 
 impl Instruction {
     #[inline(always)]

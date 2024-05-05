@@ -76,7 +76,7 @@ macro_rules! alu_op {
 
 // rustfmt chokes on large match statements.
 #[rustfmt::skip]
-impl Cpu {
+impl Intel808x {
     /// Execute the current instruction. At the phase this function is called we have
     /// fetched and decoded any prefixes, the opcode byte, modrm and any displacement
     /// and populated an Instruction struct.
@@ -1410,13 +1410,13 @@ impl Cpu {
 
                 if self.intr {
                     // If an intr is pending now, execute it without actually halting.
-                    log::trace!("Halt overriden at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip()));
+                    log::trace!("Halt overriden at [{:05X}]", Intel808x::calc_linear_address(self.cs, self.ip()));
                     self.cycles(2); // Cycle to load interrupt routine
                     self.halt_not_hold = false;
                 }
                 else {
                     // Actually halt
-                    log::trace!("Halt at [{:05X}]", Cpu::calc_linear_address(self.cs, self.ip()));
+                    log::trace!("Halt at [{:05X}]", Intel808x::calc_linear_address(self.cs, self.ip()));
                     self.halted = true;
                     self.biu_halt();
                     // HLT is reentrant as step will remain in halt state until interrupt, even
@@ -1744,7 +1744,7 @@ impl Cpu {
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to IP.
-                            self.pc = self.get_register16(Cpu::reg8to16(reg));
+                            self.pc = self.get_register16(Intel808x::reg8to16(reg));
                         }
                         jump = true;
                     }
@@ -1796,7 +1796,7 @@ impl Cpu {
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to PC.
-                            self.pc = self.get_register16(Cpu::reg8to16(reg));
+                            self.pc = self.get_register16(Intel808x::reg8to16(reg));
                         }
                     }
                     // Jump to memory r/m16
@@ -1840,7 +1840,7 @@ impl Cpu {
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to PC.
-                            self.pc = self.get_register16(Cpu::reg8to16(reg));
+                            self.pc = self.get_register16(Intel808x::reg8to16(reg));
                         }
                     }
                     // Push Byte onto stack

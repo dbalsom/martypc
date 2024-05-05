@@ -43,7 +43,10 @@ use std::{
 };
 
 use flate2::read::GzDecoder;
-use marty_core::cpu_validator::{BusCycle, BusState, CycleState, VRegisters};
+use marty_core::{
+    cpu_common::CpuDispatch,
+    cpu_validator::{BusCycle, BusState, CycleState, VRegisters},
+};
 use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -461,7 +464,7 @@ pub fn validate_cycles(
 }
 
 pub fn validate_memory(
-    cpu: &Cpu,
+    cpu: &CpuDispatch,
     final_ram: &Vec<[u32; 2]>,
     flags_on_stack: bool,
     log: &mut BufWriter<File>,

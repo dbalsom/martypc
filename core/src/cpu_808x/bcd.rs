@@ -32,7 +32,7 @@
 
 use crate::cpu_808x::{muldiv::*, *};
 
-impl Cpu {
+impl Intel808x {
     /// Ascii Adjust after Addition
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aaa(&mut self) {

@@ -49,7 +49,7 @@ macro_rules! get_rand_range {
     };
 }
 
-impl Cpu {
+impl Intel808x {
     #[allow(dead_code)]
     pub fn randomize_seed(&mut self, mut seed: u64) {
         if seed == 0 {
@@ -254,7 +254,7 @@ impl Cpu {
         }
 
         // Copy instruction to memory at CS:IP
-        let addr = Cpu::calc_linear_address(self.cs, self.pc);
+        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false)
@@ -359,7 +359,7 @@ impl Cpu {
         }
 
         // Copy instruction to memory at CS:IP
-        let addr = Cpu::calc_linear_address(self.cs, self.pc);
+        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), addr as usize, 0, false)

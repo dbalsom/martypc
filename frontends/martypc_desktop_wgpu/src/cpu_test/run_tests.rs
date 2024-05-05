@@ -55,6 +55,7 @@ use config_toml_bpaf::{ConfigFileParams, TestMode};
 use marty_core::{
     bytequeue::ByteQueue,
     cpu_808x::{mnemonic::Mnemonic, Cpu, *},
+    cpu_common,
     cpu_common::{CpuOption, CpuType},
     cpu_validator::ValidatorType,
     tracelogger::TraceLogger,
@@ -69,6 +70,10 @@ use crate::{
 use crate::cpu_test::common::{TestFileLoad, TestResultSummary};
 use colored::*;
 use flate2::read::GzDecoder;
+use marty_core::{
+    cpu_common::{builder::CpuBuilder, CpuSubType, Register16},
+    cpu_validator::ValidatorMode,
+};
 
 pub fn run_runtests(config: ConfigFileParams) {
     let mut test_path = "./tests".to_string();
@@ -297,11 +302,11 @@ fn run_tests(
     log: &mut BufWriter<File>,
 ) -> TestResult {
     // Create the cpu trace file, if specified
-    let mut cpu_trace_log = TraceLogger::None;
+    let mut trace_logger = TraceLogger::None;
 
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
         log::warn!("Using CPU trace log: {:?}", trace_filename);
-        cpu_trace_log = TraceLogger::from_filename(&trace_filename);
+        trace_logger = TraceLogger::from_filename(&trace_filename);
     }
 
     // Create the validator trace file, if specified
@@ -316,19 +321,31 @@ fn run_tests(
     #[cfg(feature = "cpu_validator")]
     use marty_core::cpu_validator::ValidatorMode;
 
-    let mut cpu = Cpu::new(
-        CpuType::Intel8088,
-        trace_mode,
-        cpu_trace_log,
-        #[cfg(feature = "cpu_validator")]
-        ValidatorType::None,
-        #[cfg(feature = "cpu_validator")]
-        validator_trace,
-        #[cfg(feature = "cpu_validator")]
-        ValidatorMode::Instruction,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.baud_rate.unwrap_or(1_000_000),
-    );
+    let mut cpu;
+    #[cfg(feature = "cpu_validator")]
+    {
+        cpu = match CpuBuilder::new()
+            .with_cpu_type(CpuType::Intel808x)
+            .with_cpu_subtype(CpuSubType::Intel8088)
+            .with_trace_mode(trace_mode)
+            .with_trace_logger(trace_logger)
+            .with_validator_type(ValidatorType::None)
+            .with_validator_mode(ValidatorMode::Instruction)
+            .with_validator_logger(validator_trace)
+            .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
+            .build()
+        {
+            Ok(cpu) => cpu,
+            Err(e) => {
+                log::error!("Failed to build CPU: {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
+    #[cfg(not(feature = "cpu_validator"))]
+    {
+        panic!("Validator feature not enabled!")
+    };
 
     if config.machine.cpu.trace_on {
         cpu.set_option(CpuOption::TraceLoggingEnabled(true));
@@ -398,11 +415,11 @@ fn run_tests(
         }
 
         // Decode this instruction
-        let instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+        let instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
 
         cpu.bus_mut().seek(instruction_address as usize);
 
-        let mut i = match Cpu::decode(cpu.bus_mut(), true) {
+        let mut i = match cpu.get_type().decode(cpu.bus_mut(), true) {
             Ok(i) => i,
             Err(_) => {
                 _ = writeln!(log, "Instruction decode error!");
@@ -451,11 +468,14 @@ fn run_tests(
         );*/
 
         // Set terminating address for CPU validator.
-        let end_address =
-            Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip().wrapping_add(i.size as u16));
+        let end_address = cpu_common::calc_linear_address(
+            cpu.get_register16(Register16::CS),
+            cpu.get_ip().wrapping_add(i.size as u16),
+        );
 
         //log::debug!("Setting end address: {:05X}", end_address);
-        cpu.set_end_address(end_address as usize);
+
+        cpu.set_end_address(CpuAddress::Flat(end_address));
 
         let mut flags_on_stack = false;
         let mut debug_mnemonic = false;
@@ -472,7 +492,8 @@ fn run_tests(
             | Mnemonic::SCASB
             | Mnemonic::SCASW => {
                 // limit cx to 31
-                cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0x7F);
+                let cx = cpu.get_register16(Register16::CX);
+                cpu.set_register16(Register16::CX, cx & 0x7F);
                 rep = true;
             }
             Mnemonic::DIV | Mnemonic::IDIV => {
@@ -554,10 +575,10 @@ fn run_tests(
             trace_error!(log, "{}| Test {:05}: Register validation failed", opcode_string, n);
             trace_error!(log, "Test specified:");
             trace_error!(log, "{}", test.final_state.regs);
-            trace_error!(log, "{}", Cpu::flags_string(test.final_state.regs.flags));
+            trace_error!(log, "{}", Intel808x::flags_string(test.final_state.regs.flags));
             trace_error!(log, "CPU reported:");
             trace_error!(log, "{}", vregs);
-            trace_error!(log, "{}", Cpu::flags_string(cpu.get_flags()));
+            trace_error!(log, "{}", Intel808x::flags_string(cpu.get_flags()));
 
             if test.cycles.len() != cpu_cycles.len() {
                 _ = writeln!(
@@ -737,6 +758,5 @@ fn run_tests(
     }
 
     results.duration = test_start.elapsed();
-
     results
 }

@@ -32,7 +32,7 @@
 
 use crate::cpu_808x::{mnemonic::Mnemonic, *};
 
-impl Cpu {
+impl Intel808x {
     pub(crate) fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {
         let mut carry = false;
         while count > 0 {
@@ -242,7 +242,7 @@ impl Cpu {
 
         match opcode {
             Mnemonic::ROL => {
-                (result, carry) = Cpu::rol_u8_with_carry(operand1, rot_count);
+                (result, carry) = Intel808x::rol_u8_with_carry(operand1, rot_count);
                 self.set_flag_state(Flag::Carry, carry);
                 // Only set overflow on ROL of 1
                 if rot_count == 1 {
@@ -251,7 +251,7 @@ impl Cpu {
                 }
             }
             Mnemonic::ROR => {
-                (result, carry) = Cpu::ror_u8_with_carry(operand1, rot_count);
+                (result, carry) = Intel808x::ror_u8_with_carry(operand1, rot_count);
                 self.set_flag_state(Flag::Carry, carry);
                 // Only set overflow on ROR of 1
                 if rot_count == 1 {
@@ -264,7 +264,7 @@ impl Cpu {
                 // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate)
                 // and the most-significant bit of the result.
                 let existing_carry = self.get_flag(Flag::Carry);
-                (result, carry) = Cpu::rcl_u8_with_carry(operand1, rot_count, existing_carry);
+                (result, carry) = Intel808x::rcl_u8_with_carry(operand1, rot_count, existing_carry);
                 self.set_flag_state(Flag::Carry, carry);
                 // Only set overflow on SHL of 1
                 if rot_count == 1 {
@@ -280,7 +280,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((operand1 & 0x80) != 0) ^ existing_carry);
                 }
 
-                (result, carry) = Cpu::rcr_u8_with_carry(operand1, rot_count, existing_carry);
+                (result, carry) = Intel808x::rcr_u8_with_carry(operand1, rot_count, existing_carry);
                 self.set_flag_state(Flag::Carry, carry);
             }
             Mnemonic::SETMO => {
@@ -310,7 +310,7 @@ impl Cpu {
                 }
             }
             Mnemonic::SHL => {
-                (result, carry) = Cpu::shl_u8_with_carry(operand1, operand2);
+                (result, carry) = Intel808x::shl_u8_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 
@@ -324,7 +324,7 @@ impl Cpu {
                 self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SHR => {
-                (result, carry) = Cpu::shr_u8_with_carry(operand1, operand2);
+                (result, carry) = Intel808x::shr_u8_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 
@@ -337,7 +337,7 @@ impl Cpu {
                 self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SAR => {
-                (result, carry) = Cpu::sar_u8_with_carry(operand1, operand2);
+                (result, carry) = Intel808x::sar_u8_with_carry(operand1, operand2);
                 // Set Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 
@@ -381,7 +381,7 @@ impl Cpu {
                 // Rotate Left
                 // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate)
                 // and the most-significant bit of the result.
-                (result, carry) = Cpu::rol_u16_with_carry(operand1, rot_count);
+                (result, carry) = Intel808x::rol_u16_with_carry(operand1, rot_count);
                 self.set_flag_state(Flag::Carry, carry);
 
                 // Overflow only defined for ROL of 1
@@ -393,7 +393,7 @@ impl Cpu {
             Mnemonic::ROR => {
                 // Rotate Right
                 // Flags: For right rotates, the OF flag is set to the exclusive OR of the two most-significant bits of the result.
-                (result, carry) = Cpu::ror_u16_with_carry(operand1, rot_count);
+                (result, carry) = Intel808x::ror_u16_with_carry(operand1, rot_count);
                 self.set_flag_state(Flag::Carry, carry);
 
                 // Overflow only defined for ROR of 1
@@ -408,7 +408,7 @@ impl Cpu {
                 // and the most-significant bit of the result.
 
                 let existing_carry = self.get_flag(Flag::Carry);
-                (result, carry) = Cpu::rcl_u16_with_carry(operand1, rot_count, existing_carry);
+                (result, carry) = Intel808x::rcl_u16_with_carry(operand1, rot_count, existing_carry);
                 self.set_flag_state(Flag::Carry, carry);
                 // Overflow only defined for RCL of 1
                 if rot_count == 1 {
@@ -429,7 +429,7 @@ impl Cpu {
                     self.set_flag_state(Flag::Overflow, ((operand1 & 0x8000) != 0) ^ existing_carry);
                 }
 
-                (result, carry) = Cpu::rcr_u16_with_carry(operand1, rot_count, existing_carry);
+                (result, carry) = Intel808x::rcr_u16_with_carry(operand1, rot_count, existing_carry);
                 self.set_flag_state(Flag::Carry, carry);
 
                 // The rcr instruction does not affect the zero, sign, parity, or auxiliary carry flags.
@@ -462,7 +462,7 @@ impl Cpu {
                 }
             }
             Mnemonic::SHL => {
-                (result, carry) = Cpu::shl_u16_with_carry(operand1, operand2);
+                (result, carry) = Intel808x::shl_u16_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 
@@ -478,7 +478,7 @@ impl Cpu {
                 self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SHR => {
-                (result, carry) = Cpu::shr_u16_with_carry(operand1, operand2);
+                (result, carry) = Intel808x::shr_u16_with_carry(operand1, operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 
@@ -491,7 +491,7 @@ impl Cpu {
                 self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SAR => {
-                (result, carry) = Cpu::sar_u16_with_carry(operand1, operand2);
+                (result, carry) = Intel808x::sar_u16_with_carry(operand1, operand2);
                 // Set Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 

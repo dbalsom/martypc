@@ -81,8 +81,9 @@ impl FromStr for ValidatorType {
     }
 }
 
-#[derive(PartialEq, Debug, Copy, Clone)]
+#[derive(PartialEq, Debug, Copy, Clone, Default)]
 pub enum ValidatorMode {
+    #[default]
     Instruction,
     Cycle,
 }

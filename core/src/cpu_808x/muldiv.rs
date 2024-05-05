@@ -33,7 +33,7 @@
 
 use crate::{cpu_808x::*, cpu_common::alu::*};
 pub trait Cord<B = Self>: Sized {
-    fn cord(self, cpu: &mut Cpu, a: u16, b: u16, c: u16) -> Result<(u16, u16, bool), bool>;
+    fn cord(self, cpu: &mut Intel808x, a: u16, b: u16, c: u16) -> Result<(u16, u16, bool), bool>;
 }
 
 macro_rules! impl_cord {
@@ -41,7 +41,7 @@ macro_rules! impl_cord {
         impl Cord for $prim {
             /// Implementation of the 8088 microcode CORD division co-routine.
             /// Implemented for either 8 bit or 16 bit operand.
-            fn cord(self, cpu: &mut Cpu, a: u16, b: u16, c: u16) -> Result<(u16, u16, bool), bool> {
+            fn cord(self, cpu: &mut Intel808x, a: u16, b: u16, c: u16) -> Result<(u16, u16, bool), bool> {
                 let mut internal_counter;
 
                 let mut tmpa: u16 = a;
@@ -170,7 +170,7 @@ impl_cord!(u8);
 impl_cord!(u16);
 
 pub trait Corx<B = Self>: Sized {
-    fn corx(self, cpu: &mut Cpu, b: u16, c: u16, carry: bool) -> (u16, u16);
+    fn corx(self, cpu: &mut Intel808x, b: u16, c: u16, carry: bool) -> (u16, u16);
 }
 
 macro_rules! impl_corx {
@@ -179,7 +179,7 @@ macro_rules! impl_corx {
             /// Implementation of the 8088 microcode CORX multiplication co-routine.
             /// Implemented for either 8 bit or 16 bit operands.
             /// tmpa is used to select the size of the operation, but the value is not used.
-            fn corx(self, cpu: &mut Cpu, b: u16, c: u16, mut carry: bool) -> (u16, u16) {
+            fn corx(self, cpu: &mut Intel808x, b: u16, c: u16, mut carry: bool) -> (u16, u16) {
                 let mut internal_counter;
                 let mut tmpa: u16;
                 let tmpb: u16 = b;
@@ -239,7 +239,8 @@ impl_corx!(u8);
 impl_corx!(u16);
 
 pub trait CorNegate: Sized {
-    fn cor_negate(self, cpu: &mut Cpu, b: u16, c: u16, neg_flag: bool, skip: bool) -> (u16, u16, u16, bool, bool);
+    fn cor_negate(self, cpu: &mut Intel808x, b: u16, c: u16, neg_flag: bool, skip: bool)
+        -> (u16, u16, u16, bool, bool);
 }
 
 macro_rules! impl_cor_negate {
@@ -252,7 +253,7 @@ macro_rules! impl_cor_negate {
             /// Returns tmpa, tmpb, tmpc, carry and negate flag.
             fn cor_negate(
                 self,
-                cpu: &mut Cpu,
+                cpu: &mut Intel808x,
                 mut tmpb: u16,
                 mut tmpc: u16,
                 mut neg_flag: bool,
@@ -325,7 +326,7 @@ macro_rules! impl_cor_negate {
 impl_cor_negate!(u8);
 impl_cor_negate!(u16);
 
-impl Cpu {
+impl Intel808x {
     #[allow(dead_code)]
     #[allow(unused_assignments)] // This isn't pretty but we are trying to mirror the microcode
     /// Microcode routine for multiplication, 8 bit

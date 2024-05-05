@@ -32,7 +32,7 @@
 
 use crate::cpu_808x::*;
 
-impl Cpu {
+impl Intel808x {
     /// Execute the IRET microcode routine.
     pub fn iret_routine(&mut self) {
         self.cycle_i(0x0c8);

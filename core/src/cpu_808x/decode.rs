@@ -41,7 +41,8 @@ use crate::cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, modrm::Mod
 
 use crate::{
     bytequeue::*,
-    cpu_808x::{alu::Xi, gdr::GdrEntry, instruction::Instruction},
+    cpu_808x::{alu::Xi, gdr::GdrEntry},
+    cpu_common::Instruction,
 };
 
 #[derive(Copy, Clone, PartialEq)]
@@ -506,7 +507,7 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0xFF,  5, 0b0000100000100100, 0x026,         PUSH  ,  Ot::ModRM16,                            Ot::NoOperand),
 ];
 
-impl Cpu {
+impl Intel808x {
     #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
 
@@ -514,7 +515,7 @@ impl Cpu {
         let mut operand2_type: OperandType = OperandType::NoOperand;
         let mut operand1_size: OperandSize = OperandSize::NoOperand;
         let mut operand2_size: OperandSize = OperandSize::NoOperand;
-
+        
         let mut opcode = bytes.q_read_u8(QueueType::First, QueueReader::Biu);
         let mut size: u32 = 1;
         let mut op_prefixes: u32 = 0;

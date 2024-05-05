@@ -33,6 +33,7 @@
     the appropriate methods on Bus.
 
 */
+use crate::cpu_common::{CpuDispatch, CpuSubType};
 use log;
 
 use anyhow::{anyhow, Error};
@@ -48,8 +49,8 @@ use crate::{
     breakpoints::BreakPointType,
     bus::{BusInterface, ClockFactor, DeviceEvent, MEM_CP_BIT},
     coreconfig::CoreConfig,
-    cpu_808x::{Cpu, CpuAddress, CpuError, ServiceEvent, StepResult},
-    cpu_common::{CpuOption, CpuType, TraceMode},
+    cpu_808x::{Intel808x, CpuAddress, CpuError, ServiceEvent, StepResult},
+    cpu_common::{Cpu, CpuOption, CpuType, TraceMode},
     device_traits::videocard::{VideoCard, VideoCardId, VideoCardInterface, VideoCardState, VideoOption},
     devices::{
         dma::DMAControllerStringState,
@@ -69,6 +70,8 @@ use crate::{
 };
 
 use ringbuf::{Consumer, Producer, RingBuffer};
+use crate::cpu_common::builder::CpuBuilder;
+use crate::cpu_validator::ValidatorMode;
 use crate::devices::ppi::PpiDisplayState;
 use crate::machine_types::OnHaltBehavior;
 
@@ -428,7 +431,7 @@ pub struct Machine {
     sound_player: Option<SoundPlayer>,
     rom_manifest: MachineRomManifest,
     load_bios: bool,
-    cpu: Cpu,
+    cpu: CpuDispatch,
     speaker_buf_producer: Producer<u8>,
     pit_data: PitData,
     debug_snd_file: Option<File>,
@@ -490,20 +493,42 @@ impl Machine {
         #[cfg(feature = "cpu_validator")]
         use crate::cpu_validator::ValidatorMode;
 
-        //noinspection ALL
-        let mut cpu = Cpu::new(
-            CpuType::Intel8088,
-            trace_mode,
-            trace_logger,
-            #[cfg(feature = "cpu_validator")]
-            core_config.get_validator_type().unwrap_or_default(),
-            #[cfg(feature = "cpu_validator")]
-            validator_trace,
-            #[cfg(feature = "cpu_validator")]
-            ValidatorMode::Cycle,
-            #[cfg(feature = "cpu_validator")]
-            core_config.get_validator_baud().unwrap_or(1_000_000),
-        );
+        // Build the CPU
+        let mut cpu;
+
+        #[cfg(feature = "cpu_validator")]
+        {
+            cpu = match CpuBuilder::new()
+                .with_cpu_type(CpuType::Intel808x)
+                .with_cpu_subtype(CpuSubType::Intel8088)
+                .with_trace_mode(trace_mode)
+                .with_trace_logger(trace_logger)
+                .with_validator_type(core_config.get_validator_type().unwrap_or_default())
+                .with_validator_mode(ValidatorMode::Cycle)
+                .with_validator_logger(validator_trace)
+                .with_validator_baud(core_config.get_validator_baud().unwrap_or(1_000_000))
+                .build() {
+                Ok(cpu) => cpu,
+                Err(e) => {
+                    log::error!("Failed to build CPU: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        };
+        #[cfg(not(feature = "cpu_validator"))]
+        {
+            cpu = match CpuBuilder::new()
+                .with_cpu_type(CpuType::Intel808x)
+                .with_cpu_subtype(CpuSubType::Intel8088)
+                .with_trace_mode(trace_mode)
+                .build() {
+                Ok(cpu) => cpu,
+                Err(e) => {
+                    log::error!("Failed to build CPU: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        };
 
         cpu.set_option(CpuOption::TraceLoggingEnabled(core_config.get_cpu_trace_on()));
 
@@ -716,7 +741,7 @@ impl Machine {
     }
 
     pub fn load_program(&mut self, program: &[u8], program_seg: u16, program_ofs: u16) -> Result<(), bool> {
-        let location = Cpu::calc_linear_address(program_seg, program_ofs);
+        let location = Intel808x::calc_linear_address(program_seg, program_ofs);
 
         self.cpu.bus_mut().copy_from(program, location as usize, 0, false)?;
 
@@ -724,8 +749,7 @@ impl Machine {
             .set_reset_vector(CpuAddress::Segmented(program_seg, program_ofs));
         self.cpu.reset();
 
-        self.cpu
-            .set_end_address(((location as usize) + program.len()) & 0xFFFFF);
+        //self.cpu.set_end_address(((location as usize) + program.len()) & 0xFFFFF);
 
         Ok(())
     }
@@ -771,7 +795,7 @@ impl Machine {
 
      */
 
-    pub fn cpu(&self) -> &Cpu {
+    pub fn cpu(&self) -> &CpuDispatch {
         &self.cpu
     }
 
@@ -994,7 +1018,7 @@ impl Machine {
 
     pub fn set_stopwatch(&mut self, sw_idx: usize, start: u32, stop: u32) {
         self.cpu.set_stopwatch(sw_idx, start, stop)
-    }    
+    }
 
     pub fn reset(&mut self) {
         // TODO: Reload any program specified here?
@@ -1190,7 +1214,7 @@ impl Machine {
             //     break;
             // }
 
-            let flat_address = self.cpu.flat_ip_adjusted();
+            let flat_address = self.cpu.flat_ip_disassembly();
 
             // Match checkpoints. The first check is against a simple bit flag so that we do not 
             // need to constantly do a hash lookup.

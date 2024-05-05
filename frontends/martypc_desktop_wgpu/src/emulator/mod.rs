@@ -45,7 +45,7 @@ use frontend_common::{
     vhd_manager::VhdManager,
 };
 use marty_core::{
-    cpu_common::CpuOption,
+    cpu_common::{Cpu, CpuOption},
     machine::{ExecutionControl, Machine, MachineEvent, MachineState},
     vhd::VirtualHardDisk,
 };
@@ -208,7 +208,7 @@ impl Emulator {
             .set_mode(self.config.machine.cpu.trace_mode.unwrap_or_default());
         self.gui
             .cycle_trace_viewer
-            .set_header(self.machine.cpu().cycle_trace_header());
+            .set_header(self.machine.cpu().cycle_table_header());
 
         // Debug mode on?
         if self.config.emulator.debug_mode {

@@ -33,7 +33,10 @@
 
 use std::fmt;
 
-use crate::cpu_808x::{addressing::AddressingMode, instruction::Instruction, mnemonic::Mnemonic, *};
+use crate::{
+    cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, *},
+    cpu_common::Instruction,
+};
 
 use crate::syntax_token::SyntaxToken;
 
@@ -302,7 +305,7 @@ impl fmt::Display for Instruction {
     }
 }
 
-impl Cpu {
+impl Intel808x {
     pub fn tokenize_instruction(i: &Instruction) -> Vec<SyntaxToken> {
         // Dont sign-extend 8-bit port addresses.
         let op_size = match i.mnemonic {
@@ -344,7 +347,7 @@ impl Cpu {
 
 impl SyntaxTokenize for Instruction {
     fn tokenize(&self) -> Vec<SyntaxToken> {
-        Cpu::tokenize_instruction(self)
+        Intel808x::tokenize_instruction(self)
     }
 }
 

@@ -32,6 +32,8 @@
 
 #![allow(clippy::unusual_byte_groupings)]
 
+pub use crate::cpu_common::Cpu;
+use crate::cpu_common::{CpuStringState, CpuSubType, Instruction};
 use core::fmt::Display;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -43,6 +45,7 @@ mod alu;
 mod bcd;
 mod bitwise;
 mod biu;
+mod cpu;
 mod cycle;
 mod decode;
 mod display;
@@ -107,7 +110,7 @@ macro_rules! trace_print {
     }};
 }
 
-use crate::cpu_808x::instruction::Instruction;
+use crate::cpu_common::{Register16, Register8};
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -397,36 +400,6 @@ pub enum Register {
     IP,
 }*/
 
-#[derive(Copy, Clone, PartialEq)]
-pub enum Register8 {
-    AL,
-    CL,
-    DL,
-    BL,
-    AH,
-    CH,
-    DH,
-    BH,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Register16 {
-    AX,
-    CX,
-    DX,
-    BX,
-    SP,
-    BP,
-    SI,
-    DI,
-    ES,
-    CS,
-    SS,
-    DS,
-    PC,
-    InvalidRegister,
-}
-
 #[derive(Copy, Clone)]
 pub enum OperandType {
     Immediate8(u8),
@@ -609,7 +582,7 @@ impl From<CpuAddress> for u32 {
     fn from(cpu_address: CpuAddress) -> Self {
         match cpu_address {
             CpuAddress::Flat(a) => a,
-            CpuAddress::Segmented(s, o) => Cpu::calc_linear_address(s, o),
+            CpuAddress::Segmented(s, o) => Intel808x::calc_linear_address(s, o),
             CpuAddress::Offset(a) => a as Self,
         }
     }
@@ -630,12 +603,12 @@ impl PartialEq for CpuAddress {
         match (self, other) {
             (CpuAddress::Flat(a), CpuAddress::Flat(b)) => a == b,
             (CpuAddress::Flat(a), CpuAddress::Segmented(s, o)) => {
-                let b = Cpu::calc_linear_address(*s, *o);
+                let b = Intel808x::calc_linear_address(*s, *o);
                 *a == b
             }
             (CpuAddress::Flat(_a), CpuAddress::Offset(_b)) => false,
             (CpuAddress::Segmented(s, o), CpuAddress::Flat(b)) => {
-                let a = Cpu::calc_linear_address(*s, *o);
+                let a = Intel808x::calc_linear_address(*s, *o);
                 a == *b
             }
             (CpuAddress::Segmented(s1, o1), CpuAddress::Segmented(s2, o2)) => *s1 == *s2 && *o1 == *o2,
@@ -662,9 +635,10 @@ pub struct I8288 {
 }
 
 #[derive(Default)]
-pub struct Cpu {
+pub struct Intel808x {
     cpu_type: CpuType,
-    state:    CpuState,
+    cpu_subtype: CpuSubType,
+    state: CpuState,
 
     a: GeneralRegister,
     b: GeneralRegister,
@@ -892,46 +866,6 @@ pub struct CpuRegisterState {
     pub flags: u16,
 }
 
-#[derive(Default, Debug, Clone)]
-pub struct CpuStringState {
-    pub ah: String,
-    pub al: String,
-    pub ax: String,
-    pub bh: String,
-    pub bl: String,
-    pub bx: String,
-    pub ch: String,
-    pub cl: String,
-    pub cx: String,
-    pub dh: String,
-    pub dl: String,
-    pub dx: String,
-    pub sp: String,
-    pub bp: String,
-    pub si: String,
-    pub di: String,
-    pub cs: String,
-    pub ds: String,
-    pub ss: String,
-    pub es: String,
-    pub pc: String,
-    pub ip: String,
-    pub flags: String,
-    //odiszapc
-    pub c_fl: String,
-    pub p_fl: String,
-    pub a_fl: String,
-    pub z_fl: String,
-    pub s_fl: String,
-    pub t_fl: String,
-    pub i_fl: String,
-    pub d_fl: String,
-    pub o_fl: String,
-    pub piq: String,
-    pub instruction_count: String,
-    pub cycle_count: String,
-}
-
 /*
 pub enum RegisterType {
     Register8(u8),
@@ -1068,9 +1002,10 @@ pub enum QueueOp {
     Subsequent,
 }
 
-impl Cpu {
+impl Intel808x {
     pub fn new(
         cpu_type: CpuType,
+        cpu_subtype: CpuSubType,
         trace_mode: TraceMode,
         trace_logger: TraceLogger,
         #[cfg(feature = "cpu_validator")] validator_type: ValidatorType,
@@ -1078,16 +1013,19 @@ impl Cpu {
         #[cfg(feature = "cpu_validator")] validator_mode: ValidatorMode,
         #[cfg(feature = "cpu_validator")] validator_baud: u32,
     ) -> Self {
-        let mut cpu: Cpu = Default::default();
+        let mut cpu: Intel808x = Default::default();
 
-        match cpu_type {
-            CpuType::Harris80C88 | CpuType::Intel8088 => {
+        match cpu_subtype {
+            CpuSubType::Harris80C88 | CpuSubType::Intel8088 => {
                 cpu.queue.set_size(4, 1);
                 cpu.fetch_size = TransferSize::Byte;
             }
-            CpuType::Intel8086 => {
+            CpuSubType::Intel8086 => {
                 cpu.queue.set_size(6, 2);
                 cpu.fetch_size = TransferSize::Word;
+            }
+            _ => {
+                panic!("Invalid CPU subtype.")
             }
         }
 
@@ -1112,6 +1050,7 @@ impl Cpu {
         cpu.trace_logger = trace_logger;
         cpu.trace_mode = trace_mode;
         cpu.cpu_type = cpu_type;
+        cpu.cpu_subtype = cpu_subtype;
 
         //cpu.instruction_history_on = true; // Control this from config/GUI instead
         cpu.instruction_history = VecDeque::with_capacity(16);
@@ -1119,143 +1058,6 @@ impl Cpu {
         cpu.reset_vector = CpuAddress::Segmented(0xFFFF, 0x0000);
         cpu.reset();
         cpu
-    }
-
-    pub fn reset(&mut self) {
-        log::debug!("CPU Resetting...");
-        /*
-        let trace_logger = std::mem::replace(&mut self.trace_logger, TraceLogger::None);
-
-        // Save non-default values
-        *self = Self {
-            // Save parameters to new()
-            cpu_type: self.cpu_type,
-            reset_vector: self.reset_vector,
-            trace_mode: self.trace_mode,
-            trace_logger,
-            // Save options
-            instruction_history_on: self.instruction_history_on,
-            dram_refresh_simulation: self.dram_refresh_simulation,
-            halt_resume_delay: self.halt_resume_delay,
-            off_rails_detection: self.off_rails_detection,
-            enable_wait_states: self.enable_wait_states,
-            trace_enabled: self.trace_enabled,
-
-            // Copy bus
-            bus: self.bus,
-
-            #[cfg(feature = "cpu_validator")]
-            validator_type: ValidatorType,
-            #[cfg(feature = "cpu_validator")]
-            validator_trace: TraceLogger,
-            ..Self::default()
-        };
-        */
-
-        self.state = CpuState::Normal;
-
-        self.set_register16(Register16::AX, 0);
-        self.set_register16(Register16::BX, 0);
-        self.set_register16(Register16::CX, 0);
-        self.set_register16(Register16::DX, 0);
-        self.set_register16(Register16::SP, 0);
-        self.set_register16(Register16::BP, 0);
-        self.set_register16(Register16::SI, 0);
-        self.set_register16(Register16::DI, 0);
-        self.set_register16(Register16::ES, 0);
-
-        self.set_register16(Register16::SS, 0);
-        self.set_register16(Register16::DS, 0);
-
-        self.flags = CPU_FLAGS_RESERVED_ON;
-
-        self.queue.flush();
-
-        if let CpuAddress::Segmented(segment, offset) = self.reset_vector {
-            self.set_register16(Register16::CS, segment);
-            self.set_register16(Register16::PC, offset);
-        }
-        else {
-            panic!("Invalid CpuAddress for reset vector.");
-        }
-
-        self.address_latch = 0;
-        self.bus_status = BusStatus::Passive;
-        self.bus_status_latch = BusStatus::Passive;
-        self.t_cycle = TCycle::Ti;
-        self.ta_cycle = TaCycle::Td;
-        self.pl_status = BusStatus::Passive;
-        self.pl_slot = false;
-
-        self.fetch_state = FetchState::Normal;
-
-        self.instruction_count = 0;
-        self.int_count = 0;
-        self.iret_count = 0;
-        self.instr_cycle = 0;
-        self.cycle_num = 1;
-        self.halt_cycles = 0;
-        self.t_stamp = 0.0;
-        self.t_step = 0.00000021;
-        self.t_step_h = 0.000000105;
-        self.ready = true;
-        self.in_rep = false;
-        self.halted = false;
-        self.reported_halt = false;
-        self.halt_not_hold = false;
-        self.opcode0_counter = 0;
-        self.interrupt_inhibit = false;
-        self.intr_pending = false;
-        self.in_int = false;
-        self.is_error = false;
-        self.instruction_history.clear();
-        self.call_stack.clear();
-        self.int_flags = vec![0; 256];
-
-        self.instruction_reentrant = false;
-        self.last_ip = 0;
-        self.last_cs = 0;
-        self.last_intr = false;
-        self.jumped = false;
-
-        self.queue_op = QueueOp::Idle;
-        self.last_queue_op = QueueOp::Idle;
-
-        self.i8288.ale = false;
-        self.i8288.mrdc = false;
-        self.i8288.amwc = false;
-        self.i8288.mwtc = false;
-        self.i8288.iorc = false;
-        self.i8288.aiowc = false;
-        self.i8288.iowc = false;
-
-        self.dram_refresh_tc = false;
-        self.dram_refresh_retrigger = false;
-
-        self.step_over_target = None;
-        self.step_over_breakpoint = None;
-        self.end_addr = 0xFFFFF;
-        self.stopwatch_running = false;
-
-        self.nx = false;
-        self.rni = false;
-
-        self.halt_resume_delay = 4;
-
-        // Reset takes 6 cycles before first fetch
-        self.cycle();
-        self.biu_fetch_suspend();
-        self.cycles_i(2, &[0x1e4, 0x1e5]);
-        self.biu_queue_flush();
-        self.cycles_i(3, &[0x1e6, 0x1e7, 0x1e8]);
-
-        #[cfg(feature = "cpu_validator")]
-        {
-            self.validator_state = CpuValidatorState::Uninitialized;
-            self.cycle_states.clear();
-        }
-
-        trace_print!(self, "Reset CPU! CS: {:04X} IP: {:04X}", self.cs, self.ip());
     }
 
     pub fn get_instruction_ct(&self) -> u64 {
@@ -1286,20 +1088,8 @@ impl Cpu {
         }
     }
 
-    /// Return the resolved flat address of CS:CORR(PC)
-    #[inline]
-    pub fn flat_ip(&self) -> u32 {
-        Cpu::calc_linear_address(self.cs, self.ip())
-    }
-
-    /// Return the resolved flat address of CS:CORR(PC), adjusted for reentrant instructions
-    #[inline]
-    pub fn flat_ip_adjusted(&self) -> u32 {
-        Cpu::calc_linear_address(self.cs, self.disassembly_ip())
-    }
-
     pub fn flat_sp(&self) -> u32 {
-        Cpu::calc_linear_address(self.ss, self.sp)
+        Intel808x::calc_linear_address(self.ss, self.sp)
     }
 
     /// Execute the CORR (Correct PC) microcode routine.
@@ -1314,14 +1104,6 @@ impl Cpu {
     #[allow(dead_code)]
     pub fn in_rep(&self) -> bool {
         self.in_rep
-    }
-
-    pub fn bus(&self) -> &BusInterface {
-        &self.bus
-    }
-
-    pub fn bus_mut(&mut self) -> &mut BusInterface {
-        &mut self.bus
     }
 
     pub fn get_csip(&self) -> CpuAddress {
@@ -1906,7 +1688,7 @@ impl Cpu {
             self.call_stack.push_back(entry);
 
             // Flag the specified CS:IP as a return address
-            let return_addr = Cpu::calc_linear_address(cs, ip);
+            let return_addr = Intel808x::calc_linear_address(cs, ip);
 
             self.bus.set_flags(return_addr as usize, MEM_RET_BIT);
         }
@@ -1930,9 +1712,9 @@ impl Cpu {
 
         let pos = self.call_stack.iter().position(|&call| {
             return_addr = match call {
-                CallStackEntry::CallF { ret_cs, ret_ip, .. } => Cpu::calc_linear_address(ret_cs, ret_ip),
-                CallStackEntry::Call { ret_cs, ret_ip, .. } => Cpu::calc_linear_address(ret_cs, ret_ip),
-                CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Cpu::calc_linear_address(ret_cs, ret_ip),
+                CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                CallStackEntry::Call { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
             };
 
             return_addr == addr
@@ -1943,9 +1725,9 @@ impl Cpu {
 
             drained.for_each(|drained_call| {
                 return_addr = match drained_call {
-                    CallStackEntry::CallF { ret_cs, ret_ip, .. } => Cpu::calc_linear_address(ret_cs, ret_ip),
-                    CallStackEntry::Call { ret_cs, ret_ip, .. } => Cpu::calc_linear_address(ret_cs, ret_ip),
-                    CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Cpu::calc_linear_address(ret_cs, ret_ip),
+                    CallStackEntry::CallF { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                    CallStackEntry::Call { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
+                    CallStackEntry::Interrupt { ret_cs, ret_ip, .. } => Intel808x::calc_linear_address(ret_cs, ret_ip),
                 };
 
                 // Clear flags for returns we popped
@@ -2321,80 +2103,6 @@ impl Cpu {
 
     pub fn get_service_event(&mut self) -> Option<ServiceEvent> {
         self.service_events.pop_front()
-    }
-
-    pub fn set_option(&mut self, opt: CpuOption) {
-        match opt {
-            CpuOption::InstructionHistory(state) => {
-                log::debug!("Setting InstructionHistory to: {:?}", state);
-                self.instruction_history.clear();
-                self.instruction_history_on = state;
-            }
-            CpuOption::ScheduleInterrupt(_state, cycle_target, cycles, retrigger) => {
-                log::debug!("Setting InterruptHint to: ({},{})", cycle_target, cycles);
-                self.interrupt_scheduling = true;
-                self.interrupt_cycle_period = cycle_target;
-                self.interrupt_cycle_num = cycles;
-                self.interrupt_retrigger = retrigger;
-            }
-            CpuOption::ScheduleDramRefresh(state, cycle_target, cycles, retrigger) => {
-                log::trace!(
-                    "Setting SimulateDramRefresh to: {:?} ({},{})",
-                    state,
-                    cycle_target,
-                    cycles
-                );
-                self.dram_refresh_simulation = state;
-                self.dram_refresh_cycle_period = cycle_target;
-                self.dram_refresh_cycle_num = cycles;
-                self.dram_refresh_retrigger = retrigger;
-                self.dram_refresh_tc = false;
-            }
-            CpuOption::DramRefreshAdjust(adj) => {
-                log::debug!("Setting DramRefreshAdjust to: {}", adj);
-                self.dram_refresh_adjust = adj;
-            }
-            CpuOption::HaltResumeDelay(delay) => {
-                log::debug!("Setting HaltResumeDelay to: {}", delay);
-                self.halt_resume_delay = delay;
-            }
-            CpuOption::OffRailsDetection(state) => {
-                log::debug!("Setting OffRailsDetection to: {:?}", state);
-                self.off_rails_detection = state;
-            }
-            CpuOption::EnableWaitStates(state) => {
-                log::debug!("Setting EnableWaitStates to: {:?}", state);
-                self.enable_wait_states = state;
-            }
-            CpuOption::TraceLoggingEnabled(state) => {
-                log::debug!("Setting TraceLoggingEnabled to: {:?}", state);
-                self.trace_enabled = state;
-
-                // Flush the trace log file on stopping trace so that we can immediately
-                // see results otherwise buffered
-                if state == false {
-                    self.trace_flush();
-                }
-            }
-            CpuOption::EnableServiceInterrupt(state) => {
-                log::debug!("Setting EnableServiceInterrupt to: {:?}", state);
-                self.enable_service_interrupt = state;
-            }
-        }
-    }
-
-    pub fn get_option(&mut self, opt: CpuOption) -> bool {
-        match opt {
-            CpuOption::InstructionHistory(_) => self.instruction_history_on,
-            CpuOption::ScheduleInterrupt(..) => self.interrupt_cycle_period > 0,
-            CpuOption::ScheduleDramRefresh(..) => self.dram_refresh_simulation,
-            CpuOption::DramRefreshAdjust(..) => true,
-            CpuOption::HaltResumeDelay(..) => true,
-            CpuOption::OffRailsDetection(_) => self.off_rails_detection,
-            CpuOption::EnableWaitStates(_) => self.enable_wait_states,
-            CpuOption::TraceLoggingEnabled(_) => self.trace_enabled,
-            CpuOption::EnableServiceInterrupt(_) => self.enable_service_interrupt,
-        }
     }
 
     pub fn get_cycle_trace(&self) -> &Vec<String> {

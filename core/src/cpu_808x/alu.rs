@@ -71,7 +71,7 @@ pub enum Xi {
 
 //use num_traits::PrimInt;
 
-impl Cpu {
+impl Intel808x {
     #[inline(always)]
     fn set_parity_flag_from_u8(&mut self, operand: u8) {
         self.set_flag_state(Flag::Parity, PARITY_TABLE[operand as usize]);
