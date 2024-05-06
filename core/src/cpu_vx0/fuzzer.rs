@@ -122,10 +122,16 @@ impl NecVx0 {
             0xA4..=0xA7 | 0xAA..=0xAF => {
                 // String ops
                 match do_rep_prefix {
-                    0..=64 => {
+                    0..=32 => {
+                        instr.push_front(0x64); // REPNC
+                    }
+                    33..=64 => {
+                        instr.push_front(0x65); // REPC
+                    }
+                    64..=96 => {
                         instr.push_front(0xF2); // REPNZ
                     }
-                    65..=128 => {
+                    97..=128 => {
                         instr.push_front(0xF3); // REPZ
                     }
                     _ => {}
@@ -197,6 +203,13 @@ impl NecVx0 {
             // Filter out invalid forms of some instructions that cannot
             // reasonably be validated.
             match opcode {
+                // BOUND
+                0x62 | 0x63 => {
+                    if modrm_byte & 0xC0 == 0xC0 {
+                        // Reg form, invalid.
+                        continue;
+                    }
+                }
                 // LEA
                 0x8D => {
                     if modrm_byte & 0xC0 == 0xC0 {
