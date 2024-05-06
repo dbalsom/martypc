@@ -108,9 +108,9 @@ pub struct InstructionContext {
 
     regs: Vec<VRegisters>,
 
-    emu_prefetch: Vec<BusOp>,
+    emu_fetches: Vec<BusOp>,
     emu_ops: Vec<BusOp>,
-    cpu_prefetch: Vec<BusOp>,
+    cpu_fetches: Vec<BusOp>,
     cpu_ops: Vec<BusOp>,
     mem_op_n: usize,
 
@@ -131,9 +131,9 @@ impl InstructionContext {
 
             regs: vec![VRegisters::default(); 2],
 
-            emu_prefetch: Vec::new(),
+            emu_fetches: Vec::new(),
             emu_ops: Vec::new(),
-            cpu_prefetch: Vec::new(),
+            cpu_fetches: Vec::new(),
             cpu_ops: Vec::new(),
             mem_op_n: 0,
             cpu_states: Vec::new(),
@@ -616,9 +616,9 @@ impl CpuValidator for ArduinoValidator {
 
     fn reset_instruction(&mut self) {
         self.current_instr.emu_ops.clear();
-        self.current_instr.emu_prefetch.clear();
+        self.current_instr.emu_fetches.clear();
         self.current_instr.cpu_ops.clear();
-        self.current_instr.cpu_prefetch.clear();
+        self.current_instr.cpu_fetches.clear();
     }
 
     fn begin_instruction(&mut self, regs: &VRegisters, end_instr: usize, end_program: usize) {
@@ -763,16 +763,19 @@ impl CpuValidator for ArduinoValidator {
 
         trace_debug!(
             self,
-            "{}: {} {:02X?} @ [{:04X}:{:04X}] Memops: {} Start: {:05X} End: {:05X}",
+            "{}: {} {:02X?} @ [{:04X}:{:04X}] Memops: {} Fetches: {} Start: {:05X} End: {:05X}",
             discard_or_validate,
             name,
             self.current_instr.instr,
             self.current_instr.regs[0].cs,
             self.current_instr.regs[0].ip,
             self.current_instr.emu_ops.len(),
+            self.current_instr.emu_fetches.len(),
             ip_addr,
             self.current_instr.instr_end
         );
+
+        trace_debug!(self, "\n{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[0]));
 
         if self.current_instr.discard {
             return Ok(ValidatorResult::Ok);
@@ -786,9 +789,9 @@ impl CpuValidator for ArduinoValidator {
             instr_addr,
             self.do_cycle_trace,
             peek_fetch,
-            &mut self.current_instr.emu_prefetch,
+            &mut self.current_instr.emu_fetches,
             &mut self.current_instr.emu_ops,
-            &mut self.current_instr.cpu_prefetch,
+            &mut self.current_instr.cpu_fetches,
             &mut self.current_instr.cpu_ops,
             &mut self.trace_logger,
         ) {
@@ -826,9 +829,9 @@ impl CpuValidator for ArduinoValidator {
             }
             else if !self.validate_mem_ops(discard, flags) {
                 trace_error!(self, "Memory validation failure. EMU:");
-                RemoteCpu::print_regs(&self.current_instr.regs[1]);
+                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&self.current_instr.regs[1]));
                 trace_error!(self, "CPU:");
-                RemoteCpu::print_regs(&regs);
+                trace_error!(self, "\n{}", &RemoteCpu::get_reg_str(&regs));
 
                 self.print_cycle_diff(&cpu_states, &emu_states);
                 self.trace_logger.flush();
@@ -922,7 +925,7 @@ impl CpuValidator for ArduinoValidator {
 
         match (bus_type, read_type) {
             (BusType::Mem, ReadType::Code) => {
-                self.current_instr.emu_ops.push(BusOp {
+                self.current_instr.emu_fetches.push(BusOp {
                     op_type: BusOpType::CodeRead,
                     addr,
                     data,
