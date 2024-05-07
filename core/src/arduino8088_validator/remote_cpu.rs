@@ -308,6 +308,9 @@ impl RemoteCpu {
         }
     }
 
+    /// Handle a bus read operation, either code fetch, memory or IO read.
+    /// Code fetches are allowed to underflow in certain circumstances.
+    /// TODO: This should probably return a Result instead of setting an internal error condition.
     pub fn handle_bus_read(
         &mut self,
         emu_mem_ops: &Vec<BusOp>,
@@ -318,15 +321,9 @@ impl RemoteCpu {
     ) {
         if (self.command_status & COMMAND_MRDC_BIT) == 0 {
             // MRDC is active-low. CPU is reading from bus.
-
             if self.mcycle_state == BusState::CODE {
-                // CPU is reading code.
-
-                //log::debug!("bus_state: {:?} bus ops len: {}", self.bus_state, emu_mem_ops.len());
+                // CPU is fetching code.
                 if self.fetchop_n < emu_fetch_ops.len() {
-                    // Bus type must match
-                    //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::CodeRead);
-
                     if (emu_fetch_ops[self.fetchop_n].addr as usize) == self.instr_end_addr {
                         self.instruction_ended = true;
                     }
@@ -336,16 +333,6 @@ impl RemoteCpu {
                     }
 
                     if !self.instruction_ended {
-                        /*
-                        if instr[self.v_pc] != emu_mem_ops[self.busop_n].data {
-                            log::error!(
-                                "Emu fetch op doesn't match instruction vector byte: Fetch: {:02X} Instr: {:02X}",
-                                emu_mem_ops[self.busop_n].data,
-                                instr[self.v_pc]
-                            );
-                        }
-                        */
-
                         // Feed emulator byte to CPU depending on validator mode.
                         match self.mode {
                             ValidatorMode::Cycle => {
@@ -449,6 +436,11 @@ impl RemoteCpu {
                     }
                 }
                 else {
+                    if !self.instruction_ended {
+                        trace!(log, "Fatal: fetch underflow within instruction!");
+                        self.error = Some(RemoteCpuError::CannotOweMultipleOps);
+                        return;
+                    }
                     // We are allowed to miss a terminating fetch.
 
                     // This is because while the emulator ends an instruction at the cycle in which the next

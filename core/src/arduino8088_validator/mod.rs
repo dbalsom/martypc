@@ -41,7 +41,7 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
-    cpu_common::QueueOp,
+    cpu_common::{CpuType, QueueOp},
     cpu_validator::*,
     tracelogger::TraceLogger,
 };
@@ -152,7 +152,8 @@ pub fn difference<T: std::cmp::Ord + std::ops::Sub<T, Output = T>>(a: T, b: T) -
 pub struct ArduinoValidator {
     //cpu_client: Option<CpuClient>,
     mode: ValidatorMode,
-    cpu:  RemoteCpu,
+    cpu: RemoteCpu,
+    cpu_type: CpuType,
 
     current_instr: InstructionContext,
     state: ValidatorState,
@@ -195,7 +196,7 @@ pub struct ArduinoValidator {
 }
 
 impl ArduinoValidator {
-    pub fn new(trace_logger: TraceLogger, baud_rate: u32) -> Self {
+    pub fn new(cpu_type: CpuType, trace_logger: TraceLogger, baud_rate: u32) -> Self {
         // Trigger addr is address at which to start validation
         // if trigger_addr == V_INVALID_POINTER then validate
         let trigger_addr = V_INVALID_POINTER;
@@ -210,6 +211,7 @@ impl ArduinoValidator {
         ArduinoValidator {
             mode: ValidatorMode::Cycle,
             cpu: RemoteCpu::new(cpu_client),
+            cpu_type,
 
             current_instr: InstructionContext::new(),
             state: ValidatorState::Setup,
@@ -456,12 +458,17 @@ impl ArduinoValidator {
 
         if self.mask_flags {
             emu_flags_masked = ArduinoValidator::mask_undefined_flags(
+                self.cpu_type,
                 self.current_instr.opcode,
                 self.current_instr.modrm,
                 self.current_instr.regs[1].flags,
             );
-            cpu_flags_masked =
-                ArduinoValidator::mask_undefined_flags(self.current_instr.opcode, self.current_instr.modrm, regs.flags);
+            cpu_flags_masked = ArduinoValidator::mask_undefined_flags(
+                self.cpu_type,
+                self.current_instr.opcode,
+                self.current_instr.modrm,
+                regs.flags,
+            );
         }
 
         if emu_flags_masked != cpu_flags_masked {

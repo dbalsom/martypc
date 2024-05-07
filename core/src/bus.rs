@@ -988,6 +988,15 @@ impl BusInterface {
         Err(MemError::ReadOutOfBoundsError)
     }
 
+    pub fn peek_range(&self, address: usize, len: usize) -> Result<&[u8], MemError> {
+        if address + len < self.memory.len() {
+            Ok(&self.memory[address..address + len])
+        }
+        else {
+            Err(MemError::ReadOutOfBoundsError)
+        }
+    }
+
     pub fn peek_u8(&self, address: usize) -> Result<u8, MemError> {
         if address < self.memory.len() {
             if self.memory_mask[address] & MEM_MMIO_BIT == 0 {

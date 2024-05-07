@@ -45,6 +45,7 @@ pub enum OperandType {
     Register16(Register16),
     AddressingMode(AddressingMode),
     FarAddress(u16, u16),
+    M16Pair(u16, u16),
     NoOperand,
     InvalidOperand,
 }

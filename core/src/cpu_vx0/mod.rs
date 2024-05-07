@@ -834,7 +834,11 @@ impl NecVx0 {
         {
             cpu.validator = match validator_type {
                 #[cfg(feature = "arduino_validator")]
-                ValidatorType::Arduino8088 => Some(Box::new(ArduinoValidator::new(validator_trace, validator_baud))),
+                ValidatorType::Arduino8088 => Some(Box::new(ArduinoValidator::new(
+                    cpu_type,
+                    validator_trace,
+                    validator_baud,
+                ))),
                 _ => None,
             };
 

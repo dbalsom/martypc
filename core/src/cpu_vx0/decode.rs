@@ -69,6 +69,7 @@ pub enum OperandTemplate {
     FixedRegister16(Register16),
     //NearAddress,
     FarAddress,
+    M16Pair,
 }
 
 type Ot = OperandTemplate;
@@ -142,7 +143,7 @@ macro_rules! inst {
 }
 
 #[rustfmt::skip]
-pub const DECODE: [InstTemplate; 352] = [
+pub const DECODE: [InstTemplate; 368] = [
     inst!( 0x00,  0, 0b0100101000000000, 0x008, ADD   , ADD,     Ot::ModRM8,                             Ot::Register8),
     inst!( 0x01,  0, 0b0100101000000000, 0x008, ADD   , ADD,     Ot::ModRM16,                            Ot::Register16),
     inst!( 0x02,  0, 0b0100101000000000, 0x008, ADD   , ADD,     Ot::Register8,                          Ot::ModRM8),
@@ -241,16 +242,16 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0x5F,  0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand),
     inst!( 0x60,  0, 0b0000000000010000, 0x0e8,         PUSHA,   Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x61,  0, 0b0000000000010000, 0x0e8,         POPA,    Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x62,  0, 0b0000000000011000, 0x0e8,         BOUND,   Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x63,  0, 0b0000000000011000, 0x0e8,         BOUND,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0x62,  0, 0b0000000000011000, 0x0e8,         BOUND,   Ot::Register16,                         Ot::ModRM16),
+    inst!( 0x63,  0, 0b0000000000011000, 0x0e8,         BOUND,   Ot::Register16,                         Ot::ModRM16),
     inst!( 0x64,  0, 0b0000000000010000, 0x0e8,         Prefix,  Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x65,  0, 0b0000000000010000, 0x0e8,         Prefix,  Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x66,  0, 0b0000000000000000, 0x0e8,         ESC,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x67,  0, 0b0000000000000000, 0x0e8,         ESC,     Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x68,  0, 0b0000000000000000, 0x0e8,         PUSH,    Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x69,  0, 0b0000000000000000, 0x0e8,         IMUL,    Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x6A,  0, 0b0000000000000000, 0x0e8,         PUSH,    Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0x6B,  0, 0b0000000000000000, 0x0e8,         IMUL,    Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0x68,  0, 0b0000000000000000, 0x0e8,         PUSH,    Ot::Immediate16,                        Ot::NoOperand),
+    inst!( 0x69,  0, 0b0000000000000000, 0x0e8,         IMUL,    Ot::Register16,                         Ot::ModRM16),
+    inst!( 0x6A,  0, 0b0000000000000000, 0x0e8,         PUSH,    Ot::Immediate8,                         Ot::NoOperand),
+    inst!( 0x6B,  0, 0b0000000000000000, 0x0e8,         IMUL,    Ot::Register16,                         Ot::ModRM16),
     inst!( 0x6C,  0, 0b0000000000000000, 0x0e8,         INS,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x6D,  0, 0b0000000000000000, 0x0e8,         INS,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0x6E,  0, 0b0000000000000000, 0x0e8,         OUTS,    Ot::NoOperand,                          Ot::NoOperand),
@@ -335,8 +336,8 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0xBD,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
     inst!( 0xBE,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
     inst!( 0xBF,  0, 0b0100000000110010, 0x01c,         MOV,     Ot::Register16Encoded,                  Ot::Immediate16),
-    inst!( 0xC0,  0, 0b0100000000110000, 0x0cc,         RETN,    Ot::Immediate16,                        Ot::NoOperand),
-    inst!( 0xC1,  0, 0b0100000000110000, 0x0bc,         RETN,    Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xC0,  5, 0b0100000000110000, 0x0cc,         Group,   Ot::Immediate16,                        Ot::NoOperand),
+    inst!( 0xC1,  6, 0b0100000000110000, 0x0bc,         Group,   Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xC2,  0, 0b0100000000110000, 0x0cc,         RETN,    Ot::Immediate16,                        Ot::NoOperand),
     inst!( 0xC3,  0, 0b0100000000110000, 0x0bc,         RETN,    Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xC4,  0, 0b0100000000100000, 0x0f0,         LES,     Ot::Register16,                         Ot::ModRM16),
@@ -351,13 +352,13 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0xCD,  0, 0b0100000000110000, 0x1a8,         INT,     Ot::Immediate8,                         Ot::NoOperand),
     inst!( 0xCE,  0, 0b0100000000110000, 0x1ac,         INTO,    Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xCF,  0, 0b0100000000110000, 0x0c8,         IRET,    Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xD0,  5, 0b0100100000000000, 0x088, ROL   , Group,   Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xD1,  6, 0b0100100000000000, 0x088, SAR   , Group,   Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xD2,  7, 0b0100100000000000, 0x08c, ROL   , Group,   Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xD3,  8, 0b0100100000000000, 0x08c, SAR   , Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xD0,  7, 0b0100100000000000, 0x088, ROL   , Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xD1,  8, 0b0100100000000000, 0x088, SAR   , Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xD2,  9, 0b0100100000000000, 0x08c, ROL   , Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xD3, 10, 0b0100100000000000, 0x08c, SAR   , Group,   Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xD4,  0, 0b0101000000110000, 0x174,         AAM,     Ot::Immediate8,                         Ot::NoOperand),
     inst!( 0xD5,  0, 0b0101000000110000, 0x170,         AAD,     Ot::Immediate8,                         Ot::NoOperand),
-    inst!( 0xD6,  0, 0b0101000000110000, 0x0a0,         SALC,    Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xD6,  0, 0b0101000000110000, 0x0a0,         XLAT,    Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xD7,  0, 0b0101000000110000, 0x10c,         XLAT,    Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xD8,  0, 0b0100000000100000, 0x108,         ESC,     Ot::ModRM16,                            Ot::NoOperand),
     inst!( 0xD9,  0, 0b0100000000100000, 0x108,         ESC,     Ot::ModRM16,                            Ot::NoOperand),
@@ -389,16 +390,16 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0xF3,  0, 0b0100010000111010, 0x1FF,         Prefix,  Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xF4,  0, 0b0100010000110010, 0x1FF,         HLT,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xF5,  0, 0b0100010000110010, 0x1FF,         CMC,     Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xF6,  9, 0b0100100000100100, 0x098,         Group,   Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xF7, 10, 0b0100100000100100, 0x160,         Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xF6, 11, 0b0100100000100100, 0x098,         Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xF7, 12, 0b0100100000100100, 0x160,         Group,   Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xF8,  0, 0b0100010001110010, 0x1FF,         CLC,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xF9,  0, 0b0100010001110010, 0x1FF,         STC,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xFA,  0, 0b0100010001110010, 0x1FF,         CLI,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xFB,  0, 0b0100010001110010, 0x1FF,         STI,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xFC,  0, 0b0100010001110010, 0x1FF,         CLD,     Ot::NoOperand,                          Ot::NoOperand),
     inst!( 0xFD,  0, 0b0100010001110010, 0x1FF,         STD,     Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xFE, 11, 0b0000100000100100, 0x020,         Group,   Ot::NoOperand,                          Ot::NoOperand),
-    inst!( 0xFF, 12, 0b0000100000100100, 0x026,         Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xFE, 13, 0b0000100000100100, 0x020,         Group,   Ot::NoOperand,                          Ot::NoOperand),
+    inst!( 0xFF, 14, 0b0000100000100100, 0x026,         Group,   Ot::NoOperand,                          Ot::NoOperand),
     // Group
     inst!( 0x80,  1, 0b0110100000000000, 0x00c, ADD   , ADD  ,   Ot::ModRM8,                             Ot::Immediate8),
     inst!( 0x80,  1, 0b0110100000000000, 0x00c, OR    , OR   ,   Ot::ModRM8,                             Ot::Immediate8),
@@ -436,77 +437,95 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0x83,  1, 0b0110100000000000, 0x00c, XOR   , XOR  ,   Ot::ModRM16,                            Ot::Immediate8SignExtended),
     inst!( 0x83,  1, 0b0110100000000000, 0x00c, CMP   , CMP  ,   Ot::ModRM16,                            Ot::Immediate8SignExtended),
     // Group
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, ROL   , ROL  ,   Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, ROR   , ROR  ,   Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, RCL   , RCL  ,   Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, SETMO , SETMO,   Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xD0,  2, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, ROL   , ROL  ,   Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, ROR   , ROR  ,   Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, RCL   , RCL  ,   Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xC0,  2, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM8,                             Ot::Immediate8),
     // Group
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, ROL   , ROL  ,   Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, ROR   , ROR  ,   Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, RCL   , RCL  ,   Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, SETMO , SETMO,   Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xD1,  2, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, ROL   , ROL  ,   Ot::ModRM16,                            Ot::Immediate8),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, ROR   , ROR  ,   Ot::ModRM16,                            Ot::Immediate8),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, RCL   , RCL  ,   Ot::ModRM16,                            Ot::Immediate8),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM16,                            Ot::Immediate8),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM16,                            Ot::Immediate8),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM16,                            Ot::Immediate8),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM16,                            Ot::Immediate8),
+    inst!( 0xC1,  2, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM16,                            Ot::Immediate8),
     // Group
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, ROL   , ROL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, ROR   , ROR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, RCL   , RCL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, RCR   , RCR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, SHR   , SHR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, SETMO , SETMOC,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD2,  3, 0b0100100000000000, 0x08c, SAR   , SAR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, ROL   , ROL  ,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, ROR   , ROR  ,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, RCL   , RCL  ,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, SETMO , SETMO,   Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD0,  3, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM8,                             Ot::NoOperand),
     // Group
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, ROL   , ROL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, ROR   , ROR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, RCL   , RCL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, RCR   , RCR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, SHR   , SHR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, SETMO , SETMOC,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
-    inst!( 0xD3,  3, 0b0100100000000000, 0x08c, SAR   , SAR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, ROL   , ROL  ,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, ROR   , ROR  ,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, RCL   , RCL  ,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, SETMO , SETMO,   Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD1,  3, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM16,                            Ot::NoOperand),
     // Group
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098,         TEST  ,  Ot::ModRM8,                             Ot::Immediate8),
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098,         TEST  ,  Ot::ModRM8,                             Ot::Immediate8),
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098, NOT   , NOT   ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098, NEG   , NEG   ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098,         MUL   ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098,         IMUL  ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098,         DIV   ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xF6,  4, 0b0100100000100100, 0x098,         IDIV  ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, ROL   , ROL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, ROR   , ROR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, RCL   , RCL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, RCR   , RCR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, SHR   , SHR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, SETMO , SETMOC,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD2,  4, 0b0100100000000000, 0x08c, SAR   , SAR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL)),
     // Group
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160,         TEST  ,  Ot::ModRM16,                            Ot::Immediate16),
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160,         TEST  ,  Ot::ModRM16,                            Ot::Immediate16),
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160, NOT   , NOT   ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160, NEG   , NEG   ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160,         MUL   ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160,         IMUL  ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160,         DIV   ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xF7,  4, 0b0100100000100100, 0x160,         IDIV  ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, ROL   , ROL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, ROR   , ROR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, RCL   , RCL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, RCR   , RCR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, SHR   , SHR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, SETMO , SETMOC,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
+    inst!( 0xD3,  4, 0b0100100000000000, 0x08c, SAR   , SAR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL)),
     // Group
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020, INC   , INC   ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020, DEC   , DEC   ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020,         CALL  ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020,         CALLF ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020,         JMP   ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020,         JMPF  ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020,         PUSH  ,  Ot::ModRM8,                             Ot::NoOperand),
-    inst!( 0xFE,  5, 0b0000100000100100, 0x020,         PUSH  ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098,         TEST  ,  Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098,         TEST  ,  Ot::ModRM8,                             Ot::Immediate8),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098, NOT   , NOT   ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098, NEG   , NEG   ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098,         MUL   ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098,         IMUL  ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098,         DIV   ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xF6,  5, 0b0100100000100100, 0x098,         IDIV  ,  Ot::ModRM8,                             Ot::NoOperand),
     // Group
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026, INC   , INC   ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026, DEC   , DEC   ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026,         CALL  ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026,         CALLF ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026,         JMP   ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026,         JMPF  ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026,         PUSH  ,  Ot::ModRM16,                            Ot::NoOperand),
-    inst!( 0xFF,  5, 0b0000100000100100, 0x026,         PUSH  ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160,         TEST  ,  Ot::ModRM16,                            Ot::Immediate16),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160,         TEST  ,  Ot::ModRM16,                            Ot::Immediate16),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160, NOT   , NOT   ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160, NEG   , NEG   ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160,         MUL   ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160,         IMUL  ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160,         DIV   ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xF7,  5, 0b0100100000100100, 0x160,         IDIV  ,  Ot::ModRM16,                            Ot::NoOperand),
+    // Group
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020, INC   , INC   ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020, DEC   , DEC   ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020,         CALL  ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020,         CALLF ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020,         JMP   ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020,         JMPF  ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020,         PUSH  ,  Ot::ModRM8,                             Ot::NoOperand),
+    inst!( 0xFE,  6, 0b0000100000100100, 0x020,         PUSH  ,  Ot::ModRM8,                             Ot::NoOperand),
+    // Group
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026, INC   , INC   ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026, DEC   , DEC   ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026,         CALL  ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026,         CALLF ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026,         JMP   ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026,         JMPF  ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026,         PUSH  ,  Ot::ModRM16,                            Ot::NoOperand),
+    inst!( 0xFF,  6, 0b0000100000100100, 0x026,         PUSH  ,  Ot::ModRM16,                            Ot::NoOperand),
 ];
 
 impl NecVx0 {
@@ -751,6 +770,15 @@ impl NecVx0 {
                     size += 4;
                     (OperandType::FarAddress(0,0), OperandSize::NoSize)
                 }
+                (OperandTemplate::M16Pair, true) => {
+                    let (int0, int1) = bytes.q_peek_farptr16();
+                    size += 4;
+                    (OperandType::M16Pair(int0,int1), OperandSize::NoSize)
+                }
+                (OperandTemplate::M16Pair, false) => {
+                    size += 4;
+                    (OperandType::M16Pair(0,0), OperandSize::NoSize)
+                }
                 _ => (OperandType::NoOperand,OperandSize::NoOperand)
             }
         };
@@ -760,6 +788,19 @@ impl NecVx0 {
         }
         if !matches!(op_lu.operand2, OperandTemplate::NoTemplate) {
             (operand2_type, operand2_size) = match_op(op_lu.operand2);
+        }
+        
+        // Hack for 3-operand instructions
+        match opcode {
+            0x69 => {
+                // imm16
+                size += 2;
+            }
+            0x6B => {
+                // imm8
+                size += 1;
+            }
+            _ => {}
         }
 
         // Disabled: Decode cannot fail, but this is a placeholder for future error handling in other CPUs

@@ -80,12 +80,12 @@ pub fn run_gentests(config: &ConfigFileParams) {
     }
 
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
-
+    let cpu_type = config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088);
     let mut cpu;
     #[cfg(feature = "cpu_validator")]
     {
         cpu = match CpuBuilder::new()
-            .with_cpu_type(config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088))
+            .with_cpu_type(cpu_type)
             //.with_cpu_subtype(CpuSubType::Intel8088)
             .with_trace_mode(trace_mode)
             .with_trace_logger(trace_logger)
@@ -173,7 +173,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
     test_base_path.push(test_path_postfix);
 
     for test_opcode in opcode_list {
-        let is_grp = ArduinoValidator::is_group_opcode(test_opcode);
+        let is_grp = ArduinoValidator::is_group_opcode(cpu_type, test_opcode);
 
         let mut start_ext = 0;
         let mut end_ext = if is_grp { 7 } else { 0 };
@@ -358,9 +358,14 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
                 i.address = instruction_address;
 
+                let bytes = cpu
+                    .bus()
+                    .peek_range(instruction_address as usize, i.size as usize)
+                    .unwrap();
+
                 println!(
-                    "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X}",
-                    test_num, i, opcode, i.address
+                    "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?}",
+                    test_num, i, opcode, i.address, bytes
                 );
 
                 // Set terminating address for CPU validator.
@@ -442,7 +447,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
             let test_elapsed = test_start_instant.elapsed().as_secs_f32();
 
             println!(
-                "Test generation complete for opcode: {:02}. Generated {} tests in {:.2} seconds",
+                "Test generation complete for opcode: {:02X}. Generated {} tests in {:.2} seconds",
                 test_opcode, test_num, test_elapsed
             );
             let avg_test_elapsed = test_elapsed / test_num as f32;

@@ -2083,6 +2083,7 @@ impl Intel808x {
             match exception {
                 CpuException::DivideError => ExecutionResult::ExceptionError(exception),
                 CpuException::NoException => ExecutionResult::Okay,
+                _ => panic!("Invalid exception type!")
             }
         }
     }

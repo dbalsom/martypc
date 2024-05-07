@@ -319,33 +319,18 @@ impl NecVx0 {
         }
     }
 
-    pub fn read_operand_farptr2(
+    pub fn read_operand_m16m16(
         &mut self,
         operand: OperandType,
         seg_override: Option<Segment>,
-        ptr: FarPtr,
         flag: ReadWriteFlag,
-    ) -> Option<u16> {
+    ) -> Option<(u16, u16)> {
         match operand {
             OperandType::AddressingMode(mode) => {
-                let (segment, offset) = self.calc_effective_address(mode, seg_override);
-
-                match ptr {
-                    FarPtr::Offset => Some(self.biu_read_u16(segment, offset, flag)),
-                    FarPtr::Segment => {
-                        Some(self.biu_read_u16(segment, offset.wrapping_add(2), flag))
-                    }
-                }
-            }
-            OperandType::Register16(_) => {
-                // Illegal form of LES/LDS reg/reg uses the last calculated EA.
-                let segment_base_ds = self.i.segment_override.unwrap_or(Segment::DS);
-                match ptr {
-                    FarPtr::Offset => Some(0),
-                    FarPtr::Segment => {
-                        Some(self.biu_read_u16(segment_base_ds, self.last_ea.wrapping_add(2), flag))
-                    }
-                }
+                let m1 = self.ea_opr;
+                let (segment, ea_offset) = self.calc_effective_address(mode, seg_override);
+                let m2 = self.biu_read_u16(segment, ea_offset.wrapping_add(2), flag);
+                Some((m1, m2))
             }
             _ => None,
         }

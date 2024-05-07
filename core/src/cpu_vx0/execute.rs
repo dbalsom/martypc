@@ -400,8 +400,89 @@ impl NecVx0 {
                 self.push_register16(Register16::SI, ReadWriteFlag::Normal);
                 self.push_register16(Register16::DI, ReadWriteFlag::RNI);
             }
-            0x61..=0x6F => {
+            0x61 => {
+                // POPA
+                self.pop_register16(Register16::DI, ReadWriteFlag::Normal);
+                self.pop_register16(Register16::SI, ReadWriteFlag::Normal);
+                self.pop_register16(Register16::BP, ReadWriteFlag::Normal);
+                self.set_register16(Register16::SP, self.get_register16(Register16::SP).wrapping_add(2));
+                self.pop_register16(Register16::BX, ReadWriteFlag::Normal);
+                self.pop_register16(Register16::DX, ReadWriteFlag::Normal);
+                self.pop_register16(Register16::CX, ReadWriteFlag::Normal);
+                self.pop_register16(Register16::AX, ReadWriteFlag::RNI);
+            }
+            0x62 => {
+                // BOUND
                 
+                let idx = self.read_operand16(self.i.operand1_type, None).unwrap() as i16;
+                let bounds_opt = self.read_operand_m16m16(self.i.operand2_type, self.i.segment_override, ReadWriteFlag::Normal);
+                
+                if let Some((start_u, end_u)) = bounds_opt {
+
+                    let start_i = start_u as i16;
+                    let end_i = end_u as i16;
+                    log::warn!("BOUND: Bounds: {} <-> {}", start_u, end_u);
+                    
+                    if (idx >= start_i) && (idx <= end_i) {
+                        log::warn!("BOUND: In bounds: {} <= {} <= {}", start_i, idx, end_i);
+                        // In bounds!
+                    }
+                    else {
+                        log::warn!("BOUND: Out of bounds: {} <= {} <= {}", start_i, idx, end_i);
+                        // Bounds range exception
+                        self.sw_interrupt(5);
+                        exception = CpuException::BoundsException;
+                        jump = true;
+                    }
+                }
+                else {
+                    // Illegal form of BOUND. A real V20 will halt now.
+                    log::warn!("BOUND: Illegal form of BOUND!");
+                    self.halted = true;
+                }
+            }
+            0x68 => {
+                // PUSH imm16
+                let imm16 = self.read_operand16(self.i.operand1_type, None).unwrap();
+                self.push_u16(imm16, ReadWriteFlag::RNI);
+            }
+            0x69 => {
+                // IMUL r16, r/m16, imm16
+                let op3_value = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
+                let mul_op = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
+                // Truncate product.
+                let (_, product) = self.mul16(mul_op, op3_value, true, false);
+
+                self.write_operand16(self.i.operand1_type, None, product, ReadWriteFlag::RNI);
+
+                if let OperandType::Register8(_) = self.i.operand1_type {
+                    self.cycle();
+                }
+
+                self.set_szp_flags_from_result_u8(product as u8);                
+            }
+            0x6A => {
+                // PUSH imm8
+                let imm8 = self.read_operand8(self.i.operand1_type, None).unwrap();
+                self.push_u16(imm8 as u16, ReadWriteFlag::RNI);
+            }
+            0x6B => {
+                // IMUL r16, r/m16, imm8
+                // Sign extend immediate byte operand.
+                let op3_value = self.q_read_u8(QueueType::Subsequent, QueueReader::Eu) as i8 as i16;
+                let mul_op = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
+                // Truncate product.
+                let (_, product) = self.mul16(mul_op, op3_value as u16, true, false);
+                
+                self.write_operand16(self.i.operand1_type, None, product, ReadWriteFlag::RNI);
+
+                if let OperandType::Register8(_) = self.i.operand1_type {
+                    self.cycle();
+                }
+
+                self.set_szp_flags_from_result_u8(product as u8);
+            }
+            0x63..=0x6F => {
                 unhandled = true;
             }
             0x70..=0x7F => {
@@ -924,7 +1005,53 @@ impl NecVx0 {
                 }
                 //self.cycle_i(0x01e);
             }
-            0xC0 | 0xC2 => {
+            0xC0 => {
+                // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m8, imm8
+                let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+
+                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+
+                if op2_value > 0 {
+                    for _ in 0..op2_value {
+                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                    }
+                }
+
+                // If there is a terminal write to M, don't process RNI on line 0x92
+                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                    //if self.c.l() != 0 {
+                    self.cycle_i(0x092);
+                    //}
+                }
+
+                let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
+
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);                
+            }
+            0xC1 => {
+                // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, imm8
+                let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+
+                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+
+                if op2_value > 0 {
+                    for _ in 0..op2_value {
+                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                    }
+                }
+
+                // If there is a terminal write to M, don't process RNI on line 0x92
+                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                    self.cycle_i(0x092);
+                }
+
+                let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
+
+                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);                
+            }
+            0xC2 => {
                 // RETN imm16 - Return from call w/ release
                 // 0xC0 undocumented alias for 0xC2
                 // Flags: None
@@ -946,7 +1073,7 @@ impl NecVx0 {
 
                 jump = true
             }
-            0xC1 | 0xC3 => {
+            0xC3 => {
                 // RETN - Return from call
                 // 0xC1 undocumented alias for 0xC3
                 // Flags: None
@@ -1164,18 +1291,7 @@ impl NecVx0 {
                 let op1_value = self.read_operand8(self.i.operand1_type, None).unwrap();
                 self.aad(op1_value);
             }
-            0xD6 => {
-                // SALC - Undocumented Opcode - Set Carry flag in AL
-                // http://www.rcollins.org/secrets/opcodes/SALC.html
-
-                self.set_register8(Register8::AL,
-                    match self.get_flag(Flag::Carry) {
-                        true => 0xFF,
-                        false => 0
-                    }
-                );
-            }
-            0xD7 => {
+            0xD6 | 0xD7 => {
                 // XLAT
                 
                 // Handle segment override, default DS
@@ -2093,6 +2209,7 @@ impl NecVx0 {
         else {
             match exception {
                 CpuException::DivideError => ExecutionResult::ExceptionError(exception),
+                CpuException::BoundsException => ExecutionResult::ExceptionError(exception),
                 CpuException::NoException => Okay,
             }
         }

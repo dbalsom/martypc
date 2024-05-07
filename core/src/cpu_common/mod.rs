@@ -79,6 +79,7 @@ pub enum ExecutionResult {
 pub enum CpuException {
     NoException,
     DivideError,
+    BoundsException,
 }
 
 #[derive(Copy, Clone, PartialEq)]
