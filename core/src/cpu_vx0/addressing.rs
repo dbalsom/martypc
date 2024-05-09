@@ -223,7 +223,11 @@ impl NecVx0 {
                 }
                 Some((self.ea_opr & 0xFF) as u8)
             }
-            _ => None,
+            _ => {
+                log::error!("Bad operand type: {:?}", operand);
+                None
+            }
+                
         }
     }
 

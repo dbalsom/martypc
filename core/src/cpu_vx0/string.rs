@@ -40,6 +40,66 @@ impl NecVx0 {
         let segment_base_ds = segment_override.unwrap_or(Segment::DS);
 
         match opcode {
+            Mnemonic::INSB => {
+                let io_value = self.biu_io_read_u8(self.get_register16(Register16::DX));
+                self.biu_write_u8(Segment::ES, self.di, io_value, ReadWriteFlag::Normal);
+
+                match self.get_flag(Flag::Direction) {
+                    false => {
+                        // Direction flag clear, process forwards
+                        self.di = self.di.wrapping_add(1);
+                    }
+                    true => {
+                        // Direction flag set, process backwards
+                        self.di = self.di.wrapping_sub(1);
+                    }
+                }
+            }
+            Mnemonic::INSW => {
+                let io_value = self.biu_io_read_u16(self.get_register16(Register16::DX));
+                self.biu_write_u16(Segment::ES, self.di, io_value, ReadWriteFlag::Normal);
+
+                match self.get_flag(Flag::Direction) {
+                    false => {
+                        // Direction flag clear, process forwards
+                        self.di = self.di.wrapping_add(2);
+                    }
+                    true => {
+                        // Direction flag set, process backwards
+                        self.di = self.di.wrapping_sub(2);
+                    }
+                }
+            }
+            Mnemonic::OUTSW => {
+                let mem_value = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                self.biu_io_write_u16(self.get_register16(Register16::DX), mem_value, ReadWriteFlag::Normal);
+
+                match self.get_flag(Flag::Direction) {
+                    false => {
+                        // Direction flag clear, process forwards
+                        self.di = self.di.wrapping_add(2);
+                    }
+                    true => {
+                        // Direction flag set, process backwards
+                        self.di = self.di.wrapping_sub(2);
+                    }
+                }
+            }
+            Mnemonic::OUTSB => {
+                let mem_value = self.biu_read_u8(Segment::ES, self.di);
+                self.biu_io_write_u8(self.get_register16(Register16::DX), mem_value, ReadWriteFlag::Normal);
+
+                match self.get_flag(Flag::Direction) {
+                    false => {
+                        // Direction flag clear, process forwards
+                        self.di = self.di.wrapping_add(1);
+                    }
+                    true => {
+                        // Direction flag set, process backwards
+                        self.di = self.di.wrapping_sub(1);
+                    }
+                }
+            }
             Mnemonic::STOSB => {
                 // STOSB - Write AL to [es:di]  (ES prefix cannot be overridden)
                 // No flags affected

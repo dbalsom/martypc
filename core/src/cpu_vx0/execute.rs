@@ -31,7 +31,18 @@
 */
 
 use crate::{
-    cpu_common::{CpuException, ExecutionResult, Mnemonic, OperandType, QueueOp, Segment},
+    cpu_common::{
+        CpuException,
+        ExecutionResult,
+        Mnemonic,
+        OperandType,
+        QueueOp,
+        Segment,
+        OPCODE_PREFIX_REP1,
+        OPCODE_PREFIX_REP2,
+        OPCODE_PREFIX_REP3,
+        OPCODE_PREFIX_REPMASK,
+    },
     cpu_vx0::{biu::*, *},
     util,
 };
@@ -127,12 +138,15 @@ impl NecVx0 {
         }
 
         // Check for REPx prefixes
-        if (self.i.prefixes & OPCODE_PREFIX_REP1 != 0) || (self.i.prefixes & OPCODE_PREFIX_REP2 != 0) {
+        if (self.i.prefixes & OPCODE_PREFIX_REPMASK != 0) {
             // A REPx prefix was set
 
             let mut invalid_rep = false;
 
             match self.i.mnemonic {
+                Mnemonic::INSB | Mnemonic::INSW | Mnemonic::OUTSB | Mnemonic::OUTSW => {
+                    self.rep_type = RepType::Rep;
+                }
                 Mnemonic::STOSB | Mnemonic::STOSW | Mnemonic::LODSB | Mnemonic::LODSW | Mnemonic::MOVSB | Mnemonic::MOVSW => {
                     self.rep_type = RepType::Rep;
                 }
@@ -141,8 +155,17 @@ impl NecVx0 {
                     if self.i.prefixes & OPCODE_PREFIX_REP1 != 0 {
                         self.rep_type = RepType::Repne;
                     }
-                    else {
+                    else if self.i.prefixes & OPCODE_PREFIX_REP2 != 0 {
                         self.rep_type = RepType::Repe;
+                    }
+                    else if self.i.prefixes & OPCODE_PREFIX_REP3 != 0 {
+                        self.rep_type = RepType::Repnc;
+                    }
+                    else if self.i.prefixes & OPCODE_PREFIX_REP3 != 0 {
+                        self.rep_type = RepType::Repc;
+                    }
+                    else {
+                        invalid_rep = true;
                     }
                 }
                 Mnemonic::MUL | Mnemonic::IMUL | Mnemonic::DIV | Mnemonic::IDIV => {
@@ -411,7 +434,7 @@ impl NecVx0 {
                 self.pop_register16(Register16::CX, ReadWriteFlag::Normal);
                 self.pop_register16(Register16::AX, ReadWriteFlag::RNI);
             }
-            0x62 => {
+            0x62 | 0x63 => {
                 // BOUND
                 
                 let idx = self.read_operand16(self.i.operand1_type, None).unwrap() as i16;
@@ -441,6 +464,7 @@ impl NecVx0 {
                     self.halted = true;
                 }
             }
+            0x64 | 0x65 => {},
             0x68 => {
                 // PUSH imm16
                 let imm16 = self.read_operand16(self.i.operand1_type, None).unwrap();
@@ -482,7 +506,39 @@ impl NecVx0 {
 
                 self.set_szp_flags_from_result_u8(product as u8);
             }
-            0x63..=0x6F => {
+            0x6C | 0x6D | 0x6E | 0x6F => {
+                // INSB | INSW | OUTSB | OUTSW
+                // rep_start() will terminate early if CX==0
+                if self.rep_start() {
+                    self.string_op(self.i.mnemonic, self.i.segment_override);
+                    self.cycle_i(0x130);
+
+                    // Check for end condition (CX==0)
+                    if self.in_rep {
+                        self.decrement_register16(Register16::CX); // 131
+                        // Check for interrupt
+                        if self.intr_pending {
+                            self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
+                            self.rep_interrupt();
+                        }
+                        else {
+                            self.cycles_i(2, &[0x131, 0x132]);
+                            if self.c.x() == 0 {
+                                // Fall through to 133, RNI
+                                self.rep_end();
+                            }
+                            else {
+                                self.cycle_i(MC_JUMP); // jump to 1
+                            }
+                        }
+                    }
+                    else {
+                        // End non-rep prefixed MOVSB
+                        self.cycle_i(MC_JUMP); // jump to 133, RNI
+                    }
+                }
+            }
+            0x6C..=0x6F => {
                 unhandled = true;
             }
             0x70..=0x7F => {
@@ -1143,7 +1199,36 @@ impl NecVx0 {
                 self.cycle_i(0x01e);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
             }
-            0xC8 | 0xCA => {
+            0xC8 => {
+                // ENTER imm16, imm8
+                let alloc_size = self.read_operand16(self.i.operand1_type, None).unwrap();
+                let nesting_level = self.read_operand8(self.i.operand2_type, None).unwrap();
+
+                // First, the old BP value is saved to the stack so that the BP of the calling procedure
+                // can be restored
+                self.push_register16(Register16::BP, ReadWriteFlag::Normal);
+                let frame_temp = self.get_register16(Register16::SP);
+                
+                if nesting_level > 1 {
+                    for i in 0..nesting_level {
+                        self.set_register16(Register16::BP, self.get_register16(Register16::BP).wrapping_sub(2));
+                        let ptr = self.biu_read_u16(Segment::SS, self.get_register16(Register16::BP), ReadWriteFlag::Normal);
+                        self.push_u16(ptr, ReadWriteFlag::Normal);
+                    }
+                }
+                else if nesting_level == 1 {
+                    self.push_u16(frame_temp, ReadWriteFlag::Normal);
+                };
+                self.set_register16(Register16::BP, frame_temp);
+                self.set_register16(Register16::SP, self.get_register16(Register16::SP).wrapping_sub(alloc_size));
+            }
+            0xC9 => {
+                // LEAVE
+                self.set_register16(Register16::SP, self.get_register16(Register16::BP));
+                let new_bp = self.pop_u16();
+                self.set_register16(Register16::BP, new_bp);
+            }
+            0xCA => {
                 // RETF imm16 - Far Return w/ release 
                 // 0xC8 undocumented alias for 0xCA
                 let stack_disp = self.read_operand16(self.i.operand1_type, None).unwrap();
@@ -1152,7 +1237,7 @@ impl NecVx0 {
                 self.cycle_i(0x0ce);
                 jump = true;
             }
-            0xC9 | 0xCB => {
+            0xCB => {
                 // RETF - Far Return
                 // 0xC9 undocumented alias for 0xCB
                 self.cycle_i(0x0c0);
@@ -1304,7 +1389,7 @@ impl NecVx0 {
                 
                 self.set_register8(Register8::AL, value);
             }
-            0xD8..=0xDF => {
+            0x66 | 0x67 | 0xD8..=0xDF => {
                 // ESC - FPU instructions. 
                 
                 // Perform dummy read if memory operand
@@ -1382,7 +1467,7 @@ impl NecVx0 {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
                 self.cycles_i(2, &[0x0ad, 0x0ae]);
 
-                let in_word = self.biu_io_read_u16(op2_value as u16, ReadWriteFlag::Normal);
+                let in_word = self.biu_io_read_u16(op2_value as u16);
                 self.set_register16(Register16::AX, in_word);
             }
             0xE6 => {
@@ -1484,7 +1569,7 @@ impl NecVx0 {
             0xED => {
                 // IN ax, dx
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                let in_word = self.biu_io_read_u16(op2_value, ReadWriteFlag::Normal);
+                let in_word = self.biu_io_read_u16(op2_value);
                 self.set_register16(Register16::AX, in_word);
             }
             0xEE => {
@@ -2213,5 +2298,109 @@ impl NecVx0 {
                 CpuException::NoException => Okay,
             }
         }
+    }
+
+    /// Execute an extended opcode (Prefixed with 0F).
+    /// We can make some optimizations here as no instructions here take a REP prefix or perform
+    /// flow control.
+    #[rustfmt::skip]
+    pub fn execute_extended_instruction(&mut self) -> ExecutionResult {
+        let mut unhandled: bool = false;
+        let mut jump: bool = false;
+        let mut exception: CpuException = CpuException::NoException;
+
+        self.step_over_target = None;
+
+        self.trace_comment("EXECUTE_EXT");
+
+        // TODO: Check optimization here. We could reset several flags at once if they were in a
+        //       bitfield.
+        // Reset instruction reentrancy flag
+        self.instruction_reentrant = false;
+
+        // Reset jumped flag.
+        self.jumped = false;
+
+        // Reset trap suppression flag
+        self.trap_suppressed = false;
+
+        // Decrement trap counters.
+        self.trap_enable_delay = self.trap_enable_delay.saturating_sub(1);
+        self.trap_disable_delay = self.trap_disable_delay.saturating_sub(1);
+
+        // If we have an NX loaded RNI cycle from the previous instruction, execute it.
+        // Otherwise, wait one cycle before beginning instruction if there was no modrm.
+        if self.nx {
+            self.trace_comment("RNI");
+            self.cycle();
+            self.nx = false;
+        } else if self.last_queue_op == QueueOp::First {
+            self.cycle();
+        }
+        
+        match self.i.opcode {
+            0x10 => {
+                // TEST1, r/m8, CL
+                let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
+                let bit_n = self.get_register8(Register8::CL) & 0x03; // Mask CL to 3 bits.
+                self.cycles(2 );
+                self.set_flag_state(Flag::Zero, (1<<bit_n) & op1_value == 0);
+            }
+            0x11 => {
+                // TEST1, r/m16, CL
+                let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
+                let bit_n = self.get_register8(Register8::CL) & 0x0F; // Mask CL to 4 bits.
+                self.cycles(2 );
+                self.set_flag_state(Flag::Zero, (1<<bit_n) & op1_value == 0);
+            }
+            _ => {
+                unhandled = true;
+            }
+        }
+        
+        // Reset REP init flag. This flag is set after a rep-prefixed instruction is executed for the first time. It
+        // should be preserved between executions of a rep-prefixed instruction unless an interrupt occurs, in which
+        // case the rep-prefix instruction terminates normally after RPTI. This flag determines whether RPTS is
+        // run when executing the instruction.
+        if !self.in_rep {
+            self.rep_init = false;
+        }
+        else {
+            self.instruction_reentrant = true;
+        }
+
+        if unhandled {
+            unreachable!("Invalid opcode!");
+            //ExecutionResult::UnsupportedOpcode(self.i.opcode)
+        }
+        else if self.halted && !self.reported_halt && !self.get_flag(Flag::Interrupt) && !self.get_flag(Flag::Trap) {
+            // CPU was halted with interrupts disabled - will not continue
+            self.reported_halt = true;
+            ExecutionResult::Halt
+        }
+        else if jump {
+            ExecutionResult::OkayJump
+        }
+        else if self.in_rep {
+            if let RepType::MulDiv = self.rep_type {
+                // Rep prefix on MUL/DIV just sets flags, do not rep
+                self.in_rep = false;
+                Okay
+            }
+            else {
+                self.rep_init = true;
+                // Set step-over target so that we can skip long REP instructions.
+                // Normally the step behavior during REP is to perform a single iteration.
+                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
+                ExecutionResult::OkayRep
+            }
+        }
+        else {
+            match exception {
+                CpuException::DivideError => ExecutionResult::ExceptionError(exception),
+                CpuException::BoundsException => ExecutionResult::ExceptionError(exception),
+                CpuException::NoException => Okay,
+            }
+        }        
     }
 }

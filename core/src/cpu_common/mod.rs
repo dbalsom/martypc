@@ -63,6 +63,23 @@ use crate::{
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
 
+// Instruction prefixes
+pub const OPCODE_PREFIX_0F: u32 = 0b_1000_0000_0000_0000;
+pub const OPCODE_PREFIX_ES_OVERRIDE: u32 = 0b_0000_0000_0100;
+pub const OPCODE_PREFIX_CS_OVERRIDE: u32 = 0b_0000_0000_1000;
+pub const OPCODE_PREFIX_SS_OVERRIDE: u32 = 0b_0000_0001_0000;
+pub const OPCODE_PREFIX_DS_OVERRIDE: u32 = 0b_0000_0010_0000;
+pub const OPCODE_SEG_OVERRIDE_MASK: u32 = 0b_0000_0011_1100;
+pub const OPCODE_PREFIX_LOCK: u32 = 0b_0000_1000_0000;
+pub const OPCODE_PREFIX_REP1: u32 = 0b_0001_0000_0000;
+pub const OPCODE_PREFIX_REP2: u32 = 0b_0010_0000_0000;
+pub const OPCODE_PREFIX_REP3: u32 = 0b_0100_0000_0000;
+pub const OPCODE_PREFIX_REP4: u32 = 0b_1000_0000_0000;
+pub const OPCODE_PREFIX_REPMASK: u32 = 0b1111_0000_0000;
+// Some CPUs can restore up to 3 prefixes when returning to an interrupted string operation.
+// The first two bits of the prefixes field stores the number of prefixes to restore from 0-3.
+pub const OPCODE_PREFIX_CT_MASK: u32 = 0b0000_0000_0011;
+
 #[derive(Debug, Default, PartialEq)]
 pub enum ExecutionResult {
     #[default]
@@ -82,7 +99,7 @@ pub enum CpuException {
     BoundsException,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Register8 {
     AL,
     CL,
@@ -362,5 +379,5 @@ pub trait Cpu {
     fn randomize_mem(&mut self);
     fn randomize_regs(&mut self);
     fn random_grp_instruction(&mut self, opcode: u8, extension_list: &[u8]);
-    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]);
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>);
 }

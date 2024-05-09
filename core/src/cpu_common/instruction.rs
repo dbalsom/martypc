@@ -35,10 +35,20 @@ use std::{
     fmt::{Display, Formatter, Result as fmtResult},
 };
 
-use super::{addressing::WithPlusSign, mnemonic::mnemonic_to_str};
+use super::{addressing::WithPlusSign, mnemonic::mnemonic_to_str, OPCODE_PREFIX_REP3, OPCODE_PREFIX_REP4};
 use crate::{
-    cpu_808x::{OPCODE_PREFIX_LOCK, OPCODE_PREFIX_REP1, OPCODE_PREFIX_REP2},
-    cpu_common::{operands::OperandSize, AddressingMode, Mnemonic, OperandType, Register16, Register8, Segment},
+    cpu_common::{
+        operands::OperandSize,
+        AddressingMode,
+        Mnemonic,
+        OperandType,
+        Register16,
+        Register8,
+        Segment,
+        OPCODE_PREFIX_LOCK,
+        OPCODE_PREFIX_REP1,
+        OPCODE_PREFIX_REP2,
+    },
     syntax_token::{SyntaxFormatType, SyntaxToken, SyntaxTokenVec, SyntaxTokenize},
 };
 
@@ -100,12 +110,12 @@ impl Display for Instruction {
             instruction_string.push_str(&p);
             instruction_string.push_str(" ");
         }
-
         instruction_string.push_str(&mnemonic);
 
         // Dont sign-extend 8-bit port addresses.
         let op_size = match self.mnemonic {
             Mnemonic::IN | Mnemonic::OUT => OperandSize::Operand8,
+            Mnemonic::ENTER => OperandSize::Operand8,
             _ => self.operand1_size,
         };
 
@@ -635,16 +645,17 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
 }
 
 fn override_prefix_to_string(i: &Instruction) -> Option<String> {
-    if i.segment_override.is_some() {
+    if let Some(seg_override) = i.segment_override {
         match i.opcode {
             0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD | 0xA6 | 0xA7 | 0xAE | 0xAF => {
-                let segment: String = match i.segment_override {
-                    Some(Segment::ES) => "es".to_string(),
-                    Some(Segment::CS) => "cs".to_string(),
-                    Some(Segment::SS) => "ss".to_string(),
-                    _ => "ds".to_string(),
+                let segment = match seg_override {
+                    Segment::ES => "es",
+                    Segment::CS => "cs",
+                    Segment::SS => "ss",
+                    Segment::DS => "ds",
+                    Segment::None => return None,
                 };
-                Some(segment)
+                Some(segment.to_string())
             }
             _ => None,
         }
@@ -657,28 +668,46 @@ fn override_prefix_to_string(i: &Instruction) -> Option<String> {
 
 fn prefix_to_string(i: &Instruction) -> Option<String> {
     // Handle REPx prefixes
-    // TODO: IS F2 valid on 6C, 6D, etc?
+
+    let mut prefix_str = String::new();
 
     if i.prefixes & OPCODE_PREFIX_LOCK != 0 {
-        Some("lock".to_string())
+        prefix_str.push_str("lock ");
     }
-    else if i.prefixes & OPCODE_PREFIX_REP1 != 0 {
+
+    if i.prefixes & OPCODE_PREFIX_REP1 != 0 {
         match i.opcode {
-            0xF6 | 0xF7 => None, // Don't show REP prefix on div.
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => Some("rep".to_string()),
-            0xA6 | 0xA7 | 0xAE | 0xAF => Some("repne".to_string()),
-            _ => None,
+            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
+            0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repne"),
+            _ => {}
         }
     }
     else if i.prefixes & OPCODE_PREFIX_REP2 != 0 {
         match i.opcode {
-            0xF6 | 0xF7 => None, // Don't show REP prefix on div.
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => Some("rep".to_string()),
-            0xA6 | 0xA7 | 0xAE | 0xAF => Some("repe".to_string()),
-            _ => None,
+            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
+            0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repe"),
+            _ => {}
         }
     }
-    else {
+    else if i.prefixes & OPCODE_PREFIX_REP3 != 0 {
+        match i.opcode {
+            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
+            0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repnc"),
+            _ => {}
+        }
+    }
+    else if i.prefixes & OPCODE_PREFIX_REP4 != 0 {
+        match i.opcode {
+            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
+            0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repc"),
+            _ => {}
+        }
+    }
+
+    if prefix_str.is_empty() {
         None
+    }
+    else {
+        Some(prefix_str)
     }
 }

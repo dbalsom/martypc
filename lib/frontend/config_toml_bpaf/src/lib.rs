@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 
-    bpaf_toml_config::lib.rs
+    config_toml_bpaf::lib.rs
 
     Routines to parse configuration file and command line arguments.
 
@@ -203,8 +203,10 @@ pub struct Tests {
     pub test_cpu_subtype: Option<CpuSubType>,
     pub test_mode: Option<TestMode>,
     pub test_seed: Option<u64>,
+    pub test_start: Option<u32>,
     pub test_dir: Option<String>,
     pub test_output_dir: Option<String>,
+    pub test_opcode_prefix: Option<u8>,
     pub test_opcode_range: Option<Vec<u8>>,
     pub test_extension_range: Option<Vec<u8>>,
     pub test_opcode_exclude_list: Option<Vec<u8>>,
@@ -214,6 +216,10 @@ pub struct Tests {
     pub test_gen_validate_memops: Option<bool>,
     pub test_gen_validate_registers: Option<bool>,
     pub test_gen_validate_flags: Option<bool>,
+    pub test_run_validate_cycles: Option<bool>,
+    pub test_run_validate_memops: Option<bool>,
+    pub test_run_validate_registers: Option<bool>,
+    pub test_run_validate_flags: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

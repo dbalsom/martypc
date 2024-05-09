@@ -78,6 +78,8 @@ use marty_core::{
     tracelogger::TraceLogger,
 };
 
+static METADATA_FILE: &str = "metadata.json";
+
 pub fn run_runtests(config: ConfigFileParams) {
     let mut test_path = "./tests".to_string();
     if let Some(test_dir) = &config.tests.test_dir {
@@ -95,10 +97,10 @@ pub fn run_runtests(config: ConfigFileParams) {
     // Load metadata file.
 
     let mut metadata_path = test_base_path.clone();
-    metadata_path.push("8088.json");
+    metadata_path.push(String::from(METADATA_FILE));
     let mut metadata_file = File::open(metadata_path.clone()).expect(&format!(
-        "Couldn't open metadata file 8088.json at path: {:?}",
-        metadata_path
+        "Couldn't open metadata file '{}' at path: {:?}",
+        METADATA_FILE, metadata_path
     ));
     let mut contents = String::new();
     metadata_file
@@ -324,12 +326,14 @@ fn run_tests(
     #[cfg(feature = "cpu_validator")]
     use marty_core::cpu_validator::ValidatorMode;
 
+    let cpu_type = config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088);
+
     let mut cpu;
     #[cfg(feature = "cpu_validator")]
     {
         cpu = match CpuBuilder::new()
-            .with_cpu_type(CpuType::Intel8088)
-            .with_cpu_subtype(CpuSubType::Intel8088)
+            .with_cpu_type(cpu_type)
+            //.with_cpu_subtype(CpuSubType::Intel8088)
             .with_trace_mode(trace_mode)
             .with_trace_logger(trace_logger)
             .with_validator_type(ValidatorType::None)
@@ -543,6 +547,8 @@ fn run_tests(
         // Validate final register state.
         let vregs = cpu.get_vregisters();
 
+        let mut current_test_failed = false;
+
         if validate_registers(
             &metadata,
             opcode,
@@ -612,99 +618,78 @@ fn run_tests(
                 reason: FailType::RegMismatch,
             };
 
-            results.failed += 1;
+            current_test_failed = true;
             results.reg_mismatch += 1;
-            results.failed_tests.push_back(item);
 
             if stop_on_failure {
                 break;
             }
-            continue;
         }
 
-        // Validate cycles
-        if test.cycles.len() == cpu_cycles.len() {
-            _ = writeln!(
-                log,
-                "{}| Test {:05}:{} Test cycles {} match CPU cycles: {}",
-                opcode_string,
-                n,
-                &test.name,
-                test.cycles.len(),
-                cpu_cycles.len()
-            );
-        }
-        else if ((test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() > 1) {
-            // If the difference is more than 1, the test has failed.
-            trace_error!(
-                log,
-                "{}| Test {:05}:{} Test cycles {} DO NOT MATCH CPU cycles: {}",
-                opcode_string,
-                n,
-                &test.name,
-                test.cycles.len(),
-                cpu_cycles.len()
-            );
+        let do_validate_cycles = config.tests.test_run_validate_cycles.unwrap_or(true);
 
-            print_cycle_diff(log, &test.cycles, &cpu_cycles);
-            cpu.trace_flush();
-
-            trace_error!(
-                log,
-                "{}| Test {:05}: Test hash {} failed.",
-                opcode_string,
-                n,
-                &test.test_hash
-            );
-
-            let item = TestFailItem {
-                num:    n as u32,
-                name:   test.name.clone(),
-                reason: FailType::CycleMismatch,
-            };
-
-            results.failed += 1;
-            results.cycle_mismatch += 1;
-            results.failed_tests.push_back(item);
-
-            if stop_on_failure {
-                break;
+        if do_validate_cycles {
+            // Validate cycles
+            if test.cycles.len() == cpu_cycles.len() {
+                _ = writeln!(
+                    log,
+                    "{}| Test {:05}:{} Test cycles {} match CPU cycles: {}",
+                    opcode_string,
+                    n,
+                    &test.name,
+                    test.cycles.len(),
+                    cpu_cycles.len()
+                );
             }
-            continue;
-        }
-        else if ((test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() == 1) {
-            // A cycle difference of only 1 is acceptable (for now)
-            _ = writeln!(
-                log,
-                "{}| Test {:05}:{} Test cycles {} have ONE CYCLE variance to CPU cycles: {}",
-                opcode_string,
-                n,
-                &test.name,
-                test.cycles.len(),
-                cpu_cycles.len()
-            );
+            else if ((test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() > 1) {
+                // If the difference is more than 1, the test has failed.
+                trace_error!(
+                    log,
+                    "{}| Test {:05}:{} Test cycles {} DO NOT MATCH CPU cycles: {}",
+                    opcode_string,
+                    n,
+                    &test.name,
+                    test.cycles.len(),
+                    cpu_cycles.len()
+                );
 
-            print_cycle_diff(log, &test.cycles, &cpu_cycles);
-            cpu.trace_flush();
+                print_cycle_diff(log, &test.cycles, &cpu_cycles);
+                cpu.trace_flush();
 
-            let item = TestFailItem {
-                num:    n as u32,
-                name:   test.name.clone(),
-                reason: FailType::CycleMismatch,
-            };
+                trace_error!(
+                    log,
+                    "{}| Test {:05}: Test hash {} failed.",
+                    opcode_string,
+                    n,
+                    &test.test_hash
+                );
 
-            results.warning += 1;
-            results.cycle_mismatch += 1;
-            results.warn_tests.push_back(item);
-            continue;
-        }
-        else {
-            // Cycle counts match, so we can do a full cycle validation.
-            let (validate_result, _) = validate_cycles(&test.cycles, &cpu_cycles, log);
-            if validate_result {
-                _ = writeln!(log, "{}| Test {:05}: Test cycles validated!", opcode_string, n);
+                let item = TestFailItem {
+                    num:    n as u32,
+                    name:   test.name.clone(),
+                    reason: FailType::CycleMismatch,
+                };
+
+                current_test_failed = true;
+                results.cycle_mismatch += 1;
+                results.failed_tests.push_back(item);
+
+                if stop_on_failure {
+                    break;
+                }
             }
-            else {
+            else if ((test.cycles.len() as i32 - cpu_cycles.len() as i32).abs() == 1) {
+                // A cycle difference of only 1 is acceptable (for now)
+                _ = writeln!(
+                    log,
+                    "{}| Test {:05}:{} Test cycles {} have ONE CYCLE variance to CPU cycles: {}",
+                    opcode_string,
+                    n,
+                    &test.name,
+                    test.cycles.len(),
+                    cpu_cycles.len()
+                );
+
                 print_cycle_diff(log, &test.cycles, &cpu_cycles);
                 cpu.trace_flush();
 
@@ -714,14 +699,34 @@ fn run_tests(
                     reason: FailType::CycleMismatch,
                 };
 
-                results.failed += 1;
+                results.warning += 1;
                 results.cycle_mismatch += 1;
-                results.failed_tests.push_back(item);
-
-                if stop_on_failure {
-                    break;
+                results.warn_tests.push_back(item);
+            }
+            else {
+                // Cycle counts match, so we can do a full cycle validation.
+                let (validate_result, _) = validate_cycles(&test.cycles, &cpu_cycles, log);
+                if validate_result {
+                    _ = writeln!(log, "{}| Test {:05}: Test cycles validated!", opcode_string, n);
                 }
-                continue;
+                else {
+                    print_cycle_diff(log, &test.cycles, &cpu_cycles);
+                    cpu.trace_flush();
+
+                    let item = TestFailItem {
+                        num:    n as u32,
+                        name:   test.name.clone(),
+                        reason: FailType::CycleMismatch,
+                    };
+
+                    current_test_failed = true;
+                    results.cycle_mismatch += 1;
+                    results.failed_tests.push_back(item);
+
+                    if stop_on_failure {
+                        break;
+                    }
+                }
             }
         }
 
@@ -745,19 +750,25 @@ fn run_tests(
                     reason: FailType::CycleMismatch,
                 };
 
-                results.failed += 1;
+                current_test_failed = true;
                 results.mem_mismatch += 1;
                 results.failed_tests.push_back(item);
+
+                print_cycle_diff(log, &test.cycles, &cpu_cycles);
+                cpu.trace_flush();
 
                 if stop_on_failure {
                     break;
                 }
-                continue;
             }
         };
 
-        // If we got here, we passed!
-        results.passed += 1;
+        if current_test_failed {
+            results.failed += 1;
+        }
+        else {
+            results.passed += 1;
+        }
     }
 
     results.duration = test_start.elapsed();

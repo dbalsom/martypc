@@ -313,7 +313,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     cpu.random_grp_instruction(test_opcode, &[op_ext]);
                 }
                 else {
-                    cpu.random_inst_from_opcodes(&[test_opcode]);
+                    cpu.random_inst_from_opcodes(&[test_opcode], config.tests.test_opcode_prefix);
                 }
 
                 if cpu.get_ip() != cpu.get_register16(Register16::PC) {
@@ -363,6 +363,13 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     .peek_range(instruction_address as usize, i.size as usize)
                     .unwrap();
 
+                if test_num < config.tests.test_start.unwrap_or(0) {
+                    println!(
+                        "Test {}: Skipping test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?}",
+                        test_num, i, opcode, i.address, bytes
+                    );
+                    continue;
+                }
                 println!(
                     "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?}",
                     test_num, i, opcode, i.address, bytes
@@ -389,7 +396,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     | Mnemonic::LODSW
                     | Mnemonic::SCASB
                     | Mnemonic::SCASW => {
-                        // limit cx to 31
+                        // limit cx to 127
                         cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0x7F);
                         rep = true;
                     }

@@ -51,6 +51,15 @@ macro_rules! get_rand_range {
     };
 }
 
+const DISABLE_SEG_OVERRIDES: [u8; 113] = [
+    0x06, 0x07, 0x0E, 0x16, 0x17, 0x1E, 0x1F, 0x27, 0x2F, 0x37, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47,
+    0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A,
+    0x5B, 0x5C, 0x5D, 0x5E, 0x5F, 0x60, 0x61, 0x68, 0x6A, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79,
+    0x7A, 0x7B, 0x7C, 0x7D, 0x7E, 0x7F, 0x98, 0x99, 0x9B, 0x9C, 0x9D, 0x9E, 0x9F, 0xA8, 0xA9, 0xB0, 0xB1, 0xB2, 0xB3,
+    0xB4, 0xB5, 0xB6, 0xB7, 0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE,
+    0xCF, 0xD4, 0xD5, 0xE4, 0xE5, 0xE6, 0xE7, 0xEC, 0xED, 0xEE, 0xEF, 0xF5, 0xF8, 0xF9, 0xFA, 0xFB, 0xFC, 0xFD,
+];
+
 impl NecVx0 {
     #[allow(dead_code)]
     pub fn randomize_seed(&mut self, mut seed: u64) {
@@ -105,20 +114,33 @@ impl NecVx0 {
     }
 
     #[allow(dead_code)]
-    pub fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]) {
+    pub fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>) {
         let mut instr: VecDeque<u8> = VecDeque::new();
 
         // Randomly pick one opcode from the provided list
         let opcode_i = get_rand_range!(self, 0, opcode_list.len());
         let opcode = opcode_list[opcode_i];
 
+        if let Some(prefix) = prefix {
+            instr.push_back(prefix);
+        }
         instr.push_back(opcode);
 
         let mut enable_segment_prefix = true;
 
+        if DISABLE_SEG_OVERRIDES.contains(&opcode) {
+            enable_segment_prefix = false;
+        }
+
+        let mut mask_nesting_level = false;
+
         // Add rep prefixes to string ops with 50% probability
         let do_rep_prefix: u8 = get_rand!(self);
         match opcode {
+            0xC8 => {
+                // ENTER
+                mask_nesting_level = true;
+            }
             0xA4..=0xA7 | 0xAA..=0xAF => {
                 // String ops
                 match do_rep_prefix {
@@ -137,8 +159,8 @@ impl NecVx0 {
                     _ => {}
                 }
 
-                // Mask CX to 8 bits.
-                //self.cx = self.cx & 0x00FF;
+                // Mask CX to 7 bits.
+                self.set_register16(Register16::CX, self.get_register16(Register16::CX) & 0x7F);
             }
             0x9D => {
                 // POPF.
@@ -182,14 +204,6 @@ impl NecVx0 {
                 // This will still catch emulators that are masking CL to 5 bits.
 
                 self.c.set_l(self.c.l() & 0x3F);
-            }
-            0xC0..=0xC3 | 0xC8..=0xCF => {
-                // RETN, RETF, INT[X], IRET
-                enable_segment_prefix = false;
-            }
-            0xF5 | 0xF8..=0xFD => {
-                // Clear/set flags
-                enable_segment_prefix = false;
             }
             _ => {}
         }
@@ -262,10 +276,17 @@ impl NecVx0 {
         }
 
         // Add five random instruction bytes (+modrm makes 6)
-        for _ in 0..5 {
+        for i in 0..5 {
             let instr_byte: u8 = get_rand!(self);
 
-            instr.push_back(instr_byte);
+            // This is actually the third byte, since we pushed one byte for modrm already
+            // (even if no modrm)
+            if mask_nesting_level && (i == 1) {
+                instr.push_back(instr_byte & 0x1F);
+            }
+            else {
+                instr.push_back(instr_byte);
+            }
         }
 
         // Copy instruction to memory at CS:IP
@@ -336,25 +357,13 @@ impl NecVx0 {
 
             // Filter out invalid forms of some instructions that cannot
             // reasonably be validated.
-            match opcode {
-                // FF group opcode
-                0xFF => {
-                    match modrm_byte & 0b00_111_000 {
-                        0b00_011_000 => {
-                            // FF.3 CALLF
-                            if modrm_byte & 0xC0 == 0xC0 {
-                                // Reg form, invalid.
-                                continue;
-                            }
-                        }
-                        0b00_101_000 => {
-                            // FF.5 JMPF
-                            if modrm_byte & 0xC0 == 0xC0 {
-                                // Reg form, invalid.
-                                continue;
-                            }
-                        }
-                        _ => {}
+            match (opcode, extension) {
+                // FE & FF group opcode
+                (0xFE | 0xFF, 0x03 | 0x05) => {
+                    // FE.3 FE.5 FF.3 FF.5 CALLF
+                    if modrm_byte & 0xC0 == 0xC0 {
+                        // Reg form, invalid.
+                        continue;
                     }
                 }
                 _ => {}

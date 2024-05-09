@@ -31,7 +31,7 @@
 */
 
 use crate::{
-    cpu_common::{CpuError, CpuException, ExecutionResult, StepResult},
+    cpu_common::{CpuError, CpuException, ExecutionResult, StepResult, OPCODE_PREFIX_0F},
     cpu_vx0::{decode::DECODE, *},
     vgdr,
 };
@@ -199,7 +199,12 @@ impl NecVx0 {
         }
 
         // Execute the current decoded instruction.
-        self.exec_result = self.execute_instruction();
+        if self.i.prefixes & OPCODE_PREFIX_0F == 0 {
+            self.exec_result = self.execute_instruction();
+        }
+        else {
+            self.exec_result = self.execute_extended_instruction();
+        }
 
         let step_result = match &self.exec_result {
             ExecutionResult::Okay => {

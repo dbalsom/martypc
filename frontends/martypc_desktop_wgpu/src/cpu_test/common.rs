@@ -123,7 +123,7 @@ pub type Metadata = HashMap<String, InnerObject>;
 macro_rules! trace_error {
     ($wr:expr, $($t:tt)*) => {{
         let formatted_message = format!($($t)*);
-        log::error!("{}", &formatted_message);
+        //log::error!("{}", &formatted_message);
 
         // Assuming you want to write the message to the BufWriter as well.
         writeln!($wr, "{}", &formatted_message).expect("Failed to write to BufWriter");

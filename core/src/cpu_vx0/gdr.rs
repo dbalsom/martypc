@@ -52,6 +52,7 @@ pub const GDR_FORCE_BYTE: u16 = 0b0001_0000_0000_0000; // Instruction forces a b
 pub const GDR_L8: u16 = 0b0010_0000_0000_0000; // Instruction sets L8 flag
 pub const GDR_UPDATE_CARRY: u16 = 0b0100_0000_0000_0000; // Instruction updates Carry flag
 
+#[derive(Copy, Clone, Default)]
 pub struct GdrEntry(pub u16);
 
 impl GdrEntry {

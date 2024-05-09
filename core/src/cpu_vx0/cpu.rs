@@ -519,7 +519,7 @@ impl Cpu for NecVx0 {
         self.random_grp_instruction(opcode, extension_list)
     }
 
-    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]) {
-        self.random_inst_from_opcodes(opcode_list);
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], prefix: Option<u8>) {
+        self.random_inst_from_opcodes(opcode_list, prefix);
     }
 }

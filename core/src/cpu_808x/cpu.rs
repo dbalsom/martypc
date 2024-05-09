@@ -521,7 +521,7 @@ impl Cpu for Intel808x {
         self.random_grp_instruction(opcode, extension_list)
     }
 
-    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8]) {
+    fn random_inst_from_opcodes(&mut self, opcode_list: &[u8], _prefix: Option<u8>) {
         self.random_inst_from_opcodes(opcode_list);
     }
 }

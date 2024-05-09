@@ -35,7 +35,7 @@ use std::fmt;
 #[allow(dead_code)]
 #[derive(PartialEq, Copy, Clone, Debug)]
 pub enum Mnemonic {
-    InvalidOpcode,
+    Invalid,
     NoOpcode,
     Group,
     Prefix,
@@ -147,13 +147,31 @@ pub enum Mnemonic {
     PUSHA,
     POPA,
     BOUND,
-    INS,
-    OUTS,
+    INSB,
+    INSW,
+    OUTSB,
+    OUTSW,
+    ENTER,
+    LEAVE,
+    // V20 Instructions
+    FPO2,
+    TEST1,
+    CLR1,
+    SET1,
+    NOT1,
+    ADD4S,
+    SUB4S,
+    CMP4S,
+    ROL4,
+    ROR4,
+    BINS,
+    BEXT,
+    BRKEM,
 }
 
 impl Default for Mnemonic {
     fn default() -> Self {
-        Mnemonic::InvalidOpcode
+        Mnemonic::Invalid
     }
 }
 
@@ -268,9 +286,26 @@ pub(crate) fn mnemonic_to_str(op: Mnemonic) -> &'static str {
         Mnemonic::PUSHA => "PUSHA",
         Mnemonic::POPA => "POPA",
         Mnemonic::BOUND => "BOUND",
-        Mnemonic::INS => "INS",
-        Mnemonic::OUTS => "OUTS",
-
+        Mnemonic::INSB => "INSB",
+        Mnemonic::INSW => "INSW",
+        Mnemonic::OUTSB => "OUTSB",
+        Mnemonic::OUTSW => "OUTSW",
+        Mnemonic::ENTER => "ENTER",
+        Mnemonic::LEAVE => "LEAVE",
+        // V20 Instructions
+        Mnemonic::FPO2 => "FPO2",
+        Mnemonic::TEST1 => "TEST1",
+        Mnemonic::CLR1 => "CLR1",
+        Mnemonic::SET1 => "SET1",
+        Mnemonic::NOT1 => "NOT1",
+        Mnemonic::ADD4S => "ADD4S",
+        Mnemonic::SUB4S => "SUB4S",
+        Mnemonic::CMP4S => "CMP4S",
+        Mnemonic::ROL4 => "ROL4",
+        Mnemonic::ROR4 => "ROR4",
+        Mnemonic::BINS => "BINS",
+        Mnemonic::BEXT => "BEXT",
+        Mnemonic::BRKEM => "BRKEM",
         _ => "INVALID",
     }
 }

@@ -40,7 +40,21 @@ use std::{error::Error, fmt::Display};
 use crate::{
     bytequeue::*,
     cpu_808x::{alu::Xi, gdr::GdrEntry, modrm::ModRmByte, *},
-    cpu_common::{operands::OperandSize, AddressingMode, Instruction, Mnemonic, OperandType, Segment},
+    cpu_common::{
+        operands::OperandSize,
+        AddressingMode,
+        Instruction,
+        Mnemonic,
+        OperandType,
+        Segment,
+        OPCODE_PREFIX_CS_OVERRIDE,
+        OPCODE_PREFIX_DS_OVERRIDE,
+        OPCODE_PREFIX_ES_OVERRIDE,
+        OPCODE_PREFIX_LOCK,
+        OPCODE_PREFIX_REP1,
+        OPCODE_PREFIX_REP2,
+        OPCODE_PREFIX_SS_OVERRIDE,
+    },
 };
 
 #[derive(Copy, Clone, PartialEq)]

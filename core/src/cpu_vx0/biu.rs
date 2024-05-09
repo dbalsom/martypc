@@ -465,7 +465,7 @@ impl NecVx0 {
         //validate_write_u8!(self, addr, (self.data_bus & 0x00FF) as u8);
     }
 
-    pub fn biu_io_read_u16(&mut self, addr: u16, flag: ReadWriteFlag) -> u16 {
+    pub fn biu_io_read_u16(&mut self, addr: u16) -> u16 {
         let mut word;
 
         self.biu_bus_begin(
@@ -491,10 +491,7 @@ impl NecVx0 {
             false,
         );
 
-        match flag {
-            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
-            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
-        };
+        let _cycles = self.biu_bus_wait_finish();
 
         word |= (self.data_bus & 0x00FF) << 8;
 

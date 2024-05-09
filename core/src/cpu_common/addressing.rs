@@ -30,7 +30,7 @@
 
 */
 
-use crate::cpu_vx0::NecVx0;
+use crate::cpu_common::calc_linear_address;
 use std::{fmt, fmt::Display};
 
 #[derive(Copy, Clone, Debug)]
@@ -203,7 +203,7 @@ impl From<CpuAddress> for u32 {
     fn from(cpu_address: CpuAddress) -> Self {
         match cpu_address {
             CpuAddress::Flat(a) => a,
-            CpuAddress::Segmented(s, o) => NecVx0::calc_linear_address(s, o),
+            CpuAddress::Segmented(s, o) => calc_linear_address(s, o),
             CpuAddress::Offset(a) => a as Self,
         }
     }
@@ -224,12 +224,12 @@ impl PartialEq for CpuAddress {
         match (self, other) {
             (CpuAddress::Flat(a), CpuAddress::Flat(b)) => a == b,
             (CpuAddress::Flat(a), CpuAddress::Segmented(s, o)) => {
-                let b = NecVx0::calc_linear_address(*s, *o);
+                let b = calc_linear_address(*s, *o);
                 *a == b
             }
             (CpuAddress::Flat(_a), CpuAddress::Offset(_b)) => false,
             (CpuAddress::Segmented(s, o), CpuAddress::Flat(b)) => {
-                let a = NecVx0::calc_linear_address(*s, *o);
+                let a = calc_linear_address(*s, *o);
                 a == *b
             }
             (CpuAddress::Segmented(s1, o1), CpuAddress::Segmented(s2, o2)) => *s1 == *s2 && *o1 == *o2,

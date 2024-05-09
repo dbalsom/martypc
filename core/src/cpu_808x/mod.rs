@@ -172,25 +172,6 @@ pub const MAX_INSTRUCTION_SIZE: usize = 15;
 
 const OPCODE_REGISTER_SELECT_MASK: u8 = 0b0000_0111;
 
-// Instruction flags
-const I_USES_MEM: u32 = 0b0000_0001; // Instruction has a memory operand
-const I_HAS_MODRM: u32 = 0b0000_0010; // Instruction has a modrm byte
-const I_LOCKABLE: u32 = 0b0000_0100; // Instruction compatible with LOCK prefix
-const I_REL_JUMP: u32 = 0b0000_1000;
-const I_LOAD_EA: u32 = 0b0001_0000; // Instruction loads from its effective address
-const I_GROUP_DELAY: u32 = 0b0010_0000; // Instruction has cycle delay for being a specific group instruction
-
-// Instruction prefixes
-pub const OPCODE_PREFIX_ES_OVERRIDE: u32 = 0b_0000_0000_0001;
-pub const OPCODE_PREFIX_CS_OVERRIDE: u32 = 0b_0000_0000_0010;
-pub const OPCODE_PREFIX_SS_OVERRIDE: u32 = 0b_0000_0000_0100;
-pub const OPCODE_PREFIX_DS_OVERRIDE: u32 = 0b_0000_0000_1000;
-pub const OPCODE_SEG_OVERRIDE_MASK: u32 = 0b_0000_0000_1111;
-pub const OPCODE_PREFIX_WAIT: u32 = 0b_0000_0100_0000;
-pub const OPCODE_PREFIX_LOCK: u32 = 0b_0000_1000_0000;
-pub const OPCODE_PREFIX_REP1: u32 = 0b_0001_0000_0000;
-pub const OPCODE_PREFIX_REP2: u32 = 0b_0010_0000_0000;
-
 // The parity flag is calculated from the lower 8 bits of an alu operation regardless
 // of the operand width.  It is trivial to precalculate an 8-bit parity table.
 pub const PARITY_TABLE: [bool; 256] = {
