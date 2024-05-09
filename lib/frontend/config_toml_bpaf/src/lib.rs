@@ -212,10 +212,12 @@ pub struct Tests {
     pub test_opcode_exclude_list: Option<Vec<u8>>,
     pub test_opcode_gen_count: Option<u32>,
     pub test_opcode_gen_append: Option<bool>,
+    pub test_gen_version: Option<u32>,
     pub test_gen_validate_cycles: Option<bool>,
     pub test_gen_validate_memops: Option<bool>,
     pub test_gen_validate_registers: Option<bool>,
     pub test_gen_validate_flags: Option<bool>,
+    pub test_run_version: Option<u32>,
     pub test_run_validate_cycles: Option<bool>,
     pub test_run_validate_memops: Option<bool>,
     pub test_run_validate_registers: Option<bool>,
@@ -372,6 +374,10 @@ pub struct CmdLineArgs {
     pub run_bin_seg: Option<u16>,
     #[bpaf(long)]
     pub run_bin_ofs: Option<u16>,
+
+    // Test stuff
+    #[bpaf(long)]
+    pub test_cpu_type: Option<CpuType>,
 }
 
 impl ConfigFileParams {
@@ -423,6 +429,10 @@ impl ConfigFileParams {
 
         if let Some(run_bin_ofs) = shell_args.run_bin_ofs {
             self.emulator.run_bin_ofs = Some(run_bin_ofs);
+        }
+
+        if let Some(test_cpu_type) = shell_args.test_cpu_type {
+            self.tests.test_cpu_type = Some(test_cpu_type);
         }
 
         self.machine.turbo |= shell_args.turbo;

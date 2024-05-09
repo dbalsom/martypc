@@ -518,7 +518,7 @@ impl Machine {
         #[cfg(not(feature = "cpu_validator"))]
         {
             cpu = match CpuBuilder::new()
-                .with_cpu_type(CpuType::Intel808x)
+                .with_cpu_type(CpuType::Intel8088)
                 .with_cpu_subtype(CpuSubType::Intel8088)
                 .with_trace_mode(trace_mode)
                 .build() {

@@ -187,6 +187,22 @@ pub enum CpuType {
     NecV30,
 }
 
+impl FromStr for CpuType {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, String>
+    where
+        Self: Sized,
+    {
+        match s.to_lowercase().as_str() {
+            "intel8088" => Ok(CpuType::Intel8088),
+            "intel8086" => Ok(CpuType::Intel8086),
+            "necv20" => Ok(CpuType::NecV20),
+            "necv30" => Ok(CpuType::NecV30),
+            _ => Err("Bad value for cputype".to_string()),
+        }
+    }
+}
+
 impl CpuType {
     pub fn decode(&self, bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
         match self {
