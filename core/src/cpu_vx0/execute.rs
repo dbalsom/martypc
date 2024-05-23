@@ -41,6 +41,7 @@ use crate::{
         OPCODE_PREFIX_REP1,
         OPCODE_PREFIX_REP2,
         OPCODE_PREFIX_REP3,
+        OPCODE_PREFIX_REP4,
         OPCODE_PREFIX_REPMASK,
     },
     cpu_vx0::{biu::*, *},
@@ -161,7 +162,7 @@ impl NecVx0 {
                     else if self.i.prefixes & OPCODE_PREFIX_REP3 != 0 {
                         self.rep_type = RepType::Repnc;
                     }
-                    else if self.i.prefixes & OPCODE_PREFIX_REP3 != 0 {
+                    else if self.i.prefixes & OPCODE_PREFIX_REP4 != 0 {
                         self.rep_type = RepType::Repc;
                     }
                     else {
@@ -241,7 +242,7 @@ impl NecVx0 {
                 }
 
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);       
+                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
             }
             0x01 | 0x03 | 0x05 |  // ADD r/m16, r16 | r16, r/m16 | ax, imm16
             0x09 | 0x0B | 0x0D |  // OR  r/m16, r16 | r16, r/m16 | ax, imm16
@@ -434,24 +435,28 @@ impl NecVx0 {
                 self.pop_register16(Register16::CX, ReadWriteFlag::Normal);
                 self.pop_register16(Register16::AX, ReadWriteFlag::RNI);
             }
-            0x62 | 0x63 => {
+            0x62 => {
                 // BOUND
                 
                 let idx = self.read_operand16(self.i.operand1_type, None).unwrap() as i16;
                 let bounds_opt = self.read_operand_m16m16(self.i.operand2_type, self.i.segment_override, ReadWriteFlag::Normal);
                 
-                if let Some((start_u, end_u)) = bounds_opt {
-
+                // 63 always throws exception.
+                if self.i.opcode & 0x01 != 0 {
+                    self.sw_interrupt(5);
+                    exception = CpuException::BoundsException;
+                    jump = true;
+                }
+                else if let Some((start_u, end_u)) = bounds_opt {
                     let start_i = start_u as i16;
                     let end_i = end_u as i16;
-                    log::warn!("BOUND: Bounds: {} <-> {}", start_u, end_u);
                     
                     if (idx >= start_i) && (idx <= end_i) {
-                        log::warn!("BOUND: In bounds: {} <= {} <= {}", start_i, idx, end_i);
+                        //log::warn!("BOUND: In bounds: {} <= {} <= {}", start_i, idx, end_i);
                         // In bounds!
                     }
                     else {
-                        log::warn!("BOUND: Out of bounds: {} <= {} <= {}", start_i, idx, end_i);
+                        //log::warn!("BOUND: Out of bounds: {} <= {} <= {}", start_i, idx, end_i);
                         // Bounds range exception
                         self.sw_interrupt(5);
                         exception = CpuException::BoundsException;
@@ -463,6 +468,10 @@ impl NecVx0 {
                     log::warn!("BOUND: Illegal form of BOUND!");
                     self.halted = true;
                 }
+            }
+            0x63 => {
+                // UNDEFINED (?)
+                let _ = self.read_operand16(self.i.operand1_type, self.i.segment_override);
             }
             0x64 | 0x65 => {},
             0x68 => {
@@ -483,11 +492,12 @@ impl NecVx0 {
                     self.cycle();
                 }
 
-                self.set_szp_flags_from_result_u8(product as u8);                
+                self.clear_flag(Flag::AuxCarry);
+                self.set_szp_flags_from_result_u16(product);
             }
             0x6A => {
                 // PUSH imm8
-                let imm8 = self.read_operand8(self.i.operand1_type, None).unwrap();
+                let imm8 = self.read_operand8(self.i.operand1_type, None).unwrap() as i8 as i16 as u16;
                 self.push_u16(imm8 as u16, ReadWriteFlag::RNI);
             }
             0x6B => {
@@ -510,7 +520,7 @@ impl NecVx0 {
                 // INSB | INSW | OUTSB | OUTSW
                 // rep_start() will terminate early if CX==0
                 if self.rep_start() {
-                    self.string_op(self.i.mnemonic, self.i.segment_override);
+                    self.string_op(self.i.mnemonic, None);
                     self.cycle_i(0x130);
 
                     // Check for end condition (CX==0)
@@ -870,6 +880,23 @@ impl NecVx0 {
 
                     // Check for end condition (CX==0)
                     if self.in_rep {
+                        match self.rep_type {
+                            RepType::Repc => {
+                                // Repeat while Carry flag is set. If Carry flag is NOT set, end REP.
+                                if !self.get_flag(Flag::Carry) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                }
+                            }
+                            RepType::Repnc => {
+                                // Repeat while NOT Carry. If Carry flag is set, end REP.
+                                if self.get_flag(Flag::Carry) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                }
+                            }
+                            _ => {}
+                        }
                         
                         self.decrement_register16(Register16::CX); // 131
 
@@ -913,6 +940,22 @@ impl NecVx0 {
                         self.decrement_register16(Register16::CX); // 129
 
                         match self.rep_type {
+                            RepType::Repc => {
+                                // Repeat while Carry flag is set. If Carry flag is NOT set, end REP.
+                                if !self.get_flag(Flag::Carry) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                    end = true;
+                                }
+                            }
+                            RepType::Repnc => {
+                                // Repeat while NOT Carry. If Carry flag is set, end REP.
+                                if self.get_flag(Flag::Carry) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                    end = true;
+                                }
+                            }
                             RepType::Repne => {
                                 // Repeat while NOT zero. If Zero flag is set, end REP.
                                 if self.get_flag(Flag::Zero) {
@@ -974,8 +1017,8 @@ impl NecVx0 {
                 
                 self.math_op16(Mnemonic::TEST,  op1_value, op2_value);
             }
-            0xAA | 0xAB => {
-                // STOSB & STOSW
+            0xAA | 0xAB | 0xAC | 0xAD=> {
+                // STOSB,STOSW,LODSB,LODSW
 
                 if self.rep_start() {
                     
@@ -984,7 +1027,24 @@ impl NecVx0 {
     
                     // Check for end condition (CX==0)
                     if self.in_rep {
-
+                        match self.rep_type {
+                            RepType::Repc => {
+                                // Repeat while Carry flag is set. If Carry flag is NOT set, end REP.
+                                if !self.get_flag(Flag::Carry) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                }
+                            }
+                            RepType::Repnc => {
+                                // Repeat while NOT Carry. If Carry flag is set, end REP.
+                                if self.get_flag(Flag::Carry) {
+                                    self.rep_end();
+                                    self.cycle_i(MC_JUMP); // Jump to 1f4, RNI
+                                }
+                            }
+                            _ => {}
+                        }
+                        
                         // Check for interrupt
                         self.cycle_i(0x11f);
                         if self.intr_pending {
@@ -1006,43 +1066,6 @@ impl NecVx0 {
                         // Jump to 1f1
                         self.cycle_i(MC_JUMP);
                     }
-                }
-            }
-            0xAC | 0xAD => {
-                // LODSB & LODSW
-                // Flags: None
-                // Although LODSx is not typically used with a REP prefix, it can be
-
-                // rep_start() will terminate early if CX==0
-                if self.rep_start() {
-
-                    self.string_op(self.i.mnemonic, self.i.segment_override);
-                    self.cycles_i(3, &[0x12e, MC_JUMP, 0x1f8]);
-
-                    // Check for REP end condition #1 (CX==0)
-                    if self.in_rep {
-
-                        self.cycles_i(2, &[MC_JUMP, 0x131]); // Jump to 131
-                        self.decrement_register16(Register16::CX); // 131
-
-                        // Check for interrupt
-                        if self.intr_pending {
-                            self.cycle_i(MC_JUMP); // Jump to RPTI
-                            self.rep_interrupt();
-                        }
-                        else {
-                            self.cycle_i(0x132);
-
-                            if self.c.x() == 0 {
-                                // Fall through to 133/1f9, RNI
-                                self.rep_end();
-                            }
-                            else {
-                                self.cycle_i(MC_JUMP); // jump to 1
-                            }
-                        }
-                    }
-                    // Non-prefixed LODSx ends with RNI
                 }
             }
             0xB0..=0xB7 => {
@@ -1072,18 +1095,18 @@ impl NecVx0 {
                     for _ in 0..op2_value {
                         self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
                     }
+
+                    // If there is a terminal write to M, don't process RNI on line 0x92
+                    if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                        //if self.c.l() != 0 {
+                        self.cycle_i(0x092);
+                        //}
+                    }
+
+                    let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
+                    self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 }
-
-                // If there is a terminal write to M, don't process RNI on line 0x92
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    //if self.c.l() != 0 {
-                    self.cycle_i(0x092);
-                    //}
-                }
-
-                let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
-
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);                
+                
             }
             0xC1 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, imm8
@@ -1096,16 +1119,16 @@ impl NecVx0 {
                     for _ in 0..op2_value {
                         self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
                     }
+
+                    // If there is a terminal write to M, don't process RNI on line 0x92
+                    if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                        self.cycle_i(0x092);
+                    }
+
+                    let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
+                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                 }
-
-                // If there is a terminal write to M, don't process RNI on line 0x92
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycle_i(0x092);
-                }
-
-                let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
-
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);                
+                
             }
             0xC2 => {
                 // RETN imm16 - Return from call w/ release
@@ -1320,18 +1343,17 @@ impl NecVx0 {
                     for _ in 0..(self.c.l() ) {
                         self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
                     }
-                }
-                
-                // If there is a terminal write to M, don't process RNI on line 0x92
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    //if self.c.l() != 0 {
-                        self.cycle_i(0x092);
-                    //}
-                }
 
-                let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
- 
-                self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                    // If there is a terminal write to M, don't process RNI on line 0x92
+                    if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                        //if self.c.l() != 0 {
+                        self.cycle_i(0x092);
+                        //}
+                    }
+
+                    let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
+                    self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                }
             }
             0xD3 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, cl
@@ -1345,36 +1367,44 @@ impl NecVx0 {
                     for _ in 0..(self.c.l() ) {
                         self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
                     }
-                }
 
-                // If there is a terminal write to M, don't process RNI on line 0x92
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycle_i(0x092);
-                }
-             
-                let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);         
+                    // If there is a terminal write to M, don't process RNI on line 0x92
+                    if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                        self.cycle_i(0x092);
+                    }
 
-                self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                    let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
+                    self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                }
             }
             0xD4 => {
                 // AAM - Ascii adjust AX after Multiply
                 // Get imm8 value
                 let op1_value = self.read_operand8(self.i.operand1_type, None).unwrap();
                 
-                if !self.aam(op1_value) {
-                    self.set_szp_flags_from_result_u8(0);
+                if op1_value != 0 {
+                    if !self.aam(op1_value) {
+                        //self.set_szp_flags_from_result_u8(0);
+                        self.clear_flag(Flag::AuxCarry);
+                        self.clear_flag(Flag::Carry);
+                        self.clear_flag(Flag::Overflow);
+                    }
+                }
+                else {
+                    self.set_szp_flags_from_result_u8(self.a.l());
+                    self.set_register8(Register8::AH, 0xFF);
                     self.clear_flag(Flag::AuxCarry);
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::Overflow);
-                    self.int0();
-                    jump = true;    
-                    exception = CpuException::DivideError;
                 }
+
             }
             0xD5 => {
                 // AAD - Ascii Adjust before Division
+                
+                // We read the immediate value, but it is not used in the AAD operation on V20
                 let op1_value = self.read_operand8(self.i.operand1_type, None).unwrap();
-                self.aad(op1_value);
+                self.aad(0x0A);
             }
             0xD6 | 0xD7 => {
                 // XLAT

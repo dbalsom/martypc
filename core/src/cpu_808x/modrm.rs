@@ -234,7 +234,7 @@ const MODRM_TABLE: [ModRmByte; 256] = {
             _ => (0, 0, 0),
         };
 
-        // Set the addressing mode based on the cominbation of Mod and R/M bitfields + Displacement.
+        // Set the addressing mode based on the combination of Mod and R/M bitfields + Displacement.
         let (addressing_mode, displacement) = match byte & MODRM_ADDR_MASK {
             MODRM_ADDR_BX_SI => (AddressingMode::BxSi, Displacement::NoDisp),
             MODRM_ADDR_BX_DI => (AddressingMode::BxDi, Displacement::NoDisp),
@@ -418,7 +418,7 @@ impl ModRmByte {
             _ => unreachable!("impossible Register16"),
         }
     }
-    // Intepret the 'REG' field as a 16 bit segment register selector
+    // Interpret the 'REG' field as a 16 bit segment register selector
     pub fn get_op2_segmentreg16(&self) -> Register16 {
         match self.b_reg {
             0x00 => Register16::ES,
@@ -432,7 +432,7 @@ impl ModRmByte {
             _ => Register16::InvalidRegister,
         }
     }
-    // Intepret the 'REG' field as a 3 bit opcode extension
+    // Interpret the 'REG' field as a 3 bit opcode extension
     pub fn get_op_extension(&self) -> u8 {
         self.b_reg
     }

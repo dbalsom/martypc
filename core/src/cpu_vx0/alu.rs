@@ -202,6 +202,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u8(result);
                 result
             }
@@ -210,6 +212,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u8(result);
                 result
             }
@@ -218,6 +222,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u8(result);
                 // TEST does not modify operand1
                 operand1
@@ -227,6 +233,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u8(result);
                 result
             }
@@ -321,6 +329,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u16(result);
                 result
             }
@@ -329,6 +339,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u16(result);
                 result
             }
@@ -337,6 +349,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u16(result);
                 // Do not modify operand
                 operand1
@@ -346,6 +360,8 @@ impl NecVx0 {
                 // Clear carry, overflow
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
+                // The V20 clears the Aux Carry flag
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u16(result);
                 result
             }

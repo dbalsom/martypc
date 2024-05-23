@@ -2222,6 +2222,7 @@ dependencies = [
  "frontend_common",
  "getrandom",
  "image",
+ "indexmap 2.2.6",
  "instant",
  "js-sys",
  "log",

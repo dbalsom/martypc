@@ -283,20 +283,20 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
     inst!( 0x5F, o, 0, 0b0000000000110010, 0x034,         POP,     Ot::Register16Encoded,                  Ot::NoOperand);
     inst!( 0x60, o, 0, 0b0000000000010000, 0x0e8,         PUSHA,   Ot::NoOperand,                          Ot::NoOperand);
     inst!( 0x61, o, 0, 0b0000000000010000, 0x0e8,         POPA,    Ot::NoOperand,                          Ot::NoOperand);
-    inst!( 0x62, o, 0, 0b0000000000011000, 0x0e8,         BOUND,   Ot::Register16,                         Ot::ModRM16);
-    inst!( 0x63, o, 0, 0b0000000000011000, 0x0e8,         BOUND,   Ot::Register16,                         Ot::ModRM16);
-    inst!( 0x64, o, 0, 0b0000000000010000, 0x0e8,         Prefix,  Ot::NoOperand,                          Ot::NoOperand);
-    inst!( 0x65, o, 0, 0b0000000000010000, 0x0e8,         Prefix,  Ot::NoOperand,                          Ot::NoOperand);
+    inst!( 0x62, o, 0, 0b0000000000000000, 0x0e8,         BOUND,   Ot::Register16,                         Ot::ModRM16);
+    inst!( 0x63, o, 0, 0b0000000000000000, 0x0e8,         UNDEF,   Ot::ModRM16,                            Ot::NoOperand);
+    inst!( 0x64, o, 0, 0b0000000000011000, 0x0e8,         Prefix,  Ot::NoOperand,                          Ot::NoOperand);
+    inst!( 0x65, o, 0, 0b0000000000011000, 0x0e8,         Prefix,  Ot::NoOperand,                          Ot::NoOperand);
     inst!( 0x66, o, 0, 0b0000000000000000, 0x0e8,         FPO2,    Ot::ModRM16,                            Ot::NoOperand);
     inst!( 0x67, o, 0, 0b0000000000000000, 0x0e8,         FPO2,    Ot::ModRM16,                            Ot::NoOperand);
-    inst!( 0x68, o, 0, 0b0000000000000000, 0x0e8,         PUSH,    Ot::Immediate16,                        Ot::NoOperand);
-    inst!( 0x69, o, 0, 0b0000000000000000, 0x0e8,         IMUL,    Ot::Register16,                         Ot::ModRM16);
-    inst!( 0x6A, o, 0, 0b0000000000000000, 0x0e8,         PUSH,    Ot::Immediate8,                         Ot::NoOperand);
+    inst!( 0x68, o, 0, 0b0000000000010000, 0x0e8,         PUSH,    Ot::Immediate16,                        Ot::NoOperand);
+    inst!( 0x69, o, 0, 0b0000000000010000, 0x0e8,         IMUL,    Ot::Register16,                         Ot::ModRM16);
+    inst!( 0x6A, o, 0, 0b0000000000010000, 0x0e8,         PUSH,    Ot::Immediate8,                         Ot::NoOperand);
     inst!( 0x6B, o, 0, 0b0000000000000000, 0x0e8,         IMUL,    Ot::Register16,                         Ot::ModRM16);
-    inst!( 0x6C, o, 0, 0b0000000000000000, 0x0e8,         INSB,    Ot::ModRM8,                             Ot::NoOperand);
-    inst!( 0x6D, o, 0, 0b0000000000000000, 0x0e8,         INSW,    Ot::ModRM16,                            Ot::NoOperand);
-    inst!( 0x6E, o, 0, 0b0000000000000000, 0x0e8,         OUTSB,   Ot::ModRM8,                             Ot::NoOperand);
-    inst!( 0x6F, o, 0, 0b0000000000000000, 0x0e8,         OUTSW,   Ot::ModRM16,                            Ot::NoOperand);
+    inst!( 0x6C, o, 0, 0b0000000000010000, 0x0e8,         INSB,    Ot::NoOperand,                          Ot::NoOperand);
+    inst!( 0x6D, o, 0, 0b0000000000010000, 0x0e8,         INSW,    Ot::NoOperand,                          Ot::NoOperand);
+    inst!( 0x6E, o, 0, 0b0000000000010000, 0x0e8,         OUTSB,   Ot::NoOperand,                          Ot::NoOperand);
+    inst!( 0x6F, o, 0, 0b0000000000010000, 0x0e8,         OUTSW,   Ot::NoOperand,                          Ot::NoOperand);
     inst!( 0x70, o, 0, 0b0000000000110010, 0x0e8,         JO,      Ot::Relative8,                          Ot::NoOperand);
     inst!( 0x71, o, 0, 0b0000000000110010, 0x0e8,         JNO,     Ot::Relative8,                          Ot::NoOperand);
     inst!( 0x72, o, 0, 0b0000000000110010, 0x0e8,         JB,      Ot::Relative8,                          Ot::NoOperand);
@@ -502,7 +502,7 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
     inst!( 0xD0, o, 3, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM8,                             Ot::NoOperand);
     inst!( 0xD0, o, 3, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM8,                             Ot::NoOperand);
     inst!( 0xD0, o, 3, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM8,                             Ot::NoOperand);
-    inst!( 0xD0, o, 3, 0b0100100000000000, 0x088, SETMO , SETMO,   Ot::ModRM8,                             Ot::NoOperand);
+    inst!( 0xD0, o, 3, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM8,                             Ot::NoOperand);
     inst!( 0xD0, o, 3, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM8,                             Ot::NoOperand);
     // Group
     inst!( 0xD1, o, 3, 0b0100100000000000, 0x088, ROL   , ROL  ,   Ot::ModRM16,                            Ot::NoOperand);
@@ -511,7 +511,7 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
     inst!( 0xD1, o, 3, 0b0100100000000000, 0x088, RCR   , RCR  ,   Ot::ModRM16,                            Ot::NoOperand);
     inst!( 0xD1, o, 3, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM16,                            Ot::NoOperand);
     inst!( 0xD1, o, 3, 0b0100100000000000, 0x088, SHR   , SHR  ,   Ot::ModRM16,                            Ot::NoOperand);
-    inst!( 0xD1, o, 3, 0b0100100000000000, 0x088, SETMO , SETMO,   Ot::ModRM16,                            Ot::NoOperand);
+    inst!( 0xD1, o, 3, 0b0100100000000000, 0x088, SHL   , SHL  ,   Ot::ModRM16,                            Ot::NoOperand);
     inst!( 0xD1, o, 3, 0b0100100000000000, 0x088, SAR   , SAR  ,   Ot::ModRM16,                            Ot::NoOperand);
     // Group
     inst!( 0xD2, o, 4, 0b0100100000000000, 0x08c, ROL   , ROL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
@@ -520,7 +520,7 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
     inst!( 0xD2, o, 4, 0b0100100000000000, 0x08c, RCR   , RCR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
     inst!( 0xD2, o, 4, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
     inst!( 0xD2, o, 4, 0b0100100000000000, 0x08c, SHR   , SHR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
-    inst!( 0xD2, o, 4, 0b0100100000000000, 0x08c, SETMO , SETMOC,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
+    inst!( 0xD2, o, 4, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
     inst!( 0xD2, o, 4, 0b0100100000000000, 0x08c, SAR   , SAR   ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
     // Group
     inst!( 0xD3, o, 4, 0b0100100000000000, 0x08c, ROL   , ROL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
@@ -529,7 +529,7 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
     inst!( 0xD3, o, 4, 0b0100100000000000, 0x08c, RCR   , RCR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
     inst!( 0xD3, o, 4, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
     inst!( 0xD3, o, 4, 0b0100100000000000, 0x08c, SHR   , SHR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
-    inst!( 0xD3, o, 4, 0b0100100000000000, 0x08c, SETMO , SETMOC,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
+    inst!( 0xD3, o, 4, 0b0100100000000000, 0x08c, SHL   , SHL   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
     inst!( 0xD3, o, 4, 0b0100100000000000, 0x08c, SAR   , SAR   ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
     // Group
     inst!( 0xF6, o, 5, 0b0100100000100100, 0x098,         TEST  ,  Ot::ModRM8,                             Ot::Immediate8);

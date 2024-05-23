@@ -329,6 +329,7 @@ pub trait Cpu {
     // General CPU control
     fn reset(&mut self);
     fn set_reset_vector(&mut self, address: CpuAddress);
+    fn set_reset_queue_contents(&mut self, contents: Vec<u8>);
     fn set_end_address(&mut self, address: CpuAddress);
     fn set_nmi(&mut self, state: bool);
     fn set_intr(&mut self, state: bool);

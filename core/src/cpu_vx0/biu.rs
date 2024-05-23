@@ -860,11 +860,20 @@ impl NecVx0 {
 
     #[inline]
     pub fn biu_fetch_start(&mut self) {
+        // Don't start a fetch if the queue is full.
+        if !self.queue.has_room_for_fetch() {
+            return;
+        }
+
         // Only start a fetch if the EU hasn't claimed the bus, and we're not already in a fetch
         // address cycle.
         if self.bus_pending != BusPendingType::EuEarly && self.pl_status != BusStatus::CodeFetch {
             self.fetch_state = FetchState::Normal;
+            self.trace_comment("FETCH_START");
             self.biu_address_start(BusStatus::CodeFetch);
+        }
+        else {
+            self.trace_comment("FETCH_START_BLOCKED");
         }
     }
 

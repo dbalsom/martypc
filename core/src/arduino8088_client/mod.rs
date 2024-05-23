@@ -46,7 +46,7 @@ pub enum ServerCommand {
     CmdReset = 0x02,
     CmdLoad = 0x03,
     CmdCycle = 0x04,
-    CmdReadAddress = 0x05,
+    CmdReadAddressLatch = 0x05,
     CmdReadStatus = 0x06,
     CmdRead8288Command = 0x07,
     CmdRead8288Control = 0x08,
@@ -63,7 +63,9 @@ pub enum ServerCommand {
     CmdGetLastError = 0x13,
     CmdGetCycleState = 0x14,
     CmdCGetCycleState = 0x15,
-    CmdInvalid = 0x16,
+    CmdPrefetchStore = 0x16,
+    CmdReadAddressU = 0x17,
+    CmdInvalid,
 }
 
 #[derive(Debug, PartialEq)]
@@ -419,7 +421,20 @@ impl CpuClient {
     /// Return the value of the address latches (Latched on ALE)
     pub fn read_address_latch(&mut self) -> Result<u32, CpuClientError> {
         let mut buf: [u8; 3] = [0; 3];
-        self.send_command_byte(ServerCommand::CmdReadAddress)?;
+        self.send_command_byte(ServerCommand::CmdReadAddressLatch)?;
+        self.recv_buf(&mut buf)?;
+        self.read_result_code()?;
+
+        let address = buf[0] as u32 | (buf[1] as u32) << 8 | (buf[2] as u32) << 16;
+
+        Ok(address)
+    }
+
+    /// Server command - ReadAddress
+    /// Return the current value of the address bus
+    pub fn read_address(&mut self) -> Result<u32, CpuClientError> {
+        let mut buf: [u8; 3] = [0; 3];
+        self.send_command_byte(ServerCommand::CmdReadAddressU)?;
         self.recv_buf(&mut buf)?;
         self.read_result_code()?;
 
@@ -472,6 +487,11 @@ impl CpuClient {
         self.read_result_code()?;
 
         Ok(true)
+    }
+
+    pub fn write_store_pgm(&mut self) -> Result<bool, CpuClientError> {
+        self.send_command_byte(ServerCommand::CmdPrefetchStore)?;
+        self.read_result_code()
     }
 
     pub fn finalize(&mut self) -> Result<bool, CpuClientError> {

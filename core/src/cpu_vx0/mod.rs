@@ -586,6 +586,7 @@ pub struct NecVx0 {
     step_over_breakpoint: Option<u32>,
 
     reset_vector: CpuAddress,
+    reset_queue:  Option<Vec<u8>>,
 
     enable_service_interrupt: bool,
     trace_enabled: bool,
@@ -610,6 +611,8 @@ pub struct NecVx0 {
     cycle_states: Vec<CycleState>,
     #[cfg(feature = "cpu_validator")]
     validator_state: CpuValidatorState,
+    #[cfg(feature = "cpu_validator")]
+    validator_mode: ValidatorMode,
     #[cfg(feature = "cpu_validator")]
     validator_end: usize,
     #[cfg(feature = "cpu_validator")]
@@ -833,6 +836,8 @@ impl NecVx0 {
                     }
                 }
             }
+
+            cpu.validator_mode = validator_mode;
         }
 
         cpu.trace_logger = trace_logger;
@@ -985,6 +990,7 @@ impl NecVx0 {
             aiowc: !self.i8288.aiowc,
             iowc: !self.i8288.iowc,
             inta: !self.i8288.inta,
+            bhe: false,
             q_op: self.last_queue_op,
             q_byte: self.last_queue_byte,
             q_len: self.queue.len() as u32,
@@ -1915,5 +1921,23 @@ impl NecVx0 {
     #[cfg(feature = "cpu_validator")]
     pub fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>> {
         &mut self.validator
+    }
+
+    /// Specify queue contents to be set on next reset.
+    pub fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
+        self.reset_queue = Some(contents);
+    }
+
+    /// Set queue contents to the specified byte vector.
+    pub fn set_queue_contents(&mut self, contents: Vec<u8>) {
+        let old_len = self.queue.len();
+        self.pc = self.pc.wrapping_sub(old_len as u16);
+        self.queue.flush();
+        for (i, byte) in contents.iter().enumerate() {
+            if i < self.queue.get_size() {
+                self.queue.push8(*byte);
+                self.pc = self.pc.wrapping_add(1);
+            }
+        }
     }
 }

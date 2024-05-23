@@ -74,6 +74,12 @@ impl Intel808x {
             self.set_register16(REGISTER16_LUT[i], n);
         }
 
+        // Don't let CX be FFFF due to prefetch setup requirements.
+        // We use one iteration of 'rep scasb' to fill the prefetch queue. This means we must adjust
+        // CX and DI so that the result of the rep movsb sets the requested registers. If CX is FFFF,
+        // we would attempt to add one, wrapping to 0, and rep scasb would not execute.
+        self.set_register16(Register16::CX, self.get_register16(Register16::CX) & 0xFFFE);
+
         // Flush queue
         self.queue.flush();
 

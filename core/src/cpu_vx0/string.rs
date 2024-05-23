@@ -70,21 +70,6 @@ impl NecVx0 {
                     }
                 }
             }
-            Mnemonic::OUTSW => {
-                let mem_value = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
-                self.biu_io_write_u16(self.get_register16(Register16::DX), mem_value, ReadWriteFlag::Normal);
-
-                match self.get_flag(Flag::Direction) {
-                    false => {
-                        // Direction flag clear, process forwards
-                        self.di = self.di.wrapping_add(2);
-                    }
-                    true => {
-                        // Direction flag set, process backwards
-                        self.di = self.di.wrapping_sub(2);
-                    }
-                }
-            }
             Mnemonic::OUTSB => {
                 let mem_value = self.biu_read_u8(Segment::ES, self.di);
                 self.biu_io_write_u8(self.get_register16(Register16::DX), mem_value, ReadWriteFlag::Normal);
@@ -97,6 +82,21 @@ impl NecVx0 {
                     true => {
                         // Direction flag set, process backwards
                         self.di = self.di.wrapping_sub(1);
+                    }
+                }
+            }
+            Mnemonic::OUTSW => {
+                let mem_value = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                self.biu_io_write_u16(self.get_register16(Register16::DX), mem_value, ReadWriteFlag::Normal);
+
+                match self.get_flag(Flag::Direction) {
+                    false => {
+                        // Direction flag clear, process forwards
+                        self.di = self.di.wrapping_add(2);
+                    }
+                    true => {
+                        // Direction flag set, process backwards
+                        self.di = self.di.wrapping_sub(2);
                     }
                 }
             }
@@ -274,11 +274,23 @@ impl NecVx0 {
                 // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
                 // Override: DS can be overridden
 
-                self.cycle_i(0x121);
-                let dssi_op = self.biu_read_u8(segment_base_ds, self.si);
-                self.cycles_i(2, &[0x123, 0x124]);
-                let esdi_op = self.biu_read_u8(Segment::ES, self.di);
-                self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                // V20 reads from ES first in REP CMPSB. Don't ask me why.
+                let esdi_op;
+                let dssi_op;
+                if self.in_rep {
+                    self.cycle_i(0x121);
+                    esdi_op = self.biu_read_u8(Segment::ES, self.di);
+                    self.cycles_i(2, &[0x123, 0x124]);
+                    dssi_op = self.biu_read_u8(segment_base_ds, self.si);
+                    self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                }
+                else {
+                    self.cycle_i(0x121);
+                    dssi_op = self.biu_read_u8(segment_base_ds, self.si);
+                    self.cycles_i(2, &[0x123, 0x124]);
+                    esdi_op = self.biu_read_u8(Segment::ES, self.di);
+                    self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                }
 
                 let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);
 
@@ -306,10 +318,11 @@ impl NecVx0 {
                 // Flags: The CF, OF, SF, ZF, AF, and PF flags are set according to the temporary result of the comparison.
                 // Override: DS can be overridden
 
+                // V20 reads from ES first in CMPSW. Don't ask me why.
                 self.cycle_i(0x121);
-                let dssi_op = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
-                self.cycles_i(2, &[0x123, 0x124]);
                 let esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                self.cycles_i(2, &[0x123, 0x124]);
+                let dssi_op = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
                 self.cycles_i(3, &[0x126, 0x127, 0x128]);
 
                 let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);

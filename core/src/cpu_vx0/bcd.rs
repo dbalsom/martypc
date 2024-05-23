@@ -126,9 +126,7 @@ impl NecVx0 {
     /// Flags: The SF, ZF, and PF flags are set according to the resulting binary value in the AL register
     pub fn aad(&mut self, imm8: u8) {
         self.cycles_i(3, &[0x170, 0x171, MC_JUMP]);
-        let product_native = (self.a.h() as u16).wrapping_mul(imm8 as u16) as u8;
         let (_, product) = 0u8.corx(self, self.a.h() as u16, imm8 as u16, false);
-        assert_eq!((product as u8), product_native);
 
         self.set_register8(Register8::AL, self.a.l().wrapping_add(product as u8));
         self.set_register8(Register8::AH, 0);

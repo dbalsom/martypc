@@ -585,6 +585,7 @@ pub struct Intel808x {
     step_over_breakpoint: Option<u32>,
 
     reset_vector: CpuAddress,
+    reset_queue:  Option<Vec<u8>>,
 
     enable_service_interrupt: bool,
     trace_enabled: bool,
@@ -992,6 +993,7 @@ impl Intel808x {
             aiowc: !self.i8288.aiowc,
             iowc: !self.i8288.iowc,
             inta: !self.i8288.inta,
+            bhe: false,
             q_op: self.last_queue_op,
             q_byte: self.last_queue_byte,
             q_len: self.queue.len() as u32,
@@ -1898,7 +1900,6 @@ impl Intel808x {
     pub fn get_service_event(&mut self) -> Option<ServiceEvent> {
         self.service_events.pop_front()
     }
-
     pub fn get_cycle_trace(&self) -> &Vec<String> {
         &self.trace_str_vec
     }
@@ -1922,5 +1923,23 @@ impl Intel808x {
     #[cfg(feature = "cpu_validator")]
     pub fn get_validator_mut(&mut self) -> &mut Option<Box<dyn CpuValidator>> {
         &mut self.validator
+    }
+
+    /// Specify queue contents to be set on next reset.
+    pub fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
+        self.reset_queue = Some(contents);
+    }
+
+    /// Set queue contents to the specified byte vector.
+    pub fn set_queue_contents(&mut self, contents: Vec<u8>) {
+        let old_len = self.queue.len();
+        self.pc = self.pc.wrapping_sub(old_len as u16);
+        self.queue.flush();
+        for (i, byte) in contents.iter().enumerate() {
+            if i < self.queue.get_size() {
+                self.queue.push8(*byte);
+                self.pc = self.pc.wrapping_add(1);
+            }
+        }
     }
 }

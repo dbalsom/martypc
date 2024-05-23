@@ -419,9 +419,9 @@ pub const FLAG_MASK_LOOKUP_V20: [FlagMask; 256] =  [
     FlagMask { opcode: 0x66, group: 0, mask: 0 },
     FlagMask { opcode: 0x67, group: 0, mask: 0 },
     FlagMask { opcode: 0x68, group: 0, mask: 0 },
-    FlagMask { opcode: 0x69, group: 0, mask: 0 },
+    FlagMask { opcode: 0x69, group: 0, mask: VFLAG_SIGN | VFLAG_ZERO | VFLAG_PARITY | VFLAG_AUXILIARY }, // IMUL
     FlagMask { opcode: 0x6A, group: 0, mask: 0 },
-    FlagMask { opcode: 0x6B, group: 0, mask: 0 },
+    FlagMask { opcode: 0x6B, group: 0, mask: VFLAG_SIGN | VFLAG_ZERO | VFLAG_PARITY | VFLAG_AUXILIARY }, // IMUL
     FlagMask { opcode: 0x6C, group: 0, mask: 0 },
     FlagMask { opcode: 0x6D, group: 0, mask: 0 },
     FlagMask { opcode: 0x6E, group: 0, mask: 0 },

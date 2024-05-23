@@ -1151,9 +1151,12 @@ impl Intel808x {
                     self.clear_flag(Flag::AuxCarry);
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::Overflow);
+                    /*
+                    Divide exceptions are only fired by the POSTIDIV routine.
                     self.int0();
                     jump = true;    
                     exception = CpuException::DivideError;
+                    */
                 }
             }
             0xD5 => {
@@ -1969,6 +1972,7 @@ impl Intel808x {
 
                             self.cycle_i(0x06a);
                             self.biu_fetch_suspend();
+                            // TODO: Fix this
                             self.cycles_i(3, &[0x06b, 0x06c]);
                             self.corr();
 

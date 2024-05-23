@@ -55,7 +55,8 @@ use crate::cpu_test::common::{
     write_tests_to_file,
     CpuTest,
     TestFileLoad,
-    TestState,
+    TestStateFinal,
+    TestStateInitial,
 };
 
 use marty_core::{
@@ -77,9 +78,9 @@ use marty_core::{
 };
 
 pub fn run_processtests(config: ConfigFileParams) {
-    let mut test_path = "./tests".to_string();
-    if let Some(test_dir) = &config.tests.test_dir {
-        test_path = test_dir.clone();
+    let mut test_path = PathBuf::from("./tests".to_string());
+    if let Some(test_path_inner) = &config.tests.test_path {
+        test_path = test_path_inner.clone();
     }
 
     let mut test_base_path = PathBuf::new();

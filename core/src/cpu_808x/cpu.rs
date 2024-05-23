@@ -195,7 +195,15 @@ impl Cpu for Intel808x {
         self.cycle();
         self.biu_fetch_suspend();
         self.cycles_i(2, &[0x1e4, 0x1e5]);
-        self.biu_queue_flush();
+
+        // If reset queue contents are provided, set the queue contents instead of flushing.
+        if let Some(reset_queue) = self.reset_queue.clone() {
+            self.set_queue_contents(reset_queue);
+        }
+        else {
+            self.biu_queue_flush();
+        }
+
         self.cycles_i(3, &[0x1e6, 0x1e7, 0x1e8]);
 
         #[cfg(feature = "cpu_validator")]
@@ -227,6 +235,11 @@ impl Cpu for Intel808x {
             }
         }
         self.set_end_address(end_addr as usize);
+    }
+
+    #[inline]
+    fn set_reset_queue_contents(&mut self, contents: Vec<u8>) {
+        self.set_reset_queue_contents(contents)
     }
 
     #[inline]

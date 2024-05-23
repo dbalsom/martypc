@@ -2149,6 +2149,9 @@ impl CGACard {
             self.hcc_c0 = 0;
             self.hborder = false;
             self.vlc_c9 += 1;
+            if self.vlc_c9 == 32 {
+                self.vlc_c9 = 0;
+            }
             // Return video memory address to starting position for next character row
             self.vma = self.vma_t;
 

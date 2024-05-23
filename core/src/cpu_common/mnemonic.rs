@@ -154,6 +154,7 @@ pub enum Mnemonic {
     ENTER,
     LEAVE,
     // V20 Instructions
+    UNDEF,
     FPO2,
     TEST1,
     CLR1,
@@ -293,6 +294,7 @@ pub(crate) fn mnemonic_to_str(op: Mnemonic) -> &'static str {
         Mnemonic::ENTER => "ENTER",
         Mnemonic::LEAVE => "LEAVE",
         // V20 Instructions
+        Mnemonic::UNDEF => "UNDEF",
         Mnemonic::FPO2 => "FPO2",
         Mnemonic::TEST1 => "TEST1",
         Mnemonic::CLR1 => "CLR1",

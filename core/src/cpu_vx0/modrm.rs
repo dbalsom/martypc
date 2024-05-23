@@ -106,6 +106,16 @@ impl Default for ModRmByte {
     }
 }
 
+impl ModRmByte {
+    pub fn displacement_size(&self) -> u32 {
+        match self.disp {
+            Displacement::Pending8 => 1,
+            Displacement::Pending16 => 2,
+            _ => 0,
+        }
+    }
+}
+
 // Microcode addresses for EA procedures, pre-displacement
 const EA_INSTR_TABLE_PRE: [[u16; 5]; 24] = [
     [0x1d4, 0x1d5, 0x1d6, MC_JUMP, MC_NONE],       // MODRM_ADDR_BX_SI
@@ -234,7 +244,7 @@ const MODRM_TABLE: [ModRmByte; 256] = {
             _ => (0, 0, 0),
         };
 
-        // Set the addressing mode based on the cominbation of Mod and R/M bitfields + Displacement.
+        // Set the addressing mode based on the combination of Mod and R/M bitfields + Displacement.
         let (addressing_mode, displacement) = match byte & MODRM_ADDR_MASK {
             MODRM_ADDR_BX_SI => (AddressingMode::BxSi, Displacement::NoDisp),
             MODRM_ADDR_BX_DI => (AddressingMode::BxDi, Displacement::NoDisp),
@@ -294,6 +304,18 @@ const MODRM_TABLE: [ModRmByte; 256] = {
 };
 
 impl ModRmByte {
+    pub fn peek(byte: u8) -> (ModRmByte, u32) {
+        let mut modrm = MODRM_TABLE[byte as usize];
+        let mut disp_size = 0;
+
+        if modrm.b_mod != 0b11 {
+            // Load any displacement
+            disp_size = modrm.displacement_size()
+        }
+
+        (modrm, disp_size + 1)
+    }
+
     /// Read the modrm byte and look up the appropriate value from the modrm table.
     /// Load any displacement, then return modrm struct and size of modrm + displacement.
     pub fn read(bytes: &mut impl ByteQueue) -> (ModRmByte, u32) {
@@ -418,7 +440,7 @@ impl ModRmByte {
             _ => unreachable!("impossible Register16"),
         }
     }
-    // Intepret the 'REG' field as a 16 bit segment register selector
+    // Interpret the 'REG' field as a 16 bit segment register selector
     pub fn get_op2_segmentreg16(&self) -> Register16 {
         match self.b_reg {
             0x00 => Register16::ES,
@@ -432,7 +454,7 @@ impl ModRmByte {
             _ => Register16::InvalidRegister,
         }
     }
-    // Intepret the 'REG' field as a 3 bit opcode extension
+    // Interpret the 'REG' field as a 3 bit opcode extension
     pub fn get_op_extension(&self) -> u8 {
         self.b_reg
     }

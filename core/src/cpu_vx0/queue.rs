@@ -75,6 +75,10 @@ impl InstructionQueue {
         self.policy_size = size - fetch_size;
     }
 
+    pub fn get_size(&mut self) -> usize {
+        self.size
+    }
+
     #[inline]
     pub fn at_policy_len(&self) -> bool {
         self.len == self.policy_size

@@ -30,9 +30,6 @@
 
 #![allow(dead_code)]
 
-use anyhow::{bail, Error};
-use colored::Colorize;
-use marty_core::{cpu_808x::*, cpu_common::QueueOp};
 use std::{
     collections::{HashMap, LinkedList},
     ffi::OsString,
@@ -42,16 +39,27 @@ use std::{
     time::Duration,
 };
 
+use anyhow::{bail, Error};
+use colored::Colorize;
 use flate2::read::GzDecoder;
-use marty_core::{
-    cpu_common::CpuDispatch,
-    cpu_validator::{BusCycle, BusState, CycleState, VRegisters},
-};
 use serde_derive::{Deserialize, Serialize};
 
+use marty_core::{
+    cpu_808x::*,
+    cpu_common::{CpuDispatch, QueueOp},
+    cpu_validator::{AccessType, BusCycle, BusOp, BusOpType, BusState, CycleState, VRegisters, VRegistersDelta},
+};
+
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TestState {
+pub struct TestStateInitial {
     pub regs:  VRegisters,
+    pub ram:   Vec<[u32; 2]>,
+    pub queue: Vec<u8>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TestStateFinal {
+    pub regs:  VRegistersDelta,
     pub ram:   Vec<[u32; 2]>,
     pub queue: Vec<u8>,
 }
@@ -62,20 +70,32 @@ pub struct CpuTest {
     pub bytes: Vec<u8>, // Instruction bytes
 
     #[serde(rename = "initial")]
-    pub initial_state: TestState, // Initial state of CPU before test execution
+    pub initial_state: TestStateInitial, // Initial state of CPU before test execution
 
     #[serde(rename = "final")]
-    pub final_state: TestState, // Final state of CPU after test execution
+    pub final_state: TestStateFinal, // Final state of CPU after test execution
 
     pub cycles: Vec<CycleState>,
 
-    pub test_hash: String,
+    #[serde(alias = "test_hash", skip_serializing_if = "Option::is_none")]
+    pub hash: Option<String>,
+
+    #[serde(alias = "test_num", skip_serializing_if = "Option::is_none")]
+    pub idx: Option<usize>,
 }
 
 pub enum FailType {
     CycleMismatch,
     MemMismatch,
     RegMismatch,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum RegisterValidationResult {
+    Ok,
+    GeneralMismatch,
+    FlagMismatch(bool, bool),
+    BothMismatch,
 }
 
 pub struct TestFileLoad {
@@ -98,8 +118,29 @@ pub struct TestResult {
     pub cycle_mismatch: u32,
     pub mem_mismatch: u32,
     pub reg_mismatch: u32,
+    pub flag_mismatch: u32,
+    pub undef_flag_mismatch: u32,
     pub warn_tests: LinkedList<TestFailItem>,
     pub failed_tests: LinkedList<TestFailItem>,
+}
+
+impl Default for TestResult {
+    fn default() -> Self {
+        TestResult {
+            duration: Duration::new(0, 0),
+            pass: false,
+            passed: 0,
+            warning: 0,
+            failed: 0,
+            cycle_mismatch: 0,
+            mem_mismatch: 0,
+            reg_mismatch: 0,
+            flag_mismatch: 0,
+            undef_flag_mismatch: 0,
+            warn_tests: LinkedList::new(),
+            failed_tests: LinkedList::new(),
+        }
+    }
 }
 
 pub struct TestResultSummary {
@@ -111,21 +152,46 @@ pub struct InnerObject {
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flags: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, rename = "flags-mask", skip_serializing_if = "Option::is_none")]
     pub flags_mask: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reg: Option<HashMap<String, InnerObject>>,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct MetadataFile {
+    pub github: Option<String>,
+    pub version: String,
+    pub syntax_version: u32,
+    pub cpu: String,
+    pub generator: String,
+    pub author: Option<String>,
+    pub date: Option<String>,
+    pub opcodes: Metadata,
+}
 pub type Metadata = HashMap<String, InnerObject>;
+
+#[derive(Copy, Clone, Debug, Default)]
+pub struct MemOpValidationState {
+    in_test_state: bool,
+    in_cycles: bool,
+    is_fetch: bool,
+}
+
+#[macro_export]
+macro_rules! trace {
+    ($wr:expr, $($t:tt)*) => {{
+        let formatted_message = format!($($t)*);
+        writeln!($wr, "{}", &formatted_message).expect("Failed to write to BufWriter");
+        _ = $wr.flush();
+    }};
+}
 
 #[macro_export]
 macro_rules! trace_error {
     ($wr:expr, $($t:tt)*) => {{
         let formatted_message = format!($($t)*);
         //log::error!("{}", &formatted_message);
-
-        // Assuming you want to write the message to the BufWriter as well.
         writeln!($wr, "{}", &formatted_message).expect("Failed to write to BufWriter");
         _ = $wr.flush();
     }};
@@ -136,8 +202,6 @@ macro_rules! trace_print {
     ($wr:expr, $($t:tt)*) => {{
         let formatted_message = format!($($t)*);
         println!("{}", &formatted_message);
-
-        // Assuming you want to write the message to the BufWriter as well.
         writeln!($wr, "{}", &formatted_message).expect("Failed to write to BufWriter");
         _ = $wr.flush();
     }};
@@ -297,16 +361,95 @@ pub fn write_tests_to_file(path: PathBuf, tests: &LinkedList<CpuTest>) {
     serde_json::to_writer_pretty(writer, &tests).expect("Couldn't write JSON to output file!");
 }
 
+pub fn print_changed_flags(initial_regs: &VRegisters, final_regs: &VRegisters, log: &mut BufWriter<File>) {
+    let initial_flags = initial_regs.flags;
+    let final_flags = final_regs.flags;
+    let flag_diff = initial_flags ^ final_flags;
+
+    if flag_diff & CPU_FLAG_CARRY != 0 {
+        trace!(
+            log,
+            "CARRY flag changed (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_CARRY != 0,
+            final_flags & CPU_FLAG_CARRY != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_PARITY != 0 {
+        trace!(
+            log,
+            "PARITY flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_PARITY != 0,
+            final_flags & CPU_FLAG_PARITY != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_AUX_CARRY != 0 {
+        trace!(
+            log,
+            "AUX CARRY flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_AUX_CARRY != 0,
+            final_flags & CPU_FLAG_AUX_CARRY != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_ZERO != 0 {
+        trace!(
+            log,
+            "ZERO flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_ZERO != 0,
+            final_flags & CPU_FLAG_ZERO != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_SIGN != 0 {
+        trace!(
+            log,
+            "SIGN flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_SIGN != 0,
+            final_flags & CPU_FLAG_SIGN != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_TRAP != 0 {
+        trace!(
+            log,
+            "TRAP flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_TRAP != 0,
+            final_flags & CPU_FLAG_TRAP != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_INT_ENABLE != 0 {
+        trace!(
+            log,
+            "INT flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_INT_ENABLE != 0,
+            final_flags & CPU_FLAG_INT_ENABLE != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_DIRECTION != 0 {
+        trace!(
+            log,
+            "DIRECTION flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_DIRECTION != 0,
+            final_flags & CPU_FLAG_DIRECTION != 0
+        );
+    }
+    if flag_diff & CPU_FLAG_OVERFLOW != 0 {
+        trace!(
+            log,
+            "OVERFLOW flag changed. (initial:{}, final:{})",
+            initial_flags & CPU_FLAG_OVERFLOW != 0,
+            final_flags & CPU_FLAG_OVERFLOW != 0
+        );
+    }
+}
+
 pub fn validate_registers(
     metadata: &Metadata,
     opcode: u8,
     extension_opt: Option<u8>,
-    mask: bool,
     test_regs: &VRegisters,
     cpu_regs: &VRegisters,
     log: &mut BufWriter<File>,
-) -> bool {
+) -> RegisterValidationResult {
     let mut regs_validate = true;
+    let mut flags_validate = true;
 
     if test_regs.ax != cpu_regs.ax {
         regs_validate = false;
@@ -345,8 +488,9 @@ pub fn validate_registers(
         regs_validate = false;
     }
     if test_regs.ip != cpu_regs.ip {
-        log::warn!(
-            "IP mismatch: {:04X}[{}] vs {:04X}[{}]",
+        trace_error!(
+            log,
+            "IP mismatch: TEST: {:04X}[{}], CPU: {:04X}[{}]",
             test_regs.ip,
             test_regs.ip,
             cpu_regs.ip,
@@ -360,6 +504,9 @@ pub fn validate_registers(
     let opcode_inner = metadata
         .get(&opcode_key)
         .expect(&format!("{:02X}| No metadata for opcode", opcode));
+
+    //log::warn!("opcode_inner: {:?}", opcode_inner);
+
     let opcode_final;
 
     if let Some(extension) = extension_opt {
@@ -380,59 +527,135 @@ pub fn validate_registers(
         opcode_final = opcode_inner;
     }
 
-    let flags_mask = if mask {
-        opcode_final.flags_mask.unwrap_or(0xFFFF) as u16
+    let flags_mask = opcode_final.flags_mask.unwrap_or(0xFFFF) as u16;
+    if opcode_final.flags_mask.is_none() {
+        trace!(log, "No undefined flags found in metadata for opcode {:02X}", opcode);
     }
     else {
-        0xFFFF
-    };
-
-    let test_flags_masked = test_regs.flags & flags_mask;
-    let cpu_flags_masked = test_regs.flags & flags_mask;
-
-    if test_flags_masked != cpu_flags_masked {
-        trace_error!(
-            log,
-            "CPU flags mismatch! EMU: 0b{:08b} != CPU: 0b{:08b}",
-            test_flags_masked,
-            cpu_flags_masked
-        );
-        //trace_error!(self, "Unmasked: EMU: 0b{:08b} != CPU: 0b{:08b}", self.current_frame.regs[1].flags, regs.flags);
-        regs_validate = false;
-
-        let flag_diff = test_flags_masked ^ cpu_flags_masked;
-
-        if flag_diff & CPU_FLAG_CARRY != 0 {
-            trace_error!(log, "CARRY flag differs.");
-        }
-        if flag_diff & CPU_FLAG_PARITY != 0 {
-            trace_error!(log, "PARITY flag differs.");
-        }
-        if flag_diff & CPU_FLAG_AUX_CARRY != 0 {
-            trace_error!(log, "AUX CARRY flag differs.");
-        }
-        if flag_diff & CPU_FLAG_ZERO != 0 {
-            trace_error!(log, "ZERO flag differs.");
-        }
-        if flag_diff & CPU_FLAG_SIGN != 0 {
-            trace_error!(log, "SIGN flag differs.");
-        }
-        if flag_diff & CPU_FLAG_TRAP != 0 {
-            trace_error!(log, "TRAP flag differs.");
-        }
-        if flag_diff & CPU_FLAG_INT_ENABLE != 0 {
-            trace_error!(log, "INT flag differs.");
-        }
-        if flag_diff & CPU_FLAG_DIRECTION != 0 {
-            trace_error!(log, "DIRECTION flag differs.");
-        }
-        if flag_diff & CPU_FLAG_OVERFLOW != 0 {
-            trace_error!(log, "OVERFLOW flag differs.");
-        }
-        //panic!("CPU flag mismatch!")
+        trace!(log, "Using defined flag mask from metadata: {:04X}", flags_mask);
     }
 
-    regs_validate
+    let defined_test_flags = test_regs.flags & flags_mask;
+    let defined_cpu_flags = cpu_regs.flags & flags_mask;
+
+    let undefined_test_flags = test_regs.flags & !flags_mask;
+    let undefined_cpu_flags = cpu_regs.flags & !flags_mask;
+    let masked_flags_match = compare_flags(defined_test_flags, defined_cpu_flags, true, log);
+    let undefined_flags_match = compare_flags(undefined_test_flags, undefined_cpu_flags, false, log);
+
+    flags_validate = masked_flags_match && undefined_flags_match;
+
+    match (regs_validate, flags_validate) {
+        (true, true) => RegisterValidationResult::Ok,
+        (false, true) => RegisterValidationResult::GeneralMismatch,
+        (true, false) => RegisterValidationResult::FlagMismatch(masked_flags_match, undefined_flags_match),
+        (false, false) => {
+            log::warn!(">>>>> Both mismatch!");
+            RegisterValidationResult::BothMismatch
+        }
+    }
+}
+
+pub fn compare_flags(test_flags: u16, cpu_flags: u16, defined: bool, log: &mut BufWriter<File>) -> bool {
+    let defined_string = if defined { "DEFINED" } else { "UNDEFINED" };
+
+    if test_flags != cpu_flags {
+        trace_error!(
+            log,
+            "{} CPU flags mismatch! EMU: 0b{:08b} != CPU: 0b{:08b}",
+            defined_string,
+            test_flags,
+            cpu_flags
+        );
+
+        let flag_diff = test_flags ^ cpu_flags;
+
+        if flag_diff & CPU_FLAG_CARRY != 0 {
+            trace_error!(
+                log,
+                "{} CARRY flag differs (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_CARRY != 0,
+                test_flags & CPU_FLAG_CARRY != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_PARITY != 0 {
+            trace_error!(
+                log,
+                "{} PARITY flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_PARITY != 0,
+                test_flags & CPU_FLAG_PARITY != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_AUX_CARRY != 0 {
+            trace_error!(
+                log,
+                "{} AUX CARRY flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_AUX_CARRY != 0,
+                test_flags & CPU_FLAG_AUX_CARRY != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_ZERO != 0 {
+            trace_error!(
+                log,
+                "{} ZERO flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_ZERO != 0,
+                test_flags & CPU_FLAG_ZERO != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_SIGN != 0 {
+            trace_error!(
+                log,
+                "{} SIGN flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_SIGN != 0,
+                test_flags & CPU_FLAG_SIGN != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_TRAP != 0 {
+            trace_error!(
+                log,
+                "{} TRAP flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_TRAP != 0,
+                test_flags & CPU_FLAG_TRAP != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_INT_ENABLE != 0 {
+            trace_error!(
+                log,
+                "{} INT flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_INT_ENABLE != 0,
+                test_flags & CPU_FLAG_INT_ENABLE != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_DIRECTION != 0 {
+            trace_error!(
+                log,
+                "{} DIRECTION flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_DIRECTION != 0,
+                test_flags & CPU_FLAG_DIRECTION != 0
+            );
+        }
+        if flag_diff & CPU_FLAG_OVERFLOW != 0 {
+            trace_error!(
+                log,
+                "{} OVERFLOW flag differs. (cpu:{}, test:{})",
+                defined_string,
+                cpu_flags & CPU_FLAG_OVERFLOW != 0,
+                test_flags & CPU_FLAG_OVERFLOW != 0
+            );
+        }
+        false
+    }
+    else {
+        true
+    }
 }
 
 pub fn validate_cycles(
@@ -461,6 +684,235 @@ pub fn validate_cycles(
     }
 
     (true, 0)
+}
+
+pub fn validate_memops(
+    cpu: &CpuDispatch,
+    cycles: &Vec<CycleState>,
+    instr_addr: u32,
+    instr_size: usize,
+    initial_ram: &Vec<[u32; 2]>,
+    final_ram: &Vec<[u32; 2]>,
+    flags_on_stack: bool,
+    prefetch_len: usize,
+    log: &mut BufWriter<File>,
+) -> Result<(), Error> {
+    // Calculate stack address for flags
+    let flat_stack_addr = cpu.flat_sp();
+    // Flags should be 6 bytes behind the top of the stack
+    let flags_addr = flat_stack_addr.wrapping_add(4);
+
+    if flags_on_stack {
+        _ = writeln!(log, "validate_memory(): flags on stack at addr {:06X}", flags_addr);
+    }
+
+    let mut read_ops: Vec<BusOp> = Vec::new();
+    let mut write_ops: Vec<BusOp> = Vec::new();
+    let mut fetch_ops: Vec<BusOp> = Vec::new();
+
+    // We will track memory operations with a HashMap by address. This assumes that a single memory
+    // address can only be read from or written to once during an instruction execution.
+    let mut read_mem_states: HashMap<u32, MemOpValidationState> = HashMap::new();
+    let mut write_mem_states: HashMap<u32, MemOpValidationState> = HashMap::new();
+
+    for entry in initial_ram.iter() {
+        let addr = entry[0];
+        trace!(log, "Initial RAM state: {:06X} <= {:02X}", addr, entry[1] as u8);
+        read_mem_states.insert(
+            addr,
+            MemOpValidationState {
+                in_test_state: true,
+                in_cycles: false,
+                is_fetch: false,
+            },
+        );
+    }
+
+    for entry in final_ram.iter() {
+        let addr = entry[0];
+        trace!(log, "Final RAM state: {:06X} <= {:02X}", addr, entry[1] as u8);
+        write_mem_states.insert(
+            addr,
+            MemOpValidationState {
+                in_test_state: true,
+                in_cycles: false,
+                is_fetch: false,
+            },
+        );
+    }
+
+    if prefetch_len == 0 {
+        // The first byte of the instruction has already been fetched by the time we start tracking. Mark it as seen.
+        if let Some(entry) = read_mem_states.get_mut(&instr_addr) {
+            entry.in_cycles = true;
+        }
+        else {
+            panic!("Instruction address not present in initial ram state!")
+        }
+    }
+    else {
+        // Mark the first prefetch_len bytes as seen. As of test generation v2 the ram state is in
+        // order of operation, so we know the first ram entries represent prefetched bytes and won't
+        // be seen in memops.
+        for i in 0..prefetch_len {
+            if let Some(entry) = read_mem_states.get_mut(&initial_ram[i][0]) {
+                entry.in_cycles = true;
+            }
+            else {
+                panic!("Prefetched address not present in initial ram state!")
+            }
+        }
+    }
+
+    // Assume we are starting out in a CODE fetch if the segment selector is CS on the first cycle.
+    let mut in_code_fetch = false;
+    if cycles[0].a_type == AccessType::CodeOrNone {
+        in_code_fetch = true;
+    }
+    for cycle in cycles {
+        // Track CODE fetch bus cycles so we can ignore those reads.
+        if cycle.b_state == BusState::CODE {
+            in_code_fetch = true;
+        }
+        else if cycle.b_state != BusState::PASV {
+            in_code_fetch = false;
+        }
+
+        // We know when a read or write occurs because the bus state will go PASV. Bus state will
+        // remain active during wait states.
+        if !cycle.mrdc && cycle.b_state == BusState::PASV {
+            if !in_code_fetch {
+                read_ops.push(BusOp {
+                    op_type: BusOpType::MemRead,
+                    addr:    cycle.addr,
+                    data:    cycle.data_bus as u8,
+                    flags:   0,
+                });
+            }
+            else {
+                fetch_ops.push(BusOp {
+                    op_type: BusOpType::CodeRead,
+                    addr:    cycle.addr,
+                    data:    cycle.data_bus as u8,
+                    flags:   0,
+                });
+            }
+        }
+        else if !cycle.mwtc && cycle.b_state == BusState::PASV {
+            write_ops.push(BusOp {
+                op_type: BusOpType::MemWrite,
+                addr:    cycle.addr,
+                data:    cycle.data_bus as u8,
+                flags:   0,
+            });
+        }
+    }
+
+    for op in fetch_ops {
+        if let Some(entry) = read_mem_states.get_mut(&op.addr) {
+            entry.is_fetch = true;
+        }
+    }
+
+    for op in read_ops {
+        if let Some(entry) = read_mem_states.get_mut(&op.addr) {
+            if entry.in_test_state {
+                entry.in_cycles = true;
+            }
+            else {
+                bail!("Read operation at addr {:06X} not in initial ram state!", op.addr);
+            }
+        }
+        else {
+            bail!("Read operation at addr {:06X} not in initial ram state!", op.addr);
+        }
+    }
+
+    // Check that write operations are present in the 'final' ram state.
+    // There is one condition where a write operation may not be present in the final ram state,
+    // when the value being written is the same as the initial value. We need to ignore this
+    // condition.
+    for op in write_ops {
+        if let Some(entry) = write_mem_states.get_mut(&op.addr) {
+            if entry.in_test_state {
+                entry.in_cycles = true;
+            }
+            else {
+                if let Some(read_entry) = read_mem_states.get(&op.addr) {
+                    if read_entry.in_test_state && read_entry.in_cycles {
+                        // This is a write operation that is the same as the initial value. Ignore it.
+                        trace!(
+                            log,
+                            "Ignoring missing write operation at addr {:06X} that is the same as the initial value.",
+                            op.addr
+                        );
+                        continue;
+                    }
+                }
+                else {
+                    bail!("Write operation at addr {:06X} not in final ram state (2)!", op.addr);
+                }
+            }
+        }
+        else {
+            if let Some(read_entry) = read_mem_states.get(&op.addr) {
+                if read_entry.in_test_state && read_entry.in_cycles {
+                    // This is a write operation that is the same as the initial value. Ignore it.
+                    trace!(
+                        log,
+                        "Ignoring missing write operation at addr {:06X} that is the same as the initial value.",
+                        op.addr
+                    );
+                    continue;
+                }
+            }
+            else {
+                bail!("Write operation at addr {:06X} not in final ram state (2)!", op.addr);
+            }
+        }
+    }
+
+    for state in read_mem_states.iter() {
+        trace!(
+            log,
+            "Memory address {:06X} in test state: {:05} in cycles: {:05} is fetch: {:05}",
+            state.0,
+            state.1.in_test_state,
+            state.1.in_cycles,
+            state.1.is_fetch,
+        )
+    }
+
+    // Check that all memory addresses in initial state were accessed in cycle execution.
+    for state in read_mem_states.iter() {
+        if !state.1.is_fetch && !(state.1.in_test_state && state.1.in_cycles) {
+            bail!("Memory READ {:06X} not read during instruction execution!", state.0);
+        }
+    }
+
+    // Check that all memory addresses in final state were accessed in cycle execution.
+    for state in write_mem_states.iter() {
+        if !(state.1.in_test_state && state.1.in_cycles) {
+            bail!("Memory WRITE {:06X} not written during instruction execution!", state.0);
+        }
+    }
+
+    // All entries in the final ram entries should correspond to bus writes.
+    /*    for (i, ram_entry) in final_ram.iter().enumerate() {
+        let addr = ram_entry[0];
+        let data = ram_entry[1];
+
+        if write_ops[i].addr != addr || write_ops[i].data != data as u8 {
+            bail!(
+                "Final RAM write mismatch at addr {:06X}: {:02X} vs {:02X}",
+                addr,
+                write_ops[i].data,
+                data
+            );
+        }
+    }*/
+
+    Ok(())
 }
 
 pub fn validate_memory(
@@ -609,7 +1061,7 @@ pub fn print_summary(summary: &TestResultSummary) {
         if let Some(result) = summary.results.get(key) {
             let filename = format!("{:?}", key);
             println!(
-                "File: {:15} Passed: {:6} Warning: {:6} Failed: {:6} Reg: {:6} Cycle: {:6} Mem: {:6}",
+                "File: {:15} Passed: {:6} Warning: {:6} Failed: {:6} Reg: {:6} Flags: {:6} UFlags: {:6} Cycle: {:6} Mem: {:6}",
                 filename.bright_blue(),
                 result.passed,
                 if result.warning > 0 {
@@ -630,6 +1082,18 @@ pub fn print_summary(summary: &TestResultSummary) {
                 else {
                     "0".to_string()
                 },
+                if result.flag_mismatch > 0 {
+                    format!("{:6}", result.flag_mismatch.to_string().red())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.undef_flag_mismatch > 0 {
+                    format!("{:6}", result.undef_flag_mismatch.to_string().red())
+                }
+                else {
+                    "0".to_string()
+                },
                 if result.cycle_mismatch > 0 {
                     format!("{:6}", result.cycle_mismatch.to_string().red())
                 }
@@ -638,6 +1102,70 @@ pub fn print_summary(summary: &TestResultSummary) {
                 },
                 if result.mem_mismatch > 0 {
                     format!("{:6}", result.mem_mismatch.to_string().red())
+                }
+                else {
+                    "0".to_string()
+                },
+            );
+        }
+    }
+}
+
+pub fn write_summary<W: Write>(summary: &TestResultSummary, output: &mut W) {
+    // Collect and sort keys
+    let mut keys: Vec<_> = summary.results.keys().collect();
+    keys.sort();
+
+    // Print header
+    _ = writeln!(output, "file,passed,warning,failed,reg,flags,uflags,cycle,mem");
+
+    // Iterate using sorted keys
+    for key in keys {
+        if let Some(result) = summary.results.get(key) {
+            let filename = format!("{:?}", key);
+            _ = writeln!(
+                output,
+                "{:15},{:6},{:6},{:6},{:6},{:6},{:6},{:6},{:6}",
+                filename,
+                result.passed,
+                if result.warning > 0 {
+                    format!("{:6}", result.warning.to_string())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.failed > 0 {
+                    format!("{:6}", result.failed.to_string())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.reg_mismatch > 0 {
+                    format!("{:6}", result.reg_mismatch.to_string())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.flag_mismatch > 0 {
+                    format!("{:6}", result.flag_mismatch.to_string())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.undef_flag_mismatch > 0 {
+                    format!("{:6}", result.undef_flag_mismatch.to_string())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.cycle_mismatch > 0 {
+                    format!("{:6}", result.cycle_mismatch.to_string())
+                }
+                else {
+                    "0".to_string()
+                },
+                if result.mem_mismatch > 0 {
+                    format!("{:6}", result.mem_mismatch.to_string())
                 }
                 else {
                     "0".to_string()

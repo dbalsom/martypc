@@ -677,14 +677,14 @@ fn prefix_to_string(i: &Instruction) -> Option<String> {
 
     if i.prefixes & OPCODE_PREFIX_REP1 != 0 {
         match i.opcode {
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
+            0x6C | 0x6D | 0x6E | 0x6F | 0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
             0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repne"),
             _ => {}
         }
     }
     else if i.prefixes & OPCODE_PREFIX_REP2 != 0 {
         match i.opcode {
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
+            0x6C | 0x6D | 0x6E | 0x6F | 0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
             0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repe"),
             _ => {}
         }
@@ -692,14 +692,14 @@ fn prefix_to_string(i: &Instruction) -> Option<String> {
     else if i.prefixes & OPCODE_PREFIX_REP3 != 0 {
         match i.opcode {
             0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
-            0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repnc"),
+            0x6C | 0x6D | 0x6E | 0x6F | 0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repnc"),
             _ => {}
         }
     }
     else if i.prefixes & OPCODE_PREFIX_REP4 != 0 {
         match i.opcode {
             0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD => prefix_str.push_str("rep"),
-            0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repc"),
+            0x6C | 0x6D | 0x6E | 0x6F | 0xA6 | 0xA7 | 0xAE | 0xAF => prefix_str.push_str("repc"),
             _ => {}
         }
     }
