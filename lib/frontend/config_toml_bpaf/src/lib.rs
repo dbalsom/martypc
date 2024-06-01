@@ -214,6 +214,7 @@ pub struct Tests {
     pub test_gen_append: Option<bool>,
     pub test_gen_stop_on_error: Option<bool>,
     pub test_gen_version: Option<u32>,
+    pub test_gen_ignore_underflow: Option<bool>,
     pub test_gen_validate_cycles: Option<bool>,
     pub test_gen_validate_memops: Option<bool>,
     pub test_gen_validate_registers: Option<bool>,

@@ -853,7 +853,14 @@ pub trait CpuValidator {
 
     fn set_prefetch(&mut self, state: bool);
     fn set_regs(&mut self);
-    fn set_opts(&mut self, validate_cycles: bool, validate_regs: bool, validate_flags: bool, validate_mem: bool);
+    fn set_opts(
+        &mut self,
+        ignore_underflow: bool,
+        validate_cycles: bool,
+        validate_regs: bool,
+        validate_flags: bool,
+        validate_mem: bool,
+    );
     fn validate_instruction(
         &mut self,
         name: String,

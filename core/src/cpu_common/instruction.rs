@@ -35,7 +35,7 @@ use std::{
     fmt::{Display, Formatter, Result as fmtResult},
 };
 
-use super::{addressing::WithPlusSign, mnemonic::mnemonic_to_str, OPCODE_PREFIX_REP3, OPCODE_PREFIX_REP4};
+use super::{addressing::WithPlusSign, mnemonic::mnemonic_to_str};
 use crate::{
     cpu_common::{
         operands::OperandSize,
@@ -45,9 +45,12 @@ use crate::{
         Register16,
         Register8,
         Segment,
+        OPCODE_PREFIX_0F,
         OPCODE_PREFIX_LOCK,
         OPCODE_PREFIX_REP1,
         OPCODE_PREFIX_REP2,
+        OPCODE_PREFIX_REP3,
+        OPCODE_PREFIX_REP4,
     },
     syntax_token::{SyntaxFormatType, SyntaxToken, SyntaxTokenVec, SyntaxTokenize},
 };
@@ -112,7 +115,7 @@ impl Display for Instruction {
         }
         instruction_string.push_str(&mnemonic);
 
-        // Dont sign-extend 8-bit port addresses.
+        // Dont sign-extend 8-bit port addresses or ENTER's stack frame count
         let op_size = match self.mnemonic {
             Mnemonic::IN | Mnemonic::OUT => OperandSize::Operand8,
             Mnemonic::ENTER => OperandSize::Operand8,
@@ -646,8 +649,18 @@ fn tokenize_operand(i: &Instruction, op: OperandSelect, lvalue: OperandSize) -> 
 
 fn override_prefix_to_string(i: &Instruction) -> Option<String> {
     if let Some(seg_override) = i.segment_override {
-        match i.opcode {
-            0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD | 0xA6 | 0xA7 | 0xAE | 0xAF => {
+        match ((i.prefixes & OPCODE_PREFIX_0F != 0), i.opcode) {
+            (false, 0xA4 | 0xA5 | 0xAA | 0xAB | 0xAC | 0xAD | 0xA6 | 0xA7 | 0xAE | 0xAF) => {
+                let segment = match seg_override {
+                    Segment::ES => "es",
+                    Segment::CS => "cs",
+                    Segment::SS => "ss",
+                    Segment::DS => "ds",
+                    Segment::None => return None,
+                };
+                Some(segment.to_string())
+            }
+            (true, 0x20 | 0x22 | 0x26 | 0x33 | 0x3B) => {
                 let segment = match seg_override {
                     Segment::ES => "es",
                     Segment::CS => "cs",

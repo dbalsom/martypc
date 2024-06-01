@@ -187,6 +187,114 @@ impl NecVx0 {
         self.set_szp_flags_from_result_u8(self.a.l());
     }
 
+    /// DAA — Decimal Adjust AL after Addition
+    /// Used by V20 string BCD instruction ADD4S
+    pub fn daa_indirect(
+        &mut self,
+        result: u8,
+        mut carry: bool,
+        mut overflow: bool,
+        mut aux_carry: bool,
+    ) -> (u8, bool, bool, bool) {
+        let old_cf = carry;
+        let old_af = aux_carry;
+        let old_al = result;
+        let mut new_result = result;
+
+        // DAA on the 8088 has different behavior from the pseudocode when AF==1. This was validated against hardware.
+        // It is probably something you'd only discover from fuzzing.
+        let al_check = match old_af {
+            true => 0x9F,
+            false => 0x99,
+        };
+
+        //log::debug!(" >>>> daa: af: {} cf: {} of: {}", old_af, old_cf, self.get_flag(Flag::Overflow));
+
+        if old_cf {
+            if result >= 0x1a && result <= 0x7F {
+                overflow = true;
+            }
+        }
+        else if result >= 0x7a && result <= 0x7F {
+            overflow = true;
+        }
+
+        if (result & 0x0F) > 9 || aux_carry {
+            new_result = new_result.wrapping_add(6);
+            aux_carry = true;
+        }
+        else {
+            aux_carry = false;
+        }
+
+        if (old_al > al_check) || old_cf {
+            new_result = new_result.wrapping_add(0x60);
+            carry = true;
+        }
+        else {
+            carry = false;
+        }
+
+        (new_result, carry, overflow, aux_carry)
+    }
+
+    /// DAS — Decimal Adjust AL after Subtraction
+    /// Flags: The SF, ZF, and PF flags are set according to the result.
+    pub fn das_indirect(
+        &mut self,
+        result: u8,
+        mut carry: bool,
+        mut overflow: bool,
+        mut aux_carry: bool,
+    ) -> (u8, bool, bool, bool) {
+        let old_al = result;
+        let old_af = aux_carry;
+        let old_cf = carry;
+        let mut new_result = result;
+
+        let al_check = match old_af {
+            true => 0x9F,
+            false => 0x99,
+        };
+
+        match (old_af, old_cf) {
+            (false, false) => match result {
+                0x9A..=0xDF => overflow = true,
+                _ => {}
+            },
+            (true, false) => match result {
+                0x80..=0x85 | 0xA0..=0xE5 => overflow = true,
+                _ => {}
+            },
+            (false, true) => match result {
+                0x80..=0xDF => overflow = true,
+                _ => {}
+            },
+            (true, true) => match result {
+                0x80..=0xE5 => overflow = true,
+                _ => {}
+            },
+        }
+
+        if (result & 0x0F) > 9 || aux_carry {
+            new_result = new_result.wrapping_sub(6);
+            aux_carry = true;
+        }
+        else {
+            aux_carry = false;
+        }
+
+        if (old_al > al_check) || old_cf {
+            new_result = new_result.wrapping_sub(0x60);
+            carry = true;
+        }
+        else {
+            carry = false;
+        }
+
+        (new_result, carry, overflow, aux_carry)
+    }
+
     /// DAS — Decimal Adjust AL after Subtraction
     /// Flags: The SF, ZF, and PF flags are set according to the result.
     pub fn das(&mut self) {

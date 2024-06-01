@@ -74,7 +74,7 @@ pub enum Xi {
 
 impl NecVx0 {
     #[inline(always)]
-    fn set_parity_flag_from_u8(&mut self, operand: u8) {
+    pub fn set_parity_flag_from_u8(&mut self, operand: u8) {
         self.set_flag_state(Flag::Parity, PARITY_TABLE[operand as usize]);
     }
 

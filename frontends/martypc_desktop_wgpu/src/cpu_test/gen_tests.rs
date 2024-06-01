@@ -32,6 +32,7 @@ use anyhow::{bail, Error};
 use std::{
     cell::RefCell,
     collections::{HashMap, LinkedList},
+    ffi::OsString,
     fs::{File, OpenOptions},
     io::{BufReader, BufWriter, ErrorKind, Seek, SeekFrom, Write},
     path::PathBuf,
@@ -131,6 +132,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
     let mut validator = cpu.get_validator_mut().as_mut().unwrap();
     validator.set_opts(
+        config.tests.test_gen_ignore_underflow.unwrap_or(false),
         config.tests.test_gen_validate_cycles.unwrap_or(true),
         config.tests.test_gen_validate_registers.unwrap_or(true),
         config.tests.test_gen_validate_flags.unwrap_or(true),
@@ -161,13 +163,15 @@ pub fn run_gentests(config: &ConfigFileParams) {
         opcode_range_exclude = test_opcode_exclude_list.clone();
     }
 
-    opcode_range_exclude.append(&mut vec![
-        0x26, 0x2E, 0x36, 0x3E, // Segment override prefixes
-        0x9B, // WAIT instruction
-        //0x9D, // POPF (figure out a way to handle this?)
-        0xF0, 0xF1, 0xF2, 0xF3, // Prefixes
-        0xF4,
-    ]);
+    if config.tests.test_opcode_prefix.is_none() {
+        opcode_range_exclude.append(&mut vec![
+            0x26, 0x2E, 0x36, 0x3E, // Segment override prefixes
+            0x9B, // WAIT instruction
+            //0x9D, // POPF (figure out a way to handle this?)
+            0xF0, 0xF1, 0xF2, 0xF3, // Prefixes
+            0xF4,
+        ]);
+    }
 
     opcode_list.retain(|&x| !opcode_range_exclude.contains(&x));
 
@@ -211,12 +215,20 @@ pub fn run_gentests(config: &ConfigFileParams) {
             let mut test_path = test_base_path.clone();
             //log::debug!("Using base path: {:?}", test_path);
 
+            let mut filename_str = OsString::new();
+            // Prepend '0F' to multibyte opcodes
+            if let Some(prefix) = config.tests.test_opcode_prefix {
+                filename_str.push(&format!("{:02X}", prefix));
+            }
+
             if !is_grp {
-                test_path.push(&format!("{:02X}.json", test_opcode));
+                filename_str.push(&format!("{:02X}.json", test_opcode));
             }
             else {
-                test_path.push(&format!("{:02X}.{:01X}.json", test_opcode, op_ext));
+                filename_str.push(&format!("{:02X}.{:01X}.json", test_opcode, op_ext));
             }
+
+            test_path.push(filename_str);
 
             log::debug!("Using filename: {:?}", test_path);
 

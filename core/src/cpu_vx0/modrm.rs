@@ -303,6 +303,12 @@ const MODRM_TABLE: [ModRmByte; 256] = {
     table
 };
 
+impl From<u8> for ModRmByte {
+    fn from(byte: u8) -> Self {
+        MODRM_TABLE[byte as usize]
+    }
+}
+
 impl ModRmByte {
     pub fn peek(byte: u8) -> (ModRmByte, u32) {
         let mut modrm = MODRM_TABLE[byte as usize];

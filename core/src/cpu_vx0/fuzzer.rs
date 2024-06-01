@@ -137,79 +137,100 @@ impl NecVx0 {
         }
 
         let mut mask_nesting_level = false;
+        let mut mask_ins_immediate = false;
 
         // Add rep prefixes to string ops with 50% probability
         let do_rep_prefix: u8 = get_rand!(self);
-        match opcode {
-            0xC8 => {
-                // ENTER
-                mask_nesting_level = true;
-            }
-            0x6C..=0x6F | 0xA4..=0xA7 | 0xAA..=0xAF => {
-                // String ops
-                match do_rep_prefix {
-                    0..=32 => {
-                        instr.push_front(0x64); // REPNC
+        match prefix {
+            None => {
+                match opcode {
+                    0xC8 => {
+                        // ENTER
+                        mask_nesting_level = true;
                     }
-                    33..=64 => {
-                        instr.push_front(0x65); // REPC
+                    0x6C..=0x6F | 0xA4..=0xA7 | 0xAA..=0xAF => {
+                        // String ops
+                        match do_rep_prefix {
+                            0..=32 => {
+                                instr.push_front(0x64); // REPNC
+                            }
+                            33..=64 => {
+                                instr.push_front(0x65); // REPC
+                            }
+                            64..=96 => {
+                                instr.push_front(0xF2); // REPNZ
+                            }
+                            97..=128 => {
+                                instr.push_front(0xF3); // REPZ
+                            }
+                            _ => {}
+                        }
+
+                        // Mask CX to 7 bits.
+                        self.set_register16(Register16::CX, self.get_register16(Register16::CX) & 0x7F);
                     }
-                    64..=96 => {
-                        instr.push_front(0xF2); // REPNZ
+                    0x9D => {
+                        // POPF.
+                        // We need to modify the word at SS:SP to clear the trap flag bit.
+
+                        let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp);
+
+                        let (mut flag_word, _) = self
+                            .bus_mut()
+                            .read_u16(flat_addr as usize, 0)
+                            .expect("Couldn't read stack!");
+
+                        // Clear trap flag
+                        flag_word = flag_word & !CPU_FLAG_TRAP;
+
+                        self.bus_mut()
+                            .write_u16(flat_addr as usize, flag_word, 0)
+                            .expect("Couldn't write stack!");
                     }
-                    97..=128 => {
-                        instr.push_front(0xF3); // REPZ
+                    0xCF => {
+                        // IRET.
+                        // We need to modify the word at SS:SP + 4 to clear the trap flag bit.
+
+                        let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp.wrapping_add(4));
+
+                        let (mut flag_word, _) = self
+                            .bus_mut()
+                            .read_u16(flat_addr as usize, 0)
+                            .expect("Couldn't read stack!");
+
+                        // Clear trap flag
+                        flag_word = flag_word & !CPU_FLAG_TRAP;
+
+                        self.bus_mut()
+                            .write_u16(flat_addr as usize, flag_word, 0)
+                            .expect("Couldn't write stack!");
+                    }
+                    0xD2 | 0xD3 => {
+                        // Shifts and rotates by cl.
+                        // Mask CL to 6 bits to shorten tests.
+                        // This will still catch emulators that are masking CL to 5 bits.
+
+                        self.c.set_l(self.c.l() & 0x3F);
                     }
                     _ => {}
                 }
-
-                // Mask CX to 7 bits.
-                self.set_register16(Register16::CX, self.get_register16(Register16::CX) & 0x7F);
             }
-            0x9D => {
-                // POPF.
-                // We need to modify the word at SS:SP to clear the trap flag bit.
+            Some(0x0F) => match opcode {
+                0x20 | 0x22 | 0x26 => {
+                    // V20 BCD string instructions.
 
-                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp);
-
-                let (mut flag_word, _) = self
-                    .bus_mut()
-                    .read_u16(flat_addr as usize, 0)
-                    .expect("Couldn't read stack!");
-
-                // Clear trap flag
-                flag_word = flag_word & !CPU_FLAG_TRAP;
-
-                self.bus_mut()
-                    .write_u16(flat_addr as usize, flag_word, 0)
-                    .expect("Couldn't write stack!");
+                    // Mask CL to 7 bits.
+                    self.c.set_l(self.c.l() & 0x7F);
+                    // Don't allow a 0 count.
+                    while self.c.l() == 0 {
+                        self.c.set_l(get_rand!(self));
+                    }
+                }
+                _ => {}
+            },
+            _ => {
+                panic!("Invalid prefix!");
             }
-            0xCF => {
-                // IRET.
-                // We need to modify the word at SS:SP + 4 to clear the trap flag bit.
-
-                let flat_addr = self.calc_linear_address_seg(Segment::SS, self.sp.wrapping_add(4));
-
-                let (mut flag_word, _) = self
-                    .bus_mut()
-                    .read_u16(flat_addr as usize, 0)
-                    .expect("Couldn't read stack!");
-
-                // Clear trap flag
-                flag_word = flag_word & !CPU_FLAG_TRAP;
-
-                self.bus_mut()
-                    .write_u16(flat_addr as usize, flag_word, 0)
-                    .expect("Couldn't write stack!");
-            }
-            0xD2 | 0xD3 => {
-                // Shifts and rotates by cl.
-                // Mask CL to 6 bits to shorten tests.
-                // This will still catch emulators that are masking CL to 5 bits.
-
-                self.c.set_l(self.c.l() & 0x3F);
-            }
-            _ => {}
         }
 
         let mut modrm_valid = false;
@@ -220,40 +241,85 @@ impl NecVx0 {
 
             // Filter out invalid forms of some instructions that cannot
             // reasonably be validated.
-            match opcode {
-                // BOUND
-                0x62 | 0x63 => {
-                    if modrm_byte & 0xC0 == 0xC0 {
-                        // Reg form, invalid.
-                        continue;
+            match prefix {
+                None => {
+                    match opcode {
+                        // BOUND
+                        0x62 | 0x63 => {
+                            if modrm_byte & 0xC0 == 0xC0 {
+                                // Reg form, invalid.
+                                continue;
+                            }
+                        }
+                        // LEA
+                        0x8D => {
+                            if modrm_byte & 0xC0 == 0xC0 {
+                                // Reg form, invalid.
+                                continue;
+                            }
+                        }
+                        // LES | LDS
+                        0xC4 | 0xC5 => {
+                            if modrm_byte & 0xC0 == 0xC0 {
+                                // Reg form, invalid.
+                                continue;
+                            }
+                        }
+                        0x8E => {
+                            // Mov Sreg, modrm
+                            if ((modrm_byte >> 3) & 0x03) == 0x01 {
+                                // CS register destination. invalid.
+                                continue;
+                            }
+                        }
+                        // POP
+                        0x8F => {
+                            if (modrm_byte >> 3) & 0x07 != 0 {
+                                // reg != 0, invalid.
+                                continue;
+                            }
+                            if (modrm_byte & 0xC0) == 0xC0 {
+                                // register form invalid
+                                continue;
+                            }
+                            //log::debug!("Picked valid modrm for 0x8F: {:02X}", modrm_byte);
+                        }
+                        _ => {}
                     }
                 }
-                // LEA
-                0x8D => {
-                    if modrm_byte & 0xC0 == 0xC0 {
-                        // Reg form, invalid.
-                        continue;
+                Some(0x0F) => match opcode {
+                    0x31 | 0x33 | 0x39 | 0x3B => {
+                        // INS/EXT. mod!=3 is invalid.
+                        if modrm_byte & 0xC0 != 0xC0 {
+                            continue;
+                        }
+
+                        mask_ins_immediate = true;
+
+                        // We have to mask the operand registers to 4 bits.
+                        let modrm = ModRmByte::from(modrm_byte);
+
+                        let op1_reg8 = modrm.get_op1_reg8();
+
+                        if let 0x33 | 0x3B = opcode {
+                            if let Register8::AH = op1_reg8 {
+                                // AH is invalid op1 for EXT. Will throw a ~1000 cycle tantrum
+                                continue;
+                            }
+
+                            if let Register8::AL = op1_reg8 {
+                                // AL is invalid op1 for INS. Can cause incorrectly sized operations
+                                continue;
+                            }
+                        }
+
+                        self.set_register8(op1_reg8, self.get_register8(op1_reg8) & 0x0F);
+
+                        let op2_reg8 = modrm.get_op2_reg8();
+                        self.set_register8(op2_reg8, self.get_register8(op2_reg8) & 0x0F);
                     }
-                }
-                // LES | LDS
-                0xC4 | 0xC5 => {
-                    if modrm_byte & 0xC0 == 0xC0 {
-                        // Reg form, invalid.
-                        continue;
-                    }
-                }
-                // POP
-                0x8F => {
-                    if (modrm_byte >> 3) & 0x07 != 0 {
-                        // reg != 0, invalid.
-                        continue;
-                    }
-                    if (modrm_byte & 0xC0) == 0xC0 {
-                        // register form invalid
-                        continue;
-                    }
-                    //log::debug!("Picked valid modrm for 0x8F: {:02X}", modrm_byte);
-                }
+                    _ => {}
+                },
                 _ => {}
             }
 
@@ -286,6 +352,10 @@ impl NecVx0 {
                 // This is actually the third byte, since we pushed one byte for modrm already
                 // (even if no modrm)
                 instr.push_back(instr_byte & 0x1F);
+            }
+            else if mask_ins_immediate && (i == 0) {
+                // Mask immediate (bit length) operand to 0x0F or things get screwy
+                instr.push_back(instr_byte & 0x0F);
             }
             else {
                 instr.push_back(instr_byte);

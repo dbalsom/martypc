@@ -492,15 +492,28 @@ impl Machine {
 
         #[cfg(feature = "cpu_validator")]
         use crate::cpu_validator::ValidatorMode;
-
+        
+        // Check the requested CPU
+        if !machine_desc.is_compatible_configuration(&machine_config) {
+            eprintln!("Specified machine configuration is incompatible with machine description.");
+            eprintln!("Have you specified incompatible hardware?");
+            std::process::exit(1);
+        };
+        
+        // Resolve the CPU type. 
+        // TODO: We should probably resolve a Machine configuration against the base machine description
+        //       before instantiating a Machine, and pass new() the merged struct instead of separate
+        //       description / configuration structs.
+        let resolved_cpu_type 
+            = machine_config.cpu.as_ref().and_then(|cpu| cpu.upgrade_type).unwrap_or(machine_desc.cpu_type);
+        
         // Build the CPU
         let mut cpu;
 
         #[cfg(feature = "cpu_validator")]
         {
             cpu = match CpuBuilder::new()
-                .with_cpu_type(CpuType::Intel8088)
-                .with_cpu_subtype(CpuSubType::Intel8088)
+                .with_cpu_type(resolved_cpu_type)
                 .with_trace_mode(trace_mode)
                 .with_trace_logger(trace_logger)
                 .with_validator_type(core_config.get_validator_type().unwrap_or_default())
@@ -518,9 +531,9 @@ impl Machine {
         #[cfg(not(feature = "cpu_validator"))]
         {
             cpu = match CpuBuilder::new()
-                .with_cpu_type(CpuType::Intel8088)
-                .with_cpu_subtype(CpuSubType::Intel8088)
+                .with_cpu_type(resolved_cpu_type)
                 .with_trace_mode(trace_mode)
+                .with_trace_logger(trace_logger)
                 .build() {
                 Ok(cpu) => cpu,
                 Err(e) => {

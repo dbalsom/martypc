@@ -33,6 +33,7 @@
 use crate::{
     cpu_common::{alu::AluSub, Mnemonic, Segment},
     cpu_vx0::*,
+    cycles,
 };
 
 impl NecVx0 {
@@ -71,32 +72,32 @@ impl NecVx0 {
                 }
             }
             Mnemonic::OUTSB => {
-                let mem_value = self.biu_read_u8(Segment::ES, self.di);
+                let mem_value = self.biu_read_u8(segment_base_ds, self.si);
                 self.biu_io_write_u8(self.get_register16(Register16::DX), mem_value, ReadWriteFlag::Normal);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
                         // Direction flag clear, process forwards
-                        self.di = self.di.wrapping_add(1);
+                        self.si = self.si.wrapping_add(1);
                     }
                     true => {
                         // Direction flag set, process backwards
-                        self.di = self.di.wrapping_sub(1);
+                        self.si = self.si.wrapping_sub(1);
                     }
                 }
             }
             Mnemonic::OUTSW => {
-                let mem_value = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                let mem_value = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
                 self.biu_io_write_u16(self.get_register16(Register16::DX), mem_value, ReadWriteFlag::Normal);
 
                 match self.get_flag(Flag::Direction) {
                     false => {
                         // Direction flag clear, process forwards
-                        self.di = self.di.wrapping_add(2);
+                        self.si = self.si.wrapping_add(2);
                     }
                     true => {
                         // Direction flag set, process backwards
-                        self.di = self.di.wrapping_sub(2);
+                        self.si = self.si.wrapping_sub(2);
                     }
                 }
             }
@@ -319,11 +320,22 @@ impl NecVx0 {
                 // Override: DS can be overridden
 
                 // V20 reads from ES first in CMPSW. Don't ask me why.
-                self.cycle_i(0x121);
-                let esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
-                self.cycles_i(2, &[0x123, 0x124]);
-                let dssi_op = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
-                self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                let esdi_op;
+                let dssi_op;
+                if self.in_rep {
+                    self.cycle_i(0x121);
+                    esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                    self.cycles_i(2, &[0x123, 0x124]);
+                    dssi_op = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                    self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                }
+                else {
+                    self.cycle_i(0x121);
+                    dssi_op = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                    self.cycles_i(2, &[0x123, 0x124]);
+                    esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
+                    self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                }
 
                 let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);
 
@@ -396,15 +408,16 @@ impl NecVx0 {
     /// Implement the RPTI microcode co-routine for string interrupt handling.
     pub fn rep_interrupt(&mut self) {
         self.biu_fetch_suspend();
-        self.cycles_i(2, &[0x118, 0x119]);
+        cycles!(self, 2);
         self.corr();
-        self.cycle_i(0x11a);
+        cycles!(self, 1);
         self.biu_queue_flush();
 
-        // Rewind IP so that it points to REP instruction again afterward.
-        // This behavior will emulate the 8088's bug with string operations and segment overrides,
-        // as the next time the instruction is fetched it will be with only a single prefix.
-        self.pc = self.pc.wrapping_sub(2);
+        // On the 8088, a constant value of 2 was used to rewind PC, which would account for the single
+        // REP prefix only. On the V20, we can remember up to 3 prefixes, the count of which we
+        // store in the LO two bits of the prefix flags.
+        self.pc = self.pc.wrapping_sub(1 + (self.i.prefixes & 0x03) as u16);
+        //self.pc = self.pc.wrapping_sub(2);
 
         self.rep_end();
         // Flush was on RNI so no extra cycle here

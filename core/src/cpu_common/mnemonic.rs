@@ -38,6 +38,7 @@ pub enum Mnemonic {
     Invalid,
     NoOpcode,
     Group,
+    Extension,
     Prefix,
     NOP,
     AAA,

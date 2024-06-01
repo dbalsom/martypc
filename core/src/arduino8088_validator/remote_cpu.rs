@@ -107,6 +107,15 @@ pub struct RemoteCpuRegisters {
     flags: u16,
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub enum RunState {
+    #[default]
+    Init,
+    Preload,
+    Program,
+    Finalize,
+}
+
 pub struct RemoteCpu {
     cpu_type: CpuType,
     cpu_client: CpuClient,
@@ -120,7 +129,8 @@ pub struct RemoteCpu {
     instr_end_addr: usize,
     program_started: bool,
     program_end_addr: usize,
-    program_state: ProgramState,
+    program_state: ValidatorState,
+    run_state: RunState,
 
     address_latch: u32,
     address_bus: u32,
@@ -166,6 +176,8 @@ pub struct RemoteCpu {
     fetching_beyond: bool,
     program_ended: bool,
     v_pc: usize,
+
+    ignore_underflow: bool,
 }
 
 impl RemoteCpu {
@@ -183,7 +195,8 @@ impl RemoteCpu {
             instr_end_addr: 0,
             program_started: true,
             program_end_addr: 0,
-            program_state: ProgramState::Reset,
+            program_state: ValidatorState::Reset,
+            run_state: RunState::Init,
             address_latch: 0,
             address_bus: 0,
             status: 0,
@@ -225,6 +238,8 @@ impl RemoteCpu {
             fetching_beyond: false,
             program_ended: false,
             v_pc: 0,
+
+            ignore_underflow: false,
         }
     }
 
@@ -339,6 +354,10 @@ impl RemoteCpu {
         self.prefetch && (self.prefetch_pc < self.prefetch_pgm.len())
     }
 
+    pub fn in_preload(&self) -> bool {
+        matches!(self.run_state, RunState::Preload)
+    }
+
     /// Handle a bus read operation, either code fetch, memory or IO read.
     /// Code fetches are allowed to underflow in certain circumstances.
     /// TODO: This should probably return a Result instead of setting an internal error condition.
@@ -360,11 +379,18 @@ impl RemoteCpu {
                     // We are executing the prefetch program. Feed bytes from program until exhausted.
                     if self.in_prefetch_pgm() {
                         self.data_bus = self.prefetch_pgm[self.prefetch_pc];
-                        trace!(log, ">>> Fetching {:02X} from prefetch program.", self.data_bus);
                         self.data_type = QueueDataType::PrefetchProgram;
                         self.prefetch_pc += 1;
+                        trace!(
+                            log,
+                            ">>> Fetching {:02X} from prefetch program. New ppc: {}/{}",
+                            self.data_bus,
+                            self.prefetch_pc,
+                            self.prefetch_pgm.len()
+                        );
+
                         if !self.in_prefetch_pgm() {
-                            trace!(log, ">>> Ending prefetch program.");
+                            trace!(log, ">>> Ending prefetch program fetch.");
                             self.prefetch = false;
                         }
 
@@ -622,8 +648,22 @@ impl RemoteCpu {
                         .write_data_bus(self.data_bus)
                         .expect("Failed to write data bus.");
                 }
-                else {
+                else if !self.ignore_underflow {
                     self.error = Some(RemoteCpuError::BusOpUnderflow);
+                }
+                else {
+                    trace!(
+                        log,
+                        "Bus op underflow on MEMR with ignore_underflow==true. Substituing 0."
+                    );
+
+                    cpu_mem_ops.push(BusOp {
+                        op_type: BusOpType::MemRead,
+                        addr:    self.address_latch,
+                        data:    0x0,
+                        flags:   0,
+                    });
+                    self.cpu_client.write_data_bus(0xFF).expect("Failed to write data bus.");
                 }
             }
         }
@@ -658,6 +698,12 @@ impl RemoteCpu {
         if ((self.command_status & COMMAND_AMWC_BIT) == 0) || ((self.command_status & COMMAND_MWTC_BIT) == 0) {
             // CPU is writing to bus. MWTC is only active on t3, so we don't need an additional check.
 
+            // We need to ignore writes during preloading, as we may be executing STOSB as part of a prefetch program.
+            if !self.program_started {
+                trace!(log, "Ignoring write during prefetch program.");
+                return;
+            }
+
             if self.busop_n < emu_mem_ops.len() {
                 //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::MemWrite);
 
@@ -681,9 +727,18 @@ impl RemoteCpu {
                 });
                 self.busop_n += 1;
             }
-            else {
+            else if !self.ignore_underflow {
                 trace!(log, "Bus op underflow on write.");
                 self.error = Some(RemoteCpuError::BusOpUnderflow);
+            }
+            else {
+                trace!(log, "Bus op underflow on write with ignore_underflow==true");
+                cpu_mem_ops.push(BusOp {
+                    op_type: BusOpType::MemWrite,
+                    addr:    self.address_latch,
+                    data:    self.data_bus,
+                    flags:   0,
+                });
             }
         }
 
@@ -759,7 +814,7 @@ impl RemoteCpu {
         };
 
         let mut cycle_info = self.update_state(true);
-        if self.program_state == ProgramState::ExecuteDone {
+        if self.program_state == ValidatorState::ExecuteDone {
             return Ok(cycle_info);
         }
         let q_op = get_queue_op!(self.status);
@@ -892,7 +947,7 @@ impl RemoteCpu {
                             self.end_instruction = true;
                             self.finalize = true;
                         }
-                        else {
+                        else if self.prefetch_pc >= self.prefetch_pgm.len() {
                             // The prefetch program is ending now, so start the main program.
                             trace!(log, "Main program started at cycle: {}", self.cycle_num);
                             // Save the initial queue state.
@@ -901,9 +956,10 @@ impl RemoteCpu {
                         }
                     }
 
-                    if !self.prefetch && !self.is_prefix(self.opcode) {
+                    if self.program_started && !self.is_prefix(self.opcode) {
                         // Prefixes are also flagged as "first byte" fetches.
                         // If not a prefix, we have read the first actual instruction byte.
+                        trace!(log, "First non-prefix byte of instruction fetched.");
                         self.queue_first_fetch = true;
                     }
                     else {
@@ -981,6 +1037,7 @@ impl RemoteCpu {
         cpu_fetch_ops: &mut Vec<BusOp>,
         cpu_mem_ops: &mut Vec<BusOp>,
         initial_queue: &mut Vec<u8>,
+        ignore_underflow: bool,
         log: &mut TraceLogger,
     ) -> Result<(Vec<CycleState>, bool), ValidatorError> {
         self.error = None;
@@ -999,6 +1056,7 @@ impl RemoteCpu {
         self.flushed = false;
         self.discard_front = false;
         self.fetching_beyond = false;
+        self.ignore_underflow = ignore_underflow;
         self.cycle_states.clear();
 
         // Install the prefetch program if requested
@@ -1366,10 +1424,10 @@ impl RemoteCpu {
         if q_op == QueueOp::First {
             // First byte of opcode read from queue. Decode it to opcode or group specifier
             if !self.program_started {
-                q_read_str = format!("<-q {:02X} {}", self.queue_byte, "prefetch program");
+                q_read_str = format!("<-q {:02X} ({:?})", self.queue_byte, self.queue_type);
             }
             else {
-                q_read_str = format!("<-q {:02X} {}", self.queue_byte, self.instr_str);
+                q_read_str = format!("<-q {:02X} {} ({:?})", self.queue_byte, self.instr_str, self.queue_type);
             }
         }
         else if q_op == QueueOp::Subsequent {

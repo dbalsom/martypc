@@ -179,7 +179,7 @@ pub struct CpuStringState {
     pub cycle_count: String,
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq)]
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq, Hash)]
 pub enum CpuType {
     Intel8088,
     Intel8086,

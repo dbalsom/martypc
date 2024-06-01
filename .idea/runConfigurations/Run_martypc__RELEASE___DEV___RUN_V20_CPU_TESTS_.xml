@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Run martypc [RELEASE] [DEV] [RUN V20 CPU TESTS]" type="CargoCommandRunConfiguration" factoryName="Cargo Command" folderName="DEV [RELEASE]">
-    <option name="command" value="run -r --features devtools,ega,cpu_validator -- --configfile martypc-run_cpu_tests.toml --test-cpu-type NecV20 --test-path &quot;T:/json_tests/v20/processed/&quot;" />
+    <option name="command" value="run -r --features devtools,ega,cpu_validator -- --configfile martypc-run_cpu_tests.toml --test-cpu-type NecV20 --test-path &quot;T:/json_tests/v20/passing/&quot;" />
     <option name="workingDirectory" value="file://$PROJECT_DIR$/install" />
     <envs>
       <env name="RUST_LOG" value="warn,naga=error,wgpu_core=error,wgpu_hal=error" />

@@ -87,14 +87,6 @@ macro_rules! trace_error {
     }};
 }
 
-#[derive(PartialEq, Debug)]
-pub enum ValidatorState {
-    Setup,
-    Execute,
-    Readback,
-    Finished,
-}
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum RegisterValidationResult {
     Ok,
@@ -153,8 +145,8 @@ pub struct ArduinoValidator {
     cpu_type: CpuType,
 
     current_instr: InstructionContext,
-    state: ValidatorState,
 
+    //state: ValidatorState,
     cycle_count:    u64,
     do_cycle_trace: bool,
 
@@ -188,9 +180,10 @@ pub struct ArduinoValidator {
     log_prefix:   String,
     trace_logger: TraceLogger,
 
-    opt_validate_regs:   bool,
-    opt_validate_flags:  bool,
-    opt_validate_mem:    bool,
+    opt_ignore_underflow: bool,
+    opt_validate_regs: bool,
+    opt_validate_flags: bool,
+    opt_validate_mem: bool,
     opt_validate_cycles: bool,
 }
 
@@ -213,8 +206,7 @@ impl ArduinoValidator {
             cpu_type,
 
             current_instr: InstructionContext::new(),
-            state: ValidatorState::Setup,
-
+            //state: ValidatorState::Setup,
             cycle_count: 0,
             do_cycle_trace: false,
             rd_signal: false,
@@ -244,6 +236,7 @@ impl ArduinoValidator {
 
             trace_logger,
 
+            opt_ignore_underflow: false,
             opt_validate_cycles: true,
             opt_validate_regs: true,
             opt_validate_flags: true,
@@ -698,23 +691,6 @@ impl CpuValidator for ArduinoValidator {
             self.trigger_addr = V_INVALID_POINTER;
         }
 
-        // If we are prefetching the next instruction, we need to adjust IP by the size of the
-        // prefetch program.
-        if self.current_instr.prefetch {
-            let pgm_len = self.cpu.get_preload_pgm().len();
-            self.current_instr.regs[0].ip = self.current_instr.regs[0].ip.wrapping_sub(pgm_len as u16);
-            trace_debug!(
-                self,
-                "Adjusting IP by prefetch program length: {} new_ip: {:04X} new_addr: {:05X}",
-                pgm_len,
-                self.current_instr.regs[0].ip,
-                RemoteCpu::calc_linear_address(self.current_instr.regs[0].cs, self.current_instr.regs[0].ip)
-            );
-        }
-        else {
-            trace_debug!(self, "begin_instruction(): Not prefetching.");
-        }
-
         /*
         if (self.trigger_addr != V_INVALID_POINTER)
             || (self.visit_once && ip_addr >= UPPER_MEMORY && self.visited[ip_addr as usize]) {
@@ -748,29 +724,57 @@ impl CpuValidator for ArduinoValidator {
         self.cpu.reset();
 
         let mut reg_buf: [u8; 28] = [0; 28];
-        ArduinoValidator::regs_to_buf(&mut reg_buf, &self.current_instr.regs[0]);
 
-        //trace_debug!(self, "\n{}", &self.current_instr.regs[0]);
-        //trace_debug!(self, "Flags: {}", RemoteCpu::flags_string(self.current_instr.regs[0].flags));
+        let mut adjusted_regs = self.current_instr.regs[0].clone();
 
-        // If prefetching, restore the original IP state
+        // If we are prefetching the next instruction, we need to adjust IP by the size of the
+        // prefetch program.
         if self.current_instr.prefetch {
             let pgm_len = self.cpu.get_preload_pgm().len();
-            self.current_instr.regs[0].ip = self.current_instr.regs[0].ip.wrapping_add(pgm_len as u16);
+            adjusted_regs.ip = adjusted_regs.ip.wrapping_sub(pgm_len as u16);
             trace_debug!(
                 self,
-                "set_regs(): Restoring original IP: new_ip: {:04X} new_addr: {:05X}",
-                self.current_instr.regs[0].ip,
-                RemoteCpu::calc_linear_address(self.current_instr.regs[0].cs, self.current_instr.regs[0].ip)
+                "Adjusting IP by prefetch program length: {} new_ip: {:04X} new_addr: {:05X}",
+                pgm_len,
+                adjusted_regs.ip,
+                RemoteCpu::calc_linear_address(adjusted_regs.cs, adjusted_regs.ip)
             );
+
+            // On 8088/8086, we need to adjust DI by 4 depending on flag direction.
+            if let CpuType::Intel8088 | CpuType::Intel8086 = self.cpu_type {
+                // Adjust DI. This depends on the state of the Direction flag.
+                if adjusted_regs.flags & CPU_FLAG_DIRECTION == 0 {
+                    // Direction forward. Decrement DI.
+                    trace_debug!(self, "Adjusting DI for 8088 prefetch, -= 4... ");
+                    adjusted_regs.di = adjusted_regs.di.wrapping_sub(4);
+                }
+                else {
+                    // Direction backwards. Increment DI.
+                    trace_debug!(self, "Adjusting DI for 8088 prefetch, += 4... ");
+                    adjusted_regs.di = adjusted_regs.di.wrapping_add(4);
+                }
+            }
         }
+        else {
+            trace_debug!(self, "begin_instruction(): Not prefetching.");
+        }
+
+        ArduinoValidator::regs_to_buf(&mut reg_buf, &adjusted_regs);
 
         self.cpu
             .load(&reg_buf)
             .expect("validate() error: Load registers failed.");
     }
 
-    fn set_opts(&mut self, validate_cycles: bool, validate_regs: bool, validate_flags: bool, validate_mem: bool) {
+    fn set_opts(
+        &mut self,
+        ignore_underflow: bool,
+        validate_cycles: bool,
+        validate_regs: bool,
+        validate_flags: bool,
+        validate_mem: bool,
+    ) {
+        self.opt_ignore_underflow = ignore_underflow;
         self.opt_validate_cycles = validate_cycles;
         self.opt_validate_regs = validate_regs;
         self.opt_validate_flags = validate_flags;
@@ -901,6 +905,7 @@ impl CpuValidator for ArduinoValidator {
             &mut self.current_instr.cpu_fetches,
             &mut self.current_instr.cpu_ops,
             &mut self.current_instr.initial_queue,
+            self.opt_ignore_underflow,
             &mut self.trace_logger,
         ) {
             Ok(stepresult) => stepresult,

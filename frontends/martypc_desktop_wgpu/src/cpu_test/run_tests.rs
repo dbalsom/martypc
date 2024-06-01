@@ -70,6 +70,7 @@ use crate::{
 };
 
 use crate::cpu_test::common::{
+    opcode_prefix_from_path,
     print_changed_flags,
     validate_memops,
     write_summary,
@@ -151,13 +152,31 @@ pub fn run_runtests(config: ConfigFileParams) {
     }
 
     // Convert opcode ranges into strings
-    let default_range = [0, 0xFF].to_vec();
-    let op_range_start = config.tests.test_opcode_range.as_ref().unwrap_or(&default_range)[0];
-    let op_range_end = config.tests.test_opcode_range.as_ref().unwrap_or(&default_range)[1];
+    let mut opcode_range_start = 0x00;
+    let mut opcode_range_end = 0xFF;
 
-    let str_vec: Vec<String> = (op_range_start..=op_range_end)
-        .map(|num| format!("{:02X}", num))
-        .collect();
+    // Generate the list of opcodes we are going to generate tests for.
+    if let Some(test_opcode_range) = &config.tests.test_opcode_range {
+        if test_opcode_range.len() > 1 {
+            opcode_range_start = test_opcode_range[0];
+            opcode_range_end = test_opcode_range[1];
+        }
+        else {
+            log::error!("Invalid opcode range specified. Using default.");
+        }
+    }
+
+    let mut opcode_list = Vec::from_iter(opcode_range_start..=opcode_range_end);
+
+    let mut opcode_range_exclude = Vec::new();
+
+    if let Some(test_opcode_exclude_list) = &config.tests.test_opcode_exclude_list {
+        opcode_range_exclude = test_opcode_exclude_list.clone();
+    }
+
+    opcode_list.retain(|&x| !opcode_range_exclude.contains(&x));
+
+    let str_vec: Vec<String> = opcode_list.iter().map(|num| format!("{:02X}", num)).collect();
 
     log::debug!("Validating opcode list: {:?}", str_vec);
 
@@ -225,6 +244,9 @@ pub fn run_runtests(config: ConfigFileParams) {
 
     let stop_on_failure = matches!(&config.tests.test_mode, Some(TestMode::Validate));
 
+    let mut total_run_test_cycles = 0;
+    let mut total_run_cpu_cycles = 0;
+
     while let Ok(test_load) = rx.recv() {
         //_ = writeln!(&mut writer_lock, "Running tests from file: {:?}", test_load.path);
 
@@ -236,6 +258,7 @@ pub fn run_runtests(config: ConfigFileParams) {
 
         let opcode =
             opcode_from_path(&test_load.path).expect(&format!("Couldn't parse opcode from path: {:?}", test_load.path));
+        let opcode_prefix_opt = opcode_prefix_from_path(&test_load.path);
         let extension_opt = opcode_extension_from_path(&test_load.path);
 
         if let (Some(opt), Some(range)) = (extension_opt, config.tests.test_extension_range.clone()) {
@@ -254,12 +277,16 @@ pub fn run_runtests(config: ConfigFileParams) {
         let results = run_tests(
             &metadata,
             &test_load.tests,
+            opcode_prefix_opt,
             opcode,
             extension_opt,
             &config,
             stop_on_failure,
             &mut log_writer,
         );
+
+        total_run_test_cycles += results.cycles.prefetched.test + results.cycles.normal.test;
+        total_run_cpu_cycles += results.cycles.prefetched.cpu + results.cycles.normal.cpu;
 
         println!(
             "Test file completed. {}/{} tests passed in {:.2} seconds.",
@@ -309,6 +336,8 @@ pub fn run_runtests(config: ConfigFileParams) {
 
         print_summary(&summary);
 
+        print_cycle_summary(total_run_test_cycles as usize, total_run_cpu_cycles as usize);
+
         if let Some(summary_file) = &config.tests.test_run_summary_file {
             let mut summary_file_path = output_path;
             summary_file_path.push(summary_file);
@@ -339,9 +368,35 @@ pub fn run_runtests(config: ConfigFileParams) {
     // writer & file dropped here
 }
 
+fn print_cycle_summary(test_cycles: usize, cpu_cycles: usize) {
+    println!("Total test cycles: {}", test_cycles);
+    println!("Total CPU cycles: {}", cpu_cycles);
+
+    let diff = test_cycles as f64 - cpu_cycles as f64;
+
+    if diff > 0.0 {
+        println!(
+            "CPU less than test cycles by: {}, percent: {}",
+            diff,
+            diff.abs() / test_cycles as f64
+        );
+    }
+    else if diff < 0.0 {
+        println!(
+            "CPU cycles exceeded test cycles by: {}, percent: {}",
+            diff.abs(),
+            diff.abs() / test_cycles as f64
+        );
+    }
+    else {
+        println!("Test cycles matched CPU cycles.");
+    }
+}
+
 fn run_tests(
     metadata: &Metadata,
     tests: &LinkedList<CpuTest>,
+    prefix_opt: Option<u8>,
     opcode: u8,
     extension_opt: Option<u8>,
     config: &ConfigFileParams,
@@ -408,6 +463,13 @@ fn run_tests(
     let mut results = TestResult::default();
     // Start a timer for how long this test is going to take.
     let test_start = Instant::now();
+
+    let mut total_test_cycles_seen: usize = 0;
+    let mut total_pf_test_cycles_seen: usize = 0;
+    let mut total_cpu_cycles_seen: usize = 0;
+    let mut total_pf_cpu_cycles_seen: usize = 0;
+    let mut test_cycles_seen: usize = 0;
+    let mut cpu_cycles_seen: usize = 0;
 
     // Loop through all tests and run them.
     for (n, test) in tests.iter().enumerate() {
@@ -493,10 +555,11 @@ fn run_tests(
 
         trace_print!(
             log,
-            "{}| Test {:05}: Running test for instruction: {}",
+            "{}| Test {:05}: Running test for instruction: {} {:02X?}",
             opcode_string,
             n,
             i,
+            test.bytes
         );
         /*
         println!(
@@ -532,7 +595,11 @@ fn run_tests(
             | Mnemonic::LODSB
             | Mnemonic::LODSW
             | Mnemonic::SCASB
-            | Mnemonic::SCASW => {
+            | Mnemonic::SCASW
+            | Mnemonic::INSB
+            | Mnemonic::INSW
+            | Mnemonic::OUTSB
+            | Mnemonic::OUTSW => {
                 // limit cx to 31
                 let cx = cpu.get_register16(Register16::CX);
                 cpu.set_register16(Register16::CX, cx & 0x7F);
@@ -581,6 +648,7 @@ fn run_tests(
 
         // Get cycle states from CPU.
         let mut cpu_cycles = cpu.get_cycle_states().clone();
+        cpu_cycles_seen = cpu_cycles.len();
 
         // Clean the CPU cycle states.
         clean_cycle_states(&mut cpu_cycles);
@@ -600,7 +668,16 @@ fn run_tests(
 
         print_changed_flags(&test.initial_state.regs, &test_final_vregs, log);
 
-        let validate_result = validate_registers(&metadata, opcode, extension_opt, &test_final_vregs, &cpu_vregs, log);
+        let validate_result = validate_registers(
+            config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088),
+            &metadata,
+            prefix_opt,
+            opcode,
+            extension_opt,
+            &test_final_vregs,
+            &cpu_vregs,
+            log,
+        );
 
         if do_validate_registers {
             match validate_result {
@@ -628,11 +705,22 @@ fn run_tests(
                     );
                 }
                 _ => {
-                    _ = writeln!(
-                        log,
-                        "{}| Test {:05}: Register validation FAILED.\nTest registers, initial:\n{}, Test registers, final:\n{}\nCPU registers, final::\n{}\nCPU delta:\n{}\n",
-                        opcode_string, n, test.initial_state.regs, test_final_vregs, cpu_vregs, test.final_state.regs
-                    );
+                    if let RegisterValidationResult::GeneralMismatch | RegisterValidationResult::BothMismatch =
+                        validate_result
+                    {
+                        _ = writeln!(
+                            log,
+                            "{}| Test {:05}: Register validation FAILED.\nTest registers, initial:\n{}, Test registers, final:\n{}\nTest delta:\n{}\nCPU registers, final::\n{}\n",
+                            opcode_string, n, test.initial_state.regs, test_final_vregs, test.final_state.regs, cpu_vregs,
+                        );
+                    }
+                    else {
+                        _ = writeln!(
+                            log,
+                            "{}| Test {:05}: Register validation FLAG DIFFERENCE.\nTest registers, initial:\n{}, Test registers, final:\n{}\nCPU registers, final::\n{}\n",
+                            opcode_string, n, test.initial_state.regs, test_final_vregs, cpu_vregs,
+                        );
+                    }
 
                     if test.cycles.len() != cpu_cycles.len() {
                         _ = writeln!(
@@ -701,6 +789,7 @@ fn run_tests(
             }
         }
 
+        test_cycles_seen = test.cycles.len();
         let do_validate_cycles = config.tests.test_run_validate_cycles.unwrap_or(true);
 
         if do_validate_cycles {
@@ -793,6 +882,7 @@ fn run_tests(
             // Validate memops
             match validate_memops(
                 &cpu,
+                &test.cycles,
                 &cpu_cycles,
                 instruction_address,
                 i.size as usize,
@@ -868,6 +958,20 @@ fn run_tests(
         else {
             results.passed += 1;
         }
+
+        if test_prefetched {
+            total_pf_test_cycles_seen += test_cycles_seen;
+            total_pf_cpu_cycles_seen += cpu_cycles_seen;
+        }
+        else {
+            total_test_cycles_seen += test_cycles_seen;
+            total_cpu_cycles_seen += cpu_cycles_seen;
+        }
+
+        results.cycles.normal.test = total_test_cycles_seen;
+        results.cycles.prefetched.test = total_pf_test_cycles_seen;
+        results.cycles.normal.cpu = total_cpu_cycles_seen;
+        results.cycles.prefetched.cpu = total_pf_cpu_cycles_seen;
 
         if stop_on_failure {
             break;

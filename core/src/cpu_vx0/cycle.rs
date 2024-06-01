@@ -589,16 +589,6 @@ impl NecVx0 {
     }
 
     #[inline]
-    pub fn cycle_nx(&mut self) {
-        self.nx = true;
-    }
-
-    #[inline]
-    pub fn cycle_nx_i(&mut self, _instr: u16) {
-        self.nx = true;
-    }
-
-    #[inline]
     pub fn cycles(&mut self, ct: u32) {
         for _ in 0..ct {
             self.cycle();
@@ -610,20 +600,6 @@ impl NecVx0 {
         for i in 0..ct as usize {
             self.cycle_i(instrs[i]);
         }
-    }
-
-    #[inline]
-    pub fn cycles_nx(&mut self, ct: u32) {
-        self.cycles(ct - 1);
-        self.nx = true;
-        //self.cycles(ct);
-    }
-
-    #[inline]
-    pub fn cycles_nx_i(&mut self, ct: u32, instrs: &[u16]) {
-        self.cycles_i(ct - 1, instrs);
-        self.nx = true;
-        //self.cycles_i(ct, instrs);
     }
 
     #[cfg(feature = "cpu_validator")]

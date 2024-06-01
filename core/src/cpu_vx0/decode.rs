@@ -200,7 +200,7 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
     inst!( 0x0C, o, 0, 0b0100100010010010, 0x018, OR    , OR,      Ot::FixedRegister8(Register8::AL),      Ot::Immediate8);
     inst!( 0x0D, o, 0, 0b0100100010010010, 0x018, OR    , OR,      Ot::FixedRegister16(Register16::AX),    Ot::Immediate16);
     inst!( 0x0E, o, 0, 0b0100000000110010, 0x02c,         PUSH,    Ot::FixedRegister16(Register16::CS),    Ot::NoOperand);
-    inst!( 0x0F, o, 0, 0b0100000000110010, 0x038,         POP,     Ot::FixedRegister16(Register16::CS),    Ot::NoOperand);
+    inst!( 0x0F, o, 0, 0b0000000000000000, 0x038,         Extension,    Ot::NoOperand,    Ot::NoOperand);
     inst!( 0x10, o, 0, 0b0100101000000000, 0x008, ADC   , ADC,     Ot::ModRM8,                             Ot::Register8);
     inst!( 0x11, o, 0, 0b0100101000000000, 0x008, ADC   , ADC,     Ot::ModRM16,                            Ot::Register16);
     inst!( 0x12, o, 0, 0b0100101000000000, 0x008, ADC   , ADC,     Ot::Register8,                          Ot::ModRM8);
@@ -569,9 +569,43 @@ pub static DECODE: [InstTemplate; TOTAL_OPS_LEN] = {
     inst!( 0xFF, o, 6, 0b0000100000100100, 0x026,         PUSH  ,  Ot::ModRM16,                            Ot::NoOperand);
     // END OF REGULAR INTEL OPCODES (0-367)
     // FF extended opcodes follow. Thankfully, on V20 none of these are group opcodes.
-    inst_skip!(o, 0x10); // Skip 0F00->0F0F
-    inst!( 0x10, o, 0, 0b0000100000100100, 0x000,         TEST1 ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
-    inst!( 0x11, o, 0, 0b0000100000100100, 0x000,         TEST1 ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
+    inst_skip!(o, 16); // Skip 0F00->0F0F
+    inst!( 0x10, o, 0, 0b0000100000000000, 0x000,         TEST1 ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
+    inst!( 0x11, o, 0, 0b0000100000000000, 0x000,         TEST1 ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
+    inst!( 0x12, o, 0, 0b0000100000000000, 0x000,         CLR1  ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
+    inst!( 0x13, o, 0, 0b0000100000000000, 0x000,         CLR1  ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
+    inst!( 0x14, o, 0, 0b0000100000000000, 0x000,         SET1  ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
+    inst!( 0x15, o, 0, 0b0000100000000000, 0x000,         SET1  ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
+    inst!( 0x16, o, 0, 0b0000100000000000, 0x000,         NOT1  ,  Ot::ModRM8,                             Ot::FixedRegister8(Register8::CL));
+    inst!( 0x17, o, 0, 0b0000100000000000, 0x000,         NOT1  ,  Ot::ModRM16,                            Ot::FixedRegister8(Register8::CL));
+    inst!( 0x18, o, 0, 0b0000100000000000, 0x000,         TEST1 ,  Ot::ModRM8,                             Ot::Immediate8);
+    inst!( 0x19, o, 0, 0b0000100000000000, 0x000,         TEST1 ,  Ot::ModRM16,                            Ot::Immediate8);
+    inst!( 0x1A, o, 0, 0b0000100000000000, 0x000,         CLR1  ,  Ot::ModRM8,                             Ot::Immediate8);
+    inst!( 0x1B, o, 0, 0b0000100000000000, 0x000,         CLR1  ,  Ot::ModRM16,                            Ot::Immediate8);
+    inst!( 0x1C, o, 0, 0b0000100000000000, 0x000,         SET1  ,  Ot::ModRM8,                             Ot::Immediate8);
+    inst!( 0x1D, o, 0, 0b0000100000000000, 0x000,         SET1  ,  Ot::ModRM16,                            Ot::Immediate8);
+    inst!( 0x1E, o, 0, 0b0000100000000000, 0x000,         NOT1  ,  Ot::ModRM8,                             Ot::Immediate8);
+    inst!( 0x1F, o, 0, 0b0000100000000000, 0x000,         NOT1  ,  Ot::ModRM16,                            Ot::Immediate8);
+    inst!( 0x20, o, 0, 0b0000100000010000, 0x000,         ADD4S ,  Ot::NoOperand,                          Ot::NoOperand);
+    inst_skip!(o, 1); // Skip 0x21
+    inst!( 0x22, o, 0, 0b0000100000010000, 0x000,         SUB4S ,  Ot::NoOperand,                          Ot::NoOperand);
+    inst_skip!(o, 3); // Skip 0x23-0x25
+    inst!( 0x26, o, 0, 0b0000100000010000, 0x000,         CMP4S ,  Ot::NoOperand,                          Ot::NoOperand);
+    inst_skip!(o, 1); // Skip 0x27
+    inst!( 0x28, o, 0, 0b0000100000000000, 0x000,         ROL4  ,  Ot::ModRM8,                             Ot::NoOperand);
+    inst_skip!(o, 1); // Skip 0x29
+    inst!( 0x2A, o, 0, 0b0000100000000000, 0x000,         ROR4  ,  Ot::ModRM8,                             Ot::NoOperand);
+    inst_skip!(o, 6); // Skip 0x2B-0x30
+    inst!( 0x31, o, 0, 0b0000100000000000, 0x000,         BINS  ,  Ot::ModRM8,                             Ot::Register8);
+    inst_skip!(o, 1); // Skip 0x32
+    inst!( 0x33, o, 0, 0b0000100000000000, 0x000,         BEXT  ,  Ot::ModRM8,                             Ot::Register8);
+    inst_skip!(o, 5); // Skip 0x34-0x38
+    inst!( 0x39, o, 0, 0b0000100000000000, 0x000,         BINS  ,  Ot::ModRM8,                             Ot::Immediate8);
+    inst_skip!(o, 1); // Skip 0x3A
+    inst!( 0x3B, o, 0, 0b0000100000000000, 0x000,         BEXT  ,  Ot::ModRM8,                             Ot::Immediate8);
+    inst_skip!(o, 195); // Skip 0x3C-0xFE
+    inst!( 0xFF, o, 0, 0b0000100000010000, 0x000,         BRKEM ,  Ot::Immediate8,                         Ot::NoOperand);
+
     o.table
 };
 
@@ -600,9 +634,11 @@ impl NecVx0 {
                     // 0F prefixed-instructions exist in table after all regular Intel instructions
                     // Nothing can follow an 0F prefix; so start instruction now. Fetching the
                     // extended opcode counts as a Subsequent write based on queue status flags.
+                    
+                    // One cycle delay after reading 0F prefix.
+                    bytes.wait(1);
                     opcode = bytes.q_read_u8(QueueType::Subsequent, QueueReader::Biu);
                     decode_idx = REGULAR_OPS_LEN;
-                    bytes.wait(1);
                     size += 1;
                     break;
                 }
@@ -640,7 +676,7 @@ impl NecVx0 {
         }
 
         // Pack number of prefixes decoded into prefix field (maximum of 3)
-        op_prefixes |= std::cmp::max(op_prefix_ct, 3);
+        op_prefixes |= std::cmp::min(op_prefix_ct, 3) & 0x03;
 
         decode_idx += opcode as usize;
         let mut op_lu = &DECODE[decode_idx];

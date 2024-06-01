@@ -32,6 +32,7 @@
 
 use crate::{
     cpu_common::{
+        alu::{AluAdc, AluAdd, AluSbb},
         CpuException,
         ExecutionResult,
         Mnemonic,
@@ -45,6 +46,7 @@ use crate::{
         OPCODE_PREFIX_REPMASK,
     },
     cpu_vx0::{biu::*, *},
+    cycles,
     util,
 };
 use ExecutionResult::Okay;
@@ -235,10 +237,9 @@ impl NecVx0 {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles_nx_i(2, &[0x008, 0x009]);
-
+                self.cycle();
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x009, 0x00a]);
+                    cycles!(self, 2);
                 }
 
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
@@ -255,11 +256,10 @@ impl NecVx0 {
                 // 16 bit ADD variants
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-                
-                self.cycles_nx_i(2, &[0x008, 0x009]);
 
+                self.cycle();
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x009, 0x00a]);
+                    cycles!(self, 2);
                 }
 
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
@@ -268,7 +268,7 @@ impl NecVx0 {
             0x06 => {
                 // PUSH es
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles!(self, 3);
                 self.push_register16(Register16::ES, ReadWriteFlag::RNI);
             }
             0x07 => {
@@ -280,7 +280,7 @@ impl NecVx0 {
             0x0E => {
                 // PUSH cs
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles!(self, 3);
                 self.push_register16(Register16::CS, ReadWriteFlag::RNI);
             }
             0x0F => {
@@ -292,7 +292,7 @@ impl NecVx0 {
             0x16 => {
                 // PUSH ss
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles!(self, 3);
                 self.push_register16(Register16::SS, ReadWriteFlag::RNI);
             }
             0x17 => {
@@ -304,7 +304,7 @@ impl NecVx0 {
             0x1E => {
                 // PUSH ds
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles!(self, 3);
                 self.push_register16(Register16::DS, ReadWriteFlag::RNI);
             }
             0x1F => {
@@ -317,14 +317,14 @@ impl NecVx0 {
             0x26 => {}
             0x27 => {
                 // DAA — Decimal Adjust AL after Addition
-                self.cycles_nx_i(3, &[0x144, 0x145, 0x146]);
+                cycles!(self, 3);
                 self.daa();
             }
             // CS Override Prefix
             0x2E => {}
             0x2F => {
                 // DAS
-                self.cycles_nx_i(3, &[0x144, 0x145, 0x146]);                
+                cycles!(self, 3);     
                 self.das();
             }
             // SS Segment Override Prefix
@@ -338,16 +338,8 @@ impl NecVx0 {
                 // CMP 8-bit variants
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-                
-                if self.i.opcode == 0x3C {
-                    // 0x018
-                    self.cycles_nx_i(2, &[MC_JUMP, 0x01a]);
-                }
-                else {
-                    // 0x008
-                    self.cycles_nx_i(2, &[0x008, 0x009]);
-                }
-                
+
+                cycles!(self, 2);
                 let _result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
                 //self.write_operand8(self.i.operand1_type, self.i.segment_override, result);
             }
@@ -357,13 +349,8 @@ impl NecVx0 {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                if self.i.opcode == 0x3D {
-                    // 0x018
-                    self.cycle_nx_i(0x01a);
-                }
-                else {
-                    // 0x008
-                    self.cycles_nx_i(2, &[0x008, 0x009]);
+                if self.i.opcode != 0x3D {
+                    cycles!(self, 2);
                 }
 
                 let _result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
@@ -382,8 +369,6 @@ impl NecVx0 {
                 // math_op16 handles flags
                 let result = self.math_op16(Mnemonic::INC, op1_value, 0);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-
-                self.cycles_nx(1);
             }
             0x48..=0x4F => {
                 // DEC r16 register-encoded operands
@@ -391,14 +376,12 @@ impl NecVx0 {
                 // math_op16 handles flags
                 let result = self.math_op16(Mnemonic::DEC, op1_value, 0);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-
-                self.cycles_nx(1);         
             }
             0x50..=0x57 => {
                 // PUSH reg16
                 // Flags: None
                 let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
-                self.cycles_i(3, &[0x028, 0x029, 0x02a]);
+                cycles!(self, 3);
 
                 self.push_register16(reg, ReadWriteFlag::RNI);
             }
@@ -408,14 +391,13 @@ impl NecVx0 {
                 let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
 
                 self.pop_register16(reg, ReadWriteFlag::RNI);
-                self.cycle_nx_i(0x035);
             }
             0x60 => {
                 // PUSHA
                 let saved_sp = self.get_register16(Register16::SP);
-                self.cycles(2);
+                cycles!(self, 2);
                 self.push_register16(Register16::AX, ReadWriteFlag::Normal);
-                self.cycles(1);
+                cycles!(self, 1);
                 self.push_register16(Register16::CX, ReadWriteFlag::Normal);
                 self.push_register16(Register16::DX, ReadWriteFlag::Normal);
                 self.push_register16(Register16::BX, ReadWriteFlag::Normal);
@@ -472,6 +454,7 @@ impl NecVx0 {
             0x63 => {
                 // UNDEFINED (?)
                 let _ = self.read_operand16(self.i.operand1_type, self.i.segment_override);
+                self.cycles(60);
             }
             0x64 | 0x65 => {},
             0x68 => {
@@ -521,18 +504,18 @@ impl NecVx0 {
                 // rep_start() will terminate early if CX==0
                 if self.rep_start() {
                     self.string_op(self.i.mnemonic, None);
-                    self.cycle_i(0x130);
+                    self.cycle();
 
                     // Check for end condition (CX==0)
                     if self.in_rep {
                         self.decrement_register16(Register16::CX); // 131
                         // Check for interrupt
                         if self.intr_pending {
-                            self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
+                            cycles!(self, 2);
                             self.rep_interrupt();
                         }
                         else {
-                            self.cycles_i(2, &[0x131, 0x132]);
+                            cycles!(self, 2);
                             if self.c.x() == 0 {
                                 // Fall through to 133, RNI
                                 self.rep_end();
@@ -543,7 +526,7 @@ impl NecVx0 {
                         }
                     }
                     else {
-                        // End non-rep prefixed MOVSB
+                        // End non-rep prefixed INS/OUTS
                         self.cycle_i(MC_JUMP); // jump to 133, RNI
                     }
                 }
@@ -590,12 +573,10 @@ impl NecVx0 {
                 // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m8, imm8
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-                
-                self.cycle_nx();
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x00e, 0x00f]);
+                    cycles!(self, 2);
                 }
 
                 if self.i.mnemonic != Mnemonic::CMP {
@@ -607,16 +588,10 @@ impl NecVx0 {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycle_nx();
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    if self.i.mnemonic != Mnemonic::CMP {
-                        self.cycles_i(2, &[0x00e, 0x00f]);
-                    }
-                    else {
-                        self.cycles_nx_i(2, &[0x00e, 0x00f]);
-                    }
+                    cycles!(self, 2);
                 }
 
                 if self.i.mnemonic != Mnemonic::CMP {
@@ -634,7 +609,7 @@ impl NecVx0 {
                 let result = self.math_op16(self.i.mnemonic, op1_value, sign_extended);
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x00e, 0x00f]);
+                    cycles!(self, 2);
                 }
 
                 if self.i.mnemonic != Mnemonic::CMP {
@@ -648,13 +623,7 @@ impl NecVx0 {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 self.math_op8(Mnemonic::TEST, op1_value, op2_value);
-                self.cycles_nx_i(2, &[0x94]);
-                
-                /*
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x95, 0x96]);
-                }
-                */
+                cycles!(self, 1);
             }
             0x85 => {
                 // TEST r/m16, r16
@@ -663,23 +632,18 @@ impl NecVx0 {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 // math_op16 handles flags
                 self.math_op16(Mnemonic::TEST, op1_value, op2_value);
-                self.cycles_nx_i(2, &[0x94]);
-                /*
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycle();
-                } 
-                */               
+                cycles!(self, 1);
             }
             0x86 => {
                 // XCHG r8, r/m8
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_nx(3);
+                cycles!(self, 2);
                 
                 if let OperandType::AddressingMode(_) = self.i.operand2_type {
                     // Memory operand takes 2 more cycles
-                    self.cycles(2);
+                    cycles!(self, 2);
                 }
 
                 // Exchange values. Write operand2 first so we don't affect EA calculation if EA includes register being swapped.
@@ -690,9 +654,8 @@ impl NecVx0 {
                 // XCHG r16, r/m16
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-
-                self.cycles_nx(3);
-
+                
+                cycles!(self, 2);
                 if let OperandType::AddressingMode(_) = self.i.operand2_type {
                     // Memory operand takes 2 more cycles
                     self.cycles(2);
@@ -704,21 +667,19 @@ impl NecVx0 {
             }
             0x88 | 0x8A => {
                 // MOV r/m8, r8  |  MOV r8, r/m8
-                self.cycle_nx();
                 let op_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x000, 0x001]);
+                    cycles!(self, 2);
                 }
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
             }
             0x89 | 0x8B => {
                 // MOV r/m16, r16  |  MOV r16, r/m16
-                self.cycle_nx();
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x000, 0x001]);
+                    cycles!(self, 2);
                 }
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
             }
@@ -726,7 +687,7 @@ impl NecVx0 {
                 // MOV r/m16, SReg | MOV SReg, r/m16
 
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycle_i(0x0ec);
+                    cycles!(self, 1);
                 }
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
@@ -747,11 +708,11 @@ impl NecVx0 {
             }
             0x8F => {
                 // POP r/m16
-                self.cycle_i(0x040);
+                cycles!(self, 1);
                 let value = self.pop_u16();
-                self.cycle_i(0x042);
+                cycles!(self, 1);
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x043, 0x044]);
+                    cycles!(self, 2);
                 }                   
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, value, ReadWriteFlag::RNI);
             }
@@ -763,7 +724,7 @@ impl NecVx0 {
                 let ax_value = self.a.x();
                 let op_reg_value = self.get_register16(op_reg);
 
-                self.cycles_nx_i(2, &[0x084, 0x085]);
+                cycles!(self, 1);
 
                 self.set_register16(Register16::AX, op_reg_value);
                 self.set_register16(op_reg, ax_value);
@@ -781,7 +742,7 @@ impl NecVx0 {
             0x99 => {
                 // CWD - Convert Word to Doubleword
                 // Flags: None
-                self.cycles(3);
+                cycles!(self, 3);
                 if self.a.x() & 0x8000 == 0 {
                     self.d.set_x(0x0000);
                 }
@@ -823,11 +784,11 @@ impl NecVx0 {
             }
             0x9B => {
                 // WAIT
-                self.cycles(3);
+                cycles!(self, 3);
             }
             0x9C => {
                 // PUSHF - Push Flags
-                self.cycles(3);
+                cycles!(self, 3);
                 self.push_flags(ReadWriteFlag::RNI);
             }
             0x9D => {
@@ -876,7 +837,7 @@ impl NecVx0 {
                 if self.rep_start() {
 
                     self.string_op(self.i.mnemonic, self.i.segment_override);
-                    self.cycle_i(0x130);
+                    cycles!(self, 1);
 
                     // Check for end condition (CX==0)
                     if self.in_rep {
@@ -902,12 +863,12 @@ impl NecVx0 {
 
                         // Check for interrupt
                         if self.intr_pending {
-                            self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
+                            cycles!(self, 2);
                             self.rep_interrupt();
                             
                         }
                         else {
-                            self.cycles_i(2, &[0x131, 0x132]);
+                            cycles!(self, 2);
 
                             if self.c.x() == 0 {
                                 // Fall through to 133, RNI
@@ -1022,7 +983,7 @@ impl NecVx0 {
 
                 if self.rep_start() {
                     
-                    self.string_op(self.i.mnemonic, None);
+                    self.string_op(self.i.mnemonic, self.i.segment_override);
                     self.cycle_i(0x11e);
     
                     // Check for end condition (CX==0)
@@ -1089,18 +1050,16 @@ impl NecVx0 {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                cycles!(self, 6);
 
                 if op2_value > 0 {
                     for _ in 0..op2_value {
-                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                        cycles!(self, 4);
                     }
 
                     // If there is a terminal write to M, don't process RNI on line 0x92
                     if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                        //if self.c.l() != 0 {
-                        self.cycle_i(0x092);
-                        //}
+                        cycles!(self, 1);
                     }
 
                     let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
@@ -1113,16 +1072,16 @@ impl NecVx0 {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                cycles!(self, 6);
 
                 if op2_value > 0 {
                     for _ in 0..op2_value {
-                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                        cycles!(self, 4);
                     }
 
                     // If there is a terminal write to M, don't process RNI on line 0x92
                     if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                        self.cycle_i(0x092);
+                        cycles!(self, 1);
                     }
 
                     let result = self.bitshift_op16(self.i.mnemonic, op1_value, op2_value);
@@ -1141,9 +1100,9 @@ impl NecVx0 {
                 self.pc = new_pc;
                 
                 self.biu_fetch_suspend();
-                self.cycles_i(2, &[0x0c3, 0x0c4]);
+                cycles!(self, 2);
                 self.biu_queue_flush();
-                self.cycles_i(3, &[0x0c5, MC_JUMP, 0x0ce]);    
+                cycles!(self, 3);
                 
                 self.release(stack_disp);
 
@@ -1162,7 +1121,7 @@ impl NecVx0 {
                 self.biu_fetch_suspend();
                 self.cycle_i(0x0bd);
                 self.biu_queue_flush();
-                self.cycles_i(2, &[0x0be, 0x0bf]);                
+                cycles!(self, 2);    
                 
                 // Pop call stack
                 // self.call_stack.pop_back();
@@ -1171,7 +1130,7 @@ impl NecVx0 {
             }
             0xC4 => {
                 // LES - Load ES from Pointer
-                self.cycles_i(2, &[0x0F0, 0x0F1]);
+                cycles!(self, 2);
 
                 // Operand 2 is far pointer
                 let (les_segment, les_offset) = 
@@ -1191,7 +1150,7 @@ impl NecVx0 {
             }
             0xC5 => {
                 // LDS - Load DS from Pointer
-                self.cycles_i(2, &[0x0F4, 0x0F5]);
+                cycles!(self, 2);
 
                 // Operand 2 is far pointer
                 let (lds_segment, lds_offset) = 
@@ -1213,13 +1172,13 @@ impl NecVx0 {
             0xC6 => {
                 // MOV r/m8, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.cycles(2);
+                cycles!(self, 2);
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
             }
             0xC7 => {
                 // MOV r/m16, imm16
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.cycle_i(0x01e);
+                cycles!(self, 1);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
             }
             0xC8 => {
@@ -1233,11 +1192,12 @@ impl NecVx0 {
                 let frame_temp = self.get_register16(Register16::SP);
                 
                 if nesting_level > 1 {
-                    for i in 0..nesting_level {
+                    for i in 0..(nesting_level-1) {
                         self.set_register16(Register16::BP, self.get_register16(Register16::BP).wrapping_sub(2));
                         let ptr = self.biu_read_u16(Segment::SS, self.get_register16(Register16::BP), ReadWriteFlag::Normal);
                         self.push_u16(ptr, ReadWriteFlag::Normal);
                     }
+                    self.push_u16(frame_temp, ReadWriteFlag::Normal);
                 }
                 else if nesting_level == 1 {
                     self.push_u16(frame_temp, ReadWriteFlag::Normal);
@@ -1263,7 +1223,7 @@ impl NecVx0 {
             0xCB => {
                 // RETF - Far Return
                 // 0xC9 undocumented alias for 0xCB
-                self.cycle_i(0x0c0);
+                cycles!(self, 1);
                 self.farret(true);
                 jump = true;
             }
@@ -1295,8 +1255,8 @@ impl NecVx0 {
             0xCE => {
                 // INTO - Call Overflow Interrupt Handler
                 if self.get_flag(Flag::Overflow) {
-                    self.cycles_i(4, &[0x1ac, 0x1ad, MC_JUMP, 0x1af]);
-                    
+                    cycles!(self, 4);
+
                     // Save next address if we step over this INT.
                     self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
                     self.sw_interrupt(4);
@@ -1304,7 +1264,7 @@ impl NecVx0 {
                 }
                 else {
                     // Overflow not set. 
-                    self.cycles_i(2, &[0x1ac, 0x1ad]);
+                    cycles!(self, 2);
                 }
             }
             0xCF => {
@@ -1336,7 +1296,7 @@ impl NecVx0 {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                cycles!(self, 6);
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
                 if self.c.l() > 0 {
@@ -1360,12 +1320,12 @@ impl NecVx0 {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                cycles!(self, 6);
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
                 if self.c.l() > 0 {
                     for _ in 0..(self.c.l() ) {
-                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                        cycles!(self, 4);
                     }
 
                     // If there is a terminal write to M, don't process RNI on line 0x92
@@ -1412,8 +1372,8 @@ impl NecVx0 {
                 // Handle segment override, default DS
                 let segment = self.i.segment_override.unwrap_or(Segment::DS);
                 let disp16: u16 = self.b.x().wrapping_add(self.a.l() as u16);
-                
-                self.cycles_i(3, &[0x10c, 0x10d, 0x10e]);
+
+                cycles!(self, 3);
 
                 let value = self.biu_read_u8(segment, disp16);
                 
@@ -1432,7 +1392,7 @@ impl NecVx0 {
                 // loop does not modify flags
 
                 self.decrement_register16(Register16::CX);
-                self.cycles_i(2, &[0x138, 0x139]);
+                cycles!(self, 2);
 
                 let mut zero_condition = !self.get_flag(Flag::Zero);
                 if self.i.opcode == 0xE1 { 
@@ -1454,7 +1414,7 @@ impl NecVx0 {
                 // loop does not modify flags
                 
                 self.decrement_register16(Register16::CX);
-                self.cycles_i(2, &[0x140, 0x141]);
+                cycles!(self, 2);
 
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
@@ -1469,8 +1429,8 @@ impl NecVx0 {
             0xE3 => {
                 // JCXZ - Jump if CX == 0
                 // Flags: None
-            
-                self.cycles_i(2, &[0x138, 0x139]);
+
+                cycles!(self, 2);
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
                 self.cycle_i(0x13b);
@@ -1485,8 +1445,8 @@ impl NecVx0 {
             }
             0xE4 => {
                 // IN al, imm8
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                self.cycles_i(2, &[0x0ad, 0x0ae]);
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                cycles!(self, 2);
 
                 let in_byte = self.biu_io_read_u8(op2_value as u16);
                 self.set_register8(Register8::AL, in_byte);
@@ -1494,8 +1454,8 @@ impl NecVx0 {
             }
             0xE5 => {
                 // IN ax, imm8
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                self.cycles_i(2, &[0x0ad, 0x0ae]);
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                cycles!(self, 2);
 
                 let in_word = self.biu_io_read_u16(op2_value as u16);
                 self.set_register16(Register16::AX, in_word);
@@ -1503,8 +1463,8 @@ impl NecVx0 {
             0xE6 => {
                 // OUT imm8, al
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
-                self.cycles_i(2, &[0x0b1, 0x0b2]);
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                cycles!(self, 2);
 
                 // Write to port
                 self.biu_io_write_u8(op1_value as u16, op2_value, ReadWriteFlag::RNI);
@@ -1512,8 +1472,8 @@ impl NecVx0 {
             0xE7 => {
                 // OUT imm8, ax
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();                
-                self.cycles_i(2, &[0x0b1, 0x0b2]);
+                let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
+                cycles!(self, 2);
 
                 // Write to consecutive ports
                 self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
@@ -1533,7 +1493,7 @@ impl NecVx0 {
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
                 self.biu_fetch_suspend(); // 0x07E
-                self.cycles_i(2, &[0x07e, 0x07f]);
+                cycles!(self, 2);
                 self.corr();
                 self.cycle_i(0x080);
                 
@@ -1558,7 +1518,7 @@ impl NecVx0 {
                 // Set new IP
                 self.pc = new_pc;
                 self.biu_queue_flush();
-                self.cycles_i(3, &[0x081, 0x082, MC_JUMP]); 
+                cycles!(self, 3);
 
                 // Push return address
                 self.push_u16(ret_addr, ReadWriteFlag::RNI);
@@ -1577,7 +1537,7 @@ impl NecVx0 {
                 // This instruction reads a direct FAR address from the instruction queue. (See 0x9A for its twin CALLF)
                 let (segment, offset) = self.read_operand_faraddr();
                 self.biu_fetch_suspend();
-                self.cycles_i(2, &[0x0e4, 0x0e5]);
+                cycles!(self, 2);
                 self.cs = segment;
                 self.pc = offset;
                 self.biu_queue_flush();
@@ -1656,7 +1616,7 @@ impl NecVx0 {
                 if self.intr {
                     // If an intr is pending now, execute it without actually halting.
                     log::trace!("Halt overriden at [{:05X}]", NecVx0::calc_linear_address(self.cs, self.ip()));
-                    self.cycles(2); // Cycle to load interrupt routine
+                    cycles!(self, 2);
                     self.halt_not_hold = false;
                 }
                 else {
@@ -1678,9 +1638,11 @@ impl NecVx0 {
             0xF6 => {
                 // Miscellaneous Opcode Extensions, r/m8, imm8
 
-                // REP negates product/quotient of MUL/DIV
-                let negate = (self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2)) != 0;
-
+                // V20 does not do this!
+                // REP negates product/quotient of MUL/DIV on 8088
+                //let negate = (self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2)) != 0;
+                let negate = false;
+                
                 match self.i.mnemonic {
 
                     Mnemonic::TEST => {
@@ -1688,7 +1650,7 @@ impl NecVx0 {
                         let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
                         // 8 bit TEST takes a jump
-                        self.cycles_i(2, &[MC_JUMP, 0x09a]);
+                        cycles!(self, 2);
 
                         // Don't use result, just set flags
                         let _result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
@@ -1698,7 +1660,7 @@ impl NecVx0 {
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
 
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x04c, 0x04d]);
+                            cycles!(self, 2);
                         }                        
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
@@ -1707,7 +1669,7 @@ impl NecVx0 {
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
 
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x050, 0x051]);
+                            cycles!(self, 2);
                         }                          
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
@@ -1722,7 +1684,8 @@ impl NecVx0 {
                             self.cycle();
                         }
 
-                        self.set_szp_flags_from_result_u8(self.a.h());
+                        // V20 MUL does not update SZP flags
+                        //self.set_szp_flags_from_result_u8(self.a.h());
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1794,9 +1757,10 @@ impl NecVx0 {
             0xF7 => {
                 // Miscellaneous Opcode Extensions, r/m16, imm16
 
-                // REP negates product/quotient of MUL/DIV
-                let negate = (self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2)) != 0;
-
+                // REP negates product/quotient of MUL/DIV on 8088
+                // V20 does not do this!
+                // let negate = (self.i.prefixes & (OPCODE_PREFIX_REP1 | OPCODE_PREFIX_REP2)) != 0;
+                let negate = false;
                 match self.i.mnemonic {
 
                     Mnemonic::TEST => {
@@ -1811,7 +1775,7 @@ impl NecVx0 {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x04c, 0x04d]);
+                            cycles!(self, 2);
                         }                            
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
@@ -1820,7 +1784,7 @@ impl NecVx0 {
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
 
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x050, 0x051]);
+                            cycles!(self, 2);
                         }        
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
@@ -1839,7 +1803,8 @@ impl NecVx0 {
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);
 
-                        self.set_szp_flags_from_result_u16(self.d.x());
+                        // V20 MUL does not set SZP
+                        //self.set_szp_flags_from_result_u16(self.d.x());
                     }
                     Mnemonic::IMUL => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1951,7 +1916,7 @@ impl NecVx0 {
                         let result = self.math_op8(self.i.mnemonic, op_value, 0);
 
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x020, 0x021]);
+                            cycles!(self, 2);
                         }                           
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     },
@@ -1971,7 +1936,7 @@ impl NecVx0 {
 
                             // temporary timings
                             self.biu_fetch_suspend();
-                            self.cycles(4);
+                            cycles!(self, 4);
                             self.biu_queue_flush();
 
                             // Set only lower 8 bits of IP, upper bits FF
@@ -1985,7 +1950,7 @@ impl NecVx0 {
 
                             // temporary timings
                             self.biu_fetch_suspend();
-                            self.cycles(4);
+                            cycles!(self, 4);
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to IP.
@@ -2001,14 +1966,14 @@ impl NecVx0 {
                             // Read one byte of offset and one byte of segment
                             let offset = self.biu_read_u8(ea_segment, ea_offset);
 
-                            self.cycles_i(3, &[0x1e2, MC_RTN, 0x068]); // RTN delay
-                            
+                            cycles!(self, 3);
+
                             let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
 
                             self.cycle_i(0x06a);
                             self.biu_fetch_suspend();
-                            self.cycles_i(3, &[0x06b, 0x06c, MC_NONE]);
-    
+                            cycles!(self, 3);
+
                             // Push low byte of CS
                             self.push_u8((self.cs & 0x00FF) as u8, ReadWriteFlag::Normal);
                             
@@ -2016,10 +1981,10 @@ impl NecVx0 {
                             // We do not handle stepping over 0xFE call here as it is unlikely to lead to a valid location or return.
                             self.cs = 0xFF00 | segment as u16;
                             self.pc = 0xFF00 | offset as u16;
-                            
-                            self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
+
+                            cycles!(self, 3);
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles!(self, 3);
 
                             // Push low byte of next IP
                             self.push_u8((next_i & 0x00FF) as u8, ReadWriteFlag::RNI);
@@ -2037,7 +2002,7 @@ impl NecVx0 {
 
                             // temporary timings
                             self.biu_fetch_suspend();
-                            self.cycles(4);
+                            cycles!(self, 4);
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to PC.
@@ -2053,7 +2018,7 @@ impl NecVx0 {
                         self.pc = 0xFF00 | ptr8 as u16;
 
                         self.biu_fetch_suspend();
-                        self.cycles(4);
+                        cycles!(self, 4);
                         self.biu_queue_flush();
                         jump = true;
                     }
@@ -2067,7 +2032,7 @@ impl NecVx0 {
                             let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
 
                             self.biu_fetch_suspend();
-                            self.cycles(4);
+                            cycles!(self, 4);
                             self.biu_queue_flush();
 
                             self.cs = 0xFF00 | segment as u16;
@@ -2081,7 +2046,7 @@ impl NecVx0 {
 
                             // temporary timings
                             self.biu_fetch_suspend();
-                            self.cycles(4);
+                            cycles!(self, 4);
                             self.biu_queue_flush();
                             
                             // If this form uses a register operand, the full 16 bits are copied to PC.
@@ -2092,7 +2057,7 @@ impl NecVx0 {
                     Mnemonic::PUSH => {
                         // Read one byte from rm
                         let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                        self.cycles_i(3, &[0x024, 0x025, 0x026]);
+                        cycles!(self, 3);
 
                         // Write one byte to stack
                         self.push_u8(op_value, ReadWriteFlag::RNI);
@@ -2111,7 +2076,7 @@ impl NecVx0 {
                         let result = self.math_op16(self.i.mnemonic, op_value, 0);
 
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x020, 0x021]);
+                            cycles!(self, 2);
                         }                         
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     },
@@ -2122,7 +2087,7 @@ impl NecVx0 {
                             let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
                             self.biu_fetch_suspend();
-                            self.cycles_i(4, &[0x074, 0x075, MC_CORR, 0x076]);
+                            cycles!(self, 4);
 
                             // Save next address if we step over this CALL.
                             self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
@@ -2143,7 +2108,7 @@ impl NecVx0 {
                             
                             self.pc = ptr16;
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles!(self, 3);
 
                             // Push return address (next instruction offset) onto stack
                             self.push_u16(return_ip, ReadWriteFlag::RNI);
@@ -2153,13 +2118,13 @@ impl NecVx0 {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
                             // We model the odd behavior of this invalid form here.
                             self.biu_fetch_suspend();
-                            self.cycles_i(2, &[0x074, 0x075]);
+                            cycles!(self, 2);
                             self.corr();self.cycle_i(0x076);
                             
                             let next_i = self.pc; // PC already corrected above
                             self.pc = self.get_register16(reg); // Value of IP becomes value of register operand
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles!(self, 3);
 
                             // Push return address (next instruction offset) onto stack
                             self.push_u16(next_i, ReadWriteFlag::RNI);                            
@@ -2203,7 +2168,7 @@ impl NecVx0 {
 
                             self.cycle_i(0x06a);
                             self.biu_fetch_suspend();
-                            self.cycles_i(3, &[0x06b, 0x06c]);
+                            cycles!(self, 3);
                             self.corr();
 
                             // Push CS
@@ -2212,9 +2177,9 @@ impl NecVx0 {
                             self.cs = segment;
                             //self.ip = self.last_ea; // I am not sure where IP gets its value.
 
-                            self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]);
+                            cycles!(self, 3);
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles!(self, 3);
 
                             // Push next IP
                             self.push_u16(next_i, ReadWriteFlag::RNI);
@@ -2269,8 +2234,8 @@ impl NecVx0 {
                     // Push Word onto stack
                     Mnemonic::PUSH => {
                         let mut op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                        self.cycles_i(3, &[0x024, 0x025, 0x026]);
-                        
+                        cycles!(self, 3);
+
                         // If SP, push the new value of SP instead of the old value
                         if let OperandType::Register16(Register16::SP) = self.i.operand1_type {
                             op_value = op_value.wrapping_sub(2);
@@ -2330,107 +2295,5 @@ impl NecVx0 {
         }
     }
 
-    /// Execute an extended opcode (Prefixed with 0F).
-    /// We can make some optimizations here as no instructions here take a REP prefix or perform
-    /// flow control.
-    #[rustfmt::skip]
-    pub fn execute_extended_instruction(&mut self) -> ExecutionResult {
-        let mut unhandled: bool = false;
-        let mut jump: bool = false;
-        let mut exception: CpuException = CpuException::NoException;
 
-        self.step_over_target = None;
-
-        self.trace_comment("EXECUTE_EXT");
-
-        // TODO: Check optimization here. We could reset several flags at once if they were in a
-        //       bitfield.
-        // Reset instruction reentrancy flag
-        self.instruction_reentrant = false;
-
-        // Reset jumped flag.
-        self.jumped = false;
-
-        // Reset trap suppression flag
-        self.trap_suppressed = false;
-
-        // Decrement trap counters.
-        self.trap_enable_delay = self.trap_enable_delay.saturating_sub(1);
-        self.trap_disable_delay = self.trap_disable_delay.saturating_sub(1);
-
-        // If we have an NX loaded RNI cycle from the previous instruction, execute it.
-        // Otherwise, wait one cycle before beginning instruction if there was no modrm.
-        if self.nx {
-            self.trace_comment("RNI");
-            self.cycle();
-            self.nx = false;
-        } else if self.last_queue_op == QueueOp::First {
-            self.cycle();
-        }
-        
-        match self.i.opcode {
-            0x10 => {
-                // TEST1, r/m8, CL
-                let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let bit_n = self.get_register8(Register8::CL) & 0x03; // Mask CL to 3 bits.
-                self.cycles(2 );
-                self.set_flag_state(Flag::Zero, (1<<bit_n) & op1_value == 0);
-            }
-            0x11 => {
-                // TEST1, r/m16, CL
-                let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                let bit_n = self.get_register8(Register8::CL) & 0x0F; // Mask CL to 4 bits.
-                self.cycles(2 );
-                self.set_flag_state(Flag::Zero, (1<<bit_n) & op1_value == 0);
-            }
-            _ => {
-                unhandled = true;
-            }
-        }
-        
-        // Reset REP init flag. This flag is set after a rep-prefixed instruction is executed for the first time. It
-        // should be preserved between executions of a rep-prefixed instruction unless an interrupt occurs, in which
-        // case the rep-prefix instruction terminates normally after RPTI. This flag determines whether RPTS is
-        // run when executing the instruction.
-        if !self.in_rep {
-            self.rep_init = false;
-        }
-        else {
-            self.instruction_reentrant = true;
-        }
-
-        if unhandled {
-            unreachable!("Invalid opcode!");
-            //ExecutionResult::UnsupportedOpcode(self.i.opcode)
-        }
-        else if self.halted && !self.reported_halt && !self.get_flag(Flag::Interrupt) && !self.get_flag(Flag::Trap) {
-            // CPU was halted with interrupts disabled - will not continue
-            self.reported_halt = true;
-            ExecutionResult::Halt
-        }
-        else if jump {
-            ExecutionResult::OkayJump
-        }
-        else if self.in_rep {
-            if let RepType::MulDiv = self.rep_type {
-                // Rep prefix on MUL/DIV just sets flags, do not rep
-                self.in_rep = false;
-                Okay
-            }
-            else {
-                self.rep_init = true;
-                // Set step-over target so that we can skip long REP instructions.
-                // Normally the step behavior during REP is to perform a single iteration.
-                self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
-                ExecutionResult::OkayRep
-            }
-        }
-        else {
-            match exception {
-                CpuException::DivideError => ExecutionResult::ExceptionError(exception),
-                CpuException::BoundsException => ExecutionResult::ExceptionError(exception),
-                CpuException::NoException => Okay,
-            }
-        }        
-    }
 }

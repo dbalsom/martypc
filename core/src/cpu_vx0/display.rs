@@ -46,7 +46,7 @@ mod tests {
         use cpu_validator::ValidatorMode;
 
         let mut cpu = Cpu::new(
-            CpuType::Intel8088,
+            CpuType::NecV20,
             TraceMode::None,
             TraceLogger::None,
             #[cfg(feature = "cpu_validator")]
