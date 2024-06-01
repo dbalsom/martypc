@@ -50,6 +50,8 @@ serialport = { git = "https://github.com/dbalsom/serialport-rs", branch = "ardui
 web-time = "0.2.4"
 toml = "0.8"
 fxhash = "0.2.1"
+enum_dispatch = "0.3.13"
+indexmap = "2.2.6"
 
 [workspace.dependencies.image]
 version = "0.24"

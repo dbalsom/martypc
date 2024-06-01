@@ -492,6 +492,8 @@ pub fn run() {
     match config.tests.test_mode {
         #[cfg(feature = "arduino_validator")]
         Some(TestMode::Generate) => return run_gentests(&config),
+        #[cfg(not(feature = "arduino_validator"))]
+        Some(TestMode::Generate) => panic!("Test generation not supported without a validator backend."),
         Some(TestMode::Run) | Some(TestMode::Validate) => return run_runtests(config),
         #[cfg(feature = "arduino_validator")]
         Some(TestMode::Process) => return run_processtests(config),

@@ -41,6 +41,7 @@ pub mod bytequeue;
 pub mod coreconfig;
 pub mod cpu_808x;
 pub mod cpu_common;
+pub mod cpu_vx0;
 pub mod device_traits;
 pub mod device_types;
 pub mod devices;

@@ -36,8 +36,7 @@ use crate::{
         BusStatus,
         Cpu,
         DmaState,
-        QueueOp,
-        Segment,
+        Intel808x,
         TCycle,
         TaCycle,
         CPU_FLAG_AUX_CARRY,
@@ -50,7 +49,7 @@ use crate::{
         CPU_FLAG_TRAP,
         CPU_FLAG_ZERO,
     },
-    cpu_common::TraceMode,
+    cpu_common::{QueueOp, Segment, TraceMode},
     syntax_token::SyntaxToken,
 };
 
@@ -59,7 +58,7 @@ pub enum BusSlotStatus {
     SlotB(BusStatus, TaCycle),
 }
 
-impl Cpu {
+impl Intel808x {
     #[inline]
     pub fn do_cycle_trace(&mut self) {
         match self.trace_mode {
@@ -126,7 +125,7 @@ impl Cpu {
 
     pub fn emit_header(&mut self) {
         match self.trace_mode {
-            TraceMode::CycleCsv => self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd"),
+            TraceMode::CycleSigrok => self.trace_print("Time(s),addr,clk,ready,qs,s,clk0,intr,dr0,holda,vs,hs,den,brd"),
             _ => {}
         }
     }
@@ -622,7 +621,7 @@ impl Cpu {
         token_vec
     }
 
-    pub fn cycle_trace_header(&self) -> Vec<String> {
+    pub fn cycle_table_header(&self) -> Vec<String> {
         vec![
             "Cycle".to_string(),
             "icyc".to_string(),

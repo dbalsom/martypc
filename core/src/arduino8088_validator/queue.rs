@@ -29,6 +29,7 @@ pub const QUEUE_SIZE: usize = 4;
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum QueueDataType {
     Program,
+    PrefetchProgram,
     EndInstruction,
     Finalize,
 }

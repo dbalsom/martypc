@@ -1,6 +1,14 @@
 # machine_config_overlays.toml
 # Main Machine Configuration Overlay file for MartyPC.
 
+
+# Upgrade the CPU of the system to an NECV20. 
+# Base machine type must have a compatible CPU (Intel 8088)
+[[overlay]]
+name = "cpu_v20"
+    [overlay.cpu]
+    upgrade_type = "NecV20"
+
 [[overlay]]
 name = "pcxt_640k_conventional"
     [overlay.memory]

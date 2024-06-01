@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 
-    bpaf_toml_cnofig::coreconfig.rs
+    config_toml_bpaf::coreconfig.rs
 
     Routines to parse configuration file and command line arguments.
 

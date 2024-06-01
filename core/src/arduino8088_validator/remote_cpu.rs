@@ -26,12 +26,12 @@
 use core::fmt::Display;
 use std::error::Error;
 
-use crate::cpu_validator::*;
-
-use super::{BusOp, BusOpType, QueueOp, OPCODE_NOP};
+use super::{BusOp, BusOpType, OPCODE_NOP};
 use crate::{
     arduino8088_client::*,
     arduino8088_validator::{queue::*, *},
+    cpu_common::QueueOp,
+    cpu_validator::*,
 };
 
 macro_rules! trace {
@@ -42,6 +42,16 @@ macro_rules! trace {
 }
 
 const ADDRESS_SPACE: usize = 1_048_576;
+
+// Code to perform a full prefetch on a given CPU. We utilize an undefined opcode on V20 that has
+// no side effects
+// TODO: Figure out how to do this on 8088.
+static NULL_PRELOAD_PGM: [u8; 0] = [];
+static INTEL808X_PRELOAD_PGM: [u8; 4] = [0xAA, 0xAA, 0xAA, 0xAA];
+static NECVX0_PRELOAD_PGM: [u8; 2] = [0x63, 0xC0];
+
+static INTEL_PREFIXES: [u8; 8] = [0x26, 0x2E, 0x36, 0x3E, 0xF0, 0xF1, 0xF2, 0xF3];
+static NEC_PREFIXES: [u8; 10] = [0x26, 0x2E, 0x36, 0x3E, 0xF0, 0xF1, 0xF2, 0xF3, 0x64, 0x65];
 
 #[derive(Copy, Clone, Debug)]
 pub enum RemoteCpuError {
@@ -97,17 +107,33 @@ pub struct RemoteCpuRegisters {
     flags: u16,
 }
 
+#[derive(Copy, Clone, Debug, Default)]
+pub enum RunState {
+    #[default]
+    Init,
+    Preload,
+    Program,
+    Finalize,
+}
+
 pub struct RemoteCpu {
+    cpu_type: CpuType,
     cpu_client: CpuClient,
     mode: ValidatorMode,
+    prefetch: bool,
+    prefetch_pgm: &'static [u8],
+    prefetch_pc: usize,
     regs: RemoteCpuRegisters,
     memory: Vec<u8>,
     pc: usize,
     instr_end_addr: usize,
+    program_started: bool,
     program_end_addr: usize,
-    program_state: ProgramState,
+    program_state: ValidatorState,
+    run_state: RunState,
 
     address_latch: u32,
+    address_bus: u32,
     status: u8,
     command_status: u8,
     control_status: u8,
@@ -140,29 +166,39 @@ pub struct RemoteCpu {
     discard_front: bool,
     error: Option<RemoteCpuError>,
     cycle_states: Vec<CycleState>,
+    visited_fetches: HashSet<u32>,
 
     // Validator stuff
     busop_n: usize,
+    fetchop_n: usize,
     owe_busop: bool,
     fetch_rollover: bool,
-    instruction_ended: bool,
+    fetching_beyond: bool,
     program_ended: bool,
-    prefetch_n: usize,
     v_pc: usize,
+
+    ignore_underflow: bool,
 }
 
 impl RemoteCpu {
-    pub fn new(cpu_client: CpuClient) -> RemoteCpu {
+    pub fn new(cpu_type: CpuType, cpu_client: CpuClient) -> RemoteCpu {
         RemoteCpu {
+            cpu_type,
             cpu_client,
             mode: ValidatorMode::Instruction,
+            prefetch: false,
+            prefetch_pgm: &NULL_PRELOAD_PGM,
+            prefetch_pc: 0,
             regs: Default::default(),
             memory: vec![0; ADDRESS_SPACE],
             pc: 0,
             instr_end_addr: 0,
+            program_started: true,
             program_end_addr: 0,
-            program_state: ProgramState::Reset,
+            program_state: ValidatorState::Reset,
+            run_state: RunState::Init,
             address_latch: 0,
+            address_bus: 0,
             status: 0,
             command_status: 0,
             control_status: 0,
@@ -193,14 +229,17 @@ impl RemoteCpu {
             discard_front: false,
             error: None,
             cycle_states: Vec::new(),
+            visited_fetches: HashSet::new(),
 
             busop_n: 0,
+            fetchop_n: 0,
             owe_busop: false,
             fetch_rollover: false,
-            instruction_ended: false,
+            fetching_beyond: false,
             program_ended: false,
-            prefetch_n: 0,
             v_pc: 0,
+
+            ignore_underflow: false,
         }
     }
 
@@ -245,7 +284,7 @@ impl RemoteCpu {
 
         CycleState {
             n: self.cycle_num,
-            addr: self.address_latch,
+            addr: self.address_bus,
             t_state: self.bus_cycle,
             a_type: self.access_type,
             b_state: self.bus_state,
@@ -257,7 +296,8 @@ impl RemoteCpu {
             aiowc: self.command_status & COMMAND_AIOWC_BIT != 0,
             iowc: self.command_status & COMMAND_IOWC_BIT != 0,
             inta: self.command_status & COMMAND_INTA_BIT != 0,
-            q_op: q_op,
+            bhe: false,
+            q_op,
             q_byte: 0,
             q_len: 0,
             q,
@@ -281,12 +321,13 @@ impl RemoteCpu {
         self.bus_cycle = BusCycle::T1;
         self.mcycle_state = BusState::CODE; // First state after reset is a code fetch
         self.last_cycle_state = None;
-        self.instruction_ended = false;
+        self.fetching_beyond = false;
         self.program_ended = false;
         self.fetch_rollover = false;
         self.just_reset = true;
         self.queue.flush();
         self.cycle_states.clear();
+        self.visited_fetches.clear();
     }
 
     pub fn is_last_wait(&self) -> bool {
@@ -301,81 +342,132 @@ impl RemoteCpu {
         }
     }
 
-    pub fn is_prefix(opcode: u8) -> bool {
-        match opcode {
-            0x26 | 0x2E | 0x36 | 0x3E | 0xF0 | 0xF2 | 0xF3 => true,
-            _ => false,
+    pub fn is_prefix(&self, opcode: u8) -> bool {
+        match self.cpu_type {
+            CpuType::Intel8088 | CpuType::Intel8086 => INTEL_PREFIXES.contains(&opcode),
+            CpuType::NecV20 | CpuType::NecV30 => NEC_PREFIXES.contains(&opcode),
         }
     }
 
-    pub fn handle_bus_read(&mut self, emu_mem_ops: &Vec<BusOp>, cpu_mem_ops: &mut Vec<BusOp>, log: &mut TraceLogger) {
+    /// Return whether we are inside the preload program.
+    pub fn in_prefetch_pgm(&self) -> bool {
+        self.prefetch && (self.prefetch_pc < self.prefetch_pgm.len())
+    }
+
+    pub fn in_preload(&self) -> bool {
+        matches!(self.run_state, RunState::Preload)
+    }
+
+    /// Handle a bus read operation, either code fetch, memory or IO read.
+    /// Code fetches are allowed to underflow in certain circumstances.
+    /// TODO: This should probably return a Result instead of setting an internal error condition.
+    pub fn handle_bus_read(
+        &mut self,
+        emu_mem_ops: &Vec<BusOp>,
+        emu_fetch_ops: &Vec<BusOp>,
+        cpu_mem_ops: &mut Vec<BusOp>,
+        cpu_fetch_ops: &mut Vec<BusOp>,
+        q_op: QueueOp,
+        log: &mut TraceLogger,
+    ) {
+        // TODO: Add check for PASV bus state before reading
         if (self.command_status & COMMAND_MRDC_BIT) == 0 {
             // MRDC is active-low. CPU is reading from bus.
-
             if self.mcycle_state == BusState::CODE {
-                // CPU is reading code.
+                // CPU is fetching code.
+                if self.prefetch {
+                    // We are executing the prefetch program. Feed bytes from program until exhausted.
+                    if self.in_prefetch_pgm() {
+                        self.data_bus = self.prefetch_pgm[self.prefetch_pc];
+                        self.data_type = QueueDataType::PrefetchProgram;
+                        self.prefetch_pc += 1;
+                        trace!(
+                            log,
+                            ">>> Fetching {:02X} from prefetch program. New ppc: {}/{}",
+                            self.data_bus,
+                            self.prefetch_pc,
+                            self.prefetch_pgm.len()
+                        );
 
-                //log::debug!("bus_state: {:?} bus ops len: {}", self.bus_state, emu_mem_ops.len());
-                if self.busop_n < emu_mem_ops.len() {
-                    // Bus type must match
-                    //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::CodeRead);
+                        if !self.in_prefetch_pgm() {
+                            trace!(log, ">>> Ending prefetch program fetch.");
+                            self.prefetch = false;
+                        }
 
-                    if (emu_mem_ops[self.busop_n].addr as usize) == self.instr_end_addr {
-                        self.instruction_ended = true;
+                        self.cpu_client
+                            .write_data_bus(self.data_bus)
+                            .expect("Failed to write data bus.");
+                    }
+                    else {
+                        panic!("Prefetch program underflow!");
+                    }
+                }
+                else if self.fetchop_n < emu_fetch_ops.len() {
+                    if (emu_fetch_ops[self.fetchop_n].addr as usize) == self.instr_end_addr {
+                        trace!(log, "Setting fetching_beyond == True");
+                        self.fetching_beyond = true;
                     }
 
-                    if (emu_mem_ops[self.busop_n].addr as usize) == self.program_end_addr {
+                    if (emu_fetch_ops[self.fetchop_n].addr as usize) == self.program_end_addr {
                         self.program_ended = true;
                     }
 
-                    if !self.instruction_ended {
-                        /*
-                        if instr[self.v_pc] != emu_mem_ops[self.busop_n].data {
-                            log::error!(
-                                "Emu fetch op doesn't match instruction vector byte: Fetch: {:02X} Instr: {:02X}",
-                                emu_mem_ops[self.busop_n].data,
-                                instr[self.v_pc]
-                            );
-                        }
-                        */
-
+                    if !self.fetching_beyond {
                         // Feed emulator byte to CPU depending on validator mode.
                         match self.mode {
                             ValidatorMode::Cycle => {
-                                self.data_bus = emu_mem_ops[self.busop_n].data;
+                                self.data_bus = emu_fetch_ops[self.fetchop_n].data;
                                 self.data_type = QueueDataType::Program;
                             }
                             ValidatorMode::Instruction => {
-                                if emu_mem_ops[self.busop_n].addr as usize >= self.instr_end_addr {
+                                let fetch_addr = emu_fetch_ops[self.fetchop_n].addr;
+
+                                // Are we fetching outside the instruction byte range?
+                                if fetch_addr >= self.instr_end_addr as u32 || fetch_addr < self.instr_addr {
                                     self.data_type = QueueDataType::Finalize;
                                     self.data_bus = OPCODE_NOP;
                                 }
                                 else {
-                                    trace!(
-                                        log,
-                                        "accepting fetch: {:05X} < {:05X}",
-                                        emu_mem_ops[self.busop_n].addr,
-                                        self.instr_end_addr
-                                    );
-                                    self.data_bus = emu_mem_ops[self.busop_n].data;
-                                    self.data_type = QueueDataType::Program;
+                                    // This fetch appears to be within the instruction, but it is only valid if the
+                                    // fetch hasn't already been visited (We may have jumped back into the instruction).
+                                    if self.visited_fetches.contains(&fetch_addr) {
+                                        // We've already fetched this byte - we've jumped back into the instruction and should end.
+                                        trace!(
+                                            log,
+                                            "Already-visisted fetch: {:05X} Likely flow control into instruction bytes. Ending.",
+                                            emu_fetch_ops[self.fetchop_n].addr,
+                                        );
+
+                                        self.data_type = QueueDataType::Finalize;
+                                        self.data_bus = OPCODE_NOP;
+                                    }
+                                    else {
+                                        trace!(
+                                            log,
+                                            "accepting fetch: {:05X} < {:05X}",
+                                            emu_fetch_ops[self.fetchop_n].addr,
+                                            self.instr_end_addr
+                                        );
+                                        self.data_bus = emu_fetch_ops[self.fetchop_n].data;
+                                        self.data_type = QueueDataType::Program;
+                                    }
                                 }
                             }
                         }
 
-                        // Add emu op to CPU BusOp list
-                        cpu_mem_ops.push(emu_mem_ops[self.busop_n].clone());
-
+                        // Add emu op to CPU FetchOp list
+                        cpu_fetch_ops.push(emu_fetch_ops[self.fetchop_n].clone());
+                        self.visited_fetches.insert(emu_fetch_ops[self.fetchop_n].addr);
                         self.v_pc += 1;
 
-                        if emu_mem_ops[self.busop_n].addr != self.address_latch {
+                        if emu_fetch_ops[self.fetchop_n].addr != self.address_latch {
                             trace!(log, "CPU fetch address != EMU fetch address");
                         }
                         trace!(
                             log,
                             "CPU fetch: [{:05X}][{:05X}] -> 0x{:02X} cycle: {}",
                             self.address_latch,
-                            emu_mem_ops[self.busop_n].addr,
+                            emu_fetch_ops[self.fetchop_n].addr,
                             self.data_bus,
                             self.cycle_num
                         );
@@ -383,13 +475,15 @@ impl RemoteCpu {
                         self.cpu_client
                             .write_data_bus(self.data_bus)
                             .expect("Failed to write data bus.");
-                        self.busop_n += 1;
+
+                        self.fetchop_n += 1;
                     }
                     else {
-                        // We have reached the end of the current instruction (fetched from instr_end_addr) ...
-                        // flag the byte in the queue so we know to end this instruction when it is read out from the queue.
+                        // We are fetching beyond the end of the current instruction (fetched from instr_end_addr) ...
+                        // flag the byte in the queue so that we know to end this instruction when
+                        // it is read out from the queue.
 
-                        if emu_mem_ops[self.busop_n].addr != self.address_latch {
+                        if emu_fetch_ops[self.fetchop_n].addr != self.address_latch {
                             trace!(log, "CPU fetch address != EMU fetch address");
                         }
 
@@ -397,8 +491,8 @@ impl RemoteCpu {
                             log,
                             "CPU fetch next: [{:05X}][{:05X}] -> 0x{:02X} cycle: {}",
                             self.address_latch,
-                            emu_mem_ops[self.busop_n].addr,
-                            emu_mem_ops[self.busop_n].data,
+                            emu_fetch_ops[self.fetchop_n].addr,
+                            emu_fetch_ops[self.fetchop_n].data,
                             self.cycle_num
                         );
                         /*
@@ -410,7 +504,7 @@ impl RemoteCpu {
                         */
                         // Fetch is past end address, send terminating NOP.
 
-                        cpu_mem_ops.push(emu_mem_ops[self.busop_n].clone());
+                        cpu_fetch_ops.push(emu_fetch_ops[self.fetchop_n].clone());
 
                         // If we've reached the program end address, set the finalize flag on the queue byte so that
                         // program state can be moved to Finalize and registers read out for comparison.
@@ -418,14 +512,33 @@ impl RemoteCpu {
                         // Otherwise we've just reached the end of the instruction, and set the end instruction flag.
 
                         if let ValidatorMode::Instruction = self.mode {
-                            if self.instruction_ended {
+                            if self.fetching_beyond {
                                 self.data_type = QueueDataType::Finalize;
                                 self.data_bus = OPCODE_NOP;
+                            }
+
+                            if let QueueOp::Flush = q_op {
+                                trace!(
+                                    log,
+                                    "Queue flush detected during CODE fetch. Sending NOP to be discarded."
+                                );
+                                self.data_bus = OPCODE_NOP;
+                                self.data_type = QueueDataType::Program;
+                                self.cpu_client
+                                    .write_data_bus(self.data_bus)
+                                    .expect("Failed to write data bus.");
+                            }
+                            else {
+                                // Start the STORE program.
+                                trace!(log, "Setting next STORE program byte");
+                                self.cpu_client
+                                    .write_store_pgm()
+                                    .expect("Failed to write store program");
                             }
                         }
                         else {
                             if self.program_ended {
-                                self.instruction_ended = true;
+                                self.fetching_beyond = true;
                                 self.data_type = QueueDataType::Finalize;
                                 self.data_bus = OPCODE_NOP;
                             }
@@ -434,15 +547,20 @@ impl RemoteCpu {
                                 self.data_type = QueueDataType::EndInstruction;
                                 self.data_bus = emu_mem_ops[self.busop_n].data;
                             }
-                        }
 
-                        self.cpu_client
-                            .write_data_bus(self.data_bus)
-                            .expect("Failed to write data bus.");
-                        self.busop_n += 1;
+                            self.cpu_client
+                                .write_data_bus(self.data_bus)
+                                .expect("Failed to write data bus.");
+                            self.fetchop_n += 1;
+                        }
                     }
                 }
                 else {
+                    if !self.fetching_beyond {
+                        trace!(log, "Fatal: fetch underflow within instruction!");
+                        self.error = Some(RemoteCpuError::CannotOweMultipleOps);
+                        return;
+                    }
                     // We are allowed to miss a terminating fetch.
 
                     // This is because while the emulator ends an instruction at the cycle in which the next
@@ -456,35 +574,42 @@ impl RemoteCpu {
                         trace!(log, "Can't rollover fetch twice!");
                         self.error = Some(RemoteCpuError::CannotOweMultipleOps);
                     }
-                    else {
-                        if self.busop_n == emu_mem_ops.len() {
-                            match self.mode {
-                                ValidatorMode::Cycle => {
-                                    if ((self.address_latch as usize) == self.program_end_addr) {
-                                        self.data_type = QueueDataType::EndInstruction;
-                                        self.data_bus = OPCODE_NOP;
-                                    }
-                                    else {
-                                        trace!(log, "Bus op underflow on terminating fetch. Substituting fetch peek.");
-                                        // Substitute instruction byte for fetch op.
-                                        self.data_bus = (self.peek_fetch & 0xFF) as u8;
-                                        self.data_type = QueueDataType::Program;
-                                        self.fetch_rollover = true;
-                                    }
-                                }
-                                ValidatorMode::Instruction => {
+                    else if self.busop_n == emu_mem_ops.len() {
+                        match self.mode {
+                            ValidatorMode::Cycle => {
+                                if (self.address_latch as usize) == self.program_end_addr {
                                     self.data_type = QueueDataType::EndInstruction;
                                     self.data_bus = OPCODE_NOP;
                                 }
+                                else {
+                                    trace!(log, "Fetch op underflow on terminating fetch. Substituting fetch peek.");
+                                    // Substitute instruction byte for fetch op.
+                                    self.data_bus = (self.peek_fetch & 0xFF) as u8;
+                                    self.data_type = QueueDataType::Program;
+                                    self.fetch_rollover = true;
+                                }
                             }
-
-                            self.cpu_client
-                                .write_data_bus(self.data_bus)
-                                .expect("Failed to write data bus.");
+                            ValidatorMode::Instruction => {
+                                self.data_type = QueueDataType::EndInstruction;
+                                self.data_bus = OPCODE_NOP;
+                            }
                         }
-                        else {
-                            trace!(log, "Bus op underflow past terminating fetch.");
-                            self.error = Some(RemoteCpuError::CannotOweMultipleOps);
+
+                        self.cpu_client
+                            .write_data_bus(self.data_bus)
+                            .expect("Failed to write data bus.");
+                    }
+                    else {
+                        match self.mode {
+                            ValidatorMode::Instruction => {
+                                trace!(log, "Fetch op underflow. Substituting NOP");
+                                self.data_type = QueueDataType::EndInstruction;
+                                self.data_bus = OPCODE_NOP;
+                            }
+                            ValidatorMode::Cycle => {
+                                trace!(log, "Fetch op underflow in cycle mode. Cannot continue");
+                                self.error = Some(RemoteCpuError::CannotOweMultipleOps);
+                            }
                         }
                     }
                 }
@@ -508,6 +633,7 @@ impl RemoteCpu {
             }
             else if self.bus_state == BusState::MEMR {
                 // CPU is reading data from memory.
+
                 if self.busop_n < emu_mem_ops.len() {
                     //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::MemRead);
 
@@ -517,13 +643,27 @@ impl RemoteCpu {
                     cpu_mem_ops.push(emu_mem_ops[self.busop_n].clone());
                     self.busop_n += 1;
 
-                    trace!(log, "CPU read: {:02X}", self.data_bus);
+                    trace!(log, "Bus OP {:02}: CPU read: {:02X}", self.busop_n, self.data_bus);
                     self.cpu_client
                         .write_data_bus(self.data_bus)
                         .expect("Failed to write data bus.");
                 }
-                else {
+                else if !self.ignore_underflow {
                     self.error = Some(RemoteCpuError::BusOpUnderflow);
+                }
+                else {
+                    trace!(
+                        log,
+                        "Bus op underflow on MEMR with ignore_underflow==true. Substituing 0."
+                    );
+
+                    cpu_mem_ops.push(BusOp {
+                        op_type: BusOpType::MemRead,
+                        addr:    self.address_latch,
+                        data:    0x0,
+                        flags:   0,
+                    });
+                    self.cpu_client.write_data_bus(0xFF).expect("Failed to write data bus.");
                 }
             }
         }
@@ -539,7 +679,7 @@ impl RemoteCpu {
                 cpu_mem_ops.push(emu_mem_ops[self.busop_n].clone());
                 self.busop_n += 1;
 
-                trace!(log, "CPU IN: {:02X}", self.data_bus);
+                trace!(log, "Bus OP {:02}: CPU IN: {:02X}", self.busop_n, self.data_bus);
                 self.cpu_client
                     .write_data_bus(self.data_bus)
                     .expect("Failed to write data bus.");
@@ -556,7 +696,13 @@ impl RemoteCpu {
     pub fn handle_bus_write(&mut self, emu_mem_ops: &Vec<BusOp>, cpu_mem_ops: &mut Vec<BusOp>, log: &mut TraceLogger) {
         // MWTC status is active-low.
         if ((self.command_status & COMMAND_AMWC_BIT) == 0) || ((self.command_status & COMMAND_MWTC_BIT) == 0) {
-            // CPU is writing to bus. MWTC is only active on t3 so we don't need an additional check.
+            // CPU is writing to bus. MWTC is only active on t3, so we don't need an additional check.
+
+            // We need to ignore writes during preloading, as we may be executing STOSB as part of a prefetch program.
+            if !self.program_started {
+                trace!(log, "Ignoring write during prefetch program.");
+                return;
+            }
 
             if self.busop_n < emu_mem_ops.len() {
                 //assert!(emu_mem_ops[self.busop_n].op_type == BusOpType::MemWrite);
@@ -564,7 +710,13 @@ impl RemoteCpu {
                 // Read byte from CPU
                 self.data_bus = self.cpu_client.read_data_bus().expect("Failed to read data bus.");
 
-                trace!(log, "CPU write: [{:05X}] <- {:02X}", self.address_latch, self.data_bus);
+                trace!(
+                    log,
+                    "Bus OP {:02}: CPU write: [{:05X}] <- {:02X}",
+                    self.busop_n,
+                    self.address_latch,
+                    self.data_bus
+                );
 
                 // Add write op to CPU BusOp list
                 cpu_mem_ops.push(BusOp {
@@ -575,9 +727,18 @@ impl RemoteCpu {
                 });
                 self.busop_n += 1;
             }
-            else {
-                trace!(log, "Bus op underflow on write");
+            else if !self.ignore_underflow {
+                trace!(log, "Bus op underflow on write.");
                 self.error = Some(RemoteCpuError::BusOpUnderflow);
+            }
+            else {
+                trace!(log, "Bus op underflow on write with ignore_underflow==true");
+                cpu_mem_ops.push(BusOp {
+                    op_type: BusOpType::MemWrite,
+                    addr:    self.address_latch,
+                    data:    self.data_bus,
+                    flags:   0,
+                });
             }
         }
 
@@ -610,10 +771,11 @@ impl RemoteCpu {
     pub fn cycle(
         &mut self,
         instr: &[u8],
-        emu_prefetch: &Vec<BusOp>,
+        emu_fetch_ops: &Vec<BusOp>,
         emu_mem_ops: &Vec<BusOp>,
-        _cpu_prefetch: &mut Vec<BusOp>,
+        cpu_fetch_ops: &mut Vec<BusOp>,
         cpu_mem_ops: &mut Vec<BusOp>,
+        initial_queue: &mut Vec<u8>,
         log: &mut TraceLogger,
     ) -> Result<CycleState, ValidatorError> {
         // Disable cycling; update_state(); will cycle cpu
@@ -652,9 +814,10 @@ impl RemoteCpu {
         };
 
         let mut cycle_info = self.update_state(true);
-        if self.program_state == ProgramState::ExecuteDone {
+        if self.program_state == ValidatorState::ExecuteDone {
             return Ok(cycle_info);
         }
+        let q_op = get_queue_op!(self.status);
 
         // Handle current T-state
         match self.bus_cycle {
@@ -664,7 +827,7 @@ impl RemoteCpu {
                 self.mcycle_state = get_bus_state!(self.status);
             }
             BusCycle::T2 => {
-                self.handle_bus_read(emu_mem_ops, cpu_mem_ops, log);
+                self.handle_bus_read(emu_mem_ops, emu_fetch_ops, cpu_mem_ops, cpu_fetch_ops, q_op, log);
             }
             BusCycle::T3 => {
                 // TODO: Handle wait states
@@ -674,7 +837,9 @@ impl RemoteCpu {
             }
             BusCycle::Tw => {
                 // TODO: Handle wait states
-                if self.is_last_wait() {}
+                if self.is_last_wait() {
+                    self.handle_bus_write(emu_mem_ops, cpu_mem_ops, log);
+                }
             }
             BusCycle::T4 => {
                 if self.mcycle_state == BusState::CODE {
@@ -689,7 +854,6 @@ impl RemoteCpu {
                         self.cycle_num
                     );
                     */
-
                     self.queue.push(self.data_bus, self.data_type, self.address_latch);
                     // Reset queue data type
                     self.data_type = QueueDataType::Program;
@@ -709,19 +873,28 @@ impl RemoteCpu {
                 return Err(ValidatorError::CpuDesynced);
             }
 
-            self.address_latch = self
+            let addr = self
                 .cpu_client
                 .read_address_latch()
                 .expect("Failed to get address latch!");
+            self.address_latch = addr;
+            self.address_bus = addr;
+
             cycle_info.addr = self.address_latch;
+        }
+        else {
+            self.address_bus = self.cpu_client.read_address().expect("Failed to get address bus!");
+            cycle_info.addr = self.address_bus;
         }
 
         // Handle queue activity
-        let q_op = get_queue_op!(self.status);
-
         match q_op {
             QueueOp::First | QueueOp::Subsequent => {
                 // We fetched a byte from the queue last cycle
+
+                // Save the previous queue state for setting initial queue.
+                let prev_queue = self.queue.to_vec();
+
                 (self.queue_byte, self.queue_type, self.queue_fetch_addr) = self.queue.pop();
 
                 /*
@@ -756,19 +929,41 @@ impl RemoteCpu {
                     }
 
                     if self.queue_first_fetch {
-                        // Popped a byte for the next instruction. End the current instruction execution
-                        trace!(
-                            log,
-                            "Next \"first byte\" read from queue. Ending instruction at cycle: {}",
-                            self.cycle_num
-                        );
-                        self.end_instruction = true;
+                        if self.program_started {
+                            // Popped a byte for the next instruction. End the current instruction execution
+                            trace!(
+                                log,
+                                "Next \"first byte\" read from queue. Ending instruction at cycle: {}",
+                                self.cycle_num
+                            );
+
+                            if !self.finalize {
+                                if let Err(e) = self.cpu_client.finalize() {
+                                    trace!(log, "Client error: Failed to finalize! Err: {}", e);
+                                    return Err(ValidatorError::CpuError);
+                                }
+                            }
+
+                            self.end_instruction = true;
+                            self.finalize = true;
+                        }
+                        else if self.prefetch_pc >= self.prefetch_pgm.len() {
+                            // The prefetch program is ending now, so start the main program.
+                            trace!(log, "Main program started at cycle: {}", self.cycle_num);
+                            // Save the initial queue state.
+                            *initial_queue = prev_queue;
+                            self.program_started = true;
+                        }
                     }
 
-                    if !RemoteCpu::is_prefix(self.opcode) {
+                    if self.program_started && !self.is_prefix(self.opcode) {
                         // Prefixes are also flagged as "first byte" fetches.
                         // If not a prefix, we have read the first actual instruction byte.
+                        trace!(log, "First non-prefix byte of instruction fetched.");
                         self.queue_first_fetch = true;
+                    }
+                    else {
+                        self.queue_first_fetch = false;
                     }
 
                     /*
@@ -814,62 +1009,6 @@ impl RemoteCpu {
         Ok(cycle_info)
     }
 
-    /*
-    pub fn run(
-        &mut self,
-        instr: &[u8],
-        instr_addr: u32,
-        cycle_trace: bool,
-        emu_prefetch: &Vec<BusOp>,
-        emu_mem_ops: &Vec<BusOp>,
-        cpu_prefetch: &mut Vec<BusOp>,
-        cpu_mem_ops: &mut Vec<BusOp>
-    ) -> Result<Vec::<CycleState>, ValidatorError> {
-
-        self.instr_addr = instr_addr;
-        self.busop_n = 0;
-        self.prefetch_n = 0;
-        self.v_pc = 0;
-        self.cycle_num = 0;
-        self.finalize = false;
-        self.flushed = false;
-
-        self.address_latch = self.cpu_client.read_address_latch().expect("Failed to get address latch!");
-
-        let mut cycle_vec: Vec<CycleState> = Vec::new();
-
-        let cycle_state = self.update_state();
-
-        cycle_vec.push(cycle_state);
-
-        // ALE should be active at start of execution
-        if self.command_status & COMMAND_ALE_BIT == 0 {
-            log::warn!("Execution is not starting on T1.");
-        }
-
-        // cycle trace if enabled
-        if cycle_trace == true {
-            println!("{}", self.get_cpu_state_str());
-        }
-
-        while self.program_state != ProgramState::ExecuteDone {
-            let cycle_state = self.cycle(instr, emu_prefetch, emu_mem_ops, cpu_prefetch, cpu_mem_ops)?;
-
-            if !self.finalize {
-                cycle_vec.push(cycle_state);
-            }
-
-            // cycle trace if enabled
-            if cycle_trace == true {
-                //println!("{}", self.get_cpu_state_str());
-            }
-
-        }
-
-        Ok(cycle_vec)
-    }
-    */
-
     pub fn get_error(&self) -> Option<RemoteCpuError> {
         self.error
     }
@@ -878,26 +1017,36 @@ impl RemoteCpu {
         &self.cycle_states
     }
 
+    pub fn get_preload_pgm(&self) -> &'static [u8] {
+        match self.cpu_type {
+            CpuType::Intel8088 | CpuType::Intel8086 => &INTEL808X_PRELOAD_PGM,
+            CpuType::NecV20 | CpuType::NecV30 => &NECVX0_PRELOAD_PGM,
+        }
+    }
+
     pub fn step(
         &mut self,
         mode: ValidatorMode,
+        prefetch: bool,
         instr: &[u8],
         instr_addr: u32,
         cycle_trace: bool,
         peek_fetch: u16,
-        emu_prefetch: &Vec<BusOp>,
+        emu_fetch_ops: &Vec<BusOp>,
         emu_mem_ops: &Vec<BusOp>,
-        cpu_prefetch: &mut Vec<BusOp>,
+        cpu_fetch_ops: &mut Vec<BusOp>,
         cpu_mem_ops: &mut Vec<BusOp>,
+        initial_queue: &mut Vec<u8>,
+        ignore_underflow: bool,
         log: &mut TraceLogger,
     ) -> Result<(Vec<CycleState>, bool), ValidatorError> {
         self.error = None;
         self.mode = mode;
-
+        self.prefetch = prefetch;
         self.instr_addr = instr_addr;
         self.peek_fetch = peek_fetch;
         self.busop_n = 0;
-        self.prefetch_n = 0;
+        self.fetchop_n = 0;
         self.queue_first_fetch = false;
         self.rni = false;
         self.v_pc = 0;
@@ -906,8 +1055,20 @@ impl RemoteCpu {
         self.finalize = false;
         self.flushed = false;
         self.discard_front = false;
-        self.instruction_ended = false;
+        self.fetching_beyond = false;
+        self.ignore_underflow = ignore_underflow;
         self.cycle_states.clear();
+
+        // Install the prefetch program if requested
+        if self.prefetch {
+            self.prefetch_pgm = self.get_preload_pgm();
+            self.prefetch_pc = 0;
+            self.program_started = false;
+        }
+        else {
+            // Start the program immediately if not prefetching.
+            self.program_started = true;
+        }
 
         self.address_latch = self
             .cpu_client
@@ -924,10 +1085,10 @@ impl RemoteCpu {
             self.just_reset = false;
         }
 
-        // Discard first fetch if we are rolling over an missed terminating fetch from the previous instruction.
-        if self.fetch_rollover && (emu_mem_ops.len() >= 1) && (emu_mem_ops[0].op_type == BusOpType::CodeRead) {
+        // Discard first fetch if we are rolling over a missed terminating fetch from the previous instruction.
+        if self.fetch_rollover && (emu_fetch_ops.len() >= 1) {
             trace!(log, "Discarding fetch from previous instruction.");
-            self.busop_n += 1;
+            self.fetchop_n += 1;
             self.discard_front = true;
             self.fetch_rollover = false;
         }
@@ -939,7 +1100,7 @@ impl RemoteCpu {
 
         // We also need to update the queue_first_fetch status if this was a fetch for a non-prefix opcode.
         if let Some(cycle_state) = self.last_cycle_state {
-            if cycle_state.q_op == QueueOp::First && !RemoteCpu::is_prefix(cycle_state.q_byte) {
+            if cycle_state.q_op == QueueOp::First && !self.is_prefix(cycle_state.q_byte) {
                 // This was a fetch for an opcode
                 self.queue_first_fetch = true;
             }
@@ -954,7 +1115,15 @@ impl RemoteCpu {
         }
 
         while !self.end_instruction {
-            let mut cycle_state = match self.cycle(instr, emu_prefetch, emu_mem_ops, cpu_prefetch, cpu_mem_ops, log) {
+            let mut cycle_state = match self.cycle(
+                instr,
+                emu_fetch_ops,
+                emu_mem_ops,
+                cpu_fetch_ops,
+                cpu_mem_ops,
+                initial_queue,
+                log,
+            ) {
                 Ok(cycle_state) => cycle_state,
                 Err(e) => {
                     trace!(log, "CPU error during step(): {}", e);
@@ -963,7 +1132,7 @@ impl RemoteCpu {
                 }
             };
 
-            if !self.end_instruction {
+            if self.program_started && !self.end_instruction {
                 cycle_vec.push(cycle_state);
             }
             else {
@@ -988,10 +1157,7 @@ impl RemoteCpu {
 
             // cycle trace if enabled
             if cycle_trace == true {
-                //println!("{}", self.get_cpu_state_str());
-                let end = self.end_instruction;
-                trace!(log, "{}: {}", end, self.get_cpu_state_str());
-                //trace!(log, "end instr? {}", self.end_instruction);
+                trace!(log, "{}", self.get_cpu_state_str());
             }
         }
 
@@ -1025,7 +1191,7 @@ impl RemoteCpu {
     }
 
     pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
-        ((segment as u32) << 4) + offset as u32 & 0xFFFFFu32
+        (((segment as u32) << 4) + offset as u32) & 0xFFFFF
     }
 
     /// Adjust stored IP register to address of terminating opcode fetch
@@ -1048,6 +1214,7 @@ impl RemoteCpu {
         for i in 0..len {
             inner.push_str(&format!("{:02X}", q[i]));
         }
+
         outer.push_str(&format!("{:8}]", inner));
         outer
     }
@@ -1190,7 +1357,6 @@ impl RemoteCpu {
             QueueOp::First => 'F',
             QueueOp::Flush => 'E',
             QueueOp::Subsequent => 'S',
-            _ => ' ',
         };
 
         // All read/write signals are active/low
@@ -1257,7 +1423,12 @@ impl RemoteCpu {
 
         if q_op == QueueOp::First {
             // First byte of opcode read from queue. Decode it to opcode or group specifier
-            q_read_str = format!("<-q {:02X} {}", self.queue_byte, self.instr_str);
+            if !self.program_started {
+                q_read_str = format!("<-q {:02X} ({:?})", self.queue_byte, self.queue_type);
+            }
+            else {
+                q_read_str = format!("<-q {:02X} {} ({:?})", self.queue_byte, self.instr_str, self.queue_type);
+            }
         }
         else if q_op == QueueOp::Subsequent {
             q_read_str = format!("<-q {:02X}", self.queue_byte);

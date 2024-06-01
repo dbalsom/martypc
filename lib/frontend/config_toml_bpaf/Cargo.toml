@@ -12,10 +12,10 @@ crate-type = ["lib"]
 
 [dependencies]
 marty_common = { path = "../../common" }
-log = "0.4"
-anyhow = "1.0.58"
 marty_core = { path = "../../../core" }
 frontend_common = { path = "../frontend_common" }
+log = "0.4"
+anyhow = "1.0.58"
 bpaf = { version = "0.7.7", features = ["derive"] }
 toml.workspace = true
 serde = { workspace = true, features = ["derive"] }

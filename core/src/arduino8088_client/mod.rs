@@ -46,7 +46,7 @@ pub enum ServerCommand {
     CmdReset = 0x02,
     CmdLoad = 0x03,
     CmdCycle = 0x04,
-    CmdReadAddress = 0x05,
+    CmdReadAddressLatch = 0x05,
     CmdReadStatus = 0x06,
     CmdRead8288Command = 0x07,
     CmdRead8288Control = 0x08,
@@ -63,11 +63,13 @@ pub enum ServerCommand {
     CmdGetLastError = 0x13,
     CmdGetCycleState = 0x14,
     CmdCGetCycleState = 0x15,
-    CmdInvalid = 0x16,
+    CmdPrefetchStore = 0x16,
+    CmdReadAddressU = 0x17,
+    CmdInvalid,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum ProgramState {
+pub enum ValidatorState {
     Reset = 0,
     JumpVector,
     Load,
@@ -419,7 +421,20 @@ impl CpuClient {
     /// Return the value of the address latches (Latched on ALE)
     pub fn read_address_latch(&mut self) -> Result<u32, CpuClientError> {
         let mut buf: [u8; 3] = [0; 3];
-        self.send_command_byte(ServerCommand::CmdReadAddress)?;
+        self.send_command_byte(ServerCommand::CmdReadAddressLatch)?;
+        self.recv_buf(&mut buf)?;
+        self.read_result_code()?;
+
+        let address = buf[0] as u32 | (buf[1] as u32) << 8 | (buf[2] as u32) << 16;
+
+        Ok(address)
+    }
+
+    /// Server command - ReadAddress
+    /// Return the current value of the address bus
+    pub fn read_address(&mut self) -> Result<u32, CpuClientError> {
+        let mut buf: [u8; 3] = [0; 3];
+        self.send_command_byte(ServerCommand::CmdReadAddressU)?;
         self.recv_buf(&mut buf)?;
         self.read_result_code()?;
 
@@ -474,28 +489,33 @@ impl CpuClient {
         Ok(true)
     }
 
+    pub fn write_store_pgm(&mut self) -> Result<bool, CpuClientError> {
+        self.send_command_byte(ServerCommand::CmdPrefetchStore)?;
+        self.read_result_code()
+    }
+
     pub fn finalize(&mut self) -> Result<bool, CpuClientError> {
         self.send_command_byte(ServerCommand::CmdFinalize)?;
         self.read_result_code()
     }
 
-    pub fn get_program_state(&mut self) -> Result<ProgramState, CpuClientError> {
+    pub fn get_program_state(&mut self) -> Result<ValidatorState, CpuClientError> {
         let mut buf: [u8; 1] = [0; 1];
         self.send_command_byte(ServerCommand::CmdGetProgramState)?;
         self.recv_buf(&mut buf)?;
         self.read_result_code()?;
 
         match buf[0] {
-            0x00 => Ok(ProgramState::Reset),
-            0x01 => Ok(ProgramState::JumpVector),
-            0x02 => Ok(ProgramState::Load),
-            0x03 => Ok(ProgramState::LoadDone),
-            0x04 => Ok(ProgramState::Execute),
-            0x05 => Ok(ProgramState::ExecuteFinalize),
-            0x06 => Ok(ProgramState::ExecuteDone),
-            0x07 => Ok(ProgramState::Store),
-            0x08 => Ok(ProgramState::StoreDone),
-            0x09 => Ok(ProgramState::Done),
+            0x00 => Ok(ValidatorState::Reset),
+            0x01 => Ok(ValidatorState::JumpVector),
+            0x02 => Ok(ValidatorState::Load),
+            0x03 => Ok(ValidatorState::LoadDone),
+            0x04 => Ok(ValidatorState::Execute),
+            0x05 => Ok(ValidatorState::ExecuteFinalize),
+            0x06 => Ok(ValidatorState::ExecuteDone),
+            0x07 => Ok(ValidatorState::Store),
+            0x08 => Ok(ValidatorState::StoreDone),
+            0x09 => Ok(ValidatorState::Done),
             _ => Err(CpuClientError::BadValue),
         }
     }
@@ -510,24 +530,24 @@ impl CpuClient {
         Ok(err_string.to_string())
     }
 
-    pub fn get_cycle_state(&mut self) -> Result<(ProgramState, u8, u8, u8, u8), CpuClientError> {
+    pub fn get_cycle_state(&mut self) -> Result<(ValidatorState, u8, u8, u8, u8), CpuClientError> {
         let mut buf: [u8; 4] = [0; 4];
         self.send_command_byte(ServerCommand::CmdGetCycleState)?;
         self.recv_buf(&mut buf)?;
         self.read_result_code()?;
 
         let state_bits: u8 = buf[0] >> 4;
-        let state: ProgramState = match state_bits {
-            0x00 => ProgramState::Reset,
-            0x01 => ProgramState::JumpVector,
-            0x02 => ProgramState::Load,
-            0x03 => ProgramState::LoadDone,
-            0x04 => ProgramState::Execute,
-            0x05 => ProgramState::ExecuteFinalize,
-            0x06 => ProgramState::ExecuteDone,
-            0x07 => ProgramState::Store,
-            0x08 => ProgramState::StoreDone,
-            0x09 => ProgramState::Done,
+        let state: ValidatorState = match state_bits {
+            0x00 => ValidatorState::Reset,
+            0x01 => ValidatorState::JumpVector,
+            0x02 => ValidatorState::Load,
+            0x03 => ValidatorState::LoadDone,
+            0x04 => ValidatorState::Execute,
+            0x05 => ValidatorState::ExecuteFinalize,
+            0x06 => ValidatorState::ExecuteDone,
+            0x07 => ValidatorState::Store,
+            0x08 => ValidatorState::StoreDone,
+            0x09 => ValidatorState::Done,
             _ => {
                 return Err(CpuClientError::BadValue);
             }
@@ -538,24 +558,24 @@ impl CpuClient {
         Ok((state, control_bits, buf[1], buf[2], buf[3]))
     }
 
-    pub fn cycle_get_cycle_state(&mut self) -> Result<(ProgramState, u8, u8, u8, u8), CpuClientError> {
+    pub fn cycle_get_cycle_state(&mut self) -> Result<(ValidatorState, u8, u8, u8, u8), CpuClientError> {
         let mut buf: [u8; 4] = [0; 4];
         self.send_command_byte(ServerCommand::CmdCGetCycleState)?;
         self.recv_buf(&mut buf)?;
         self.read_result_code()?;
 
         let state_bits: u8 = buf[0] >> 4;
-        let state: ProgramState = match state_bits {
-            0x00 => ProgramState::Reset,
-            0x01 => ProgramState::JumpVector,
-            0x02 => ProgramState::Load,
-            0x03 => ProgramState::LoadDone,
-            0x04 => ProgramState::Execute,
-            0x05 => ProgramState::ExecuteFinalize,
-            0x06 => ProgramState::ExecuteDone,
-            0x07 => ProgramState::Store,
-            0x08 => ProgramState::StoreDone,
-            0x09 => ProgramState::Done,
+        let state: ValidatorState = match state_bits {
+            0x00 => ValidatorState::Reset,
+            0x01 => ValidatorState::JumpVector,
+            0x02 => ValidatorState::Load,
+            0x03 => ValidatorState::LoadDone,
+            0x04 => ValidatorState::Execute,
+            0x05 => ValidatorState::ExecuteFinalize,
+            0x06 => ValidatorState::ExecuteDone,
+            0x07 => ValidatorState::Store,
+            0x08 => ValidatorState::StoreDone,
+            0x09 => ValidatorState::Done,
             _ => {
                 return Err(CpuClientError::BadValue);
             }

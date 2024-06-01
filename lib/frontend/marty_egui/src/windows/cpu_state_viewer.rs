@@ -34,7 +34,7 @@ use crate::layouts::MartyLayout;
 #[allow(dead_code)]
 use crate::*;
 use egui::TextBuffer;
-use marty_core::cpu_808x::CpuStringState;
+use marty_core::cpu_common::CpuStringState;
 
 pub struct CpuViewerControl {
     cpu_state: CpuStringState,

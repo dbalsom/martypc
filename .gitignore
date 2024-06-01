@@ -51,6 +51,7 @@ icon.png
 /install/output/screenshots/*
 /install/output/traces/*
 /install/output/dumps/*
+/install/output/tests/test_summary.csv
 
 # Dev machines not completed or functional
 /install/configs/machines/acid88.toml
@@ -76,4 +77,6 @@ icon.png
 #misc
 /flopgen/flopgen_LICENSE.txt
 /tree.txt
+
+/test-gen/
 

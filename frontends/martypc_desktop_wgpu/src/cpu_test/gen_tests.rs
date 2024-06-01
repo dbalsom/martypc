@@ -28,9 +28,11 @@
                    Requires CPU validator feature.
 */
 
+use anyhow::{bail, Error};
 use std::{
     cell::RefCell,
     collections::{HashMap, LinkedList},
+    ffi::OsString,
     fs::{File, OpenOptions},
     io::{BufReader, BufWriter, ErrorKind, Seek, SeekFrom, Write},
     path::PathBuf,
@@ -39,28 +41,49 @@ use std::{
 };
 
 use config_toml_bpaf::ConfigFileParams;
+use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 
 use marty_core::{
     arduino8088_validator::ArduinoValidator,
     bytequeue::ByteQueue,
-    cpu_808x::{mnemonic::Mnemonic, Cpu, *},
-    cpu_common::{CpuOption, CpuType, TraceMode},
-    cpu_validator::{BusCycle, BusOp, BusOpType, BusState, CpuValidator, CycleState},
+    cpu_808x::{Cpu, *},
+    cpu_common,
+    cpu_common::{
+        builder::CpuBuilder,
+        CpuAddress,
+        CpuOption,
+        CpuSubType,
+        CpuType,
+        Mnemonic,
+        Register16,
+        Register8,
+        TraceMode,
+    },
+    cpu_validator::{
+        BusCycle,
+        BusOp,
+        BusOpType,
+        BusState,
+        CpuValidator,
+        CycleState,
+        VRegistersDelta,
+        ValidatorMode,
+        ValidatorType,
+    },
     devices::pic::Pic,
     tracelogger::TraceLogger,
 };
 
-use crate::cpu_test::common::{clean_cycle_states, write_tests_to_file, CpuTest, TestState};
-
-use serde::{Deserialize, Serialize};
+use crate::cpu_test::common::{clean_cycle_states, write_tests_to_file, CpuTest, TestStateFinal, TestStateInitial};
 
 pub fn run_gentests(config: &ConfigFileParams) {
     //let pic = Rc::new(RefCell::new(Pic::new()));
 
     // Create the cpu trace file, if specified
-    let mut cpu_trace = TraceLogger::None;
+    let mut trace_logger = TraceLogger::None;
     if let Some(trace_filename) = &config.machine.cpu.trace_file {
-        cpu_trace = TraceLogger::from_filename(&trace_filename);
+        trace_logger = TraceLogger::from_filename(&trace_filename);
     }
 
     // Create the validator trace file, if specified
@@ -69,24 +92,33 @@ pub fn run_gentests(config: &ConfigFileParams) {
         validator_trace = TraceLogger::from_filename(&trace_filename);
     }
 
-    #[cfg(feature = "cpu_validator")]
-    use marty_core::cpu_validator::ValidatorMode;
-
     let trace_mode = config.machine.cpu.trace_mode.unwrap_or_default();
-
-    let mut cpu = Cpu::new(
-        CpuType::Intel8088,
-        trace_mode,
-        cpu_trace,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.vtype.unwrap(),
-        #[cfg(feature = "cpu_validator")]
-        validator_trace,
-        #[cfg(feature = "cpu_validator")]
-        ValidatorMode::Instruction,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.baud_rate.unwrap_or(1_000_000),
-    );
+    let cpu_type = config.tests.test_cpu_type.unwrap_or(CpuType::Intel8088);
+    let mut cpu;
+    #[cfg(feature = "cpu_validator")]
+    {
+        cpu = match CpuBuilder::new()
+            .with_cpu_type(cpu_type)
+            //.with_cpu_subtype(CpuSubType::Intel8088)
+            .with_trace_mode(trace_mode)
+            .with_trace_logger(trace_logger)
+            .with_validator_type(ValidatorType::Arduino8088)
+            .with_validator_mode(ValidatorMode::Instruction)
+            .with_validator_logger(validator_trace)
+            .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
+            .build()
+        {
+            Ok(cpu) => cpu,
+            Err(e) => {
+                log::error!("Failed to build CPU: {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
+    #[cfg(not(feature = "cpu_validator"))]
+    {
+        panic!("Validator feature not enabled!")
+    };
 
     if let Some(seed) = config.tests.test_seed {
         log::debug!("Using random seed from config: {}", seed);
@@ -100,6 +132,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
     let mut validator = cpu.get_validator_mut().as_mut().unwrap();
     validator.set_opts(
+        config.tests.test_gen_ignore_underflow.unwrap_or(false),
         config.tests.test_gen_validate_cycles.unwrap_or(true),
         config.tests.test_gen_validate_registers.unwrap_or(true),
         config.tests.test_gen_validate_flags.unwrap_or(true),
@@ -130,23 +163,25 @@ pub fn run_gentests(config: &ConfigFileParams) {
         opcode_range_exclude = test_opcode_exclude_list.clone();
     }
 
-    opcode_range_exclude.append(&mut vec![
-        0x26, 0x2E, 0x36, 0x3E, // Segment override prefixes
-        0x9B, // WAIT instruction
-        //0x9D, // POPF (figure out a way to handle this?)
-        0xF0, 0xF1, 0xF2, 0xF3, // Prefixes
-        0xF4,
-    ]);
+    if config.tests.test_opcode_prefix.is_none() {
+        opcode_range_exclude.append(&mut vec![
+            0x26, 0x2E, 0x36, 0x3E, // Segment override prefixes
+            0x9B, // WAIT instruction
+            //0x9D, // POPF (figure out a way to handle this?)
+            0xF0, 0xF1, 0xF2, 0xF3, // Prefixes
+            0xF4,
+        ]);
+    }
 
     opcode_list.retain(|&x| !opcode_range_exclude.contains(&x));
 
-    let test_append = config.tests.test_opcode_gen_append.unwrap_or(true);
-    let test_limit = config.tests.test_opcode_gen_count.unwrap_or(5000);
+    let test_append = config.tests.test_gen_append.unwrap_or(true);
+    let test_limit = config.tests.test_gen_opcode_count.unwrap_or(5000);
     println!("Using test limit: {}", test_limit);
 
-    let mut test_path_postfix = "tests".to_string();
-    if let Some(test_dir) = &config.tests.test_dir {
-        test_path_postfix = test_dir.clone();
+    let mut test_path_postfix = PathBuf::from("tests".to_string());
+    if let Some(test_path_inner) = &config.tests.test_path {
+        test_path_postfix = test_path_inner.clone();
     }
 
     let mut test_base_path = PathBuf::new();
@@ -154,7 +189,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
     test_base_path.push(test_path_postfix);
 
     for test_opcode in opcode_list {
-        let is_grp = ArduinoValidator::is_group_opcode(test_opcode);
+        let is_grp = ArduinoValidator::is_group_opcode(cpu_type, test_opcode);
 
         let mut start_ext = 0;
         let mut end_ext = if is_grp { 7 } else { 0 };
@@ -180,12 +215,20 @@ pub fn run_gentests(config: &ConfigFileParams) {
             let mut test_path = test_base_path.clone();
             //log::debug!("Using base path: {:?}", test_path);
 
+            let mut filename_str = OsString::new();
+            // Prepend '0F' to multibyte opcodes
+            if let Some(prefix) = config.tests.test_opcode_prefix {
+                filename_str.push(&format!("{:02X}", prefix));
+            }
+
             if !is_grp {
-                test_path.push(&format!("{:02X}.json", test_opcode));
+                filename_str.push(&format!("{:02X}.json", test_opcode));
             }
             else {
-                test_path.push(&format!("{:02X}.{:01X}.json", test_opcode, op_ext));
+                filename_str.push(&format!("{:02X}.{:01X}.json", test_opcode, op_ext));
             }
+
+            test_path.push(filename_str);
 
             log::debug!("Using filename: {:?}", test_path);
 
@@ -277,12 +320,14 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 cpu.randomize_mem();
                 cpu.randomize_regs();
 
-                let mut instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+                let mut instruction_address =
+                    cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
 
-                while (cpu.ip() > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
+                while (cpu.get_ip() > 0xFFF0) || ((instruction_address & 0xFFFFF) > 0xFFFF0) {
                     // Avoid IP wrapping issues for now
                     cpu.randomize_regs();
-                    instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+                    instruction_address =
+                        cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
                 }
 
                 test_num += 1;
@@ -292,27 +337,31 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     cpu.random_grp_instruction(test_opcode, &[op_ext]);
                 }
                 else {
-                    cpu.random_inst_from_opcodes(&[test_opcode]);
+                    cpu.random_inst_from_opcodes(&[test_opcode], config.tests.test_opcode_prefix);
                 }
 
-                if cpu.ip() != cpu.get_register16(Register16::PC) {
-                    log::error!("IP: {:04X} PC: {:04X}", cpu.ip(), cpu.get_register16(Register16::PC));
+                if cpu.get_ip() != cpu.get_register16(Register16::PC) {
+                    log::error!(
+                        "IP: {:04X} PC: {:04X}",
+                        cpu.get_ip(),
+                        cpu.get_register16(Register16::PC)
+                    );
                     panic!("IP and PC are out of sync!");
                 }
 
                 // Decode this instruction
-                instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+                instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
                 log::debug!(
                     "Instruction address: {:05X} [{:04X}:{:04X}]",
                     instruction_address,
                     cpu.get_register16(Register16::CS),
-                    cpu.ip()
+                    cpu.get_ip()
                 );
 
                 cpu.bus_mut().seek(instruction_address as usize);
                 let opcode = cpu.bus().peek_u8(instruction_address as usize).expect("mem err");
 
-                let mut i = match Cpu::decode(cpu.bus_mut(), true) {
+                let mut i = match cpu.get_type().decode(cpu.bus_mut(), true) {
                     Ok(i) => i,
                     Err(_) => {
                         log::error!("Instruction decode error, skipping...");
@@ -333,16 +382,34 @@ pub fn run_gentests(config: &ConfigFileParams) {
 
                 i.address = instruction_address;
 
+                let bytes = cpu
+                    .bus()
+                    .peek_range(instruction_address as usize, i.size as usize)
+                    .unwrap();
+
+                if test_num < config.tests.test_start.unwrap_or(0) {
+                    println!(
+                        "Test {}: Skipping test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?}",
+                        test_num, i, opcode, i.address, bytes
+                    );
+                    continue;
+                }
+
+                // Determine whether to prefetch this instruction. (prefetch even numbered tests)
+                let prefetch = (test_num - 1) & 0x01 == 0;
+
                 println!(
-                    "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X}",
-                    test_num, i, opcode, i.address
+                    "Test {}: Creating test for instruction: {} opcode:{:02X} addr:{:05X} bytes: {:X?} prefetch: {}",
+                    test_num, i, opcode, i.address, bytes, prefetch
                 );
 
                 // Set terminating address for CPU validator.
-                let end_address =
-                    Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip().wrapping_add(i.size as u16));
+                let end_address = cpu_common::calc_linear_address(
+                    cpu.get_register16(Register16::CS),
+                    cpu.get_ip().wrapping_add(i.size as u16),
+                );
 
-                cpu.set_end_address(end_address as usize);
+                cpu.set_end_address(CpuAddress::Flat(end_address));
                 log::trace!("Setting end address: {:05X}", end_address);
 
                 match i.mnemonic {
@@ -355,8 +422,12 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     | Mnemonic::LODSB
                     | Mnemonic::LODSW
                     | Mnemonic::SCASB
-                    | Mnemonic::SCASW => {
-                        // limit cx to 31
+                    | Mnemonic::SCASW
+                    | Mnemonic::INSB
+                    | Mnemonic::INSW
+                    | Mnemonic::OUTSB
+                    | Mnemonic::OUTSW => {
+                        // limit cx to 127
                         cpu.set_register16(Register16::CX, cpu.get_register16(Register16::CX) & 0x7F);
                         rep = true;
                     }
@@ -378,11 +449,13 @@ pub fn run_gentests(config: &ConfigFileParams) {
                     _ => {}
                 }
 
+                cpu.get_validator_mut().as_mut().unwrap().set_prefetch(prefetch);
+
                 // We loop here to handle REP string instructions, which are broken up into 1 effective instruction
                 // execution per iteration. The 8088 makes no such distinction.
                 loop {
                     match cpu.step(false) {
-                        Ok((_, cycles)) => {
+                        Ok((_, _cycles)) => {
                             //log::trace!("Instruction reported {} cycles", cycles);
                             if rep & cpu.in_rep() {
                                 continue;
@@ -401,9 +474,19 @@ pub fn run_gentests(config: &ConfigFileParams) {
                 _ = cpu.step_finish();
 
                 let validator = cpu.get_validator().as_ref().unwrap();
-                let cpu_test = get_test_info(validator);
 
-                tests.push_front(cpu_test);
+                match get_test_info(validator) {
+                    Ok(cpu_test) => tests.push_back(cpu_test),
+                    Err(e) => {
+                        if config.tests.test_gen_stop_on_error.unwrap_or(true) {
+                            panic!("Failed to get test info: {:?}", e);
+                        }
+                        else {
+                            log::error!("Failed to get test info: {:?}", e);
+                            break;
+                        }
+                    }
+                };
 
                 // Write every 1000 tests to file.
                 if tests.len() % 1000 == 0 {
@@ -414,7 +497,7 @@ pub fn run_gentests(config: &ConfigFileParams) {
             let test_elapsed = test_start_instant.elapsed().as_secs_f32();
 
             println!(
-                "Test generation complete for opcode: {:02}. Generated {} tests in {:.2} seconds",
+                "Test generation complete for opcode: {:02X}. Generated {} tests in {:.2} seconds",
                 test_opcode, test_num, test_elapsed
             );
             let avg_test_elapsed = test_elapsed / test_num as f32;
@@ -446,19 +529,21 @@ pub fn read_tests_from_file(file: &File, path: PathBuf) -> Option<LinkedList<Cpu
     tests
 }
 
-pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
+pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> Result<CpuTest, Error> {
     let name = validator.name();
     let bytes = validator.instr_bytes();
 
     let initial_regs = validator.initial_regs();
-    let final_regs = validator.final_regs();
+    let final_regs = validator.final_cpu_regs().unwrap();
 
     let cpu_ops = validator.cpu_ops();
-    let cpu_reads = validator.cpu_reads();
+    //let cpu_reads = validator.cpu_reads();
+    //log::debug!("Got {} CPU reads from instruction.", cpu_reads.len())
 
-    //log::debug!("Got {} CPU reads from instruction.", cpu_reads.len());
+    let initial_queue = validator.initial_queue();
 
-    let (initial_state, initial_ram) = initial_state_from_ops(initial_regs.cs, initial_regs.ip, &bytes, &cpu_ops);
+    let (initial_state, initial_ram) =
+        initial_state_from_ops(initial_regs.cs, initial_regs.ip, &bytes, initial_queue.len(), &cpu_ops);
 
     //let mut read_ram = ram_from_reads(cpu_reads);
     //initial_ram.append(&mut read_ram);
@@ -469,7 +554,7 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
     if cycle_states.is_empty() {
         panic!("Got 0 cycles from CPU Validator!");
     }
-    let initial_queue = cycle_states[0].queue_vec();
+
     let mut final_queue = cycle_states[cycle_states.len() - 1].queue_vec();
 
     // The instruction ended when the byte for the next instruction was fetched from the queue.
@@ -482,25 +567,48 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> CpuTest {
     log::debug!("Got {} CPU cycles from instruction.", cycle_states.len());
 
     if cycle_states.len() == 0 {
-        panic!("Got 0 cycles from instruction!");
+        bail!("Got 0 cycles from instruction!");
     }
 
-    CpuTest {
+    let final_regs_delta = final_regs.create_delta(&initial_regs);
+
+    if !final_regs_delta.is_valid() {
+        bail!(
+            "Invalid delta created! Register store likely failed. Initial regs were:\n{}\nFinal regs were:\n{}",
+            initial_regs,
+            final_regs
+        );
+    }
+
+    if let Some(ip) = final_regs_delta.ip {
+        if ip != validator.final_emu_regs().ip {
+            log::warn!(
+                "IP mismatch! Final IP: {:04X} Emu IP: {:04X}",
+                ip,
+                validator.final_emu_regs().ip
+            );
+        }
+    }
+
+    //let final_regs_delta = VRegistersDelta::from(final_regs);
+
+    Ok(CpuTest {
         name,
         bytes,
-        initial_state: TestState {
+        initial_state: TestStateInitial {
             regs:  initial_regs,
             ram:   initial_ram,
             queue: initial_queue,
         },
-        final_state: TestState {
-            regs:  final_regs,
+        final_state: TestStateFinal {
+            regs:  final_regs_delta,
             ram:   final_ram,
             queue: final_queue,
         },
         cycles: cycle_states,
-        test_hash: String::new(),
-    }
+        hash: None,
+        idx: None,
+    })
 }
 
 /// Try to calculate the initial memory state from a list of Bus operations.
@@ -517,13 +625,14 @@ pub fn initial_state_from_ops(
     cs: u16,
     ip: u16,
     instr_bytes: &Vec<u8>,
+    prefetch_len: usize,
     all_ops: &Vec<BusOp>,
-) -> (HashMap<u32, u8>, Vec<[u32; 2]>) {
+) -> (IndexMap<u32, u8>, Vec<[u32; 2]>) {
     //let mut ram_ops = all_ops.clone();
     //let mut ram: Vec<[u32; 2]> = Vec::new();
 
-    let mut initial_state: HashMap<u32, u8> = HashMap::new();
-    let mut code_addresses: HashMap<u32, (u8, bool)> = HashMap::new();
+    let mut initial_state: IndexMap<u32, u8> = IndexMap::new();
+    let mut code_addresses: IndexMap<u32, (u8, bool)> = IndexMap::new();
 
     // Add the instruction bytes to the initial state. They cannot be modified
     // by the validated instruction because every instruction is done fetching
@@ -532,15 +641,25 @@ pub fn initial_state_from_ops(
     let mut pc = ip;
 
     for byte in instr_bytes {
-        let flat_addr = Cpu::calc_linear_address(cs, pc);
+        let flat_addr = cpu_common::calc_linear_address(cs, pc);
         code_addresses.insert(flat_addr, (*byte, true));
         initial_state.insert(flat_addr, *byte);
         pc = pc.wrapping_add(1);
     }
 
-    let mut shadowed_addresses: HashMap<u32, bool> = HashMap::new();
-    let mut read_addresses: HashMap<u32, u8> = HashMap::new();
-    let mut write_addresses: HashMap<u32, u8> = HashMap::new();
+    // If the instruction is shorter than the prefetch length, add NOPs to the initial state
+    if prefetch_len > instr_bytes.len() {
+        for _ in 0..(prefetch_len - instr_bytes.len()) {
+            let flat_addr = cpu_common::calc_linear_address(cs, pc);
+            code_addresses.insert(flat_addr, (0x90, true));
+            initial_state.insert(flat_addr, 0x90);
+            pc = pc.wrapping_add(1);
+        }
+    }
+
+    let mut shadowed_addresses: IndexMap<u32, bool> = IndexMap::new();
+    let mut read_addresses: IndexMap<u32, u8> = IndexMap::new();
+    let mut write_addresses: IndexMap<u32, u8> = IndexMap::new();
 
     for op in all_ops {
         match op.op_type {
@@ -616,7 +735,8 @@ pub fn initial_state_from_ops(
     // Collapse initial state hash into vector of arrays
     let mut ram_vec: Vec<[u32; 2]> = initial_state.iter().map(|(&addr, &data)| [addr, data as u32]).collect();
 
-    ram_vec.sort_by(|a, b| a[0].cmp(&b[0]));
+    // v2: Don't sort the initial ram vector; leave it in order of operation
+    //ram_vec.sort_by(|a, b| a[0].cmp(&b[0]));
 
     (initial_state, ram_vec)
 }
@@ -632,9 +752,9 @@ pub fn ram_from_reads(reads: Vec<BusOp>) -> Vec<[u32; 2]> {
     ram
 }
 
-pub fn final_state_from_ops(initial_state: HashMap<u32, u8>, all_ops: Vec<BusOp>) -> Vec<[u32; 2]> {
+pub fn final_state_from_ops(initial_state: IndexMap<u32, u8>, all_ops: Vec<BusOp>) -> Vec<[u32; 2]> {
     let mut ram_ops = all_ops.clone();
-    // We modify the intitial state by inserting write operations into it.
+    // We modify the initial state by inserting write operations into it.
     let mut final_state = initial_state.clone();
 
     // Filter out IO reads, these are not used for ram setup
@@ -642,13 +762,13 @@ pub fn final_state_from_ops(initial_state: HashMap<u32, u8>, all_ops: Vec<BusOp>
     // Filter out IO writes, these are not used for ram setup
     ram_ops.retain(|&op| !matches!(op.op_type, BusOpType::IoWrite));
 
-    let mut write_addresses: HashMap<u32, u8> = HashMap::new();
+    let mut write_addresses: IndexMap<u32, u8> = IndexMap::new();
     //let mut ram_hash: HashMap<u32, u8> = HashMap::new();
 
     for op in ram_ops {
         match op.op_type {
             BusOpType::MemRead => {
-                // Check if this read is already in memory. If it is, it must have the same value
+                // Check if this read is already in memory. If it is, it must have the same value,
                 // or we are out of sync!
                 match initial_state.get(&op.addr) {
                     Some(d) => {
@@ -686,7 +806,8 @@ pub fn final_state_from_ops(initial_state: HashMap<u32, u8>, all_ops: Vec<BusOp>
     // Collapse ram hash into vector of arrays
     let mut ram_vec: Vec<[u32; 2]> = final_state.iter().map(|(&addr, &data)| [addr, data as u32]).collect();
 
-    ram_vec.sort_by(|a, b| a[0].cmp(&b[0]));
+    // v2: Don't sort the final ram vector. Leave in order of operation.
+    //ram_vec.sort_by(|a, b| a[0].cmp(&b[0]));
 
     ram_vec
 }

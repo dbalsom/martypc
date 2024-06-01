@@ -30,9 +30,13 @@
 
 */
 
-use crate::cpu_808x::*;
+use crate::{
+    cpu_808x::{decode::DECODE, *},
+    cpu_common::{CpuAddress, CpuError, CpuException, ExecutionResult, StepResult},
+    gdr,
+};
 
-impl Cpu {
+impl Intel808x {
     /// Run a single instruction.
     ///
     /// We divide instruction execution into separate fetch/decode and microcode execution phases.
@@ -75,7 +79,7 @@ impl Cpu {
             // Sometimes it is more convenient for us to think of the current ip address, which can be calculated on the
             // fly from PC by the ip() instruction, but only usefully on instruction boundaries, such as now.
             self.instruction_ip = self.ip();
-            self.instruction_address = Cpu::calc_linear_address(self.cs, self.instruction_ip);
+            self.instruction_address = Intel808x::calc_linear_address(self.cs, self.instruction_ip);
             instruction_address = self.instruction_address;
             //log::warn!("instruction address: {:05X}", instruction_address);
 
@@ -145,7 +149,7 @@ impl Cpu {
             // anyway.
             if self.trace_mode == TraceMode::CycleText {
                 self.bus.seek(instruction_address as usize);
-                self.i = match Cpu::decode(&mut self.bus, true) {
+                self.i = match Intel808x::decode(&mut self.bus, true) {
                     Ok(i) => i,
                     Err(_) => {
                         self.is_running = false;
@@ -160,7 +164,7 @@ impl Cpu {
             // Fetch and decode the current instruction. This uses the CPU's own ByteQueue trait
             // implementation, which fetches instruction bytes through the processor instruction queue.
             //log::warn!("decoding instruction...");
-            self.i = match Cpu::decode(self, true) {
+            self.i = match Intel808x::decode(self, true) {
                 Ok(i) => i,
                 Err(_) => {
                     self.is_running = false;
@@ -486,7 +490,7 @@ impl Cpu {
 
     #[cfg(feature = "cpu_validator")]
     pub fn validate_begin(&mut self, instruction_address: u32) {
-        let v_address = Cpu::calc_linear_address(self.vregs.cs, self.vregs.ip);
+        let v_address = Intel808x::calc_linear_address(self.vregs.cs, self.vregs.ip);
         if v_address != instruction_address {
             log::warn!(
                 "Validator address mismatch: {:05X} != {:05X}",
@@ -570,7 +574,7 @@ impl Cpu {
                             &self.instr_slice,
                             v_flags,
                             self.peek_fetch as u16,
-                            self.i.gdr().has_modrm(),
+                            gdr!(self.i).has_modrm(),
                             0,
                             &vregs,
                             &self.cycle_states,

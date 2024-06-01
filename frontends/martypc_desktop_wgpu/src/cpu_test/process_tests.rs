@@ -30,14 +30,7 @@
 
 #![allow(warnings, unused)]
 
-use crate::cpu_test::common::{
-    is_prefix_in_vec,
-    opcode_extension_from_path,
-    opcode_from_path,
-    read_tests_from_file,
-    write_tests_to_file,
-    TestFileLoad,
-};
+use marty_core::cpu_common;
 use std::{
     collections::{HashMap, LinkedList},
     ffi::OsString,
@@ -49,26 +42,45 @@ use std::{
     time::{Duration, Instant},
 };
 
-use marty_core::{
-    bytequeue::ByteQueue,
-    cpu_808x::{mnemonic::Mnemonic, Cpu, *},
-    cpu_common::{CpuOption, CpuType, TraceMode},
-    cpu_validator::{BusCycle, BusOp, BusOpType, BusState, CpuValidator, CycleState, VRegisters, ValidatorType},
-    tracelogger::TraceLogger,
-};
-
-use config_toml_bpaf::{ConfigFileParams, TestMode};
-
-use crate::cpu_test::common::{CpuTest, TestState};
-
 use colored::*;
+use config_toml_bpaf::{ConfigFileParams, TestMode};
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
 
+use crate::cpu_test::common::{
+    is_prefix_in_vec,
+    opcode_extension_from_path,
+    opcode_from_path,
+    read_tests_from_file,
+    write_tests_to_file,
+    CpuTest,
+    TestFileLoad,
+    TestStateFinal,
+    TestStateInitial,
+};
+
+use marty_core::{
+    bytequeue::ByteQueue,
+    cpu_808x::{Cpu, *},
+    cpu_common::{builder::CpuBuilder, CpuAddress, CpuOption, CpuSubType, CpuType, Mnemonic, Register16, TraceMode},
+    cpu_validator::{
+        BusCycle,
+        BusOp,
+        BusOpType,
+        BusState,
+        CpuValidator,
+        CycleState,
+        VRegisters,
+        ValidatorMode,
+        ValidatorType,
+    },
+    tracelogger::TraceLogger,
+};
+
 pub fn run_processtests(config: ConfigFileParams) {
-    let mut test_path = "./tests".to_string();
-    if let Some(test_dir) = &config.tests.test_dir {
-        test_path = test_dir.clone();
+    let mut test_path = PathBuf::from("./tests".to_string());
+    if let Some(test_path_inner) = &config.tests.test_path {
+        test_path = test_path_inner.clone();
     }
 
     let mut test_base_path = PathBuf::new();
@@ -222,19 +234,28 @@ fn process_tests(
     #[cfg(feature = "cpu_validator")]
     use marty_core::cpu_validator::ValidatorMode;
 
-    let mut cpu = Cpu::new(
-        CpuType::Intel8088,
-        config.machine.cpu.trace_mode.unwrap_or_default(),
-        TraceLogger::None,
-        #[cfg(feature = "cpu_validator")]
-        ValidatorType::None,
-        #[cfg(feature = "cpu_validator")]
-        TraceLogger::None,
-        #[cfg(feature = "cpu_validator")]
-        ValidatorMode::Instruction,
-        #[cfg(feature = "cpu_validator")]
-        config.validator.baud_rate.unwrap_or(1_000_000),
-    );
+    let mut cpu;
+    #[cfg(feature = "cpu_validator")]
+    {
+        cpu = match CpuBuilder::new()
+            .with_cpu_type(CpuType::Intel8088)
+            .with_cpu_subtype(CpuSubType::Intel8088)
+            .with_validator_type(ValidatorType::None)
+            .with_validator_mode(ValidatorMode::Instruction)
+            .with_validator_baud(config.validator.baud_rate.unwrap_or(1_000_000))
+            .build()
+        {
+            Ok(cpu) => cpu,
+            Err(e) => {
+                log::error!("Failed to build CPU: {}", e);
+                std::process::exit(1);
+            }
+        }
+    };
+    #[cfg(not(feature = "cpu_validator"))]
+    {
+        panic!("Validator feature not enabled!")
+    };
 
     // We should have a vector of tests now.
     let total_tests = tests.len();
@@ -264,11 +285,11 @@ fn process_tests(
         }
 
         // Decode this instruction
-        let instruction_address = Cpu::calc_linear_address(cpu.get_register16(Register16::CS), cpu.ip());
+        let instruction_address = cpu_common::calc_linear_address(cpu.get_register16(Register16::CS), cpu.get_ip());
 
         cpu.bus_mut().seek(instruction_address as usize);
 
-        let mut i = match Cpu::decode(cpu.bus_mut(), true) {
+        let mut i = match cpu.get_type().decode(cpu.bus_mut(), true) {
             Ok(i) => i,
             Err(_) => {
                 _ = writeln!(log, "Instruction decode error!");

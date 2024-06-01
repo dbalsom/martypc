@@ -24,7 +24,7 @@
 
     --------------------------------------------------------------------------
 
-    bpaf_toml_config::lib.rs
+    config_toml_bpaf::lib.rs
 
     Routines to parse configuration file and command line arguments.
 
@@ -37,8 +37,6 @@ use std::{
     str::FromStr,
 };
 
-use marty_core::{cpu_common::TraceMode, cpu_validator::ValidatorType, machine_types::OnHaltBehavior};
-
 use frontend_common::{
     display_scaler::ScalerPreset,
     resource_manager::PathConfigItem,
@@ -47,6 +45,11 @@ use frontend_common::{
     MartyGuiTheme,
 };
 use marty_common::VideoDimensions;
+use marty_core::{
+    cpu_common::{CpuSubType, CpuType, TraceMode},
+    cpu_validator::ValidatorType,
+    machine_types::OnHaltBehavior,
+};
 
 use bpaf::Bpaf;
 use serde_derive::Deserialize;
@@ -196,19 +199,34 @@ pub struct Benchmark {
 
 #[derive(Debug, Deserialize)]
 pub struct Tests {
+    pub test_cpu_type: Option<CpuType>,
+    pub test_cpu_subtype: Option<CpuSubType>,
     pub test_mode: Option<TestMode>,
     pub test_seed: Option<u64>,
-    pub test_dir: Option<String>,
-    pub test_output_dir: Option<String>,
+    pub test_start: Option<u32>,
+    pub test_path: Option<PathBuf>,
+    pub test_output_path: Option<PathBuf>,
+    pub test_opcode_prefix: Option<u8>,
     pub test_opcode_range: Option<Vec<u8>>,
     pub test_extension_range: Option<Vec<u8>>,
     pub test_opcode_exclude_list: Option<Vec<u8>>,
-    pub test_opcode_gen_count: Option<u32>,
-    pub test_opcode_gen_append: Option<bool>,
+    pub test_gen_opcode_count: Option<u32>,
+    pub test_gen_append: Option<bool>,
+    pub test_gen_stop_on_error: Option<bool>,
+    pub test_gen_version: Option<u32>,
+    pub test_gen_ignore_underflow: Option<bool>,
     pub test_gen_validate_cycles: Option<bool>,
     pub test_gen_validate_memops: Option<bool>,
     pub test_gen_validate_registers: Option<bool>,
     pub test_gen_validate_flags: Option<bool>,
+    pub test_run_summary_file: Option<PathBuf>,
+    pub test_run_version: Option<u32>,
+    pub test_run_limit: Option<usize>,
+    pub test_run_validate_cycles: Option<bool>,
+    pub test_run_validate_memops: Option<bool>,
+    pub test_run_validate_registers: Option<bool>,
+    pub test_run_validate_flags: Option<bool>,
+    pub test_run_validate_undefined_flags: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -361,6 +379,12 @@ pub struct CmdLineArgs {
     pub run_bin_seg: Option<u16>,
     #[bpaf(long)]
     pub run_bin_ofs: Option<u16>,
+
+    // Test stuff
+    #[bpaf(long)]
+    pub test_cpu_type: Option<CpuType>,
+    #[bpaf(long)]
+    pub test_path: Option<PathBuf>,
 }
 
 impl ConfigFileParams {
@@ -412,6 +436,14 @@ impl ConfigFileParams {
 
         if let Some(run_bin_ofs) = shell_args.run_bin_ofs {
             self.emulator.run_bin_ofs = Some(run_bin_ofs);
+        }
+
+        // Test stuff
+        if let Some(test_cpu_type) = shell_args.test_cpu_type {
+            self.tests.test_cpu_type = Some(test_cpu_type);
+        }
+        if let Some(test_path) = shell_args.test_path {
+            self.tests.test_path = Some(test_path);
         }
 
         self.machine.turbo |= shell_args.turbo;

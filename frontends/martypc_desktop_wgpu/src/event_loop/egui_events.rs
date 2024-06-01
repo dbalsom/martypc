@@ -33,7 +33,8 @@ use crate::Emulator;
 use display_manager_wgpu::DisplayManager;
 use marty_core::{
     breakpoints::BreakPointType,
-    cpu_common::CpuOption,
+    cpu_common,
+    cpu_common::{Cpu, CpuOption},
     device_traits::videocard::ClockingMode,
     machine::MachineState,
     vhd,
@@ -50,7 +51,7 @@ use marty_egui::{
 use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
-use marty_core::vhd::VirtualHardDisk;
+use marty_core::{cpu_common::Register16, vhd::VirtualHardDisk};
 use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -419,10 +420,15 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             // }
         }
         GuiEvent::DumpCS => {
+            let cs = emu.machine.cpu().get_register16(Register16::CS);
+            let flat_cs = cpu_common::calc_linear_address(cs, 0);
+            log::info!("Dumping CS: {:04X} ({:08X})", cs, flat_cs);
+
+            let end = flat_cs + 0x10000;
             emu.rm
                 .get_available_filename("dump", "cs_dump", Some("bin"))
                 .ok()
-                .map(|path| emu.machine.cpu().dump_cs(&path))
+                .map(|path| emu.machine.bus().dump_mem_range(flat_cs, end, &path))
                 .or_else(|| {
                     log::error!("Failed to get available filename for memory dump!");
                     None
@@ -507,7 +513,8 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
         }
         GuiEvent::TokenHover(addr) => {
             // Hovered over a token in a TokenListView.
-            let debug = emu.machine.bus_mut().get_memory_debug(*addr);
+            let cpu_type = emu.machine.cpu().get_type();
+            let debug = emu.machine.bus_mut().get_memory_debug(cpu_type, *addr);
             emu.gui.memory_viewer.set_hover_text(format!("{}", debug));
         }
         GuiEvent::FlushLogs => {

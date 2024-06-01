@@ -109,177 +109,11 @@ pub enum BusType {
     Isa16,
 }
 
-lazy_static! {
-    /// This hashmap defines ROM feature requirements for the base machine types.
-    /// The key is the machine type, and the value is a vector of ROM features.
-    static ref BASE_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
-        let mut m = HashMap::new();
-        m.insert(MachineType::Default, vec![]);
-        m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k"]);
-        m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k"]);
-        m.insert(MachineType::Ibm5160, vec!["ibm5160"]);
-        m.insert(MachineType::IbmPCJr, vec!["ibm_pcjr"]);
-        m.insert(MachineType::Tandy1000, vec!["tandy1000"]);
-        m
-    };
+// Machine Configuration file types
 
-    /// This hashmap defines optional ROM feature requirements for the base machine types.
-    /// Missing optional features will not stop machine creation.
-    static ref OPTIONAL_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
-        let mut m = HashMap::new();
-        m.insert(MachineType::Default, vec![]);
-        m.insert(MachineType::Ibm5150v64K, vec!["ibm_basic"]);
-        m.insert(MachineType::Ibm5150v256K, vec!["ibm_basic"]);
-        m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
-        m.insert(MachineType::IbmPCJr, vec!["pcjr_cartridge"]);
-        m.insert(MachineType::Tandy1000, vec![]);
-        m
-    };
-}
-
-pub fn get_base_rom_features(machine_type: MachineType) -> Option<&'static Vec<&'static str>> {
-    BASE_ROM_FEATURES.get(&machine_type)
-}
-
-pub fn get_optional_rom_features(machine_type: MachineType) -> Option<&'static Vec<&'static str>> {
-    OPTIONAL_ROM_FEATURES.get(&machine_type)
-}
-
-/// Defines the basic architecture of a machine. These are the fixed components on a machine's motherboard or otherwise
-/// non-optional components common to all machines of its type. Optional components are defined in a machine
-/// configuration file.
-#[derive(Copy, Clone, Debug)]
-pub struct MachineDescriptor {
-    pub machine_type: MachineType,
-    pub system_crystal: f64,        // The main system crystal speed in MHz.
-    pub timer_crystal: Option<f64>, // The main timer crystal speed in MHz. On PC/AT, there is a separate timer crystal to run the PIT at the same speed as PC/XT.
-    pub bus_crystal: f64,
-    pub open_bus_byte: u8,
-    pub cpu_type: CpuType,
-    pub cpu_factor: ClockFactor, // Specifies the CPU speed in either a divisor or multiplier of system crystal.
-    pub cpu_turbo_factor: ClockFactor, // Same as above, but when turbo button is active
-    pub bus_type: BusType,
-    pub bus_factor: ClockFactor, // Specifies the ISA bus speed in either a divisor or multiplier of bus crystal.
-    pub timer_divisor: u32,      // Specifies the PIT timer speed in a divisor of timer clock speed.
-    pub have_ppi: bool,
-    pub a0: Option<A0Type>, // Whether the machine has an A0 register to control NMI, and what type it is.
-    pub kb_controller: KbControllerType,
-    pub pit_type: PitType,
-    pub pic_type: PicType,
-    pub dma_type: Option<DmaType>,     // Not all machines have DMA (PCJr)
-    pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
-    pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
-    pub allow_expansion_video: bool,   // Whether the machine allows for expansion video cards.
-}
-
-impl Default for MachineDescriptor {
-    /// The default MachineDescriptor represents the IBM 5150.
-    fn default() -> Self {
-        MachineDescriptor {
-            machine_type: MachineType::Default,
-            system_crystal: IBM_PC_SYSTEM_CLOCK,
-            timer_crystal: None,
-            bus_crystal: IBM_PC_SYSTEM_CLOCK,
-            open_bus_byte: 0xFF,
-            cpu_type: CpuType::Intel8088,
-            cpu_factor: ClockFactor::Divisor(3),
-            cpu_turbo_factor: ClockFactor::Divisor(2),
-            bus_type: BusType::Isa8,
-            bus_factor: ClockFactor::Divisor(1),
-            timer_divisor: PIT_DIVISOR,
-            have_ppi: true,
-            a0: Some(A0Type::PCXT),
-            kb_controller: KbControllerType::Ppi,
-            pit_type: PitType::Model8253,
-            pic_type: PicType::Single,
-            dma_type: Some(DmaType::Single),
-            onboard_serial: None,
-            onboard_parallel: None,
-            allow_expansion_video: true,
-        }
-    }
-}
-
-lazy_static! {
-    /// Eventually we will want to move these machine definitions into a config file
-    /// so that people can define custom architectures.
-    pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
-        let map = HashMap::from([
-            (
-                MachineType::Ibm5150v64K,
-                MachineDescriptor {
-                    machine_type: MachineType::Ibm5150v64K,
-                    ..Default::default()
-                },
-            ),
-            (
-                MachineType::Ibm5150v256K,
-                MachineDescriptor {
-                    machine_type: MachineType::Ibm5150v256K,
-                    ..Default::default()
-                },
-            ),
-            (
-                MachineType::Ibm5160,
-                MachineDescriptor {
-                    machine_type: MachineType::Ibm5160,
-                    ..Default::default()
-                },
-            ),
-            (
-                MachineType::IbmPCJr,
-                MachineDescriptor {
-                    machine_type: MachineType::IbmPCJr,
-                    system_crystal: IBM_PC_SYSTEM_CLOCK,
-                    timer_crystal: None,
-                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
-                    cpu_type: CpuType::Intel8088,
-                    cpu_factor: ClockFactor::Divisor(3),
-                    cpu_turbo_factor: ClockFactor::Divisor(2),
-                    bus_type: BusType::Isa8,
-                    bus_factor: ClockFactor::Divisor(1),
-                    timer_divisor: PIT_DIVISOR,
-                    have_ppi: true,
-                    a0: Some(A0Type::PCJr),
-                    kb_controller: KbControllerType::Ppi,
-                    pit_type: PitType::Model8253,
-                    pic_type: PicType::Single,
-                    dma_type: None,
-                    ..Default::default()
-                },
-            ),
-            (
-                MachineType::Tandy1000,
-                MachineDescriptor {
-                    machine_type: MachineType::Tandy1000,
-                    system_crystal: IBM_PC_SYSTEM_CLOCK,
-                    timer_crystal: None,
-                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
-                    open_bus_byte: 0xE8,
-                    cpu_type: CpuType::Intel8088,
-                    cpu_factor: ClockFactor::Divisor(3),
-                    cpu_turbo_factor: ClockFactor::Divisor(2),
-                    bus_type: BusType::Isa8,
-                    bus_factor: ClockFactor::Divisor(1),
-                    timer_divisor: PIT_DIVISOR,
-                    have_ppi: true,
-                    a0: Some(A0Type::Tandy1000),
-                    kb_controller: KbControllerType::Ppi,
-                    pit_type: PitType::Model8253,
-                    pic_type: PicType::Single,
-                    dma_type: Some(DmaType::Single),
-                    onboard_serial: None,
-                    onboard_parallel: Some(0x378),
-                    allow_expansion_video: false,
-                },
-            )
-        ]);
-        map
-    };
-}
-
-pub fn get_machine_descriptor(machine_type: MachineType) -> Option<&'static MachineDescriptor> {
-    MACHINE_DESCS.get(&machine_type)
+#[derive(Clone, Debug, Deserialize)]
+pub struct CpuConfig {
+    pub upgrade_type: Option<CpuType>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -383,6 +217,7 @@ pub struct MachineConfiguration {
     pub speaker: bool,
     pub ppi_turbo: Option<bool>,
     pub machine_type: MachineType,
+    pub cpu: Option<CpuConfig>,
     pub memory: MemoryConfig,
     pub keyboard: Option<KeyboardConfig>,
     pub serial_mouse: Option<SerialMouseConfig>,
@@ -391,6 +226,208 @@ pub struct MachineConfiguration {
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,
     pub media: Option<MediaConfig>,
+}
+
+lazy_static! {
+    /// This hashmap defines ROM feature requirements for the base machine types.
+    /// The key is the machine type, and the value is a vector of ROM features.
+    static ref BASE_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
+        let mut m = HashMap::new();
+        m.insert(MachineType::Default, vec![]);
+        m.insert(MachineType::Ibm5150v64K, vec!["ibm5150v64k"]);
+        m.insert(MachineType::Ibm5150v256K, vec!["ibm5150v256k"]);
+        m.insert(MachineType::Ibm5160, vec!["ibm5160"]);
+        m.insert(MachineType::IbmPCJr, vec!["ibm_pcjr"]);
+        m.insert(MachineType::Tandy1000, vec!["tandy1000"]);
+        m
+    };
+
+    /// This hashmap defines optional ROM feature requirements for the base machine types.
+    /// Missing optional features will not stop machine creation.
+    static ref OPTIONAL_ROM_FEATURES: HashMap<MachineType, Vec<&'static str>> = {
+        let mut m = HashMap::new();
+        m.insert(MachineType::Default, vec![]);
+        m.insert(MachineType::Ibm5150v64K, vec!["ibm_basic"]);
+        m.insert(MachineType::Ibm5150v256K, vec!["ibm_basic"]);
+        m.insert(MachineType::Ibm5160, vec!["ibm_basic"]);
+        m.insert(MachineType::IbmPCJr, vec!["pcjr_cartridge"]);
+        m.insert(MachineType::Tandy1000, vec![]);
+        m
+    };
+
+    /// This hashmap is used to permit certain CPUs to be swapped out in place of others.
+    static ref COMPATIBLE_CPUS: HashMap<CpuType, Vec<CpuType>> = {
+        let mut m = HashMap::new();
+        m.insert(CpuType::Intel8088, vec![CpuType::NecV20]);
+        m.insert(CpuType::NecV20, vec![CpuType::Intel8088]);
+        m
+    };
+}
+
+pub fn get_base_rom_features(machine_type: MachineType) -> Option<&'static Vec<&'static str>> {
+    BASE_ROM_FEATURES.get(&machine_type)
+}
+
+pub fn get_optional_rom_features(machine_type: MachineType) -> Option<&'static Vec<&'static str>> {
+    OPTIONAL_ROM_FEATURES.get(&machine_type)
+}
+
+/// Defines the basic architecture of a machine. These are the fixed components on a machine's motherboard or otherwise
+/// non-optional components common to all machines of its type. Optional components are defined in a machine
+/// configuration file.
+#[derive(Copy, Clone, Debug)]
+pub struct MachineDescriptor {
+    pub machine_type: MachineType,
+    pub system_crystal: f64,        // The main system crystal speed in MHz.
+    pub timer_crystal: Option<f64>, // The main timer crystal speed in MHz. On PC/AT, there is a separate timer crystal to run the PIT at the same speed as PC/XT.
+    pub bus_crystal: f64,
+    pub open_bus_byte: u8,
+    pub cpu_type: CpuType,
+    pub cpu_factor: ClockFactor, // Specifies the CPU speed in either a divisor or multiplier of system crystal.
+    pub cpu_turbo_factor: ClockFactor, // Same as above, but when turbo button is active
+    pub bus_type: BusType,
+    pub bus_factor: ClockFactor, // Specifies the ISA bus speed in either a divisor or multiplier of bus crystal.
+    pub timer_divisor: u32,      // Specifies the PIT timer speed in a divisor of timer clock speed.
+    pub have_ppi: bool,
+    pub a0: Option<A0Type>, // Whether the machine has an A0 register to control NMI, and what type it is.
+    pub kb_controller: KbControllerType,
+    pub pit_type: PitType,
+    pub pic_type: PicType,
+    pub dma_type: Option<DmaType>,     // Not all machines have DMA (PCJr)
+    pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
+    pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
+    pub allow_expansion_video: bool,   // Whether the machine allows for expansion video cards.
+}
+
+impl Default for MachineDescriptor {
+    /// The default MachineDescriptor represents the IBM 5150.
+    fn default() -> Self {
+        MachineDescriptor {
+            machine_type: MachineType::Default,
+            system_crystal: IBM_PC_SYSTEM_CLOCK,
+            timer_crystal: None,
+            bus_crystal: IBM_PC_SYSTEM_CLOCK,
+            open_bus_byte: 0xFF,
+            cpu_type: CpuType::Intel8088,
+            cpu_factor: ClockFactor::Divisor(3),
+            cpu_turbo_factor: ClockFactor::Divisor(2),
+            bus_type: BusType::Isa8,
+            bus_factor: ClockFactor::Divisor(1),
+            timer_divisor: PIT_DIVISOR,
+            have_ppi: true,
+            a0: Some(A0Type::PCXT),
+            kb_controller: KbControllerType::Ppi,
+            pit_type: PitType::Model8253,
+            pic_type: PicType::Single,
+            dma_type: Some(DmaType::Single),
+            onboard_serial: None,
+            onboard_parallel: None,
+            allow_expansion_video: true,
+        }
+    }
+}
+
+impl MachineDescriptor {
+    pub fn is_compatible_configuration(&self, config: &MachineConfiguration) -> bool {
+        // Check CPU compatibility
+        if let Some(cpu_opt) = &config.cpu {
+            if let Some(upgrade_type) = cpu_opt.upgrade_type {
+                if let Some(compatible_cpus) = COMPATIBLE_CPUS.get(&self.cpu_type) {
+                    if !compatible_cpus.contains(&upgrade_type) {
+                        log::warn!(
+                            "Incompatible CPU upgrade specified: {:?} not compatible with base type {:?}",
+                            upgrade_type,
+                            self.cpu_type
+                        );
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+}
+
+lazy_static! {
+    /// Eventually we will want to move these machine definitions into a config file
+    /// so that people can define custom architectures.
+    pub static ref MACHINE_DESCS: HashMap<MachineType, MachineDescriptor> = {
+        let map = HashMap::from([
+            (
+                MachineType::Ibm5150v64K,
+                MachineDescriptor {
+                    machine_type: MachineType::Ibm5150v64K,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::Ibm5150v256K,
+                MachineDescriptor {
+                    machine_type: MachineType::Ibm5150v256K,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::Ibm5160,
+                MachineDescriptor {
+                    machine_type: MachineType::Ibm5160,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::IbmPCJr,
+                MachineDescriptor {
+                    machine_type: MachineType::IbmPCJr,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    cpu_type: CpuType::Intel8088,
+                    cpu_factor: ClockFactor::Divisor(3),
+                    cpu_turbo_factor: ClockFactor::Divisor(2),
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: true,
+                    a0: Some(A0Type::PCJr),
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: None,
+                    ..Default::default()
+                },
+            ),
+            (
+                MachineType::Tandy1000,
+                MachineDescriptor {
+                    machine_type: MachineType::Tandy1000,
+                    system_crystal: IBM_PC_SYSTEM_CLOCK,
+                    timer_crystal: None,
+                    bus_crystal: IBM_PC_SYSTEM_CLOCK,
+                    open_bus_byte: 0xE8,
+                    cpu_type: CpuType::Intel8088,
+                    cpu_factor: ClockFactor::Divisor(3),
+                    cpu_turbo_factor: ClockFactor::Divisor(2),
+                    bus_type: BusType::Isa8,
+                    bus_factor: ClockFactor::Divisor(1),
+                    timer_divisor: PIT_DIVISOR,
+                    have_ppi: true,
+                    a0: Some(A0Type::Tandy1000),
+                    kb_controller: KbControllerType::Ppi,
+                    pit_type: PitType::Model8253,
+                    pic_type: PicType::Single,
+                    dma_type: Some(DmaType::Single),
+                    onboard_serial: None,
+                    onboard_parallel: Some(0x378),
+                    allow_expansion_video: false,
+                },
+            )
+        ]);
+        map
+    };
+}
+
+pub fn get_machine_descriptor(machine_type: MachineType) -> Option<&'static MachineDescriptor> {
+    MACHINE_DESCS.get(&machine_type)
 }
 
 pub fn normalize_conventional_memory(config: &MachineConfiguration) -> Result<u32, Error> {

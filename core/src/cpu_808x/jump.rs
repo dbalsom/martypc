@@ -34,7 +34,7 @@ use crate::{
     util,
 };
 
-impl Cpu {
+impl Intel808x {
     /*
     /// Execute the RELJMP microcode routine, optionally including the jump into the procedure.
     #[inline]

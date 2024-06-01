@@ -37,11 +37,24 @@
 
 use std::{error::Error, fmt::Display};
 
-use crate::cpu_808x::{addressing::AddressingMode, mnemonic::Mnemonic, modrm::ModRmByte, *};
-
 use crate::{
     bytequeue::*,
-    cpu_808x::{alu::Xi, gdr::GdrEntry, instruction::Instruction},
+    cpu_808x::{alu::Xi, gdr::GdrEntry, modrm::ModRmByte, *},
+    cpu_common::{
+        operands::OperandSize,
+        AddressingMode,
+        Instruction,
+        Mnemonic,
+        OperandType,
+        Segment,
+        OPCODE_PREFIX_CS_OVERRIDE,
+        OPCODE_PREFIX_DS_OVERRIDE,
+        OPCODE_PREFIX_ES_OVERRIDE,
+        OPCODE_PREFIX_LOCK,
+        OPCODE_PREFIX_REP1,
+        OPCODE_PREFIX_REP2,
+        OPCODE_PREFIX_SS_OVERRIDE,
+    },
 };
 
 #[derive(Copy, Clone, PartialEq)]
@@ -506,7 +519,7 @@ pub const DECODE: [InstTemplate; 352] = [
     inst!( 0xFF,  5, 0b0000100000100100, 0x026,         PUSH  ,  Ot::ModRM16,                            Ot::NoOperand),
 ];
 
-impl Cpu {
+impl Intel808x {
     #[rustfmt::skip]
     pub fn decode(bytes: &mut impl ByteQueue, peek: bool) -> Result<Instruction, Box<dyn std::error::Error>> {
 

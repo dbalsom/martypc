@@ -33,7 +33,7 @@
 use crate::*;
 use marty_core::{
     breakpoints::StopWatchData,
-    cpu_808x::CpuAddress,
+    cpu_common::CpuAddress,
     machine::{ExecutionControl, ExecutionOperation, ExecutionState},
 };
 use std::{cell::RefCell, collections::HashMap, rc::Rc};

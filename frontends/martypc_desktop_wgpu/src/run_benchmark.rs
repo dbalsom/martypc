@@ -38,9 +38,11 @@ use frontend_common::{
     rom_manager::RomManager,
     BenchmarkEndCondition,
 };
-use marty_core::bus::ClockFactor;
-
-use marty_core::machine::{ExecutionControl, ExecutionState, MachineBuilder, MachineRomManifest};
+use marty_core::{
+    bus::ClockFactor,
+    cpu_common::Cpu,
+    machine::{ExecutionControl, ExecutionState, MachineBuilder, MachineRomManifest},
+};
 
 const BENCHMARK_CYCLE_BATCH: u64 = 100_000;
 

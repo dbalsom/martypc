@@ -79,6 +79,7 @@ use crate::devices::ega::{self, EGACard};
 #[cfg(feature = "vga")]
 use crate::devices::vga::{self, VGACard};
 use crate::{
+    cpu_common::{CpuDispatch, CpuType},
     device_traits::videocard::VideoCardSubType,
     devices::{a0::A0Register, lpt_card::ParallelController, tga, tga::TGACard},
     machine_types::{FdcType, MachineType},
@@ -987,6 +988,15 @@ impl BusInterface {
         Err(MemError::ReadOutOfBoundsError)
     }
 
+    pub fn peek_range(&self, address: usize, len: usize) -> Result<&[u8], MemError> {
+        if address + len < self.memory.len() {
+            Ok(&self.memory[address..address + len])
+        }
+        else {
+            Err(MemError::ReadOutOfBoundsError)
+        }
+    }
+
     pub fn peek_u8(&self, address: usize) -> Result<u8, MemError> {
         if address < self.memory.len() {
             if self.memory_mask[address] & MEM_MMIO_BIT == 0 {
@@ -1520,6 +1530,23 @@ impl BusInterface {
         }
     }
 
+    pub fn dump_mem_range(&self, start: u32, end: u32, path: &Path) {
+        let filename = path.to_path_buf();
+
+        let len = end.saturating_sub(start) as usize;
+        let end = (start as usize + len) & 0xFFFFF;
+        log::debug!("Dumping {} bytes at address {:05X}", len, start);
+
+        match std::fs::write(filename.clone(), &self.memory[(start as usize)..=end]) {
+            Ok(_) => {
+                log::debug!("Wrote memory dump: {}", filename.display())
+            }
+            Err(e) => {
+                log::error!("Failed to write memory dump '{}': {}", filename.display(), e)
+            }
+        }
+    }
+
     pub fn dump_ivt_tokens(&mut self) -> Vec<Vec<SyntaxToken>> {
         let mut vec: Vec<Vec<SyntaxToken>> = Vec::new();
 
@@ -1563,7 +1590,7 @@ impl BusInterface {
 
     /// Returns a MemoryDebug struct containing information about the memory at the specified address.
     /// This is used in the Memory Viewer debug window to show a popup when hovering over a byte.
-    pub fn get_memory_debug(&mut self, address: usize) -> MemoryDebug {
+    pub fn get_memory_debug(&mut self, cpu_type: CpuType, address: usize) -> MemoryDebug {
         let mut debug = MemoryDebug {
             addr:  format!("{:05X}", address),
             byte:  String::new(),
@@ -1593,7 +1620,7 @@ impl BusInterface {
 
         self.seek(address);
 
-        debug.instr = match Cpu::decode(self, true) {
+        debug.instr = match cpu_type.decode(self, true) {
             Ok(instruction) => {
                 format!("{}", instruction)
             }

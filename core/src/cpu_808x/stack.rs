@@ -30,9 +30,12 @@
 
 */
 
-use crate::cpu_808x::{biu::*, *};
+use crate::{
+    cpu_808x::{biu::*, *},
+    cpu_common::Segment,
+};
 
-impl Cpu {
+impl Intel808x {
     pub fn push_u8(&mut self, data: u8, flag: ReadWriteFlag) {
         // Stack pointer grows downwards
         self.sp = self.sp.wrapping_sub(2);
@@ -67,25 +70,25 @@ impl Cpu {
             Register16::SI => self.si,
             Register16::DI => self.di,
             Register16::CS => {
-                if let CpuType::Harris80C88 = self.cpu_type {
+                if let CpuSubType::Harris80C88 = self.cpu_subtype {
                     self.interrupt_inhibit = true;
                 }
                 self.cs
             }
             Register16::DS => {
-                if let CpuType::Harris80C88 = self.cpu_type {
+                if let CpuSubType::Harris80C88 = self.cpu_subtype {
                     self.interrupt_inhibit = true;
                 }
                 self.ds
             }
             Register16::SS => {
-                if let CpuType::Harris80C88 = self.cpu_type {
+                if let CpuSubType::Harris80C88 = self.cpu_subtype {
                     self.interrupt_inhibit = true;
                 }
                 self.ss
             }
             Register16::ES => {
-                if let CpuType::Harris80C88 = self.cpu_type {
+                if let CpuSubType::Harris80C88 = self.cpu_subtype {
                     self.interrupt_inhibit = true;
                 }
                 self.es
@@ -115,13 +118,13 @@ impl Cpu {
             Register16::DI => self.di = data,
             Register16::CS => {
                 self.cs = data;
-                if let CpuType::Harris80C88 = self.cpu_type {
+                if let CpuSubType::Harris80C88 = self.cpu_subtype {
                     self.interrupt_inhibit = true;
                 }
             }
             Register16::DS => {
                 self.ds = data;
-                if let CpuType::Harris80C88 = self.cpu_type {
+                if let CpuSubType::Harris80C88 = self.cpu_subtype {
                     self.interrupt_inhibit = true;
                 }
             }
@@ -131,7 +134,7 @@ impl Cpu {
             }
             Register16::ES => {
                 self.es = data;
-                if let CpuType::Harris80C88 = self.cpu_type {
+                if let CpuSubType::Harris80C88 = self.cpu_subtype {
                     self.interrupt_inhibit = true;
                 }
             }

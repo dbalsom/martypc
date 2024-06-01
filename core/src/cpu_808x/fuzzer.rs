@@ -33,7 +33,10 @@
 use rand::{Rng, SeedableRng};
 //use rand::rngs::StdRng;
 
-use crate::cpu_808x::{modrm::MODRM_REG_MASK, *};
+use crate::{
+    cpu_808x::{modrm::MODRM_REG_MASK, *},
+    cpu_common::{CpuAddress, Segment},
+};
 
 const RNG_SEED: u64 = 0x58158258u64;
 
@@ -49,7 +52,7 @@ macro_rules! get_rand_range {
     };
 }
 
-impl Cpu {
+impl Intel808x {
     #[allow(dead_code)]
     pub fn randomize_seed(&mut self, mut seed: u64) {
         if seed == 0 {
@@ -70,6 +73,12 @@ impl Cpu {
             let n: u16 = get_rand!(self);
             self.set_register16(REGISTER16_LUT[i], n);
         }
+
+        // Don't let CX be FFFF due to prefetch setup requirements.
+        // We use one iteration of 'rep scasb' to fill the prefetch queue. This means we must adjust
+        // CX and DI so that the result of the rep movsb sets the requested registers. If CX is FFFF,
+        // we would attempt to add one, wrapping to 0, and rep scasb would not execute.
+        self.set_register16(Register16::CX, self.get_register16(Register16::CX) & 0xFFFE);
 
         // Flush queue
         self.queue.flush();
@@ -254,7 +263,7 @@ impl Cpu {
         }
 
         // Copy instruction to memory at CS:IP
-        let addr = Cpu::calc_linear_address(self.cs, self.pc);
+        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), (addr & 0xFFFFF) as usize, 0, false)
@@ -359,7 +368,7 @@ impl Cpu {
         }
 
         // Copy instruction to memory at CS:IP
-        let addr = Cpu::calc_linear_address(self.cs, self.pc);
+        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
         log::debug!("Using instruction vector: {:X?}", instr.make_contiguous());
         self.bus
             .copy_from(instr.make_contiguous(), addr as usize, 0, false)

@@ -29,7 +29,11 @@
     Implement CPU behavior specific to the BIU (Bus Interface Unit)
 
 */
-use crate::{bytequeue::*, cpu_808x::*};
+use crate::{
+    bytequeue::*,
+    cpu_808x::*,
+    cpu_common::{operands::OperandSize, QueueOp, Segment},
+};
 
 pub const QUEUE_SIZE: usize = 4;
 pub const QUEUE_POLICY_LEN: usize = 3;
@@ -39,7 +43,7 @@ pub enum ReadWriteFlag {
     RNI,
 }
 
-impl ByteQueue for Cpu {
+impl ByteQueue for Intel808x {
     fn seek(&mut self, _pos: usize) {
         // Instruction queue does not support seeking
     }
@@ -117,7 +121,7 @@ impl ByteQueue for Cpu {
     }
 }
 
-impl Cpu {
+impl Intel808x {
     /// Read a byte from the instruction queue.
     /// Either return a byte currently in the queue, or fetch a byte into the queue and
     /// then return it.
@@ -316,11 +320,14 @@ impl Cpu {
     }
 
     pub fn biu_queue_has_room(&mut self) -> bool {
-        match self.cpu_type {
-            CpuType::Intel8088 | CpuType::Harris80C88 => self.queue.len() < QUEUE_SIZE,
-            CpuType::Intel8086 => {
+        match self.cpu_subtype {
+            CpuSubType::Intel8088 | CpuSubType::Harris80C88 => self.queue.len() < QUEUE_SIZE,
+            CpuSubType::Intel8086 => {
                 // 8086 fetches two bytes at a time, so must be two free bytes in queue
                 self.queue.len() < QUEUE_SIZE - 1
+            }
+            _ => {
+                panic!("Unsupported CPU subtype")
             }
         }
     }
@@ -920,7 +927,7 @@ impl Cpu {
     }
 
     pub fn biu_fetch_bus_begin(&mut self) {
-        let addr = Cpu::calc_linear_address(self.cs, self.pc);
+        let addr = Intel808x::calc_linear_address(self.cs, self.pc);
         if self.biu_queue_has_room() {
             //trace_print!(self, "Setting address bus to PC: {:05X}", self.pc);
             self.fetch_state = FetchState::Normal;
