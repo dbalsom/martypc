@@ -34,6 +34,7 @@ use anyhow::Error;
 use marty_core::{
     device_traits::videocard::VideoType,
     machine_config::{
+        CpuConfig,
         FloppyControllerConfig,
         HardDriveControllerConfig,
         KeyboardConfig,
@@ -72,6 +73,7 @@ pub struct MachineConfigFileEntry {
     machine_type: MachineType,
     rom_set: String,
     overlays: Option<Vec<String>>,
+    cpu: Option<CpuConfig>,
     memory: MemoryConfig,
     #[serde(default)]
     speaker: bool,
@@ -88,6 +90,7 @@ pub struct MachineConfigFileEntry {
 #[derive(Clone, Debug, Deserialize)]
 pub struct MachineConfigFileOverlayEntry {
     name: String,
+    cpu: Option<CpuConfig>,
     memory: Option<MemoryConfig>,
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
@@ -347,6 +350,10 @@ impl MachineConfigFileEntry {
     /// Apply a Machine Config Overlay to this configuration. Every option that is Some within the overlay is
     /// copied into this configuration.
     pub fn apply_overlay(&mut self, overlay: MachineConfigFileOverlayEntry) {
+        if let Some(cpu) = overlay.cpu {
+            log::debug!("Applying CPU overlay: {:?}", cpu);
+            self.cpu = Some(cpu);
+        }
         if let Some(memory) = overlay.memory {
             log::debug!("Applying memory overlay: {:?}", memory);
             self.memory = memory;
@@ -382,6 +389,7 @@ impl MachineConfigFileEntry {
             speaker: self.speaker,
             ppi_turbo: self.ppi_turbo,
             machine_type: self.machine_type,
+            cpu: self.cpu.clone(),
             memory: self.memory.clone(),
             fdc: self.fdc.clone(),
             hdc: self.hdc.clone(),
