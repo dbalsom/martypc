@@ -50,6 +50,7 @@ use crate::{
             opcode_extension_from_path,
             opcode_from_path,
             print_cycle_diff,
+            print_cycle_summary,
             print_summary,
             read_tests_from_file,
             validate_cycles,
@@ -368,31 +369,6 @@ pub fn run_runtests(config: ConfigFileParams) {
     // writer & file dropped here
 }
 
-fn print_cycle_summary(test_cycles: usize, cpu_cycles: usize) {
-    println!("Total test cycles: {}", test_cycles);
-    println!("Total CPU cycles: {}", cpu_cycles);
-
-    let diff = test_cycles as f64 - cpu_cycles as f64;
-
-    if diff > 0.0 {
-        println!(
-            "CPU less than test cycles by: {}, percent: {}",
-            diff,
-            diff.abs() / test_cycles as f64
-        );
-    }
-    else if diff < 0.0 {
-        println!(
-            "CPU cycles exceeded test cycles by: {}, percent: {}",
-            diff.abs(),
-            diff.abs() / test_cycles as f64
-        );
-    }
-    else {
-        println!("Test cycles matched CPU cycles.");
-    }
-}
-
 fn run_tests(
     metadata: &Metadata,
     tests: &LinkedList<CpuTest>,
@@ -555,11 +531,12 @@ fn run_tests(
 
         trace_print!(
             log,
-            "{}| Test {:05}: Running test for instruction: {} {:02X?}",
+            "{}| Test {:05}: Running test for instruction: {} {:02X?} Prefetched: {}",
             opcode_string,
             n,
             i,
-            test.bytes
+            test.bytes,
+            test_prefetched
         );
         /*
         println!(
@@ -651,7 +628,7 @@ fn run_tests(
         cpu_cycles_seen = cpu_cycles.len();
 
         // Clean the CPU cycle states.
-        clean_cycle_states(&mut cpu_cycles);
+        cpu_cycles_seen -= clean_cycle_states(&mut cpu_cycles);
 
         // Validate final register state.
         let cpu_vregs = cpu.get_vregisters();
@@ -725,10 +702,9 @@ fn run_tests(
                     if test.cycles.len() != cpu_cycles.len() {
                         _ = writeln!(
                             log,
-                            "{}| Test {:05}:{} Additionally, test cycles {} do not match CPU cycles: {}",
+                            "{}| Test {:05}: Additionally, test cycles {} do not match CPU cycles: {}",
                             opcode_string,
                             n,
-                            &test.name,
                             test.cycles.len(),
                             cpu_cycles.len()
                         );
@@ -797,10 +773,9 @@ fn run_tests(
             if test.cycles.len() == cpu_cycles.len() {
                 _ = writeln!(
                     log,
-                    "{}| Test {:05}:{} Test cycles {} match CPU cycles: {}",
+                    "{}| Test {:05}: Test cycles {} match CPU cycles: {}",
                     opcode_string,
                     n,
-                    &test.name,
                     test.cycles.len(),
                     cpu_cycles.len()
                 );
@@ -809,10 +784,9 @@ fn run_tests(
                 // If the difference is more than 1, the test has failed.
                 trace_error!(
                     log,
-                    "{}| Test {:05}:{} Test cycles {} DO NOT MATCH CPU cycles: {}",
+                    "{}| Test {:05}: Test cycles {} DO NOT MATCH CPU cycles: {}",
                     opcode_string,
                     n,
-                    &test.name,
                     test.cycles.len(),
                     cpu_cycles.len()
                 );

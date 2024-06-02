@@ -1028,7 +1028,7 @@ pub fn validate_memory(
     Ok(())
 }
 
-pub fn clean_cycle_states(states: &mut Vec<CycleState>) {
+pub fn clean_cycle_states(states: &mut Vec<CycleState>) -> usize {
     let pre_clean_len = states.len();
 
     // Drop all states before first Fetch
@@ -1079,6 +1079,8 @@ pub fn clean_cycle_states(states: &mut Vec<CycleState>) {
             state.data_bus = 0;
         }
     }
+
+    trimmed_ct
 }
 
 pub fn print_cycle_diff(log: &mut BufWriter<File>, test_states: &Vec<CycleState>, cpu_states: &[CycleState]) {
@@ -1165,6 +1167,33 @@ pub fn print_summary(summary: &TestResultSummary) {
                 },
             );
         }
+    }
+}
+
+pub(crate) fn print_cycle_summary(test_cycles: usize, cpu_cycles: usize) {
+    println!("Totals: test cycles: {} Emulator cycles: {}", test_cycles, cpu_cycles);
+
+    let diff = test_cycles as f64 - cpu_cycles as f64;
+
+    if diff > 0.0 {
+        println!(
+            "Emulator less than test cycles by: {}, accuracy: {:.3}%",
+            diff,
+            cpu_cycles as f64 / test_cycles as f64 * 100.0
+        );
+    }
+    else if diff < 0.0 {
+        println!(
+            "Emulator cycles exceeded test cycles by: {}, accuracy: {:.3}%",
+            diff.abs(),
+            cpu_cycles as f64 / test_cycles as f64 * 100.0
+        );
+    }
+    else {
+        println!(
+            "Test cycles matched Emulator cycles! ({} == {})",
+            test_cycles, cpu_cycles
+        );
     }
 }
 

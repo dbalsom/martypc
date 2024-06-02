@@ -129,7 +129,7 @@ pub struct RemoteCpu {
     instr_end_addr: usize,
     program_started: bool,
     program_end_addr: usize,
-    program_state: ValidatorState,
+    validator_state: ValidatorState,
     run_state: RunState,
 
     address_latch: u32,
@@ -195,7 +195,7 @@ impl RemoteCpu {
             instr_end_addr: 0,
             program_started: true,
             program_end_addr: 0,
-            program_state: ValidatorState::Reset,
+            validator_state: ValidatorState::Reset,
             run_state: RunState::Init,
             address_latch: 0,
             address_bus: 0,
@@ -255,7 +255,7 @@ impl RemoteCpu {
         match cycle {
             true => {
                 (
-                    self.program_state,
+                    self.validator_state,
                     self.control_status,
                     self.status,
                     self.command_status,
@@ -267,7 +267,7 @@ impl RemoteCpu {
             }
             false => {
                 (
-                    self.program_state,
+                    self.validator_state,
                     self.control_status,
                     self.status,
                     self.command_status,
@@ -320,6 +320,7 @@ impl RemoteCpu {
     pub fn reset(&mut self) {
         self.bus_cycle = BusCycle::T1;
         self.mcycle_state = BusState::CODE; // First state after reset is a code fetch
+        self.run_state = RunState::Init;
         self.last_cycle_state = None;
         self.fetching_beyond = false;
         self.program_ended = false;
@@ -814,7 +815,7 @@ impl RemoteCpu {
         };
 
         let mut cycle_info = self.update_state(true);
-        if self.program_state == ValidatorState::ExecuteDone {
+        if self.validator_state == ValidatorState::ExecuteDone {
             return Ok(cycle_info);
         }
         let q_op = get_queue_op!(self.status);
@@ -894,86 +895,38 @@ impl RemoteCpu {
 
                 // Save the previous queue state for setting initial queue.
                 let prev_queue = self.queue.to_vec();
-
                 (self.queue_byte, self.queue_type, self.queue_fetch_addr) = self.queue.pop();
-
-                /*
-                log::trace!(
-                    "Queue pop! byte: {:02X} type: {:?} addr: {:05X} end: {:05X}",
-                    self.queue_byte,
-                    self.queue_type,
-                    self.queue_fetch_addr,
-                    self.instr_end_addr
-                );
-                */
 
                 if q_op == QueueOp::First {
                     // First byte of instruction fetched.
-
                     self.queue_fetch_n = 0;
                     self.opcode = self.queue_byte;
 
-                    // Is this byte flagged as the end of execution?
-                    if self.queue_type == QueueDataType::Finalize {
-                        trace!(
-                            log,
-                            "Byte read from queue with Finalize flag set. Finalizing execution."
-                        );
-
-                        if let Err(e) = self.cpu_client.finalize() {
-                            trace!(log, "Client error: Failed to finalize! Err: {}", e);
-                            return Err(ValidatorError::CpuError);
-                        }
-                        self.end_instruction = true;
-                        self.finalize = true;
-                    }
-
-                    if self.queue_first_fetch {
-                        if self.program_started {
-                            // Popped a byte for the next instruction. End the current instruction execution
+                    match (self.run_state, self.queue_type) {
+                        (_, QueueDataType::Finalize) => {
                             trace!(
                                 log,
-                                "Next \"first byte\" read from queue. Ending instruction at cycle: {}",
-                                self.cycle_num
+                                "Byte read from queue with Finalize flag set. Finalizing execution."
                             );
 
-                            if !self.finalize {
-                                if let Err(e) = self.cpu_client.finalize() {
-                                    trace!(log, "Client error: Failed to finalize! Err: {}", e);
-                                    return Err(ValidatorError::CpuError);
-                                }
+                            if let Err(e) = self.cpu_client.finalize() {
+                                trace!(log, "Client error: Failed to finalize! Err: {}", e);
+                                return Err(ValidatorError::CpuError);
                             }
-
                             self.end_instruction = true;
                             self.finalize = true;
+                            self.run_state = RunState::Finalize;
                         }
-                        else if self.prefetch_pc >= self.prefetch_pgm.len() {
-                            // The prefetch program is ending now, so start the main program.
+                        (RunState::Preload, QueueDataType::Program) => {
+                            // We are transitioning from the preload program to the main program.
                             trace!(log, "Main program started at cycle: {}", self.cycle_num);
                             // Save the initial queue state.
                             *initial_queue = prev_queue;
                             self.program_started = true;
+                            self.run_state = RunState::Program;
                         }
+                        (_, _) => {}
                     }
-
-                    if self.program_started && !self.is_prefix(self.opcode) {
-                        // Prefixes are also flagged as "first byte" fetches.
-                        // If not a prefix, we have read the first actual instruction byte.
-                        trace!(log, "First non-prefix byte of instruction fetched.");
-                        self.queue_first_fetch = true;
-                    }
-                    else {
-                        self.queue_first_fetch = false;
-                    }
-
-                    /*
-                    if (self.queue_fetch_addr as usize) == self.instr_end_addr {
-                        // Popped a byte for the next instruction. End the current instruction execution
-                        // as the next instruction is starting on the next cycle.
-                        log::trace!("Byte read from queue with address past current instruction. Ending instruction.");
-                        self.end_instruction = true;
-                    }
-                    */
                 }
                 else {
                     // Subsequent byte of instruction fetched
@@ -1064,10 +1017,12 @@ impl RemoteCpu {
             self.prefetch_pgm = self.get_preload_pgm();
             self.prefetch_pc = 0;
             self.program_started = false;
+            self.run_state = RunState::Preload;
         }
         else {
             // Start the program immediately if not prefetching.
             self.program_started = true;
+            self.run_state = RunState::Program;
         }
 
         self.address_latch = self

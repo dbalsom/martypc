@@ -611,6 +611,8 @@ pub struct Intel808x {
     #[cfg(feature = "cpu_validator")]
     validator_state: CpuValidatorState,
     #[cfg(feature = "cpu_validator")]
+    validator_mode: ValidatorMode,
+    #[cfg(feature = "cpu_validator")]
     validator_end: usize,
     #[cfg(feature = "cpu_validator")]
     peek_fetch: u8,
@@ -840,6 +842,8 @@ impl Intel808x {
                     }
                 }
             }
+
+            cpu.validator_mode = validator_mode;
         }
 
         cpu.trace_logger = trace_logger;

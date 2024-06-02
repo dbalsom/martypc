@@ -203,6 +203,7 @@ impl Cpu for Intel808x {
         else {
             self.biu_queue_flush();
         }
+        self.reset_queue = None;
 
         self.cycles_i(3, &[0x1e6, 0x1e7, 0x1e8]);
 

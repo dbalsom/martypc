@@ -12,6 +12,22 @@
   these logs, but it's worth mentioning. Several old state columns are gone, and now bus and T-cycles are displayed within 
   two separate 'pipeline slots'. 
 
+### New CPU Framework
+
+* MartyPC now has a framework to support multiple CPU types, so we can have CPUs other than the Intel 8088. 
+  There is a slight performance hit involved in not hardcoding a specific CPU, but I believe there are some strategies
+  I can use to mitigate this.
+
+### New CPU Type
+
+* An initial implementation of the NEC V20 has been added. All native-mode V20 instructions are implemented (except BRKEM).
+  This is not cycle-accurate yet, as it was copied and modified from the 8088.
+* The Arduino8088 project and the test generation engine of MartyPC were refactored and
+  improved to enable generation of a CPU test suite for the V20, which will be used to incrementally improve V20 emulation
+  accuracy over time. 8080 emulation mode will be added in the future.
+  The V20 test suite can be found [here](https://github.com/singleStepTests/v20).
+* You can add a V20 to any 8088-based machine by adding the `cpu_v20` overlay.
+
 ### New Machines
 
 * Added Tandy 1000 and IBM PCJr machine types and ROM definitions. These are still very much a work in progress.

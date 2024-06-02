@@ -218,6 +218,13 @@ impl Intel808x {
                         continue;
                     }
                 }
+                0x8E => {
+                    // Mov Sreg, modrm
+                    if ((modrm_byte >> 3) & 0x03) == 0x01 {
+                        // CS register destination. invalid.
+                        continue;
+                    }
+                }
                 // POP
                 0x8F => {
                     if (modrm_byte >> 3) & 0x07 != 0 {

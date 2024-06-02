@@ -580,9 +580,17 @@ impl Intel808x {
                             &self.cycle_states,
                         ) {
                             Ok(result) => {
-                                match result {
-                                    ValidatorResult::Ok => {}
-                                    ValidatorResult::OkEnd => {
+                                match (result, self.validator_mode) {
+                                    (ValidatorResult::Ok | ValidatorResult::OkEnd, ValidatorMode::Instruction) => {
+                                        if let Err(e) = validator.validate_regs(&vregs) {
+                                            log::warn!("Register validation failure: {} Halting execution.", e);
+                                            self.is_running = false;
+                                            self.is_error = true;
+                                            return Err(CpuError::CpuHaltedError(self.instruction_address));
+                                        }
+                                    }
+                                    (ValidatorResult::Ok, ValidatorMode::Cycle) => {}
+                                    (ValidatorResult::OkEnd, ValidatorMode::Cycle) => {
                                         if self.validator_end == cpu_address {
                                             self.validator_state = CpuValidatorState::Ended;
 

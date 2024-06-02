@@ -28,7 +28,7 @@
                    Requires CPU validator feature.
 */
 
-use anyhow::{bail, Error};
+use anyhow::{anyhow, bail, Error};
 use std::{
     cell::RefCell,
     collections::{HashMap, LinkedList},
@@ -534,7 +534,9 @@ pub fn get_test_info(validator: &Box<dyn CpuValidator>) -> Result<CpuTest, Error
     let bytes = validator.instr_bytes();
 
     let initial_regs = validator.initial_regs();
-    let final_regs = validator.final_cpu_regs().unwrap();
+    let final_regs = validator
+        .final_cpu_regs()
+        .ok_or(anyhow!("Failed to get final CPU regs!"))?;
 
     let cpu_ops = validator.cpu_ops();
     //let cpu_reads = validator.cpu_reads();
