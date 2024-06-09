@@ -103,6 +103,12 @@
 * CGA: Fixed last-line CRTC flag logic. Fixes some severe glitches in Area 5150 I didn't notice because I have only been
        testing the first and last effect. (Thanks Sudo)
 
+### Known Issues
+
+* Area5150: Some minor glitches during the Elephant effect text scroll (left side character glitch) and the end credits
+  have a periodic black scanline inserted. These were introduced with some new CRTC logic that is demonstrably more 
+  correct in other scenarios, but clearly has a few bugs to iron out.
+
 ## [0.2.0](https://github.com/dbalsom/martypc/releases/tag/0.2.0b) (2024-04-01)
 
 ### New Features
@@ -242,6 +248,7 @@
 * CGA: Don't recalculate composite parameters if mode change was enable bit only
 * Xebec HDC: Proceed from Reset state to WaitngForCommand after a delay (Fixes Minix boot issue)
 * Xebec HDC: Implemented missing Read Sector Buffer command (Fixes panic in IBM diagnostics)
+
 ### Major dependency updates:
 
 * wgpu to 0.18
