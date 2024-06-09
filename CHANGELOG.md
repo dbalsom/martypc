@@ -1,5 +1,5 @@
 
-## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-XX-XX)
+## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-06-09)
 
 ### New BIU logic
 
