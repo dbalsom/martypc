@@ -33,6 +33,7 @@
 use crate::{
     cpu_808x::*,
     cpu_common::{Segment, ServiceEvent},
+    cycles_mc,
 };
 
 impl Intel808x {
@@ -81,7 +82,7 @@ impl Intel808x {
             return;
         }
 
-        self.cycles_i(3, &[0x19d, 0x19e, 0x19f]);
+        cycles_mc!(self, 0x19d, 0x19e, 0x19f);
 
         // Read the IVT
         let vec_addr = (interrupt as usize * INTERRUPT_VEC_LEN) as u16;
@@ -106,7 +107,7 @@ impl Intel808x {
         );
 
         self.biu_fetch_suspend(); // 1a3 SUSP
-        self.cycles_i(2, &[0x1a3, 0x1a4]);
+        cycles_mc!(self, 0x1a3, 0x1a4);
         self.push_flags(ReadWriteFlag::Normal);
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
@@ -222,7 +223,7 @@ impl Intel808x {
         if !skip_first {
             self.cycle_i(0x019d);
         }
-        self.cycles_i(2, &[0x19e, 0x19f]);
+        cycles_mc!(self, 0x19e, 0x19f);
 
         // Read the IVT
         let vec_addr = (vector as usize * INTERRUPT_VEC_LEN) as u16;
@@ -247,7 +248,7 @@ impl Intel808x {
         );
 
         self.biu_fetch_suspend(); // 1a3 SUSP
-        self.cycles_i(2, &[0x1a3, 0x1a4]);
+        cycles_mc!(self, 0x1a3, 0x1a4);
         self.push_flags(ReadWriteFlag::Normal);
         self.clear_flag(Flag::Interrupt);
         self.clear_flag(Flag::Trap);
@@ -263,7 +264,7 @@ impl Intel808x {
         self.set_mc_pc(0x19a);
         self.biu_inta(vector);
         self.biu_fetch_suspend();
-        self.cycles_i(2, &[0x19b, 0x19c]);
+        cycles_mc!(self, 0x19b, 0x19c);
 
         // Begin INTR routine
         self.intr_routine(vector, InterruptType::Hardware, false);
@@ -273,38 +274,41 @@ impl Intel808x {
 
     /// Perform INT0 (Divide By 0)
     pub fn int0(&mut self) {
-        self.cycles_i(2, &[0x1a7, MC_JUMP]);
+        cycles_mc!(self, 0x1a7, MC_JUMP);
         self.intr_routine(0, InterruptType::Exception, true);
         self.int_count += 1;
     }
 
     /// Perform INT1 (Trap)
     pub fn int1(&mut self) {
-        self.cycles_i(2, &[0x198, MC_JUMP]);
+        cycles_mc!(self, 0x198, MC_JUMP);
         self.intr_routine(1, InterruptType::Exception, true);
         self.int_count += 1;
     }
 
     /// Perform INT2 (NMI)
     pub fn int2(&mut self) {
-        self.cycles_i(2, &[0x199, MC_JUMP]);
+        cycles_mc!(self, 0x199, MC_JUMP);
         self.intr_routine(2, InterruptType::Exception, true);
         self.int_count += 1;
     }
 
     /// Perform INT3
     pub fn int3(&mut self) {
-        self.cycles_i(4, &[0x1b0, MC_JUMP, 0x1b2, MC_JUMP]);
+        // The published microcode for INT3 is a bit weird. We jump over a blank line.
+        // This doesn't match our test timings. Is it possible the microcode was updated on later rev?
+        //cycles_mc!(self, 0x1b0, MC_JUMP, 0x1b2, MC_JUMP);
+        cycles_mc!(self, 0x1b1, 0x1b2, MC_JUMP);
         self.intr_routine(3, InterruptType::Software, false);
         self.int_count += 1;
     }
 
     /// Perform INTO
     pub fn int_o(&mut self) {
-        self.cycles_i(4, &[0x1ac, 0x1ad]);
+        cycles_mc!(self, 0x1ac, 0x1ad);
 
         if self.get_flag(Flag::Overflow) {
-            self.cycles_i(2, &[0x1af, MC_JUMP]);
+            cycles_mc!(self, 0x1af, MC_JUMP);
             self.intr_routine(4, InterruptType::Hardware, false);
             self.int_count += 1;
         }

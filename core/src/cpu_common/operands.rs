@@ -50,6 +50,17 @@ pub enum OperandType {
     InvalidOperand,
 }
 
+impl OperandType {
+    #[inline(always)]
+    pub fn is_address(&self) -> bool {
+        matches!(self, OperandType::AddressingMode(_))
+    }
+    #[inline(always)]
+    pub fn is_register(&self) -> bool {
+        matches!(self, OperandType::Register8(_) | OperandType::Register16(_))
+    }
+}
+
 #[derive(Copy, Clone, Default, PartialEq)]
 pub enum OperandSize {
     #[default]

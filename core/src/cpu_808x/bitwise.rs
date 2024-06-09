@@ -30,10 +30,24 @@
 
 */
 
-use crate::{cpu_808x::*, cpu_common::Mnemonic};
+use crate::{
+    cpu_808x::*,
+    cpu_common::{
+        alu::{
+            AluRotateCarryLeft,
+            AluRotateCarryRight,
+            AluRotateLeft,
+            AluRotateRight,
+            AluShiftArithmeticRight,
+            AluShiftLeftAf,
+            AluShiftRight,
+        },
+        Mnemonic,
+    },
+};
 
 impl Intel808x {
-    pub(crate) fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {
+    /*    pub(crate) fn shl_u8_with_carry(mut byte: u8, mut count: u8) -> (u8, bool) {
         let mut carry = false;
         while count > 0 {
             carry = byte & 0x80 != 0;
@@ -217,7 +231,7 @@ impl Intel808x {
             count -= 1;
         }
         (word, carry)
-    }
+    }*/
 
     /// Perform various 8-bit binary shift operations
     pub fn bitshift_op8(&mut self, opcode: Mnemonic, operand1: u8, operand2: u8) -> u8 {
@@ -226,105 +240,69 @@ impl Intel808x {
             // Flags are not changed if shift amount is 0
             return operand1;
         }
-
         let result: u8;
         let carry: bool;
-
-        /*
-        // All processors after 8086 mask the rotation count to 5 bits (31 maximum)
-        let rot_count = match self.cpu_type {
-            CpuType::Cpu8088 | CpuType::Cpu8086 => operand2,
-            _=> operand2 & 0x1F
-        };
-        */
-
+        let overflow: bool;
+        let aux_carry: bool;
         let rot_count = operand2;
 
         match opcode {
             Mnemonic::ROL => {
-                (result, carry) = Intel808x::rol_u8_with_carry(operand1, rot_count);
+                // Rotate Left
+                (result, carry, overflow) = operand1.alu_rol(rot_count);
+                self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::Carry, carry);
-                // Only set overflow on ROL of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of MSB and CF
-                    self.set_flag_state(Flag::Overflow, ((result & 0x80) != 0) ^ carry);
-                }
             }
             Mnemonic::ROR => {
-                (result, carry) = Intel808x::ror_u8_with_carry(operand1, rot_count);
+                // Rotate Right
+                (result, carry, overflow) = operand1.alu_ror(rot_count);
+                self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::Carry, carry);
-                // Only set overflow on ROR of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of two MS bits
-                    self.set_flag_state(Flag::Overflow, ((result & 0x80) != 0) ^ ((result & 0x40) != 0));
-                }
             }
             Mnemonic::RCL => {
-                // Rotate with Carry Left
-                // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate)
-                // and the most-significant bit of the result.
-                let existing_carry = self.get_flag(Flag::Carry);
-                (result, carry) = Intel808x::rcl_u8_with_carry(operand1, rot_count, existing_carry);
+                // Rotate through Carry Left
+                (result, carry, overflow) = operand1.alu_rcl(rot_count, self.get_flag(Flag::Carry));
+                self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::Carry, carry);
-                // Only set overflow on SHL of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of MSB and CF
-                    self.set_flag_state(Flag::Overflow, ((result & 0x80) != 0) ^ carry);
-                }
             }
             Mnemonic::RCR => {
-                let existing_carry = self.get_flag(Flag::Carry);
-                // Only set overflow on SHL of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of MSB and CF
-                    self.set_flag_state(Flag::Overflow, ((operand1 & 0x80) != 0) ^ existing_carry);
-                }
-
-                (result, carry) = Intel808x::rcr_u8_with_carry(operand1, rot_count, existing_carry);
+                // Rotate through Carry Right
+                (result, carry, overflow) = operand1.alu_rcr(rot_count, self.get_flag(Flag::Carry));
+                self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::Carry, carry);
             }
             Mnemonic::SETMO => {
+                // Undocumented: SETMO sets all bits in result.
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::AuxCarry);
-                self.clear_flag(Flag::Zero);
                 self.clear_flag(Flag::Overflow);
-
-                self.set_flag(Flag::Parity);
-                self.set_flag(Flag::Sign);
-
                 result = 0xFF;
+                self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SETMOC => {
+                // Undocumented: SETMOC sets all bits in result if count > 0
                 if self.c.l() != 0 {
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::AuxCarry);
-                    self.clear_flag(Flag::Zero);
                     self.clear_flag(Flag::Overflow);
-
-                    self.set_flag(Flag::Parity);
-                    self.set_flag(Flag::Sign);
                     result = 0xFF;
+                    self.set_szp_flags_from_result_u8(result);
                 }
                 else {
                     result = operand1;
                 }
             }
             Mnemonic::SHL => {
-                (result, carry) = Intel808x::shl_u8_with_carry(operand1, operand2);
-                // Set state of Carry Flag
+                // Shift Left
+                (result, carry, overflow, aux_carry) = operand1.alu_shl_af(operand2);
                 self.set_flag_state(Flag::Carry, carry);
-
-                // Only set overflow on SHL of 1
-                if operand2 == 1 {
-                    // If the two highest order bits were different, then they will change on shift
-                    // and overflow should be set
-                    self.set_flag_state(Flag::Overflow, (operand1 & 0xC0 == 0x80) || (operand1 & 0xC0 == 0x40));
-                }
-
+                self.set_flag_state(Flag::AuxCarry, aux_carry);
+                self.set_flag_state(Flag::Overflow, overflow);
                 self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SHR => {
-                (result, carry) = Intel808x::shr_u8_with_carry(operand1, operand2);
+                // Shift Right
+                (result, carry) = operand1.alu_shr(operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 
@@ -334,18 +312,18 @@ impl Intel808x {
                     // so set overflow flag if it was set.
                     self.set_flag_state(Flag::Overflow, operand1 & 0x80 != 0);
                 }
+                else {
+                    self.clear_flag(Flag::Overflow);
+                }
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u8(result);
             }
             Mnemonic::SAR => {
-                (result, carry) = Intel808x::sar_u8_with_carry(operand1, operand2);
-                // Set Carry Flag
+                // Shift Arithmetic Right
+                (result, carry) = operand1.alu_sar(operand2);
                 self.set_flag_state(Flag::Carry, carry);
-
-                // Clear overflow flag if shift count is 1
-                // AoA 6.6.2.2 SAR
-                if operand2 == 1 {
-                    self.clear_flag(Flag::Overflow);
-                }
+                self.clear_flag(Flag::Overflow);
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u8(result);
             }
             _ => panic!("Invalid opcode provided to bitshift_op8()"),
@@ -355,7 +333,7 @@ impl Intel808x {
         result
     }
 
-    /// Peform various 16-bit binary shift operations
+    /// Perform various 16-bit binary shift operations
     pub fn bitshift_op16(&mut self, opcode: Mnemonic, operand1: u16, operand2: u8) -> u16 {
         // Operand2 will either be 1 or value of CL register on 8088
         if operand2 == 0 {
@@ -365,6 +343,8 @@ impl Intel808x {
 
         let result: u16;
         let carry: bool;
+        let overflow: bool;
+        let aux_carry: bool;
 
         /*
         // All processors after 8086 mask the rotation count to 5 bits (31 maximum)
@@ -379,107 +359,71 @@ impl Intel808x {
         match opcode {
             Mnemonic::ROL => {
                 // Rotate Left
-                // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate)
-                // and the most-significant bit of the result.
-                (result, carry) = Intel808x::rol_u16_with_carry(operand1, rot_count);
+                (result, carry, overflow) = operand1.alu_rol(rot_count);
                 self.set_flag_state(Flag::Carry, carry);
-
-                // Overflow only defined for ROL of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of MSB and CF*
-                    self.set_flag_state(Flag::Overflow, ((result & 0x8000) != 0) ^ carry);
-                }
+                self.set_flag_state(Flag::Overflow, overflow);
             }
             Mnemonic::ROR => {
                 // Rotate Right
-                // Flags: For right rotates, the OF flag is set to the exclusive OR of the two most-significant bits of the result.
-                (result, carry) = Intel808x::ror_u16_with_carry(operand1, rot_count);
+                (result, carry, overflow) = operand1.alu_ror(rot_count);
                 self.set_flag_state(Flag::Carry, carry);
-
-                // Overflow only defined for ROR of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of two MS bits*
-                    self.set_flag_state(Flag::Overflow, ((result & 0x8000) != 0) ^ ((result & 0x4000) != 0));
-                }
+                self.set_flag_state(Flag::Overflow, overflow);
             }
             Mnemonic::RCL => {
-                // Rotate with Carry Left
-                // Flags: For left rotates, the OF flag is set to the exclusive OR of the CF bit (after the rotate)
-                // and the most-significant bit of the result.
-
-                let existing_carry = self.get_flag(Flag::Carry);
-                (result, carry) = Intel808x::rcl_u16_with_carry(operand1, rot_count, existing_carry);
+                // Rotate through Carry Left
+                (result, carry, overflow) = operand1.alu_rcl(rot_count, self.get_flag(Flag::Carry));
                 self.set_flag_state(Flag::Carry, carry);
-                // Overflow only defined for RCL of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of MSB and CF*
-                    self.set_flag_state(Flag::Overflow, ((result & 0x8000) != 0) ^ carry);
-                }
+                self.set_flag_state(Flag::Overflow, overflow);
             }
             Mnemonic::RCR => {
-                // Rotate with Carry Right
-                // Flags: For right rotates, the OF flag is set to the exclusive OR of the two most-significant bits of the result.
-
-                // Only set overflow on SHL of 1
-                let existing_carry = self.get_flag(Flag::Carry);
-
-                // Overflow only defined for RCL of 1
-                if rot_count == 1 {
-                    // Set overflow to XOR of MSB and CF*
-                    self.set_flag_state(Flag::Overflow, ((operand1 & 0x8000) != 0) ^ existing_carry);
-                }
-
-                (result, carry) = Intel808x::rcr_u16_with_carry(operand1, rot_count, existing_carry);
+                // Rotate through Carry Right
+                (result, carry, overflow) = operand1.alu_rcr(rot_count, self.get_flag(Flag::Carry));
+                self.set_flag_state(Flag::Overflow, overflow);
                 self.set_flag_state(Flag::Carry, carry);
-
-                // The rcr instruction does not affect the zero, sign, parity, or auxiliary carry flags.
-                // AoA 6.6.3.2
             }
             Mnemonic::SETMO => {
+                // Undocumented: SETMO sets all bits in result.
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::AuxCarry);
-                self.clear_flag(Flag::Zero);
                 self.clear_flag(Flag::Overflow);
-
-                self.set_flag(Flag::Parity);
-                self.set_flag(Flag::Sign);
-
                 result = 0xFFFF;
+                self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SETMOC => {
+                // Undocumented: SETMOC sets all bits in result if count > 0
                 if self.c.l() != 0 {
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::AuxCarry);
-                    self.clear_flag(Flag::Zero);
                     self.clear_flag(Flag::Overflow);
-
-                    self.set_flag(Flag::Parity);
-                    self.set_flag(Flag::Sign);
                     result = 0xFFFF;
+                    self.set_szp_flags_from_result_u16(result);
                 }
                 else {
                     result = operand1;
                 }
             }
             Mnemonic::SHL => {
-                (result, carry) = Intel808x::shl_u16_with_carry(operand1, operand2);
+                (result, carry, overflow, aux_carry) = operand1.alu_shl_af(operand2);
                 // Set state of Carry Flag
                 self.set_flag_state(Flag::Carry, carry);
 
                 // Only set overflow on SHL of 1
-                if operand2 == 1 {
+                /*                if operand2 == 1 {
                     // If the two highest order bits were different, then they will change on shift
                     // and overflow should be set
-                    self.set_flag_state(
-                        Flag::Overflow,
-                        (operand1 & 0xC000 == 0x8000) || (operand1 & 0xC000 == 0x4000),
-                    );
+                    //self.set_flag_state(Flag::Overflow, (operand1 & 0xC0 == 0x80) || (operand1 & 0xC0 == 0x40));
+                    self.set_flag_state(Flag::AuxCarry, operand1 & 0x08 != 0);
                 }
+                else {
+                    self.clear_flag(Flag::AuxCarry);
+                }*/
+
+                self.set_flag_state(Flag::AuxCarry, aux_carry);
+                self.set_flag_state(Flag::Overflow, overflow);
                 self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SHR => {
-                (result, carry) = Intel808x::shr_u16_with_carry(operand1, operand2);
-                // Set state of Carry Flag
+                (result, carry) = operand1.alu_shr(operand2);
                 self.set_flag_state(Flag::Carry, carry);
 
                 // Only set overflow on SHR of 1
@@ -488,18 +432,17 @@ impl Intel808x {
                     // so set overflow flag if it was set.
                     self.set_flag_state(Flag::Overflow, operand1 & 0x8000 != 0);
                 }
+                else {
+                    self.clear_flag(Flag::Overflow);
+                }
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u16(result);
             }
             Mnemonic::SAR => {
-                (result, carry) = Intel808x::sar_u16_with_carry(operand1, operand2);
-                // Set Carry Flag
+                (result, carry) = operand1.alu_sar(operand2);
                 self.set_flag_state(Flag::Carry, carry);
-
-                // Clear overflow flag if shift count is 1
-                // AoA 6.6.2.2 SAR
-                if operand2 == 1 {
-                    self.clear_flag(Flag::Overflow);
-                }
+                self.clear_flag(Flag::Overflow);
+                self.clear_flag(Flag::AuxCarry);
                 self.set_szp_flags_from_result_u16(result);
             }
             _ => panic!("Invalid opcode provided to bitshift_op16()"),

@@ -178,20 +178,46 @@ impl_adc!(u16);
 /* ------------------------- Bitwise operations ---------------------------- */
 
 pub trait AluShiftLeft: Sized {
-    fn alu_shl(self, count: u8) -> (Self, bool);
+    fn alu_shl(self, count: u8) -> (Self, bool, bool);
 }
 
 macro_rules! impl_shl {
     ($prim:ty) => {
         impl AluShiftLeft for $prim {
-            fn alu_shl(mut self, mut count: u8) -> (Self, bool) {
+            fn alu_shl(mut self, mut count: u8) -> (Self, bool, bool) {
                 let mut carry = false;
+                let mut overflow = false;
                 while count > 0 {
                     carry = self >> (<$prim>::BITS - 1) != 0;
                     self <<= 1;
+                    overflow = carry ^ (self & (1 << (<$prim>::BITS - 1)) != 0);
                     count -= 1;
                 }
-                (self, carry)
+                (self, carry, overflow)
+            }
+        }
+    };
+}
+
+pub trait AluShiftLeftAf: Sized {
+    fn alu_shl_af(self, count: u8) -> (Self, bool, bool, bool);
+}
+
+macro_rules! impl_shl_af {
+    ($prim:ty) => {
+        impl AluShiftLeftAf for $prim {
+            fn alu_shl_af(mut self, mut count: u8) -> (Self, bool, bool, bool) {
+                let mut carry = false;
+                let mut overflow = false;
+                let mut aux_carry = false;
+                while count > 0 {
+                    carry = self >> (<$prim>::BITS - 1) != 0;
+                    self <<= 1;
+                    overflow = carry ^ (self & (1 << (<$prim>::BITS - 1)) != 0);
+                    aux_carry = (self & 0x10) != 0;
+                    count -= 1;
+                }
+                (self, carry, overflow, aux_carry)
             }
         }
     };
@@ -218,91 +244,124 @@ macro_rules! impl_shr {
 }
 
 pub trait AluRotateLeft: Sized {
-    fn alu_rol(self, count: u8) -> (Self, bool);
+    fn alu_rol(self, count: u8) -> (Self, bool, bool);
 }
 
 macro_rules! impl_rol {
     ($prim:ty) => {
         impl AluRotateLeft for $prim {
-            fn alu_rol(mut self, count: u8) -> (Self, bool) {
+            fn alu_rol(mut self, count: u8) -> (Self, bool, bool) {
                 let mut carry = 0 as $prim;
+                let mut overflow = false;
                 for _ in 0..count {
                     carry = self & (1 << (<$prim>::BITS - 1));
                     self <<= 1;
+                    overflow = (carry != 0) ^ (self & (1 << (<$prim>::BITS - 1)) != 0);
                     self |= carry >> (<$prim>::BITS - 1);
                 }
-                (self, carry != 0)
+                (self, carry != 0, overflow)
             }
         }
     };
 }
 
 pub trait AluRotateCarryLeft: Sized {
-    fn alu_rcl(self, count: u8, carry: bool) -> (Self, bool);
+    fn alu_rcl(self, count: u8, carry: bool) -> (Self, bool, bool);
 }
 
 macro_rules! impl_rcl {
     ($prim:ty) => {
         impl AluRotateCarryLeft for $prim {
-            fn alu_rcl(mut self, count: u8, carry: bool) -> (Self, bool) {
+            fn alu_rcl(mut self, count: u8, carry: bool) -> (Self, bool, bool) {
                 let mut carry = carry as $prim;
+                let mut overflow = false;
                 for _ in 0..count {
                     let saved_carry = carry;
                     carry = self >> (<$prim>::BITS - 1);
                     self <<= 1;
                     self |= saved_carry;
+                    overflow = (carry != 0) ^ (self & (1 << (<$prim>::BITS - 1)) != 0);
                 }
-                (self, carry != 0)
+                (self, carry != 0, overflow)
             }
         }
     };
 }
 
 pub trait AluRotateRight: Sized {
-    fn alu_ror(self, count: u8) -> (Self, bool);
+    fn alu_ror(self, count: u8) -> (Self, bool, bool);
 }
 
 macro_rules! impl_ror {
     ($prim:ty) => {
         impl AluRotateRight for $prim {
-            fn alu_ror(mut self, count: u8) -> (Self, bool) {
+            fn alu_ror(mut self, count: u8) -> (Self, bool, bool) {
                 let mut carry = 0 as $prim;
+                let mut overflow = false;
                 for _ in 0..count {
                     carry = self & 0x01;
                     self >>= 1;
+                    overflow = (carry != 0) ^ (self & (1 << (<$prim>::BITS - 2)) != 0);
                     self |= carry << (<$prim>::BITS - 1);
                 }
-                (self, carry != 0)
+                (self, carry != 0, overflow)
             }
         }
     };
 }
 
 pub trait AluRotateCarryRight: Sized {
-    fn alu_rcr(self, count: u8, carry: bool) -> (Self, bool);
+    fn alu_rcr(self, count: u8, carry: bool) -> (Self, bool, bool);
 }
 
 macro_rules! impl_rcr {
     ($prim:ty) => {
         impl AluRotateCarryRight for $prim {
-            fn alu_rcr(mut self, count: u8, carry: bool) -> (Self, bool) {
+            fn alu_rcr(mut self, count: u8, carry: bool) -> (Self, bool, bool) {
                 let mut carry = carry as $prim << (<$prim>::BITS - 1);
+                let mut overflow = false;
                 for _ in 0..count {
                     let saved_carry = carry;
                     carry = (self & 1) << (<$prim>::BITS - 1);   // (<$prim>::BITS - 1);
                     self >>= 1;
+                    overflow = (saved_carry != 0) ^ (self & (1 << (<$prim>::BITS - 2)) != 0);
                     self |= saved_carry;
                 }
-                (self, carry != 0)
+                (self, carry != 0, overflow)
             }
         }
     }
 }
 
+pub trait AluShiftArithmeticRight: Sized {
+    fn alu_sar(self, count: u8) -> (Self, bool);
+}
+
+macro_rules! impl_sar {
+    ($prim:ty) => {
+        impl AluShiftArithmeticRight for $prim {
+            fn alu_sar(mut self, mut count: u8) -> (Self, bool) {
+                let mut carry = false;
+                let ho_bit = self & (1 << (<$prim>::BITS - 1));
+                for _ in 0..count {
+                    carry = self & 0x01 != 0;
+                    self >>= 1;
+                    self |= ho_bit;
+                }
+                (self, carry)
+            }
+        }
+    };
+}
+
 impl_shl!(u8);
 impl_shl!(u16);
+impl_shl_af!(u8);
+impl_shl_af!(u16);
 impl_shr!(u8);
 impl_shr!(u16);
+impl_sar!(u8);
+impl_sar!(u16);
 impl_rol!(u8);
 impl_rol!(u16);
 impl_rcl!(u8);
@@ -338,17 +397,17 @@ mod tests {
 
     #[test]
     fn test_alu_shl() {
-        let (result, carry) = 0x80u8.alu_shl(1);
+        let (result, carry, overflow) = 0x80u8.alu_shl(1);
         assert_eq!(result, 0);
         assert_eq!(carry, true);
-        let (result, carry) = 0x01u8.alu_shl(7);
+        let (result, carry, overflow) = 0x01u8.alu_shl(7);
         assert_eq!(result, 0x80);
         assert_eq!(carry, false);
 
-        let (result, carry) = 0x0080u16.alu_shl(1);
+        let (result, carry, overflow) = 0x0080u16.alu_shl(1);
         assert_eq!(result, 0x0100);
         assert_eq!(carry, false);
-        let (result, carry) = 0xFF00u16.alu_shl(8);
+        let (result, carry, overflow) = 0xFF00u16.alu_shl(8);
         assert_eq!(result, 0x0000);
         assert_eq!(carry, true);
     }

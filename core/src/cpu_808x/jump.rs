@@ -31,6 +31,7 @@
 
 use crate::{
     cpu_808x::{biu::*, *},
+    cycles_mc,
     util,
 };
 
@@ -44,7 +45,7 @@ impl Intel808x {
         }
         //self.biu_fetch_suspend_i(0x0d2);
         self.biu_fetch_suspend();
-        self.cycles_i(4, &[0x0d2, 0x0d3, MC_CORR, 0x0d4]);
+        cycles_mc!(self, 0x0d2, 0x0d3, MC_CORR, 0x0d4);
         self.pc = new_pc;
         self.biu_queue_flush(); // 0d5
         self.cycle_i(0x0d5);
@@ -59,7 +60,7 @@ impl Intel808x {
         }
         //self.biu_fetch_suspend_i(0x0d2);
         self.biu_fetch_suspend();
-        self.cycles_i(2, &[0x0d2, 0x0d3]);
+        cycles_mc!(self, 0x0d2, 0x0d3);
         self.corr();
         self.pc = util::relative_offset_u16(self.pc, rel);
         self.cycle_i(0x0d4);
@@ -75,24 +76,24 @@ impl Intel808x {
             self.cycle_i(MC_JUMP);
         }
         self.biu_fetch_suspend(); // 0x06B
-        self.cycles_i(2, &[0x06b, 0x06c]);
+        cycles_mc!(self, 0x06b, 0x06c);
         self.corr();
         // Push return segment to stack
         self.push_u16(self.cs, ReadWriteFlag::Normal);
         self.cs = new_cs;
-        self.cycles_i(2, &[0x06e, 0x06f]);
+        cycles_mc!(self, 0x06e, 0x06f);
         self.nearcall(new_ip);
     }
 
     /// Execute the FARCALL2 microcode routine. Called by interrupt procedures.
     #[inline]
     pub fn farcall2(&mut self, new_cs: u16, new_ip: u16) {
-        self.cycles_i(2, &[MC_JUMP, 0x06c]);
+        cycles_mc!(self, MC_JUMP, 0x06c);
         self.corr();
         // Push return segment to stack
         self.push_u16(self.cs, ReadWriteFlag::Normal);
         self.cs = new_cs;
-        self.cycles_i(2, &[0x06e, 0x06f]);
+        cycles_mc!(self, 0x06e, 0x06f);
         self.nearcall(new_ip);
     }
 
@@ -103,7 +104,7 @@ impl Intel808x {
         self.cycle_i(MC_JUMP);
         self.pc = new_ip;
         self.biu_queue_flush();
-        self.cycles_i(3, &[0x077, 0x078, 0x079]);
+        cycles_mc!(self, 0x077, 0x078, 0x079);
         self.push_u16(ret_ip, ReadWriteFlag::RNI);
     }
 
@@ -115,7 +116,7 @@ impl Intel808x {
         self.pc = self.pop_u16();
         self.biu_fetch_suspend();
         //self.cycle_i(MC_NONE);
-        self.cycles_i(2, &[0x0c3, 0x0c4]);
+        cycles_mc!(self, 0x0c3, 0x0c4);
 
         let far2 = self.i.opcode & 0x08 != 0;
         assert_eq!(far, far2);
@@ -125,11 +126,11 @@ impl Intel808x {
             self.pop_register16(Register16::CS, ReadWriteFlag::Normal);
 
             self.biu_queue_flush();
-            self.cycles_i(2, &[0x0c7, MC_RTN]);
+            cycles_mc!(self, 0x0c7, MC_RTN);
         }
         else {
             self.biu_queue_flush();
-            self.cycles_i(2, &[0x0c5, MC_RTN]);
+            cycles_mc!(self, 0x0c5, MC_RTN);
         }
     }
 }

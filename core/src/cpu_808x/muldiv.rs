@@ -31,7 +31,7 @@
 
 */
 
-use crate::{cpu_808x::*, cpu_common::alu::*};
+use crate::{cpu_808x::*, cpu_common::alu::*, cycles_mc};
 pub trait Cord<B = Self>: Sized {
     fn cord(self, cpu: &mut Intel808x, a: u16, b: u16, c: u16) -> Result<(u16, u16, bool), bool>;
 }
@@ -51,14 +51,20 @@ macro_rules! impl_cord {
                 let mut sigma_s: Self;
 
                 let mut carry;
+                let mut aux_carry;
                 let mut carry_sub;
 
                 // 188:           | SUBT tmpa
-                (_, carry, _, _) = (tmpa as Self).alu_sub(tmpb as Self);
+                (sigma_s, carry, _, aux_carry) = (tmpa as Self).alu_sub(tmpb as Self);
+
                 // 189: SIGMA->.  | MAXC
                 internal_counter = Self::BITS;
+                // SET FLAGS HERE
+                // WIP these aren't correct yet.
+                cpu.set_flag_state(Flag::AuxCarry, aux_carry);
+                cpu.set_szp_flags_from_result_u16(sigma_s as u16);
 
-                cpu.cycles_i(3, &[0x188, 0x189, 0x18a]);
+                cycles_mc!(cpu, 0x188, 0x189, 0x18a);
 
                 // 18a:           | NCY INT0
                 if !carry {
@@ -72,23 +78,25 @@ macro_rules! impl_cord {
                 while internal_counter > 0 {
                     //println!("ic: {} tmpa: {} tmpb: {} tmpc: {}", internal_counter, tmpa, tmpb, tmpc);
                     // 18b:
-                    (sigma_s, carry) = (tmpc as Self).alu_rcl(1, carry);
+                    (sigma_s, carry, _) = (tmpc as Self).alu_rcl(1, carry);
                     tmpc = sigma_s as u16;
 
                     // 18c:
-                    (sigma_s, carry) = (tmpa as Self).alu_rcl(1, carry);
+                    (sigma_s, carry, _) = (tmpa as Self).alu_rcl(1, carry);
 
                     // 18d:
                     tmpa = sigma_s as u16;
-                    (sigma_s, carry_sub, _, _) = (tmpa as Self).alu_sub(tmpb as Self);
+                    (sigma_s, carry_sub, _, aux_carry) = (tmpa as Self).alu_sub(tmpb as Self);
                     sigma = sigma_s as u16;
 
-                    cpu.cycles_i(4, &[0x18b, 0x18c, 0x18d, 0x18e]);
+                    //(sigma, carry_sub, _, aux_carry) = tmpa.alu_sub(tmpb);
+
+                    cycles_mc!(cpu, 0x18b, 0x18c, 0x18d, 0x18e);
 
                     // 18e:
                     if carry {
                         // Jump delay
-                        cpu.cycles_i(3, &[MC_JUMP, 0x195, 0x196]);
+                        cycles_mc!(cpu, MC_JUMP, 0x195, 0x196);
                         // 195:
                         carry = false;
                         // 196: SIGMA->tmpa  | NCZ 3
@@ -102,15 +110,18 @@ macro_rules! impl_cord {
                         }
                         else {
                             // Continue to 197:
-                            cpu.cycles_i(2, &[0x197, MC_JUMP]);
+                            cycles_mc!(cpu, 0x197, MC_JUMP);
                         }
                     }
                     else {
                         // 18f: SIGMA->.     | F
                         carry = carry_sub;
                         // SET FLAGS HERE
+                        // WIP these aren't correct yet.
+                        cpu.set_flag_state(Flag::AuxCarry, aux_carry);
+                        cpu.set_szp_flags_from_result_u8(sigma as u8);
 
-                        cpu.cycles_i(2, &[0x18f, 0x190]);
+                        cycles_mc!(cpu, 0x18f, 0x190);
 
                         // 190:    NCY 14
                         if !carry {
@@ -118,7 +129,7 @@ macro_rules! impl_cord {
 
                             // 196: SIGMA->tmpa    | NCZ 3
                             tmpa = sigma;
-                            cpu.cycles_i(2, &[MC_JUMP, 0x196]);
+                            cycles_mc!(cpu, MC_JUMP, 0x196);
                             internal_counter -= 1;
                             if internal_counter > 0 {
                                 // 196: SIGMA->tmpa    | NCZ 3
@@ -128,7 +139,7 @@ macro_rules! impl_cord {
                             }
                             else {
                                 // Continue to 197:
-                                cpu.cycles_i(2, &[0x197, MC_JUMP]);
+                                cycles_mc!(cpu, 0x197, MC_JUMP);
                             }
                         }
                         else {
@@ -149,15 +160,15 @@ macro_rules! impl_cord {
                 }
 
                 // 192
-                (sigma_s, carry) = (tmpc as Self).alu_rcl(1, carry);
+                (sigma_s, carry, _) = (tmpc as Self).alu_rcl(1, carry);
 
                 // 193: SIGMA->tmpc
                 tmpc = sigma_s as u16;
 
                 // 194: SIGMA->no dest | RTN
-                (_, carry) = (tmpc as Self).alu_rcl(1, carry);
+                (_, carry, _) = (tmpc as Self).alu_rcl(1, carry);
 
-                cpu.cycles_i(4, &[0x192, 0x193, 0x194, MC_RTN]);
+                cycles_mc!(cpu, 0x192, 0x193, 0x194, MC_RTN);
                 //println!("cord_finish(): tmpc: {} tmpa: {}", tmpc, tmpa);
 
                 Ok((tmpc, tmpa, carry))
@@ -186,11 +197,11 @@ macro_rules! impl_corx {
                 let mut tmpc: u16 = c;
                 let mut sigma_s: Self;
 
-                (sigma_s, carry) = (tmpc as Self).alu_rcr(1, carry); // 17f: ZERO->tmpa  | RRCY tmpc
+                (sigma_s, carry, _) = (tmpc as Self).alu_rcr(1, carry); // 17f: ZERO->tmpa  | RRCY tmpc
                 tmpa = 0;
                 tmpc = sigma_s as u16; // 180: SIGMA->tmpc
                 internal_counter = Self::BITS - 1; // 180: MAXC
-                cpu.cycles_i(2, &[0x17f, 0x180]);
+                cycles_mc!(cpu, 0x17f, 0x180);
 
                 // The main corx loop is between 181-186.
                 loop {
@@ -200,7 +211,7 @@ macro_rules! impl_corx {
                     if carry {
                         (sigma_s, carry, _, _) = (tmpa as Self).alu_add(tmpb as Self); // 182:             | ADD tmpa
                         tmpa = sigma_s as u16; // 183: SIGMA->tmpa    | F
-                        cpu.cycles_i(2, &[0x182, 0x183]);
+                        cycles_mc!(cpu, 0x182, 0x183);
                         // SET FLAGS HERE
                     }
                     else {
@@ -208,12 +219,12 @@ macro_rules! impl_corx {
                         cpu.cycle_i(MC_JUMP);
                     }
 
-                    (sigma_s, carry) = (tmpa as Self).alu_rcr(1, carry); // 184:             | RRCY tmpa
+                    (sigma_s, carry, _) = (tmpa as Self).alu_rcr(1, carry); // 184:             | RRCY tmpa
                     tmpa = sigma_s as u16; // 185
-                    (sigma_s, carry) = (tmpc as Self).alu_rcr(1, carry); // 185: SIGMA->tmpa | RRCY tmpc
+                    (sigma_s, carry, _) = (tmpc as Self).alu_rcr(1, carry); // 185: SIGMA->tmpa | RRCY tmpc
                     tmpc = sigma_s as u16; // 186: SIGMA->tmpc | NCZ 5
 
-                    cpu.cycles_i(3, &[0x184, 0x185, 0x186]);
+                    cycles_mc!(cpu, 0x184, 0x185, 0x186);
 
                     if internal_counter == 0 {
                         break; // 186: no-jump
@@ -227,7 +238,7 @@ macro_rules! impl_corx {
                 }
 
                 // Fall through line 186
-                cpu.cycles_i(2, &[0x187, MC_RTN]); // 187 'RTN', return delay cycle
+                cycles_mc!(cpu, 0x187, MC_RTN); // 187 'RTN', return delay cycle
 
                 (tmpa, tmpc)
             }
@@ -273,13 +284,13 @@ macro_rules! impl_cor_negate {
 
                     if carry {
                         sigma = !tmpa; // 1b8, jump, 1ba: SIGMA->tmpa | CF1
-                        cpu.cycles_i(5, &[0x1b6, 0x1b7, 0x1b8, MC_JUMP, 0x1ba]);
+                        cycles_mc!(cpu, 0x1b6, 0x1b7, 0x1b8, MC_JUMP, 0x1ba);
                     }
                     else {
                         (sigma, _, _, _) = tmpa.alu_neg();
                         //(sigma_s, _, _, _) = (tmpa as Self).alu_neg(); // 1b8, 1b9, 1ba: SIGMA->tmpa | CF1
                         //sigma = sigma_s as u16;
-                        cpu.cycles_i(5, &[0x1b6, 0x1b7, 0x1b8, 0x1b9, 0x1ba]);
+                        cycles_mc!(cpu, 0x1b6, 0x1b7, 0x1b8, 0x1b9, 0x1ba);
                     }
 
                     tmpa = sigma; // 1ba
@@ -297,7 +308,7 @@ macro_rules! impl_cor_negate {
                 //(sigma, next_carry, _, _) = (tmpb as Self).alu_neg();
                 //sigma = sigma_s as u16;
 
-                cpu.cycles_i(3, &[0x1bb, 0x1bc, 0x1bd]);
+                cycles_mc!(cpu, 0x1bb, 0x1bc, 0x1bd);
                 //println!("  NEGATE: a: {:04x} b: {:04x} c:{:04x} tmpb Carry flag is : {}", tmpa, tmpb, tmpc, carry);
                 // 1bd:             | NCY 11
                 if !carry {
@@ -305,7 +316,7 @@ macro_rules! impl_cor_negate {
 
                     // Jump to 11
                     // 1bf:         | RTN
-                    cpu.cycles_i(3, &[MC_JUMP, 0x1bf, MC_RTN]);
+                    cycles_mc!(cpu, MC_JUMP, 0x1bf, MC_RTN);
                 }
                 else {
                     // tmpb was negative
@@ -314,7 +325,7 @@ macro_rules! impl_cor_negate {
                     _ = next_carry;
                     tmpb = sigma; // tmpb = NEG tmpb
                     neg_flag = !neg_flag; // 1be
-                    cpu.cycles_i(2, &[0x1be, MC_RTN]);
+                    cycles_mc!(cpu, 0x1be, MC_RTN);
                 }
 
                 (tmpa, tmpb, tmpc, carry, neg_flag)
@@ -328,7 +339,7 @@ impl_cor_negate!(u16);
 
 impl Intel808x {
     #[allow(dead_code)]
-    #[allow(unused_assignments)] // This isn't pretty but we are trying to mirror the microcode
+    #[allow(unused_assignments)] // This isn't pretty, but we are trying to mirror the microcode
     /// Microcode routine for multiplication, 8 bit
     /// Accepts al and 8-bit operand, returns 16 bit product (for AX)
     pub fn mul8(&mut self, al: u8, operand: u8, signed: bool, mut negate: bool) -> u16 {
@@ -343,7 +354,7 @@ impl Intel808x {
         //(_, carry) = rcl_u8_with_carry(tmpc as u8, 1, carry);
         carry = tmpc & 0x80 != 0; // LRCY is just checking MSB of tmpc
         let mut tmpb: u16 = operand as u16; // 151: M->tmpb    | X0 PREIMUL
-        self.cycles_i(2, &[0x150, 0x151]);
+        cycles_mc!(self, 0x150, 0x151);
 
         // PREIMUL if signed == true
         // -------------------------------------------------------------------------
@@ -351,12 +362,12 @@ impl Intel808x {
             // JMP PREIMUL
             (sigma, _, _, _) = tmpc.alu_neg(); // 1c0: SIGMA->.   | NEG tmpc
                                                // 1c1             | NCY 7
-            self.cycles_i(3, &[MC_JUMP, 0x1c0, 0x1c1]);
+            cycles_mc!(self, MC_JUMP, 0x1c0, 0x1c1);
 
             if carry {
                 tmpc = sigma;
                 negate = !negate; // 1c2: SIGMA->tmpc | CF1   (flip F1 flag)
-                self.cycles_i(3, &[0x1c2, 0x1c3, MC_JUMP]);
+                cycles_mc!(self, 0x1c2, 0x1c3, MC_JUMP);
             }
             else {
                 self.cycle_i(MC_JUMP);
@@ -367,7 +378,7 @@ impl Intel808x {
         }
 
         // 152:            | UNC CORX
-        self.cycles_i(2, &[0x152, MC_JUMP]);
+        cycles_mc!(self, 0x152, MC_JUMP);
 
         (tmpa, tmpc) = (tmpb as u8).corx(self, tmpb, tmpc, carry);
         //let (accum, tmpc8) = self.corx8(tmpb as u8, tmpc as u8, carry);
@@ -399,21 +410,27 @@ impl Intel808x {
             tmpb = 0;
             //(_, carry) = rcl_u8_with_carry(tmpc as u8, 1, carry);  // Test if tmpc is negative
             carry = tmpc & 0x80 != 0; // LRCY is just checking msb of tmpc
-            (sigma8, _, _, _) = (tmpa as u8).alu_adc(tmpb as u8, carry);
-            self.cycles_i(3, &[0x1cd, 0x1ce, 0x1cf]);
+
+            //(sigma8, _, _, _) = (tmpa as u8).alu_adc(tmpb as u8, carry);
+            let aux_carry: bool;
+            (sigma, _, _, aux_carry) = tmpa.alu_adc(tmpb, carry);
+            cycles_mc!(self, 0x1cd, 0x1ce, 0x1cf);
             // SET FLAGS HERE
+            self.set_flag_state(Flag::AuxCarry, aux_carry);
+            self.set_szp_flags_from_result_u16(sigma);
 
             // 1d0:             | Z 8
-            if sigma8 == 0 {
+            //if sigma8 == 0 {
+            if sigma == 0 {
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.cycles_i(4, &[0x1d0, MC_JUMP, 0x1cc, MC_JUMP]);
+                cycles_mc!(self, 0x1d0, MC_JUMP, 0x1cc, MC_JUMP);
             }
             else {
                 // 1d1:              | SCOF RTN
                 self.set_flag(Flag::Carry);
                 self.set_flag(Flag::Overflow);
-                self.cycles_i(3, &[0x1d0, 0x1d1, MC_JUMP]);
+                cycles_mc!(self, 0x1d0, 0x1d1, MC_JUMP);
             }
 
             // 155: tmpc -> A      | X0 7
@@ -421,7 +438,7 @@ impl Intel808x {
             // 157: tmpa -> X      | RNI
 
             //self.cycles_i(3, &[0x155, MC_JUMP, 0x157]);
-            self.cycles_i(2, &[0x155, MC_JUMP]);
+            cycles_mc!(self, 0x155, MC_JUMP);
 
             let product = tmpa << 8 | (tmpc & 0xFF);
             return product;
@@ -439,7 +456,7 @@ impl Intel808x {
         // 1d3: SIGMA->.       | UNC 12  | F  (Set flags)
         // JMP
 
-        self.cycles_i(6, &[0x155, 0x156, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP]);
+        cycles_mc!(self, 0x155, 0x156, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP);
         zf = sigma == 0;
 
         // 1d0:                | Z 8  (jump if zero)
@@ -448,13 +465,13 @@ impl Intel808x {
             // 1cc:             | CCOF RTN
             self.clear_flag(Flag::Carry);
             self.clear_flag(Flag::Overflow);
-            self.cycles_i(4, &[0x1d0, MC_JUMP, 0x1cc, MC_JUMP]);
+            cycles_mc!(self, 0x1d0, MC_JUMP, 0x1cc, MC_JUMP);
         }
         else {
             // 1d1:             | SCOF RTN
             self.set_flag(Flag::Carry);
             self.set_flag(Flag::Overflow);
-            self.cycles_i(3, &[0x1d0, 0x1d1, MC_JUMP]);
+            cycles_mc!(self, 0x1d0, 0x1d1, MC_JUMP);
         }
 
         //self.cycle_i(0x157); // 157: tmpa-> X        | RNI
@@ -477,7 +494,7 @@ impl Intel808x {
         //(_, carry) = rcl_u16_with_carry(tmpc, 1, carry); // SIGMA isn't used? Just setting carry flag(?)
         carry = tmpc & 0x8000 != 0; // LRCY is just checking msb
         let mut tmpb: u16 = operand as u16; // 159: M->tmpb    | X0 PREIMUL
-        self.cycles_i(2, &[0x158, 0x159]);
+        cycles_mc!(self, 0x158, 0x159);
 
         // PREIMUL if signed == true
         // -------------------------------------------------------------------------
@@ -485,12 +502,12 @@ impl Intel808x {
             // JMP PREIMUL
             (sigma, _, _, _) = tmpc.alu_neg(); // 1c0: SIGMA->.   | NEG tmpc
                                                // 1c1             | NCY 7
-            self.cycles_i(3, &[MC_JUMP, 0x1c0, 0x1c1]);
+            cycles_mc!(self, MC_JUMP, 0x1c0, 0x1c1);
 
             if carry {
                 tmpc = sigma;
                 negate = !negate; // 1c2: SIGMA->tmpc | CF1   (flip F1 flag)
-                self.cycles_i(3, &[0x1c2, 0x1c3, MC_JUMP]);
+                cycles_mc!(self, 0x1c2, 0x1c3, MC_JUMP);
             }
             else {
                 self.cycle_i(MC_JUMP);
@@ -501,7 +518,7 @@ impl Intel808x {
         }
 
         // 15a:            | UNC CORX
-        self.cycles_i(2, &[0x15a, MC_JUMP]);
+        cycles_mc!(self, 0x15a, MC_JUMP);
 
         (tmpa, tmpc) = tmpb.corx(self, tmpb, tmpc, carry);
         //(tmpa, tmpc) = self.corx16(tmpb, tmpc, carry);
@@ -527,28 +544,31 @@ impl Intel808x {
             tmpb = 0; // 1cd
                       //(_, carry) = rcl_u16_with_carry(tmpc, 1, carry);  // Test if tmpc is negative
             carry = tmpc & 0x8000 != 0; // 1cd: LRCY is just checking msb of tmpc
-            (sigma, _, _, _) = tmpa.alu_adc(tmpb, carry);
-            self.cycles_i(3, &[0x1cd, 0x1ce, 0x1cf]);
+            let aux_carry: bool;
+            (sigma, _, _, aux_carry) = tmpa.alu_adc(tmpb, carry);
+            cycles_mc!(self, 0x1cd, 0x1ce, 0x1cf);
             // Set flags here
+            self.set_flag_state(Flag::AuxCarry, aux_carry);
+            self.set_szp_flags_from_result_u16(sigma);
 
             // 1d0:             | Z 8
             if sigma == 0 {
                 self.clear_flag(Flag::Carry);
                 self.clear_flag(Flag::Overflow);
-                self.cycles_i(4, &[0x1d0, MC_JUMP, 0x1cc, MC_JUMP]);
+                cycles_mc!(self, 0x1d0, MC_JUMP, 0x1cc, MC_JUMP);
             }
             else {
                 // 1d1:              | SCOF RTN
                 self.set_flag(Flag::Carry);
                 self.set_flag(Flag::Overflow);
-                self.cycles_i(3, &[0x1d0, 0x1d1, MC_JUMP]);
+                cycles_mc!(self, 0x1d0, 0x1d1, MC_JUMP);
             }
 
             // 15d: tmpc -> A      | X0 7
             // JUMP
             // 15f: tmpa -> X      | RNI
             //self.cycles_i(3, &[0x15d, MC_JUMP, 0x15f]);
-            self.cycles_i(2, &[0x15d, MC_JUMP]);
+            cycles_mc!(self, 0x15d, MC_JUMP);
             return (tmpa, tmpc);
         }
         // 15d: tmpc -> A      | X0 7
@@ -561,7 +581,7 @@ impl Intel808x {
         sigma = tmpa;
         // 1d3: SIGMA->.       | UNC 12  | F  (Set flags)
         // JMP
-        self.cycles_i(6, &[0x15d, 0x15e, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP]);
+        cycles_mc!(self, 0x15d, 0x15e, MC_JUMP, 0x1d2, 0x1d3, MC_JUMP);
         zf = sigma == 0;
 
         // 1d0:                | Z 8  (jump if zero)
@@ -570,13 +590,13 @@ impl Intel808x {
             // 1cc:             | CCOF RTN
             self.clear_flag(Flag::Carry);
             self.clear_flag(Flag::Overflow);
-            self.cycles_i(4, &[0x1d0, MC_JUMP, 0x1cc, MC_JUMP]);
+            cycles_mc!(self, 0x1d0, MC_JUMP, 0x1cc, MC_JUMP);
         }
         else {
             // 1d1:             | SCOF RTN
             self.set_flag(Flag::Carry);
             self.set_flag(Flag::Overflow);
-            self.cycles_i(3, &[0x1d0, 0x1d1, MC_JUMP]);
+            cycles_mc!(self, 0x1d0, 0x1d1, MC_JUMP);
         }
 
         // 157: tmpa-> X        | RNI
@@ -601,12 +621,12 @@ impl Intel808x {
         let mut carry: bool;
         let carry_next: bool;
 
-        self.cycles_i(3, &[0x160, 0x161, 0x162]);
+        cycles_mc!(self, 0x160, 0x161, 0x162);
 
         //log::debug!("  div8: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
 
         // Is dividend negative?
-        (_, carry_next) = (tmpa as u8).alu_rcl(1, false);
+        (_, carry_next, _) = (tmpa as u8).alu_rcl(1, false);
 
         // Do PREIDIV if signed
         if signed {
@@ -614,7 +634,7 @@ impl Intel808x {
             //sigma16 = sigma8 as u16;
             carry = carry_next;
 
-            self.cycles_i(3, &[MC_JUMP, 0x1b4, 0x1b5]);
+            cycles_mc!(self, MC_JUMP, 0x1b4, 0x1b5);
 
             // 1b5:             | NCY 7
             if !carry {
@@ -633,7 +653,7 @@ impl Intel808x {
         }
 
         // 163
-        self.cycles_i(2, &[0x163, MC_JUMP]);
+        cycles_mc!(self, 0x163, MC_JUMP);
         (tmpc, tmpa, carry) = match (tmpa as u8).cord(self, tmpa, tmpb, tmpc) {
             Ok((tmpc, tmpa, carry)) => (tmpc, tmpa, carry),
             Err(_) => {
@@ -647,11 +667,11 @@ impl Intel808x {
         // 165 X->tmpb | X0 POSTDIV
         tmpb = dividend >> 8;
 
-        self.cycles_i(2, &[0x164, 0x165]);
+        cycles_mc!(self, 0x164, 0x165);
 
         // Call POSTIDIV if signed
         if signed {
-            self.cycles_i(2, &[MC_JUMP, 0x1c4]);
+            cycles_mc!(self, MC_JUMP, 0x1c4);
             //log::debug!("  div8: POSTIDIV");
 
             // 1c4:         | NCY INT0
@@ -661,7 +681,7 @@ impl Intel808x {
             }
 
             // 1c5:
-            (_, carry) = (tmpb as u8).alu_rcl(1, false);
+            (_, carry, _) = (tmpb as u8).alu_rcl(1, false);
             // 1c6:
 
             //(sigma_next8, _, _, _) = (tmpa as u8).alu_neg();
@@ -670,7 +690,7 @@ impl Intel808x {
 
             // 1c7:
 
-            self.cycles_i(3, &[0x1c5, 0x1c6, 0x1c7]);
+            cycles_mc!(self, 0x1c5, 0x1c6, 0x1c7);
 
             if !carry {
                 // divisor is positive
@@ -688,7 +708,7 @@ impl Intel808x {
             // 1c9              | INC tmpc
             sigma16 = tmpc.wrapping_add(1) as u16;
 
-            self.cycles_i(2, &[0x1c9, 0x1ca]);
+            cycles_mc!(self, 0x1c9, 0x1ca);
             // 1ca              | F1 8
             if !negate {
                 //log::debug!("  div8: negate flag not set: tmpc = !tmpc");
@@ -701,7 +721,7 @@ impl Intel808x {
             }
 
             // clear carry, overflow flag here
-            self.cycles_i(2, &[0x1cc, MC_RTN]);
+            cycles_mc!(self, 0x1cc, MC_RTN);
         }
 
         tmpc = sigma16; // 166: SIGMA -> AL  (Quotient)
@@ -725,11 +745,11 @@ impl Intel808x {
         let mut carry: bool;
         let carry_next: bool;
 
-        self.cycles_i(3, &[0x168, 0x169, 0x16a]);
+        cycles_mc!(self, 0x168, 0x169, 0x16a);
 
         //log::debug!("  div16: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
 
-        (_, carry_next) = tmpa.alu_rcl(1, false);
+        (_, carry_next, _) = tmpa.alu_rcl(1, false);
 
         // Do PREIDIV if signed
         if signed {
@@ -737,7 +757,7 @@ impl Intel808x {
             //sigma16 = sigma8 as u16;
             carry = carry_next;
 
-            self.cycles_i(3, &[MC_JUMP, 0x1b4, 0x1b5]);
+            cycles_mc!(self, MC_JUMP, 0x1b4, 0x1b5);
 
             // 1b5:             | NCY 7
             if !carry {
@@ -754,7 +774,7 @@ impl Intel808x {
         }
 
         // 16b:
-        self.cycles_i(2, &[0x163, MC_JUMP]);
+        cycles_mc!(self, 0x163, MC_JUMP);
         (tmpc, tmpa, carry) = match tmpa.cord(self, tmpa, tmpb, tmpc) {
             Ok((tmpc, tmpa, carry)) => (tmpc, tmpa, carry),
             Err(_) => return Err(false),
@@ -766,11 +786,11 @@ impl Intel808x {
         // 16d DE->tmpb | X0 POSTDIV
         tmpb = (dividend >> 16) as u16;
 
-        self.cycles_i(2, &[0x16c, 0x16d]);
+        cycles_mc!(self, 0x16c, 0x16d);
 
         // Call POSTIDIV if signed
         if signed {
-            self.cycles_i(2, &[MC_JUMP, 0x1c4]);
+            cycles_mc!(self, MC_JUMP, 0x1c4);
             //log::debug!("  div16: POSTIDIV");
 
             // 1c4:         | NCY INT0
@@ -780,13 +800,13 @@ impl Intel808x {
             }
 
             // 1c5:
-            (_, carry) = tmpb.alu_rcl(1, false);
+            (_, carry, _) = tmpb.alu_rcl(1, false);
             // 1c6:
 
             (sigma_next, _, _, _) = tmpa.alu_neg();
             // 1c7:
 
-            self.cycles_i(3, &[0x1c5, 0x1c6, 0x1c7]);
+            cycles_mc!(self, 0x1c5, 0x1c6, 0x1c7);
 
             if !carry {
                 // divisor is positive
@@ -804,7 +824,7 @@ impl Intel808x {
             // 1c9              | INC tmpc
             sigma16 = tmpc.wrapping_add(1);
 
-            self.cycles_i(2, &[0x1c9, 0x1ca]);
+            cycles_mc!(self, 0x1c9, 0x1ca);
             // 1ca              | F1 8
             if !negate {
                 //log::debug!("  div16 negate flag not set: COM tmpc");
@@ -817,7 +837,7 @@ impl Intel808x {
             }
 
             // clear carry, overflow flag here
-            self.cycles_i(2, &[0x1cc, MC_RTN]);
+            cycles_mc!(self, 0x1cc, MC_RTN);
         }
 
         tmpc = sigma16; // 16e: SIGMA -> AX (Quotient)

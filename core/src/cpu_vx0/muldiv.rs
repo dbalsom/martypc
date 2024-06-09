@@ -72,11 +72,11 @@ macro_rules! impl_cord {
                 while internal_counter > 0 {
                     //println!("ic: {} tmpa: {} tmpb: {} tmpc: {}", internal_counter, tmpa, tmpb, tmpc);
                     // 18b:
-                    (sigma_s, carry) = (tmpc as Self).alu_rcl(1, carry);
+                    (sigma_s, carry, _) = (tmpc as Self).alu_rcl(1, carry);
                     tmpc = sigma_s as u16;
 
                     // 18c:
-                    (sigma_s, carry) = (tmpa as Self).alu_rcl(1, carry);
+                    (sigma_s, carry, _) = (tmpa as Self).alu_rcl(1, carry);
 
                     // 18d:
                     tmpa = sigma_s as u16;
@@ -149,13 +149,13 @@ macro_rules! impl_cord {
                 }
 
                 // 192
-                (sigma_s, carry) = (tmpc as Self).alu_rcl(1, carry);
+                (sigma_s, carry, _) = (tmpc as Self).alu_rcl(1, carry);
 
                 // 193: SIGMA->tmpc
                 tmpc = sigma_s as u16;
 
                 // 194: SIGMA->no dest | RTN
-                (_, carry) = (tmpc as Self).alu_rcl(1, carry);
+                (_, carry, _) = (tmpc as Self).alu_rcl(1, carry);
 
                 cpu.cycles_i(4, &[0x192, 0x193, 0x194, MC_RTN]);
                 //println!("cord_finish(): tmpc: {} tmpa: {}", tmpc, tmpa);
@@ -186,7 +186,7 @@ macro_rules! impl_corx {
                 let mut tmpc: u16 = c;
                 let mut sigma_s: Self;
 
-                (sigma_s, carry) = (tmpc as Self).alu_rcr(1, carry); // 17f: ZERO->tmpa  | RRCY tmpc
+                (sigma_s, carry, _) = (tmpc as Self).alu_rcr(1, carry); // 17f: ZERO->tmpa  | RRCY tmpc
                 tmpa = 0;
                 tmpc = sigma_s as u16; // 180: SIGMA->tmpc
                 internal_counter = Self::BITS - 1; // 180: MAXC
@@ -208,9 +208,9 @@ macro_rules! impl_corx {
                         cpu.cycle_i(MC_JUMP);
                     }
 
-                    (sigma_s, carry) = (tmpa as Self).alu_rcr(1, carry); // 184:             | RRCY tmpa
+                    (sigma_s, carry, _) = (tmpa as Self).alu_rcr(1, carry); // 184:             | RRCY tmpa
                     tmpa = sigma_s as u16; // 185
-                    (sigma_s, carry) = (tmpc as Self).alu_rcr(1, carry); // 185: SIGMA->tmpa | RRCY tmpc
+                    (sigma_s, carry, _) = (tmpc as Self).alu_rcr(1, carry); // 185: SIGMA->tmpa | RRCY tmpc
                     tmpc = sigma_s as u16; // 186: SIGMA->tmpc | NCZ 5
 
                     cpu.cycles_i(3, &[0x184, 0x185, 0x186]);
@@ -605,7 +605,7 @@ impl NecVx0 {
         //log::debug!("  div8: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
 
         // Is dividend negative?
-        (_, carry_next) = (tmpa as u8).alu_rcl(1, false);
+        (_, carry_next, _) = (tmpa as u8).alu_rcl(1, false);
 
         // Do PREIDIV if signed
         if signed {
@@ -660,7 +660,7 @@ impl NecVx0 {
             }
 
             // 1c5:
-            (_, carry) = (tmpb as u8).alu_rcl(1, false);
+            (_, carry, _) = (tmpb as u8).alu_rcl(1, false);
             // 1c6:
 
             //(sigma_next8, _, _, _) = (tmpa as u8).alu_neg();
@@ -728,7 +728,7 @@ impl NecVx0 {
 
         //log::debug!("  div16: a: {:04x}, b: {:04x}, c: {:04x}, n: {}", tmpa, tmpb, tmpc, negate);
 
-        (_, carry_next) = tmpa.alu_rcl(1, false);
+        (_, carry_next, _) = tmpa.alu_rcl(1, false);
 
         // Do PREIDIV if signed
         if signed {
@@ -779,7 +779,7 @@ impl NecVx0 {
             }
 
             // 1c5:
-            (_, carry) = tmpb.alu_rcl(1, false);
+            (_, carry, _) = tmpb.alu_rcl(1, false);
             // 1c6:
 
             (sigma_next, _, _, _) = tmpa.alu_neg();

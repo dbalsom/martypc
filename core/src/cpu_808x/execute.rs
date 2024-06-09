@@ -42,7 +42,10 @@ use crate::{
         Segment,
         OPCODE_PREFIX_REP1,
         OPCODE_PREFIX_REP2,
+        OPCODE_SEG_OVERRIDE_MASK,
     },
+    cycles,
+    cycles_mc,
     util,
 };
 
@@ -213,52 +216,77 @@ impl Intel808x {
 
         // Main opcode dispatch
         match self.i.opcode {
-            0x00 | 0x02 | 0x04 |  // ADD r/m8, r8 | r8, r/m8 | al, imm8
-            0x08 | 0x0A | 0x0C |  // OR  r/m8, r8 | r8, r/m8 | al, imm8
-            0x10 | 0x12 | 0x14 |  // ADC r/m8, r8 | r8, r/m8 | al, imm8 
-            0x18 | 0x1A | 0x1C |  // SBB r/m8, r8 | r8, r/m8 | al, imm8 
-            0x20 | 0x22 | 0x24 |  // AND r/m8, r8 | r8, r/m8 | al, imm8 
-            0x28 | 0x2A | 0x2C |  // SUB r/m8, r8 | r8, r/m8 | al, imm8 
-            0x30 | 0x32 | 0x34 => // XOR r/m8, r8 | r8, r/m8 | al, imm8
-            { 
-                // 16 bit ADD variants
+            0x00 | 0x02 | // ADD r/m8, r8 | r8, r/m8
+            0x08 | 0x0A | // OR  r/m8, r8 | r8, r/m8
+            0x10 | 0x12 | // ADC r/m8, r8 | r8, r/m8
+            0x18 | 0x1A | // SBB r/m8, r8 | r8, r/m8
+            0x20 | 0x22 | // AND r/m8, r8 | r8, r/m8
+            0x28 | 0x2A | // SUB r/m8, r8 | r8, r/m8
+            0x30 | 0x32 => // XOR r/m8, r8 | r8, r/m8
+            {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles_nx_i(2, &[0x008, 0x009]);
+                self.cycle_i(0x008);
 
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x009, 0x00a]);
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x009, 0x00a);
                 }
 
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);       
             }
-            0x01 | 0x03 | 0x05 |  // ADD r/m16, r16 | r16, r/m16 | ax, imm16
-            0x09 | 0x0B | 0x0D |  // OR  r/m16, r16 | r16, r/m16 | ax, imm16
-            0x11 | 0x13 | 0x15 |  // ADC r/m16, r16 | r16, r/m16 | ax, imm16 
-            0x19 | 0x1B | 0x1D |  // SBB r/m16, r16 | r16, r/m16 | ax, imm16 
-            0x21 | 0x23 | 0x25 |  // AND r/m16, r16 | r16, r/m16 | ax, imm16 
-            0x29 | 0x2B | 0x2D |  // SUB r/m16, r16 | r16, r/m16 | ax, imm16 
-            0x31 | 0x33 | 0x35 => // XOR r/m16, r16 | r16, r/m16 | ax, imm16
+            0x01 | 0x03 | // ADD r/m16, r16 | r16, r/m16
+            0x09 | 0x0B | // OR  r/m16, r16 | r16, r/m16
+            0x11 | 0x13 | // ADC r/m16, r16 | r16, r/m16
+            0x19 | 0x1B | // SBB r/m16, r16 | r16, r/m16
+            0x21 | 0x23 | // AND r/m16, r16 | r16, r/m16
+            0x29 | 0x2B | // SUB r/m16, r16 | r16, r/m16
+            0x31 | 0x33 => // XOR r/m16, r16 | r16, r/m16
             {
-                // 16 bit ADD variants
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 
-                self.cycles_nx_i(2, &[0x008, 0x009]);
+                self.cycle_i(0x008);
 
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x009, 0x00a]);
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x009, 0x00a);
                 }
 
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);           
             }
+            0x04 |  // ADD al, imm8
+            0x0C |  // OR  al, imm8
+            0x14 |  // ADC al, imm8 
+            0x1C |  // SBB al, imm8 
+            0x24 |  // AND al, imm8 
+            0x2C |  // SUB al, imm8 
+            0x34 => // XOR al, imm8 
+            {
+                let op1_value = self.get_register8(Register8::AL);
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); // 0x018 reads byte from queue
+                self.cycle_i(0x019); // 0x019 jumps over 2nd queue read
+                let result = self.math_op8(self.i.mnemonic, op1_value, op2_value); // 0x01A flagged NXT
+                self.set_register8(Register8::AL, result);
+            }
+            0x05 |  // ADD ax, imm16
+            0x0D |  // OR  ax, imm16
+            0x15 |  // ADC ax, imm16 
+            0x1D |  // SBB ax, imm16 
+            0x25 |  // AND ax, imm16 
+            0x2D |  // SUB ax, imm16 
+            0x35 => // XOR ax, imm16 
+            {
+                let op1_value = self.get_register16(Register16::AX); 
+                let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap(); // 0x018, 0x019 read word from queue
+                let result = self.math_op16(self.i.mnemonic, op1_value, op2_value); // 0x01A flagged NXT
+                self.set_register16(Register16::AX, result);
+            }            
             0x06 => {
                 // PUSH es
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles_mc!(self, 0x02c, 0x02d, 0x02e);
                 self.push_register16(Register16::ES, ReadWriteFlag::RNI);
             }
             0x07 => {
@@ -270,7 +298,7 @@ impl Intel808x {
             0x0E => {
                 // PUSH cs
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles_mc!(self, 0x02c, 0x02d, 0x02e);
                 self.push_register16(Register16::CS, ReadWriteFlag::RNI);
             }
             0x0F => {
@@ -282,7 +310,7 @@ impl Intel808x {
             0x16 => {
                 // PUSH ss
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles_mc!(self, 0x02c, 0x02d, 0x02e);
                 self.push_register16(Register16::SS, ReadWriteFlag::RNI);
             }
             0x17 => {
@@ -294,7 +322,7 @@ impl Intel808x {
             0x1E => {
                 // PUSH ds
                 // Flags: None
-                self.cycles_i(3, &[0x02c, 0x02d, 0x023]);
+                cycles_mc!(self, 0x02c, 0x02d, 0x02e);
                 self.push_register16(Register16::DS, ReadWriteFlag::RNI);
             }
             0x1F => {
@@ -307,14 +335,14 @@ impl Intel808x {
             0x26 => {}
             0x27 => {
                 // DAA — Decimal Adjust AL after Addition
-                self.cycles_nx_i(3, &[0x144, 0x145, 0x146]);
+                cycles_mc!(self, 0x144, 0x145);
                 self.daa();
             }
             // CS Override Prefix
             0x2E => {}
             0x2F => {
                 // DAS
-                self.cycles_nx_i(3, &[0x144, 0x145, 0x146]);                
+                cycles_mc!(self, 0x144, 0x145);                
                 self.das();
             }
             // SS Segment Override Prefix
@@ -331,11 +359,11 @@ impl Intel808x {
                 
                 if self.i.opcode == 0x3C {
                     // 0x018
-                    self.cycles_nx_i(2, &[MC_JUMP, 0x01a]);
+                    self.cycle_i(MC_JUMP);
                 }
                 else {
                     // 0x008
-                    self.cycles_nx_i(2, &[0x008, 0x009]);
+                    self.cycle_i(0x008);
                 }
                 
                 let _result = self.math_op8(Mnemonic::CMP,  op1_value,  op2_value);
@@ -349,11 +377,11 @@ impl Intel808x {
 
                 if self.i.opcode == 0x3D {
                     // 0x018
-                    self.cycle_nx_i(0x01a);
+                    //self.cycle_nx_i(0x01a);
                 }
                 else {
                     // 0x008
-                    self.cycles_nx_i(2, &[0x008, 0x009]);
+                    self.cycle_i(0x008);
                 }
 
                 let _result = self.math_op16(Mnemonic::CMP,  op1_value,  op2_value);
@@ -372,8 +400,6 @@ impl Intel808x {
                 // math_op16 handles flags
                 let result = self.math_op16(Mnemonic::INC, op1_value, 0);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-
-                self.cycles_nx(1);
             }
             0x48..=0x4F => {
                 // DEC r16 register-encoded operands
@@ -381,14 +407,12 @@ impl Intel808x {
                 // math_op16 handles flags
                 let result = self.math_op16(Mnemonic::DEC, op1_value, 0);
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
-
-                self.cycles_nx(1);         
             }
             0x50..=0x57 => {
                 // PUSH reg16
                 // Flags: None
                 let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
-                self.cycles_i(3, &[0x028, 0x029, 0x02a]);
+                cycles_mc!(self, 0x028, 0x029, 0x02a);
 
                 self.push_register16(reg, ReadWriteFlag::RNI);
             }
@@ -396,9 +420,7 @@ impl Intel808x {
                 // POP reg16
                 // Flags: None
                 let reg = REGISTER16_LUT[(self.i.opcode & 0x07) as usize];
-
                 self.pop_register16(reg, ReadWriteFlag::RNI);
-                self.cycle_nx_i(0x035);
             }
             0x60..=0x7F => {
                 // JMP rel8 variants
@@ -439,55 +461,59 @@ impl Intel808x {
                 // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m8, imm8
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                // Jump to skip 2nd queue read
+                self.cycle_i(MC_JUMP);
                 
-                self.cycle_nx();
                 let result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
 
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x00e, 0x00f]);
-                }
-
                 if self.i.mnemonic != Mnemonic::CMP {
+                    if self.i.operand1_type.is_address() {
+                        cycles_mc!(self, 0x00e);
+                    }
                     self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                }
+                else if self.i.operand1_type.is_address() {
+                    // CMP does not write back to operand.
+                    cycles_mc!(self, 0x00e);
                 }
             }
             0x81 => {
                 // ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m16, imm16
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-                
-                self.cycle_nx();
                 let result = self.math_op16(self.i.mnemonic, op1_value, op2_value);
 
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    if self.i.mnemonic != Mnemonic::CMP {
-                        self.cycles_i(2, &[0x00e, 0x00f]);
-                    }
-                    else {
-                        self.cycles_nx_i(2, &[0x00e, 0x00f]);
-                    }
-                }
-
                 if self.i.mnemonic != Mnemonic::CMP {
+                    if self.i.operand1_type.is_address() {
+                        cycles_mc!(self, 0x00e, 0x00f);
+                    }
                     self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                }
+                else if self.i.operand1_type.is_address() {
+                    // CMP does not write back to operand
+                    self.cycle_i(0x00e);
                 }
             }
             0x83 => {
                 // ADD/ADC/SBB/SUB/CMP r/m16, imm8 (sign-extended)
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-
+                // Jump to skip 2nd queue read
+                self.cycle_i(MC_JUMP);
+                
                 let sign_extended = op2_value as i8 as i16 as u16;
 
                 // math_op16 handles flags
                 let result = self.math_op16(self.i.mnemonic, op1_value, sign_extended);
 
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x00e, 0x00f]);
-                }
-
                 if self.i.mnemonic != Mnemonic::CMP {
+                    if self.i.operand1_type.is_address() {
+                        cycles_mc!(self, 0x00e);
+                    }
                     self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
+                }
+                else if self.i.operand1_type.is_address() {
+                    self.cycle_i(0x00e);
                 }
             }            
             0x84 => {
@@ -497,11 +523,11 @@ impl Intel808x {
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
                 
                 self.math_op8(Mnemonic::TEST, op1_value, op2_value);
-                self.cycles_nx_i(2, &[0x94]);
+                self.cycle_i(0x094);
                 
                 /*
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x95, 0x96]);
+                    cycles_mc!(self, 0x95, 0x96]);
                 }
                 */
             }
@@ -512,7 +538,7 @@ impl Intel808x {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 // math_op16 handles flags
                 self.math_op16(Mnemonic::TEST, op1_value, op2_value);
-                self.cycles_nx_i(2, &[0x94]);
+                self.cycle_i(0x094);
                 /*
                 if let OperandType::AddressingMode(_) = self.i.operand1_type {
                     self.cycle();
@@ -524,7 +550,7 @@ impl Intel808x {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_nx(3);
+                self.cycles(2);
                 
                 if let OperandType::AddressingMode(_) = self.i.operand2_type {
                     // Memory operand takes 2 more cycles
@@ -540,7 +566,7 @@ impl Intel808x {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_nx(3);
+                self.cycles(2);
 
                 if let OperandType::AddressingMode(_) = self.i.operand2_type {
                     // Memory operand takes 2 more cycles
@@ -553,28 +579,23 @@ impl Intel808x {
             }
             0x88 | 0x8A => {
                 // MOV r/m8, r8  |  MOV r8, r/m8
-                self.cycle_nx();
                 let op_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x000, 0x001]);
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x000, 0x001);
                 }
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
             }
             0x89 | 0x8B => {
                 // MOV r/m16, r16  |  MOV r16, r/m16
-                self.cycle_nx();
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x000, 0x001]);
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x000, 0x001);
                 }
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op_value, ReadWriteFlag::RNI);
             }
             0x8C | 0x8E => {
                 // MOV r/m16, SReg | MOV SReg, r/m16
-
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                if self.i.operand1_type.is_address() {
                     self.cycle_i(0x0ec);
                 }
                 let op_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
@@ -599,8 +620,8 @@ impl Intel808x {
                 self.cycle_i(0x040);
                 let value = self.pop_u16();
                 self.cycle_i(0x042);
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycles_i(2, &[0x043, 0x044]);
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x043, 0x044);
                 }                   
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, value, ReadWriteFlag::RNI);
             }
@@ -612,7 +633,7 @@ impl Intel808x {
                 let ax_value = self.a.x();
                 let op_reg_value = self.get_register16(op_reg);
 
-                self.cycles_nx_i(2, &[0x084, 0x085]);
+                self.cycle_i(0x084);
 
                 self.set_register16(Register16::AX, op_reg_value);
                 self.set_register16(op_reg, ax_value);
@@ -630,7 +651,7 @@ impl Intel808x {
             0x99 => {
                 // CWD - Convert Word to Doubleword
                 // Flags: None
-                self.cycles(3);
+                cycles!(self, 3);
                 if self.a.x() & 0x8000 == 0 {
                     self.d.set_x(0x0000);
                 }
@@ -665,18 +686,18 @@ impl Intel808x {
 
                 // NEARCALL
                 self.biu_queue_flush();
-                self.cycles_i(3, &[0x077, 0x078, 0x079]); 
+                cycles_mc!(self, 0x077, 0x078, 0x079]); 
                 self.push_u16(next_i, ReadWriteFlag::RNI);
                 */
                 jump = true;
             }
             0x9B => {
                 // WAIT
-                self.cycles(3);
+                cycles!(self, 3);
             }
             0x9C => {
                 // PUSHF - Push Flags
-                self.cycles(3);
+                cycles!(self, 3);
                 self.push_flags(ReadWriteFlag::RNI);
             }
             0x9D => {
@@ -685,6 +706,7 @@ impl Intel808x {
             }
             0x9E => {
                 // SAHF - Store AH into Flags
+                cycles_mc!(self, 0x100, 0x101);
                 self.store_flags(self.a.h() as u16);
             }
             0x9F => {
@@ -734,12 +756,12 @@ impl Intel808x {
 
                         // Check for interrupt
                         if self.intr_pending {
-                            self.cycles_i(2, &[0x131, MC_JUMP]); // Jump to RPTI
+                            cycles_mc!(self, 0x131, MC_JUMP); // Jump to RPTI
                             self.rep_interrupt();
                             
                         }
                         else {
-                            self.cycles_i(2, &[0x131, 0x132]);
+                            cycles_mc!(self, 0x131, 0x132);
 
                             if self.c.x() == 0 {
                                 // Fall through to 133, RNI
@@ -822,7 +844,7 @@ impl Intel808x {
                 // Flags: o..sz.pc
                 let op1_value = self.a.l();
                 let op2_value = self.read_operand8(self.i.operand2_type, None).unwrap();
-                
+                self.cycle_i(MC_JUMP); // Skip 2nd byte read from queue
                 self.math_op8(Mnemonic::TEST,  op1_value, op2_value);
             }
             0xA9 => {
@@ -876,12 +898,12 @@ impl Intel808x {
                 if self.rep_start() {
 
                     self.string_op(self.i.mnemonic, self.i.segment_override);
-                    self.cycles_i(3, &[0x12e, MC_JUMP, 0x1f8]);
+                    cycles_mc!(self, 0x12e, MC_JUMP, 0x1f8);
 
                     // Check for REP end condition #1 (CX==0)
                     if self.in_rep {
 
-                        self.cycles_i(2, &[MC_JUMP, 0x131]); // Jump to 131
+                        cycles_mc!(self, MC_JUMP, 0x131); // Jump to 131
                         self.decrement_register16(Register16::CX); // 131
 
                         // Check for interrupt
@@ -932,9 +954,9 @@ impl Intel808x {
                 self.pc = new_pc;
                 
                 self.biu_fetch_suspend();
-                self.cycles_i(2, &[0x0c3, 0x0c4]);
+                cycles_mc!(self, 0x0c3, 0x0c4);
                 self.biu_queue_flush();
-                self.cycles_i(3, &[0x0c5, MC_JUMP, 0x0ce]);    
+                cycles_mc!(self, 0x0c5, MC_JUMP, 0x0ce);    
                 
                 self.release(stack_disp);
 
@@ -953,7 +975,7 @@ impl Intel808x {
                 self.biu_fetch_suspend();
                 self.cycle_i(0x0bd);
                 self.biu_queue_flush();
-                self.cycles_i(2, &[0x0be, 0x0bf]);                
+                cycles_mc!(self, 0x0be, 0x0bf);                
                 
                 // Pop call stack
                 // self.call_stack.pop_back();
@@ -962,7 +984,7 @@ impl Intel808x {
             }
             0xC4 => {
                 // LES - Load ES from Pointer
-                self.cycles_i(2, &[0x0F0, 0x0F1]);
+                cycles_mc!(self, 0x0F0, 0x0F1);
 
                 // Operand 2 is far pointer
                 let (les_segment, les_offset) = 
@@ -982,7 +1004,7 @@ impl Intel808x {
             }
             0xC5 => {
                 // LDS - Load DS from Pointer
-                self.cycles_i(2, &[0x0F4, 0x0F5]);
+                cycles_mc!(self, 0x0F4, 0x0F5);
 
                 // Operand 2 is far pointer
                 let (lds_segment, lds_offset) = 
@@ -1004,13 +1026,31 @@ impl Intel808x {
             0xC6 => {
                 // MOV r/m8, imm8
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.cycles(2);
+                self.cycle_i(MC_JUMP); // Skip 2nd immediate byte
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x016);                    
+                    /*
+                    if let OperandType::AddressingMode(AddressingMode::BpDi) 
+                        | OperandType::AddressingMode(AddressingMode::BxSi)
+                        | OperandType::AddressingMode(AddressingMode::BpDiDisp8(_))
+                        | OperandType::AddressingMode(AddressingMode::BxSiDisp8(_)) = self.i.operand1_type {
+                        
+                        if self.queue.at_policy_len() && (self.i.prefixes & OPCODE_SEG_OVERRIDE_MASK == 0) {
+                            // If one of several specific addressing modes with no segment override and queue at policy length, do an extra cycle.
+                            // Either this is a silicon bug, or the fallout of a ridiculously obscure hole in my BIU logic.
+                            self.cycle();
+                        }
+                    }
+                    */
+                }
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
             }
             0xC7 => {
                 // MOV r/m16, imm16
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
-                self.cycle_i(0x01e);
+                if self.i.operand1_type.is_address() {
+                    self.cycle_i(0x016);
+                }
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, op2_value, ReadWriteFlag::RNI);
             }
             0xC8 | 0xCA => {
@@ -1050,14 +1090,16 @@ impl Intel808x {
                 // Save next address if we step over this INT.
                 self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
                 
-                self.cycle_i(MC_JUMP); // Jump to INTR
+                // Another cycle deviance here between observed timings and microcode. Skipping this jump to align with
+                // tests.
+                //self.cycle_i(MC_JUMP); // Jump to INTR
                 self.sw_interrupt(irq);
                 jump = true;
             }
             0xCE => {
                 // INTO - Call Overflow Interrupt Handler
                 if self.get_flag(Flag::Overflow) {
-                    self.cycles_i(4, &[0x1ac, 0x1ad, MC_JUMP, 0x1af]);
+                    cycles_mc!(self, 0x1ac, 0x1ad, MC_JUMP, 0x1af);
                     
                     // Save next address if we step over this INT.
                     self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
@@ -1066,7 +1108,7 @@ impl Intel808x {
                 }
                 else {
                     // Overflow not set. 
-                    self.cycles_i(2, &[0x1ac, 0x1ad]);
+                    cycles_mc!(self, 0x1ac, 0x1ad);
                 }
             }
             0xCF => {
@@ -1078,19 +1120,18 @@ impl Intel808x {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m8, 0x01
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, 1);
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycle_i(0x088);
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x088, 0x089);    
                 }
                 self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
             }
             0xD1 => {
                 // ROL, ROR, RCL, RCR, SHL, SHR, SAR:  r/m16, 0x01
-
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let result = self.bitshift_op16(self.i.mnemonic, op1_value, 1);
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    self.cycle_i(0x088); 
-                }                
+                if self.i.operand1_type.is_address() {
+                    cycles_mc!(self, 0x088, 0x089);
+                }               
                 self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
             }
             0xD2 => {
@@ -1098,20 +1139,18 @@ impl Intel808x {
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                cycles_mc!(self, 0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091);
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
                 if self.c.l() > 0 {
                     for _ in 0..(self.c.l() ) {
-                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                        cycles_mc!(self, MC_JUMP, 0x08f, 0x090, 0x091);
                     }
                 }
                 
                 // If there is a terminal write to M, don't process RNI on line 0x92
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                    //if self.c.l() != 0 {
-                        self.cycle_i(0x092);
-                    //}
+                if self.i.operand1_type.is_address() {
+                    self.cycle_i(0x092);
                 }
 
                 let result = self.bitshift_op8(self.i.mnemonic, op1_value, op2_value);
@@ -1123,17 +1162,17 @@ impl Intel808x {
                 let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                 let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
-                self.cycles_i(6, &[0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
+                cycles_mc!(self, 0x08c, 0x08d, 0x08e, MC_JUMP, 0x090, 0x091);
                 //self.cycles_i(5, &[0x08d, 0x08e, MC_JUMP, 0x090, 0x091]);
 
                 if self.c.l() > 0 {
                     for _ in 0..(self.c.l() ) {
-                        self.cycles_i(4, &[MC_JUMP, 0x08f, 0x090, 0x091]);
+                        cycles_mc!(self, MC_JUMP, 0x08f, 0x090, 0x091);
                     }
                 }
 
                 // If there is a terminal write to M, don't process RNI on line 0x92
-                if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                if self.i.operand1_type.is_address() {
                     self.cycle_i(0x092);
                 }
              
@@ -1151,12 +1190,15 @@ impl Intel808x {
                     self.clear_flag(Flag::AuxCarry);
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::Overflow);
-                    /*
-                    Divide exceptions are only fired by the POSTIDIV routine.
+                    // Divide exception
                     self.int0();
                     jump = true;    
                     exception = CpuException::DivideError;
-                    */
+                }
+                else {
+                    self.clear_flag(Flag::Carry);
+                    self.clear_flag(Flag::AuxCarry);
+                    self.clear_flag(Flag::Overflow);
                 }
             }
             0xD5 => {
@@ -1167,24 +1209,25 @@ impl Intel808x {
             0xD6 => {
                 // SALC - Undocumented Opcode - Set Carry flag in AL
                 // http://www.rcollins.org/secrets/opcodes/SALC.html
-
-                self.set_register8(Register8::AL,
-                    match self.get_flag(Flag::Carry) {
-                        true => 0xFF,
-                        false => 0
+                self.cycle_i(0x0a0);
+                match self.get_flag(Flag::Carry) {
+                    true => {
+                        self.cycle_i(MC_JUMP);
+                        self.set_register8(Register8::AL, 0xFF);
+                    },
+                    false => {
+                        self.set_register8(Register8::AL, 0);
                     }
-                );
+                }
             }
             0xD7 => {
                 // XLAT
-                
-                // Handle segment override, default DS
                 let segment = self.i.segment_override.unwrap_or(Segment::DS);
                 let disp16: u16 = self.b.x().wrapping_add(self.a.l() as u16);
                 
-                self.cycles_i(3, &[0x10c, 0x10d, 0x10e]);
+                cycles_mc!(self, 0x10c, 0x10d, 0x10e);
 
-                let value = self.biu_read_u8(segment, disp16);
+                let value = self.biu_read_u8(segment, disp16, ReadWriteFlag::Normal);
                 
                 self.set_register8(Register8::AL, value);
             }
@@ -1199,31 +1242,27 @@ impl Intel808x {
                 // LOOPNE - Decrement CX, Jump short if count!=0 and ZF=0
                 // LOOPE - Jump short if count!=0 and ZF=1
                 // loop does not modify flags
-
                 self.decrement_register16(Register16::CX);
-                self.cycles_i(2, &[0x138, 0x139]);
+                cycles_mc!(self, 0x138, 0x139);
 
-                let mut zero_condition = !self.get_flag(Flag::Zero);
-                if self.i.opcode == 0xE1 { 
-                    zero_condition = !zero_condition;
-                }
-
+                let ne_flag = self.i.opcode & 0x01 == 1;
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
-                if self.c.x() != 0 && zero_condition {
+                if ne_flag != self.get_flag(Flag::Zero) {
+                    self.cycle_i(MC_JUMP);
+                }
+                else if self.c.x() != 0 {
+                    self.cycle_i(0x13b);
                     self.reljmp2(rel8 as i8 as i16, true);
                     jump = true;
                 }
-                else {
-                    self.cycle_i(0x13c);
-                }            
             }
             0xE2 => {
                 // LOOP - Jump short if count != 0 
                 // loop does not modify flags
                 
                 self.decrement_register16(Register16::CX);
-                self.cycles_i(2, &[0x140, 0x141]);
+                cycles_mc!(self, 0x140, 0x141);
 
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
 
@@ -1238,24 +1277,21 @@ impl Intel808x {
             0xE3 => {
                 // JCXZ - Jump if CX == 0
                 // Flags: None
-            
-                self.cycles_i(2, &[0x138, 0x139]);
+                cycles_mc!(self, 0x134, 0x135);
                 let rel8 = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-
-                self.cycle_i(0x13b);
-
-                if self.c.x() == 0 {
-                    self.reljmp2(rel8 as i8 as i16, true);
-                    jump = true;
+                if self.c.x() != 0 {
+                    self.cycle_i(MC_JUMP);
                 }
                 else {
-                    self.cycle_i(0x13c);
+                    self.cycle_i(0x137);
+                    self.reljmp2(rel8 as i8 as i16, true);
+                    jump = true;
                 }
             }
             0xE4 => {
                 // IN al, imm8
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                self.cycles_i(2, &[0x0ad, 0x0ae]);
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                self.cycle_i(0x0ad);
 
                 let in_byte = self.biu_io_read_u8(op2_value as u16);
                 self.set_register8(Register8::AL, in_byte);
@@ -1263,8 +1299,8 @@ impl Intel808x {
             }
             0xE5 => {
                 // IN ax, imm8
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap(); 
-                self.cycles_i(2, &[0x0ad, 0x0ae]);
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                self.cycle_i(0x0ad);
 
                 let in_word = self.biu_io_read_u16(op2_value as u16, ReadWriteFlag::Normal);
                 self.set_register16(Register16::AX, in_word);
@@ -1272,8 +1308,8 @@ impl Intel808x {
             0xE6 => {
                 // OUT imm8, al
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();                
-                self.cycles_i(2, &[0x0b1, 0x0b2]);
+                let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
+                cycles_mc!(self, 0x0b1, 0x0b2);
 
                 // Write to port
                 self.biu_io_write_u8(op1_value as u16, op2_value, ReadWriteFlag::RNI);
@@ -1281,8 +1317,8 @@ impl Intel808x {
             0xE7 => {
                 // OUT imm8, ax
                 let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();                
-                self.cycles_i(2, &[0x0b1, 0x0b2]);
+                let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
+                cycles_mc!(self, 0x0b1, 0x0b2);
 
                 // Write to consecutive ports
                 self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
@@ -1302,7 +1338,7 @@ impl Intel808x {
                 let rel16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
                 self.biu_fetch_suspend(); // 0x07E
-                self.cycles_i(2, &[0x07e, 0x07f]);
+                cycles_mc!(self, 0x07e, 0x07f);
                 self.corr();
                 self.cycle_i(0x080);
                 
@@ -1327,7 +1363,7 @@ impl Intel808x {
                 // Set new IP
                 self.pc = new_pc;
                 self.biu_queue_flush();
-                self.cycles_i(3, &[0x081, 0x082, MC_JUMP]); 
+                cycles_mc!(self, 0x081, 0x082, MC_JUMP); 
 
                 // Push return address
                 self.push_u16(ret_addr, ReadWriteFlag::RNI);
@@ -1346,7 +1382,7 @@ impl Intel808x {
                 // This instruction reads a direct FAR address from the instruction queue. (See 0x9A for its twin CALLF)
                 let (segment, offset) = self.read_operand_faraddr();
                 self.biu_fetch_suspend();
-                self.cycles_i(2, &[0x0e4, 0x0e5]);
+                cycles_mc!(self, 0x0e4, 0x0e5);
                 self.cs = segment;
                 self.pc = offset;
                 self.biu_queue_flush();
@@ -1457,7 +1493,7 @@ impl Intel808x {
                         let op2_value = self.read_operand8(self.i.operand2_type, self.i.segment_override).unwrap();
 
                         // 8 bit TEST takes a jump
-                        self.cycles_i(2, &[MC_JUMP, 0x09a]);
+                        cycles_mc!(self, MC_JUMP, 0x09a);
 
                         // Don't use result, just set flags
                         let _result = self.math_op8(self.i.mnemonic, op1_value, op2_value);
@@ -1465,19 +1501,27 @@ impl Intel808x {
                     Mnemonic::NOT => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
-
-                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x04c, 0x04d]);
+                        
+                        if self.i.operand1_type.is_address() {
+                            cycles_mc!(self, 0x04c, 0x04d);
                         }                        
+                        else {
+                            // 0x04c is flagged with NXT in published microcode. Test timings indicate maybe this was changed.
+                            self.cycle_i(0x04c);
+                        }
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::NEG => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op1_value, 0);
 
-                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x050, 0x051]);
+                        if self.i.operand1_type.is_address() {
+                            cycles_mc!(self, 0x050, 0x051);
                         }                          
+                        else {
+                            // 0x050 is flagged with NXT in published microcode. Test timings indicate maybe this was changed.
+                            self.cycle_i(0x050);
+                        }
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::MUL => {
@@ -1490,7 +1534,7 @@ impl Intel808x {
                         if let OperandType::Register8(_) = self.i.operand1_type {
                             self.cycle();
                         }
-
+                        self.clear_flag(Flag::AuxCarry);
                         self.set_szp_flags_from_result_u8(self.a.h());
                     }
                     Mnemonic::IMUL => {
@@ -1503,8 +1547,8 @@ impl Intel808x {
                         if let OperandType::Register8(_) = self.i.operand1_type {
                             self.cycle();
                         }
-
-                        self.set_szp_flags_from_result_u8(self.a.h());
+                        //self.clear_flag(Flag::AuxCarry);
+                        //self.set_szp_flags_from_result_u8(self.a.h());
                     }                    
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1580,8 +1624,11 @@ impl Intel808x {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x04c, 0x04d]);
-                        }                            
+                            cycles_mc!(self, 0x04c, 0x04d);
+                        }          
+                        else {
+                            self.cycle_i(0x04c);
+                        }
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::NEG => {
@@ -1589,8 +1636,11 @@ impl Intel808x {
                         let result = self.math_op16(self.i.mnemonic, op1_value, 0);
 
                         if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x050, 0x051]);
-                        }        
+                            cycles_mc!(self, 0x050, 0x051);
+                        }
+                        else {
+                            self.cycle_i(0x050);
+                        }
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     }
                     Mnemonic::MUL => {
@@ -1608,6 +1658,7 @@ impl Intel808x {
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);
 
+                        self.clear_flag(Flag::AuxCarry);
                         self.set_szp_flags_from_result_u16(self.d.x());
                     }
                     Mnemonic::IMUL => {
@@ -1623,8 +1674,8 @@ impl Intel808x {
 
                         self.set_register16(Register16::DX, dx);
                         self.set_register16(Register16::AX, ax);    
-
-                        self.set_szp_flags_from_result_u16(self.d.x());
+                        // Flags are set by IMULCOF routine
+                        //self.set_szp_flags_from_result_u16(self.d.x());
                     }
                     Mnemonic::DIV => {
                         let op1_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
@@ -1719,8 +1770,9 @@ impl Intel808x {
                         let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op8(self.i.mnemonic, op_value, 0);
 
-                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x020, 0x021]);
+                        self.cycle_i(0x020);
+                        if self.i.operand1_type.is_address() {
+                            self.cycle_i(0x021);
                         }                           
                         self.write_operand8(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     },
@@ -1768,15 +1820,15 @@ impl Intel808x {
                             let (ea_segment, ea_offset) = self.calc_effective_address(mode, None);
 
                             // Read one byte of offset and one byte of segment
-                            let offset = self.biu_read_u8(ea_segment, ea_offset);
+                            let offset = self.biu_read_u8(ea_segment, ea_offset, ReadWriteFlag::Normal);
 
-                            self.cycles_i(3, &[0x1e2, MC_RTN, 0x068]); // RTN delay
+                            cycles_mc!(self, 0x1e2, MC_RTN, 0x068); // RTN delay
                             
-                            let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
+                            let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2), ReadWriteFlag::Normal);
 
                             self.cycle_i(0x06a);
                             self.biu_fetch_suspend();
-                            self.cycles_i(3, &[0x06b, 0x06c, MC_NONE]);
+                            cycles_mc!(self, 0x06b, 0x06c, MC_NONE);
     
                             // Push low byte of CS
                             self.push_u8((self.cs & 0x00FF) as u8, ReadWriteFlag::Normal);
@@ -1785,10 +1837,10 @@ impl Intel808x {
                             // We do not handle stepping over 0xFE call here as it is unlikely to lead to a valid location or return.
                             self.cs = 0xFF00 | segment as u16;
                             self.pc = 0xFF00 | offset as u16;
-                            
-                            self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]); // UNC NEARCALL
+
+                            cycles_mc!(self, 0x06e, 0x06f, MC_JUMP); // UNC NEARCALL
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles_mc!(self, 0x077, 0x078, 0x079);
 
                             // Push low byte of next IP
                             self.push_u8((next_i & 0x00FF) as u8, ReadWriteFlag::RNI);
@@ -1797,7 +1849,7 @@ impl Intel808x {
                         else if let OperandType::Register8(reg) = self.i.operand1_type {
 
                             // Read one byte from DS:0004 (weird?) and don't do anything with it.
-                            let _ = self.biu_read_u8(Segment::DS, 0x0004);
+                            let _ = self.biu_read_u8(Segment::DS, 0x0004, ReadWriteFlag::Normal);
 
                             // Push low byte of CS
                             self.push_u8((self.cs & 0x00FF) as u8, ReadWriteFlag::Normal);
@@ -1832,8 +1884,8 @@ impl Intel808x {
                             let (ea_segment, ea_offset) = self.calc_effective_address(mode, None);
 
                             // Read one byte of offset and one byte of segment
-                            let offset = self.biu_read_u8(ea_segment, ea_offset);
-                            let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2));
+                            let offset = self.biu_read_u8(ea_segment, ea_offset, ReadWriteFlag::Normal);
+                            let segment = self.biu_read_u8(ea_segment, ea_offset.wrapping_add(2), ReadWriteFlag::Normal);
 
                             self.biu_fetch_suspend();
                             self.cycles(4);
@@ -1846,7 +1898,7 @@ impl Intel808x {
                         else if let OperandType::Register8(reg) = self.i.operand1_type {
 
                             // Read one byte from DS:0004 (weird?) and don't do anything with it.
-                            let _ = self.biu_read_u8(Segment::DS, 0x0004);
+                            let _ = self.biu_read_u8(Segment::DS, 0x0004, ReadWriteFlag::Normal);
 
                             // temporary timings
                             self.biu_fetch_suspend();
@@ -1861,7 +1913,7 @@ impl Intel808x {
                     Mnemonic::PUSH => {
                         // Read one byte from rm
                         let op_value = self.read_operand8(self.i.operand1_type, self.i.segment_override).unwrap();
-                        self.cycles_i(3, &[0x024, 0x025, 0x026]);
+                        cycles_mc!(self, 0x024, 0x025, 0x026);
 
                         // Write one byte to stack
                         self.push_u8(op_value, ReadWriteFlag::RNI);
@@ -1879,19 +1931,19 @@ impl Intel808x {
                         let op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
                         let result = self.math_op16(self.i.mnemonic, op_value, 0);
 
-                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
-                            self.cycles_i(2,&[0x020, 0x021]);
-                        }                         
+                        self.cycle_i(0x020);
+                        if self.i.operand1_type.is_address() {
+                            self.cycle_i(0x021);
+                        }
                         self.write_operand16(self.i.operand1_type, self.i.segment_override, result, ReadWriteFlag::RNI);
                     },
                     Mnemonic::CALL => {
 
-                        if let OperandType::AddressingMode(_) = self.i.operand1_type {
+                        if self.i.operand1_type.is_address() {
 
                             let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-
                             self.biu_fetch_suspend();
-                            self.cycles_i(4, &[0x074, 0x075, MC_CORR, 0x076]);
+                            cycles_mc!(self, 0x074, 0x075, MC_CORR, 0x076);
 
                             // Save next address if we step over this CALL.
                             self.step_over_target = Some(CpuAddress::Segmented(self.cs, self.ip()));
@@ -1912,7 +1964,7 @@ impl Intel808x {
                             
                             self.pc = ptr16;
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles_mc!(self, 0x077, 0x078, 0x079);
 
                             // Push return address (next instruction offset) onto stack
                             self.push_u16(return_ip, ReadWriteFlag::RNI);
@@ -1921,14 +1973,16 @@ impl Intel808x {
                         else if let OperandType::Register16(reg) = self.i.operand1_type {
                             // Register form is invalid (can't use arbitrary modrm register as a pointer)
                             // We model the odd behavior of this invalid form here.
+                            self.cycle(); // spend a cycle "reading" our register operand
                             self.biu_fetch_suspend();
-                            self.cycles_i(2, &[0x074, 0x075]);
-                            self.corr();self.cycle_i(0x076);
+                            cycles_mc!(self, 0x074, 0x075);
+                            self.corr();
+                            self.cycle_i(0x076);
                             
                             let next_i = self.pc; // PC already corrected above
                             self.pc = self.get_register16(reg); // Value of IP becomes value of register operand
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles_mc!(self, 0x077, 0x078, 0x079);
 
                             // Push return address (next instruction offset) onto stack
                             self.push_u16(next_i, ReadWriteFlag::RNI);                            
@@ -1973,7 +2027,7 @@ impl Intel808x {
                             self.cycle_i(0x06a);
                             self.biu_fetch_suspend();
                             // TODO: Fix this
-                            self.cycles_i(3, &[0x06b, 0x06c]);
+                            cycles_mc!(self, 0x06b, 0x06c);
                             self.corr();
 
                             // Push CS
@@ -1982,9 +2036,9 @@ impl Intel808x {
                             self.cs = segment;
                             //self.ip = self.last_ea; // I am not sure where IP gets its value.
 
-                            self.cycles_i(3, &[0x06e, 0x06f, MC_JUMP]);
+                            cycles_mc!(self, 0x06e, 0x06f, MC_JUMP);
                             self.biu_queue_flush();
-                            self.cycles_i(3, &[0x077, 0x078, 0x079]);
+                            cycles_mc!(self, 0x077, 0x078, 0x079);
 
                             // Push next IP
                             self.push_u16(next_i, ReadWriteFlag::RNI);
@@ -1995,6 +2049,9 @@ impl Intel808x {
                     Mnemonic::JMP => {
                         let ptr16 = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
 
+                        if self.i.operand1_type.is_register() {
+                            self.cycle();
+                        }
                         self.biu_fetch_suspend();
                         self.cycle_i(0x0d8);
                         self.pc = ptr16;
@@ -2039,7 +2096,7 @@ impl Intel808x {
                     // Push Word onto stack
                     Mnemonic::PUSH => {
                         let mut op_value = self.read_operand16(self.i.operand1_type, self.i.segment_override).unwrap();
-                        self.cycles_i(3, &[0x024, 0x025, 0x026]);
+                        cycles_mc!(self, 0x024, 0x025, 0x026);
                         
                         // If SP, push the new value of SP instead of the old value
                         if let OperandType::Register16(Register16::SP) = self.i.operand1_type {

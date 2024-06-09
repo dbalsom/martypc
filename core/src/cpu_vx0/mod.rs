@@ -130,33 +130,6 @@ macro_rules! vgdr {
     };
 }
 
-// Gross loop un-roller macro
-#[macro_export]
-macro_rules! cycles {
-    ($self:ident, 0) => {};
-    ($self:ident, 1) => {{
-        $self.cycle()
-    }};
-    ($self:ident, 2) => {{
-        cycles!($self, 1)
-    }};
-    ($self:ident, 3) => {{
-        cycles!($self, 2)
-    }};
-    ($self:ident, 4) => {{
-        cycles!($self, 3)
-    }};
-    ($self:ident, 5) => {{
-        cycles!($self, 4)
-    }};
-    ($self:ident, 6) => {{
-        cycles!($self, 5)
-    }};
-    ($self:ident, 7) => {{
-        cycles!($self, 6)
-    }};
-}
-
 use crate::cpu_common::{operands::OperandSize, Register16, Register8, ServiceEvent};
 use trace_print;
 

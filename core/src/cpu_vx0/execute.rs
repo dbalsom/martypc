@@ -967,7 +967,6 @@ impl NecVx0 {
                 // Flags: o..sz.pc
                 let op1_value = self.a.l();
                 let op2_value = self.read_operand8(self.i.operand2_type, None).unwrap();
-                
                 self.math_op8(Mnemonic::TEST,  op1_value, op2_value);
             }
             0xA9 => {
@@ -1341,11 +1340,8 @@ impl NecVx0 {
                 // AAM - Ascii adjust AX after Multiply
                 // Get imm8 value
                 let op1_value = self.read_operand8(self.i.operand1_type, None).unwrap();
-                
                 if op1_value != 0 {
                     if !self.aam(op1_value) {
-                        //self.set_szp_flags_from_result_u8(0);
-                        self.clear_flag(Flag::AuxCarry);
                         self.clear_flag(Flag::Carry);
                         self.clear_flag(Flag::Overflow);
                     }
@@ -1353,11 +1349,10 @@ impl NecVx0 {
                 else {
                     self.set_szp_flags_from_result_u8(self.a.l());
                     self.set_register8(Register8::AH, 0xFF);
-                    self.clear_flag(Flag::AuxCarry);
                     self.clear_flag(Flag::Carry);
                     self.clear_flag(Flag::Overflow);
                 }
-
+                self.clear_flag(Flag::AuxCarry);
             }
             0xD5 => {
                 // AAD - Ascii Adjust before Division

@@ -593,19 +593,19 @@ pub const FLAG_MASK_GROUP_LOOKUP_8088: [[FlagMask; 8]; 5] = [
         FlagMask { opcode: 0xD0, group: 0, mask: 0 },
         FlagMask { opcode: 0xD0, group: 0, mask: VFLAG_AUXILIARY },
         FlagMask { opcode: 0xD0, group: 0, mask: VFLAG_AUXILIARY },
-        FlagMask { opcode: 0xD0, group: 0, mask: VFLAG_AUXILIARY },
+        FlagMask { opcode: 0xD0, group: 0, mask: VFLAG_CARRY | VFLAG_PARITY | VFLAG_AUXILIARY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
         FlagMask { opcode: 0xD0, group: 0, mask: VFLAG_AUXILIARY },
     ],
     // Group #3 0xD2-0xD3
     [
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY | VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY | VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY | VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_AUXILIARY | VFLAG_OVERFLOW },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_AUXILIARY },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_AUXILIARY },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_PARITY | VFLAG_AUXILIARY | VFLAG_ZERO | VFLAG_SIGN | VFLAG_OVERFLOW },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_AUXILIARY },
     ],
     // Group #4 0xF6-0xF7
     [
@@ -667,14 +667,14 @@ pub const FLAG_MASK_GROUP_LOOKUP_V20: [[FlagMask; 8]; 6] = [
     ],
     // Group #4 0xD2-0xD3
     [
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY | VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY | VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY | VFLAG_OVERFLOW },
-        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_AUXILIARY | VFLAG_OVERFLOW },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: 0 },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_CARRY | VFLAG_AUXILIARY },
+        FlagMask { opcode: 0xD2, group: 0, mask: VFLAG_AUXILIARY},
     ],
     // Group #5 0xF6-0xF7
     [
@@ -740,7 +740,7 @@ impl ArduinoValidator {
     pub fn is_group_opcode(cputype: CpuType, opcode: u8) -> bool {
         match cputype {
             CpuType::NecV20 => FLAG_MASK_LOOKUP_V20[opcode as usize].group != 0,
-            CpuType::Intel8088 | CpuType::Intel8086 => FLAG_MASK_LOOKUP_V20[opcode as usize].group != 0,
+            CpuType::Intel8088 | CpuType::Intel8086 => FLAG_MASK_LOOKUP_8088[opcode as usize].group != 0,
             _ => panic!("No groups defined for CpuType"),
         }
     }

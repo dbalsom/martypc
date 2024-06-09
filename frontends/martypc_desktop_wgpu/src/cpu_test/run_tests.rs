@@ -719,15 +719,6 @@ fn run_tests(
                         &test.hash.clone().unwrap_or("".to_string())
                     );
 
-                    let item = TestFailItem {
-                        num:    n as u32,
-                        name:   test.name.clone(),
-                        reason: FailType::RegMismatch,
-                    };
-
-                    results.failed_tests.push_back(item);
-                    current_test_failed = true;
-
                     trace_error!(
                         log,
                         "{}| Test {:05}: Register validation result: {:?}",
@@ -739,6 +730,13 @@ fn run_tests(
                     match validate_result {
                         RegisterValidationResult::GeneralMismatch => {
                             results.reg_mismatch += 1;
+                            let item = TestFailItem {
+                                num:    n as u32,
+                                name:   test.name.clone(),
+                                reason: FailType::RegMismatch,
+                            };
+                            results.failed_tests.push_back(item);
+                            current_test_failed = true;
                         }
                         RegisterValidationResult::FlagMismatch(defined_flags_match, undefined_flags_match) => {
                             log::warn!(
@@ -748,6 +746,13 @@ fn run_tests(
                             );
                             if do_validate_flags && !defined_flags_match {
                                 results.flag_mismatch += 1;
+                                let item = TestFailItem {
+                                    num:    n as u32,
+                                    name:   test.name.clone(),
+                                    reason: FailType::RegMismatch,
+                                };
+                                results.failed_tests.push_back(item);
+                                current_test_failed = true;
                             }
                             if do_validate_undef_flags && !undefined_flags_match {
                                 results.undef_flag_mismatch += 1;
@@ -758,6 +763,13 @@ fn run_tests(
                             if do_validate_flags {
                                 results.flag_mismatch += 1;
                             }
+                            let item = TestFailItem {
+                                num:    n as u32,
+                                name:   test.name.clone(),
+                                reason: FailType::RegMismatch,
+                            };
+                            results.failed_tests.push_back(item);
+                            current_test_failed = true;
                         }
                         _ => unreachable!("Bad register validation result."),
                     }

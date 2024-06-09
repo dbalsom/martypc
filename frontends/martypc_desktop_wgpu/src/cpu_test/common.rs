@@ -1146,7 +1146,7 @@ pub fn print_summary(summary: &TestResultSummary) {
                     "0".to_string()
                 },
                 if result.undef_flag_mismatch > 0 {
-                    format!("{:6}", result.undef_flag_mismatch.to_string().red())
+                    format!("{:6}", result.undef_flag_mismatch.to_string().yellow())
                 }
                 else {
                     "0".to_string()

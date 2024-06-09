@@ -33,6 +33,7 @@
 use crate::{
     cpu_808x::{biu::*, decode::DECODE, *},
     cpu_common::{operands::OperandSize, AddressingMode, OperandType, Segment},
+    cycles_mc,
 };
 
 #[derive(Copy, Clone, Debug)]
@@ -171,9 +172,9 @@ impl Intel808x {
             else {
                 // Width is byte
                 assert!(ea_size == OperandSize::Operand8);
-                self.ea_opr = self.biu_read_u8(segment, offset) as u16;
+                self.ea_opr = self.biu_read_u8(segment, offset, ReadWriteFlag::Normal) as u16;
             }
-            self.cycles_i(2, &[0x1e2, MC_RTN]); // Return delay cycle from EALOAD
+            cycles_mc!(self, 0x1e2, MC_RTN); // Return delay cycle from EALOAD
         }
     }
 
@@ -204,7 +205,7 @@ impl Intel808x {
             OperandType::Offset8(_offset8) => {
                 let offset = self.q_read_u16(QueueType::Subsequent, QueueReader::Eu);
                 let segment = seg_override.unwrap_or(Segment::DS);
-                let byte = self.biu_read_u8(segment, offset);
+                let byte = self.biu_read_u8(segment, offset, ReadWriteFlag::Normal);
                 Some(byte)
             }
             OperandType::Register8(reg8) => match reg8 {

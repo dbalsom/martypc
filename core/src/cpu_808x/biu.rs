@@ -204,7 +204,19 @@ impl Intel808x {
     #[inline]
     pub fn biu_fetch_on_queue_read(&mut self) {
         if self.queue.at_policy_len() {
-            self.trace_comment("FETCH_ON_READ");
+            match self.fetch_state {
+                FetchState::Suspended => {
+                    self.trace_comment("FETCH_ON_SUSP_READ");
+                    self.ta_cycle = TaCycle::Td;
+                }
+                FetchState::PausedFull => {
+                    self.trace_comment("FETCH_ON_READ");
+                    //self.ta_cycle = TaCycle::Ta;
+                    self.ta_cycle = TaCycle::Td;
+                }
+                _ => {}
+            }
+
             self.biu_fetch_start();
         }
     }
@@ -414,7 +426,7 @@ impl Intel808x {
         self.biu_bus_wait_finish();
     }
 
-    pub fn biu_read_u8(&mut self, seg: Segment, offset: u16) -> u8 {
+    pub fn biu_read_u8(&mut self, seg: Segment, offset: u16, flag: ReadWriteFlag) -> u8 {
         let addr = self.calc_linear_address_seg(seg, offset);
 
         self.biu_bus_begin(
@@ -426,7 +438,10 @@ impl Intel808x {
             OperandSize::Operand8,
             true,
         );
-        let _cycles_waited = self.biu_bus_wait_finish();
+        match flag {
+            ReadWriteFlag::Normal => self.biu_bus_wait_finish(),
+            ReadWriteFlag::RNI => self.biu_bus_wait_until_tx(),
+        };
 
         (self.data_bus & 0x00FF) as u8
     }
@@ -459,8 +474,7 @@ impl Intel808x {
             OperandSize::Operand8,
             true,
         );
-        let _cycles_waited = self.biu_bus_wait_finish();
-
+        self.biu_bus_wait_finish();
         (self.data_bus & 0x00FF) as u8
     }
 
@@ -645,15 +659,25 @@ impl Intel808x {
     #[inline]
     pub fn biu_bus_wait_delay(&mut self) -> bool {
         let mut was_delay = false;
-        if let FetchState::Delayed(delay) = self.fetch_state {
-            self.cycles(delay as u32);
-            was_delay = true;
-            self.ta_cycle = TaCycle::Ta;
+        //self.trace_print(&format!("biu_bus_wait_delay(): fetch_state: {:?}", self.fetch_state));
+        match self.fetch_state {
+            FetchState::Delayed(0) => {
+                // If delay has expired, we can begin a new bus cycle from Tr, so set state to Td (Done)
+                was_delay = true;
+                self.ta_cycle = TaCycle::Td;
+            }
+            FetchState::Delayed(delay) => {
+                // If we have a delay in progress, we can abort, so set the state to Ta (Abort)
+                self.cycles(delay as u32);
+                was_delay = true;
+                self.ta_cycle = TaCycle::Ta;
+            }
+            _ => {}
         }
         was_delay
     }
 
-    /// If an address cycle is in progress, cycle the cpu until the address cycle has reached Td
+    /// If an address cycle is in progress, cycle the cpu until the address cycle has completed
     /// or has aborted.
     #[inline]
     pub fn biu_bus_wait_address(&mut self) -> u32 {
@@ -907,14 +931,15 @@ impl Intel808x {
 
         // Skip Tr if we aborted. (T0 of abort was our Tr)
         if self.ta_cycle == TaCycle::Ta {
+            self.trace_comment("ADDRESS_START_ABT");
             self.ta_cycle = TaCycle::Ts;
         }
         else {
             // Did not abort, start new address cycle at Tr
+            self.trace_comment("ADDRESS_START");
             self.ta_cycle = TaCycle::Tr;
         }
         self.pl_status = new_bus_status;
-        self.trace_comment("ADDRESS_START");
     }
 
     /// Perform a prefetch abort. This should be called on T4 of a code fetch when a late eu bus

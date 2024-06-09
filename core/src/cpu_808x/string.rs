@@ -33,6 +33,7 @@
 use crate::{
     cpu_808x::*,
     cpu_common::{alu::AluSub, Mnemonic, Segment},
+    cycles_mc,
 };
 
 impl Intel808x {
@@ -81,7 +82,7 @@ impl Intel808x {
                 // Store byte [ds:si] in AL   (Segment overrideable)
 
                 self.set_mc_pc(0x12d);
-                let data = self.biu_read_u8(segment_base_ds, self.si);
+                let data = self.biu_read_u8(segment_base_ds, self.si, ReadWriteFlag::Normal);
 
                 self.set_register8(Register8::AL, data);
 
@@ -121,7 +122,7 @@ impl Intel808x {
             Mnemonic::MOVSB => {
                 // Store byte from [ds:si] in [es:di]  (DS Segment overrideable)
 
-                let data = self.biu_read_u8(segment_base_ds, self.si);
+                let data = self.biu_read_u8(segment_base_ds, self.si, ReadWriteFlag::Normal);
                 self.cycle_i(0x12e);
                 self.biu_write_u8(Segment::ES, self.di, data, ReadWriteFlag::Normal);
 
@@ -163,9 +164,9 @@ impl Intel808x {
                 // Flags: o..szapc
                 // Override: ES cannot be overridden
 
-                self.cycles_i(2, &[0x121, MC_JUMP]);
-                let data = self.biu_read_u8(Segment::ES, self.di);
-                self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                cycles_mc!(self, 0x121, MC_JUMP);
+                let data = self.biu_read_u8(Segment::ES, self.di, ReadWriteFlag::Normal);
+                cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = self.a.l().alu_sub(data);
                 // Test operation behaves like CMP
@@ -190,9 +191,9 @@ impl Intel808x {
                 // Flags: o..szapc
                 // Override: ES cannot be overridden
 
-                self.cycles_i(2, &[0x121, MC_JUMP]);
+                cycles_mc!(self, 0x121, MC_JUMP);
                 let data = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
-                self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = self.a.x().alu_sub(data);
                 // Test operation behaves like CMP
@@ -218,10 +219,10 @@ impl Intel808x {
                 // Override: DS can be overridden
 
                 self.cycle_i(0x121);
-                let dssi_op = self.biu_read_u8(segment_base_ds, self.si);
-                self.cycles_i(2, &[0x123, 0x124]);
-                let esdi_op = self.biu_read_u8(Segment::ES, self.di);
-                self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                let dssi_op = self.biu_read_u8(segment_base_ds, self.si, ReadWriteFlag::Normal);
+                cycles_mc!(self, 0x123, 0x124);
+                let esdi_op = self.biu_read_u8(Segment::ES, self.di, ReadWriteFlag::Normal);
+                cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);
 
@@ -251,9 +252,9 @@ impl Intel808x {
 
                 self.cycle_i(0x121);
                 let dssi_op = self.biu_read_u16(segment_base_ds, self.si, ReadWriteFlag::Normal);
-                self.cycles_i(2, &[0x123, 0x124]);
+                cycles_mc!(self, 0x123, 0x124);
                 let esdi_op = self.biu_read_u16(Segment::ES, self.di, ReadWriteFlag::Normal);
-                self.cycles_i(3, &[0x126, 0x127, 0x128]);
+                cycles_mc!(self, 0x126, 0x127, 0x128);
 
                 let (result, carry, overflow, aux_carry) = dssi_op.alu_sub(esdi_op);
 
@@ -299,13 +300,13 @@ impl Intel808x {
             if self.in_rep {
                 // Rep-prefixed instruction is starting for the first time. Run the RPTS procedure.
                 if self.c.x() == 0 {
-                    self.cycles_i(4, &[MC_JUMP, 0x112, 0x113, 0x114]);
+                    cycles_mc!(self, MC_JUMP, 0x112, 0x113, 0x114);
                     self.rep_end();
                     return false;
                 }
                 else {
                     // CX > 0. Load ALU for decrementing CX
-                    self.cycles_i(7, &[MC_JUMP, 0x112, 0x113, 0x114, MC_JUMP, 0x116, MC_RTN]);
+                    cycles_mc!(self, MC_JUMP, 0x112, 0x113, 0x114, MC_JUMP, 0x116, MC_RTN);
                 }
 
                 // Mark this instruction as reentrant - step will execute a single iteration
@@ -326,7 +327,7 @@ impl Intel808x {
     /// Implement the RPTI microcode co-routine for string interrupt handling.
     pub fn rep_interrupt(&mut self) {
         self.biu_fetch_suspend();
-        self.cycles_i(2, &[0x118, 0x119]);
+        cycles_mc!(self, 0x118, 0x119);
         self.corr();
         self.cycle_i(0x11a);
         self.biu_queue_flush();

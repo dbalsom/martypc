@@ -30,13 +30,16 @@
 
 */
 
-use crate::cpu_808x::{muldiv::*, *};
+use crate::{
+    cpu_808x::{muldiv::*, *},
+    cycles_mc,
+};
 
 impl Intel808x {
     /// Ascii Adjust after Addition
     /// Flags: AuxCarry and Carry are set per operation. The OF, SF, ZF, and PF flags are undefined.
     pub fn aaa(&mut self) {
-        self.cycles_i(6, &[0x148, 0x149, 0x14a, 0x14b, 0x14c, 0x14d]);
+        cycles_mc!(self, 0x148, 0x149, 0x14a, 0x14b, 0x14c, 0x14d);
 
         let old_al = self.a.l();
         let new_al;
@@ -60,20 +63,16 @@ impl Intel808x {
         }
 
         // Handle undefined flag behavior. Determined by testing against real 8088.
-        self.clear_flag(Flag::Overflow);
-        self.clear_flag(Flag::Zero);
-        self.clear_flag(Flag::Sign);
-        if new_al == 0 {
-            self.set_flag(Flag::Zero);
-        }
-        if old_al >= 0x7A && old_al <= 0x7F {
-            self.set_flag(Flag::Overflow);
-        }
+        self.set_flag_state(Flag::Zero, new_al == 0);
+        self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
+        self.set_flag_state(Flag::Overflow, old_al >= 0x7A && old_al <= 0x7F);
+
         if old_al >= 0x7A && old_al <= 0xF9 {
             self.set_flag(Flag::Sign);
         }
-
-        self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
+        else {
+            self.clear_flag(Flag::Sign);
+        }
     }
 
     /// Ascii Adjust after Subtraction
@@ -83,7 +82,7 @@ impl Intel808x {
         let old_af = self.get_flag(Flag::AuxCarry);
         let new_al;
 
-        self.cycles_i(6, &[0x148, 0x149, 0x14a, 0x14b, MC_JUMP, 0x14d]);
+        cycles_mc!(self, 0x148, 0x149, 0x14a, 0x14b, MC_JUMP, 0x14d);
         if ((self.a.l() & 0x0F) > 9) || old_af {
             // Intel documentation shows AX := AX - 6 for AAS, but the microcode only reads AL not AX
             // before calling XI.  Mistake on intel's part(?)
@@ -104,11 +103,10 @@ impl Intel808x {
 
         // Handle undefined flag behavior. Determined by testing against real 8088.
         self.clear_flag(Flag::Overflow);
-        self.clear_flag(Flag::Zero);
         self.clear_flag(Flag::Sign);
-        if new_al == 0 {
-            self.set_flag(Flag::Zero);
-        }
+        self.set_flag_state(Flag::Zero, new_al == 0);
+        self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
+
         if old_af && old_al >= 0x80 && old_al <= 0x85 {
             self.set_flag(Flag::Overflow);
         }
@@ -118,14 +116,12 @@ impl Intel808x {
         if old_af && ((old_al <= 0x05) || (old_al >= 0x86)) {
             self.set_flag(Flag::Sign);
         }
-
-        self.set_flag_state(Flag::Parity, PARITY_TABLE[new_al as usize]);
     }
 
     /// Ascii adjust before Division
     /// Flags: The SF, ZF, and PF flags are set according to the resulting binary value in the AL register
     pub fn aad(&mut self, imm8: u8) {
-        self.cycles_i(3, &[0x170, 0x171, MC_JUMP]);
+        cycles_mc!(self, 0x170, 0x171, MC_JUMP);
         let product_native = (self.a.h() as u16).wrapping_mul(imm8 as u16) as u8;
         let (_, product) = 0u8.corx(self, self.a.h() as u16, imm8 as u16, false);
         assert_eq!((product as u8), product_native);
@@ -133,7 +129,7 @@ impl Intel808x {
         self.set_register8(Register8::AL, self.a.l().wrapping_add(product as u8));
         self.set_register8(Register8::AH, 0);
 
-        self.cycles_i(2, &[0x172, 0x173]);
+        cycles_mc!(self, 0x172, 0x173);
 
         // Other sources set flags from AX register. Intel's documentation specifies AL
         self.set_szp_flags_from_result_u8(self.a.l());
@@ -248,7 +244,7 @@ impl Intel808x {
     /// As AAM is implemented via CORD, it can throw an exception. This is indicated by a return value
     /// of false.
     pub fn aam(&mut self, imm8: u8) -> bool {
-        self.cycles_i(3, &[0x175, 0x176, MC_JUMP]);
+        cycles_mc!(self, 0x175, 0x176, MC_JUMP);
         // 176: A->tmpc   | UNC CORD
         // Jump delay
 

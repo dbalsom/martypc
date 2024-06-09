@@ -75,6 +75,10 @@
 ### Core Bug Fixes / Improvements
 
 * VALIDATOR: Improvements to CPU validation system to support initial generation of V20 tests.
+* VALIDATOR: Improvements to test generation allow prefetched tests for 8088/V20
+* 8080: Fixed panic due to microcode slice overrun (Thanks Vutshi)
+* 8080: Implemented all undefined flags except for division
+* 8088/V20: Corrected Trap delay after trap flag pop (Fixes Landmark Service Diagnostics)
 * 8088: Refactored instruction decode to a table-based lookup, replaced custom flags with values from group decode ROM.
 * 8088: Converted SegmentOverride enum to Option<Segment>, simplifying segment resolution logic in many places
 * 8088: New 7-cycle bus access logic

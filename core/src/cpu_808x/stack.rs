@@ -172,7 +172,7 @@ impl Intel808x {
         // Was trap flag just set? Set trap enable delay.
         let trap_is_set = self.get_flag(Flag::Trap);
         if !trap_was_set && trap_is_set {
-            self.trap_enable_delay = 2;
+            self.trap_enable_delay = 1;
         }
 
         // Was trap flag just disabled? Set trap disable delay.

@@ -324,6 +324,48 @@ pub enum CpuDispatch {
     NecVx0,
 }
 
+#[macro_export]
+macro_rules! cycles_mc {
+    ($self:ident, $($arg:expr),*) => {
+        $(
+            $self.cycle_i($arg);
+        )*
+    };
+}
+
+// Gross loop un-roller macro
+#[macro_export]
+macro_rules! cycles {
+    ($self:ident, 0) => {};
+    ($self:ident, 1) => {{
+        $self.cycle()
+    }};
+    ($self:ident, 2) => {{
+        $self.cycle();
+        cycles!($self, 1)
+    }};
+    ($self:ident, 3) => {{
+        $self.cycle();
+        cycles!($self, 2)
+    }};
+    ($self:ident, 4) => {{
+        $self.cycle();
+        cycles!($self, 3)
+    }};
+    ($self:ident, 5) => {{
+        $self.cycle();
+        cycles!($self, 4)
+    }};
+    ($self:ident, 6) => {{
+        $self.cycle();
+        cycles!($self, 5)
+    }};
+    ($self:ident, 7) => {{
+        $self.cycle();
+        cycles!($self, 6)
+    }};
+}
+
 #[enum_dispatch(CpuDispatch)]
 pub trait Cpu {
     // General CPU control
