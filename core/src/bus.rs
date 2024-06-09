@@ -81,8 +81,8 @@ use crate::devices::vga::{self, VGACard};
 use crate::{
     cpu_common::{CpuDispatch, CpuType},
     device_traits::videocard::VideoCardSubType,
-    devices::{a0::A0Register, lpt_card::ParallelController, tga, tga::TGACard},
-    machine_types::{FdcType, MachineType},
+    devices::{a0::A0Register, lotech_ems::LotechEmsCard, lpt_card::ParallelController, tga, tga::TGACard},
+    machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType},
     syntax_token::SyntaxFormatType,
 };
 
@@ -272,6 +272,7 @@ pub enum IoDeviceType {
     FloppyController,
     HardDiskController,
     Mouse,
+    Ems,
     Video(VideoCardId),
 }
 
@@ -337,6 +338,7 @@ pub enum MmioDeviceType {
     Ega,
     Vga,
     Rom,
+    Ems,
 }
 
 // Main bus struct.
@@ -382,6 +384,7 @@ pub struct BusInterface {
     fdc: Option<FloppyController>,
     hdc: Option<HardDiskController>,
     mouse: Option<Mouse>,
+    ems: Option<LotechEmsCard>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -409,7 +412,7 @@ macro_rules! add_io_device {
 }
 
 #[macro_export]
-macro_rules! add_mmio_video {
+macro_rules! add_mmio_device {
     ($self:expr, $device:expr, $device_type:expr) => {{
         let mapping = $device.get_mapping();
         for desc in mapping.iter() {
@@ -547,6 +550,7 @@ impl Default for BusInterface {
             fdc: None,
             hdc: None,
             mouse: None,
+            ems: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -980,6 +984,12 @@ impl BusInterface {
                             }
                         }
                     }
+                    MmioDeviceType::Ems => {
+                        if let Some(ems) = &mut self.ems {
+                            let (data, _waits) = MemoryMappedDevice::mmio_read_u8(ems, address, system_ticks, None);
+                            return Ok((data, 0));
+                        }
+                    }
                     _ => {}
                 }
                 return Err(MemError::MmioError);
@@ -1036,6 +1046,12 @@ impl BusInterface {
                             }
                         }
                     }
+                    MmioDeviceType::Ems => {
+                        if let Some(ems) = &self.ems {
+                            let data = MemoryMappedDevice::mmio_peek_u8(ems, address, None);
+                            return Ok(data);
+                        }
+                    }
                     _ => {}
                 }
                 return Err(MemError::MmioError);
@@ -1087,6 +1103,12 @@ impl BusInterface {
                                 }
                                 _ => {}
                             }
+                        }
+                    }
+                    MmioDeviceType::Ems => {
+                        if let Some(ems) = &mut self.ems {
+                            let (data, syswait) = MemoryMappedDevice::mmio_read_u16(ems, address, 0, None);
+                            return Ok((data, self.system_ticks_to_cpu_cycles(syswait)));
                         }
                     }
                     _ => {}
@@ -1143,6 +1165,11 @@ impl BusInterface {
                                 }
                                 _ => {}
                             }
+                        }
+                    }
+                    MmioDeviceType::Ems => {
+                        if let Some(ems) = &mut self.ems {
+                            MemoryMappedDevice::mmio_write_u8(ems, address, data, 0, None);
                         }
                     }
                     _ => {}
@@ -1240,6 +1267,11 @@ impl BusInterface {
                                 }
                                 _ => {}
                             }
+                        }
+                    }
+                    MmioDeviceType::Ems => {
+                        if let Some(ems) = &mut self.ems {
+                            MemoryMappedDevice::mmio_write_u16(ems, address, data, 0, None);
                         }
                     }
                     _ => {}
@@ -1802,6 +1834,20 @@ impl BusInterface {
             }
         }
 
+        // Create an EMS board if specified
+        if let Some(ems_config) = &machine_config.ems {
+            if let EmsType::LoTech2MB = ems_config.ems_type {
+                // Add EMS ports to io_map
+                let ems = LotechEmsCard::new(Some(ems_config.io_base), Some(ems_config.window as usize));
+                add_io_device!(self, ems, IoDeviceType::Ems);
+                add_mmio_device!(self, ems, MmioDeviceType::Ems);
+                self.ems = Some(ems);
+            }
+            else {
+                log::error!("Bad EMS type {:?}", ems_config.ems_type);
+            }
+        }
+
         // Create video cards
         for (i, card) in machine_config.video.iter().enumerate() {
             let video_dispatch;
@@ -1821,13 +1867,13 @@ impl BusInterface {
                         video_frame_debug,
                     );
                     add_io_device!(self, mda, IoDeviceType::Video(video_id));
-                    add_mmio_video!(self, mda, MmioDeviceType::Video(video_id));
+                    add_mmio_device!(self, mda, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Mda(mda)
                 }
                 VideoType::CGA => {
                     let cga = CGACard::new(TraceLogger::None, clock_mode, video_frame_debug);
                     add_io_device!(self, cga, IoDeviceType::Video(video_id));
-                    add_mmio_video!(self, cga, MmioDeviceType::Video(video_id));
+                    add_mmio_device!(self, cga, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Cga(cga)
                 }
                 VideoType::TGA => {
@@ -1835,21 +1881,21 @@ impl BusInterface {
                     let subtype = card.video_subtype.unwrap_or(VideoCardSubType::Tandy1000);
                     let tga = TGACard::new(subtype, TraceLogger::None, clock_mode, video_frame_debug);
                     add_io_device!(self, tga, IoDeviceType::Video(video_id));
-                    add_mmio_video!(self, tga, MmioDeviceType::Video(video_id));
+                    add_mmio_device!(self, tga, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Tga(tga)
                 }
                 #[cfg(feature = "ega")]
                 VideoType::EGA => {
                     let ega = EGACard::new(TraceLogger::None, clock_mode, video_frame_debug, card.dip_switch);
                     add_io_device!(self, ega, IoDeviceType::Video(video_id));
-                    add_mmio_video!(self, ega, MmioDeviceType::Video(video_id));
+                    add_mmio_device!(self, ega, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Ega(ega)
                 }
                 #[cfg(feature = "vga")]
                 VideoType::VGA => {
                     let vga = VGACard::new(TraceLogger::None);
                     add_io_device!(self, vga, IoDeviceType::Video(video_id));
-                    add_mmio_video!(self, vga, MmioDeviceType::Video(video_id));
+                    add_mmio_device!(self, vga, MmioDeviceType::Video(video_id));
                     video_dispatch = VideoCardDispatch::Vga(vga)
                 }
                 #[allow(unreachable_patterns)]
@@ -2359,6 +2405,11 @@ impl BusInterface {
                         byte = Some(parallel.read_u8(port, nul_delta));
                     }
                 }
+                IoDeviceType::Ems => {
+                    if let Some(ems) = &mut self.ems {
+                        byte = Some(ems.read_u8(port, nul_delta));
+                    }
+                }
                 IoDeviceType::Video(vid) => {
                     if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
                         byte = match video_dispatch {
@@ -2483,6 +2534,12 @@ impl BusInterface {
                 IoDeviceType::Parallel => {
                     if let Some(parallel) = &mut self.parallel {
                         parallel.write_u8(port, data, None, nul_delta);
+                        resolved = true;
+                    }
+                }
+                IoDeviceType::Ems => {
+                    if let Some(ems) = &mut self.ems {
+                        ems.write_u8(port, data, None, nul_delta);
                         resolved = true;
                     }
                 }

@@ -1,4 +1,11 @@
 
+## [0.2.2](https://github.com/dbalsom/martypc/releases/tag/0.2.2) (2024-XX-XX)
+
+### EMS Board
+
+* Finally added support for an EMS memory expansion card, the [LoTech 2MB EMS Card](https://texelec.com/product/lo-tech-ems-2-mb/)
+  This card can be added to any machine configuration via the `lotech_ems` overlay. You can specify the window segment and IO base address.
+
 ## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-06-09)
 
 ### New BIU logic

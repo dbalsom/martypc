@@ -40,6 +40,7 @@ pub mod fdc;
 pub mod floppy_drive;
 pub mod hdc;
 pub mod keyboard;
+pub mod lotech_ems;
 pub mod lpt_card;
 pub mod lpt_port;
 pub mod mc6845;

@@ -182,3 +182,8 @@ pub enum SerialControllerType {
 pub enum SerialMouseType {
     Microsoft,
 }
+
+#[derive(Copy, Clone, Debug, Deserialize, Eq, PartialEq)]
+pub enum EmsType {
+    LoTech2MB,
+}

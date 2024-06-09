@@ -31,6 +31,7 @@
 */
 
 use crate::machine_types::{
+    EmsType,
     FdcType,
     FloppyDriveType,
     HardDiskControllerType,
@@ -119,6 +120,14 @@ pub struct CpuConfig {
 #[derive(Clone, Debug, Deserialize)]
 pub struct MemoryConfig {
     pub conventional: ConventionalMemoryConfig,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct EmsMemoryConfig {
+    pub ems_type: EmsType,
+    pub window: u32,
+    pub io_base: u16,
+    pub size: usize,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -219,6 +228,7 @@ pub struct MachineConfiguration {
     pub machine_type: MachineType,
     pub cpu: Option<CpuConfig>,
     pub memory: MemoryConfig,
+    pub ems: Option<EmsMemoryConfig>,
     pub keyboard: Option<KeyboardConfig>,
     pub serial_mouse: Option<SerialMouseConfig>,
     pub video: Vec<VideoCardConfig>,

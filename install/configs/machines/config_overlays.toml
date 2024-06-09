@@ -8,7 +8,27 @@
 name = "cpu_v20"
     [overlay.cpu]
     upgrade_type = "NecV20"
-
+    
+[[overlay]]
+name = "lotech_ems"
+    [overlay.ems]
+    ems_type = "LoTech2MB"
+    # EMS Window
+    # Valid values for LoTech card are:
+    #  0xC000
+    #  0xD000
+    #  0xE000
+    window = 0xE000
+    # Base IO address
+    # Valid values for LoTech card are:
+    #  0x260h
+    #  0x264h
+    #  0x268h
+    #  0x26Ch
+    io_base = 0x260
+    # Memory size = 2MB. Do not modify.
+    size = 0x200000
+    
 [[overlay]]
 name = "pcxt_640k_conventional"
     [overlay.memory]

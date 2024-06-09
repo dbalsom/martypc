@@ -35,6 +35,7 @@ use marty_core::{
     device_traits::videocard::VideoType,
     machine_config::{
         CpuConfig,
+        EmsMemoryConfig,
         FloppyControllerConfig,
         HardDriveControllerConfig,
         KeyboardConfig,
@@ -75,6 +76,7 @@ pub struct MachineConfigFileEntry {
     overlays: Option<Vec<String>>,
     cpu: Option<CpuConfig>,
     memory: MemoryConfig,
+    ems: Option<EmsMemoryConfig>,
     #[serde(default)]
     speaker: bool,
     ppi_turbo: Option<bool>, // This bool is an option so that it is three state - missing means no turbo feature, true means ppi high = turbo, false means ppi low = turbo.
@@ -92,6 +94,7 @@ pub struct MachineConfigFileOverlayEntry {
     name: String,
     cpu: Option<CpuConfig>,
     memory: Option<MemoryConfig>,
+    ems: Option<EmsMemoryConfig>,
     fdc: Option<FloppyControllerConfig>,
     hdc: Option<HardDriveControllerConfig>,
     serial: Option<Vec<SerialControllerConfig>>,
@@ -358,6 +361,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying memory overlay: {:?}", memory);
             self.memory = memory;
         }
+        if let Some(ems) = overlay.ems {
+            log::debug!("Applying EMS overlay: {:?}", ems);
+            self.ems = Some(ems);
+        }
         if let Some(fdc) = overlay.fdc {
             log::debug!("Applying FDC overlay: {:?}", fdc);
             self.fdc = Some(fdc);
@@ -391,6 +398,7 @@ impl MachineConfigFileEntry {
             machine_type: self.machine_type,
             cpu: self.cpu.clone(),
             memory: self.memory.clone(),
+            ems: self.ems.clone(),
             fdc: self.fdc.clone(),
             hdc: self.hdc.clone(),
             serial: self.serial.clone().unwrap_or_default(),
