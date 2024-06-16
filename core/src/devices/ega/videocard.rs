@@ -238,7 +238,7 @@ impl VideoCard for EGACard {
         map.insert("CRTC".to_string(), self.crtc.get_state());
 
         let mut external_vec = Vec::new();
-        external_vec.push(("Misc Output".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.into_bytes()[0]))));
+        external_vec.push(("Misc Output".to_string(), VideoCardStateEntry::String(format!("{:08b}", self.misc_output_register.into_bytes()[0]))));
         external_vec.push(("Misc Output [ios]".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.io_address_select()))));
         external_vec.push(("Misc Output [er]".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.enable_ram()))));
         external_vec.push(("Misc Output [cs]".to_string(), VideoCardStateEntry::String(format!("{:?}", self.misc_output_register.clock_select()))));

@@ -421,7 +421,7 @@ impl EgaCrtc {
             }
             CRTCRegister::MaximumScanLine => {
                 // (R9)
-                self.crtc_maximum_scanline = byte
+                self.crtc_maximum_scanline = byte & 0x7F;
             }
             CRTCRegister::CursorStartLine => {
                 // R(A)
@@ -629,6 +629,7 @@ impl EgaCrtc {
     }
 
     pub fn read_crtc_register(&mut self) -> u8 {
+        log::debug!("Read from CRTC register: {:?}", self.register_selected);
         match self.register_selected {
             CRTCRegister::CursorStartLine => self.crtc_cursor_start,
             CRTCRegister::CursorEndLine => self.crtc_cursor_end.into_bytes()[0],

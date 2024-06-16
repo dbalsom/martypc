@@ -145,6 +145,7 @@ pub const ATTRIBUTE_REGISTER_ALT: u16 = 0x3C1;
 pub const MISC_OUTPUT_REGISTER: u16 = 0x3C2; // Write-only to 3C2
 pub const INPUT_STATUS_REGISTER_0: u16 = 0x3C2; // Read-only from 3C2
 pub const INPUT_STATUS_REGISTER_1: u16 = 0x3DA;
+pub const FEATURE_CONTROL_REGISTER: u16 = 0x3DA; // Write-only to 3DA
 pub const INPUT_STATUS_REGISTER_1_MDA: u16 = 0x3BA; // Used in MDA compatibility mode
 
 pub const SEQUENCER_ADDRESS_REGISTER: u16 = 0x3C4;
@@ -626,6 +627,8 @@ pub struct EGACard {
 
     intr: bool,
     last_intr: bool,
+
+    feature_bits: u8,
 }
 
 #[bitfield]
@@ -757,6 +760,8 @@ impl Default for EGACard {
 
             intr: false,
             last_intr: false,
+
+            feature_bits: 0,
         }
     }
 }
@@ -868,7 +873,7 @@ impl EGACard {
     /// The Switch Sense bit 4 has the state of the DIP switches on the card
     /// depending on the Clock Select set in the Misc Output Register.
     fn read_input_status_register_0(&mut self) -> u8 {
-        let mut byte = 0;
+        let mut byte = 0x0F;
 
         // Note: DIP switches are wired up in reverse order
         let switch_status = match self.misc_output_register.clock_select() {
@@ -886,6 +891,9 @@ impl EGACard {
             true => 0,
             false => 0x80,
         };
+
+        // Copy in feature bits
+        byte |= self.feature_bits << 5;
 
         log::trace!("Read from Input Status Register 0: {:08b}", byte);
         byte

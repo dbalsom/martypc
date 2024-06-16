@@ -107,6 +107,9 @@ impl IoDevice for EGACard {
                 self.ac.write_attribute_register(data);
                 self.recalculate_mode();
             }
+            FEATURE_CONTROL_REGISTER => {
+                self.feature_bits = data & 0x03;
+            }
             //COLOR_CONTROL_REGISTER => {
             //    self.handle_cc_register_write(data);
             //}
