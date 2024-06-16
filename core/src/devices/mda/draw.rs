@@ -74,7 +74,7 @@ impl MDACard {
     }
 
     #[inline]
-    pub fn draw_blank_gchar(&mut self, color: u8) {
+    pub fn draw_blank_gchar(&mut self) {
         let frame_u64: &mut [u64] = bytemuck::cast_slice_mut(&mut *self.buf[self.back_buf]);
         frame_u64[self.rba >> 3] = 0;
         frame_u64[(self.rba >> 3) + 1] = 0;
