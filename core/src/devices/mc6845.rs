@@ -614,8 +614,8 @@ impl Crtc6845 {
             if self.vlc_c9 > self.reg[9] {
                 // C9 == R9 (MaxScanlineAddress): We finished drawing this row of characters
                 self.vlc_c9 = 0;
-                // Increment Vertical Character Counter, wrapping at 7 bits
-                self.vcc_c4 = (self.vcc_c4 + 1) & 0x7F;
+                // Increment Vertical Character Counter
+                self.vcc_c4 = self.vcc_c4.wrapping_add(1);
                 // Set vma to starting position for next character row
                 self.vma = self.vma_t;
 
@@ -703,5 +703,16 @@ impl Crtc6845 {
         push_reg_str!(crtc_vec, CursorAddressL, "[R15]", self.reg[15]);
 
         crtc_vec
+    }
+
+    #[rustfmt::skip]
+    pub fn get_counter_state(&self) -> Vec<(String, VideoCardStateEntry)> {
+        let mut counter_vec = Vec::new();
+
+        counter_vec.push(("hcc_c0:".to_string(), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
+        counter_vec.push(("vcc_c4:".to_string(), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
+        counter_vec.push(("vtac_c5:".to_string(), VideoCardStateEntry::String(format!("{}", self.vtac_c5))));
+
+        counter_vec
     }
 }
