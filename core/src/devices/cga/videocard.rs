@@ -392,6 +392,17 @@ impl VideoCard for CGACard {
         internal_vec.push((String::from("snowflakes:"), VideoCardStateEntry::String(format!("{}", self.snow_count))));
         map.insert("Internal".to_string(), internal_vec);
 
+        let mut external_vec = Vec::new();
+        external_vec.push(("Mode Register".to_string(), VideoCardStateEntry::String(format!("{:08b}", self.mode_byte))));
+        external_vec.push(("Hires Text".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_hires_txt))));
+        external_vec.push(("Graphics".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_graphics))));
+        external_vec.push(("BW".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_bw))));
+        external_vec.push(("Enable".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_enable))));
+        external_vec.push(("Hires Gfx".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_hires_gfx))));
+        external_vec.push(("Blinking".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode_blinking))));
+        
+        map.insert("External".to_string(), external_vec);
+        
         map
     }
 
