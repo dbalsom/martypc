@@ -105,7 +105,9 @@ impl IoDevice for MDACard {
             self.crtc.port_write(port, data);
         }
         else if port == HGC_CONFIG_SWITCH_REGISTER {
-            self.handle_hgc_config_switch(data);
+            if let VideoCardSubType::Hercules = self.subtype {
+                self.handle_hgc_config_switch(data);
+            }
         }
         else if (port & LPT_PORT_MASK) == LPT_DEFAULT_IO_BASE {
             // Read is from LPT port.

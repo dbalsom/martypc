@@ -126,17 +126,21 @@ const DEFAULT_CHAR_CLOCK: u32 = 9; // On the MDA these are fixed and do not chan
 //  325,140 / 882 = ~368.639 scanlines per frame (??)
 //const CDA_CLOCK: f64 = 14.318180;
 const MDA_CLOCK: f64 = 16.257;
+const HGC_CLOCK: f64 = 16.000;
+
 const US_PER_CLOCK: f64 = 1.0 / MDA_CLOCK;
 const US_PER_FRAME: f64 = 1.0 / 50.0;
 
 pub const MDA_BLINK_FAST_RATE: u8 = 8;
 
 pub const MDA_MAX_CLOCK: usize = ((MDA_XRES_MAX * MDA_YRES_MAX) as usize & !0x07) + 8;
+pub const HGC_MAX_CLOCK: usize = ((HGC_XRES_MAX * MDA_YRES_MAX) as usize & !0x07) + 8;
 //pub const MDA_MAX_CLOCK: usize = 325140; // 16,257,000 / 50
 
 // Calculate the maximum possible area of display field (including refresh period)
 const MDA_XRES_MAX: u32 = (CRTC_R0_HORIZONTAL_MAX + 1) * MDA_CHAR_CLOCK as u32; // 882
-const HGC_XRES_MAX: u32 = MDA_XRES_MAX - 2;
+                                                                                //const HGC_XRES_MAX: u32 = MDA_XRES_MAX - 2;
+const HGC_XRES_MAX: u32 = 912;
 const MDA_YRES_MAX: u32 = 369; // Actual value works out to 325,140 / 882 or 368.639
 
 // Monitor sync position. The monitor will eventually perform an hsync at a fixed position
@@ -171,6 +175,8 @@ const CRTC_R0_HORIZONTAL_MAX: u32 = 97;
 
 // The MDA card decodes 11 address lines off the CRTC chip. This produces 2048 word addresses (4096 bytes)
 const MDA_TEXT_MODE_WRAP: usize = 0x07FF;
+
+const HGC_PAGE_SIZE: usize = 0x8000;
 
 pub enum CgaColor {
     Black = 0,
@@ -362,7 +368,7 @@ use crate::devices::{
     mda::io::LPT_DEFAULT_IO_BASE,
 };
 
-#[derive(Debug, BitfieldSpecifier)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, BitfieldSpecifier)]
 pub enum PageSelect {
     PageB000,
     PageB800,
@@ -379,7 +385,7 @@ pub struct MdaModeRegister {
     pub blinking: bool,
     #[skip]
     pub unused: B2,
-    pub page_select: PageSelect,
+    pub page_select: PageSelect, // HGC Page Select (Half/Full)
 }
 
 #[bitfield]
@@ -406,13 +412,6 @@ pub struct MDACard {
     last_rw_tick: u32,
     //rw_slots: [RwSlot; 4],
     slot_idx: usize,
-
-    enable_snow: bool,
-    dirty_snow: bool,
-    snow_char: u8,
-    last_bus_value: u8,
-    last_bus_addr: usize,
-    snow_count: u64,
 
     mode_pending:  bool,
     clock_pending: bool,
@@ -490,7 +489,7 @@ pub struct MDACard {
     extents: DisplayExtents,
     aperture: usize,
     //buf: Vec<Vec<u8>>,
-    buf: [Box<[u8; MDA_MAX_CLOCK]>; 2],
+    buf: [Box<[u8; HGC_MAX_CLOCK]>; 2],
 
     debug_color: u8,
 
@@ -508,6 +507,8 @@ pub struct MDACard {
     tmp_color: u8,
 
     hgc_config: HercConfigSwitch,
+    hgc_page_offset: usize,
+    hgc_page_flips: u32,
 }
 
 #[derive(Debug)]
@@ -568,13 +569,6 @@ impl Default for MDACard {
             last_rw_tick: 0,
             //rw_slots: [Default::default(); 4],
             slot_idx: 0,
-
-            enable_snow: false,
-            dirty_snow: true,
-            snow_char: 0,
-            last_bus_value: 0,
-            last_bus_addr: 0,
-            snow_count: 0,
 
             mode_byte: 0,
             mode: MdaModeRegister::new(),
@@ -654,8 +648,8 @@ impl Default for MDACard {
             // vectors due to having a fixed size known by the compiler.  However they
             // are a pain to initialize without overflowing the stack.
             buf: [
-                vec![0; MDA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
-                vec![0; MDA_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
+                vec![0; HGC_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
+                vec![0; HGC_MAX_CLOCK].into_boxed_slice().try_into().unwrap(),
             ],
 
             debug_color: 0,
@@ -674,6 +668,8 @@ impl Default for MDACard {
             tmp_color: 0,
 
             hgc_config: HercConfigSwitch::new(),
+            hgc_page_offset: 0,
+            hgc_page_flips: 0,
         }
     }
 }
@@ -722,9 +718,9 @@ impl MDACard {
 
         // Save non-default values
         *self = Self {
+            subtype: self.subtype,
             debug: self.debug,
             clock_mode: self.clock_mode,
-            enable_snow: self.enable_snow,
             frame_count: self.frame_count, // Keep frame count as to not confuse frontend
             trace_logger,
             extents: self.extents.clone(),
@@ -863,12 +859,37 @@ impl MDACard {
 
         self.mode = MdaModeRegister::from_bytes([mode_byte]);
 
-        // Don't allow these bits to be set unless enabled.
+        // Don't allow these bits to be set unless enabled and we are a HGC
         if !self.hgc_config.enable_gfx() {
             self.mode.set_bw(old_bw);
         }
         if !self.hgc_config.enable_page() {
             self.mode.set_page_select(old_page);
+        }
+
+        if let VideoCardSubType::Hercules = self.subtype {
+            let current_page = self.mode.page_select();
+
+            if self.hgc_config.enable_page() {
+                self.mem_mask = HGC_MEM_MASK_FULL;
+
+                if current_page != old_page {
+                    self.hgc_page_flips += 1;
+                }
+
+                // Offset VMA base address based on selected page.
+                match current_page {
+                    PageSelect::PageB000 => {
+                        self.hgc_page_offset = 0;
+                    }
+                    PageSelect::PageB800 => {
+                        self.hgc_page_offset = HGC_PAGE_SIZE;
+                    }
+                }
+            }
+            else {
+                self.mem_mask = HGC_MEM_MASK_HALF;
+            }
         }
 
         self.mode_graphics = self.mode.bw();
@@ -903,7 +924,11 @@ impl MDACard {
         // to give the bit ample time to be detected toggling on and off.
 
         // Bit 3 is set when the horizontal retrace is active.
+
         let mut byte = 0x70;
+        if let VideoCardSubType::Hercules = self.subtype {
+            byte = 0x00;
+        }
 
         if let VideoCardSubType::Hercules = self.subtype {
             if !self.crtc.den() {
@@ -915,12 +940,14 @@ impl MDACard {
         }
 
         if self.last_bit {
-            byte |= STATUS_VIDEO
+            byte |= STATUS_VIDEO;
         }
 
         if let VideoCardSubType::Hercules = self.subtype {
             if !self.crtc.vblank() {
                 byte |= STATUS_NO_VRETRACE;
+                // Temporary hack for hercules (Road Runner)
+                //byte |= STATUS_VIDEO;
             }
         }
 
@@ -1064,8 +1091,8 @@ impl MDACard {
     #[inline]
     pub fn get_gfx_addr(&self, row: u8) -> usize {
         let row_offset = (row as usize & 0x03) << 12;
-        let addr = (self.vma & 0x0FFF | row_offset) << 1;
-        addr
+        let addr = ((self.vma & 0x0FFF) | row_offset) << 1;
+        addr + self.hgc_page_offset
     }
 
     #[inline]
@@ -1135,16 +1162,17 @@ impl MDACard {
         self.handle_crtc_tick();
     }
 
-    /// Execute one high resolution character clock.
+    /// Execute one high resolution character clock in graphics mode.
     pub fn tick_gchar(&mut self) {
         self.cycles += self.char_clock as u64;
         self.cur_screen_cycles += self.char_clock as u64;
         self.last_bit = false;
 
         // Only draw if render address is within display field
-        if self.rba < (MDA_MAX_CLOCK - self.char_clock as usize) {
+        if self.rba < (HGC_MAX_CLOCK - self.char_clock as usize) {
             if self.crtc.den() {
                 self.draw_hires_gfx_mode_char();
+                //self.draw_solid_gchar(MDA_DEBUG_COLOR);
             }
             else if self.crtc.hblank() {
                 // Draw hblank in debug color
@@ -1160,7 +1188,7 @@ impl MDACard {
             }
             else if self.crtc.border() {
                 // Draw overscan
-                self.draw_solid_gchar(0);
+                //self.draw_solid_gchar(0);
             }
             else {
                 self.draw_solid_gchar(MDA_DEBUG_COLOR);
@@ -1173,11 +1201,11 @@ impl MDACard {
 
         // If we have reached the right edge of the 'monitor', return the raster position
         // to the left side of the screen.
-        if self.beam_x >= MDA_XRES_MAX {
+        if self.beam_x >= HGC_XRES_MAX {
             self.beam_x = 0;
             self.beam_y += 1;
             self.in_monitor_hsync = false;
-            self.rba = (MDA_XRES_MAX * self.beam_y) as usize;
+            self.rba = (HGC_XRES_MAX * self.beam_y) as usize;
         }
 
         self.handle_crtc_tick();

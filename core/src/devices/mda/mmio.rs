@@ -111,7 +111,7 @@ impl MemoryMappedDevice for MDACard {
                 });
             }
             VideoCardSubType::Hercules => {
-                log::warn!("Using Hercules memory map");
+                log::debug!("MDA get_mapping(): Using Hercules memory map");
                 mapping.push(MemRangeDescriptor {
                     address: 0xB0000,
                     size: HGC_MEM_APERTURE_HALF,

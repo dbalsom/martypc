@@ -45,8 +45,7 @@ impl VideoCard for MDACard {
     fn set_video_option(&mut self, opt: VideoOption) {
         match opt {
             VideoOption::EnableSnow(state) => {
-                log::debug!("VideoOption::EnableSnow set to: {}", state);
-                self.enable_snow = state;
+                log::warn!("VideoOption::EnableSnow not supported for MDA.");
             }
             VideoOption::DebugDraw(state) => {
                 log::debug!("VideoOption::DebugDraw set to: {}", state);
@@ -299,9 +298,12 @@ impl VideoCard for MDACard {
         let crtc_vec = self.crtc.get_reg_state();
         map.insert("CRTC".to_string(), crtc_vec);
 
+        let crtc_counter_vec = self.crtc.get_counter_state();
         let mut internal_vec = Vec::new();
 
-        internal_vec.push(("hcc_c0:".to_string(), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
+        internal_vec.extend(crtc_counter_vec);
+        
+        //internal_vec.push(("hcc_c0:".to_string(), VideoCardStateEntry::String(format!("{}", self.hcc_c0))));
         //internal_vec.push((format!("vlc_c9:"), VideoCardStateEntry::String(format!("{}", self.vlc_c9))));
         //internal_vec.push((format!("vcc_c4:"), VideoCardStateEntry::String(format!("{}", self.vcc_c4))));
         internal_vec.push(("scanline:".to_string(), VideoCardStateEntry::String(format!("{}", self.scanline))));
@@ -324,7 +326,12 @@ impl VideoCard for MDACard {
         internal_vec.push(("cur_screen_cycles:".to_string(), VideoCardStateEntry::String(format!("{}", self.cur_screen_cycles))));
         internal_vec.push(("phase:".to_string(), VideoCardStateEntry::String(format!("{}", self.cycles & 0x0F))));
         internal_vec.push(("cursor attr:".to_string(), VideoCardStateEntry::String(format!("{:02b}", self.cursor_attr))));
-        internal_vec.push(("snowflakes:".to_string(), VideoCardStateEntry::String(format!("{}", self.snow_count))));
+        
+        if let VideoCardSubType::Hercules = self.subtype {
+            internal_vec.push(("HGC Display Page:".to_string(), VideoCardStateEntry::String(format!("{:?}", self.mode.page_select()))));
+            internal_vec.push(("HGC Page Flips:".to_string(), VideoCardStateEntry::String(format!("{}", self.hgc_page_flips))));
+        }
+        
         map.insert("Internal".to_string(), internal_vec);
 
         map
