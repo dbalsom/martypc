@@ -57,6 +57,12 @@ impl IoStatsViewerControl {
     }
 
     pub fn draw(&mut self, ui: &mut egui::Ui, events: &mut GuiEventQueue) {
+        ui.horizontal(|ui| {
+            if ui.button("Reset").on_hover_text("Reset statistics to 0").clicked() {
+                events.send(GuiEvent::ResetIOStats);
+            }
+        });
+
         let mut new_row = self.row;
         ui.horizontal(|ui| {
             self.tlv
@@ -65,7 +71,7 @@ impl IoStatsViewerControl {
 
         // TLV viewport was scrolled, update address
         if self.row != new_row {
-            log::debug!("update address to: {}", new_row);
+            //log::debug!("update row to: {}", new_row);
             self.row = new_row;
             self.scrolling = true;
         }
@@ -75,11 +81,25 @@ impl IoStatsViewerControl {
         self.content = ivt;
         if !self.content.is_empty() {
             self.tlv.set_capacity(self.content.len());
+
+            // Check if row is out of range first
+            if self.row >= self.content.len() {
+                self.row = 0;
+            }
             self.tlv.set_contents(
-                self.content[self.row..self.row + std::cmp::min(self.content.len(), DEFAULT_ROWS)].to_vec(),
+                self.content[self.row..std::cmp::min(self.content.len(), self.row + DEFAULT_ROWS)].to_vec(),
                 self.scrolling,
             );
         }
+        else {
+            self.row = 0;
+        }
         self.scrolling = false;
+    }
+
+    pub fn reset(&mut self) {
+        self.scrolling = false;
+        self.row = 0;
+        self.set_content(Vec::new());
     }
 }

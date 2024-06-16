@@ -82,7 +82,7 @@ pub const MDA_RGBA_COLORS: &[[u8; 4]; 16] = &[
     [0xFF, 0x55, 0x55, 0xFF], // 12 - Light Red (Debug color - Invalid state)
     [0x00, 0x00, 0x00, 0xFF], // 0 - Black
     [0x00, 0x00, 0x00, 0xFF], // 0 - Black
-    [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+    [0xFF, 0xFF, 0xFF, 0xFF], // 3 - White (for hercules gfx mode)
 ];
 
 pub const MDA_RGBA_COLORS_U32: &[u32; 16] = &[
@@ -109,9 +109,25 @@ pub const MDA_RGBA_COLORS_U32: &[u32; 16] = &[
 // alternate, more monitor-accurate "VileR palette"
 // See https://int10h.org/blog/2022/06/ibm-5153-color-true-cga-palette/
 // for details.
-pub const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
+pub const CGA_RGBA_COLORS: &[[[u8; 4]; 32]; 2] = &[
     [
-        [0x00, 0x00, 0x00, 0xFF], // 0 - Black  (Slightly brighter for debugging)
+        [0x00, 0x00, 0x00, 0xFF], // 0 - Black
+        [0x00, 0x00, 0xAA, 0xFF], // 1 - Blue
+        [0x00, 0xAA, 0x00, 0xFF], // 2 - Green
+        [0x00, 0xAA, 0xAA, 0xFF], // 3 - Cyan
+        [0xAA, 0x00, 0x00, 0xFF], // 4 - Red
+        [0xAA, 0x00, 0xAA, 0xFF], // 5 - Magenta
+        [0xAA, 0x55, 0x00, 0xFF], // 6 - Brown
+        [0xAA, 0xAA, 0xAA, 0xFF], // 7 - Light Gray
+        [0x55, 0x55, 0x55, 0xFF], // 8 - Dark Gray
+        [0x55, 0x55, 0xFF, 0xFF], // 9 - Light Blue
+        [0x55, 0xFF, 0x55, 0xFF], // 10 - Light Green
+        [0x55, 0xFF, 0xFF, 0xFF], // 11 - Light Cyan
+        [0xFF, 0x55, 0x55, 0xFF], // 12 - Light Red
+        [0xFF, 0x55, 0xFF, 0xFF], // 13 - Light Magenta
+        [0xFF, 0xFF, 0x55, 0xFF], // 14 - Yellow
+        [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+        [0x00, 0x00, 0x00, 0xFF], // 0 - Black  (DEBUG COLORS START HERE)
         [0x00, 0x00, 0xAA, 0xFF], // 1 - Blue
         [0x00, 0xAA, 0x00, 0xFF], // 2 - Green
         [0x00, 0xAA, 0xAA, 0xFF], // 3 - Cyan
@@ -146,11 +162,27 @@ pub const CGA_RGBA_COLORS: &[[[u8; 4]; 16]; 2] = &[
         [0xF3, 0x4E, 0xF3, 0xFF], // 13 - Light Magenta
         [0xF3, 0xF3, 0x4E, 0xFF], // 14 - Yellow
         [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
+        [0x00, 0x00, 0x00, 0xFF], // 0 - Black ( DEBUG COLORS START HERE)
+        [0x00, 0x00, 0xC4, 0xFF], // 1 - Blue
+        [0x00, 0xC4, 0x00, 0xFF], // 2 - Green
+        [0x00, 0xC4, 0xC4, 0xFF], // 3 - Cyan
+        [0xC4, 0x00, 0x00, 0xFF], // 4 - Red
+        [0xC4, 0x00, 0xC4, 0xFF], // 5 - Magenta
+        [0xC4, 0x7E, 0x00, 0xFF], // 6 - Brown
+        [0xC4, 0xC4, 0xC4, 0xFF], // 7 - Light Gray
+        [0x4E, 0x4E, 0x4E, 0xFF], // 8 - Dark Gray
+        [0x4E, 0x4E, 0xDC, 0xFF], // 9 - Light Blue
+        [0x4E, 0xDC, 0x4E, 0xFF], // 10 - Light Green
+        [0x4E, 0xF3, 0xF3, 0xFF], // 11 - Light Cyan
+        [0xDC, 0x4E, 0x4E, 0xFF], // 12 - Light Red
+        [0xF3, 0x4E, 0xF3, 0xFF], // 13 - Light Magenta
+        [0xF3, 0xF3, 0x4E, 0xFF], // 14 - Yellow
+        [0xFF, 0xFF, 0xFF, 0xFF], // 15 - White
     ],
 ];
 
 // Little-endian
-pub const CGA_RGBA_COLORS_U32: &[[u32; 16]; 2] = &[
+pub const CGA_RGBA_COLORS_U32: &[[u32; 32]; 2] = &[
     [
         u32::from_le_bytes(CGA_RGBA_COLORS[0][0]),
         u32::from_le_bytes(CGA_RGBA_COLORS[0][1]),
@@ -168,6 +200,22 @@ pub const CGA_RGBA_COLORS_U32: &[[u32; 16]; 2] = &[
         u32::from_le_bytes(CGA_RGBA_COLORS[0][13]),
         u32::from_le_bytes(CGA_RGBA_COLORS[0][14]),
         u32::from_le_bytes(CGA_RGBA_COLORS[0][15]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][16]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][17]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][18]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][19]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][20]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][21]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][22]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][23]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][24]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][25]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][26]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][27]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][28]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][29]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][30]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[0][31]),
     ],
     // VileR's palette
     [
@@ -187,6 +235,22 @@ pub const CGA_RGBA_COLORS_U32: &[[u32; 16]; 2] = &[
         u32::from_le_bytes(CGA_RGBA_COLORS[1][13]),
         u32::from_le_bytes(CGA_RGBA_COLORS[1][14]),
         u32::from_le_bytes(CGA_RGBA_COLORS[1][15]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][16]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][17]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][18]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][19]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][20]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][21]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][22]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][23]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][24]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][25]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][26]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][27]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][28]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][29]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][30]),
+        u32::from_le_bytes(CGA_RGBA_COLORS[1][31]),
     ],
 ];
 

@@ -48,6 +48,7 @@ mod run_fuzzer;
 
 use std::{
     cell::RefCell,
+    path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -599,6 +600,15 @@ pub fn run() {
         kb_layout_file_path = Some(kb_layout_resource_path);
     }
 
+    let mut disassembly_file_path = None;
+    if let Some(disassembly_file) = config.machine.disassembly_file.as_ref() {
+        disassembly_file_path = Some(trace_file_base.join(disassembly_file));
+        log::info!(
+            "Using disassembly file: {:?}",
+            disassembly_file_path.clone().unwrap_or(PathBuf::from("None"))
+        );
+    }
+
     let machine_builder = MachineBuilder::new()
         .with_core_config(Box::new(&config))
         .with_machine_config(&machine_config)
@@ -606,7 +616,8 @@ pub fn run() {
         .with_trace_mode(config.machine.cpu.trace_mode.unwrap_or_default())
         .with_trace_log(trace_file_path)
         .with_sound_player(sound_player_opt)
-        .with_keyboard_layout(kb_layout_file_path);
+        .with_keyboard_layout(kb_layout_file_path)
+        .with_listing_file(disassembly_file_path);
 
     let machine = machine_builder.build().unwrap_or_else(|e| {
         log::error!("Failed to build machine: {:?}", e);

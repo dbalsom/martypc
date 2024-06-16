@@ -267,6 +267,8 @@ pub struct Machine {
     pub cpu: Cpu,
     pub pit_phase: Option<u32>,
     pub input: MachineInput,
+    pub disassembly_recording: Option<bool>,
+    pub disassembly_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -65,7 +65,7 @@ use crate::{
 
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_808x::CpuValidatorState;
-use crate::cpu_common::Register8;
+use crate::cpu_common::{Disassembly, Register8};
 #[cfg(feature = "cpu_validator")]
 use crate::cpu_validator::CpuValidator;
 
@@ -117,8 +117,8 @@ impl Cpu for Intel808x {
     }
 
     #[inline]
-    fn step_finish(&mut self) -> Result<StepResult, CpuError> {
-        self.step_finish()
+    fn step_finish(&mut self, disassembly: Option<&mut Disassembly>) -> Result<StepResult, CpuError> {
+        self.step_finish(disassembly)
     }
 
     #[inline]

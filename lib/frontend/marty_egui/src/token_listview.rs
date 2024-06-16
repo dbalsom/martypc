@@ -250,7 +250,7 @@ impl TokenListView {
             //log::debug!("viewport.min.y: {}", viewport.min.y);
             let mut first_item = (viewport.min.y / row_height).floor().at_least(0.0) as usize;
             let last_item = (viewport.max.y / row_height).ceil() as usize + 1;
-            let last_item = last_item.at_most(num_rows - show_rows);
+            let last_item = last_item.at_most(num_rows.saturating_sub(show_rows));
 
             if first_item > last_item {
                 first_item = last_item;

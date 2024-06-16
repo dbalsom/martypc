@@ -39,6 +39,7 @@ pub enum BreakPointType {
     MemAccess(u16, u16), // Breakpoint on memory access, seg::offset
     MemAccessFlat(u32),  // Breakpoint on memory access, seg<<4+offset
     Interrupt(u8),       // Breakpoint on interrupt #
+    IoAccess(u16),       // Breakpoint on I/O port access
     StartWatch(u32),     // Start stopwatch at address
     StopWatch(u32),      // Stop stopwatch at address
 }

@@ -1,10 +1,25 @@
 
 ## [0.2.2](https://github.com/dbalsom/martypc/releases/tag/0.2.2) (2024-XX-XX)
 
-### EMS Board
+### New device: LoTech 2MB EMS Board
 
-* Finally added support for an EMS memory expansion card, the [LoTech 2MB EMS Card](https://texelec.com/product/lo-tech-ems-2-mb/)
+* Added emulation of the [LoTech 2MB EMS Card](https://texelec.com/product/lo-tech-ems-2-mb/)
   This card can be added to any machine configuration via the `lotech_ems` overlay. You can specify the window segment and IO base address.
+  However, these values must match one of the values supported by the real hardware or the driver won't work with it. 
+
+### Frontend Bug Fixes / Improvements
+
+### Core Bug Fixes / Improvements
+
+* MC6845: Fixed an issue preventing entering vertical total adjust period if vertical total was 127. Fixes some Hercules display issues.
+* HERCULES: Increased the size of the Hercules' display field to accomodate some CGA emulators that drive the MDA monitor slightly out of sync (BBSIMCGA)
+* CGA: Added CGA's external mode register to debug output
+* MACHINE: Added a facility to record disassembly listings from running code
+
+### Debugger Bug Fixes / Improvements
+
+* Added a 'reset' button to the IO Stats window to reset all the port counters.
+* Fixed panic/crash when resetting machine with IO Stats window open and scrolled. 
 
 ## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-06-09)
 

@@ -129,7 +129,7 @@ macro_rules! gdr {
     };
 }
 
-use crate::cpu_common::{operands::OperandSize, Register16, Register8};
+use crate::cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8};
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -140,6 +140,9 @@ const CPU_CALL_STACK_LEN: usize = 48;
 
 const INTERRUPT_VEC_LEN: usize = 4;
 const INTERRUPT_BREAKPOINT: u8 = 1;
+
+const IO_READ_BREAKPOINT: u8 = 0b0000_0001;
+const IO_WRITE_BREAKPOINT: u8 = 0b0000_0010;
 
 pub const CPU_FLAG_CARRY: u16 = 0b0000_0000_0000_0001;
 pub const CPU_FLAG_RESERVED1: u16 = 0b0000_0000_0000_0010;
@@ -575,7 +578,9 @@ pub struct Intel808x {
     instruction_address: u32,
     instruction_history_on: bool,
     instruction_history: VecDeque<HistoryEntry>,
-    call_stack: VecDeque<CallStackEntry>,
+
+    services:    CPUDebugServices,
+    call_stack:  VecDeque<CallStackEntry>,
     exec_result: ExecutionResult,
 
     // Breakpoints
@@ -656,6 +661,7 @@ pub struct Intel808x {
 
     halt_resume_delay: u32,
     int_flags: Vec<u8>,
+    io_flags: Vec<u8>,
 }
 
 #[cfg(feature = "cpu_validator")]
@@ -856,6 +862,10 @@ impl Intel808x {
         cpu.instruction_history = VecDeque::with_capacity(16);
 
         cpu.reset_vector = CpuAddress::Segmented(0xFFFF, 0x0000);
+
+        cpu.int_flags = vec![0; 256];
+        cpu.io_flags = vec![0; 0x10000];
+
         cpu.reset();
         cpu
     }
@@ -949,7 +959,8 @@ impl Intel808x {
         self.is_error = false;
         self.instruction_history.clear();
         self.call_stack.clear();
-        self.int_flags = vec![0; 256];
+        //self.int_flags = vec![0; 256];
+        //self.io_flags = vec![0; 0x10000];
 
         self.instruction_reentrant = false;
         self.last_ip = 0;
@@ -1749,6 +1760,9 @@ impl Intel808x {
             BreakPointType::StopWatch(addr) => {
                 self.bus.clear_flags(*addr as usize, MEM_SW_BIT);
             }
+            BreakPointType::IoAccess(addr) => {
+                self.io_flags[*addr as usize] = 0;
+            }
             _ => {}
         });
 
@@ -1773,6 +1787,10 @@ impl Intel808x {
             }
             BreakPointType::StopWatch(addr) => {
                 self.bus.set_flags(*addr as usize, MEM_SW_BIT);
+            }
+            BreakPointType::IoAccess(addr) => {
+                log::debug!("Setting IO breakpoint flags at address: {:04X}", *addr);
+                self.io_flags[*addr as usize] = IO_READ_BREAKPOINT | IO_WRITE_BREAKPOINT;
             }
             _ => {}
         });

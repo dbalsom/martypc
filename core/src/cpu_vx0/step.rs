@@ -31,7 +31,7 @@
 */
 
 use crate::{
-    cpu_common::{CpuError, CpuException, ExecutionResult, StepResult, OPCODE_PREFIX_0F},
+    cpu_common::{CpuError, CpuException, Disassembly, ExecutionResult, StepResult, OPCODE_PREFIX_0F},
     cpu_vx0::{decode::DECODE, *},
     vgdr,
 };
@@ -306,7 +306,7 @@ impl NecVx0 {
     /// the string instruction calling RPTI.
     ///
     /// This function effectively simulates the RNI microcode routine.
-    pub fn step_finish(&mut self) -> Result<StepResult, CpuError> {
+    pub fn step_finish(&mut self, _disassembly: Option<&mut Disassembly>) -> Result<StepResult, CpuError> {
         let mut step_result = StepResult::Normal;
         let mut irq = 7;
         let mut did_interrupt = false;

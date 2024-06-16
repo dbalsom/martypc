@@ -2794,7 +2794,15 @@ impl BusInterface {
             .collect();
 
         token_vec.sort_by(|a, b| a.0.cmp(&b.0));
-
         token_vec.iter().map(|(_, tokens)| tokens.clone()).collect()
+    }
+
+    pub fn reset_io_stats(&mut self) {
+        for (_, stats) in self.io_stats.iter_mut() {
+            stats.1.reads = 0;
+            stats.1.writes = 0;
+            stats.1.reads_dirty = false;
+            stats.1.writes_dirty = false;
+        }
     }
 }

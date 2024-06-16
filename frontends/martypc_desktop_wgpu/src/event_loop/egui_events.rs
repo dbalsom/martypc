@@ -51,7 +51,7 @@ use marty_egui::{
 use std::{mem::discriminant, time::Duration};
 
 use frontend_common::constants::{LONG_NOTIFICATION_TIME, NORMAL_NOTIFICATION_TIME, SHORT_NOTIFICATION_TIME};
-use marty_core::{cpu_common::Register16, vhd::VirtualHardDisk};
+use marty_core::{cpu_common::Register16, machine::MachineOption, vhd::VirtualHardDisk};
 use videocard_renderer::AspectCorrectionMode;
 use winit::event_loop::EventLoopWindowTarget;
 
@@ -473,6 +473,13 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
                 }
             }
 
+            // Push io breakpoint to list
+            if let Ok(addr) = u32::from_str_radix(bp_set.io_breakpoint, 16) {
+                let port = addr as u16;
+                log::debug!("Adding I/O breakpoint: {:04X}", port);
+                breakpoints.push(BreakPointType::IoAccess(port));
+            }
+
             // Push stopwatches to list
             if let Some(addr) = emu.machine.cpu().eval_address(bp_set.sw_start) {
                 let start_flat_addr = u32::from(addr);
@@ -606,6 +613,15 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             emu.dm.for_each_gui(|gui, _window| {
                 gui.set_zoom_factor(*zoom);
             });
+        }
+        GuiEvent::ResetIOStats => {
+            emu.machine.bus_mut().reset_io_stats();
+        }
+        GuiEvent::StartRecordingDisassembly => {
+            emu.machine.set_option(MachineOption::RecordListing(true));
+        }
+        GuiEvent::StopRecordingDisassembly => {
+            emu.machine.set_option(MachineOption::RecordListing(false));
         }
         _ => {
             log::warn!("Unhandled GUI event: {:?}", discriminant(gui_event));

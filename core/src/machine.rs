@@ -33,7 +33,7 @@
     the appropriate methods on Bus.
 
 */
-use crate::cpu_common::{CpuAddress, CpuDispatch, CpuSubType, ServiceEvent, StepResult};
+use crate::cpu_common::{CpuAddress, CpuDispatch, CpuSubType, Disassembly, format_instruction_bytes, ServiceEvent, StepResult};
 use log;
 
 use anyhow::{anyhow, Error};
@@ -44,6 +44,7 @@ use std::{
     io::{BufWriter, Write},
     path::PathBuf,
 };
+use std::collections::BTreeMap;
 
 use crate::{
     breakpoints::BreakPointType,
@@ -81,6 +82,11 @@ pub const STEP_OVER_TIMEOUT: u32 = 320000;
 
 pub const MAX_MEMORY_ADDRESS: usize = 0xFFFFF;
 
+pub struct DisassemblyListingEntry {
+    pub visit_count: u32,
+    pub disassembly: Disassembly,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct KeybufferEntry {
     pub keycode:   MartyKey,
@@ -109,6 +115,11 @@ impl MachineState {
     pub fn is_on(&self) -> bool {
         !matches!(self, MachineState::Off)
     }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum MachineOption {
+    RecordListing(bool),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -276,6 +287,11 @@ pub struct MachineRomManifest {
     pub rom_paths: Vec<PathBuf>,
 }
 
+#[derive(Default, Debug)]
+pub struct MachineOptions {
+    pub record_listing: bool,
+}
+
 impl MachineRomManifest {
     pub fn new() -> Self {
         Default::default()
@@ -325,6 +341,7 @@ pub struct MachineBuilder<'a> {
     rom_manifest: Option<MachineRomManifest>,
     trace_mode: TraceMode,
     trace_logger: TraceLogger,
+    listing_file: Option<PathBuf>,
     sound_player: Option<SoundPlayer>,
     sound_override: Option<bool>,
     keyboard_layout_file: Option<PathBuf>,
@@ -391,6 +408,11 @@ impl<'a> MachineBuilder<'a> {
         self
     }
 
+    pub fn with_listing_file(mut self, listing_file: Option<PathBuf>) -> Self {
+        self.listing_file = listing_file;
+        self
+    }
+
     pub fn build(mut self) -> Result<Machine, Error> {
         let core_config = self.core_config.ok_or(anyhow!("No core configuration specified"))?;
         let machine_config = self
@@ -418,6 +440,7 @@ impl<'a> MachineBuilder<'a> {
             self.sound_player,
             rom_manifest,
             self.keyboard_layout_file,
+            self.listing_file,
         ))
     }
 }
@@ -428,6 +451,7 @@ pub struct Machine {
     machine_desc: MachineDescriptor,
     machine_config: MachineConfiguration,
     state: MachineState,
+    options: MachineOptions,
     sound_player: Option<SoundPlayer>,
     rom_manifest: MachineRomManifest,
     load_bios: bool,
@@ -450,6 +474,9 @@ pub struct Machine {
     events: Vec<MachineEvent>,
     reload_pending: bool,
     halt_behavior: OnHaltBehavior,
+    disassembly: Disassembly,
+    disassembly_listing: BTreeMap<CpuAddress, DisassemblyListingEntry>,
+    disassembly_listing_file: Option<PathBuf>,
 }
 
 impl Machine {
@@ -463,6 +490,7 @@ impl Machine {
         sound_player: Option<SoundPlayer>,
         rom_manifest: MachineRomManifest,
         keyboard_layout_file: Option<PathBuf>,
+        disassembly_listing_file: Option<PathBuf>,
         //rom_manager: RomManager,
     ) -> Machine {
         // Create PIT output log file if specified
@@ -655,6 +683,7 @@ impl Machine {
             machine_type,
             machine_desc,
             machine_config,
+            options: MachineOptions::default(),
             state: MachineState::On,
             sound_player,
             rom_manifest,
@@ -678,6 +707,41 @@ impl Machine {
             events: Vec::new(),
             reload_pending: false,
             halt_behavior: core_config.get_halt_behavior(),
+            disassembly: Disassembly::default(),
+            disassembly_listing: BTreeMap::new(),
+            disassembly_listing_file
+        }
+    }
+
+    pub fn set_option(&mut self, opt: MachineOption) {
+        match opt {
+            MachineOption::RecordListing(state) => {
+                let old_state = self.options.record_listing;
+                self.options.record_listing = state;
+                match state {
+                    true => {
+                        if !old_state {
+                            log::debug!("Disassembly listing recording: ON");
+                            self.disassembly_listing.clear();
+                        }
+                    }
+                    false => {
+                        if old_state {
+                            log::debug!("Disassembly listing recording: OFF");
+                            log::debug!("Dumping disassembly listing to: {:?}", self.disassembly_listing_file);
+                        } 
+                        
+                        self.dump_disassembly_listing();
+                        self.disassembly_listing.clear();
+                    }
+                }
+            }
+        }
+    }
+    
+    pub fn get_option(&self, opt: MachineOption) -> MachineOption {
+        match opt {
+            MachineOption::RecordListing(_) => MachineOption::RecordListing(self.options.record_listing),
         }
     }
 
@@ -1348,12 +1412,33 @@ impl Machine {
             let (intr, _) = self.run_devices(cpu_cycles, &mut kb_event_processed);
             self.cpu.set_intr(intr);
 
+            // Give step_finish a mutable reference to a Disassembly struct if we are recording the
+            // disassembly listing.
+            let listing_entry = if self.options.record_listing {
+                Some(&mut self.disassembly)
+            }
+            else {
+                None
+            };
+
             // Finish instruction after running devices (RNI)
-            if let Err(err) = self.cpu.step_finish() {
+            if let Err(err) = self.cpu.step_finish(listing_entry) {
                 self.error = true;
                 self.error_str = Some(format!("{}", err));
                 log::error!("CPU Error: {}\n{}", err, self.cpu.dump_instruction_history_string());
             }
+
+            if self.options.record_listing {
+                let cpu_address = CpuAddress::Segmented(self.disassembly.cs, self.disassembly.ip);
+                let listing_entry = DisassemblyListingEntry {
+                    visit_count : 0,
+                    disassembly : self.disassembly.clone()
+                };
+                let entry = self.disassembly_listing.entry(cpu_address).or_insert(listing_entry);
+                entry.visit_count += 1;
+            }
+
+
 
             // If we returned a step over target address, execution is paused, and step over was requested,
             // Set a special breakpoint at the target address, and then continue running normally.
@@ -1595,5 +1680,61 @@ impl Machine {
         F: FnMut(VideoCardInterface),
     {
         self.bus_mut().for_each_videocard(f)
+    }
+    
+    
+    pub fn dump_disassembly_listing(&mut self) {
+
+        // Resolve filename option
+        let filename = match &self.disassembly_listing_file {
+            Some(f) => f,
+            None => {
+                log::error!("No disassembly listing file specified.");
+                return;
+            }
+        };
+        
+        // Attempt to open file
+        let mut file_opt = File::create(&filename);
+        let file = match file_opt {
+            Ok(f) => f,
+            Err(e) => {
+                log::error!("Failed to open disassembly listing file: {}", e);
+                return;
+            }
+        };
+
+        // We should have an open file now. Create a BufWriter for it.
+        let mut writer = BufWriter::new(file);
+
+/*        _ = writer.write_all("flat,cs,ip,bytes,disasm,comments".as_bytes());
+        
+        for (addr, entry) in self.disassembly_listing.iter() {  
+            let disasm = &entry.disassembly;
+            let line = format!(
+                "{:05X},{:04X},{:04X},{:?},{},{}\n",
+                u32::from(addr),
+                disasm.cs,
+                disasm.ip,
+                disasm.bytes,
+                disasm.i,
+                ";"
+            );
+            _ = writer.write_all(line.as_bytes());
+        }*/
+
+        for (addr, entry) in self.disassembly_listing.iter() {
+            let disasm = &entry.disassembly;
+            let line = format!(
+                "{:05X} {:04X}:{:04X} {:24} {:32} {}\n",
+                u32::from(addr),
+                disasm.cs,
+                disasm.ip,
+                format_instruction_bytes(&disasm.bytes), 
+                format!("{}", disasm.i),
+                ";"
+            );
+            _ = writer.write_all(line.as_bytes());
+        }
     }
 }

@@ -53,7 +53,7 @@ impl VGACard {
             /*
                 There's an apparent 'bug' in the IBM VGA BIOS palette register test, where 768 test
                 values are written to the color registers.
-                These are then read back and tested, but the register address is not initalized to
+                These are then read back and tested, but the register address is not initialized to
                 zero first. This implies that the palette address wraps around on increment.
             */
             self.color_pel_read_address = self.color_pel_read_address.wrapping_add(1);

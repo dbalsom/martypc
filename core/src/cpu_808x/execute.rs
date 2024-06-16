@@ -1313,6 +1313,10 @@ impl Intel808x {
 
                 // Write to port
                 self.biu_io_write_u8(op1_value as u16, op2_value, ReadWriteFlag::RNI);
+                
+                if self.io_flags[op1_value as usize] & IO_WRITE_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }
             }
             0xE7 => {
                 // OUT imm8, ax
@@ -1323,12 +1327,9 @@ impl Intel808x {
                 // Write to consecutive ports
                 self.biu_io_write_u16(op1_value as u16, op2_value, ReadWriteFlag::RNI);
 
-                /*
-                // Write first 8 bits to first port
-                self.biu_io_write_u8(op1_value as u16, (op2_value & 0xFF) as u8, ReadWriteFlag::Normal);
-                // Write next 8 bits to port + 1
-                self.biu_io_write_u8((op1_value + 1) as u16, (op2_value >> 8 & 0xFF) as u8, ReadWriteFlag::RNI);
-                */
+                if self.io_flags[op1_value as usize] & IO_WRITE_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }
             }
             0xE8 => {
                 // CALL rel16
@@ -1414,6 +1415,10 @@ impl Intel808x {
                 self.cycle_i(0x0b8);
 
                 self.biu_io_write_u8(op1_value, op2_value, ReadWriteFlag::RNI);
+
+                if self.io_flags[op1_value as usize] & IO_WRITE_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }                
             }
             0xEF => {
                 // OUT dx, ax
@@ -1422,19 +1427,12 @@ impl Intel808x {
                 let op2_value = self.read_operand16(self.i.operand2_type, self.i.segment_override).unwrap();
                 self.cycle_i(0x0b8);
 
-                if op1_value == 0x06 {
-                    log::debug!("OUT of {:02X}", op2_value);
-                }
-
                 // Write to consecutive ports
                 self.biu_io_write_u16(op1_value, op2_value, ReadWriteFlag::RNI);
 
-                /*
-                // Write first 8 bits to first port
-                self.biu_io_write_u8(op1_value, (op2_value & 0xFF) as u8, ReadWriteFlag::Normal);
-                // Write next 8 bits to port + 1
-                self.biu_io_write_u8(op1_value + 1, (op2_value >> 8 & 0xFF) as u8, ReadWriteFlag::RNI);
-                */
+                if self.io_flags[op1_value as usize] & IO_WRITE_BREAKPOINT != 0 {
+                    self.set_breakpoint_flag();
+                }
             }
             0xF0 => {
                 unhandled = true;

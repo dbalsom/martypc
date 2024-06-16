@@ -280,6 +280,17 @@ impl GuiState {
                     self.workspace_window_open_button(ui, GuiWindow::CycleTraceViewer, true);
                     self.workspace_window_open_button(ui, GuiWindow::CallStack, true);
                     self.workspace_window_open_button(ui, GuiWindow::DisassemblyViewer, true);
+
+                    ui.menu_button("Disassembly Listing", |ui| {
+                        if ui.button("⏺ Start Recording").clicked() {
+                            self.event_queue.send(GuiEvent::StartRecordingDisassembly);
+                            ui.close_menu();
+                        }
+                        if ui.button("⏹ Stop Recording and Save").clicked() {
+                            self.event_queue.send(GuiEvent::StopRecordingDisassembly);
+                            ui.close_menu();
+                        }
+                    });
                 });
 
                 ui.menu_button("Memory", |ui| {

@@ -41,6 +41,15 @@ patch_roms = true
 # Don't load any ROMs if true. Default: false
 #no_roms = true
 
+# Enable disassembly recording. This is similar to CPU instruction history,
+# but records the disassembly of each instruction executed, sorted by
+# address. This builds a disassembly listing of the program as it runs.
+disassembly_recording = false
+
+# Filename to save diassembly recording to.
+# This will be saved in the 'traces' directory
+disassembly_file = "disassembly.lst"
+
 # Turbo Button
 # ----------------------------------------------------------------------------
 # Change the clock divisor/multiplier for the CPU to run the CPU faster than 

@@ -32,7 +32,7 @@
 
 use crate::{
     cpu_808x::{decode::DECODE, *},
-    cpu_common::{CpuAddress, CpuError, CpuException, ExecutionResult, StepResult},
+    cpu_common::{CpuAddress, CpuError, CpuException, Disassembly, ExecutionResult, StepResult},
     gdr,
 };
 
@@ -301,7 +301,7 @@ impl Intel808x {
     /// the string instruction calling RPTI.
     ///
     /// This function effectively simulates the RNI microcode routine.
-    pub fn step_finish(&mut self) -> Result<StepResult, CpuError> {
+    pub fn step_finish(&mut self, disassembly: Option<&mut Disassembly>) -> Result<StepResult, CpuError> {
         let mut step_result = StepResult::Normal;
         let mut irq = 7;
         let mut did_interrupt = false;
@@ -457,6 +457,15 @@ impl Intel808x {
             }
 
             self.last_intr = cur_intr;
+        }
+
+        if let Some(disasm_ref) = disassembly {
+            disasm_ref.cs = self.last_cs;
+            disasm_ref.ip = self.last_ip;
+            disasm_ref.i = self.i.clone();
+            disasm_ref.bytes = self
+                .bus
+                .get_vec_at(self.instruction_address as usize, self.i.size as usize);
         }
 
         Ok(step_result)

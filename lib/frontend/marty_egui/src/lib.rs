@@ -194,6 +194,9 @@ pub enum GuiEvent {
     RescanMediaFolders,
     CtrlAltDel,
     ZoomChanged(f32),
+    ResetIOStats,
+    StartRecordingDisassembly,
+    StopRecordingDisassembly,
 }
 
 pub enum DeviceSelection {

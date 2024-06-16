@@ -193,6 +193,24 @@ pub enum CpuAddress {
     Offset(u16),
 }
 
+impl CpuAddress {
+    pub fn to_flat(&self) -> CpuAddress {
+        match self {
+            CpuAddress::Flat(_) => *self,
+            CpuAddress::Segmented(s, o) => CpuAddress::Flat(calc_linear_address(*s, *o)),
+            CpuAddress::Offset(a) => CpuAddress::Flat(*a as u32),
+        }
+    }
+
+    pub fn to_flat_u32(&self) -> u32 {
+        match self {
+            CpuAddress::Flat(a) => *a,
+            CpuAddress::Segmented(s, o) => calc_linear_address(*s, *o),
+            CpuAddress::Offset(a) => *a as u32,
+        }
+    }
+}
+
 impl Default for CpuAddress {
     fn default() -> CpuAddress {
         CpuAddress::Segmented(0, 0)
@@ -205,6 +223,16 @@ impl From<CpuAddress> for u32 {
             CpuAddress::Flat(a) => a,
             CpuAddress::Segmented(s, o) => calc_linear_address(s, o),
             CpuAddress::Offset(a) => a as Self,
+        }
+    }
+}
+
+impl From<&CpuAddress> for u32 {
+    fn from(cpu_address: &CpuAddress) -> Self {
+        match cpu_address {
+            CpuAddress::Flat(a) => *a,
+            CpuAddress::Segmented(s, o) => calc_linear_address(*s, *o),
+            CpuAddress::Offset(a) => *a as Self,
         }
     }
 }
@@ -235,5 +263,19 @@ impl PartialEq for CpuAddress {
             (CpuAddress::Segmented(s1, o1), CpuAddress::Segmented(s2, o2)) => *s1 == *s2 && *o1 == *o2,
             _ => false,
         }
+    }
+}
+
+impl Eq for CpuAddress {}
+
+impl PartialOrd for CpuAddress {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for CpuAddress {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.to_flat_u32().cmp(&other.to_flat_u32())
     }
 }

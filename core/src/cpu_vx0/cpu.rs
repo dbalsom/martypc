@@ -43,6 +43,7 @@ use crate::{
         CpuOption,
         CpuStringState,
         CpuType,
+        Disassembly,
         QueueOp,
         Register8,
         ServiceEvent,
@@ -261,8 +262,8 @@ impl Cpu for NecVx0 {
     }
 
     #[inline]
-    fn step_finish(&mut self) -> Result<StepResult, CpuError> {
-        self.step_finish()
+    fn step_finish(&mut self, disassembly: Option<&mut Disassembly>) -> Result<StepResult, CpuError> {
+        self.step_finish(disassembly)
     }
 
     #[inline]

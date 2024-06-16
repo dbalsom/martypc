@@ -39,6 +39,7 @@ pub mod error;
 pub mod instruction;
 pub mod mnemonic;
 pub mod operands;
+pub mod services;
 
 use enum_dispatch::enum_dispatch;
 use serde::Deserialize;
@@ -318,10 +319,26 @@ pub fn calc_linear_address(segment: u16, offset: u16) -> u32 {
     (((segment as u32) << 4) + offset as u32) & 0xFFFFFu32
 }
 
+pub fn format_instruction_bytes(bytes: &[u8]) -> String {
+    let mut s = String::new();
+    for b in bytes {
+        s.push_str(&format!("{:02X} ", b));
+    }
+    s
+}
+
 #[enum_dispatch]
 pub enum CpuDispatch {
     Intel808x,
     NecVx0,
+}
+
+#[derive(Clone, Default)]
+pub struct Disassembly {
+    pub cs: u16,
+    pub ip: u16,
+    pub bytes: Vec<u8>,
+    pub i: Instruction,
 }
 
 #[macro_export]
@@ -376,7 +393,7 @@ pub trait Cpu {
     fn set_nmi(&mut self, state: bool);
     fn set_intr(&mut self, state: bool);
     fn step(&mut self, skip_breakpoint: bool) -> Result<(StepResult, u32), CpuError>;
-    fn step_finish(&mut self) -> Result<StepResult, CpuError>;
+    fn step_finish(&mut self, disassembly: Option<&mut Disassembly>) -> Result<StepResult, CpuError>;
 
     fn in_rep(&self) -> bool;
     fn get_type(&self) -> CpuType;

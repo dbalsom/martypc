@@ -130,7 +130,7 @@ macro_rules! vgdr {
     };
 }
 
-use crate::cpu_common::{operands::OperandSize, Register16, Register8, ServiceEvent};
+use crate::cpu_common::{operands::OperandSize, services::CPUDebugServices, Register16, Register8, ServiceEvent};
 use trace_print;
 
 const QUEUE_MAX: usize = 6;
@@ -576,7 +576,9 @@ pub struct NecVx0 {
     instruction_address: u32,
     instruction_history_on: bool,
     instruction_history: VecDeque<HistoryEntry>,
-    call_stack: VecDeque<CallStackEntry>,
+    services: CPUDebugServices,
+
+    call_stack:  VecDeque<CallStackEntry>,
     exec_result: ExecutionResult,
 
     // Breakpoints

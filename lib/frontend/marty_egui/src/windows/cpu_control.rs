@@ -42,6 +42,7 @@ pub struct BreakpointSet<'a> {
     pub breakpoint: &'a str,
     pub mem_breakpoint: &'a str,
     pub int_breakpoint: &'a str,
+    pub io_breakpoint: &'a str,
     pub sw_start: &'a str,
     pub sw_stop: &'a str,
 }
@@ -51,6 +52,7 @@ pub struct CpuControl {
     breakpoint: String,
     mem_breakpoint: String,
     int_breakpoint: String,
+    io_breakpoint: String,
     sw_start: String,
     sw_stop: String,
     sw_measurements: String,
@@ -68,6 +70,7 @@ impl CpuControl {
             breakpoint: String::new(),
             mem_breakpoint: String::new(),
             int_breakpoint: String::new(),
+            io_breakpoint: String::new(),
             sw_start: String::new(),
             sw_stop: String::new(),
             sw_measurements: String::new(),
@@ -246,6 +249,12 @@ impl CpuControl {
                     events.send(GuiEvent::EditBreakpoint);
                 }
                 ui.end_row();
+
+                ui.label("IO Breakpoint: ");
+                if ui.text_edit_singleline(&mut self.io_breakpoint).changed() {
+                    events.send(GuiEvent::EditBreakpoint);
+                }
+                ui.end_row();
             });
 
         egui::CollapsingHeader::new("StopWatch")
@@ -308,6 +317,7 @@ impl CpuControl {
             breakpoint: &self.breakpoint,
             mem_breakpoint: &self.mem_breakpoint,
             int_breakpoint: &self.int_breakpoint,
+            io_breakpoint: &self.io_breakpoint,
             sw_start: &self.sw_start,
             sw_stop: &self.sw_stop,
         }

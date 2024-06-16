@@ -1300,6 +1300,7 @@ impl CGACard {
     /// Handle a write to the CGA mode register. Defer the mode change if it would change
     /// from graphics mode to text mode or back (Need to measure this on real hardware)
     fn handle_mode_register(&mut self, mode_byte: u8) {
+        //log::debug!("Write to CGA mode register: {:08b}", mode_byte);
         if self.is_deferred_mode_change(mode_byte) {
             // Latch the mode change and mark it pending. We will change the mode on next hsync.
             log::trace!("deferring mode change.");
