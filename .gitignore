@@ -66,6 +66,7 @@ icon.png
 
 /install/media/roms/romdef_s100.toml
 /install/media/roms/romdef_ast.toml
+/install/media/roms/GLaBIOS/parking
 
 # Frontend files
 /frontends/martypc_web_player_wgpu/web/bin
