@@ -127,8 +127,36 @@ pub fn handle_event(emu: &mut Emulator, tm: &mut TimestepManager, event: Event<(
                     });
                 }
                 WindowEvent::Resized(size) => {
+                    let event_window = emu
+                        .dm
+                        .get_window_by_id(window_id)
+                        .expect(&format!("Couldn't resolve window id {:?} to window.", window_id));
+
+                    let is_fullscreen = match event_window.fullscreen() {
+                        Some(_) => {
+                            log::debug!("Resize event received while in fullscreen mode.");
+                            true
+                        }
+                        None => false,
+                    };
+
+                    // wgpu under macOS and Intel graphics has a bug where it will draw stripes instead of the
+                    // shader clear color when in fullscreen. The workaround is to create the surface at 1 pixel
+                    // smaller than fullscreen.
+                    let (adjust_x, adjust_y) = if is_fullscreen && emu.config.emulator.backend.macos_stripe_fix {
+                        log::debug!("Adjusting for macOS stripe fix.");
+                        (1, 1)
+                    }
+                    else {
+                        (0, 0)
+                    };
+
                     if size.width > 0 && size.height > 0 {
-                        if let Err(e) = emu.dm.on_window_resized(window_id, size.width, size.height) {
+                        if let Err(e) = emu.dm.on_window_resized(
+                            window_id,
+                            size.width.saturating_sub(adjust_x),
+                            size.height.saturating_sub(adjust_y),
+                        ) {
                             log::error!("Failed to resize window: {}", e);
                         }
                     }

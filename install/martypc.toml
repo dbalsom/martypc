@@ -206,6 +206,11 @@ run_bin_ofs = 0x0000
 # presentation mode increase latency and causes window resizing issues.
 vsync = false
 
+# There appears to be a bug in the wgpu backend that causes vertical stripes when
+# running fullscreen under Intel graphics. This is a workaround for that issue, setting
+# the surface size to one pixel less than fullscreen.
+macos_stripe_fix = false
+
 [emulator.audio]
 # Set this to false to disable sound system initialization.
 enabled = true

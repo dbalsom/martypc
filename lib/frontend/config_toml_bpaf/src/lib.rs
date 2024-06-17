@@ -122,6 +122,14 @@ pub struct Debugger {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Backend {
+    #[serde(default)]
+    pub vsync: bool,
+    #[serde(default)]
+    pub macos_stripe_fix: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Emulator {
     pub basedir: PathBuf,
     pub paths: Vec<PathConfigItem>,
@@ -153,6 +161,8 @@ pub struct Emulator {
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
     pub run_bin_ofs: Option<u16>,
+
+    pub backend: Backend,
 
     #[serde(default)]
     pub video_trace_file: Option<PathBuf>,
