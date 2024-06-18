@@ -24,14 +24,18 @@
 
    ---------------------------------------------------------------------------
 
-   common::lib.rs
+   common::types::cartridge.rs
 
-   Common emulator library.
-   Define types and methods common to both frontend and backend libraries.
+   Define common frontend types.
+
 */
 
-pub mod bytebuf;
-pub mod types;
-pub mod util;
-
-pub use crate::types::{cartridge::CartImage, video_dimensions::VideoDimensions};
+pub struct CartImage {
+    pub creator: String,
+    pub comment: String,
+    pub version_major: u8,
+    pub version_minor: u8,
+    pub address_seg: u16,
+    pub address_mask: u16,
+    pub image: Vec<u8>,
+}

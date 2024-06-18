@@ -197,6 +197,8 @@ pub enum GuiEvent {
     ResetIOStats,
     StartRecordingDisassembly,
     StopRecordingDisassembly,
+    InsertCartridge(usize, usize),
+    RemoveCartridge(usize),
 }
 
 pub enum DeviceSelection {

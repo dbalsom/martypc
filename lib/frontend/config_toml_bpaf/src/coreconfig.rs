@@ -111,4 +111,7 @@ impl CoreConfig for ConfigFileParams {
     fn get_halt_behavior(&self) -> OnHaltBehavior {
         self.machine.cpu.on_halt.unwrap_or_default()
     }
+    fn get_terminal_port(&self) -> Option<u16> {
+        self.machine.terminal_port
+    }
 }

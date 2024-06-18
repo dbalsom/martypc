@@ -279,6 +279,7 @@ pub struct Machine {
     pub input: MachineInput,
     pub disassembly_recording: Option<bool>,
     pub disassembly_file: Option<PathBuf>,
+    pub terminal_port: Option<u16>,
 }
 
 #[derive(Debug, Deserialize)]

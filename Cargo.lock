@@ -2096,6 +2096,7 @@ dependencies = [
  "fxhash",
  "lazy_static",
  "log",
+ "marty_common",
  "md5",
  "modular-bitfield",
  "rand",

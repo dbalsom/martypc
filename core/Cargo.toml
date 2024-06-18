@@ -10,6 +10,7 @@ path = "src/lib.rs"
 crate-type = ["lib"]
 
 [dependencies]
+marty_common = { path = "../lib/common" }
 anyhow = "1.0.58"
 arraydeque = "0.4.5"
 bytemuck = "1.13.1"

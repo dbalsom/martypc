@@ -9,17 +9,30 @@
 
 ### Frontend Bug Fixes / Improvements
 
+* Added a menu interface to select IBM PCJr Cartridges. Like a real PCJr, inserting or removing a cartridge will reboot the machine.
+  * 'JRipCart' formatted cartridge images are supported. These appear to be the most common image format.
+  * Some cartridges run right away, some run after disk boot fails, some run from DOS commands. Have fun figuring it out!
+
 ### Core Bug Fixes / Improvements
 
+* PCJR: Implemented cartridge slot device and cartride loading / unloading. 
+* BUS: Implemented a `terminal_port` configuration option under `[machine]` in the main configuration. Writes to this port will be printed
+  to the host's terminal.
 * MC6845: Fixed an issue preventing entering vertical total adjust period if vertical total was 127. Fixes some Hercules display issues.
-* HERCULES: Increased the size of the Hercules' display field to accomodate some CGA emulators that drive the MDA monitor slightly out of sync (BBSIMCGA)
+* HERCULES: Increased the size of the Hercules' display field to accomodate some CGA emulators that drive the MDA monitor slightly out of sync (Fixes BBSIMCGA)
 * CGA: Added CGA's external mode register to debug output
-* MACHINE: Added a facility to record disassembly listings from running code
+* MACHINE: Added a facility to record disassembly listings from running code. The output filename is set by `disassembly_file` under `[machine]` in the main configuration.
+  Basically, this feature saves instruction disassembly to a hash table by CS:IP.  Modification of code segments will override previous disassembly, so it is most useful
+  to toggle this feature on and off for specified periods.
 
 ### Debugger Bug Fixes / Improvements
 
 * Added a 'reset' button to the IO Stats window to reset all the port counters.
 * Fixed panic/crash when resetting machine with IO Stats window open and scrolled. 
+
+### Miscellaneous
+
+* Updated GLaBIOS 0.2.6 ROMS for a bugfix when int 10h vector is overridden
 
 ## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-06-09)
 

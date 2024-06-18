@@ -307,6 +307,7 @@ pub struct MachineDescriptor {
     pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
     pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
     pub allow_expansion_video: bool,   // Whether the machine allows for expansion video cards.
+    pub pcjr_cart_slot: bool,          // Does the system have PCJr cartridge slots?
 }
 
 impl Default for MachineDescriptor {
@@ -333,6 +334,7 @@ impl Default for MachineDescriptor {
             onboard_serial: None,
             onboard_parallel: None,
             allow_expansion_video: true,
+            pcjr_cart_slot: false,
         }
     }
 }
@@ -403,6 +405,7 @@ lazy_static! {
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,
                     dma_type: None,
+                    pcjr_cart_slot: true, // PCJr has cartridge slots!
                     ..Default::default()
                 },
             ),
@@ -429,6 +432,7 @@ lazy_static! {
                     onboard_serial: None,
                     onboard_parallel: Some(0x378),
                     allow_expansion_video: false,
+                    pcjr_cart_slot: false,
                 },
             )
         ]);

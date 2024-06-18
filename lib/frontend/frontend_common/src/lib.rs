@@ -33,6 +33,7 @@
 
 use serde_derive::Deserialize;
 
+pub mod cartridge_manager;
 pub mod color;
 pub mod constants;
 pub mod display_manager;

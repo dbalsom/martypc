@@ -31,6 +31,7 @@
 */
 
 pub mod a0;
+pub mod cartridge_slots;
 pub mod cga;
 pub mod dipswitch;
 pub mod dma;

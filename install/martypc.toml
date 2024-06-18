@@ -50,6 +50,10 @@ disassembly_recording = false
 # This will be saved in the 'traces' directory
 disassembly_file = "disassembly.lst"
 
+# Enable a console debugging port. Writes to this port will be printed to the
+# host terminal. ESC bytes (0x1B) will be filtered to avoid terminal abuse.
+#terminal_port = 0xE9
+
 # Turbo Button
 # ----------------------------------------------------------------------------
 # Change the clock divisor/multiplier for the CPU to run the CPU faster than 
@@ -152,7 +156,9 @@ paths = [
     { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
-    { resource = "floppy", path = "$basedir$/media/floppies", recurse = true },
+    { resource = "floppy", path = "$basedir$/media/floppies", recurse = true, create = true },
+    { resource = "cartridge", path = "$basedir$/media/cartridges", recurse = true, create = true },
+    { resource = "cassette", path = "$basedir$/media/cassettes", recurse = true, create = true },
     { resource = "dump", path = "$basedir$/output/dumps", create = true },
     { resource = "trace", path = "$basedir$/output/traces", create = true },
     { resource = "screenshot", path = "$basedir$/output/screenshots", create = true },

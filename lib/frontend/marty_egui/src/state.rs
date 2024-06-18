@@ -123,6 +123,21 @@ impl GuiHddInfo {
     }
 }
 
+pub struct GuiCartInfo {
+    pub(crate) idx: usize,
+    pub(crate) selected_idx: Option<usize>,
+    pub(crate) selected_path: Option<PathBuf>,
+}
+
+impl GuiCartInfo {
+    pub fn filename(&self) -> Option<String> {
+        match &self.selected_path {
+            Some(path) => Some(path.to_string_lossy().to_string()),
+            None => None,
+        }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct WorkspaceWindowState {
     pub open: bool,
@@ -171,9 +186,10 @@ pub struct GuiState {
     pub(crate) scaler_modes: Vec<ScalerMode>,
     pub(crate) scaler_presets: Vec<String>,
 
-    // Floppy Disk Images
+    // Media Images
     pub(crate) floppy_drives: Vec<GuiFloppyDriveInfo>,
     pub(crate) hdds: Vec<GuiHddInfo>,
+    pub(crate) carts: Vec<GuiCartInfo>,
 
     // VHD Images
     pub(crate) vhd_names: Vec<OsString>,
@@ -218,6 +234,7 @@ pub struct GuiState {
 
     pub floppy_tree_menu: FileTreeMenu,
     pub hdd_tree_menu:    FileTreeMenu,
+    pub cart_tree_menu:   FileTreeMenu,
     //pub(crate) global_zoom: f32,
 }
 
@@ -301,6 +318,7 @@ impl GuiState {
 
             floppy_drives: Vec::new(),
             hdds: Vec::new(),
+            carts: Vec::new(),
             vhd_names: Vec::new(),
 
             serial_ports: Vec::new(),
@@ -340,6 +358,7 @@ impl GuiState {
 
             floppy_tree_menu: FileTreeMenu::new(),
             hdd_tree_menu: FileTreeMenu::new(),
+            cart_tree_menu: FileTreeMenu::new(),
             //global_zoom: 1.0,
         }
     }
@@ -465,6 +484,26 @@ impl GuiState {
     pub fn set_hdd_selection(&mut self, drive: usize, idx: Option<usize>, name: Option<PathBuf>) {
         self.hdds[drive].selected_idx = idx;
         self.hdds[drive].selected_path = name;
+    }
+
+    pub fn set_cart_slots(&mut self, slotct: usize) {
+        self.carts.clear();
+        for idx in 0..slotct {
+            self.carts.push(GuiCartInfo {
+                idx,
+                selected_idx: None,
+                selected_path: None,
+            });
+        }
+    }
+
+    pub fn set_cart_selection(&mut self, slot: usize, idx: Option<usize>, name: Option<PathBuf>) {
+        self.carts[slot].selected_idx = idx;
+        self.carts[slot].selected_path = name;
+    }
+
+    pub fn set_cart_tree(&mut self, tree: PathTreeNode) {
+        self.cart_tree_menu.set_root(tree);
     }
 
     /// Set display apertures for the specified display. Should be called in a loop for each display

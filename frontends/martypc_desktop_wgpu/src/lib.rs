@@ -73,6 +73,7 @@ use marty_core::{
 
 use display_manager_wgpu::{DisplayBackend, DisplayManager, DisplayManagerGuiOptions, WgpuDisplayManagerBuilder};
 use frontend_common::{
+    cartridge_manager::CartridgeManager,
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     timestep_manager::TimestepManager,
@@ -470,6 +471,15 @@ pub fn run() {
         std::process::exit(1);
     }
 
+    // Instantiate the cartridge manager
+    let mut cart_manager = CartridgeManager::new();
+
+    // Scan the "cartridge" resource
+    if let Err(e) = cart_manager.scan_resource(&resource_manager) {
+        eprintln!("Failed to read cartridge path: {:?}", e);
+        std::process::exit(1);
+    }
+
     // Enumerate host serial ports
     let serial_ports = serialport::available_ports().unwrap_or_else(|e| {
         log::warn!("Didn't find any serial ports: {:?}", e);
@@ -691,6 +701,7 @@ pub fn run() {
         gui,
         floppy_manager,
         vhd_manager,
+        cart_manager,
         perf: Default::default(),
         flags: EmuFlags {
             render_gui: render_egui,

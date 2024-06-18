@@ -39,7 +39,7 @@
 use anyhow::Error;
 use fxhash::FxHashMap;
 use ringbuf::Producer;
-use std::{collections::VecDeque, fmt, path::Path};
+use std::{collections::VecDeque, fmt, io::Write, path::Path};
 
 use crate::{
     bytequeue::*,
@@ -81,7 +81,14 @@ use crate::devices::vga::{self, VGACard};
 use crate::{
     cpu_common::{CpuDispatch, CpuType},
     device_traits::videocard::VideoCardSubType,
-    devices::{a0::A0Register, lotech_ems::LotechEmsCard, lpt_card::ParallelController, tga, tga::TGACard},
+    devices::{
+        a0::A0Register,
+        cartridge_slots::CartridgeSlot,
+        lotech_ems::LotechEmsCard,
+        lpt_card::ParallelController,
+        tga,
+        tga::TGACard,
+    },
     machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType},
     syntax_token::SyntaxFormatType,
 };
@@ -339,6 +346,7 @@ pub enum MmioDeviceType {
     Vga,
     Rom,
     Ems,
+    Cart,
 }
 
 // Main bus struct.
@@ -385,6 +393,7 @@ pub struct BusInterface {
     hdc: Option<HardDiskController>,
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
+    cart_slot: Option<CartridgeSlot>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -400,6 +409,8 @@ pub struct BusInterface {
     tga_tick_accum: u32,
     kb_us_accum:    f64,
     refresh_active: bool,
+
+    terminal_port: Option<u16>,
 }
 
 #[macro_export]
@@ -551,6 +562,7 @@ impl Default for BusInterface {
             hdc: None,
             mouse: None,
             ems: None,
+            cart_slot: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -565,6 +577,8 @@ impl Default for BusInterface {
             tga_tick_accum: 0,
             kb_us_accum:    0.0,
             refresh_active: false,
+
+            terminal_port: None,
         }
     }
 }
@@ -875,6 +889,9 @@ impl BusInterface {
                             }
                         }
                     }
+                    MmioDeviceType::Cart => {
+                        return Ok(0);
+                    }
                     _ => {}
                 }
                 // We didn't match any mmio devices, return raw memory
@@ -924,6 +941,9 @@ impl BusInterface {
                                 _ => {}
                             }
                         }
+                    }
+                    MmioDeviceType::Cart => {
+                        return Ok(0);
                     }
                     _ => {}
                 }
@@ -990,6 +1010,13 @@ impl BusInterface {
                             return Ok((data, 0));
                         }
                     }
+                    MmioDeviceType::Cart => {
+                        if let Some(cart_slot) = &mut self.cart_slot {
+                            let (data, _waits) =
+                                MemoryMappedDevice::mmio_read_u8(cart_slot, address, system_ticks, None);
+                            return Ok((data, 0));
+                        }
+                    }
                     _ => {}
                 }
                 return Err(MemError::MmioError);
@@ -1049,6 +1076,12 @@ impl BusInterface {
                     MmioDeviceType::Ems => {
                         if let Some(ems) = &self.ems {
                             let data = MemoryMappedDevice::mmio_peek_u8(ems, address, None);
+                            return Ok(data);
+                        }
+                    }
+                    MmioDeviceType::Cart => {
+                        if let Some(cart_slot) = &self.cart_slot {
+                            let data = MemoryMappedDevice::mmio_peek_u8(cart_slot, address, None);
                             return Ok(data);
                         }
                     }
@@ -1113,7 +1146,8 @@ impl BusInterface {
                     }
                     _ => {}
                 }
-                return Err(MemError::MmioError);
+                return Ok((0xFFFF, 0));
+                //return Err(MemError::MmioError);
             }
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -1666,9 +1700,15 @@ impl BusInterface {
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
         sound_enabled: bool,
+        terminal_port: Option<u16>,
     ) -> Result<(), Error> {
         let video_frame_debug = false;
         let clock_mode = ClockingMode::Default;
+
+        if let Some(terminal_port) = terminal_port {
+            log::debug!("Terminal port set to: {:04X}", terminal_port);
+        }
+        self.terminal_port = terminal_port;
 
         // First we need to initialize the PPI. The PPI is used to read the system's DIP switches, so the PPI must be
         // given several parameters from the machine configuration.
@@ -1697,7 +1737,7 @@ impl BusInterface {
         if let Some(a0_type) = machine_desc.a0 {
             let a0 = A0Register::new(a0_type);
 
-            log::warn!("Creating A0 register...");
+            log::debug!("Creating A0 register...");
             add_io_device!(self, a0, IoDeviceType::A0Register);
             self.a0 = Some(a0);
         }
@@ -1848,6 +1888,13 @@ impl BusInterface {
             }
         }
 
+        // Create PCJr cartridge slot
+        if machine_desc.pcjr_cart_slot {
+            let cart_slot = CartridgeSlot::new();
+            add_mmio_device!(self, cart_slot, MmioDeviceType::Cart);
+            self.cart_slot = Some(cart_slot);
+        }
+
         // Create video cards
         for (i, card) in machine_config.video.iter().enumerate() {
             let video_dispatch;
@@ -1969,7 +2016,8 @@ impl BusInterface {
 
                 // Read a byte from the keyboard
                 if let Some(kb_byte) = keyboard.recv_scancode() {
-                    log::debug!("Received keyboard byte: {:02X}", kb_byte);
+                    //log::debug!("Received keyboard byte: {:02X}", kb_byte);
+
                     // Do we have a PPI? if so, send the scancode to the PPI
                     if let Some(ppi) = &mut self.ppi {
                         ppi.send_keyboard(kb_byte);
@@ -2456,6 +2504,20 @@ impl BusInterface {
             ClockFactor::Multiplier(n) => cycles / (n as u32),
         };
 
+        // Handle terminal debug port
+        if let Some(terminal_port) = self.terminal_port {
+            if port == terminal_port {
+                //log::debug!("Write to terminal port: {:02X}", data);
+
+                // Filter Escape character to avoid terminal shenanigans.
+                // See: https://www.cyberark.com/resources/threat-research-blog/dont-trust-this-title-abusing-terminal-emulators-with-ansi-escape-characters
+                if data != 0x1B {
+                    print!("{}", data as char);
+                    _ = std::io::stdout().flush();
+                }
+            }
+        }
+
         let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
 
         let mut resolved = false;
@@ -2625,6 +2687,10 @@ impl BusInterface {
         &mut self.hdc
     }
 
+    pub fn cart_slot_mut(&mut self) -> &mut Option<CartridgeSlot> {
+        &mut self.cart_slot
+    }
+
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
         &mut self.mouse
     }
@@ -2742,6 +2808,15 @@ impl BusInterface {
     pub fn hdd_ct(&self) -> usize {
         if let Some(hdc) = &self.hdc {
             hdc.drive_ct()
+        }
+        else {
+            0
+        }
+    }
+
+    pub fn cart_ct(&self) -> usize {
+        if self.cart_slot.is_some() {
+            2
         }
         else {
             0
