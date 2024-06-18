@@ -48,6 +48,7 @@ mod run_fuzzer;
 
 use std::{
     cell::RefCell,
+    collections::HashMap,
     path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
@@ -77,8 +78,11 @@ use frontend_common::{
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
     timestep_manager::TimestepManager,
+    types::joykeys::JoyKeyInput,
     vhd_manager::VhdManager,
+    JoyKeyEntry,
 };
+use marty_core::keys::MartyKey;
 use marty_egui::state::GuiState;
 
 use crate::{
@@ -212,6 +216,52 @@ impl MouseData {
         self.frame_delta_x = 0.0;
         self.frame_delta_y = 0.0;
         self.have_update = false;
+    }
+}
+
+/// This structure is only used to maintain the state for keyboard joystick emulation.
+/// Actual joysticks will be read directly via a controller input library.
+#[allow(dead_code)]
+#[derive(Default)]
+pub struct JoystickData {
+    pub enabled:   bool,
+    pub key_state: HashMap<MartyKey, (JoyKeyInput, bool)>,
+    pub joy_state: HashMap<JoyKeyInput, bool>,
+}
+impl JoystickData {
+    fn new(keys: Vec<JoyKeyEntry>, enabled: bool) -> Self {
+        let mut jd = JoystickData::default();
+
+        for key in keys {
+            jd.key_state.insert(key.key, (key.input, false));
+            jd.joy_state.insert(key.input, false);
+        }
+        jd.enabled = enabled;
+        jd
+    }
+
+    fn get_xy(&self) -> (f64, f64) {
+        let x = if *self.joy_state.get(&JoyKeyInput::JoyLeft).unwrap() {
+            -1.0
+        }
+        else if *self.joy_state.get(&JoyKeyInput::JoyRight).unwrap() {
+            1.0
+        }
+        else {
+            0.0
+        };
+        let y = if *self.joy_state.get(&JoyKeyInput::JoyUp).unwrap() {
+            -1.0
+        }
+        else if *self.joy_state.get(&JoyKeyInput::JoyDown).unwrap() {
+            1.0
+        }
+        else {
+            0.0
+        };
+
+        //log::debug!("Joystick XY: ({}, {})", x, y);
+        (x, y)
     }
 }
 
@@ -674,6 +724,12 @@ pub fn run() {
         std::process::exit(1);
     });
 
+    // Create joystick data
+    let joy_data = JoystickData::new(
+        config.emulator.input.joystick_keys.clone(),
+        config.emulator.input.keyboard_joystick,
+    );
+
     // Create GUI state
     let render_egui = true;
     let gui = GuiState::new(exec_control.clone());
@@ -697,6 +753,7 @@ pub fn run() {
         exec_control,
         mouse_data,
         kb_data,
+        joy_data,
         stat_counter,
         gui,
         floppy_manager,

@@ -37,6 +37,7 @@ use marty_core::{
         CpuConfig,
         EmsMemoryConfig,
         FloppyControllerConfig,
+        GamePortConfig,
         HardDriveControllerConfig,
         KeyboardConfig,
         MachineConfiguration,
@@ -86,6 +87,7 @@ pub struct MachineConfigFileEntry {
     video: Option<Vec<VideoCardConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
+    game_port: Option<GamePortConfig>,
     media: Option<MediaConfig>,
 }
 
@@ -101,6 +103,7 @@ pub struct MachineConfigFileOverlayEntry {
     video: Option<Vec<VideoCardConfig>>,
     keyboard: Option<KeyboardConfig>,
     serial_mouse: Option<SerialMouseConfig>,
+    game_port: Option<GamePortConfig>,
     media: Option<MediaConfig>,
 }
 
@@ -389,6 +392,10 @@ impl MachineConfigFileEntry {
             log::debug!("Applying serial mouse overlay: {:?}", serial_mouse);
             self.serial_mouse = Some(serial_mouse);
         }
+        if let Some(game_port) = overlay.game_port {
+            log::debug!("Applying game port overlay: {:?}", game_port);
+            self.game_port = Some(game_port);
+        }
     }
 
     pub fn to_machine_config(&self) -> MachineConfiguration {
@@ -405,6 +412,7 @@ impl MachineConfigFileEntry {
             video: self.video.clone().unwrap_or_default(),
             keyboard: self.keyboard.clone(),
             serial_mouse: self.serial_mouse.clone(),
+            game_port: self.game_port.clone(),
             media: self.media.clone(),
         }
     }

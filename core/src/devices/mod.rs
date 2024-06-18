@@ -39,6 +39,7 @@ pub mod dma;
 pub mod ega;
 pub mod fdc;
 pub mod floppy_drive;
+pub mod game_port;
 pub mod hdc;
 pub mod keyboard;
 pub mod lotech_ems;

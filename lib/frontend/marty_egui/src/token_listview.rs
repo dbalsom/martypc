@@ -40,7 +40,7 @@ use crate::{color::*, constants::*, *};
 use egui::*;
 use marty_core::syntax_token::*;
 
-pub const TOKEN_TAB_STOPS: u32 = 64;
+pub const TOKEN_TAB_STOPS: u32 = 128;
 
 pub struct TokenListView {
     pub row: usize,

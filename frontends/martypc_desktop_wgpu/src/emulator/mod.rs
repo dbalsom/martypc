@@ -29,6 +29,7 @@
     MartyPC Desktop front-end Emulator struct and implementation.
 */
 
+use crate::JoystickData;
 use display_manager_wgpu::DisplayManager;
 use std::{cell::RefCell, ffi::OsString, rc::Rc};
 
@@ -73,6 +74,7 @@ pub struct Emulator {
     pub machine_events: Vec<MachineEvent>,
     pub exec_control: Rc<RefCell<ExecutionControl>>,
     pub mouse_data: MouseData,
+    pub joy_data: JoystickData,
     pub kb_data: KeyboardData,
     pub stat_counter: Counter,
     pub gui: GuiState,

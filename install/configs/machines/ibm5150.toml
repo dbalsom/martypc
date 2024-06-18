@@ -40,6 +40,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]
@@ -61,6 +62,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]
@@ -97,6 +99,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]
@@ -118,6 +121,7 @@ overlays = [
     "pcxt_2_360k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
+    "game_port",
 ]
 
     [machine.memory]

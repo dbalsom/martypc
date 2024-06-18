@@ -511,6 +511,21 @@ hotkeys = [
     { event = "ToggleFullscreen", keys = ["ControlLeft", "Enter"], scope = "Any", capture_disable = false },
     { event = "DebugStepOver", keys = ["F10"], scope="Gui", capture_disable = false },
     { event = "DebugStep", keys = ["F11"], scope="Gui", capture_disable = false },
+    # Joystick hotkeys. Only enabled when joystick keyboard emulation is enabled.
+    { event = "JoyToggle", keys = ["ControlLeft", "F9"], scope="Any", capture_disable = false },
+]
+
+# Enable keyboard -> joystick emulation. This can be toggled via the JoyToggle hotkey
+# above, so it isn't necessary to set this to true unless you want it enabled by default.
+keyboard_joystick = false
+
+joystick_keys = [
+    { joymap = "JoyButton1", key = "AltRight" },
+    { joymap = "JoyButton2", key = "ControlRight" },
+    { joymap = "JoyUp", key = "ArrowUp" },
+    { joymap = "JoyLeft", key = "ArrowLeft"},
+    { joymap = "JoyRight", key = "ArrowRight"},
+    { joymap = "JoyDown", key = "ArrowDown" }
 ]
 
 # Help the developer debug any keyboard issues you may be having. With this

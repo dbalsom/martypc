@@ -42,6 +42,7 @@ use frontend_common::{
     resource_manager::PathConfigItem,
     BenchmarkEndCondition,
     HotkeyConfigEntry,
+    JoyKeyEntry,
     MartyGuiTheme,
 };
 use marty_common::VideoDimensions;
@@ -287,6 +288,9 @@ pub struct EmulatorInput {
     #[serde(default)]
     pub reverse_mouse_buttons: bool,
     pub hotkeys: Vec<HotkeyConfigEntry>,
+    pub joystick_keys: Vec<JoyKeyEntry>,
+    #[serde(default)]
+    pub keyboard_joystick: bool,
     #[serde(default)]
     pub debug_keyboard: bool,
 }

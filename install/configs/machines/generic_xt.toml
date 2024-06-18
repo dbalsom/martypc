@@ -62,6 +62,7 @@ overlays = [
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
     "microsoft_serial_mouse",
+    "game_port",
 ]
 
     [machine.memory]
@@ -78,7 +79,8 @@ overlays = [
     "pcxt_2_720k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
-    "microsoft_serial_mouse"
+    "microsoft_serial_mouse",
+    "game_port",
 ]
 
     [machine.memory]
@@ -115,7 +117,8 @@ overlays = [
     "pcxt_2_720k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
-    "microsoft_serial_mouse"
+    "microsoft_serial_mouse",
+    "game_port",
 ]
 
     [machine.memory]
@@ -152,7 +155,8 @@ overlays = [
     "pcxt_2_720k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
-    "microsoft_serial_mouse"
+    "microsoft_serial_mouse",
+    "game_port",
 ]
 
     [machine.memory]
@@ -189,7 +193,8 @@ overlays = [
     "pcxt_2_720k_floppies",
     "pcxt_2_serial_ports",
     "us_modelf_keyboard",
-    "microsoft_serial_mouse"
+    "microsoft_serial_mouse",
+    "game_port",
 ]
 
     [machine.memory]

@@ -228,6 +228,20 @@ pub fn update_egui(emu: &mut Emulator, tm: &TimestepManager, elwt: &EventLoopWin
         }
     }
 
+    /*
+    // temp: joystick state display. implement joystick debug window?
+    if let Some(gameport) = emu.machine.bus_mut().game_port_mut() {
+        let state = gameport.get_state();
+        log::debug!(
+            "pos: {},{} resistance: {},{}",
+            state.sticks[0].0,
+            state.sticks[0].1,
+            state.resistance[0].0,
+            state.resistance[0].1,
+        );
+    }
+    */
+
     // -- Update disassembly viewer window
     if emu.gui.is_window_open(GuiWindow::DisassemblyViewer) {
         let start_addr_str = emu.gui.disassembly_viewer.get_address();

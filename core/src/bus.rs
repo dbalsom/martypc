@@ -84,6 +84,7 @@ use crate::{
     devices::{
         a0::A0Register,
         cartridge_slots::CartridgeSlot,
+        game_port::GamePort,
         lotech_ems::LotechEmsCard,
         lpt_card::ParallelController,
         tga,
@@ -280,6 +281,7 @@ pub enum IoDeviceType {
     HardDiskController,
     Mouse,
     Ems,
+    GamePort,
     Video(VideoCardId),
 }
 
@@ -290,6 +292,8 @@ pub enum IoDeviceDispatch {
 
 #[derive(Clone, Debug, Default)]
 pub struct IoDeviceStats {
+    last_read: u8,
+    last_write: u8,
     reads: usize,
     reads_dirty: bool,
     writes: usize,
@@ -299,6 +303,8 @@ pub struct IoDeviceStats {
 impl IoDeviceStats {
     pub fn one_read() -> Self {
         Self {
+            last_read: 0xFF,
+            last_write: 0,
             reads: 1,
             reads_dirty: true,
             writes: 0,
@@ -308,6 +314,8 @@ impl IoDeviceStats {
 
     pub fn one_write() -> Self {
         Self {
+            last_read: 0,
+            last_write: 0xFF,
             reads: 0,
             reads_dirty: false,
             writes: 1,
@@ -394,6 +402,7 @@ pub struct BusInterface {
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
     cart_slot: Option<CartridgeSlot>,
+    game_port: Option<GamePort>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -563,6 +572,7 @@ impl Default for BusInterface {
             mouse: None,
             ems: None,
             cart_slot: None,
+            game_port: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -1895,6 +1905,23 @@ impl BusInterface {
             self.cart_slot = Some(cart_slot);
         }
 
+        // Create a game port
+        let mut game_port_addr = None;
+        // Is there one onboard?
+        if machine_desc.game_port.is_some() {
+            game_port_addr = machine_desc.game_port;
+        }
+        // Is there one in the machine config?
+        else if let Some(game_port) = &machine_config.game_port {
+            game_port_addr = Some(game_port.io_base);
+        }
+        // Either way, install it if present
+        if let Some(game_port_addr) = game_port_addr {
+            let game_port = GamePort::new(Some(game_port_addr));
+            add_io_device!(self, game_port, IoDeviceType::GamePort);
+            self.game_port = Some(game_port);
+        }
+
         // Create video cards
         for (i, card) in machine_config.video.iter().enumerate() {
             let video_dispatch;
@@ -2172,6 +2199,11 @@ impl BusInterface {
             if let Some(mouse) = &mut self.mouse {
                 mouse.run(serial, us);
             }
+        }
+
+        // Run the game port {
+        if let Some(game_port) = &mut self.game_port {
+            game_port.run(us);
         }
 
         let mut do_area5150_hack = false;
@@ -2458,6 +2490,11 @@ impl BusInterface {
                         byte = Some(ems.read_u8(port, nul_delta));
                     }
                 }
+                IoDeviceType::GamePort => {
+                    if let Some(game_port) = &mut self.game_port {
+                        byte = Some(game_port.read_u8(port, nul_delta));
+                    }
+                }
                 IoDeviceType::Video(vid) => {
                     if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
                         byte = match video_dispatch {
@@ -2482,15 +2519,18 @@ impl BusInterface {
             }
         }
 
+        let byte_val = byte.unwrap_or(NO_IO_BYTE);
+
         self.io_stats
             .entry(port)
             .and_modify(|e| {
+                e.1.last_read = byte_val;
                 e.1.reads += 1;
                 e.1.reads_dirty = true;
             })
             .or_insert((byte.is_some(), IoDeviceStats::one_read()));
 
-        byte.unwrap_or(NO_IO_BYTE)
+        byte_val
     }
 
     /// Write an 8-bit value to an IO port.
@@ -2605,6 +2645,12 @@ impl BusInterface {
                         resolved = true;
                     }
                 }
+                IoDeviceType::GamePort => {
+                    if let Some(game_port) = &mut self.game_port {
+                        game_port.write_u8(port, data, None, nul_delta);
+                        resolved = true;
+                    }
+                }
                 IoDeviceType::Video(vid) => {
                     if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
                         match video_dispatch {
@@ -2689,6 +2735,10 @@ impl BusInterface {
 
     pub fn cart_slot_mut(&mut self) -> &mut Option<CartridgeSlot> {
         &mut self.cart_slot
+    }
+
+    pub fn game_port_mut(&mut self) -> &mut Option<GamePort> {
+        &mut self.game_port
     }
 
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
@@ -2849,6 +2899,9 @@ impl BusInterface {
                 tokens.push(SyntaxToken::Colon);
                 tokens.push(SyntaxToken::Text(port_desc));
                 tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
+                tokens.push(SyntaxToken::OpenBracket);
+                tokens.push(SyntaxToken::Text(format!("{:02X}", stats.1.last_read)));
+                tokens.push(SyntaxToken::CloseBracket);
                 tokens.push(SyntaxToken::StateString(
                     format!("{}", stats.1.reads),
                     stats.1.reads_dirty,
@@ -2856,6 +2909,7 @@ impl BusInterface {
                 ));
                 tokens.push(SyntaxToken::Comma);
                 tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
+                //tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
                 tokens.push(SyntaxToken::StateString(
                     format!("{}", stats.1.writes),
                     stats.1.writes_dirty,
@@ -2874,6 +2928,8 @@ impl BusInterface {
 
     pub fn reset_io_stats(&mut self) {
         for (_, stats) in self.io_stats.iter_mut() {
+            stats.1.last_read = 0;
+            stats.1.last_write = 0;
             stats.1.reads = 0;
             stats.1.writes = 0;
             stats.1.reads_dirty = false;
