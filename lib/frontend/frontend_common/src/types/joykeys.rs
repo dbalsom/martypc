@@ -24,14 +24,27 @@
 
    ---------------------------------------------------------------------------
 
-   frontend_common::types::mod.rs
+   frontend_common::types::joykey.rs
 
-   Define common frontend types.
+   Define frontend types for joystick keyboard emulation keys..
 
 */
 
-pub mod display_target_dimensions;
-pub mod display_target_margins;
-pub mod gui;
-pub mod hotkeys;
-pub mod joykeys;
+use marty_core::keys::MartyKey;
+use serde_derive::Deserialize;
+
+#[derive(Copy, Clone, Debug, PartialEq, Hash, Eq, Deserialize)]
+pub enum JoyKeyInput {
+    JoyButton1,
+    JoyButton2,
+    JoyUp,
+    JoyLeft,
+    JoyRight,
+    JoyDown,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct JoyKeyEntry {
+    pub input: JoyKeyInput,
+    pub key:   MartyKey,
+}

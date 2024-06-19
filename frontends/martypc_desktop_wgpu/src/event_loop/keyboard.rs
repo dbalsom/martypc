@@ -37,7 +37,7 @@ use winit::{
 };
 
 use display_manager_wgpu::DisplayManager;
-use frontend_common::{constants::LONG_NOTIFICATION_TIME, HotkeyEvent};
+use frontend_common::{constants::LONG_NOTIFICATION_TIME, types::joykeys::JoyKeyInput, HotkeyEvent};
 use marty_core::machine::{ExecutionOperation, MachineState};
 
 use crate::{input::TranslateKey, Emulator};
@@ -90,6 +90,16 @@ pub fn handle_key_event(emu: &mut Emulator, window_id: WindowId, key_event: &Key
                 window_id,
                 gui_focus,
             );
+
+            if process_joykeys(
+                emu,
+                *keycode,
+                matches!(state, ElementState::Pressed),
+                window_id,
+                gui_focus,
+            ) {
+                return true;
+            }
 
             // Get the window for this event.
             let _event_window = emu
@@ -250,9 +260,58 @@ pub fn process_hotkeys(emu: &mut Emulator, keycode: KeyCode, pressed: bool, wind
             HotkeyEvent::DebugStepOver => {
                 emu.exec_control.borrow_mut().set_op(ExecutionOperation::StepOver);
             }
+            HotkeyEvent::JoyToggle => {
+                log::debug!("JoyToggle hotkey triggered. Toggling joystick keyboard emulation.");
+                emu.joy_data.enabled = !emu.joy_data.enabled;
+            }
             _ => {
                 log::debug!("Unhandled Hotkey triggered: {:?}", hotkey);
             }
         }
     }
+}
+
+/// Process keys for joystick emulation, if enabled. Returns true if the key was processed.
+/// Processed keys should not be sent on to the emulator.
+#[allow(unreachable_patterns)]
+pub fn process_joykeys(
+    emu: &mut Emulator,
+    keycode: KeyCode,
+    pressed: bool,
+    _window_id: WindowId,
+    _gui_focus: bool,
+) -> bool {
+    if !emu.joy_data.enabled {
+        return false;
+    }
+    let martykey = keycode.to_internal();
+
+    let mut joykey = None;
+    emu.joy_data.key_state.entry(martykey).and_modify(|v| {
+        joykey = Some(v.0);
+        emu.joy_data.joy_state.entry(v.0).and_modify(|k| {
+            *k = pressed;
+        });
+        v.1 = pressed
+    });
+
+    if let Some(key) = joykey {
+        if let Some(gameport) = emu.machine.bus_mut().game_port_mut() {
+            match key {
+                JoyKeyInput::JoyButton1 => {
+                    gameport.set_button(0, 0, pressed);
+                }
+                JoyKeyInput::JoyButton2 => {
+                    gameport.set_button(0, 1, pressed);
+                }
+                _ => {
+                    // Update the stick position
+                    let (x, y) = emu.joy_data.get_xy();
+                    gameport.set_stick_pos(0, 0, Some(x), Some(y));
+                }
+            }
+        }
+    }
+
+    joykey.is_some()
 }

@@ -24,7 +24,7 @@
 
    ---------------------------------------------------------------------------
 
-   frontend_common::types::gui.rs
+   frontend_common::types::hotkeys.rs
 
    Define frontend types for hotkeys.
 
@@ -44,6 +44,13 @@ pub enum HotkeyEvent {
     ToggleFullscreen,
     DebugStep,
     DebugStepOver,
+    JoyToggle,
+    JoyButton1,
+    JoyButton2,
+    JoyUp,
+    JoyLeft,
+    JoyRight,
+    JoyDown,
 }
 
 #[derive(Copy, Clone, Debug, Deserialize)]

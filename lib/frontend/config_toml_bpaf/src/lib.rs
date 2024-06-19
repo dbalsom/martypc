@@ -42,6 +42,7 @@ use frontend_common::{
     resource_manager::PathConfigItem,
     BenchmarkEndCondition,
     HotkeyConfigEntry,
+    JoyKeyEntry,
     MartyGuiTheme,
 };
 use marty_common::VideoDimensions;
@@ -122,6 +123,14 @@ pub struct Debugger {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Backend {
+    #[serde(default)]
+    pub vsync: bool,
+    #[serde(default)]
+    pub macos_stripe_fix: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Emulator {
     pub basedir: PathBuf,
     pub paths: Vec<PathConfigItem>,
@@ -153,6 +162,8 @@ pub struct Emulator {
     pub run_bin: Option<String>,
     pub run_bin_seg: Option<u16>,
     pub run_bin_ofs: Option<u16>,
+
+    pub backend: Backend,
 
     #[serde(default)]
     pub video_trace_file: Option<PathBuf>,
@@ -269,6 +280,7 @@ pub struct Machine {
     pub input: MachineInput,
     pub disassembly_recording: Option<bool>,
     pub disassembly_file: Option<PathBuf>,
+    pub terminal_port: Option<u16>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -276,6 +288,9 @@ pub struct EmulatorInput {
     #[serde(default)]
     pub reverse_mouse_buttons: bool,
     pub hotkeys: Vec<HotkeyConfigEntry>,
+    pub joystick_keys: Vec<JoyKeyEntry>,
+    #[serde(default)]
+    pub keyboard_joystick: bool,
     #[serde(default)]
     pub debug_keyboard: bool,
 }

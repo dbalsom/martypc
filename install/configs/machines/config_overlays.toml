@@ -211,3 +211,12 @@ name = "microsoft_serial_mouse"
     # Port 0 - COM1
     # Port 1 - COM2
     port = 1
+    
+[[overlay]]
+name = "game_port"
+    [overlay.game_port]
+    # Don't change this unless you know what you are doing.
+    # Everything expects the game port to be at 0x201.
+    io_base = 0x201
+    
+    

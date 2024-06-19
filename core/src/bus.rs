@@ -39,7 +39,7 @@
 use anyhow::Error;
 use fxhash::FxHashMap;
 use ringbuf::Producer;
-use std::{collections::VecDeque, fmt, path::Path};
+use std::{collections::VecDeque, fmt, io::Write, path::Path};
 
 use crate::{
     bytequeue::*,
@@ -81,7 +81,15 @@ use crate::devices::vga::{self, VGACard};
 use crate::{
     cpu_common::{CpuDispatch, CpuType},
     device_traits::videocard::VideoCardSubType,
-    devices::{a0::A0Register, lotech_ems::LotechEmsCard, lpt_card::ParallelController, tga, tga::TGACard},
+    devices::{
+        a0::A0Register,
+        cartridge_slots::CartridgeSlot,
+        game_port::GamePort,
+        lotech_ems::LotechEmsCard,
+        lpt_card::ParallelController,
+        tga,
+        tga::TGACard,
+    },
     machine_types::{EmsType, EmsType::LoTech2MB, FdcType, MachineType},
     syntax_token::SyntaxFormatType,
 };
@@ -273,6 +281,7 @@ pub enum IoDeviceType {
     HardDiskController,
     Mouse,
     Ems,
+    GamePort,
     Video(VideoCardId),
 }
 
@@ -283,6 +292,8 @@ pub enum IoDeviceDispatch {
 
 #[derive(Clone, Debug, Default)]
 pub struct IoDeviceStats {
+    last_read: u8,
+    last_write: u8,
     reads: usize,
     reads_dirty: bool,
     writes: usize,
@@ -292,6 +303,8 @@ pub struct IoDeviceStats {
 impl IoDeviceStats {
     pub fn one_read() -> Self {
         Self {
+            last_read: 0xFF,
+            last_write: 0,
             reads: 1,
             reads_dirty: true,
             writes: 0,
@@ -301,6 +314,8 @@ impl IoDeviceStats {
 
     pub fn one_write() -> Self {
         Self {
+            last_read: 0,
+            last_write: 0xFF,
             reads: 0,
             reads_dirty: false,
             writes: 1,
@@ -339,6 +354,7 @@ pub enum MmioDeviceType {
     Vga,
     Rom,
     Ems,
+    Cart,
 }
 
 // Main bus struct.
@@ -385,6 +401,8 @@ pub struct BusInterface {
     hdc: Option<HardDiskController>,
     mouse: Option<Mouse>,
     ems: Option<LotechEmsCard>,
+    cart_slot: Option<CartridgeSlot>,
+    game_port: Option<GamePort>,
 
     videocards:    FxHashMap<VideoCardId, VideoCardDispatch>,
     videocard_ids: Vec<VideoCardId>,
@@ -400,6 +418,8 @@ pub struct BusInterface {
     tga_tick_accum: u32,
     kb_us_accum:    f64,
     refresh_active: bool,
+
+    terminal_port: Option<u16>,
 }
 
 #[macro_export]
@@ -551,6 +571,8 @@ impl Default for BusInterface {
             hdc: None,
             mouse: None,
             ems: None,
+            cart_slot: None,
+            game_port: None,
             videocards: FxHashMap::default(),
             videocard_ids: Vec::new(),
 
@@ -565,6 +587,8 @@ impl Default for BusInterface {
             tga_tick_accum: 0,
             kb_us_accum:    0.0,
             refresh_active: false,
+
+            terminal_port: None,
         }
     }
 }
@@ -875,6 +899,9 @@ impl BusInterface {
                             }
                         }
                     }
+                    MmioDeviceType::Cart => {
+                        return Ok(0);
+                    }
                     _ => {}
                 }
                 // We didn't match any mmio devices, return raw memory
@@ -924,6 +951,9 @@ impl BusInterface {
                                 _ => {}
                             }
                         }
+                    }
+                    MmioDeviceType::Cart => {
+                        return Ok(0);
                     }
                     _ => {}
                 }
@@ -990,6 +1020,13 @@ impl BusInterface {
                             return Ok((data, 0));
                         }
                     }
+                    MmioDeviceType::Cart => {
+                        if let Some(cart_slot) = &mut self.cart_slot {
+                            let (data, _waits) =
+                                MemoryMappedDevice::mmio_read_u8(cart_slot, address, system_ticks, None);
+                            return Ok((data, 0));
+                        }
+                    }
                     _ => {}
                 }
                 return Err(MemError::MmioError);
@@ -1049,6 +1086,12 @@ impl BusInterface {
                     MmioDeviceType::Ems => {
                         if let Some(ems) = &self.ems {
                             let data = MemoryMappedDevice::mmio_peek_u8(ems, address, None);
+                            return Ok(data);
+                        }
+                    }
+                    MmioDeviceType::Cart => {
+                        if let Some(cart_slot) = &self.cart_slot {
+                            let data = MemoryMappedDevice::mmio_peek_u8(cart_slot, address, None);
                             return Ok(data);
                         }
                     }
@@ -1113,7 +1156,8 @@ impl BusInterface {
                     }
                     _ => {}
                 }
-                return Err(MemError::MmioError);
+                return Ok((0xFFFF, 0));
+                //return Err(MemError::MmioError);
             }
         }
         Err(MemError::ReadOutOfBoundsError)
@@ -1666,9 +1710,15 @@ impl BusInterface {
         machine_desc: &MachineDescriptor,
         machine_config: &MachineConfiguration,
         sound_enabled: bool,
+        terminal_port: Option<u16>,
     ) -> Result<(), Error> {
         let video_frame_debug = false;
         let clock_mode = ClockingMode::Default;
+
+        if let Some(terminal_port) = terminal_port {
+            log::debug!("Terminal port set to: {:04X}", terminal_port);
+        }
+        self.terminal_port = terminal_port;
 
         // First we need to initialize the PPI. The PPI is used to read the system's DIP switches, so the PPI must be
         // given several parameters from the machine configuration.
@@ -1697,7 +1747,7 @@ impl BusInterface {
         if let Some(a0_type) = machine_desc.a0 {
             let a0 = A0Register::new(a0_type);
 
-            log::warn!("Creating A0 register...");
+            log::debug!("Creating A0 register...");
             add_io_device!(self, a0, IoDeviceType::A0Register);
             self.a0 = Some(a0);
         }
@@ -1848,6 +1898,30 @@ impl BusInterface {
             }
         }
 
+        // Create PCJr cartridge slot
+        if machine_desc.pcjr_cart_slot {
+            let cart_slot = CartridgeSlot::new();
+            add_mmio_device!(self, cart_slot, MmioDeviceType::Cart);
+            self.cart_slot = Some(cart_slot);
+        }
+
+        // Create a game port
+        let mut game_port_addr = None;
+        // Is there one onboard?
+        if machine_desc.game_port.is_some() {
+            game_port_addr = machine_desc.game_port;
+        }
+        // Is there one in the machine config?
+        else if let Some(game_port) = &machine_config.game_port {
+            game_port_addr = Some(game_port.io_base);
+        }
+        // Either way, install it if present
+        if let Some(game_port_addr) = game_port_addr {
+            let game_port = GamePort::new(Some(game_port_addr));
+            add_io_device!(self, game_port, IoDeviceType::GamePort);
+            self.game_port = Some(game_port);
+        }
+
         // Create video cards
         for (i, card) in machine_config.video.iter().enumerate() {
             let video_dispatch;
@@ -1969,7 +2043,8 @@ impl BusInterface {
 
                 // Read a byte from the keyboard
                 if let Some(kb_byte) = keyboard.recv_scancode() {
-                    log::debug!("Received keyboard byte: {:02X}", kb_byte);
+                    //log::debug!("Received keyboard byte: {:02X}", kb_byte);
+
                     // Do we have a PPI? if so, send the scancode to the PPI
                     if let Some(ppi) = &mut self.ppi {
                         ppi.send_keyboard(kb_byte);
@@ -2124,6 +2199,11 @@ impl BusInterface {
             if let Some(mouse) = &mut self.mouse {
                 mouse.run(serial, us);
             }
+        }
+
+        // Run the game port {
+        if let Some(game_port) = &mut self.game_port {
+            game_port.run(us);
         }
 
         let mut do_area5150_hack = false;
@@ -2410,6 +2490,11 @@ impl BusInterface {
                         byte = Some(ems.read_u8(port, nul_delta));
                     }
                 }
+                IoDeviceType::GamePort => {
+                    if let Some(game_port) = &mut self.game_port {
+                        byte = Some(game_port.read_u8(port, nul_delta));
+                    }
+                }
                 IoDeviceType::Video(vid) => {
                     if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
                         byte = match video_dispatch {
@@ -2434,15 +2519,18 @@ impl BusInterface {
             }
         }
 
+        let byte_val = byte.unwrap_or(NO_IO_BYTE);
+
         self.io_stats
             .entry(port)
             .and_modify(|e| {
+                e.1.last_read = byte_val;
                 e.1.reads += 1;
                 e.1.reads_dirty = true;
             })
             .or_insert((byte.is_some(), IoDeviceStats::one_read()));
 
-        byte.unwrap_or(NO_IO_BYTE)
+        byte_val
     }
 
     /// Write an 8-bit value to an IO port.
@@ -2455,6 +2543,20 @@ impl BusInterface {
             ClockFactor::Divisor(n) => cycles * (n as u32),
             ClockFactor::Multiplier(n) => cycles / (n as u32),
         };
+
+        // Handle terminal debug port
+        if let Some(terminal_port) = self.terminal_port {
+            if port == terminal_port {
+                //log::debug!("Write to terminal port: {:02X}", data);
+
+                // Filter Escape character to avoid terminal shenanigans.
+                // See: https://www.cyberark.com/resources/threat-research-blog/dont-trust-this-title-abusing-terminal-emulators-with-ansi-escape-characters
+                if data != 0x1B {
+                    print!("{}", data as char);
+                    _ = std::io::stdout().flush();
+                }
+            }
+        }
 
         let nul_delta = DeviceRunTimeUnit::Microseconds(0.0);
 
@@ -2543,6 +2645,12 @@ impl BusInterface {
                         resolved = true;
                     }
                 }
+                IoDeviceType::GamePort => {
+                    if let Some(game_port) = &mut self.game_port {
+                        game_port.write_u8(port, data, None, nul_delta);
+                        resolved = true;
+                    }
+                }
                 IoDeviceType::Video(vid) => {
                     if let Some(video_dispatch) = self.videocards.get_mut(&vid) {
                         match video_dispatch {
@@ -2623,6 +2731,14 @@ impl BusInterface {
 
     pub fn hdc_mut(&mut self) -> &mut Option<HardDiskController> {
         &mut self.hdc
+    }
+
+    pub fn cart_slot_mut(&mut self) -> &mut Option<CartridgeSlot> {
+        &mut self.cart_slot
+    }
+
+    pub fn game_port_mut(&mut self) -> &mut Option<GamePort> {
+        &mut self.game_port
     }
 
     pub fn mouse_mut(&mut self) -> &mut Option<Mouse> {
@@ -2748,6 +2864,15 @@ impl BusInterface {
         }
     }
 
+    pub fn cart_ct(&self) -> usize {
+        if self.cart_slot.is_some() {
+            2
+        }
+        else {
+            0
+        }
+    }
+
     pub fn keyboard_mut(&mut self) -> Option<&mut Keyboard> {
         self.keyboard.as_mut()
     }
@@ -2774,6 +2899,9 @@ impl BusInterface {
                 tokens.push(SyntaxToken::Colon);
                 tokens.push(SyntaxToken::Text(port_desc));
                 tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
+                tokens.push(SyntaxToken::OpenBracket);
+                tokens.push(SyntaxToken::Text(format!("{:02X}", stats.1.last_read)));
+                tokens.push(SyntaxToken::CloseBracket);
                 tokens.push(SyntaxToken::StateString(
                     format!("{}", stats.1.reads),
                     stats.1.reads_dirty,
@@ -2781,6 +2909,7 @@ impl BusInterface {
                 ));
                 tokens.push(SyntaxToken::Comma);
                 tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
+                //tokens.push(SyntaxToken::Formatter(SyntaxFormatType::Tab));
                 tokens.push(SyntaxToken::StateString(
                     format!("{}", stats.1.writes),
                     stats.1.writes_dirty,
@@ -2799,6 +2928,8 @@ impl BusInterface {
 
     pub fn reset_io_stats(&mut self) {
         for (_, stats) in self.io_stats.iter_mut() {
+            stats.1.last_read = 0;
+            stats.1.last_write = 0;
             stats.1.reads = 0;
             stats.1.writes = 0;
             stats.1.reads_dirty = false;

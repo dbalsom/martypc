@@ -33,6 +33,7 @@
 
 use serde_derive::Deserialize;
 
+pub mod cartridge_manager;
 pub mod color;
 pub mod constants;
 pub mod display_manager;
@@ -51,6 +52,7 @@ pub type MartyGuiTheme = types::gui::MartyGuiTheme;
 pub type HotkeyEvent = types::hotkeys::HotkeyEvent;
 pub type HotkeyScope = types::hotkeys::HotkeyScope;
 pub type HotkeyConfigEntry = types::hotkeys::HotkeyConfigEntry;
+pub type JoyKeyEntry = types::joykeys::JoyKeyEntry;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Deserialize)]
 pub enum BenchmarkEndCondition {

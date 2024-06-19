@@ -245,6 +245,9 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             if let Err(e) = emu.vhd_manager.scan_resource(&emu.rm) {
                 log::error!("Error scanning hdd directory: {}", e);
             }
+            if let Err(e) = emu.cart_manager.scan_resource(&emu.rm) {
+                log::error!("Error scanning cartridge directory: {}", e);
+            }
             // Update Floppy Disk Image tree
             if let Ok(floppy_tree) = emu.floppy_manager.make_tree(&emu.rm) {
                 emu.gui.set_floppy_tree(floppy_tree);
@@ -252,6 +255,75 @@ pub fn handle_egui_event(emu: &mut Emulator, elwt: &EventLoopWindowTarget<()>, g
             // Update VHD Image tree
             if let Ok(hdd_tree) = emu.vhd_manager.make_tree(&emu.rm) {
                 emu.gui.set_hdd_tree(hdd_tree);
+            }
+            // Update Cartridge Image tree
+            if let Ok(cart_tree) = emu.cart_manager.make_tree(&emu.rm) {
+                emu.gui.set_cart_tree(cart_tree);
+            }
+        }
+        GuiEvent::InsertCartridge(slot_select, item_idx) => {
+            log::debug!("Insert Cart image: {:?} into drive: {}", item_idx, slot_select);
+
+            let mut reboot = false;
+            if let Some(cart_slot) = emu.machine.cart_slot() {
+                emu.cart_manager.get_cart_name(*item_idx).map(|name| {
+                    log::info!("Loading cart image: {:?} into slot: {}", name, slot_select);
+
+                    match emu.cart_manager.load_cart_data(*item_idx, &emu.rm) {
+                        Ok(cart_image) => match cart_slot.insert_cart(*slot_select, cart_image) {
+                            Ok(()) => {
+                                log::info!("Cart image successfully loaded into slot: {}", slot_select);
+
+                                emu.gui
+                                    .set_cart_selection(*slot_select, Some(*item_idx), Some(name.clone().into()));
+
+                                emu.gui
+                                    .toasts()
+                                    .info(format!("Cartridge inserted: {:?}", name.clone()))
+                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+
+                                // Inserting a cartridge reboots the machine due to a switch in the cartridge slot.
+                                reboot = true;
+                            }
+                            Err(err) => {
+                                log::error!("Cart image failed to load into slot {}: {}", slot_select, err);
+                                emu.gui
+                                    .toasts()
+                                    .error(format!("Cartridge load failed: {}", err))
+                                    .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                            }
+                        },
+                        Err(err) => {
+                            log::error!("Failed to load cart image: {:?} Error: {}", item_idx, err);
+                            emu.gui
+                                .toasts()
+                                .error(format!("Cartridge load failed: {}", err))
+                                .set_duration(Some(NORMAL_NOTIFICATION_TIME));
+                        }
+                    }
+                });
+            }
+
+            if reboot {
+                emu.machine.change_state(MachineState::Rebooting);
+            }
+        }
+        GuiEvent::RemoveCartridge(slot_select) => {
+            log::info!("Removing cartridge from slot: {}", slot_select);
+
+            let mut reboot = false;
+            if let Some(cart_slot) = emu.machine.cart_slot() {
+                cart_slot.remove_cart(*slot_select);
+                emu.gui.set_cart_selection(*slot_select, None, None);
+                emu.gui
+                    .toasts()
+                    .info("Cartridge removed!".to_string())
+                    .set_duration(Some(SHORT_NOTIFICATION_TIME));
+
+                reboot = true;
+            }
+            if reboot {
+                emu.machine.change_state(MachineState::Rebooting);
             }
         }
         GuiEvent::LoadFloppy(drive_select, item_idx) => {

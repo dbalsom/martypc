@@ -197,6 +197,8 @@ pub enum GuiEvent {
     ResetIOStats,
     StartRecordingDisassembly,
     StopRecordingDisassembly,
+    InsertCartridge(usize, usize),
+    RemoveCartridge(usize),
 }
 
 pub enum DeviceSelection {
@@ -372,7 +374,7 @@ lazy_static! {
                 id: GuiWindow::IoStatsViewer,
                 title: "IO Stats Viewer",
                 menu: "IO Stats Viewer",
-                width: 400.0,
+                width: 500.0,
                 resizable: false,
             },
         ),

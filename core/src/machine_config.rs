@@ -60,6 +60,8 @@ use serde_derive::Deserialize;
 pub const IBM_PC_SYSTEM_CLOCK: f64 = 157.5 / 11.0;
 pub const PIT_DIVISOR: u32 = 12;
 
+pub const GAME_PORT_DEFAULT_IO: u16 = 0x201;
+
 /// This enum is intended to represent any specific add-on device type
 /// that the bus needs to know about.
 pub enum DeviceType {
@@ -155,6 +157,11 @@ pub struct SerialMouseConfig {
 }
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct GamePortConfig {
+    pub io_base: u16,
+}
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct VideoCardConfig {
     #[serde(rename = "type")]
     pub video_type:    VideoType,
@@ -233,6 +240,7 @@ pub struct MachineConfiguration {
     pub serial_mouse: Option<SerialMouseConfig>,
     pub video: Vec<VideoCardConfig>,
     pub serial: Vec<SerialControllerConfig>,
+    pub game_port: Option<GamePortConfig>,
     pub fdc: Option<FloppyControllerConfig>,
     pub hdc: Option<HardDriveControllerConfig>,
     pub media: Option<MediaConfig>,
@@ -307,6 +315,8 @@ pub struct MachineDescriptor {
     pub onboard_serial: Option<u16>,   // Whether the machine has an onboard serial port - and if so, the port base.
     pub onboard_parallel: Option<u16>, // Whether the machine has an onboard parallel port - and if so, the port base.
     pub allow_expansion_video: bool,   // Whether the machine allows for expansion video cards.
+    pub pcjr_cart_slot: bool,          // Does the system have PCJr cartridge slots?
+    pub game_port: Option<u16>,        // Does the system have an onboard game port, and if so, at what address?
 }
 
 impl Default for MachineDescriptor {
@@ -333,6 +343,8 @@ impl Default for MachineDescriptor {
             onboard_serial: None,
             onboard_parallel: None,
             allow_expansion_video: true,
+            pcjr_cart_slot: false,
+            game_port: None,
         }
     }
 }
@@ -403,6 +415,8 @@ lazy_static! {
                     pit_type: PitType::Model8253,
                     pic_type: PicType::Single,
                     dma_type: None,
+                    pcjr_cart_slot: true, // PCJr has cartridge slots!
+                    game_port: Some(GAME_PORT_DEFAULT_IO),
                     ..Default::default()
                 },
             ),
@@ -429,6 +443,9 @@ lazy_static! {
                     onboard_serial: None,
                     onboard_parallel: Some(0x378),
                     allow_expansion_video: false,
+                    pcjr_cart_slot: false,
+                    game_port: Some(GAME_PORT_DEFAULT_IO),
+                    ..Default::default()
                 },
             )
         ]);

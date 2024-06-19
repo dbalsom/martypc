@@ -48,6 +48,8 @@ icon.png
 /install/media/roms/*
 /install/media/floppies/*
 /install/media/hdds/*
+/install/media/cartridges/*
+
 /install/output/screenshots/*
 /install/output/traces/*
 /install/output/dumps/*

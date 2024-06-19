@@ -1,25 +1,55 @@
 
 ## [0.2.2](https://github.com/dbalsom/martypc/releases/tag/0.2.2) (2024-XX-XX)
 
-### New device: LoTech 2MB EMS Board
+### New devices
 
-* Added emulation of the [LoTech 2MB EMS Card](https://texelec.com/product/lo-tech-ems-2-mb/)
-  This card can be added to any machine configuration via the `lotech_ems` overlay. You can specify the window segment and IO base address.
-  However, these values must match one of the values supported by the real hardware or the driver won't work with it. 
+* #### LoTech 2MB EMS Board
+  * Added emulation of the [LoTech 2MB EMS Card](https://texelec.com/product/lo-tech-ems-2-mb/)
+    This card can be added to any machine configuration via the `lotech_ems` overlay. You can specify the window segment
+    and IO base address. However, these values must match one of the values supported by the real hardware or the driver 
+    won't work with it. 
+
+* #### Game Port and Joystick
+  * Added emulation of the IBM game port card, and basic keyboard-based joystick emulation. There is a new keyboard 
+    hotkey (JoyToggle) to turn this on and off (provisionally defined as Ctrl-F9), as well as configurable 
+    `joystick_keys` in the configuration you can use to define what keys control the joystick.
+  * PCJr and Tandy 1000 machines will have a game port installed automatically. You can add a game port to any PC or XT
+    configuration via the `game_port` overlay.
+  * Two two-button, two-axis joysticks are assumed to be connected when you specify a game port. 
+    Different joystick configurations may be supported in the future. 
+
+* #### PCJr Cartridge Slots
+  * Added support in the core, frontend and GUI for PCJr cartridges in JRipCart format. Inserting or removing a cart
+    will reboot the machine. You will only see the cartridge slots when using the PCJr machine.
 
 ### Frontend Bug Fixes / Improvements
 
+* Added a new resource type 'cartridge' and menu interface to browse and select PCJr Cartridges.
+
 ### Core Bug Fixes / Improvements
 
-* MC6845: Fixed an issue preventing entering vertical total adjust period if vertical total was 127. Fixes some Hercules display issues.
-* HERCULES: Increased the size of the Hercules' display field to accomodate some CGA emulators that drive the MDA monitor slightly out of sync (BBSIMCGA)
+* BUS: Implemented a `terminal_port` configuration option under `[machine]` in the main configuration. Writes to this 
+  port will be printed to the host's terminal.
+* MC6845: Fixed an issue preventing entering vertical total adjust period if vertical total was 127. Fixes some Hercules
+  display issues.
+* HERCULES: Increased the size of the Hercules' display field to accomodate some CGA emulators that drive the MDA
+  monitor slightly out of sync (Fixes BBSIMCGA)
 * CGA: Added CGA's external mode register to debug output
-* MACHINE: Added a facility to record disassembly listings from running code
+* MACHINE: Added a facility to record disassembly listings from running code. The output filename is set by 
+  `disassembly_file` under `[machine]` in the main configuration.
+  Basically, this feature saves instruction disassembly to a hash table by CS:IP.  Modification of code segments will 
+  override previous disassembly, so it is most useful to toggle this feature on and off for specified periods.
 
 ### Debugger Bug Fixes / Improvements
 
-* Added a 'reset' button to the IO Stats window to reset all the port counters.
-* Fixed panic/crash when resetting machine with IO Stats window open and scrolled. 
+* IO Status Window
+  * Added a 'reset' button to reset all the port counters.
+  * Added the last read byte value for each port
+  * Fixed panic/crash when resetting machine with the IO Stats window open and scrolled. 
+
+### Miscellaneous
+
+* Updated GLaBIOS 0.2.6 ROMS for a bugfix when int 10h vector is overridden
 
 ## [0.2.1](https://github.com/dbalsom/martypc/releases/tag/0.2.1) (2024-06-09)
 

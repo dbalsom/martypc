@@ -1,2 +1,3 @@
 # I'll make my functions as long as I want!!
 too-many-arguments-threshold = 8
+identity_op = false

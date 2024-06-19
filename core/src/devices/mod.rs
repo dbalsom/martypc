@@ -31,6 +31,7 @@
 */
 
 pub mod a0;
+pub mod cartridge_slots;
 pub mod cga;
 pub mod dipswitch;
 pub mod dma;
@@ -38,6 +39,7 @@ pub mod dma;
 pub mod ega;
 pub mod fdc;
 pub mod floppy_drive;
+pub mod game_port;
 pub mod hdc;
 pub mod keyboard;
 pub mod lotech_ems;

@@ -24,14 +24,18 @@
 
    ---------------------------------------------------------------------------
 
-   frontend_common::types::mod.rs
+   common::types::cartridge.rs
 
    Define common frontend types.
 
 */
 
-pub mod display_target_dimensions;
-pub mod display_target_margins;
-pub mod gui;
-pub mod hotkeys;
-pub mod joykeys;
+pub struct CartImage {
+    pub creator: String,
+    pub comment: String,
+    pub version_major: u8,
+    pub version_minor: u8,
+    pub address_seg: u16,
+    pub address_mask: u16,
+    pub image: Vec<u8>,
+}

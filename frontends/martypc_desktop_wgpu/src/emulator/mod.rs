@@ -29,6 +29,7 @@
     MartyPC Desktop front-end Emulator struct and implementation.
 */
 
+use crate::JoystickData;
 use display_manager_wgpu::DisplayManager;
 use std::{cell::RefCell, ffi::OsString, rc::Rc};
 
@@ -37,6 +38,7 @@ use anyhow::Error;
 use config_toml_bpaf::ConfigFileParams;
 use display_manager_wgpu::WgpuDisplayManager;
 use frontend_common::{
+    cartridge_manager::CartridgeManager,
     display_scaler::SCALER_MODES,
     floppy_manager::FloppyManager,
     resource_manager::ResourceManager,
@@ -72,11 +74,13 @@ pub struct Emulator {
     pub machine_events: Vec<MachineEvent>,
     pub exec_control: Rc<RefCell<ExecutionControl>>,
     pub mouse_data: MouseData,
+    pub joy_data: JoystickData,
     pub kb_data: KeyboardData,
     pub stat_counter: Counter,
     pub gui: GuiState,
     pub floppy_manager: FloppyManager,
     pub vhd_manager: VhdManager,
+    pub cart_manager: CartridgeManager,
     pub flags: EmuFlags,
     pub perf: PerfSnapshot,
     pub hkm: HotkeyManager,
@@ -93,7 +97,7 @@ impl Emulator {
     pub fn apply_config(&mut self) -> Result<(), Error> {
         log::debug!("Applying configuration to emulator state...");
 
-        // Set the inital power-on state.
+        // Set the initial power-on state.
         if self.config.emulator.auto_poweron {
             self.machine.change_state(MachineState::On);
         }
@@ -377,6 +381,9 @@ impl Emulator {
 
         // Set hard drives.
         self.gui.set_hdds(self.machine.bus().hdd_ct());
+
+        // Set cartridge slots
+        self.gui.set_cart_slots(self.machine.bus().cart_ct());
 
         // Request initial events from GUI.
         self.gui.initialize();

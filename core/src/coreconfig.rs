@@ -77,4 +77,5 @@ pub trait CoreConfig {
     fn get_title_hacks(&self) -> bool;
     fn get_patch_enabled(&self) -> bool;
     fn get_halt_behavior(&self) -> OnHaltBehavior;
+    fn get_terminal_port(&self) -> Option<u16>;
 }

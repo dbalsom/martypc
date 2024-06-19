@@ -73,6 +73,7 @@ use crate::{
 use ringbuf::{Consumer, Producer, RingBuffer};
 use crate::cpu_common::builder::CpuBuilder;
 use crate::cpu_validator::ValidatorMode;
+use crate::devices::cartridge_slots::CartridgeSlot;
 use crate::devices::ppi::PpiDisplayState;
 use crate::machine_types::OnHaltBehavior;
 
@@ -619,7 +620,7 @@ impl Machine {
         // Install devices
         if let Err(err) = cpu
             .bus_mut()
-            .install_devices(&machine_desc, &machine_config, have_audio)
+            .install_devices(&machine_desc, &machine_config, have_audio, core_config.get_terminal_port())
         {
             log::error!("Failed to install devices: {}", err);
         }
@@ -946,6 +947,8 @@ impl Machine {
         self.cpu.bus_mut().hdc_mut()
     }
 
+    pub fn cart_slot(&mut self) -> &mut Option<CartridgeSlot> { self.cpu.bus_mut().cart_slot_mut() }
+    
     pub fn cpu_cycles(&self) -> u64 {
         self.cpu_cycles
     }

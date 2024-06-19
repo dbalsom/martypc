@@ -30,7 +30,8 @@
    Define types and methods common to both frontend and backend libraries.
 */
 
+pub mod bytebuf;
 pub mod types;
 pub mod util;
 
-pub use crate::types::video_dimensions::VideoDimensions;
+pub use crate::types::{cartridge::CartImage, video_dimensions::VideoDimensions};

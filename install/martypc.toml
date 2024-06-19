@@ -50,6 +50,10 @@ disassembly_recording = false
 # This will be saved in the 'traces' directory
 disassembly_file = "disassembly.lst"
 
+# Enable a console debugging port. Writes to this port will be printed to the
+# host terminal. ESC bytes (0x1B) will be filtered to avoid terminal abuse.
+#terminal_port = 0xE9
+
 # Turbo Button
 # ----------------------------------------------------------------------------
 # Change the clock divisor/multiplier for the CPU to run the CPU faster than 
@@ -152,7 +156,9 @@ paths = [
     { resource = "keyboard_layout", path = "$basedir$/configs/keyboard_layouts", recurse = false },
     { resource = "rom", path = "$basedir$/media/roms", recurse = true },
     { resource = "hdd", path = "$basedir$/media/hdds", recurse = true },
-    { resource = "floppy", path = "$basedir$/media/floppies", recurse = true },
+    { resource = "floppy", path = "$basedir$/media/floppies", recurse = true, create = true },
+    { resource = "cartridge", path = "$basedir$/media/cartridges", recurse = true, create = true },
+    { resource = "cassette", path = "$basedir$/media/cassettes", recurse = true, create = true },
     { resource = "dump", path = "$basedir$/output/dumps", create = true },
     { resource = "trace", path = "$basedir$/output/traces", create = true },
     { resource = "screenshot", path = "$basedir$/output/screenshots", create = true },
@@ -205,6 +211,11 @@ run_bin_ofs = 0x0000
 # Enable vsync. For wgpu frontend, I would recommend leaving this off. FIFO
 # presentation mode increase latency and causes window resizing issues.
 vsync = false
+
+# There appears to be a bug in the wgpu backend that causes vertical stripes when
+# running fullscreen under Intel graphics. This is a workaround for that issue, setting
+# the surface size to one pixel less than fullscreen.
+macos_stripe_fix = false
 
 [emulator.audio]
 # Set this to false to disable sound system initialization.
@@ -500,6 +511,21 @@ hotkeys = [
     { event = "ToggleFullscreen", keys = ["ControlLeft", "Enter"], scope = "Any", capture_disable = false },
     { event = "DebugStepOver", keys = ["F10"], scope="Gui", capture_disable = false },
     { event = "DebugStep", keys = ["F11"], scope="Gui", capture_disable = false },
+    # Joystick hotkeys. Only enabled when joystick keyboard emulation is enabled.
+    { event = "JoyToggle", keys = ["ControlLeft", "F9"], scope="Any", capture_disable = false },
+]
+
+# Enable keyboard -> joystick emulation. This can be toggled via the JoyToggle hotkey
+# above, so it isn't necessary to set this to true unless you want it enabled by default.
+keyboard_joystick = false
+
+joystick_keys = [
+    { joymap = "JoyButton1", key = "AltRight" },
+    { joymap = "JoyButton2", key = "ControlRight" },
+    { joymap = "JoyUp", key = "ArrowUp" },
+    { joymap = "JoyLeft", key = "ArrowLeft"},
+    { joymap = "JoyRight", key = "ArrowRight"},
+    { joymap = "JoyDown", key = "ArrowDown" }
 ]
 
 # Help the developer debug any keyboard issues you may be having. With this
