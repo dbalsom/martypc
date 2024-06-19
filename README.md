@@ -63,6 +63,7 @@ MartyPC emulates the following devices:
 * ### Storage Devices:
     * **µPD765 FDC** - Currently robust enough to support both DOS and Minix operating systems, although floppy image emulation is limited to raw sector images.
     * **IBM/Xebec 20MB HDC** - Emulated with basic VHD support. MartyPC currently supports a single disk geometry of 20MB.
+    * **PCJr Cartridges** - PCJr cartridge ROMs are supported, in JrRipCart (.JRC) format
 
 * ### System Hardware:
     * **8255 PPI** - Low level keyboard emulation is supported via the PPI and keyboard shift register. Supports the 'turbo bit' found in TurboXT clones.
@@ -70,11 +71,16 @@ MartyPC emulates the following devices:
     * **8253 PIT** - Highly accurate, supporting PCM audio.
     * **8237 DMAC** - Mostly implemented, but DMA transfers are currently "faked". DRAM refresh DMA is simulated using a scheduling system.
     * **8250 UART** - Supports serial passthrough or mouse emulation. Still a bit incomplete (fails tests in CheckIt)
+    * **Game Port** - Supports two analog joysticks with two buttons each.
+    * **PC Speaker** - Although sometimes a little glitchy, it can produce reasonable PCM audio in demos such as 8088MPH, Area5150, and Magic Mushroom.
+
+* ### Add-on Cards:
+    * **LoTech 2MB EMS Card** - 2MB of EMS memory is made available via the [LoTech EMS board](https://www.lo-tech.co.uk/wiki/Lo-tech_2MB_EMS_Board).  
 
 * ### Input Devices:
     * **Keyboard Support** - IBM Model F and Tandy 1000 keyboards are emulated.
     * **Serial Mouse** - A standard Microsoft serial mouse can be connected to the COM port of your choice.
-    * **PC Speaker** - Although sometimes a little glitchy, it can produce reasonable PCM audio in demos such as 8088MPH, Area5150, and Magic Mushroom.
+    * **Joystick** - Game port joysticks are emulated via configurable keyboard controls.
 
 ### Configuration Support
 
